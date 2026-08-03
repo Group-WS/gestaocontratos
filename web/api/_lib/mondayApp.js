@@ -15,7 +15,14 @@
 
 const express = require("express");
 const cors = require("cors");
-const pdfParse = require("pdf-parse");
+
+// Importa o miolo do pdf-parse em vez do index.js. O index tem um
+// bloco "modo debug" que dispara quando `module.parent` é vazio: ele
+// tenta ler um PDF de teste que não é publicado junto, e esse erro
+// derruba o arquivo inteiro no carregamento. Localmente `module.parent`
+// existe e o bloco dorme; no empacotamento da Vercel, não — daí todas
+// as rotas quebravam, até as que não têm nada a ver com PDF.
+const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 const app = express();
 app.use(cors());
