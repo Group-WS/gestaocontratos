@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: confere-monday-proxy
+    runtime: node
+    plan: free
+    rootDir: monday-proxy
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONDAY_API_TOKEN
+        sync: false
