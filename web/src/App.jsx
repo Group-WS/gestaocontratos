@@ -1,0 +1,2698 @@
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
+import {
+  ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
+  Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
+  ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
+  LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
+  Lock, BookOpen, ShieldCheck
+} from "lucide-react";
+
+// Em dev, "/api/..." funciona porque o Vite faz proxy pro proxy do
+// Monday (vite.config.js). Publicado (Vercel), não existe esse proxy —
+// aí VITE_API_BASE precisa apontar pro backend publicado (ex: Render).
+// Configure essa variável só no build de produção; em dev, deixe vazia.
+const API_BASE = import.meta.env.VITE_API_BASE || "";
+const api = (path) => API_BASE + path;
+
+/* ============================================================
+   EAP PADRÃO
+   A estrutura de verbas é sempre a mesma para toda obra — quando
+   uma obra não tem nada lançado numa verba, ela ainda aparece,
+   zerada, em vez de sumir da lista.
+   ============================================================ */
+
+const EAP_PADRAO = [
+  { num: "01", nome: "Arquitetura e Engenharia" },
+  { num: "02", nome: "Serviços Complementares" },
+  { num: "03", nome: "Instalações Elétricas e Iluminação" },
+  { num: "04", nome: "Gesso e Drywall" },
+  { num: "05", nome: "Pintura" },
+  { num: "06", nome: "Climatização / Exaustão" },
+  { num: "07", nome: "Móveis Sob Medida" },
+  { num: "08", nome: "Serralheria" },
+  { num: "09", nome: "Vidros e Espelhos" },
+  { num: "10", nome: "Móveis Soltos" },
+  { num: "11", nome: "Estofados" },
+  { num: "12", nome: "Pedras — Mármores e Granitos" },
+  { num: "13", nome: "Louças, Metais e Equipamentos Especiais" },
+  { num: "14", nome: "Eletroeletrônico" },
+  { num: "15", nome: "Cortinas e Persianas" },
+  { num: "16", nome: "Itens Decorativos" },
+  { num: "17", nome: "Execução e Mão de Obra" },
+  { num: "18", nome: "Sonorização" },
+  { num: "19", nome: "Automação" },
+];
+
+function buildCategorias(overrides, extra) {
+  const base = EAP_PADRAO.map((c) => {
+    const o = overrides.find((x) => x.num === c.num);
+    if (!o) return { ...c, vendido: 0, executivo: 0 };
+    return { ...c, vendido: o.vendido ?? 0, executivo: o.executivo ?? 0, itens: o.itens };
+  });
+  if (extra) base.push({ ...extra, foraDeEscopoCategoria: true, foraDaEapPadrao: true });
+  return base;
+}
+
+const fmtBRL = (v) =>
+  v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+const fmtCompactBRL = (v) => {
+  if (v == null) return "—";
+  if (Math.abs(v) >= 1000000) return `R$ ${(v / 1000000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}m`;
+  if (Math.abs(v) >= 1000) return `R$ ${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}mil`;
+  return fmtBRL(v);
+};
+
+
+/* ============================================================
+   INTEGRAÇÃO MONDAY
+   A lista de obras vem dos workspaces do Monday (um workspace por
+   squad; cada board é uma obra). O detalhe Vendido × Executivo por
+   verba não existe no Monday — toda obra chega com a EAP zerada, e é
+   populada pelos uploads reais (Vendido Contrato/Planilha, Executivo).
+   ============================================================ */
+
+const SQUADS = [
+  { nome: "Squad Sun", workspaceId: "13339794" },
+  { nome: "Squad Moon", workspaceId: "14451479" },
+  { nome: "Squad Comet", workspaceId: "13339790" },
+];
+
+// "R$ 1.234,56" -> 1234.56 ; vazio -> null
+function parseBRL(txt) {
+  if (!txt) return null;
+  const n = Number(String(txt).replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+// converte uma obra vinda do Monday para o formato que o app consome —
+// sempre com a EAP zerada; os uploads reais é que preenchem os dados.
+function mondayObraParaApp(mo, squadNome) {
+  return {
+    id: mo.codigo || mo.boardId,
+    codigo: mo.codigo,
+    nome: mo.nome,
+    squad: squadNome,
+    boardId: mo.boardId,
+    endereco: mo.localizacao || "—",
+    cliente: mo.comercialResp || "—",
+    gc: mo.gcResponsavel || null,
+    area: null,
+    prazo: null,
+    valorVendido: parseBRL(mo.cmvOrcado) || 0,
+    categorias: buildCategorias([], null),
+    semDetalhe: true,
+  };
+}
+
+// busca as obras de UM squad (workspace) e já converte pro formato do app.
+// Aborta em 25s pra não deixar o app preso caso o Monday esteja lento.
+async function fetchSquadObras(squad) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 25_000);
+  try {
+    const res = await fetch(api(`/api/monday/obras-execucao?workspaceId=${squad.workspaceId}`), { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`Squad ${squad.nome}: HTTP ${res.status}`);
+    const lista = await res.json();
+    return lista.map((mo) => mondayObraParaApp(mo, squad.nome));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* ============================================================
+   LÓGICA DE STATUS / CÁLCULOS
+   ============================================================ */
+
+function categoriaStatus(cat) {
+  if (cat.foraDeEscopoCategoria) return "critico";
+  if (cat.vendido === 0 && cat.executivo === 0) return "vazio";
+  if (cat.vendido === 0 && cat.executivo > 0) return "critico";
+  if (cat.executivo === 0) return "pendente";
+  const pct = ((cat.executivo - cat.vendido) / cat.vendido) * 100;
+  if (pct > 15) return "critico";
+  if (pct > 0) return "atencao";
+  return "ok";
+}
+
+function itemAlertas(it) {
+  const alertas = [];
+  if (it.foraDeEscopo && it.statusEscopo !== "aprovado") alertas.push("escopo");
+  if (it.excedeQtd) alertas.push("qtd");
+  if (it.novoSemCorrespondencia) alertas.push("novo");
+  return alertas;
+}
+
+const CONTRATO_STAGES = {
+  solicitacao: { label: "Solicitação de contrato enviada", color: "var(--ink-3)", bg: "var(--panel)" },
+  aprovacao: { label: "Aguardando aprovação do contrato", color: "var(--amber)", bg: "var(--amber-bg)" },
+  contrato_gerado: { label: "Contrato gerado", color: "var(--blue)", bg: "var(--blue-bg)" },
+  previsao_medicao: { label: "Previsão de medição lançada", color: "var(--blue)", bg: "var(--blue-bg)" },
+  medicao_liberada: { label: "Medição liberada — NF anexada", color: "var(--green)", bg: "var(--green-bg)" },
+};
+
+function ContratoStatus({ item }) {
+  if (item.foraDeEscopo && item.statusEscopo !== "aprovado") {
+    return <span className="contrato-blocked">Bloqueado — aguardando aprovação de escopo</span>;
+  }
+  if (!item.statusContrato) return <span className="dim">Contrato ainda não solicitado</span>;
+  const s = CONTRATO_STAGES[item.statusContrato];
+  return <span className="contrato-pill" style={{ color: s.color, background: s.bg }}>{s.label}</span>;
+}
+
+const STATUS_META = {
+  ok: { label: "Dentro do orçado", color: "var(--green)" },
+  atencao: { label: "Acima do orçado", color: "var(--amber)" },
+  critico: { label: "Estouro crítico", color: "var(--red)" },
+  pendente: { label: "Ainda não detalhado", color: "var(--ink-3)" },
+  vazio: { label: "Não se aplica a esta obra", color: "var(--ink-3)" },
+};
+
+function obraAlertCount(o) {
+  return o.categorias.reduce((acc, c) => {
+    const s = categoriaStatus(c);
+    let n = s === "critico" ? 1 : 0;
+    (c.itens || []).forEach((it) => { if (itemAlertas(it).length) n += 1; });
+    return acc + n;
+  }, 0);
+}
+
+function obraComprasStats(o) {
+  let totalProdutos = 0, totalComprado = 0;
+  o.categorias.forEach((c) => (c.itens || []).forEach((it) => {
+    if (it.tipo !== "produto" || it.custo == null) return;
+    totalProdutos += it.custo;
+    if (it.comprado) totalComprado += it.valorComprado != null ? it.valorComprado : it.custo;
+  }));
+  const pct = totalProdutos > 0 ? (totalComprado / totalProdutos) * 100 : 0;
+  return { totalProdutos, totalComprado, falta: totalProdutos - totalComprado, pct };
+}
+
+function matchesFilter(it, filter) {
+  if (filter === "todos") return true;
+  if (filter === "alerta") return itemAlertas(it).length > 0;
+  if (it.tipo !== "produto") return false; // só produto passa pelo fluxo de compras
+  if (filter === "liberado") return it.liberado === true;
+  if (filter === "aguardando") return !it.liberado;
+  if (filter === "comprado") return it.comprado === true;
+  if (filter === "falta") return !it.comprado;
+  return true;
+}
+
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime || "text/plain;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(v) { return `"${String(v ?? "").replace(/"/g, '""')}"`; }
+
+function exportVendidoCSV(obra) {
+  const rows = [["Código", "Verba", "Valor Vendido (R$)"]];
+  obra.categorias.forEach((c) => rows.push([c.num, c.nome, c.vendido.toFixed(2).replace(".", ",")]));
+  rows.push(["", "TOTAL CONTRATO", obra.valorVendido.toFixed(2).replace(".", ",")]);
+  const csv = rows.map((r) => r.map(csvCell).join(";")).join("\n");
+  downloadFile(`vendido_obra_${obra.codigo}.csv`, csv, "text/csv;charset=utf-8;");
+}
+
+function exportExecutivoCSV(obra) {
+  const rows = [["Verba", "Código", "Descrição", "Tipo", "Ambiente", "Qtd. Executivo", "Custo Total (R$)", "Liberado p/ compra"]];
+  obra.categorias.forEach((cat) => (cat.itens || []).forEach((it) => {
+    rows.push([
+      cat.nome, it.codigo, it.desc, it.tipo === "produto" ? "Produto" : "Serviço",
+      it.ambiente || "", it.qtdExecutivo ?? "", (it.custo ?? 0).toFixed(2).replace(".", ","),
+      it.tipo === "produto" ? (it.liberado ? "Liberado" : "Aguardando") : "—",
+    ]);
+  }));
+  const csv = rows.map((r) => r.map(csvCell).join(";")).join("\n");
+  downloadFile(`executivo_obra_${obra.codigo}.csv`, csv, "text/csv;charset=utf-8;");
+}
+
+/* ============================================================
+   COMPONENTES PEQUENOS
+   ============================================================ */
+
+function StatusText({ status }) {
+  const m = STATUS_META[status];
+  return <span className="status-text" style={{ color: m.color }}>{m.label}</span>;
+}
+
+function BigCard({ label, value, delta, deltaGood, sub, progress }) {
+  return (
+    <div className="big-card">
+      <div className="big-card-label">{label}</div>
+      <div className="big-card-row">
+        <div className="big-card-value">{value}</div>
+        {delta && <span className={`delta ${deltaGood ? "delta-good" : "delta-bad"}`}><ArrowUpRight size={13} /> {delta}</span>}
+      </div>
+      {progress != null && (
+        <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.min(progress, 100)}%` }} /></div>
+      )}
+      {sub && <div className="big-card-sub">{sub}</div>}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, tone }) {
+  return (
+    <div className="mini-stat">
+      <div className="mini-stat-label">{label}</div>
+      <div className="mini-stat-value" style={tone ? { color: tone } : undefined}>{value}</div>
+    </div>
+  );
+}
+
+function CategoriaBar({ vendido, executivo }) {
+  const max = Math.max(vendido, executivo || 0, 1);
+  const wV = (vendido / max) * 100;
+  const wE = executivo == null ? 0 : (executivo / max) * 100;
+  const over = executivo > vendido;
+  return (
+    <div className="cbar">
+      <div className="cbar-track">
+        <div className="cbar-vendido" style={{ width: `${wV}%` }} />
+        <div className="cbar-exec" style={{ width: `${Math.min(wE, 100)}%`, background: over ? "var(--red)" : "var(--blue)" }} />
+      </div>
+    </div>
+  );
+}
+
+function SiengeMatch({ sienge }) {
+  if (!sienge) return null;
+  if (sienge.status === "match") {
+    return (
+      <div className="sienge-match sienge-match-green">
+        <Link2 size={12} className="sienge-match-icon" />
+        <div>
+          <span className="sienge-eyebrow">INSUMO SIENGE</span>
+          <div><span className="mono sienge-cod">Cód. {sienge.codigo}</span><span className="sienge-desc">{sienge.desc}</span></div>
+        </div>
+      </div>
+    );
+  }
+  if (sienge.status === "parcial") {
+    return (
+      <div className="sienge-match sienge-match-amber">
+        <PackageSearch size={12} className="sienge-match-icon" />
+        <div>
+          <span className="sienge-eyebrow">INSUMO SIENGE — correspondência parcial</span>
+          <div><span className="mono sienge-cod">Cód. {sienge.codigo}</span><span className="sienge-desc">{sienge.desc}</span></div>
+          <span className="sienge-note">a especificação (marca/modelo/capacidade) difere — revisar antes de vincular</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="sienge-match sienge-match-neutral">
+      <PackageSearch size={12} className="sienge-match-icon" />
+      <div>
+        <span className="sienge-eyebrow">INSUMO SIENGE</span>
+        <div><span className="sienge-desc">Nenhum insumo cadastrado corresponde a este item</span></div>
+        <span className="sienge-note">sugerir cadastro de novo insumo</span>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   ABA COMPARATIVO
+   ============================================================ */
+
+// tags/alertas comuns às duas linhas (produto e serviço)
+function ItemTags({ item, alertas }) {
+  return (
+    <div className="item-tags">
+      {alertas.includes("escopo") && <span className="chip chip-red"><XCircle size={11} /> Fora do escopo vendido</span>}
+      {alertas.includes("qtd") && <span className="chip chip-red"><AlertTriangle size={11} /> Quantidade excede o vendido</span>}
+      {alertas.includes("novo") && <span className="chip chip-blue">Novo item — sem código no vendido</span>}
+      {item.foraDeEscopo && item.statusEscopo === "aprovado" && <span className="chip chip-green"><CheckCircle2 size={11} /> Aprovado — incluído no escopo</span>}
+    </div>
+  );
+}
+
+// estouro por item: o que foi de fato comprado passou o custo orçado
+// no executivo pra aquele item — sinaliza item a item, não só por verba.
+function itemEstourou(item) {
+  return item.valorComprado != null && item.custo != null && item.valorComprado > item.custo;
+}
+
+// Linha de PRODUTO → segue o fluxo de Compras (Sienge)
+function ProdutoRow({ item, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+  const alertas = itemAlertas(item);
+  const bloqueado = alertas.includes("escopo");
+  const estourou = itemEstourou(item);
+  return (
+    <tr className={alertas.length ? "row-alert" : estourou ? "row-estouro" : ""}>
+      <td className="mono dim">{item.codigo}</td>
+      <td>
+        <div className="item-desc">{item.desc}</div>
+        <ItemTags item={item} alertas={alertas} />
+        {item.contavel && <SiengeMatch sienge={item.sienge} />}
+      </td>
+      <td className="mono center dim">{item.ambiente}</td>
+      <td className="mono center">
+        <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? "—"}</span> <span className="unit">{item.un}</span>
+      </td>
+      <td className="mono right">{fmtBRL(item.custo)}</td>
+      <td className="center">
+        {bloqueado ? (
+          <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
+        ) : (
+          <span className={item.liberado ? "pill pill-ok" : "pill pill-wait"}>{item.liberado ? "Lançado p/ compra" : "Aguardando liberação"}</span>
+        )}
+      </td>
+      <td className="mono center">
+        <input className="input-valor input-qtd" type="text" placeholder="—"
+          value={item.qtdComprada != null ? item.qtdComprada.toString().replace(".", ",") : ""}
+          onChange={(e) => onQtdComprada(e.target.value)} />
+      </td>
+      <td className="mono right">
+        <input className={`input-valor ${estourou ? "input-estouro" : ""}`} type="text" placeholder="—"
+          value={item.valorComprado != null ? item.valorComprado.toString().replace(".", ",") : ""}
+          onChange={(e) => onValorComprado(e.target.value)} />
+        {estourou && <div className="estouro-tag"><AlertTriangle size={10} /> estourou</div>}
+      </td>
+      <td className="center">
+        <button className={item.comprado ? "check check-on" : "check"} onClick={onToggleComprado} aria-label="Marcar como comprado">
+          {item.comprado && <Check size={13} />}
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+// Linha de SERVIÇO / mão de obra → segue o fluxo de Contratos (o status
+// do contrato mora no módulo Contratos, não aqui — evita duplicar/confundir).
+function ServicoRow({ item }) {
+  const alertas = itemAlertas(item);
+  return (
+    <tr className={alertas.length ? "row-alert" : ""}>
+      <td className="mono dim">{item.codigo}</td>
+      <td>
+        <div className="item-desc">{item.desc}</div>
+        <ItemTags item={item} alertas={alertas} />
+      </td>
+      <td className="mono center">
+        <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? "—"}</span> <span className="unit">{item.un}</span>
+      </td>
+      <td className="mono right">{fmtBRL(item.custo)}</td>
+    </tr>
+  );
+}
+
+function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter }) {
+  const status = categoriaStatus(cat);
+  const diff = cat.executivo - cat.vendido;
+  const pct = cat.vendido === 0 ? null : (diff / cat.vendido) * 100;
+  const hasItens = Array.isArray(cat.itens) && cat.itens.length > 0;
+  const filteredItens = hasItens ? cat.itens.filter((it) => matchesFilter(it, itemFilter)) : [];
+  const filtering = itemFilter !== "todos";
+  const showExpanded = filtering ? filteredItens.length > 0 : expanded;
+
+  return (
+    <div className="cat-block">
+      <button className="cat-header" onClick={() => hasItens && !filtering && onToggle()} style={{ cursor: hasItens && !filtering ? "pointer" : "default" }}>
+        <div className="cat-header-left">
+          {hasItens ? (showExpanded ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />) : <span style={{ width: 15, display: "inline-block" }} />}
+          <span className="cat-num mono">{cat.num}</span>
+          <span className="cat-nome">{cat.nome}</span>
+          {cat.foraDeEscopoCategoria && <span className="chip chip-red"><XCircle size={11} /> Fora do escopo vendido</span>}
+        </div>
+        <div className="cat-header-right">
+          <CategoriaBar vendido={cat.vendido} executivo={cat.executivo} />
+          <div className="cat-values"><span className="mono dim">{fmtBRL(cat.vendido)}</span><span className="arrow dim">→</span><span className="mono">{fmtBRL(cat.executivo)}</span></div>
+          <div className="cat-diff">
+            {status === "vazio" ? <span className="dim">—</span> : status === "pendente" ? <span className="dim">sem lançamento</span> : (
+              <span style={{ color: STATUS_META[status].color }} className="mono">
+                {diff === 0 ? <Minus size={12} /> : diff > 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                {" "}{diff > 0 ? "+" : ""}{fmtBRL(diff)}{pct != null ? ` (${pct > 0 ? "+" : ""}${pct.toFixed(0)}%)` : ""}
+              </span>
+            )}
+          </div>
+          <StatusText status={status} />
+        </div>
+      </button>
+
+      {showExpanded && hasItens && (
+        <div className="cat-items">
+          {filtering && filteredItens.length === 0 ? null : (() => {
+            const produtos = filteredItens.filter((it) => it.tipo === "produto");
+            const servicos = filteredItens.filter((it) => it.tipo !== "produto");
+            const totalProd = produtos.reduce((a, it) => a + (it.custo || 0), 0);
+            const totalServ = servicos.reduce((a, it) => a + (it.custo || 0), 0);
+            return (
+            <>
+              {produtos.length > 0 && (
+                <div className="fluxo-bloco">
+                  <div className="fluxo-head fluxo-head-produto">
+                    <ShoppingCart size={14} />
+                    <span className="fluxo-titulo">Produtos</span>
+                    <span className="fluxo-dest">→ Compras (Sienge)</span>
+                    <span className="fluxo-meta">{produtos.length} {produtos.length === 1 ? "item" : "itens"} · {fmtBRL(totalProd)}</span>
+                  </div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 52 }}>Cód.</th>
+                        <th>Descrição</th>
+                        <th style={{ width: 88 }}>Ambiente</th>
+                        <th style={{ width: 84 }} className="center">Qtd. exec.</th>
+                        <th style={{ width: 100 }} className="right">Custo</th>
+                        <th style={{ width: 140 }} className="center">Situação de compra</th>
+                        <th style={{ width: 90 }} className="center">Qtd. comprada</th>
+                        <th style={{ width: 106 }} className="right">Valor comprado</th>
+                        <th style={{ width: 58 }} className="center">Comprado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {produtos.map((it) => {
+                        const idx = cat.itens.indexOf(it);
+                        return (
+                          <ProdutoRow key={it.codigo} item={it}
+                            onAprovar={() => onItemChange(idx, { statusEscopo: "aprovado" })}
+                            onToggleComprado={() => onItemChange(idx, { comprado: !it.comprado })}
+                            onValorComprado={(v) => {
+                              const num = parseFloat(v.replace(/\./g, "").replace(",", "."));
+                              onItemChange(idx, { valorComprado: isNaN(num) ? null : num });
+                            }}
+                            onQtdComprada={(v) => {
+                              const num = parseFloat(v.replace(/\./g, "").replace(",", "."));
+                              onItemChange(idx, { qtdComprada: isNaN(num) ? null : num });
+                            }}
+                          />
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {servicos.length > 0 && (
+                <div className="fluxo-bloco">
+                  <div className="fluxo-head fluxo-head-servico">
+                    <FileText size={14} />
+                    <span className="fluxo-titulo">Serviços / mão de obra</span>
+                    <span className="fluxo-dest">→ Contratos</span>
+                    <span className="fluxo-meta">{servicos.length} {servicos.length === 1 ? "item" : "itens"} · {fmtBRL(totalServ)}</span>
+                  </div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 52 }}>Cód.</th>
+                        <th>Descrição</th>
+                        <th style={{ width: 84 }} className="center">Qtd. exec.</th>
+                        <th style={{ width: 100 }} className="right">Custo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {servicos.map((it) => <ServicoRow key={it.codigo} item={it} />)}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+            );
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const FILTERS = [
+  { id: "todos", label: "Todos os itens" },
+  { id: "liberado", label: "Liberado p/ compra" },
+  { id: "aguardando", label: "Aguardando liberação" },
+  { id: "alerta", label: "Com alerta" },
+  { id: "comprado", label: "Já comprado" },
+  { id: "falta", label: "Falta comprar" },
+];
+
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter }) {
+  return (
+    <>
+      <div className="filter-bar">
+        <SlidersHorizontal size={13} className="dim" />
+        {FILTERS.map((f) => (
+          <button key={f.id} className={`filter-chip ${itemFilter === f.id ? "active" : ""}`} onClick={() => setItemFilter(f.id)}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+      {obra.categorias.map((cat, catIdx) => (
+        <CategoriaBlock key={cat.num + cat.nome} cat={cat}
+          expanded={expandedCats.has(cat.num + obra.id)}
+          onToggle={() => toggleCat(cat.num + obra.id)}
+          onItemChange={(itemIdx, patch) => updateItem(catIdx, itemIdx, patch)}
+          itemFilter={itemFilter}
+        />
+      ))}
+      <div className="legend">
+        <div className="legend-item"><span className="legend-dot" style={{ background: "var(--green)" }} /> Dentro do orçado</div>
+        <div className="legend-item"><span className="legend-dot" style={{ background: "var(--amber)" }} /> Acima do orçado (até 15%)</div>
+        <div className="legend-item"><span className="legend-dot" style={{ background: "var(--red)" }} /> Estouro crítico / fora de escopo</div>
+        <div className="legend-item"><span className="legend-dot" style={{ background: "var(--ink-3)" }} /> Sem lançamento / não se aplica</div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   ABA VENDIDO
+   ============================================================ */
+
+// quebra um CSV em linhas de células (aceita ; ou , como separador)
+function parseCSVLinhas(texto) {
+  const sep = (texto.match(/;/g) || []).length >= (texto.match(/,/g) || []).length ? ";" : ",";
+  return texto.split(/\r?\n/).map((l) => l.split(sep).map((c) => c.replace(/^"|"$/g, "").trim()));
+}
+
+// dado um conjunto de linhas (array de arrays), extrai { "01": valor, ... }
+// procurando, em cada linha, um código de verba (01–19) + um valor monetário.
+function extrairVerbasValor(linhas) {
+  const mapa = {};
+  linhas.forEach((cells) => {
+    if (!Array.isArray(cells)) return;
+    let num = null;
+    for (const c of cells) {
+      const m = String(c).trim().match(/^(0?[1-9]|1[0-9])$/);
+      if (m) { num = m[1].padStart(2, "0"); break; }
+    }
+    if (!num || num in mapa) return;
+    // pega o maior valor monetário da linha (o vendido costuma ser o total)
+    let valor = null;
+    cells.forEach((c) => {
+      const v = parseBRL(c);
+      if (v != null && v > 0 && (valor == null || v > valor)) valor = v;
+    });
+    if (valor != null) mapa[num] = valor;
+  });
+  return mapa;
+}
+
+// VENDIDO CONTRATO — o PDF da proposta, como ela é hoje: valor só por
+// verba (subtotal), item traz apenas descrição/ambiente/quantidade —
+// nunca valor por item (o contrato é fechado por verba, não por item).
+async function lerContratoPDF(file) {
+  const buf = await file.arrayBuffer();
+  const res = await fetch(api("/api/vendido/parse"), {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf" },
+    body: buf,
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const valores = {};
+  (data.verbas || []).forEach((v) => { if (v.valor != null) valores[v.num] = v.valor; });
+  const itens = (data.itens || []).map((it) => ({
+    num: it.verba, codigo: it.codigo, desc: it.desc,
+    qtdVendida: it.qtd, un: it.un, ambiente: it.ambiente,
+  }));
+  return { valores, itens };
+}
+
+// VENDIDO PLANILHA em PDF — usa o MESMO motor denso do Executivo (não
+// o motor simples do Contrato): a Planilha "elaborada" tem layout
+// denso (custo material/mão de obra por item, linhas de índice,
+// placeholders), igual ao Composição de Custo — o parser simples do
+// Contrato quebra nesse formato (número de coluna vaza pra descrição).
+// Marca não dá pra extrair de PDF de forma confiável — fica só no Excel.
+async function lerPlanilhaPDF(file) {
+  const buf = await file.arrayBuffer();
+  const res = await fetch(api("/api/executivo/parse"), {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf" },
+    body: buf,
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const itens = (data.itens || []).map((it) => {
+    const temUnit = it.custoMaterial != null || it.custoMO != null;
+    return {
+      num: it.verba, codigo: it.codigo, desc: it.desc,
+      qtdVendida: it.qtd, un: it.un, ambiente: null,
+      custoUnitario: temUnit ? (it.custoMaterial || 0) + (it.custoMO || 0) : null,
+      custo: it.custoTotal != null ? it.custoTotal : null, marca: null,
+    };
+  });
+  return { itens };
+}
+
+// EXECUTIVO em PDF ("Composição de Custo") — traz Custo Material +
+// Custo Mão de Obra por item. Regra de negócio: se tem custo de
+// material, é PRODUTO (→ Compras/Sienge); senão é SERVIÇO (→ Contratos).
+async function lerExecutivoPDF(file) {
+  const buf = await file.arrayBuffer();
+  const res = await fetch(api("/api/executivo/parse"), {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf" },
+    body: buf,
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const itens = (data.itens || []).map((it) => {
+    const tipo = (it.custoMaterial || 0) > 0 ? "produto" : "servico";
+    const temUnit = it.custoMaterial != null || it.custoMO != null;
+    return {
+      num: it.verba, codigo: it.codigo, desc: it.desc,
+      tipo, ambiente: null, qtdExecutivo: it.qtd, un: it.un,
+      custo: it.custoTotal != null ? it.custoTotal : null,
+      contavel: tipo === "produto",
+      sienge: tipo === "produto" ? { status: "nao_encontrado" } : undefined,
+      liberado: false, comprado: false, valorComprado: null, statusContrato: null,
+      // campos "simples", no formato da Planilha (Vendido/Executivo) —
+      // pra exibir na Planilha Executivo e pro depara Planilha × Planilha:
+      qtdVendida: it.qtd, custoUnitario: temUnit ? (it.custoMaterial || 0) + (it.custoMO || 0) : null,
+    };
+  });
+  return { itens };
+}
+
+// deduz o nº da verba (01–19) a partir do código do item, ex: "6.2" -> "06"
+function verbaDoCodigo(codigo) {
+  const m = String(codigo || "").match(/^(\d{1,2})[.\-]/);
+  return m ? m[1].padStart(2, "0") : null;
+}
+
+// acha o índice da coluna cujo cabeçalho casa com algum dos padrões
+function acharColuna(headerRow, padroes) {
+  for (let i = 0; i < headerRow.length; i++) {
+    const h = String(headerRow[i] || "").toLowerCase();
+    if (padroes.some((p) => p.test(h))) return i;
+  }
+  return -1;
+}
+
+// VENDIDO PLANILHA — documento mais elaborado (Excel), com colunas
+// nomeadas: código/verba, descrição, marca, custo, quantidade, ambiente.
+// Lê por CABEÇALHO (não por posição fixa), pra aguentar variação de layout.
+async function lerPlanilhaExcel(file) {
+  let linhas;
+  if (/\.xlsx?$/i.test(file.name)) {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
+  } else {
+    linhas = parseCSVLinhas(await file.text());
+  }
+
+  // acha a linha de cabeçalho: a primeira que tem "descri" e (marca ou custo/valor)
+  let headerIdx = -1;
+  for (let i = 0; i < linhas.length; i++) {
+    const row = linhas[i].map((c) => String(c || "").toLowerCase());
+    const temDesc = row.some((h) => /descri/.test(h));
+    const temMarcaOuCusto = row.some((h) => /marca|custo|valor/.test(h));
+    if (temDesc && temMarcaOuCusto) { headerIdx = i; break; }
+  }
+  if (headerIdx === -1) return { itens: [] };
+
+  const header = linhas[headerIdx];
+  const iCod = acharColuna(header, [/^c[oó]d/, /item/]);
+  const iVerba = acharColuna(header, [/verba/, /grupo/, /eap/]);
+  const iDesc = acharColuna(header, [/descri/]);
+  const iAmb = acharColuna(header, [/ambiente/, /local/]);
+  const iMarca = acharColuna(header, [/marca/, /fornecedor/]);
+  const iQtd = acharColuna(header, [/qtd/, /quant/]);
+  const iUn = acharColuna(header, [/^un\b/, /unidade/]);
+  // valor unitário e valor total são colunas DISTINTAS quando a planilha
+  // as separa; se só existir uma coluna de custo/valor, tratamos como
+  // total e derivamos o unitário (total ÷ qtd), e vice-versa.
+  const iCustoUnit = acharColuna(header, [/unit[aá]rio/, /vlr\.?\s*unit/, /pre[çc]o\s*unit/, /^pre[çc]o$/]);
+  const iCustoTotal = acharColuna(header, [/total/, /^custo$/, /^valor$/]);
+  const iCustoGenerico = acharColuna(header, [/custo/, /valor/, /preç/]);
+
+  const itens = [];
+  for (let i = headerIdx + 1; i < linhas.length; i++) {
+    const row = linhas[i];
+    if (!row || row.every((c) => c == null || String(c).trim() === "")) continue;
+    const codigo = iCod >= 0 ? String(row[iCod] ?? "").trim() : null;
+    const desc = iDesc >= 0 ? String(row[iDesc] ?? "").trim() : "";
+    if (!desc) continue;
+    const num = (iVerba >= 0 ? String(row[iVerba] ?? "").trim().padStart(2, "0") : null) || verbaDoCodigo(codigo);
+    if (!num) continue;
+    const qtdVal = iQtd >= 0 ? parseBRL(row[iQtd]) : null;
+    let custoUnitario = iCustoUnit >= 0 ? parseBRL(row[iCustoUnit]) : null;
+    let custo = iCustoTotal >= 0 ? parseBRL(row[iCustoTotal]) : (iCustoUnit < 0 && iCustoGenerico >= 0 ? parseBRL(row[iCustoGenerico]) : null);
+    if (custoUnitario == null && custo != null && qtdVal) custoUnitario = custo / qtdVal;
+    if (custo == null && custoUnitario != null && qtdVal) custo = custoUnitario * qtdVal;
+    itens.push({
+      num, codigo: codigo || null, desc,
+      ambiente: iAmb >= 0 ? String(row[iAmb] ?? "").trim() || null : null,
+      marca: iMarca >= 0 ? String(row[iMarca] ?? "").trim() || null : null,
+      qtdVendida: qtdVal,
+      un: iUn >= 0 ? String(row[iUn] ?? "").trim() || null : null,
+      custoUnitario, custo,
+    });
+  }
+  return { itens };
+}
+
+// Um botão de importar reutilizável (Contrato PDF / Planilha Excel),
+// cada um com seu próprio arquivo aceito e sua própria mensagem.
+function ImportButton({ label, accept, dica, onFile }) {
+  const inputRef = useRef(null);
+  const [erro, setErro] = useState(null);
+  const [ok, setOk] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+
+  async function aoEscolher(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // permite subir o MESMO arquivo de novo
+    if (!file) return;
+    setErro(null); setOk(null); setCarregando(true);
+    try {
+      const msg = await onFile(file);
+      setOk(msg);
+    } catch (err) {
+      setErro("Não consegui ler o arquivo: " + err.message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  return (
+    <div className="import-card">
+      <div className="import-bar">
+        <div className="import-info"><Upload size={14} /><span>{dica}</span></div>
+        <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando}>
+          <Upload size={13} /> {carregando ? "Lendo…" : label}
+        </button>
+        <input ref={inputRef} type="file" accept={accept} style={{ display: "none" }} onChange={aoEscolher} />
+      </div>
+      {ok && <div className="import-ok"><CheckCircle2 size={14} /> {ok}</div>}
+      {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
+    </div>
+  );
+}
+
+// hook pequeno pra controlar quais verbas estão expandidas numa tabela
+function useAbertos() {
+  const [abertos, setAbertos] = useState(() => new Set());
+  const toggle = (num) => setAbertos((p) => { const n = new Set(p); n.has(num) ? n.delete(num) : n.add(num); return n; });
+  return [abertos, toggle];
+}
+
+/* ---- VENDIDO CONTRATO — menu próprio ----
+   O PDF da proposta, como ele é hoje: valor por verba (fechado), item
+   só com descrição/ambiente/quantidade (nunca valor por item). Fica
+   separado da Planilha de propósito — depois os dois vão ser
+   conferidos um contra o outro. */
+function VendidoContratoView({ obra, onImportContrato }) {
+  const [abertos, toggle] = useAbertos();
+  const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+
+  async function aoImportar(file) {
+    const { valores, itens } = await lerContratoPDF(file);
+    const n = Object.keys(valores).length;
+    if (n === 0) throw new Error("Não encontrei verbas (código 01–19) com valor no PDF. Me manda o arquivo que eu ajusto o leitor.");
+    onImportContrato(valores, itens);
+    return `“${file.name}” importado — ${n} verba${n > 1 ? "s" : ""} · ${itens.length} itens (descrição e quantidade).`;
+  }
+
+  return (
+    <>
+      <ImportButton label="Importar Contrato (PDF)" accept=".pdf"
+        dica={<>Suba o <b>Vendido Contrato</b> — o PDF da proposta, exatamente como ele é hoje. Traz só <b>descrição e quantidade</b> (o contrato é fechado por verba, sem valor por item).</>}
+        onFile={aoImportar} />
+
+      <div className="flat-panel">
+        <div className="flat-panel-header">
+          <div>
+            <div className="flat-panel-title">Verbas conforme contrato / proposta {obra.codigo}/00</div>
+            <div className="flat-panel-sub">Descrição e quantidade por item, dentro de cada grupo — sem valores. Clique na verba pra expandir.</div>
+          </div>
+          <button className="btn-download" onClick={() => exportVendidoCSV(obra)}><Download size={13} /> Baixar tabela (.csv)</button>
+        </div>
+
+        <div className="vend-list">
+          {verbas.map((c) => {
+            const itens = c.itensContrato || [];
+            const temItens = itens.length > 0;
+            const aberto = abertos.has(c.num);
+            return (
+              <div key={c.num} className="vend-grupo">
+                <button className="vend-head" onClick={() => temItens && toggle(c.num)} style={{ cursor: temItens ? "pointer" : "default" }}>
+                  {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
+                  <span className="vend-num mono">{c.num}</span>
+                  <span className="vend-nome">{c.nome}</span>
+                  {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                </button>
+                {aberto && temItens && (
+                  <table className="vend-itens">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 52 }}>Cód.</th>
+                        <th>Descrição</th>
+                        <th style={{ width: 92 }}>Ambiente</th>
+                        <th style={{ width: 100 }} className="center">Qtd. vendida</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itens.map((it, i) => (
+                        <tr key={it.codigo || i}>
+                          <td className="mono dim">{it.codigo || "—"}</td>
+                          <td>{it.desc}</td>
+                          <td className="mono center dim">{it.ambiente || "—"}</td>
+                          <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---- VENDIDO PLANILHA — menu próprio ----
+   Documento mais elaborado (Excel ou PDF), com marca e custo por item.
+   Não mexe no valor por verba (esse é do Contrato) — mostra o total dos
+   itens da própria planilha, pra depois conferir contra o Contrato. */
+function VendidoPlanilhaView({ obra, onImportPlanilha }) {
+  const [abertos, toggle] = useAbertos();
+  const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+  const totalPlanilha = verbas.reduce((a, c) => a + (c.itensPlanilha || []).reduce((s, it) => s + (it.custo || 0), 0), 0);
+
+  async function aoImportar(file) {
+    const ehPDF = /\.pdf$/i.test(file.name);
+    const { itens } = ehPDF ? await lerPlanilhaPDF(file) : await lerPlanilhaExcel(file);
+    if (itens.length === 0) {
+      throw new Error(ehPDF
+        ? "Não encontrei itens com quantidade nesse PDF. Me manda o arquivo que eu calibro o leitor."
+        : "Não encontrei colunas de Descrição + Marca/Custo nessa planilha. Me manda o arquivo que eu calibro o leitor pro seu layout.");
+    }
+    onImportPlanilha(itens);
+    const temCusto = itens.some((it) => it.custo != null);
+    return `“${file.name}” importado — ${itens.length} itens${temCusto ? " (com custo)" : ""}.`;
+  }
+
+  return (
+    <>
+      <ImportButton label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xls,.csv,.pdf"
+        dica={<>Suba o <b>Vendido Planilha</b> — documento mais elaborado, em <b>Excel ou PDF</b>, com <b>marca e custo</b> por item (marca só sai do Excel; do PDF sai descrição, quantidade e custo).</>}
+        onFile={aoImportar} />
+
+      <div className="flat-panel">
+        <div className="flat-panel-header">
+          <div>
+            <div className="flat-panel-title">Itens da planilha de venda — {obra.codigo}/00</div>
+            <div className="flat-panel-sub">Descrição, marca e custo por item, conforme a planilha. Clique na verba pra expandir.</div>
+          </div>
+        </div>
+
+        <div className="vend-list">
+          {verbas.map((c) => {
+            const itens = c.itensPlanilha || [];
+            const temItens = itens.length > 0;
+            const aberto = abertos.has(c.num);
+            const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
+            return (
+              <div key={c.num} className="vend-grupo">
+                <button className="vend-head" onClick={() => temItens && toggle(c.num)} style={{ cursor: temItens ? "pointer" : "default" }}>
+                  {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
+                  <span className="vend-num mono">{c.num}</span>
+                  <span className="vend-nome">{c.nome}</span>
+                  {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                  <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
+                </button>
+                {aberto && temItens && (
+                  <table className="vend-itens">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 52 }}>Cód.</th>
+                        <th>Descrição</th>
+                        <th style={{ width: 92 }}>Ambiente</th>
+                        <th style={{ width: 100 }}>Marca</th>
+                        <th style={{ width: 80 }} className="center">Qtd.</th>
+                        <th style={{ width: 100 }} className="right">Valor unit.</th>
+                        <th style={{ width: 100 }} className="right">Valor total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itens.map((it, i) => (
+                        <tr key={it.codigo || i}>
+                          <td className="mono dim">{it.codigo || "—"}</td>
+                          <td>{it.desc}</td>
+                          <td className="mono center dim">{it.ambiente || "—"}</td>
+                          <td className="dim">{it.marca || "—"}</td>
+                          <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
+                          <td className="mono right dim">{it.custoUnitario != null ? fmtBRL(it.custoUnitario) : "—"}</td>
+                          <td className="mono right">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="vend-total"><span className="total-label">Total da planilha</span><span className="mono total-value">{fmtBRL(totalPlanilha)}</span></div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   CONFERÊNCIA — Vendido Contrato × Vendido Planilha
+   Cruza os dois documentos por código de item e classifica cada um:
+   bate (mesmo item, qtd e descrição conferem), alteração/conferência
+   (descrição diverge — marca/especificação, revisar) ou divergente
+   (quantidade muito diferente, ou item só existe num dos dois lados).
+   Comparação heurística por texto — não é 100% infalível, é ponto de
+   partida pra revisão humana.
+   ============================================================ */
+
+function normTxt(s) {
+  // remove acentos (NFD separa a letra do acento; filtramos os marcadores
+  // combinantes por code point, em vez de regex, pra evitar problema de
+  // caractere invisível na faixa Unicode).
+  const semAcento = String(s || "").toLowerCase().normalize("NFD")
+    .split("").filter((ch) => { const cp = ch.codePointAt(0); return cp < 0x0300 || cp > 0x036f; }).join("");
+  return semAcento.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// similaridade por sobreposição de palavras — combina Jaccard com
+// CONTENÇÃO (quanto do lado menor está dentro do maior). Contenção é o
+// que resolve o caso comum "a Planilha tem mais detalhe" — ex: "Embutido
+// recuado 14W" (contrato) × "Embutido recuado 14W Cod. 4473 | Cor:
+// Branco" (planilha): Jaccard sozinho penaliza (poucas palavras em
+// comum proporcionalmente), mas contenção reconhece que 100% do lado
+// menor está contido no maior → mesmo item, só com mais especificação.
+function similaridade(a, b) {
+  const wa = new Set(normTxt(a).split(" ").filter(Boolean));
+  const wb = new Set(normTxt(b).split(" ").filter(Boolean));
+  if (!wa.size || !wb.size) return 0;
+  let inter = 0;
+  wa.forEach((w) => { if (wb.has(w)) inter++; });
+  const jaccard = inter / new Set([...wa, ...wb]).size;
+  const menor = Math.min(wa.size, wb.size);
+  if (menor < 2) return jaccard; // descrição curta demais pra confiar em contenção
+  const contencao = inter / menor;
+  return Math.max(jaccard, contencao);
+}
+
+function qtdBate(a, b) {
+  return a != null && b != null && Math.abs(a - b) < 0.01;
+}
+
+// motor genérico de cruzamento por código — 3 status: "ok" (bate),
+// "diferente" (existe nos dois lados mas diverge) e "somente_um" (só
+// existe num dos dois lados). Reutilizado por qualquer par de fontes.
+function cruzarItens(itensA, itensB, qtdA, qtdB) {
+  const porCodigo = new Map();
+  (itensA || []).forEach((it) => {
+    if (it.codigo) porCodigo.set(it.codigo, { codigo: it.codigo, a: it, b: null });
+  });
+  (itensB || []).forEach((it) => {
+    const key = it.codigo;
+    if (key && porCodigo.has(key)) porCodigo.get(key).b = it;
+    else porCodigo.set(key || `x-${porCodigo.size}`, { codigo: key, a: null, b: it });
+  });
+  return Array.from(porCodigo.values()).map((entry) => {
+    const { a, b } = entry;
+    if (!a || !b) return { ...entry, status: "somente_um" };
+    const bateQtd = qtdBate(qtdA(a), qtdB(b));
+    const sim = similaridade(a.desc, b.desc);
+    if (bateQtd && sim >= 0.6) return { ...entry, status: "ok" };
+    return { ...entry, status: "diferente", motivoBase: !bateQtd && sim < 0.6 ? "ambos" : !bateQtd ? "qtd" : "desc" };
+  });
+}
+
+function motivoDiferenca(e) {
+  if (e.motivoBase === "qtd") return "Quantidade diferente";
+  if (e.motivoBase === "desc") return "Descrição diverge — revisar";
+  return "Quantidade e descrição divergem";
+}
+
+// cruza os itens de uma verba (Vendido Contrato × Vendido Planilha)
+function conferirVerba(c) {
+  return cruzarItens(c.itensContrato, c.itensPlanilha, (x) => x.qtdVendida, (x) => x.qtdVendida)
+    .map((e) => {
+      if (e.status === "somente_um") return { ...e, motivo: e.a && !e.b ? "Item do contrato não encontrado na planilha" : "Item da planilha não encontrado no contrato" };
+      if (e.status === "ok") return { ...e, motivo: null };
+      return { ...e, motivo: motivoDiferenca(e) };
+    })
+    .map(({ a, b, ...rest }) => ({ ...rest, contrato: a, planilha: b }));
+}
+
+// cruza os itens de uma verba (Vendido Planilha × Planilha Executivo)
+function conferirExecutivoVerba(c) {
+  return cruzarItens(c.itensPlanilha, c.itensPlanilhaExecutivo, (x) => x.qtdVendida, (x) => x.qtdVendida)
+    .map((e) => {
+      if (e.status === "somente_um") return { ...e, motivo: e.a && !e.b ? "Está na planilha vendida, mas não na planilha executivo" : "Está na planilha executivo, mas não na planilha vendida" };
+      if (e.status === "ok") return { ...e, motivo: null };
+      return { ...e, motivo: motivoDiferenca(e) };
+    })
+    .map(({ a, b, ...rest }) => ({ ...rest, planilhaVendido: a, planilhaExecutivo: b }));
+}
+
+// meta compartilhada pelas duas conferências: OK fica neutro (branco/sem
+// destaque), diferente em vermelho, presente só num lado em amarelo.
+const DEPARA_META = {
+  ok: { label: "OK — bate", sub: "mesmo item, qtd. e descrição", color: "var(--ink-2)", bg: "transparent", Icon: CheckCircle2 },
+  diferente: { label: "Diferente", sub: "existe nos dois, mas diverge — revisar", color: "var(--red)", bg: "var(--red-bg)", Icon: XCircle },
+  somente_um: { label: "Só aparece em um", sub: "presente em só uma das fontes", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
+};
+
+// componente genérico da tela de conferência — recebe as linhas já
+// cruzadas e normalizadas ({codigo, catNum, catNome, status, motivo,
+// a, b}) e desenha os 3 cards-filtro + a lista lado a lado. Reutilizado
+// por Vendido (Contrato×Planilha) e Executivo (Executivo×Planilha).
+// uma linha do depara: mostra A×B e, se diverge, os botões Aprovar/Editar.
+// Editar só habilita os campos da coluna B (planilha) DESSA linha — o
+// resto da tabela continua travado.
+function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovado, onAprovar, onEditar, selecionavel, selecionado, onToggleSelecionar }) {
+  const [editando, setEditando] = useState(false);
+  const [desc, setDesc] = useState(l.b?.desc || "");
+  const [qtd, setQtd] = useState(l.b?.qtd != null ? String(l.b.qtd).replace(".", ",") : "");
+  const [valor, setValor] = useState(l.b?.valor != null ? String(l.b.valor).replace(".", ",") : "");
+
+  function salvar() {
+    const qtdNum = parseFloat(qtd.replace(/\./g, "").replace(",", "."));
+    const valorNum = parseFloat(valor.replace(/\./g, "").replace(",", "."));
+    onEditar({ desc: desc.trim(), qtdVendida: isNaN(qtdNum) ? null : qtdNum, custo: isNaN(valorNum) ? null : valorNum });
+    setEditando(false);
+  }
+
+  return (
+    <div className="conf-row" style={{ background: m.bg }}>
+      <div className="conf-row-top">
+        {selecionavel && <input type="checkbox" className="conf-check" checked={selecionado} onChange={onToggleSelecionar} aria-label="Selecionar linha" />}
+        <span className="mono dim conf-codigo">{l.catNum}.{l.codigo || "—"}</span>
+        <span className="conf-badge" style={{ color: m.color, background: m.bg === "transparent" ? "var(--panel)" : m.bg }}><m.Icon size={12} /> {m.label}</span>
+        {aprovado && <span className="conf-badge" style={{ color: "var(--green)", background: "var(--green-bg)" }}><CheckCircle2 size={12} /> Aprovado</span>}
+      </div>
+      <div className="conf-cols">
+        <div className="conf-col">
+          <div className="conf-col-label">{colALabel}</div>
+          {l.a ? (
+            <>
+              <div className="conf-desc">{l.a.desc}</div>
+              <div className="conf-meta mono">{l.a.qtd ?? "—"} {l.a.un || ""} · {l.a.extra || "—"}</div>
+              <div className="conf-meta mono">{l.a.valor != null ? fmtBRL(l.a.valor) : "—"}</div>
+            </>
+          ) : <div className="conf-vazio">— {vazioALabel} —</div>}
+        </div>
+        <div className="conf-col">
+          <div className="conf-col-label">{colBLabel}</div>
+          {editando ? (
+            <div className="conf-edit">
+              <input className="form-input" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Descrição" />
+              <div className="conf-edit-row">
+                <input className="form-input" style={{ width: 70 }} value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="Qtd." />
+                <input className="form-input" style={{ width: 90 }} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Valor" />
+              </div>
+              <div className="conf-edit-actions">
+                <button type="button" className="btn-cancelar" onClick={() => setEditando(false)}>Cancelar</button>
+                <button type="button" className="btn-criar" onClick={salvar}>Salvar</button>
+              </div>
+            </div>
+          ) : l.b ? (
+            <>
+              <div className="conf-desc">{l.b.desc}</div>
+              <div className="conf-meta mono">{l.b.qtd ?? "—"} {l.b.un || ""} · {l.b.extra || "—"}</div>
+              <div className="conf-meta mono">{l.b.valor != null ? fmtBRL(l.b.valor) : "—"}</div>
+            </>
+          ) : <div className="conf-vazio">— {vazioBLabel} —</div>}
+        </div>
+      </div>
+      {l.motivo && <div className="conf-motivo">{l.motivo}</div>}
+      {l.status !== "ok" && !editando && (
+        <div className="conf-acoes">
+          <button type="button" className="btn-editar-linha" onClick={() => setEditando(true)}><SlidersHorizontal size={12} /> Editar planilha</button>
+          {!aprovado && <button type="button" className="btn-aprovar-linha" onClick={onAprovar}><CheckCircle2 size={12} /> Aprovar</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConferenciaGenerica({ linhas, meta, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB }) {
+  const [filtro, setFiltro] = useState("todos");
+  const [selecionados, setSelecionados] = useState(() => new Set());
+
+  if (linhas.length === 0) {
+    return (
+      <div className="compras-empty">
+        <GitCompare size={30} className="dim" />
+        <div className="compras-empty-title">{vazioTitulo}</div>
+        <div className="compras-empty-sub">{vazioSub}</div>
+      </div>
+    );
+  }
+
+  const cnt = (st) => linhas.filter((l) => l.status === st).length;
+  const visiveis = filtro === "todos" ? linhas : linhas.filter((l) => l.status === filtro);
+  const chave = (l) => `${l.catNum}:${l.codigo}`;
+  const pendentesVisiveis = visiveis.filter((l) => l.status !== "ok");
+
+  const toggleSel = (k) => setSelecionados((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const selecionarTodasPendentes = () => setSelecionados(new Set(pendentesVisiveis.map(chave)));
+  const limparSelecao = () => setSelecionados(new Set());
+  const aprovarSelecionados = () => {
+    selecionados.forEach((k) => {
+      const idx = k.lastIndexOf(":");
+      onAprovarLinha && onAprovarLinha(k.slice(0, idx), k.slice(idx + 1));
+    });
+    setSelecionados(new Set());
+  };
+
+  return (
+    <>
+      <div className="conf-stats">
+        {Object.entries(meta).map(([st, m]) => (
+          <button key={st} className={`conf-stat ${filtro === st ? "active" : ""}`} style={{ borderColor: filtro === st ? m.color : undefined }} onClick={() => setFiltro(filtro === st ? "todos" : st)}>
+            <div className="conf-stat-num" style={{ color: m.color }}>{cnt(st)}</div>
+            <div className="conf-stat-label">{m.label}</div>
+            <div className="conf-stat-sub">{m.sub}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="compras-filtros">
+        <button className={`cfiltro ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>Todos <span className="cbadge">{linhas.length}</span></button>
+      </div>
+
+      {onAprovarLinha && pendentesVisiveis.length > 0 && (
+        <div className="selecao-massa">
+          {selecionados.size === 0 ? (
+            <button type="button" className="btn-editar-linha" onClick={selecionarTodasPendentes}>Selecionar todas as pendências visíveis ({pendentesVisiveis.length})</button>
+          ) : (
+            <>
+              <span className="selecao-massa-texto">{selecionados.size} selecionada{selecionados.size > 1 ? "s" : ""}</span>
+              <button type="button" className="btn-cancelar" onClick={limparSelecao}>Limpar</button>
+              <button type="button" className="btn-aprovar-linha" onClick={aprovarSelecionados}><CheckCircle2 size={12} /> Aprovar selecionadas</button>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="compras-list">
+        {visiveis.map((l, i) => {
+          const k = chave(l);
+          return (
+            <ConfRow key={`${l.codigo}-${i}`} l={l} m={meta[l.status]}
+              colALabel={colALabel} colBLabel={colBLabel} vazioALabel={vazioALabel} vazioBLabel={vazioBLabel}
+              aprovado={aprovacoes ? aprovacoes.has(k) : false}
+              onAprovar={() => onAprovarLinha && onAprovarLinha(l.catNum, l.codigo)}
+              onEditar={(patch) => onEditarB && onEditarB(l.catNum, l.codigo, patch)}
+              selecionavel={l.status !== "ok" && !!onAprovarLinha}
+              selecionado={selecionados.has(k)}
+              onToggleSelecionar={() => toggleSel(k)} />
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// Verbas 01 (Arquitetura e Engenharia) e 02 (Serviços Complementares)
+// são padrão/fixas em toda obra — não precisam de depara linha a linha.
+const VERBAS_FORA_DO_DEPARA = ["01", "02"];
+const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !VERBAS_FORA_DO_DEPARA.includes(c.num);
+
+// DEPARA CONTRATO × PLANILHA — junta as duas fontes numa versão única.
+// Branco = OK, vermelho = diferente entre as duas, amarelo = só existe
+// numa. Precisa ser aprovado (revisão explícita) pra liberar o Executivo.
+function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
+  const [aprovacoes, setAprovacoes] = useState(() => new Set());
+  const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
+
+  const linhasBrutas = useMemo(() => {
+    const out = [];
+    obra.categorias.filter(naoEhVerbaPadrao).forEach((c) => {
+      conferirVerba(c).forEach((item) => out.push({
+        codigo: item.codigo, catNum: c.num, catNome: c.nome, status: item.status, motivo: item.motivo,
+        a: item.contrato ? { desc: item.contrato.desc, qtd: item.contrato.qtdVendida, un: item.contrato.un, extra: item.contrato.ambiente, valor: null } : null,
+        b: item.planilha ? { desc: item.planilha.desc, qtd: item.planilha.qtdVendida, un: item.planilha.un, extra: item.planilha.marca, valor: item.planilha.custo } : null,
+      }));
+    });
+    return out;
+  }, [obra]);
+
+  // linha aprovada manualmente entra de vez no bucket "OK — bate"
+  // (o motivo/badge "Aprovado" continua aparecendo pra diferenciar de
+  // um match automático).
+  const linhas = useMemo(() => linhasBrutas.map((l) => (
+    aprovacoes.has(`${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
+  )), [linhasBrutas, aprovacoes]);
+
+  if (linhas.length === 0) {
+    return (
+      <div className="compras-empty">
+        <GitCompare size={30} className="dim" />
+        <div className="compras-empty-title">Nada pra conferir ainda</div>
+        <div className="compras-empty-sub">Importe o Vendido Contrato e o Vendido Planilha desta obra — assim que os dois tiverem itens, o depara aparece aqui automaticamente.</div>
+      </div>
+    );
+  }
+
+  const pendentes = linhas.filter((l) => l.status !== "ok");
+
+  return (
+    <>
+      {obra.deparaAprovado ? (
+        <div className="import-ok"><ShieldCheck size={14} /> Depara aprovado — versão final liberada para o Executivo.</div>
+      ) : (
+        <div className="import-bar" style={{ marginBottom: 14 }}>
+          <div className="import-info"><Lock size={14} /><span>Aprove cada linha vermelha/amarela (o valor final vira o que está na <b>Planilha</b>) — quando não sobrar pendência, libera o Executivo.</span></div>
+        </div>
+      )}
+      <ConferenciaGenerica linhas={linhas} meta={DEPARA_META}
+        colALabel="Contrato" colBLabel="Planilha"
+        vazioALabel="não está no contrato" vazioBLabel="não está na planilha"
+        vazioTitulo="Nada pra conferir ainda" vazioSub=""
+        aprovacoes={aprovacoes} onAprovarLinha={toggleAprovacao}
+        onEditarB={(catNum, codigo, patch) => onEditarPlanilha(catNum, codigo, patch)} />
+      {!obra.deparaAprovado && (
+        <div className="aprovacao-box">
+          <div className="aprovacao-resumo">
+            {pendentes.length === 0 ? "Todas as divergências foram aprovadas — pronto pra liberar." : `${pendentes.length} ${pendentes.length === 1 ? "linha pendente" : "linhas pendentes"} de aprovação (vermelho ou amarelo acima).`}
+          </div>
+          <button className="btn-aprovar" disabled={pendentes.length > 0} onClick={onAprovar}>
+            <ShieldCheck size={14} /> Aprovar depara e liberar Executivo
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// CONF. EXECUTIVO — depara Vendido Planilha × Planilha Executivo.
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo }) {
+  const [aprovacoes, setAprovacoes] = useState(() => new Set());
+  const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
+
+  const linhasBrutas = useMemo(() => {
+    const out = [];
+    obra.categorias.filter(naoEhVerbaPadrao).forEach((c) => {
+      conferirExecutivoVerba(c).forEach((item) => out.push({
+        codigo: item.codigo, catNum: c.num, catNome: c.nome, status: item.status, motivo: item.motivo,
+        a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
+        b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
+      }));
+    });
+    return out;
+  }, [obra]);
+
+  const linhas = useMemo(() => linhasBrutas.map((l) => (
+    aprovacoes.has(`${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
+  )), [linhasBrutas, aprovacoes]);
+
+  return (
+    <ConferenciaGenerica linhas={linhas} meta={DEPARA_META}
+      colALabel="Planilha (vendido)" colBLabel="Planilha (executivo)"
+      vazioALabel="não está na planilha vendida" vazioBLabel="não está na planilha executivo"
+      vazioTitulo="Nada pra conferir ainda"
+      vazioSub="Importe a Vendido Planilha e a Planilha Executivo desta obra — o depara aparece aqui automaticamente."
+      aprovacoes={aprovacoes} onAprovarLinha={toggleAprovacao}
+      onEditarB={(catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch)} />
+  );
+}
+
+// Bloqueio de fase: mostra enquanto o Depara Contrato×Planilha não foi
+// aprovado — o Executivo só libera depois dessa aprovação.
+function FaseBloqueada({ onIrParaDepara }) {
+  return (
+    <div className="compras-empty">
+      <Lock size={30} className="dim" />
+      <div className="compras-empty-title">Bloqueado até o Depara ser aprovado</div>
+      <div className="compras-empty-sub">Aprove o Depara Contrato × Planilha primeiro — essa etapa libera o Executivo (Caderno de Especificação e Planilha Executivo) pra esta obra.</div>
+      <button className="btn-nova-solicitacao" onClick={onIrParaDepara}>Ir para o Depara</button>
+    </div>
+  );
+}
+
+/* ============================================================
+   ABA EXECUTIVO — Caderno de Especificação + Planilha Executivo
+   ============================================================ */
+
+// CADERNO DE ESPECIFICAÇÃO — só upload + download, sem leitura/parse.
+// É o PDF com tudo que foi aprovado de produto com o cliente.
+function CadernoEspecificacaoView({ obra, onImportCaderno }) {
+  const inputRef = useRef(null);
+  const [erro, setErro] = useState(null);
+
+  function aoEscolher(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setErro(null);
+    if (!/\.pdf$/i.test(file.name)) { setErro("Suba um arquivo PDF."); return; }
+    const url = URL.createObjectURL(file);
+    onImportCaderno({ nome: file.name, url, tamanhoKB: Math.round(file.size / 1024) });
+  }
+
+  return (
+    <div className="flat-panel">
+      <div className="flat-panel-header">
+        <div>
+          <div className="flat-panel-title">Caderno de Especificação</div>
+          <div className="flat-panel-sub">PDF com tudo que foi aprovado de produto junto ao cliente. Por enquanto, só upload e download — sem leitura automática.</div>
+        </div>
+        <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()}><Upload size={13} /> Importar PDF</button>
+        <input ref={inputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={aoEscolher} />
+      </div>
+      {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
+      {obra.cadernoEspecificacao ? (
+        <div className="caderno-card">
+          <BookOpen size={22} className="dim" />
+          <div className="caderno-info">
+            <div className="caderno-nome">{obra.cadernoEspecificacao.nome}</div>
+            <div className="caderno-meta">{obra.cadernoEspecificacao.tamanhoKB} KB</div>
+          </div>
+          <a className="btn-download" href={obra.cadernoEspecificacao.url} download={obra.cadernoEspecificacao.nome}><Download size={13} /> Baixar</a>
+        </div>
+      ) : (
+        <div className="empty-note">Nenhum caderno de especificação importado ainda nesta obra.</div>
+      )}
+    </div>
+  );
+}
+
+// PLANILHA EXECUTIVO — extrai só descrição, quantidade e valores
+// (unitário e total) por item, dentro de cada grupo — igual à Vendido
+// Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
+// (produto × serviço classificado pelo custo de material).
+function PlanilhaExecutivoView({ obra, onImportPlanilhaExecutivo }) {
+  const [abertos, toggle] = useAbertos();
+  const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+  const total = verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.custo || 0), 0), 0);
+
+  async function aoImportar(file) {
+    const ehPDF = /\.pdf$/i.test(file.name);
+    const { itens } = ehPDF ? await lerExecutivoPDF(file) : await lerPlanilhaExcel(file);
+    if (itens.length === 0) throw new Error("Não encontrei itens nesse arquivo. Me manda ele que eu calibro o leitor.");
+    onImportPlanilhaExecutivo(itens);
+    return `“${file.name}” importado — ${itens.length} itens.`;
+  }
+
+  return (
+    <>
+      <ImportButton label="Importar Planilha Executivo" accept=".pdf,.xlsx,.xls,.csv"
+        dica={<>Suba a <b>Planilha Executivo</b> — descrição, quantidade e valores (unitário e total) por item, dentro de cada grupo.</>}
+        onFile={aoImportar} />
+
+      <div className="flat-panel">
+        <div className="flat-panel-header">
+          <div>
+            <div className="flat-panel-title">Itens da planilha executivo — {obra.codigo}/00</div>
+            <div className="flat-panel-sub">Descrição, quantidade e valores por item, conforme a planilha. Clique na verba pra expandir.</div>
+          </div>
+        </div>
+        <div className="vend-list">
+          {verbas.map((c) => {
+            const itens = c.itensPlanilhaExecutivo || [];
+            const temItens = itens.length > 0;
+            const aberto = abertos.has(c.num);
+            const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
+            return (
+              <div key={c.num} className="vend-grupo">
+                <button className="vend-head" onClick={() => temItens && toggle(c.num)} style={{ cursor: temItens ? "pointer" : "default" }}>
+                  {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
+                  <span className="vend-num mono">{c.num}</span>
+                  <span className="vend-nome">{c.nome}</span>
+                  {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                  <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
+                </button>
+                {aberto && temItens && (
+                  <table className="vend-itens">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 52 }}>Cód.</th>
+                        <th>Descrição</th>
+                        <th style={{ width: 80 }} className="center">Qtd.</th>
+                        <th style={{ width: 100 }} className="right">Valor unit.</th>
+                        <th style={{ width: 100 }} className="right">Valor total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itens.map((it, i) => (
+                        <tr key={it.codigo || i}>
+                          <td className="mono dim">{it.codigo || "—"}</td>
+                          <td>{it.desc}</td>
+                          <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
+                          <td className="mono right dim">{it.custoUnitario != null ? fmtBRL(it.custoUnitario) : "—"}</td>
+                          <td className="mono right">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="vend-total"><span className="total-label">Total da planilha executivo</span><span className="mono total-value">{fmtBRL(total)}</span></div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   TOPO / SIDEBAR
+   ============================================================ */
+
+function TopBar() {
+  return (
+    <header className="topbar">
+      <div className="topbar-brand">
+        <img
+          className="brand-logo"
+          src="/logo.png"
+          alt="Group WS"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+        />
+        <span className="brand-word">GESTÃO DE OBRAS TKWS</span>
+      </div>
+      <div className="topbar-search"><Search size={15} className="dim" /><input placeholder="Buscar obra, item, código Sienge..." /><span className="kbd">⌘K</span></div>
+      <div className="topbar-right">
+        <button className="icon-btn"><Sparkles size={16} /></button>
+        <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
+        <div className="avatar">PW</div>
+      </div>
+    </header>
+  );
+}
+
+function Sidebar({ obras, selected, onSelect, modulo, onModulo }) {
+  const [search, setSearch] = useState("");
+  const [onlyAlert, setOnlyAlert] = useState(false);
+  const [squadFilter, setSquadFilter] = useState("todos");
+
+  const squads = Array.from(new Set(obras.map((o) => o.squad || "Sem squad"))).sort();
+
+  const filtered = obras.filter((o) => {
+    const q = search.trim().toLowerCase();
+    const matchesSearch = !q || `${o.nome} ${o.codigo} ${o.cliente}`.toLowerCase().includes(q);
+    const matchesAlert = !onlyAlert || obraAlertCount(o) > 0;
+    const matchesSquad = squadFilter === "todos" || (o.squad || "Sem squad") === squadFilter;
+    return matchesSearch && matchesAlert && matchesSquad;
+  });
+
+  const groups = {};
+  filtered.forEach((o) => {
+    const key = o.squad || "Sem squad";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(o);
+  });
+  const groupNames = Object.keys(groups).sort();
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-scroll">
+        <div className="nav-group-label">OBRAS ATIVAS · {obras.length}</div>
+        <div className="obra-search">
+          <Search size={13} className="dim" />
+          <input placeholder="Filtrar por nome, código, cliente..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
+        </div>
+
+        <div className="squad-filter">
+          <button className={`squad-chip ${squadFilter === "todos" ? "active" : ""}`} onClick={() => setSquadFilter("todos")}>Todos os squads</button>
+          {squads.map((s) => (
+            <button key={s} className={`squad-chip ${squadFilter === s ? "active" : ""}`} onClick={() => setSquadFilter(s)}>{s}</button>
+          ))}
+        </div>
+
+        <button className={`alert-toggle ${onlyAlert ? "active" : ""}`} onClick={() => setOnlyAlert((v) => !v)}>
+          <AlertTriangle size={12} /> Somente com alertas
+        </button>
+
+        <div className="scroll-list">
+          {filtered.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
+          {groupNames.map((squadName) => (
+            <div key={squadName} className="squad-group">
+              <div className="squad-group-label">{squadName} · {groups[squadName].length}</div>
+              <div className="nav-list">
+                {groups[squadName].map((o) => {
+                  const alertCount = obraAlertCount(o);
+                  const active = selected === o.id;
+                  return (
+                    <button key={o.id} className={`nav-item ${active ? "active" : ""}`} onClick={() => onSelect(o.id)}>
+                      <Building2 size={16} className="nav-icon" />
+                      <div className="nav-item-text">
+                        <div className="nav-item-name">{o.nome}</div>
+                        <div className="nav-item-sub mono">#{o.codigo} · {o.area}m²</div>
+                      </div>
+                      {alertCount > 0 && <span className="nav-badge">{alertCount}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="nav-group-label">MÓDULOS</div>
+        <div className="nav-list">
+          <button className={`nav-item ${modulo === "a_contratar" ? "active" : ""}`} onClick={() => onModulo("a_contratar")}><ClipboardList size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">A Contratar</div><div className="nav-item-sub">todas as obras</div></div></button>
+          <button className="nav-item disabled static"><PackageSearch size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">Insumos Sienge</div><div className="nav-item-sub">todas as obras</div></div><span className="soon">em breve</span></button>
+        </div>
+      </div>
+
+      <div className="sidebar-footer">
+        <div className="profile">
+          <div className="avatar avatar-sm">PW</div>
+          <div className="profile-text"><div className="profile-name">Priscila Wayhs</div><div className="profile-email">priscila.wayhs@groupws…</div></div>
+          <ChevronRight size={14} className="dim" />
+        </div>
+        <div className="collapse-row"><ChevronLeft size={13} /> Recolher</div>
+      </div>
+    </aside>
+  );
+}
+
+function TabBar({ tab, onChange, obra }) {
+  const bloqueado = !obra.deparaAprovado;
+  const tabs = [
+    { id: "vendido_contrato", label: "Vendido Contrato", icon: FileText },
+    { id: "vendido_planilha", label: "Vendido Planilha", icon: FileText },
+    { id: "vendido_conferencia", label: "Depara Contrato x Planilha", icon: GitCompare },
+    { id: "executivo_caderno", label: "Caderno de Especificação", icon: BookOpen, gate: bloqueado },
+    { id: "executivo_planilha", label: "Planilha Executivo", icon: ClipboardList, gate: bloqueado },
+    { id: "executivo_conferencia", label: "Conf. Executivo", icon: GitCompare, gate: bloqueado },
+    { id: "comparativo", label: "Comparativo", icon: LayoutGrid },
+    { id: "compras", label: "Compras de Produtos", icon: ShoppingCart },
+    { id: "contratos", label: "Contratos", icon: Link2 },
+  ];
+  return (
+    <div className="tabbar">
+      {tabs.map((t) => {
+        const Icon = t.icon;
+        return (
+          <button key={t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => onChange(t.id)}>
+            <Icon size={14} /> {t.label} {t.gate && <Lock size={11} className="dim" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   MÓDULO COMPRAS → SIENGE
+   Visão do comprador: só os PRODUTOS liberados, recortados pelo que
+   falta a ação dele (lançar no Sienge). O fluxo do produto é:
+   liberado p/ compra → lançado no Sienge → comprado.
+   ============================================================ */
+
+// achata os produtos de todas as verbas, guardando os índices pra edição
+function comprasItens(obra) {
+  const out = [];
+  obra.categorias.forEach((cat, catIdx) => {
+    (cat.itens || []).forEach((it, itemIdx) => {
+      if (it.tipo === "produto") out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome });
+    });
+  });
+  return out;
+}
+
+const isFalta = (it) => it.liberado && !it.lancadoSienge && !it.comprado;
+const isLancado = (it) => it.lancadoSienge && !it.comprado;
+const isComprado = (it) => !!it.comprado;
+const isSemInsumo = (it) => isFalta(it) && (it.sienge?.status === "nao_encontrado");
+
+function ComprasRow({ row, onItemChange }) {
+  const { it, catNum, catNome } = row;
+  const [sugAberta, setSugAberta] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const status = it.sienge?.status || (it.contavel ? "nao_encontrado" : null);
+  const codigo = it.sienge?.codigo;
+  const sug = it.sugestaoSienge;
+
+  let badge = null;
+  if (status === "match") badge = <span className="sg-badge sg-match"><CheckCircle2 size={12} /> Sienge {codigo} · confere</span>;
+  else if (status === "parcial") badge = <span className="sg-badge sg-parcial"><AlertTriangle size={12} /> Sienge {codigo} · revisar</span>;
+  else if (status === "nao_encontrado") badge = <span className="sg-badge sg-nao"><XCircle size={12} /> Sem insumo — cadastrar</span>;
+
+  // Status do processo é uma TAG (não há integração com o Sienge): o
+  // comprador lança/cadastra por fora e marca aqui em que fase está.
+  const estado = it.comprado ? "comprado" : it.lancadoSienge ? "lancado" : "falta";
+  const setEstado = (v) => {
+    if (v === "falta") onItemChange({ lancadoSienge: false, comprado: false });
+    else if (v === "lancado") onItemChange({ lancadoSienge: true, comprado: false });
+    else onItemChange({ lancadoSienge: true, comprado: true });
+  };
+
+  const textoSug = sug ? `${sug.marca} / ${sug.descricao} / ${sug.cor} / ${sug.codigo}` : "";
+  const copiar = () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(textoSug);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 1600);
+  };
+
+  return (
+    <div className="compras-rowwrap">
+      <div className="compras-row">
+        <div className="compras-row-main">
+          <div className="compras-desc">{it.desc}</div>
+          <div className="compras-meta mono">{catNum} · {catNome} · {it.ambiente} · {it.qtdExecutivo ?? "—"} {it.un}</div>
+        </div>
+        <div className="compras-custo mono">{fmtBRL(it.custo)}</div>
+        <div className="compras-sg">
+          {badge}
+          {status === "nao_encontrado" && sug && (
+            <button className="sug-toggle" onClick={() => setSugAberta((v) => !v)}>
+              <Sparkles size={11} /> {sugAberta ? "ocultar sugestão" : "sugestão de cadastro"}
+            </button>
+          )}
+        </div>
+        <div className="compras-acao">
+          <select className={`proc-tag proc-${estado}`} value={estado} onChange={(e) => setEstado(e.target.value)} aria-label="Status do processo de compra">
+            <option value="falta">Falta lançar no Sienge</option>
+            <option value="lancado">Lançado no Sienge</option>
+            <option value="comprado">Comprado</option>
+          </select>
+        </div>
+      </div>
+      {sugAberta && sug && (
+        <div className="sugestao-sienge">
+          <div className="sug-title"><Sparkles size={12} /> Sugestão para cadastrar no Sienge <span className="sug-warn">confirme antes de usar</span></div>
+          <div className="sug-row">
+            <code className="sug-code">{textoSug}</code>
+            <button className="sug-copy" onClick={copiar}><Copy size={13} /> {copiado ? "Copiado!" : "Copiar"}</button>
+          </div>
+          <div className="sug-fmt">Formato: MARCA / DESCRIÇÃO / COR / CÓDIGO</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComprasView({ obra, onItemChange }) {
+  const [filtro, setFiltro] = useState("falta");
+  const [recolhidos, setRecolhidos] = useState(() => new Set());
+  const toggleGrupo = (num) => setRecolhidos((prev) => { const n = new Set(prev); n.has(num) ? n.delete(num) : n.add(num); return n; });
+  const rows = useMemo(() => comprasItens(obra), [obra]);
+
+  if (rows.length === 0) {
+    return (
+      <div className="compras-empty">
+        <ShoppingCart size={30} className="dim" />
+        <div className="compras-empty-title">Esta obra ainda não tem produtos no executivo</div>
+        <div className="compras-empty-sub">Quando o executivo for carregado, os produtos liberados aparecem aqui pra você lançar no Sienge.</div>
+      </div>
+    );
+  }
+
+  const soma = (pred) => rows.filter((r) => pred(r.it)).reduce((a, r) => a + (r.it.custo || 0), 0);
+  const cnt = (pred) => rows.filter((r) => pred(r.it)).length;
+
+  const filtros = [
+    { id: "falta", label: "Falta lançar", pred: isFalta },
+    { id: "sem_insumo", label: "Sem insumo Sienge", pred: isSemInsumo },
+    { id: "lancado", label: "Lançado", pred: isLancado },
+    { id: "comprado", label: "Comprado", pred: isComprado },
+    { id: "todos", label: "Todos", pred: () => true },
+  ];
+  const pred = filtros.find((f) => f.id === filtro).pred;
+  const visiveis = rows.filter((r) => pred(r.it));
+
+  return (
+    <>
+      <div className="compras-buckets">
+        <div className="bucket bucket-falta">
+          <div className="bucket-label"><Upload size={13} /> Falta lançar no Sienge</div>
+          <div className="bucket-num">{cnt(isFalta)} <span>itens</span></div>
+          <div className="bucket-sub">{fmtCompactBRL(soma(isFalta))} aguardando</div>
+        </div>
+        <div className="bucket">
+          <div className="bucket-label"><Clock size={13} /> Lançado, aguardando compra</div>
+          <div className="bucket-num" style={{ color: "var(--blue)" }}>{cnt(isLancado)} <span>itens</span></div>
+          <div className="bucket-sub">{fmtCompactBRL(soma(isLancado))} no Sienge</div>
+        </div>
+        <div className="bucket">
+          <div className="bucket-label"><Check size={13} /> Comprado</div>
+          <div className="bucket-num" style={{ color: "var(--green)" }}>{cnt(isComprado)} <span>itens</span></div>
+          <div className="bucket-sub">{fmtCompactBRL(soma(isComprado))} concluído</div>
+        </div>
+      </div>
+
+      {cnt(isSemInsumo) > 0 && (
+        <div className="compras-alerta">
+          <AlertTriangle size={16} />
+          <span><b>{cnt(isSemInsumo)} {cnt(isSemInsumo) === 1 ? "produto sem insumo" : "produtos sem insumo"} no Sienge</b> — {cnt(isSemInsumo) === 1 ? "precisa" : "precisam"} de cadastro antes de lançar ({fmtCompactBRL(soma(isSemInsumo))})</span>
+        </div>
+      )}
+
+      <div className="compras-filtros">
+        {filtros.map((f) => (
+          <button key={f.id} className={`cfiltro ${filtro === f.id ? "active" : ""}`} onClick={() => setFiltro(f.id)}>
+            {f.label} <span className="cbadge">{cnt(f.pred)}</span>
+          </button>
+        ))}
+      </div>
+
+      {(() => {
+        if (visiveis.length === 0) return <div className="empty-note">Nada neste filtro.</div>;
+        const porVerba = [];
+        visiveis.forEach((r) => {
+          let g = porVerba.find((x) => x.num === r.catNum);
+          if (!g) { g = { num: r.catNum, nome: r.catNome, rows: [] }; porVerba.push(g); }
+          g.rows.push(r);
+        });
+        porVerba.sort((a, b) => String(a.num).localeCompare(String(b.num), undefined, { numeric: true }));
+        return porVerba.map((g) => {
+          const recolhido = recolhidos.has(g.num);
+          return (
+            <div key={g.num} className="compras-grupo">
+              <button className="compras-grupo-head" onClick={() => toggleGrupo(g.num)}>
+                {recolhido ? <ChevronRight size={15} className="dim" /> : <ChevronDown size={15} className="dim" />}
+                <span className="cg-num mono">{g.num}</span>
+                <span className="cg-nome">{g.nome}</span>
+                <span className="cg-meta mono">{g.rows.length} {g.rows.length === 1 ? "item" : "itens"} · {fmtBRL(g.rows.reduce((a, r) => a + (r.it.custo || 0), 0))}</span>
+              </button>
+              {!recolhido && (
+                <div className="compras-list">
+                  {g.rows.map((r) => (
+                    <ComprasRow key={`${r.catIdx}-${r.itemIdx}`} row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        });
+      })()}
+    </>
+  );
+}
+
+/* ============================================================
+   MÓDULO CONTRATOS
+   Andamento do fluxo de contratos dos SERVIÇOS:
+   não solicitado → solicitação → aprovação → contrato → previsão
+   de medição → medição/NF.
+   ============================================================ */
+
+const CONTRATO_PIPELINE = [
+  { id: "nao_solicitado", curto: "Não solicitado", color: "var(--ink-3)" },
+  { id: "solicitacao", curto: "Solicitação", color: "var(--ink-3)" },
+  { id: "aprovacao", curto: "Aprovação", color: "var(--amber)" },
+  { id: "contrato_gerado", curto: "Contrato", color: "var(--blue)" },
+  { id: "previsao_medicao", curto: "Prev. medição", color: "var(--blue)" },
+  { id: "medicao_liberada", curto: "Medição / NF", color: "var(--green)" },
+];
+const PROXIMA_ETAPA = { nao_solicitado: "solicitacao", solicitacao: "aprovacao", aprovacao: "contrato_gerado", contrato_gerado: "previsao_medicao", previsao_medicao: "medicao_liberada" };
+
+function contratosItens(obra) {
+  const out = [];
+  obra.categorias.forEach((cat, catIdx) => {
+    (cat.itens || []).forEach((it, itemIdx) => {
+      if (it.tipo !== "produto") out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome });
+    });
+  });
+  return out;
+}
+
+const contratoBloqueado = (it) => it.foraDeEscopo && it.statusEscopo !== "aprovado";
+const contratoEtapa = (it) => it.statusContrato || "nao_solicitado";
+
+function ContratosRow({ row, onItemChange }) {
+  const { it, catNum, catNome } = row;
+  const bloqueado = contratoBloqueado(it);
+  const prox = PROXIMA_ETAPA[contratoEtapa(it)];
+  return (
+    <div className="compras-row">
+      <div className="compras-row-main">
+        <div className="compras-desc">{it.desc}</div>
+        <div className="compras-meta mono">{catNum} · {catNome} · {it.qtdExecutivo ?? "—"} {it.un}</div>
+      </div>
+      <div className="compras-custo mono">{fmtBRL(it.custo)}</div>
+      <div className="contrato-etapa-cell"><ContratoStatus item={it} /></div>
+      <div className="compras-acao">
+        {bloqueado ? (
+          <span className="dim" style={{ fontSize: 11 }}>bloqueado</span>
+        ) : prox ? (
+          <button className="btn-avancar" onClick={() => onItemChange({ statusContrato: prox })}><ArrowUpRight size={13} /> Avançar etapa</button>
+        ) : (
+          <span className="pill pill-ok"><Check size={12} /> Concluído</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Botão + formulário pra criar uma solicitação de contrato do zero
+// (serviço que não veio do executivo importado — digitado na hora).
+function NovaSolicitacaoForm({ obra, onCriar }) {
+  const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+  const [aberto, setAberto] = useState(false);
+  const [verbaNum, setVerbaNum] = useState(verbas[0]?.num || "");
+  const [desc, setDesc] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [un, setUn] = useState("vb");
+  const [custo, setCusto] = useState("");
+
+  function submit(e) {
+    e.preventDefault();
+    if (!desc.trim() || !verbaNum) return;
+    const custoNum = parseFloat(custo.replace(/\./g, "").replace(",", "."));
+    const qtdNum = parseFloat(qtd.replace(/\./g, "").replace(",", "."));
+    onCriar(verbaNum, {
+      desc: desc.trim(), tipo: "servico",
+      custo: isNaN(custoNum) ? null : custoNum,
+      qtdExecutivo: isNaN(qtdNum) ? null : qtdNum,
+      un: un.trim() || null,
+      statusContrato: "solicitacao",
+    });
+    setDesc(""); setCusto(""); setQtd("");
+    setAberto(false);
+  }
+
+  if (!aberto) {
+    return (
+      <button className="btn-nova-solicitacao" onClick={() => setAberto(true)}>
+        <Plus size={14} /> Nova solicitação de contrato
+      </button>
+    );
+  }
+
+  return (
+    <form className="form-solicitacao" onSubmit={submit}>
+      <div className="form-solicitacao-title">Nova solicitação de contrato</div>
+      <div className="form-row">
+        <label className="form-label">Verba
+          <select className="form-select" value={verbaNum} onChange={(e) => setVerbaNum(e.target.value)}>
+            {verbas.map((c) => <option key={c.num} value={c.num}>{c.num} — {c.nome}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="form-row">
+        <label className="form-label">Descrição do serviço
+          <input className="form-input" type="text" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Ex: Instalação de cortinas" required autoFocus />
+        </label>
+      </div>
+      <div className="form-row form-row-3">
+        <label className="form-label">Qtd.<input className="form-input" type="text" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="1" /></label>
+        <label className="form-label">Unidade<input className="form-input" type="text" value={un} onChange={(e) => setUn(e.target.value)} placeholder="vb" /></label>
+        <label className="form-label">Custo estimado (R$)<input className="form-input" type="text" value={custo} onChange={(e) => setCusto(e.target.value)} placeholder="0,00" /></label>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn-cancelar" onClick={() => setAberto(false)}>Cancelar</button>
+        <button type="submit" className="btn-criar">Criar solicitação</button>
+      </div>
+    </form>
+  );
+}
+
+function ContratosView({ obra, onItemChange, onCriarSolicitacao }) {
+  const [filtro, setFiltro] = useState("todos");
+  const rows = useMemo(() => contratosItens(obra), [obra]);
+
+  if (rows.length === 0) {
+    return (
+      <div className="compras-empty">
+        <FileText size={30} className="dim" />
+        <div className="compras-empty-title">Esta obra ainda não tem serviços no executivo</div>
+        <div className="compras-empty-sub">Quando o executivo for carregado, os serviços e o andamento dos contratos aparecem aqui. Ou crie uma solicitação avulsa abaixo.</div>
+        <NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />
+      </div>
+    );
+  }
+
+  const naoBloq = rows.filter((r) => !contratoBloqueado(r.it));
+  const bloqueados = rows.filter((r) => contratoBloqueado(r.it));
+  const cntEtapa = (id) => naoBloq.filter((r) => contratoEtapa(r.it) === id).length;
+  const somaEtapa = (id) => naoBloq.filter((r) => contratoEtapa(r.it) === id).reduce((a, r) => a + (r.it.custo || 0), 0);
+  const visiveis = filtro === "todos" ? naoBloq : naoBloq.filter((r) => contratoEtapa(r.it) === filtro);
+
+  return (
+    <>
+      <div className="contratos-toolbar">
+        <NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />
+      </div>
+      <div className="pipeline">
+        {CONTRATO_PIPELINE.map((st, i) => (
+          <React.Fragment key={st.id}>
+            <button className={`pipe-node ${filtro === st.id ? "active" : ""}`} style={filtro === st.id ? { borderColor: st.color } : undefined} onClick={() => setFiltro(filtro === st.id ? "todos" : st.id)}>
+              <div className="pipe-count" style={{ color: st.color }}>{cntEtapa(st.id)}</div>
+              <div className="pipe-label">{st.curto}</div>
+              <div className="pipe-val mono">{fmtCompactBRL(somaEtapa(st.id))}</div>
+            </button>
+            {i < CONTRATO_PIPELINE.length - 1 && <ChevronRight size={14} className="pipe-arrow dim" />}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {bloqueados.length > 0 && (
+        <div className="compras-alerta">
+          <AlertTriangle size={16} />
+          <span><b>{bloqueados.length} {bloqueados.length === 1 ? "serviço bloqueado" : "serviços bloqueados"}</b> — aguardando aprovação de escopo antes de solicitar contrato</span>
+        </div>
+      )}
+
+      <div className="compras-filtros">
+        <button className={`cfiltro ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>Todos <span className="cbadge">{naoBloq.length}</span></button>
+        {CONTRATO_PIPELINE.map((st) => (
+          <button key={st.id} className={`cfiltro ${filtro === st.id ? "active" : ""}`} onClick={() => setFiltro(st.id)}>{st.curto} <span className="cbadge">{cntEtapa(st.id)}</span></button>
+        ))}
+      </div>
+
+      <div className="compras-list">
+        {visiveis.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
+        {visiveis.map((r) => (
+          <ContratosRow key={`${r.catIdx}-${r.itemIdx}`} row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
+   MÓDULO A CONTRATAR
+   Dashboard de TODAS as obras: quanto falta contratar (mão de obra)
+   e comprar (produtos), agregado por verba da EAP, com filtro de
+   período. Responde "quanto tenho pra contratar de elétrica nos
+   próximos 6 meses".
+   ============================================================ */
+
+function aContratarAgrega(obras) {
+  const servicos = {};
+  const produtos = {};
+  obras.forEach((o) => {
+    o.categorias.forEach((cat) => {
+      (cat.itens || []).forEach((it) => {
+        const bucket = it.tipo === "produto" ? produtos : servicos;
+        const key = cat.num;
+        if (!bucket[key]) bucket[key] = { num: cat.num, nome: cat.nome, total: 0, itens: 0, obras: new Set() };
+        bucket[key].total += it.custo || 0;
+        bucket[key].itens += 1;
+        bucket[key].obras.add(o.codigo);
+      });
+    });
+  });
+  const toArr = (b) => Object.values(b).filter((g) => g.total > 0).sort((a, z) => z.total - a.total);
+  return { servicos: toArr(servicos), produtos: toArr(produtos) };
+}
+
+function AContratarBloco({ titulo, Icone, grupos, total, cor }) {
+  const max = grupos.length ? grupos[0].total : 1;
+  return (
+    <div className="ac-bloco">
+      <div className="ac-bloco-head">
+        <Icone size={15} style={{ color: cor }} />
+        <span className="ac-bloco-titulo">{titulo}</span>
+        <span className="ac-bloco-total mono" style={{ color: cor }}>{fmtBRL(total)}</span>
+      </div>
+      <div className="ac-list">
+        {grupos.length === 0 && <div className="empty-note">Nada a contratar neste recorte.</div>}
+        {grupos.map((g) => (
+          <div key={g.num} className="ac-row">
+            <span className="ac-num mono">{g.num}</span>
+            <span className="ac-nome">{g.nome}</span>
+            <span className="ac-obras">{g.obras.size} {g.obras.size === 1 ? "obra" : "obras"} · {g.itens} {g.itens === 1 ? "item" : "itens"}</span>
+            <div className="ac-bar-track"><div className="ac-bar" style={{ width: `${(g.total / max) * 100}%`, background: cor }} /></div>
+            <span className="ac-val mono">{fmtBRL(g.total)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AContratarView({ obras }) {
+  const [de, setDe] = useState("");
+  const [ate, setAte] = useState("");
+  const { servicos, produtos } = useMemo(() => aContratarAgrega(obras), [obras]);
+  const totServ = servicos.reduce((a, g) => a + g.total, 0);
+  const totProd = produtos.reduce((a, g) => a + g.total, 0);
+
+  return (
+    <>
+      <div className="ac-filtros">
+        <div className="ac-periodo">
+          <span className="ac-periodo-label">Período de contratação:</span>
+          <input type="date" value={de} onChange={(e) => setDe(e.target.value)} />
+          <span className="dim">até</span>
+          <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} />
+          {(de || ate) && <button className="ac-limpar" onClick={() => { setDe(""); setAte(""); }}>limpar</button>}
+        </div>
+        <div className="ac-periodo-nota">O filtro por período usa o cronograma da obra no Monday — ligação ainda pendente; por enquanto mostra o total de todas as obras.</div>
+      </div>
+
+      <AContratarBloco titulo="Mão de obra a contratar" Icone={FileText} grupos={servicos} total={totServ} cor="var(--blue)" />
+      <AContratarBloco titulo="Produtos a comprar" Icone={ShoppingCart} grupos={produtos} total={totProd} cor="var(--green)" />
+    </>
+  );
+}
+
+/* ============================================================
+   APP
+   ============================================================ */
+
+export default function App() {
+  const [obras, setObras] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [avisoMonday, setAvisoMonday] = useState(null);
+  const [modulo, setModulo] = useState("comparativo");
+  const [tab, setTab] = useState("comparativo");
+  const [itemFilter, setItemFilter] = useState("todos");
+  const [expandedCats, setExpandedCats] = useState(() => new Set(["022519", "062519"]));
+
+  // Ao abrir o app, carrega as obras reais do Monday (via proxy). Cada
+  // squad aparece assim que responde — um squad lento (ex: Comet) não
+  // segura os demais. Se nenhum squad responder, cai nos dados de exemplo.
+  useEffect(() => {
+    let vivo = true;
+    const erros = [];
+    let respondidos = 0;
+    let algumSucesso = false;
+
+    SQUADS.forEach((squad) => {
+      fetchSquadObras(squad)
+        .then((doSquad) => {
+          if (!vivo || doSquad.length === 0) return;
+          algumSucesso = true;
+          setObras((prev) => {
+            const ids = new Set(prev.map((o) => o.id));
+            const novas = doSquad.filter((o) => !ids.has(o.id));
+            return [...prev, ...novas];
+          });
+          setSelectedId((prev) => prev || doSquad[0].id);
+        })
+        .catch(() => { erros.push(squad.nome); })
+        .finally(() => {
+          respondidos += 1;
+          if (!vivo) return;
+          if (erros.length) setAvisoMonday(`Squads não carregados: ${erros.join(", ")}.`);
+          if (respondidos === SQUADS.length) {
+            setLoading(false);
+            if (!algumSucesso) {
+              setAvisoMonday("Não foi possível ler o Monday — confira se o proxy está no ar e tente recarregar a página.");
+            }
+          }
+        });
+    });
+
+    return () => { vivo = false; };
+  }, []);
+
+  const obra = obras.find((o) => o.id === selectedId);
+
+  const totals = useMemo(() => {
+    const vazio = { totalVendido: 0, totalExecutivo: 0, criticos: 0, itensAlerta: 0, totalProdutos: 0, totalComprado: 0, falta: 0, pct: 0 };
+    if (!obra) return vazio;
+    const totalVendido = obra.categorias.reduce((a, c) => a + (c.vendido || 0), 0);
+    const totalExecutivo = obra.categorias.reduce((a, c) => a + (c.executivo || 0), 0);
+    const criticos = obra.categorias.filter((c) => categoriaStatus(c) === "critico").length;
+    let itensAlerta = 0;
+    obra.categorias.forEach((c) => (c.itens || []).forEach((it) => { if (itemAlertas(it).length) itensAlerta += 1; }));
+    const compras = obraComprasStats(obra);
+    return { totalVendido, totalExecutivo, criticos, itensAlerta, ...compras };
+  }, [obra]);
+
+  const pctExecutado = obra && obra.valorVendido > 0 ? (totals.totalExecutivo / obra.valorVendido) * 100 : 0;
+  const deltaGood = totals.totalExecutivo <= totals.totalVendido;
+
+  function toggleCat(num) {
+    setExpandedCats((prev) => { const next = new Set(prev); next.has(num) ? next.delete(num) : next.add(num); return next; });
+  }
+
+  function updateItem(catIdx, itemIdx, patch) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c, ci) => {
+        if (ci !== catIdx) return c;
+        const itens = c.itens.map((it, ii) => (ii === itemIdx ? { ...it, ...patch } : it));
+        return { ...c, itens };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  // Vendido Contrato (PDF): atualiza o valor por verba + os itens
+  // (descrição/ambiente/quantidade — sem valor, o contrato é fechado por verba).
+  function importVendidoContrato(valores, itens) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const porVerba = {};
+      (itens || []).forEach((it) => {
+        (porVerba[it.num] = porVerba[it.num] || []).push({
+          codigo: it.codigo, desc: it.desc, ambiente: it.ambiente || "—",
+          qtdVendida: it.qtdVendida, un: it.un,
+        });
+      });
+      const categorias = o.categorias.map((c) => {
+        const patch = {};
+        if (valores[c.num] != null) patch.vendido = valores[c.num];
+        if (porVerba[c.num]) patch.itensContrato = porVerba[c.num];
+        return Object.keys(patch).length ? { ...c, ...patch } : c;
+      });
+      const valorVendido = categorias.reduce((a, c) => a + (c.vendido || 0), 0);
+      return { ...o, categorias, valorVendido };
+    }));
+  }
+
+  // Vendido Planilha (Excel): itens mais elaborados, com marca e custo.
+  // Não atualiza o valor por verba (esse vem do Contrato).
+  function importVendidoPlanilha(itens) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const porVerba = {};
+      (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
+      const categorias = o.categorias.map((c) => (porVerba[c.num] ? { ...c, itensPlanilha: porVerba[c.num] } : c));
+      return { ...o, categorias };
+    }));
+  }
+
+  // Executivo (PDF — Composição de Custo): substitui os itens da verba
+  // pelos recém-importados (produto/serviço já classificados por custo).
+  function importExecutivo(itens) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const porVerba = {};
+      (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
+      const categorias = o.categorias.map((c) => (porVerba[c.num] ? { ...c, itens: porVerba[c.num] } : c));
+      return { ...o, categorias };
+    }));
+  }
+
+  // Aprova o Depara Contrato × Planilha desta obra — libera o Executivo.
+  function aprovarDepara() {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, deparaAprovado: true } : o)));
+  }
+
+  // Edita, linha a linha, o item do lado "planilha" (coluna B) de um
+  // depara — usado tanto no Depara Contrato×Planilha (edita itensPlanilha)
+  // quanto no Conf. Executivo (edita itensPlanilhaExecutivo).
+  function editarLinhaDepara(campoArray, catNum, codigo, patch) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        if (c.num !== catNum) return c;
+        const lista = c[campoArray] || [];
+        const existe = lista.some((it) => it.codigo === codigo);
+        const novaLista = existe
+          ? lista.map((it) => (it.codigo === codigo ? { ...it, ...patch } : it))
+          : [...lista, { codigo, ...patch }];
+        return { ...c, [campoArray]: novaLista };
+      });
+      return { ...o, categorias };
+    }));
+  }
+  const editarItemPlanilha = (catNum, codigo, patch) => editarLinhaDepara("itensPlanilha", catNum, codigo, patch);
+  const editarItemPlanilhaExecutivo = (catNum, codigo, patch) => editarLinhaDepara("itensPlanilhaExecutivo", catNum, codigo, patch);
+
+  // Caderno de Especificação: só guarda o arquivo (upload/download, sem parse).
+  function importCadernoEspecificacao(info) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, cadernoEspecificacao: info } : o)));
+  }
+
+  // Planilha Executivo: mesma origem populando dois formatos — o
+  // "simples" (itensPlanilhaExecutivo, pro depara e a própria tela) e o
+  // "rico" (itens, que já alimenta Comparativo/Compras/Contratos).
+  function importPlanilhaExecutivo(itens) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const porVerba = {};
+      (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
+      const categorias = o.categorias.map((c) => {
+        if (!porVerba[c.num]) return c;
+        const simples = porVerba[c.num].map((it) => ({
+          codigo: it.codigo, desc: it.desc, qtdVendida: it.qtdVendida ?? it.qtdExecutivo,
+          un: it.un, custoUnitario: it.custoUnitario, custo: it.custo,
+        }));
+        return { ...c, itens: porVerba[c.num], itensPlanilhaExecutivo: simples };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  // Cria uma solicitação de contrato avulsa (serviço digitado na hora,
+  // não veio do executivo importado) — entra na verba já como "solicitação".
+  function criarSolicitacaoContrato(verbaNum, novoItem) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        if (c.num !== verbaNum) return c;
+        const codigo = `${verbaNum}.av${((c.itens || []).length + 1)}`;
+        return { ...c, itens: [...(c.itens || []), { ...novoItem, codigo }] };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  function handleTabChange(t) { setTab(t); setItemFilter("todos"); }
+
+  return (
+    <div className="app">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@1,500;1,600&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+        :root {
+          --page: #FAFAF8; --panel: #F3F2EE; --card: #FFFFFF;
+          --border: #E8E5DD; --border-soft: #F0EEE7;
+          --ink: #191D21; --ink-2: #565B60; --ink-3: #9A9C9C;
+          --blue: #2E6FA3; --blue-bg: #E3EEF7;
+          --green: #2E8F58; --green-bg: #E4F3E9;
+          --amber: #B87A1E; --amber-bg: #FAEFDC;
+          --red: #C2453F; --red-bg: #FBE5E3;
+          --purple: #6E56B8;
+        }
+        * { box-sizing: border-box; }
+        .app { min-height: 100vh; background: var(--page); color: var(--ink); font-family: 'Inter', sans-serif; font-size: 13.5px; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .dim { color: var(--ink-3); }
+        .center { text-align: center; }
+        .right { text-align: right; }
+
+        .topbar { height: 64px; display: flex; align-items: center; gap: 24px; padding: 0 24px; background: #fff; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+        .topbar-brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+        /* mostra só o monograma (recorta o texto "GROUP WS" e as margens
+           do PNG oficial, sem alterar o arquivo — nada é distorcido) */
+        .brand-logo { width: 46px; height: 38px; object-fit: cover; object-position: top center; display: block; }
+        .brand-word { font-weight: 700; font-size: 13px; letter-spacing: 0.06em; color: var(--ink); white-space: nowrap; }
+        .aviso-monday { background: var(--amber-bg, #FEF3E2); color: var(--amber, #B7791F); border: 1px solid var(--amber, #E8B04B); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
+        .topbar-search { flex: 1; max-width: 560px; display: flex; align-items: center; gap: 9px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; margin: 0 auto; }
+        .topbar-search input { flex: 1; border: none; outline: none; background: transparent; font-size: 13px; color: var(--ink); }
+        .topbar-search input::placeholder { color: var(--ink-3); }
+        .kbd { font-size: 10.5px; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; font-family: 'JetBrains Mono', monospace; }
+        .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .icon-btn { width: 34px; height: 34px; border-radius: 8px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; color: var(--ink-2); cursor: pointer; position: relative; }
+        .icon-btn:hover { background: var(--panel); }
+        .notif-dot { position: absolute; top: 3px; right: 3px; background: var(--red); color: #fff; font-size: 9px; font-weight: 700; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--purple); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; }
+
+        .body-layout { display: flex; }
+        .sidebar { width: 288px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; justify-content: space-between; }
+        .sidebar-scroll { padding: 16px 14px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
+        .nav-group-label { font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; }
+        .nav-group-label:first-child { margin-top: 0; }
+        .obra-search { display: flex; align-items: center; gap: 7px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; margin-bottom: 8px; }
+        .obra-search input { flex: 1; border: none; outline: none; background: transparent; font-size: 12px; color: var(--ink); }
+        .obra-search input::placeholder { color: var(--ink-3); }
+        .clear-btn { border: none; background: transparent; color: var(--ink-3); cursor: pointer; display: flex; }
+        .alert-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 11px; color: var(--ink-2); cursor: pointer; margin-bottom: 10px; }
+        .alert-toggle.active { background: var(--red-bg); border-color: var(--red); color: var(--red); font-weight: 600; }
+        .squad-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+        .squad-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; font-size: 10.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+        .squad-chip:hover { border-color: var(--blue); }
+        .squad-chip.active { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+        .squad-group { margin-bottom: 10px; }
+        .squad-group-label { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px; }
+        .scroll-list { max-height: 320px; overflow-y: auto; padding-right: 2px; }
+        .no-results { font-size: 11.5px; color: var(--ink-3); padding: 10px 6px; }
+        .nav-list { display: flex; flex-direction: column; gap: 2px; }
+        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; border-radius: 8px; padding: 9px 8px; cursor: pointer; text-align: left; transition: background 0.12s ease; }
+        .nav-item:hover { background: var(--panel); }
+        .nav-item.active { background: var(--blue-bg); }
+        .nav-item.static { cursor: default; }
+        .nav-item.disabled { opacity: 0.55; cursor: default; }
+        .nav-item.disabled:hover { background: transparent; }
+        .nav-icon { color: var(--ink-2); flex-shrink: 0; }
+        .nav-item.active .nav-icon { color: var(--blue); }
+        .nav-item-text { flex: 1; min-width: 0; }
+        .nav-item-name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nav-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
+        .nav-badge { background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 1px 6px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+        .soon { font-size: 9.5px; color: var(--ink-3); background: var(--panel); padding: 2px 6px; border-radius: 20px; flex-shrink: 0; }
+        .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 14px; }
+        .profile { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
+        .profile:hover { background: var(--panel); }
+        .avatar-sm { width: 28px; height: 28px; font-size: 10.5px; }
+        .profile-text { flex: 1; min-width: 0; }
+        .profile-name { font-size: 12px; font-weight: 600; }
+        .profile-email { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .collapse-row { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-3); margin-top: 8px; padding: 0 6px; cursor: pointer; }
+
+        .main { flex: 1; padding: 32px 40px 60px; max-width: 1260px; }
+        .eyebrow { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+        .obra-fictitious { margin-left: 8px; font-size: 10px; background: var(--panel); color: var(--ink-3); padding: 2px 8px; border-radius: 20px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+        .title-row { font-size: 30px; line-height: 1.15; margin-bottom: 8px; }
+        .title-plain { font-weight: 700; color: var(--ink); }
+        .title-accent { font-family: 'Newsreader', serif; font-style: italic; font-weight: 500; color: var(--ink); }
+        .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
+
+        .resumo-label { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px 4px; }
+        .resumo-panel { background: var(--panel); border-radius: 16px; padding: 16px; display: grid; grid-template-columns: repeat(4, 1fr) 250px; gap: 12px; margin-bottom: 28px; }
+        .big-card { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 15px 17px; }
+        .big-card-label { font-size: 10px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 9px; }
+        .big-card-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .big-card-value { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+        .big-card-sub { font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+        .delta { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; }
+        .delta-good { color: var(--green); }
+        .delta-bad { color: var(--red); }
+        .progress-track { height: 5px; background: var(--panel); border-radius: 4px; margin-top: 9px; overflow: hidden; }
+        .progress-fill { height: 5px; background: var(--blue); border-radius: 4px; }
+
+        .mini-stats { display: flex; flex-direction: column; gap: 8px; }
+        .mini-stat { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 9px 14px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .mini-stat-label { font-size: 9.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+        .mini-stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700; }
+
+        .tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
+        .tabbar .tab { white-space: nowrap; flex-shrink: 0; }
+        .tab { display: flex; align-items: center; gap: 7px; background: transparent; border: none; padding: 10px 14px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+        .tab:hover { color: var(--ink-2); }
+        .tab.active { color: var(--ink); border-bottom-color: var(--blue); }
+
+        .filter-bar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
+        .filter-chip { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+        .filter-chip:hover { border-color: var(--blue); }
+        .filter-chip.active { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+
+        .cat-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+        .cat-header { width: 100%; background: transparent; border: none; display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; }
+        .cat-header:hover { background: #FCFBF9; }
+        .cat-header-left { display: flex; align-items: center; gap: 10px; }
+        .cat-num { font-size: 11.5px; color: var(--ink-3); width: 20px; }
+        .cat-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+        .cat-header-right { display: flex; align-items: center; gap: 18px; }
+        .cbar { width: 110px; }
+        .cbar-track { position: relative; height: 5px; background: var(--panel); border-radius: 4px; }
+        .cbar-vendido { position: absolute; top: 0; left: 0; height: 5px; background: var(--border); border-radius: 4px; }
+        .cbar-exec { position: absolute; top: 0; left: 0; height: 5px; border-radius: 4px; opacity: 0.9; }
+        .cat-values { display: flex; align-items: center; gap: 6px; font-size: 12px; min-width: 190px; justify-content: flex-end; }
+        .arrow { font-size: 11px; }
+        .cat-diff { font-size: 12px; font-weight: 600; min-width: 150px; text-align: right; }
+        .status-text { font-size: 11.5px; font-weight: 600; white-space: nowrap; min-width: 140px; text-align: right; }
+
+        .cat-items { border-top: 1px solid var(--border); background: #FCFBF8; }
+        .table-note { font-size: 10.5px; color: var(--ink-3); padding: 8px 12px; font-style: italic; border-bottom: 1px solid var(--border-soft); }
+        .fluxo-bloco { border-bottom: 1px solid var(--border); }
+        .fluxo-bloco:last-child { border-bottom: none; }
+        .fluxo-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; font-weight: 700; border-bottom: 1px solid var(--border-soft); }
+        .fluxo-head-produto { color: var(--blue); background: var(--blue-bg); }
+        .fluxo-head-servico { color: var(--ink-2); background: var(--panel); }
+        .fluxo-titulo { font-weight: 700; }
+        .fluxo-dest { font-weight: 600; font-size: 11px; opacity: 0.85; }
+        .fluxo-meta { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--ink-3); font-family: 'JetBrains Mono', monospace; }
+        .cat-items table, .flat-table { width: 100%; border-collapse: collapse; }
+        .cat-items th, .flat-table th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+        .cat-items td, .flat-table td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 12.5px; }
+        .cat-items tr:last-child td { border-bottom: none; }
+        .row-alert { background: var(--red-bg); }
+        .row-estouro { background: var(--amber-bg); }
+        .input-qtd { width: 66px; }
+        .input-estouro { border-color: var(--red); color: var(--red); }
+        .estouro-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 700; color: var(--red); margin-top: 3px; }
+
+        .item-desc { color: var(--ink); line-height: 1.4; }
+        .tipo-tag { display: inline-block; margin-left: 7px; font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 4px; vertical-align: middle; }
+        .tipo-produto { background: var(--blue-bg); color: var(--blue); }
+        .tipo-servico { background: var(--panel); color: var(--ink-3); }
+        .item-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+        .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 6px; }
+        .chip-red { background: var(--red-bg); color: var(--red); }
+        .chip-blue { background: var(--blue-bg); color: var(--blue); }
+        .chip-green { background: var(--green-bg); color: var(--green); }
+
+        .sienge-match { display: flex; align-items: flex-start; gap: 7px; margin-top: 7px; padding: 7px 10px; border-radius: 7px; font-size: 11.5px; line-height: 1.45; }
+        .sienge-match-icon { flex-shrink: 0; margin-top: 2px; }
+        .sienge-match-green { background: var(--green-bg); }
+        .sienge-match-green .sienge-match-icon, .sienge-match-green .sienge-cod { color: var(--green); }
+        .sienge-match-amber { background: var(--amber-bg); }
+        .sienge-match-amber .sienge-match-icon, .sienge-match-amber .sienge-cod { color: var(--amber); }
+        .sienge-match-neutral { background: var(--panel); }
+        .sienge-match-neutral .sienge-match-icon { color: var(--ink-3); }
+        .sienge-cod { font-weight: 600; margin-right: 6px; }
+        .sienge-eyebrow { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; opacity: 0.75; margin-bottom: 2px; }
+        .sienge-desc { color: var(--ink-2); }
+        .sienge-note { display: block; color: var(--ink-3); font-size: 10.5px; margin-top: 2px; font-style: italic; }
+
+        .qtd-bad { color: var(--red); font-weight: 700; }
+        .unit { color: var(--ink-3); font-size: 11px; }
+        .center-block { display: block; text-align: center; }
+
+        .btn-approve { display: inline-flex; align-items: center; gap: 4px; background: var(--ink); color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }
+        .btn-approve:hover { background: var(--blue); }
+        .pill { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
+        .pill-ok { background: var(--green-bg); color: var(--green); }
+        .pill-wait { background: var(--panel); color: var(--ink-3); }
+        .contrato-cell { vertical-align: middle; }
+        .contrato-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+        .contrato-blocked { display: inline-block; font-size: 11px; font-weight: 600; color: var(--red); background: var(--red-bg); padding: 4px 10px; border-radius: 20px; }
+        .contrato-caption { display: block; font-size: 10px; color: var(--ink-3); font-style: italic; margin-top: 4px; }
+        .input-valor { width: 88px; text-align: right; border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; font-size: 12px; font-family: 'JetBrains Mono', monospace; background: #fff; color: var(--ink); }
+        .input-valor:focus { outline: none; border-color: var(--blue); }
+        .check { width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--border); background: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; }
+        .check-on { background: var(--green); border-color: var(--green); }
+
+        .legend { display: flex; gap: 18px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        .flat-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+        .flat-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+        .flat-panel-title { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .flat-panel-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; max-width: 560px; }
+        .btn-download { display: flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+        .btn-download:hover { background: var(--blue); }
+        .import-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 14px; align-items: start; }
+        .import-card { display: flex; flex-direction: column; gap: 8px; }
+        .import-bar { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; background: var(--panel); border: 1px dashed var(--border); border-radius: 12px; padding: 12px 15px; margin-bottom: 0; }
+        .import-bar .btn-import { align-self: stretch; justify-content: center; }
+        .import-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); }
+        .btn-import { display: inline-flex; align-items: center; gap: 6px; background: var(--blue); color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+        .btn-import:hover { filter: brightness(1.08); }
+        .import-ok { display: flex; align-items: center; gap: 8px; background: var(--green-bg); color: var(--green); border: 1px solid var(--green); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
+        .import-erro { display: flex; align-items: center; gap: 8px; background: var(--red-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
+        .vend-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+        .vend-grupo { border-bottom: 1px solid var(--border-soft); }
+        .vend-grupo:last-child { border-bottom: none; }
+        .vend-head { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; text-align: left; padding: 12px 14px; }
+        .vend-head:hover { background: var(--panel); }
+        .vend-num { font-size: 11.5px; color: var(--ink-3); font-weight: 600; width: 22px; flex-shrink: 0; }
+        .vend-nome { font-size: 13px; color: var(--ink); font-weight: 600; flex: 1; min-width: 0; }
+        .vend-count { font-size: 11px; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
+        .vend-val { font-size: 13px; color: var(--ink); width: 130px; text-align: right; flex-shrink: 0; }
+        .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); }
+        .vend-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
+        .vend-itens td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--ink); vertical-align: top; }
+        .vend-itens tr:last-child td { border-bottom: none; }
+        .vend-total { display: flex; justify-content: space-between; align-items: center; padding: 13px 14px; margin-top: 2px; border-top: 2px solid var(--ink); }
+        .flat-table tfoot td { padding: 11px 12px; border-top: 2px solid var(--ink); }
+        .total-label { font-weight: 700; }
+        .total-value { font-weight: 700; font-size: 13.5px; }
+        .exec-group { margin-bottom: 22px; }
+        .exec-group-title { font-size: 12.5px; font-weight: 700; margin-bottom: 8px; display: flex; gap: 8px; align-items: baseline; }
+        .empty-note { font-size: 12.5px; color: var(--ink-3); padding: 20px 0; text-align: center; }
+
+        /* ---- Módulo Compras → Sienge ---- */
+        .compras-buckets { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 18px 0 12px; }
+        .bucket { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+        .bucket-falta { background: var(--amber-bg); border-color: var(--amber); }
+        .bucket-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+        .bucket-falta .bucket-label { color: var(--amber); }
+        .bucket-num { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; margin-top: 4px; color: var(--ink); }
+        .bucket-falta .bucket-num { color: var(--amber); }
+        .bucket-num span { font-size: 13px; font-weight: 500; color: var(--ink-3); }
+        .bucket-falta .bucket-num span { color: var(--amber); }
+        .bucket-sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+        .bucket-falta .bucket-sub { color: var(--amber); }
+        .compras-alerta { display: flex; align-items: center; gap: 9px; background: var(--red-bg); color: var(--red); border: 1px solid var(--red); border-radius: 12px; padding: 11px 15px; font-size: 12.5px; margin-bottom: 16px; }
+        .compras-filtros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .cfiltro { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+        .cfiltro:hover { border-color: var(--blue); }
+        .cfiltro.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .cbadge { background: rgba(0,0,0,0.08); border-radius: 10px; padding: 0 6px; font-size: 11px; font-weight: 600; }
+        .cfiltro.active .cbadge { background: rgba(255,255,255,0.22); }
+        .compras-grupo { margin-bottom: 16px; }
+        .compras-grupo-head { display: flex; align-items: center; gap: 8px; padding: 6px 4px; width: 100%; background: transparent; border: none; border-radius: 8px; cursor: pointer; text-align: left; }
+        .compras-grupo-head:hover { background: var(--panel); }
+        .cg-num { font-size: 11px; color: var(--ink-3); font-weight: 600; }
+        .cg-nome { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+        .cg-meta { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+        .compras-list { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        .compras-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
+        .compras-row:last-child { border-bottom: none; }
+        .compras-rowwrap { border-bottom: 1px solid var(--border-soft); }
+        .compras-rowwrap:last-child { border-bottom: none; }
+        .compras-rowwrap .compras-row { border-bottom: none; }
+        .sug-toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; background: none; border: none; color: var(--blue); font-size: 11px; font-weight: 600; cursor: pointer; padding: 0; }
+        .sug-toggle:hover { text-decoration: underline; }
+        .sugestao-sienge { background: var(--panel); border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; margin: 0 16px 12px; }
+        .sug-title { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); margin-bottom: 8px; }
+        .sug-warn { font-weight: 500; color: var(--amber); font-size: 10.5px; }
+        .sug-row { display: flex; align-items: center; gap: 10px; }
+        .sug-code { flex: 1; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--ink); overflow-x: auto; white-space: nowrap; }
+        .sug-copy { display: inline-flex; align-items: center; gap: 5px; background: var(--ink); color: #fff; border: none; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+        .sug-copy:hover { background: var(--blue); }
+        .sug-fmt { font-size: 10.5px; color: var(--ink-3); margin-top: 6px; }
+        .compras-row-main { flex: 1; min-width: 0; }
+        .compras-desc { font-size: 13px; color: var(--ink); line-height: 1.35; }
+        .compras-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .compras-custo { font-size: 13px; color: var(--ink); width: 86px; text-align: right; flex-shrink: 0; }
+        .compras-sg { width: 168px; flex-shrink: 0; }
+        .sg-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; padding: 4px 9px; border-radius: 20px; }
+        .sg-match { background: var(--green-bg); color: var(--green); }
+        .sg-parcial { background: var(--amber-bg); color: var(--amber); }
+        .sg-nao { background: var(--red-bg); color: var(--red); }
+        .compras-acao { width: 172px; flex-shrink: 0; display: flex; justify-content: flex-end; }
+        .proc-tag { border: none; border-radius: 20px; padding: 6px 26px 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; appearance: none; -webkit-appearance: none; background-repeat: no-repeat; background-position: right 9px center; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
+        .proc-falta { background-color: var(--amber-bg); color: var(--amber); }
+        .proc-lancado { background-color: var(--blue-bg); color: var(--blue); }
+        .proc-comprado { background-color: var(--green-bg); color: var(--green); }
+        .btn-lancar { display: inline-flex; align-items: center; gap: 6px; background: var(--blue); color: #fff; border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-lancar:hover { filter: brightness(1.08); }
+        .btn-cadastrar { display: inline-flex; align-items: center; gap: 6px; background: #fff; color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-compra { display: inline-flex; align-items: center; gap: 6px; background: #fff; color: var(--green); border: 1px solid var(--green); border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-avancar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-avancar:hover { background: var(--blue); }
+        .contrato-etapa-cell { width: 210px; flex-shrink: 0; }
+        .pipeline { display: flex; align-items: stretch; gap: 3px; margin: 18px 0 12px; overflow-x: auto; padding-bottom: 4px; }
+        .pipe-node { flex: 1; min-width: 92px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 6px; cursor: pointer; text-align: center; }
+        .pipe-node:hover { border-color: var(--ink-3); }
+        .pipe-node.active { border-width: 2px; padding: 9px 5px; }
+        .pipe-count { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; line-height: 1; }
+        .pipe-label { font-size: 10.5px; color: var(--ink-2); margin-top: 4px; font-weight: 600; }
+        .pipe-val { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+        .pipe-arrow { align-self: center; flex-shrink: 0; }
+        .contratos-toolbar { margin: 4px 0 4px; }
+        .btn-nova-solicitacao { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+        .btn-nova-solicitacao:hover { background: var(--blue); }
+        .form-solicitacao { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 4px; max-width: 480px; }
+        .form-solicitacao-title { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-bottom: 12px; }
+        .form-row { margin-bottom: 12px; }
+        .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; }
+        .form-label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
+        .form-input, .form-select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; font-family: 'Inter', sans-serif; color: var(--ink); background: #fff; }
+        .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+        .btn-cancelar { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+        .btn-criar { background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+        .btn-criar:hover { background: var(--blue); }
+        .compras-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 60px 20px; }
+        .compras-empty-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+        .compras-empty-sub { font-size: 12.5px; color: var(--ink-3); max-width: 440px; }
+        /* ---- Vendido: Conferência Contrato × Planilha ---- */
+        .conf-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 4px 0 16px; }
+        .conf-stat { text-align: left; background: var(--card); border: 1.5px solid var(--border); border-radius: 12px; padding: 13px 15px; cursor: pointer; }
+        .conf-stat:hover { border-color: var(--ink-3); }
+        .conf-stat.active { border-width: 2px; padding: 12px 14px; }
+        .conf-stat-num { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; line-height: 1; }
+        .conf-stat-label { font-size: 12.5px; font-weight: 700; color: var(--ink); margin-top: 6px; }
+        .conf-stat-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .conf-row { padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
+        .conf-row:last-child { border-bottom: none; }
+        .conf-row-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .conf-codigo { font-size: 11.5px; }
+        .conf-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
+        .conf-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .conf-col-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin-bottom: 3px; }
+        .conf-desc { font-size: 12.5px; color: var(--ink); line-height: 1.35; }
+        .conf-meta { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+        .conf-vazio { font-size: 12px; color: var(--ink-3); font-style: italic; }
+        .conf-acoes { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
+        .btn-editar-linha { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border-strong); border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+        .btn-editar-linha:hover { border-color: var(--blue); color: var(--blue); }
+        .btn-aprovar-linha { display: inline-flex; align-items: center; gap: 5px; background: var(--green); border: none; border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: #fff; cursor: pointer; }
+        .btn-aprovar-linha:hover { filter: brightness(1.08); }
+        .conf-edit { display: flex; flex-direction: column; gap: 6px; }
+        .conf-edit-row { display: flex; gap: 6px; }
+        .conf-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
+        .conf-check { width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+        .selecao-massa { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 9px 13px; margin-bottom: 12px; }
+        .selecao-massa-texto { font-size: 12px; font-weight: 600; color: var(--ink); }
+        .conf-motivo { font-size: 11.5px; color: var(--amber); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft); }
+        .aprovacao-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 16px; }
+        .aprovacao-resumo { font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+        .aprovacao-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); margin-bottom: 12px; cursor: pointer; }
+        .btn-aprovar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+        .btn-aprovar:hover:not(:disabled) { background: var(--green); }
+        .btn-aprovar:disabled { opacity: 0.4; cursor: not-allowed; }
+        .caderno-card { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+        .caderno-info { flex: 1; min-width: 0; }
+        .caderno-nome { font-size: 13px; font-weight: 600; color: var(--ink); }
+        .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .tab .dim { margin-left: 2px; vertical-align: -1px; }
+        /* ---- Módulo A Contratar ---- */
+        .ac-filtros { margin: 18px 0 18px; }
+        .ac-periodo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .ac-periodo-label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+        .ac-periodo input[type="date"] { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-family: 'Inter', sans-serif; color: var(--ink); background: #fff; }
+        .ac-limpar { background: none; border: none; color: var(--blue); font-size: 12px; font-weight: 600; cursor: pointer; }
+        .ac-periodo-nota { font-size: 11px; color: var(--ink-3); font-style: italic; margin-top: 7px; }
+        .ac-bloco { margin-bottom: 22px; }
+        .ac-bloco-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
+        .ac-bloco-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .ac-bloco-total { margin-left: auto; font-size: 15px; font-weight: 700; }
+        .ac-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--border-soft); }
+        .ac-num { font-size: 11px; color: var(--ink-3); font-weight: 600; width: 22px; flex-shrink: 0; }
+        .ac-nome { font-size: 13px; color: var(--ink); font-weight: 600; width: 230px; flex-shrink: 0; }
+        .ac-obras { font-size: 11px; color: var(--ink-3); width: 130px; flex-shrink: 0; }
+        .ac-bar-track { flex: 1; min-width: 60px; height: 8px; background: var(--panel); border-radius: 20px; overflow: hidden; }
+        .ac-bar { height: 100%; border-radius: 20px; }
+        .ac-val { font-size: 13px; color: var(--ink); width: 96px; text-align: right; flex-shrink: 0; }
+      `}</style>
+
+      <TopBar />
+      <div className="body-layout">
+        <Sidebar obras={obras} selected={selectedId} modulo={modulo} onModulo={setModulo} onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setModulo("comparativo"); }} />
+
+        <main className="main">
+          {avisoMonday && <div className="aviso-monday">{avisoMonday}</div>}
+          {modulo === "a_contratar" ? (
+          <>
+          <div className="eyebrow">TODAS AS OBRAS · {obras.length}</div>
+          <div className="title-row"><span className="title-accent">A Contratar</span></div>
+          <div className="obra-meta">Planejamento do que precisa ser contratado (mão de obra) e comprado (produtos), por verba da EAP</div>
+          <AContratarView obras={obras} />
+          </>
+          ) : !obra ? (
+            <div className="empty-note">{loading ? "Carregando obras do Monday…" : "Nenhuma obra encontrada."}</div>
+          ) : (
+          <>
+          <div className="eyebrow">
+            OBRA #{obra.codigo}
+            {obra.semDetalhe && <span className="obra-fictitious">SEM DETALHE DE EXECUTIVO — só cadastro do Monday</span>}
+          </div>
+          <div className="title-row"><span className="title-accent">{obra.nome}</span></div>
+          <div className="obra-meta">{obra.endereco} · {obra.cliente}</div>
+
+          <div className="resumo-label">RESUMO FINANCEIRO</div>
+          <div className="resumo-panel">
+            <BigCard label="Valor vendido (contrato)" value={fmtCompactBRL(obra.valorVendido)} sub={fmtBRL(obra.valorVendido)} />
+            <BigCard label="Somatório do executivo" value={fmtCompactBRL(totals.totalExecutivo)}
+              delta={`${pctExecutado.toFixed(0)}%`} deltaGood={deltaGood} sub={`${deltaGood ? "dentro do" : "acima do"} valor vendido`} />
+            <BigCard label="% comprado" value={`${totals.pct.toFixed(0)}%`} progress={totals.pct}
+              sub={`${fmtCompactBRL(totals.totalComprado)} de ${fmtCompactBRL(totals.totalProdutos)} em produtos`} />
+            <BigCard label="Falta comprar" value={fmtCompactBRL(totals.falta)} sub="em produtos já liberados" />
+            <div className="mini-stats">
+              <MiniStat label="Categorias em estouro crítico" value={totals.criticos} tone={totals.criticos > 0 ? "var(--red)" : "var(--green)"} />
+              <MiniStat label="Itens com alerta de escopo/qtd." value={totals.itensAlerta} tone={totals.itensAlerta > 0 ? "var(--amber)" : "var(--green)"} />
+              <MiniStat label="Prazo de execução" value={obra.prazo ? `${obra.prazo} dias` : "—"} />
+            </div>
+          </div>
+
+          <TabBar tab={tab} onChange={handleTabChange} obra={obra} />
+
+          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} />}
+          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} />}
+          {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} />}
+          {tab === "executivo_caderno" && (obra.deparaAprovado ? <CadernoEspecificacaoView obra={obra} onImportCaderno={importCadernoEspecificacao} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_planilha" && (obra.deparaAprovado ? <PlanilhaExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "comparativo" && (
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} />
+          )}
+          {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
+          {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
+          </>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}

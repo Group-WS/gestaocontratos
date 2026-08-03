@@ -1,0 +1,13 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Group WS">
+  <!--
+    Recriação do monograma GROUP WS (dois traços entrelaçados em V/S).
+    Se não estiver 100% fiel à marca oficial, basta substituir este
+    arquivo pela versão oficial (mesmo nome: logo.svg) que o header
+    passa a usá-la automaticamente.
+  -->
+  <g fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 16 C 26 66, 46 82, 60 108" />
+    <path d="M60 108 C 74 82, 94 66, 106 16" />
+    <path d="M40 16 C 52 58, 70 66, 60 88 C 50 108, 72 112, 92 104" />
+  </g>
+</svg>
