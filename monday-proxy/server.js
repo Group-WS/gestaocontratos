@@ -2,8 +2,8 @@
  * Servidor local do proxy do Monday — usado só em desenvolvimento.
  * -----------------------------------------------------------
  * A lógica de verdade (rotas, cache, leitura de PDF) mora em
- * web/api/_lib/mondayApp.cjs — esse arquivo é o mesmo que a Vercel usa
- * em produção (como função serverless, via web/api/[...path].cjs).
+ * web/api/_lib/mondayApp.js — esse arquivo é o mesmo que a Vercel usa
+ * em produção (como função serverless, via web/api/[...path].js).
  * Aqui só carregamos o .env e colocamos esse mesmo app pra ouvir
  * numa porta local, pra bater com o proxy do Vite em dev (vite.config.js).
  *
@@ -15,7 +15,7 @@
  */
 
 require("dotenv").config();
-const app = require("../web/api/_lib/mondayApp.cjs");
+const app = require("../web/api/_lib/mondayApp.js");
 
 if (!process.env.MONDAY_API_TOKEN) {
   console.warn(

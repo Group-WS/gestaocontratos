@@ -2,7 +2,7 @@
  * Backend do Confere — API do Monday.com + leitura de PDFs.
  * -----------------------------------------------------------
  * Fonte única, usada em dois lugares:
- *  - Produção (Vercel): web/api/[...path].cjs reexporta este app como
+ *  - Produção (Vercel): web/api/[...path].js reexporta este app como
  *    função serverless — roda no mesmo domínio do frontend, sob /api/*.
  *  - Dev local: monday-proxy/server.js importa este mesmo arquivo e
  *    chama .listen() nele — é o que o proxy do Vite aponta em dev.
