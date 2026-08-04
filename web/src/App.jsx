@@ -1219,6 +1219,40 @@ function VendidoContratoView({ obra, onImportContrato, podeEditar }) {
   );
 }
 
+// Avisa quando o que foi importado veio pobre — o caso típico é ter
+// subido o PDF em vez do Excel.
+//
+// Sem isso a pessoa vê uma tabela cheia de "—" e conclui que o sistema
+// não leu direito. Leu: o PDF é que não tem essas colunas. Dizer isso na
+// hora, com o número de itens afetados, evita a caçada ao bug errado.
+function AvisoPDFPobre({ itens }) {
+  const total = (itens || []).length;
+  if (total === 0) return null;
+
+  const faltando = [];
+  const semNada = (campo) => itens.every((it) => it[campo] == null);
+  if (semNada("marca")) faltando.push("Fornecedor");
+  if (semNada("ambiente")) faltando.push("Ambiente");
+  if (semNada("especificacao")) faltando.push("Código / especificação");
+  if (semNada("custoMaterial") && semNada("custoMO")) faltando.push("Custo Material e Mão de Obra");
+
+  if (faltando.length === 0) return null;
+
+  return (
+    <div className="aviso-pobre">
+      <AlertTriangle size={15} />
+      <div>
+        <b>Faltam colunas nos {total} itens importados:</b> {faltando.join(" · ")}.
+        <div className="aviso-pobre-sub">
+          Isso acontece quando o arquivo subiu em <b>PDF</b> — essas colunas existem na planilha,
+          mas um PDF não guarda colunas, só texto na página. Suba o <b>Excel</b> do mesmo documento
+          e elas vêm junto.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---- VENDIDO PLANILHA — menu próprio ----
    Documento mais elaborado (Excel ou PDF), com marca e custo por item.
    Não mexe no valor por verba (esse é do Contrato) — mostra o total dos
@@ -1245,8 +1279,10 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, podeEditar }) {
   return (
     <>
       <ImportButton congelado={congelado} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
-        dica={<>Suba o <b>Vendido Planilha</b> — documento mais elaborado, em <b>Excel ou PDF</b>, com <b>marca e custo</b> por item (marca só sai do Excel; do PDF sai descrição, quantidade e custo).</>}
+        dica={<>Suba o <b>Vendido Planilha</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e o valor total; fornecedor, ambiente, especificação e a separação material/mão de obra existem como coluna e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
+
+      <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilha || [])} />
 
       <div className="flat-panel">
         <div className="flat-panel-header">
@@ -2435,8 +2471,10 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
       )}
 
       <ImportButton congelado={congelado} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
-        dica={<>Suba a <b>Planilha Executivo</b> — descrição, quantidade e valores (unitário e total) por item, dentro de cada grupo.</>}
+        dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
+
+      <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilhaExecutivo || [])} />
 
       <div className="flat-panel">
         <div className="flat-panel-header">
@@ -4334,6 +4372,9 @@ export default function App() {
         .vend-grupo.na { opacity: 0.72; }
         .vend-head.na { cursor: default; }
         .vend-na-motivo { font-size: 11px; color: var(--ink-3); flex: 1; text-align: right; padding-right: 10px; }
+        .aviso-pobre { display: flex; align-items: flex-start; gap: 10px; background: var(--amber-bg, #FEF3E2); border: 1px solid var(--amber, #E8B04B); color: var(--amber, #B7791F); border-radius: 10px; padding: 11px 14px; font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
+        .aviso-pobre-sub { color: var(--ink-2); font-size: 11.5px; margin-top: 4px; }
+
         .aviso-deslocamento { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 13px; font-size: 12px; color: var(--ink-2); margin-bottom: 14px; }
         .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); }
         .vend-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
