@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
-import { supabaseConfigurado } from "./lib/supabase";
+import { supabase, supabaseConfigurado } from "./lib/supabase";
+import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
 // em web/api/), então "/api/..." resolve sozinho — em dev pelo proxy do
@@ -554,7 +555,7 @@ const FILTERS = [
 // anteriores (Vendido Contrato, Vendido Planilha, Depara, Executivo)
 // pode mais ser mexido. Compras e Contratos passam a trabalhar em cima
 // de um número que não muda mais debaixo deles.
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, onLiberar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, onLiberar, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
   return (
     <>
@@ -600,7 +601,7 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
               ? "Ao liberar, esta vira a planilha oficial de compra: Vendido, Depara e Executivo ficam congelados."
               : "Importe o Executivo desta obra antes de liberar — sem itens não há o que comprar."}
           </div>
-          <button className="btn-aprovar" disabled={!temItens} onClick={onLiberar}>
+          <button className="btn-aprovar" disabled={!temItens || !podeEditar} onClick={onLiberar}>
             <ShieldCheck size={14} /> Liberar planilha de compra
           </button>
         </div>
@@ -1127,7 +1128,8 @@ function useAbertos() {
    só com descrição/ambiente/quantidade (nunca valor por item). Fica
    separado da Planilha de propósito — depois os dois vão ser
    conferidos um contra o outro. */
-function VendidoContratoView({ obra, onImportContrato }) {
+function VendidoContratoView({ obra, onImportContrato, podeEditar }) {
+  const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
 
@@ -1141,7 +1143,7 @@ function VendidoContratoView({ obra, onImportContrato }) {
 
   return (
     <>
-      <ImportButton congelado={obra.comprasLiberadas} label="Importar Contrato (PDF)" accept=".pdf"
+      <ImportButton congelado={congelado} label="Importar Contrato (PDF)" accept=".pdf"
         dica={<>Suba o <b>Vendido Contrato</b> — o PDF da proposta, exatamente como ele é hoje. Traz só <b>descrição e quantidade</b> (o contrato é fechado por verba, sem valor por item).</>}
         onFile={aoImportar} />
 
@@ -1202,7 +1204,8 @@ function VendidoContratoView({ obra, onImportContrato }) {
    Documento mais elaborado (Excel ou PDF), com marca e custo por item.
    Não mexe no valor por verba (esse é do Contrato) — mostra o total dos
    itens da própria planilha, pra depois conferir contra o Contrato. */
-function VendidoPlanilhaView({ obra, onImportPlanilha }) {
+function VendidoPlanilhaView({ obra, onImportPlanilha, podeEditar }) {
+  const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   const totalPlanilha = verbas.reduce((a, c) => a + (c.itensPlanilha || []).reduce((s, it) => s + (it.custo || 0), 0), 0);
@@ -1222,7 +1225,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha }) {
 
   return (
     <>
-      <ImportButton congelado={obra.comprasLiberadas} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
+      <ImportButton congelado={congelado} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
         dica={<>Suba o <b>Vendido Planilha</b> — documento mais elaborado, em <b>Excel ou PDF</b>, com <b>marca e custo</b> por item (marca só sai do Excel; do PDF sai descrição, quantidade e custo).</>}
         onFile={aoImportar} />
 
@@ -1889,10 +1892,86 @@ const VERBAS_NAO_ANALISADAS = {
 const ehVerbaNaoAnalisada = (num) => Object.prototype.hasOwnProperty.call(VERBAS_NAO_ANALISADAS, num);
 const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num);
 
+// CMV LIBERADO — o teto de custo que sai desta conferência.
+//
+// É o depara que libera o CMV pra equipe, então o número precisa estar
+// aqui, não escondido numa planilha à parte. O valor que vale é o da
+// PLANILHA (é o que o depara define como versão final), somado por verba
+// e no total.
+//
+// Enquanto houver linha pendente, o número aparece como provisório: um
+// item ainda em discussão pode entrar ou sair, e tratar isso como
+// definitivo é o tipo de erro que só aparece quando o dinheiro acabou.
+function ResumoCMV({ linhas, valorVendido }) {
+  const porVerba = new Map();
+  let total = 0;
+  let pendentes = 0;
+
+  linhas.forEach((l) => {
+    if (l.status !== "ok") pendentes += 1;
+    const v = l.b?.valor;
+    if (v == null) return;
+    total += v;
+    const atual = porVerba.get(l.catNum) || { num: l.catNum, nome: l.catNome, valor: 0 };
+    atual.valor += v;
+    porVerba.set(l.catNum, atual);
+  });
+
+  const grupos = Array.from(porVerba.values()).sort((a, b) => String(a.num).localeCompare(String(b.num)));
+  const sobra = valorVendido ? valorVendido - total : null;
+
+  return (
+    <div className="cmv-painel">
+      <div className="cmv-topo">
+        <div className="cmv-bloco">
+          <div className="cmv-rotulo">CMV liberado {pendentes > 0 && <span className="cmv-provisorio">provisório</span>}</div>
+          <div className="cmv-valor mono">{fmtBRL(total)}</div>
+          <div className="cmv-sub">
+            {pendentes > 0
+              ? `${pendentes} ${pendentes === 1 ? "linha ainda pendente" : "linhas ainda pendentes"} — o valor pode mudar`
+              : "todas as linhas conferidas"}
+          </div>
+        </div>
+        {valorVendido > 0 && (
+          <>
+            <div className="cmv-bloco">
+              <div className="cmv-rotulo">Valor vendido</div>
+              <div className="cmv-valor mono dim">{fmtBRL(valorVendido)}</div>
+            </div>
+            <div className="cmv-bloco">
+              <div className="cmv-rotulo">Margem</div>
+              <div className="cmv-valor mono" style={{ color: sobra >= 0 ? "var(--green)" : "var(--red)" }}>
+                {fmtBRL(sobra)}
+              </div>
+              <div className="cmv-sub">{sobra >= 0 ? "dentro do vendido" : "acima do vendido"}</div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {grupos.length > 0 && (
+        <div className="cmv-grupos">
+          <div className="cmv-grupos-titulo">CMV liberado por grupo</div>
+          {grupos.map((g) => (
+            <div key={g.num} className="cmv-linha">
+              <span className="cmv-linha-num mono">{g.num}</span>
+              <span className="cmv-linha-nome">{g.nome}</span>
+              <span className="cmv-linha-barra">
+                <span style={{ width: total > 0 ? `${(g.valor / total) * 100}%` : 0 }} />
+              </span>
+              <span className="cmv-linha-valor mono">{fmtBRL(g.valor)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // DEPARA CONTRATO × PLANILHA — junta as duas fontes numa versão única.
 // Branco = OK, vermelho = diferente entre as duas, amarelo = só existe
 // numa. Precisa ser aprovado (revisão explícita) pra liberar o Executivo.
-function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
+function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEditar }) {
   const [aprovacoes, setAprovacoes] = useState(() => new Set());
   const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
 
@@ -1934,6 +2013,8 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
 
   return (
     <>
+      <ResumoCMV linhas={linhas} valorVendido={obra.valorVendido} />
+
       {obra.deparaAprovado ? (
         <div className="import-ok"><ShieldCheck size={14} /> Depara aprovado — versão final liberada para o Executivo.</div>
       ) : (
@@ -1951,14 +2032,14 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
         colALabel="Contrato" colBLabel="Planilha"
         vazioALabel="não está no contrato" vazioBLabel="não está na planilha"
         vazioTitulo="Nada pra conferir ainda" vazioSub=""
-        aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas ? undefined : toggleAprovacao}
-        onEditarB={obra.comprasLiberadas ? undefined : ((catNum, codigo, patch) => onEditarPlanilha(catNum, codigo, patch))} />
+        aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao}
+        onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilha(catNum, codigo, patch))} />
       {!obra.deparaAprovado && (
         <div className="aprovacao-box">
           <div className="aprovacao-resumo">
             {pendentes.length === 0 ? "Todas as divergências foram aprovadas — pronto pra liberar." : `${pendentes.length} ${pendentes.length === 1 ? "linha pendente" : "linhas pendentes"} de aprovação (vermelho ou amarelo acima).`}
           </div>
-          <button className="btn-aprovar" disabled={pendentes.length > 0} onClick={onAprovar}>
+          <button className="btn-aprovar" disabled={pendentes.length > 0 || !podeEditar} onClick={onAprovar}>
             <ShieldCheck size={14} /> Aprovar depara e liberar Executivo
           </button>
         </div>
@@ -1968,7 +2049,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
 }
 
 // CONF. EXECUTIVO — depara Vendido Planilha × Planilha Executivo.
-function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo }) {
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, podeEditar }) {
   const [aprovacoes, setAprovacoes] = useState(() => new Set());
   const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
 
@@ -1993,8 +2074,8 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo }) {
       vazioALabel="não está na planilha vendida" vazioBLabel="não está na planilha executivo"
       vazioTitulo="Nada pra conferir ainda"
       vazioSub="Importe a Vendido Planilha e a Planilha Executivo desta obra — o depara aparece aqui automaticamente."
-      aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas ? undefined : toggleAprovacao}
-      onEditarB={obra.comprasLiberadas ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
+      aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao}
+      onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
   );
 }
 
@@ -2169,7 +2250,11 @@ function CadernoSlot({ titulo, sub, arquivo, onImportar, congelado }) {
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem }) {
+function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, podeEditar }) {
+  const congelado = obra.comprasLiberadas || !podeEditar;
+  const itensBase = obra.categorias.reduce((a, c) => a + (c.itensPlanilha || []).length, 0);
+  const temBase = itensBase > 0;
+  const temExecutivo = obra.categorias.some((c) => (c.itensPlanilhaExecutivo || []).length > 0);
   const [abertos, toggle] = useAbertos();
   // Os cadernos começam recolhidos: são três blocos que empurravam a
   // planilha pra fora da tela, e na maior parte do tempo ninguém precisa
@@ -2209,14 +2294,31 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
             {CADERNOS_EXECUTIVO.map((c) => (
               <CadernoSlot key={c.chave} titulo={c.titulo} sub={c.sub}
                 arquivo={(obra.cadernos || {})[c.chave]}
-                congelado={obra.comprasLiberadas}
+                congelado={congelado}
                 onImportar={(info) => onImportCaderno(c.chave, info)} />
             ))}
           </div>
         )}
       </div>
 
-      <ImportButton congelado={obra.comprasLiberadas} label="Importar Planilha Executivo" accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
+      {temBase && !temExecutivo && !congelado && (
+        <div className="import-card">
+          <div className="import-bar">
+            <div className="import-info">
+              <Copy size={14} />
+              <span>
+                Comece pela <b>planilha do criativo</b> ({itensBase} itens já conferidos no depara) e edite a partir dela —
+                o que vier de lá fica marcado, e cada alteração aparece lado a lado com o valor de origem.
+              </span>
+            </div>
+            <button className="btn-import" onClick={onPuxarDoCriativo}>
+              <Copy size={13} /> Puxar do criativo
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ImportButton congelado={congelado} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
         dica={<>Suba a <b>Planilha Executivo</b> — descrição, quantidade e valores (unitário e total) por item, dentro de cada grupo.</>}
         onFile={aoImportar} />
 
@@ -2233,6 +2335,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
             const temItens = itens.length > 0;
             const aberto = abertos.has(c.num);
             const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
+            // quanto essa verba valia no criativo — a referência do estouro
+            const baseVerba = itens.reduce((a, it) => a + (it.vendido?.custo || 0), 0);
             return (
               <div key={c.num} className="vend-grupo">
                 {/* abre mesmo sem itens: é onde se lança item manual */}
@@ -2241,6 +2345,11 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
                   {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                  {temItens && baseVerba > 0 && (
+                    <span className="vend-delta" style={{ color: subtotal > baseVerba ? "var(--red)" : "var(--green)" }}>
+                      {subtotal > baseVerba ? "+" : ""}{fmtBRL(subtotal - baseVerba)} vs. vendido
+                    </span>
+                  )}
                   <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
                 </button>
                 {aberto && temItens && (
@@ -2256,6 +2365,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         <th style={{ width: 100 }} className="right">Custo Total<br />Material</th>
                         <th style={{ width: 100 }} className="right">Custo Total<br />Mão de Obra</th>
                         <th style={{ width: 104 }} className="right">Custo<br />Total</th>
+                        <th style={{ width: 104 }} className="right col-vendido">Vendido<br />(criativo)</th>
+                        <th style={{ width: 92 }} className="right col-vendido">Diferença</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2273,20 +2384,30 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                                 <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
                               )}
                             </td>
-                            <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={obra.comprasLiberadas} onSalvar={editar("qtdVendida")} /></td>
+                            <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={congelado} onSalvar={editar("qtdVendida")} /></td>
                             <td className="mono center dim">{it.un || "—"}</td>
-                            <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={obra.comprasLiberadas} onSalvar={editar("custoMaterial")} /></td>
-                            <td className="right"><CelulaEditavel valor={it.custoMO} congelado={obra.comprasLiberadas} onSalvar={editar("custoMO")} /></td>
-                            <td className="right"><CelulaEditavel valor={it.totalMaterial} congelado={obra.comprasLiberadas} onSalvar={editar("totalMaterial")} /></td>
-                            <td className="right"><CelulaEditavel valor={it.totalMO} congelado={obra.comprasLiberadas} onSalvar={editar("totalMO")} /></td>
-                            <td className="right forte"><CelulaEditavel valor={it.custo} congelado={obra.comprasLiberadas} onSalvar={editar("custo")} /></td>
+                            <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={congelado} onSalvar={editar("custoMaterial")} /></td>
+                            <td className="right"><CelulaEditavel valor={it.custoMO} congelado={congelado} onSalvar={editar("custoMO")} /></td>
+                            <td className="right"><CelulaEditavel valor={it.totalMaterial} congelado={congelado} onSalvar={editar("totalMaterial")} /></td>
+                            <td className="right"><CelulaEditavel valor={it.totalMO} congelado={congelado} onSalvar={editar("totalMO")} /></td>
+                            <td className="right forte"><CelulaEditavel valor={it.custo} congelado={congelado} onSalvar={editar("custo")} /></td>
+                            <td className="mono right col-vendido dim">{it.vendido?.custo != null ? fmtBRL(it.vendido.custo) : "—"}</td>
+                            <td className="mono right col-vendido">
+                              {(() => {
+                                const base = it.vendido?.custo;
+                                if (base == null || it.custo == null) return <span className="dim">—</span>;
+                                const d = it.custo - base;
+                                if (Math.abs(d) < 0.01) return <span className="dim">—</span>;
+                                return <span style={{ color: d > 0 ? "var(--red)" : "var(--green)", fontWeight: 600 }}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
+                              })()}
+                            </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 )}
-                {aberto && !obra.comprasLiberadas && (
+                {aberto && !congelado && (
                   <button className="btn-add-item" onClick={() => onAdicionarItem(c.num)}>
                     <Plus size={12} /> Adicionar item nesta verba
                   </button>
@@ -3294,6 +3415,54 @@ function ArquivoView({ obras, onReabrir, salvando }) {
   );
 }
 
+// Uma obra por vez, uma pessoa por vez.
+//
+// Sem isso, duas pessoas na mesma obra gravariam por cima uma da outra
+// sem nenhuma das duas perceber — o último a salvar apagaria o trabalho
+// do outro em silêncio. Quem clica em "Habilitar edição" fica com ela;
+// os demais continuam vendo tudo, só não alteram.
+//
+// A trava expira sozinha por inatividade. Sem esse prazo, alguém que
+// fechasse o navegador no meio deixaria a obra travada para sempre.
+function BarraEdicao({ edicao, salvando, carregando, onHabilitar, onFinalizar }) {
+  if (carregando) {
+    return <div className="barra-edicao"><span className="dim">Carregando o que já foi salvo desta obra…</span></div>;
+  }
+
+  if (edicao.por) {
+    const desde = edicao.desde ? new Date(edicao.desde).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
+    return (
+      <div className="barra-edicao travada">
+        <Lock size={14} />
+        <span><b>{edicao.por}</b> está editando{desde ? ` desde ${desde}` : ""} — você está vendo, mas não pode alterar.</span>
+        <span className="barra-edicao-nota">Libera sozinho após {MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração.</span>
+      </div>
+    );
+  }
+
+  if (edicao.minha) {
+    return (
+      <div className="barra-edicao editando">
+        <ShieldCheck size={14} />
+        <span>Você está editando esta obra. As alterações são salvas sozinhas.</span>
+        <span className="barra-edicao-status">
+          {salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo ✓" : ""}
+        </span>
+        <button className="btn-finalizar" onClick={onFinalizar} disabled={salvando === "salvando"}>
+          Finalizar e liberar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="barra-edicao">
+      <span className="dim">Modo leitura — habilite a edição para alterar esta obra.</span>
+      <button className="btn-habilitar" onClick={onHabilitar}>Habilitar edição</button>
+    </div>
+  );
+}
+
 /* ============================================================
    APP
    ============================================================ */
@@ -3313,6 +3482,19 @@ export default function App() {
   const [tab, setTab] = useState("comparativo");
   const [itemFilter, setItemFilter] = useState("todos");
   const [expandedCats, setExpandedCats] = useState(() => new Set(["022519", "062519"]));
+
+  // Quem está usando o app. Vira o dono da trava de edição e assina as
+  // alterações — sem isso não dá pra dizer "fulano está editando".
+  const [usuario, setUsuario] = useState(null);
+  // Estado da edição da obra aberta: quem tem a trava e se há algo por salvar.
+  const [edicao, setEdicao] = useState({ minha: false, por: null, desde: null });
+  const [salvando, setSalvando] = useState(null);
+  const [carregandoDados, setCarregandoDados] = useState(false);
+
+  useEffect(() => {
+    if (!supabaseConfigurado) { setUsuario("local"); return; }
+    supabase.auth.getUser().then(({ data }) => setUsuario(data?.user?.email || null));
+  }, []);
 
   // Ao abrir o app, carrega as obras reais do Monday (via proxy). Cada
   // squad aparece assim que responde — um squad lento (ex: Comet) não
@@ -3421,6 +3603,87 @@ export default function App() {
 
   const obra = obras.find((o) => o.id === selectedId);
 
+  // Ao abrir uma obra, traz o que já foi salvo dela.
+  useEffect(() => {
+    if (!obra?.codigo || !usuario) return;
+    let vivo = true;
+    setCarregandoDados(true);
+    setEdicao({ minha: false, por: null, desde: null });
+    const codigo = obra.codigo;
+
+    carregarDadosObra(codigo)
+      .then((dados) => {
+        if (!vivo || !dados) return;
+        setObras((prev) => prev.map((o) => (o.codigo === codigo ? {
+          ...o,
+          categorias: (dados.categorias || []).length ? dados.categorias : o.categorias,
+          cadernos: dados.cadernos,
+          aprovacoes: dados.aprovacoes,
+          deparaAprovado: dados.deparaAprovado,
+          comprasLiberadas: dados.comprasLiberadas,
+        } : o)));
+        const deOutro = dados.editandoPor && dados.editandoPor !== usuario;
+        setEdicao({
+          minha: dados.editandoPor === usuario,
+          por: deOutro ? dados.editandoPor : null,
+          desde: deOutro ? dados.editandoDesde : null,
+        });
+      })
+      .catch((e) => { if (vivo) setErroBanco(e.message || String(e)); })
+      .finally(() => { if (vivo) setCarregandoDados(false); });
+
+    return () => { vivo = false; };
+  }, [obra?.codigo, usuario]);
+
+  // Salvamento automático. Sem botão "Salvar", porque botão é justamente
+  // o jeito de esquecer e perder o trabalho. Espera a mão parar — subir
+  // uma planilha dispara várias mudanças seguidas — e só grava quem está
+  // com a trava, senão duas pessoas se sobrescreveriam.
+  // Dispara sempre que o conteúdo da obra muda — em vez de marcar "sujo"
+  // em cada uma das dezenas de ações, que é onde se esquece uma e o dado
+  // se perde justamente ali.
+  useEffect(() => {
+    if (!obra?.codigo || !edicao.minha) return;
+    const t = setTimeout(async () => {
+      setSalvando("salvando");
+      try {
+        await salvarDadosObra(obra.codigo, obra, usuario);
+        setSalvando("salvo");
+        setTimeout(() => setSalvando(null), 2000);
+      } catch (e) {
+        setSalvando(null);
+        setErroBanco(`Não consegui salvar: ${e.message || e}`);
+      }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [obra, edicao.minha, usuario]);
+
+  async function habilitarEdicao() {
+    if (!obra?.codigo) return;
+    setErroBanco(null);
+    try {
+      const r = await pegarEdicao(obra.codigo, usuario);
+      if (r.ok) setEdicao({ minha: true, por: null, desde: null });
+      else setEdicao({ minha: false, por: r.por, desde: r.desde });
+    } catch (e) {
+      setErroBanco(e.message || String(e));
+    }
+  }
+
+  async function finalizarEdicao() {
+    if (!obra?.codigo) return;
+    setSalvando("salvando");
+    try {
+      await salvarDadosObra(obra.codigo, obra, usuario);
+      await liberarEdicao(obra.codigo, usuario);
+      setEdicao({ minha: false, por: null, desde: null });
+      setSalvando(null);
+    } catch (e) {
+      setSalvando(null);
+      setErroBanco(`Não consegui salvar antes de liberar: ${e.message || e}`);
+    }
+  }
+
   const totals = useMemo(() => {
     const vazio = { totalVendido: 0, totalExecutivo: 0, criticos: 0, itensAlerta: 0, totalProdutos: 0, totalComprado: 0, falta: 0, pct: 0 };
     if (!obra) return vazio;
@@ -3518,6 +3781,36 @@ export default function App() {
         if (c.num !== catNum) return c;
         const aplicar = (lista) => (lista || []).map((it, i) => (i === idx ? recalcularCustos({ ...it, ...patch }, patch) : it));
         return { ...c, itensPlanilhaExecutivo: aplicar(c.itensPlanilhaExecutivo), itens: aplicar(c.itens) };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  // Traz a planilha do criativo como ponto de partida do Executivo.
+  //
+  // É o fluxo real: o executivo não começa do zero, começa do que foi
+  // vendido e conferido no depara. Cada item leva junto o valor de
+  // origem (`vendido`), pra que qualquer alteração daqui pra frente
+  // possa ser mostrada ao lado do que veio — sem isso, a equipe altera
+  // sem enxergar o quanto está se afastando do que foi vendido.
+  function puxarDoCriativo() {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        const base = c.itensPlanilha || [];
+        if (base.length === 0) return c;
+        const copia = base.map((it) => ({
+          ...it,
+          origem: "criativo",
+          vendido: {
+            qtd: it.qtdVendida, custoUnitario: it.custoUnitario, custo: it.custo,
+            custoMaterial: it.custoMaterial ?? null, custoMO: it.custoMO ?? null,
+          },
+          tipo: it.tipo || ((it.custoMaterial ?? it.custo ?? 0) > 0 ? "produto" : "servico"),
+          contavel: !it.ehTitulo,
+          liberado: false, comprado: false, valorComprado: null, statusContrato: null,
+        }));
+        return { ...c, itensPlanilhaExecutivo: copia, itens: copia };
       });
       return { ...o, categorias };
     }));
@@ -4032,6 +4325,26 @@ export default function App() {
         .exec-itens th { line-height: 1.25; }
         .exec-itens td.forte { color: var(--ink); font-weight: 600; }
         .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
+        /* Colunas de origem: o que veio do criativo e o quanto mudou */
+        .exec-itens .col-vendido { background: #FAFAF8; }
+        .vend-delta { font-size: 11px; font-weight: 600; flex-shrink: 0; margin-right: 4px; }
+
+        /* CMV liberado — o teto que sai do depara */
+        .cmv-painel { background: var(--panel); border-radius: 14px; padding: 16px 18px; margin-bottom: 18px; }
+        .cmv-topo { display: flex; gap: 28px; flex-wrap: wrap; }
+        .cmv-bloco { min-width: 150px; }
+        .cmv-rotulo { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
+        .cmv-provisorio { font-size: 9.5px; background: var(--amber-bg, #FEF3E2); color: var(--amber, #B7791F); border-radius: 20px; padding: 1px 7px; letter-spacing: 0; text-transform: none; font-weight: 600; }
+        .cmv-valor { font-size: 22px; font-weight: 600; color: var(--ink); margin-top: 4px; }
+        .cmv-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .cmv-grupos { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+        .cmv-grupos-titulo { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+        .cmv-linha { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 11.5px; }
+        .cmv-linha-num { color: var(--ink-3); width: 22px; flex-shrink: 0; }
+        .cmv-linha-nome { color: var(--ink-2); width: 210px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cmv-linha-barra { flex: 1; height: 6px; background: #fff; border-radius: 20px; overflow: hidden; min-width: 40px; }
+        .cmv-linha-barra span { display: block; height: 100%; background: var(--blue); border-radius: 20px; }
+        .cmv-linha-valor { width: 110px; text-align: right; color: var(--ink); flex-shrink: 0; }
 
         /* Cadernos recolhíveis — ocupavam meia tela sempre abertos */
         .cadernos-head { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; text-align: left; padding: 16px 18px; cursor: pointer; }
@@ -4065,6 +4378,18 @@ export default function App() {
         .sugestao-un { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
         .sugestao-desc { flex: 1; min-width: 0; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .sugestao-data { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
+
+        /* Trava de edição — uma obra por vez, uma pessoa por vez */
+        .barra-edicao { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 9px 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 20px; }
+        .barra-edicao.editando { background: #EAF4EC; border-color: var(--green); color: #2C6B3F; }
+        .barra-edicao.travada { background: var(--amber-bg, #FEF3E2); border-color: var(--amber, #E8B04B); color: var(--amber, #B7791F); }
+        .barra-edicao-status { margin-left: auto; font-size: 11px; opacity: 0.75; font-family: 'JetBrains Mono', monospace; }
+        .barra-edicao-nota { margin-left: auto; font-size: 11px; opacity: 0.8; }
+        .btn-habilitar, .btn-finalizar { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 6px 13px; cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0; }
+        .btn-habilitar { margin-left: auto; background: var(--blue); color: #fff; border: 1px solid var(--blue); }
+        .btn-finalizar { background: #fff; color: #2C6B3F; border: 1px solid var(--green); }
+        .btn-habilitar:hover, .btn-finalizar:hover { filter: brightness(1.05); }
+        .btn-finalizar:disabled { opacity: 0.55; cursor: default; }
 
         .caderno-info { flex: 1; min-width: 0; }
         .caderno-nome { font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -4149,6 +4474,10 @@ export default function App() {
           </div>
           <div className="obra-meta">{obra.endereco} · {obra.cliente}</div>
 
+          <BarraEdicao
+            edicao={edicao} salvando={salvando} carregando={carregandoDados}
+            onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
+
           <div className="resumo-label">RESUMO FINANCEIRO</div>
           <div className="resumo-panel">
             <BigCard label="Valor vendido (contrato)" value={fmtCompactBRL(obra.valorVendido)} sub={fmtBRL(obra.valorVendido)} />
@@ -4166,13 +4495,13 @@ export default function App() {
 
           <TabBar tab={tab} onChange={handleTabChange} obra={obra} />
 
-          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} />}
-          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} />}
-          {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} />}
-          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
-          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} podeEditar={edicao.minha} />}
+          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} podeEditar={edicao.minha} />}
+          {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} podeEditar={edicao.minha} />}
+          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} onLiberar={liberarCompras} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} onLiberar={liberarCompras} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}

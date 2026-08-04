@@ -39,46 +39,53 @@ create policy "acesso time (autenticados)" on obra
   using (true)
   with check (true);
 
--- Itens do Executivo/Vendido por obra + o estado do processo
--- (compra e contrato). É o que a tela de upload vai gravar, e o que
--- os módulos leem ao abrir a obra.
-create table if not exists obra_item (
-  id             bigint generated always as identity primary key,
-  obra_codigo    text not null,                 -- ex: "2519"
-  verba_num      text not null,                 -- EAP: "06"
-  verba_nome     text,                          -- "Climatização / Exaustão"
-  item_codigo    text not null,                 -- "6.1"
-  descricao      text,
-  tipo           text check (tipo in ('produto','servico')),
-  ambiente       text,
-  unidade        text,
-  qtd_vendida    numeric,
-  qtd_executivo  numeric,
-  custo          numeric,
-  -- estado do processo (editável pelo time)
-  liberado       boolean default false,
-  lancado_sienge boolean default false,
-  comprado       boolean default false,
-  valor_comprado numeric,
-  status_contrato text,
-  status_escopo  text,
-  -- correspondência com o Sienge
-  sienge_status  text,                          -- 'match' | 'parcial' | 'nao_encontrado'
-  sienge_codigo  text,
-  criado_em      timestamptz default now(),
-  atualizado_em  timestamptz default now(),
-  unique (obra_codigo, item_codigo)
+-- ============================================================
+-- DADOS DA OBRA — o que os uploads produzem
+--
+-- Uma linha por obra, guardando o conteudo em JSON.
+--
+-- Por que JSON e nao uma tabela de itens: o mesmo item existe em TRES
+-- fontes (contrato, planilha, executivo) e e justamente compara-las que
+-- da sentido ao depara. A tabela obra_item antiga tinha
+-- `unique (obra_codigo, item_codigo)`, que impedia isso — uma fonte
+-- sobrescreveria a outra. Alem disso o app ja trabalha com a obra como
+-- um documento aninhado (verbas -> itens), entao gravar e ler nesse
+-- mesmo formato elimina uma camada de traducao e os erros dela.
+--
+-- TRAVA DE EDICAO: duas pessoas na mesma obra sobrescreveriam uma a
+-- outra sem perceber. Quem clica em "Habilitar edicao" fica com a obra;
+-- os demais veem tudo, mas em modo leitura. A trava expira sozinha por
+-- inatividade — sem isso, um navegador fechado travaria a obra pra
+-- sempre.
+-- ============================================================
+create table if not exists obra_dados (
+  obra_codigo       text primary key,
+  categorias        jsonb not null default '[]'::jsonb,   -- verbas + itens das tres fontes
+  cadernos          jsonb not null default '{}'::jsonb,   -- metadados dos PDFs anexados
+  aprovacoes        jsonb not null default '[]'::jsonb,   -- linhas do depara aprovadas na mao
+  depara_aprovado   boolean not null default false,
+  compras_liberadas boolean not null default false,
+  -- trava de edicao
+  editando_por      text,                                 -- e-mail de quem esta editando
+  editando_desde    timestamptz,
+  atualizado_por    text,
+  atualizado_em     timestamptz default now(),
+  criado_em         timestamptz default now()
 );
 
--- Row Level Security: só quem estiver logado acessa (modelo de time).
-alter table obra_item enable row level security;
+alter table obra_dados enable row level security;
 
-drop policy if exists "acesso time (autenticados)" on obra_item;
-create policy "acesso time (autenticados)" on obra_item
+drop policy if exists "acesso time (autenticados)" on obra_dados;
+create policy "acesso time (autenticados)" on obra_dados
   for all
   to authenticated
   using (true)
   with check (true);
+
+-- A antiga obra_item foi substituida por obra_dados (acima). A regra
+-- `unique (obra_codigo, item_codigo)` dela impedia o mesmo item existir
+-- nas tres fontes — que e exatamente o que o depara compara.
+drop table if exists obra_item;
 
 -- Atualiza automaticamente o campo atualizado_em em cada UPDATE.
 create or replace function set_atualizado_em()
@@ -88,14 +95,14 @@ begin
   return new;
 end $$;
 
-drop trigger if exists trg_obra_item_atualizado on obra_item;
-create trigger trg_obra_item_atualizado
-  before update on obra_item
-  for each row execute function set_atualizado_em();
-
 drop trigger if exists trg_obra_atualizado on obra;
 create trigger trg_obra_atualizado
   before update on obra
+  for each row execute function set_atualizado_em();
+
+drop trigger if exists trg_obra_dados_atualizado on obra_dados;
+create trigger trg_obra_dados_atualizado
+  before update on obra_dados
   for each row execute function set_atualizado_em();
 
 -- ============================================================
