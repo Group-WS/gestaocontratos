@@ -1278,37 +1278,79 @@ function juntarItens(categorias, campo) {
   return out;
 }
 
-// A verba usada pra agrupar o resultado na tela. O contrato manda,
-// porque é o documento que fecha com o cliente; sem ele, vale a planilha.
-function verbaDaLinha(a, b) {
-  const fonte = a || b;
-  return { num: fonte?.verbaNum, nome: fonte?.verbaNome };
+// Descobre se a planilha numera as verbas deslocada em relação ao
+// contrato (que segue a EAP).
+//
+// Numa obra real, a planilha estava +1: climatização caiu em "Móveis Sob
+// Medida" e marcenaria em "Serralheria". Não dá pra fixar "+1" no
+// código, porque a próxima planilha pode vir com outro deslocamento ou
+// nenhum — então medimos, usando os itens que já pareamos: neles
+// sabemos a verba dos DOIS lados, e a diferença entre elas é a resposta.
+//
+// Só aplica se a maioria confortável dos pares concordar. Ficando na
+// dúvida, não mexe: verba errada é ruim, verba embaralhada é pior.
+function detectarDeslocamentoVerba(pares) {
+  const difs = new Map();
+  let total = 0;
+  pares.forEach(({ a, b }) => {
+    if (!a || !b) return;
+    const na = Number(a.verbaNum), nb = Number(b.verbaNum);
+    if (!Number.isFinite(na) || !Number.isFinite(nb)) return;
+    total += 1;
+    const d = nb - na;
+    difs.set(d, (difs.get(d) || 0) + 1);
+  });
+  if (total < 4) return 0;
+  let melhor = 0, votos = 0;
+  difs.forEach((qtd, d) => { if (qtd > votos) { votos = qtd; melhor = d; } });
+  return votos / total >= 0.6 ? melhor : 0;
+}
+
+// A verba usada pra agrupar o resultado na tela.
+//
+// O contrato manda, porque segue a EAP. Quando o item só existe na
+// planilha, desfazemos o deslocamento medido antes de acreditar no
+// número dela.
+function verbaDaLinha(a, b, deslocamento = 0, categorias = []) {
+  if (a) return { num: a.verbaNum, nome: a.verbaNome };
+  if (!b) return { num: null, nome: null };
+  if (!deslocamento) return { num: b.verbaNum, nome: b.verbaNome };
+
+  const corrigido = String(Number(b.verbaNum) - deslocamento).padStart(2, "0");
+  const cat = categorias.find((c) => c.num === corrigido);
+  return cat ? { num: cat.num, nome: cat.nome } : { num: b.verbaNum, nome: b.verbaNome };
 }
 
 // cruza a obra inteira (Vendido Contrato × Vendido Planilha)
 function conferirObra(categorias) {
   const contrato = juntarItens(categorias, "itensContrato");
   const planilha = juntarItens(categorias, "itensPlanilha");
-  return cruzarItens(contrato, planilha, (x) => x.qtdVendida, (x) => x.qtdVendida)
+  const cruzado = cruzarItens(contrato, planilha, (x) => x.qtdVendida, (x) => x.qtdVendida);
+  const deslocamento = detectarDeslocamentoVerba(cruzado);
+  const linhas = cruzado
     .map((e) => {
       if (e.status === "somente_um") return { ...e, motivo: e.a && !e.b ? "Item do contrato não encontrado na planilha" : "Item da planilha não encontrado no contrato" };
       if (e.status === "ok") return { ...e, motivo: null };
       return { ...e, motivo: motivoDiferenca(e) };
     })
-    .map(({ a, b, ...rest }) => ({ ...rest, contrato: a, planilha: b }));
+    .map(({ a, b, ...rest }) => ({ ...rest, contrato: a, planilha: b, verba: verbaDaLinha(a, b, deslocamento, categorias) }));
+  return { linhas, deslocamento };
 }
 
 // cruza a obra inteira (Vendido Planilha × Planilha Executivo)
 function conferirExecutivoObra(categorias) {
   const vendido = juntarItens(categorias, "itensPlanilha");
   const executivo = juntarItens(categorias, "itensPlanilhaExecutivo");
-  return cruzarItens(vendido, executivo, (x) => x.qtdVendida, (x) => x.qtdVendida)
+  const cruzado = cruzarItens(vendido, executivo, (x) => x.qtdVendida, (x) => x.qtdVendida);
+  const deslocamento = detectarDeslocamentoVerba(cruzado);
+  const linhas = cruzado
     .map((e) => {
       if (e.status === "somente_um") return { ...e, motivo: e.a && !e.b ? "Está na planilha vendida, mas não na planilha executivo" : "Está na planilha executivo, mas não na planilha vendida" };
       if (e.status === "ok") return { ...e, motivo: null };
       return { ...e, motivo: motivoDiferenca(e) };
     })
-    .map(({ a, b, ...rest }) => ({ ...rest, planilhaVendido: a, planilhaExecutivo: b }));
+    .map(({ a, b, ...rest }) => ({ ...rest, planilhaVendido: a, planilhaExecutivo: b, verba: verbaDaLinha(a, b, deslocamento, categorias) }));
+  return { linhas, deslocamento };
 }
 
 // meta compartilhada pelas duas conferências: OK fica neutro (branco/sem
@@ -1392,7 +1434,7 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   );
 }
 
-function ConferenciaGenerica({ linhas, meta, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB }) {
+function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB }) {
   const [filtro, setFiltro] = useState("todos");
   const [selecionados, setSelecionados] = useState(() => new Set());
   // Guarda só o que a pessoa mandou abrir/fechar na mão. O resto segue
@@ -1505,15 +1547,34 @@ function ConferenciaGenerica({ linhas, meta, colALabel, colBLabel, vazioALabel, 
             </div>
           );
         })}
+
+        {naoAnalisadas.map((c) => (
+          <div key={c.num} className="vend-grupo na">
+            <div className="vend-head na">
+              <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />
+              <span className="vend-num mono">{c.num}</span>
+              <span className="vend-nome">{c.nome}</span>
+              <span className="vend-na-motivo">{VERBAS_NAO_ANALISADAS[c.num]}</span>
+              <span className="vend-pend na">N/A</span>
+            </div>
+          </div>
+        ))}
       </div>
     </>
   );
 }
 
-// Verbas 01 (Arquitetura e Engenharia) e 02 (Serviços Complementares)
-// são padrão/fixas em toda obra — não precisam de depara linha a linha.
-const VERBAS_FORA_DO_DEPARA = ["01", "02"];
-const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !VERBAS_FORA_DO_DEPARA.includes(c.num);
+// Verbas que não entram no depara — cada uma por um motivo próprio, e o
+// motivo aparece na tela. Elas continuam listadas como "N/A": some da
+// conferência é diferente de ficar explícito que não foi analisado.
+const VERBAS_NAO_ANALISADAS = {
+  "01": "Padrão em toda obra — não muda de contrato pra contrato",
+  "02": "Padrão em toda obra — não muda de contrato pra contrato",
+  "07": "Móveis sob medida não são conferidos item a item nesta etapa",
+  "17": "Valor fictício criado na venda pra separar margem — não representa item real",
+};
+const ehVerbaNaoAnalisada = (num) => Object.prototype.hasOwnProperty.call(VERBAS_NAO_ANALISADAS, num);
+const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num);
 
 // DEPARA CONTRATO × PLANILHA — junta as duas fontes numa versão única.
 // Branco = OK, vermelho = diferente entre as duas, amarelo = só existe
@@ -1522,14 +1583,22 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
   const [aprovacoes, setAprovacoes] = useState(() => new Set());
   const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
 
-  const linhasBrutas = useMemo(() => conferirObra(obra.categorias).map((item) => {
-    const verba = verbaDaLinha(item.contrato, item.planilha);
+  const { linhasBrutas, deslocamento } = useMemo(() => {
+    const { linhas, deslocamento } = conferirObra(obra.categorias);
     return {
-      codigo: item.codigo, catNum: verba.num, catNome: verba.nome, status: item.status, motivo: item.motivo,
-      a: item.contrato ? { desc: item.contrato.desc, qtd: item.contrato.qtdVendida, un: item.contrato.un, extra: item.contrato.ambiente, valor: null } : null,
-      b: item.planilha ? { desc: item.planilha.desc, qtd: item.planilha.qtdVendida, un: item.planilha.un, extra: item.planilha.marca, valor: item.planilha.custo } : null,
+      deslocamento,
+      linhasBrutas: linhas.map((item) => ({
+        codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome, status: item.status, motivo: item.motivo,
+        a: item.contrato ? { desc: item.contrato.desc, qtd: item.contrato.qtdVendida, un: item.contrato.un, extra: item.contrato.ambiente, valor: null } : null,
+        b: item.planilha ? { desc: item.planilha.desc, qtd: item.planilha.qtdVendida, un: item.planilha.un, extra: item.planilha.marca, valor: item.planilha.custo } : null,
+      })),
     };
-  }), [obra]);
+  }, [obra]);
+
+  const naoAnalisadas = useMemo(
+    () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num)),
+    [obra]
+  );
 
   // linha aprovada manualmente entra de vez no bucket "OK — bate"
   // (o motivo/badge "Aprovado" continua aparecendo pra diferenciar de
@@ -1559,7 +1628,13 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
           <div className="import-info"><Lock size={14} /><span>Aprove cada linha vermelha/amarela (o valor final vira o que está na <b>Planilha</b>) — quando não sobrar pendência, libera o Executivo.</span></div>
         </div>
       )}
-      <ConferenciaGenerica linhas={linhas} meta={DEPARA_META}
+      {deslocamento !== 0 && (
+        <div className="aviso-deslocamento">
+          A planilha numera as verbas <b>{deslocamento > 0 ? `${deslocamento} à frente` : `${-deslocamento} atrás`}</b> do contrato —
+          os itens que só existem na planilha foram reposicionados na verba correta da EAP.
+        </div>
+      )}
+      <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={DEPARA_META}
         colALabel="Contrato" colBLabel="Planilha"
         vazioALabel="não está no contrato" vazioBLabel="não está na planilha"
         vazioTitulo="Nada pra conferir ainda" vazioSub=""
@@ -1584,21 +1659,23 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo }) {
   const [aprovacoes, setAprovacoes] = useState(() => new Set());
   const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
 
-  const linhasBrutas = useMemo(() => conferirExecutivoObra(obra.categorias).map((item) => {
-    const verba = verbaDaLinha(item.planilhaVendido, item.planilhaExecutivo);
-    return {
-      codigo: item.codigo, catNum: verba.num, catNome: verba.nome, status: item.status, motivo: item.motivo,
-      a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
-      b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
-    };
-  }), [obra]);
+  const linhasBrutas = useMemo(() => conferirExecutivoObra(obra.categorias).linhas.map((item) => ({
+    codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome, status: item.status, motivo: item.motivo,
+    a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
+    b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
+  })), [obra]);
+
+  const naoAnalisadas = useMemo(
+    () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num)),
+    [obra]
+  );
 
   const linhas = useMemo(() => linhasBrutas.map((l) => (
     aprovacoes.has(`${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
   )), [linhasBrutas, aprovacoes]);
 
   return (
-    <ConferenciaGenerica linhas={linhas} meta={DEPARA_META}
+    <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={DEPARA_META}
       colALabel="Planilha (vendido)" colBLabel="Planilha (executivo)"
       vazioALabel="não está na planilha vendida" vazioBLabel="não está na planilha executivo"
       vazioTitulo="Nada pra conferir ainda"
@@ -2995,6 +3072,13 @@ export default function App() {
            naquela verba — é a informação que decide se vale abrir. */
         .vend-pend { font-size: 11.5px; font-weight: 600; color: var(--amber); width: 130px; text-align: right; flex-shrink: 0; }
         .vend-pend.ok { color: var(--green); font-weight: 500; }
+        /* Verba fora da conferência: aparece apagada, mas aparece — some
+           da tela é diferente de dizer que não foi analisada. */
+        .vend-pend.na { color: var(--ink-3); font-weight: 600; letter-spacing: 0.04em; }
+        .vend-grupo.na { opacity: 0.72; }
+        .vend-head.na { cursor: default; }
+        .vend-na-motivo { font-size: 11px; color: var(--ink-3); flex: 1; text-align: right; padding-right: 10px; }
+        .aviso-deslocamento { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 13px; font-size: 12px; color: var(--ink-2); margin-bottom: 14px; }
         .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); }
         .vend-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
         .vend-itens td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--ink); vertical-align: top; }
