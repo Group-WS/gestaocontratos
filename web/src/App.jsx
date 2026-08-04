@@ -1046,7 +1046,7 @@ function tokensCasam(a, b) {
 //
 // Número solto NÃO conta: "Suíte 02" e "Cod. 4473" são lugar e código,
 // não especificação.
-const RE_MEDIDA = /(\d+(?:[.,]\d+)?)\s*(w|k|v|va|mm|cm|m|lm|ip)(?![a-z0-9])/gi;
+const RE_MEDIDA = /(\d+(?:[.,]\d+)?)\s*(btu|w|kg|k|va|v|mm|cm|m|lm|ip|hz|pol)(?![a-z0-9])/gi;
 
 function medidas(s) {
   const mapa = new Map(); // unidade -> Set de valores
@@ -1104,16 +1104,25 @@ const LIMIAR_OK = 0.6;                  // acima disso, considera a mesma descri
 // A primeira pergunta que uma pessoa faz não é "quantas palavras batem",
 // é "isso é sequer a mesma coisa?". Tapete e espelho morrem aí, por mais
 // parecido que seja o resto da linha (ambos têm medida, ambiente,
-// fornecedor). A palavra que responde isso é a primeira significativa —
-// o tipo do produto.
+// fornecedor).
 //
-// Basta o tipo de UM lado aparecer no outro, em qualquer posição: assim
-// "Pendente Snello" ainda casa com "Luminária Pendente Snello", onde a
-// planilha põe a categoria na frente.
+// Nestes documentos, o que o item É está nas primeiras palavras; o resto
+// qualifica. "Torneira Lóggica Cromado" é uma torneira. "Bancada Com
+// Recorte Para Cuba" é uma bancada — não uma cuba, mesmo citando cuba.
+// Por isso o tipo só vale quando aparece no COMEÇO do outro lado: aceitar
+// em qualquer posição fazia torneira parear com bancada de granito, só
+// porque a bancada menciona o furo para torneira.
+//
+// Duas palavras de folga (e não uma) porque a planilha às vezes põe a
+// categoria na frente: "Luminária Pendente Snello" ainda casa com
+// "Pendente Snello".
+const PALAVRAS_DE_CABECA = 2;
+
 function mesmoTipo(wa, wb) {
   if (!wa.length || !wb.length) return false;
-  const apareceEm = (palavra, lista) => lista.some((x) => tokensCasam(palavra, x) > 0);
-  return apareceEm(wa[0], wb) || apareceEm(wb[0], wa);
+  const comeco = (lista) => lista.slice(0, PALAVRAS_DE_CABECA);
+  const apareceNoComeco = (palavra, lista) => comeco(lista).some((x) => tokensCasam(palavra, x) > 0);
+  return apareceNoComeco(wa[0], wb) || apareceNoComeco(wb[0], wa);
 }
 
 // Semelhança entre duas descrições, com as palavras pesadas. Combina
@@ -1194,9 +1203,24 @@ function cruzarItens(itensA, itensB, qtdA, qtdB) {
   const listaB = itensB || [];
   const peso = construirPeso(listaA, listaB);
 
+  // Comparar todo mundo com todo mundo numa obra grande seria centenas
+  // de milhares de contas e travaria a tela. Mas dois itens sem NENHUMA
+  // palavra em comum nunca vão parear (similaridade exige tipo em
+  // comum), então basta olhar os que dividem ao menos uma palavra.
+  const indice = new Map();
+  listaB.forEach((it, j) => {
+    new Set(tokenizar(it.desc)).forEach((w) => {
+      if (!indice.has(w)) indice.set(w, []);
+      indice.get(w).push(j);
+    });
+  });
+
   const candidatos = [];
   listaA.forEach((ia, i) => {
-    listaB.forEach((ib, j) => {
+    const possiveis = new Set();
+    new Set(tokenizar(ia.desc)).forEach((w) => (indice.get(w) || []).forEach((j) => possiveis.add(j)));
+    possiveis.forEach((j) => {
+      const ib = listaB[j];
       const sim = similaridade(ia.desc, ib.desc, peso);
       if (sim < LIMIAR_PAREAR) return;
       const mesmoCodigo = normCodigo(ia.codigo) && normCodigo(ia.codigo) === normCodigo(ib.codigo);
@@ -1237,9 +1261,35 @@ function motivoDiferenca(e) {
   return "Quantidade e descrição divergem";
 }
 
-// cruza os itens de uma verba (Vendido Contrato × Vendido Planilha)
-function conferirVerba(c) {
-  return cruzarItens(c.itensContrato, c.itensPlanilha, (x) => x.qtdVendida, (x) => x.qtdVendida)
+// Junta os itens de todas as verbas numa lista só, carimbando de onde
+// cada um veio.
+//
+// Por que a obra inteira e não verba a verba: a numeração da verba muda
+// de um documento pro outro, igual ao código do item. O mesmo
+// ar-condicionado aparece como 06.6.2 no contrato e 07.7.2 na planilha —
+// comparando verba contra verba eles nunca se encontram, e os dois
+// aparecem como "só existe num lado". Quem confere na mão mapeia pelo
+// significado ("climatização é climatização"), não pelo número.
+function juntarItens(categorias, campo) {
+  const out = [];
+  (categorias || []).filter(naoEhVerbaPadrao).forEach((c) => {
+    (c[campo] || []).forEach((it) => out.push({ ...it, verbaNum: c.num, verbaNome: c.nome }));
+  });
+  return out;
+}
+
+// A verba usada pra agrupar o resultado na tela. O contrato manda,
+// porque é o documento que fecha com o cliente; sem ele, vale a planilha.
+function verbaDaLinha(a, b) {
+  const fonte = a || b;
+  return { num: fonte?.verbaNum, nome: fonte?.verbaNome };
+}
+
+// cruza a obra inteira (Vendido Contrato × Vendido Planilha)
+function conferirObra(categorias) {
+  const contrato = juntarItens(categorias, "itensContrato");
+  const planilha = juntarItens(categorias, "itensPlanilha");
+  return cruzarItens(contrato, planilha, (x) => x.qtdVendida, (x) => x.qtdVendida)
     .map((e) => {
       if (e.status === "somente_um") return { ...e, motivo: e.a && !e.b ? "Item do contrato não encontrado na planilha" : "Item da planilha não encontrado no contrato" };
       if (e.status === "ok") return { ...e, motivo: null };
@@ -1248,9 +1298,11 @@ function conferirVerba(c) {
     .map(({ a, b, ...rest }) => ({ ...rest, contrato: a, planilha: b }));
 }
 
-// cruza os itens de uma verba (Vendido Planilha × Planilha Executivo)
-function conferirExecutivoVerba(c) {
-  return cruzarItens(c.itensPlanilha, c.itensPlanilhaExecutivo, (x) => x.qtdVendida, (x) => x.qtdVendida)
+// cruza a obra inteira (Vendido Planilha × Planilha Executivo)
+function conferirExecutivoObra(categorias) {
+  const vendido = juntarItens(categorias, "itensPlanilha");
+  const executivo = juntarItens(categorias, "itensPlanilhaExecutivo");
+  return cruzarItens(vendido, executivo, (x) => x.qtdVendida, (x) => x.qtdVendida)
     .map((e) => {
       if (e.status === "somente_um") return { ...e, motivo: e.a && !e.b ? "Está na planilha vendida, mas não na planilha executivo" : "Está na planilha executivo, mas não na planilha vendida" };
       if (e.status === "ok") return { ...e, motivo: null };
@@ -1343,6 +1395,11 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
 function ConferenciaGenerica({ linhas, meta, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB }) {
   const [filtro, setFiltro] = useState("todos");
   const [selecionados, setSelecionados] = useState(() => new Set());
+  // Guarda só o que a pessoa mandou abrir/fechar na mão. O resto segue
+  // o padrão: verba com pendência abre, verba resolvida fica recolhida —
+  // quem confere quer cair direto no que falta olhar, não rolar por
+  // dezenas de linhas já conferidas.
+  const [manual, setManual] = useState(() => new Map());
 
   if (linhas.length === 0) {
     return (
@@ -1358,6 +1415,18 @@ function ConferenciaGenerica({ linhas, meta, colALabel, colBLabel, vazioALabel, 
   const visiveis = filtro === "todos" ? linhas : linhas.filter((l) => l.status === filtro);
   const chave = (l) => `${l.catNum}:${l.codigo}`;
   const pendentesVisiveis = visiveis.filter((l) => l.status !== "ok");
+
+  // Agrupa por verba, na ordem em que as verbas aparecem — é assim que
+  // a conferência acontece na prática: abre a verba, olha o que o
+  // contrato diz e o que a planilha diz, decide, passa pra próxima.
+  const porVerba = new Map();
+  visiveis.forEach((l) => {
+    if (!porVerba.has(l.catNum)) porVerba.set(l.catNum, { num: l.catNum, nome: l.catNome, itens: [] });
+    porVerba.get(l.catNum).itens.push(l);
+  });
+  const grupos = Array.from(porVerba.values());
+  const estaAberto = (g) => (manual.has(g.num) ? manual.get(g.num) : g.itens.some((l) => l.status !== "ok"));
+  const toggle = (g) => setManual((p) => new Map(p).set(g.num, !estaAberto(g)));
 
   const toggleSel = (k) => setSelecionados((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const selecionarTodasPendentes = () => setSelecionados(new Set(pendentesVisiveis.map(chave)));
@@ -1400,18 +1469,40 @@ function ConferenciaGenerica({ linhas, meta, colALabel, colBLabel, vazioALabel, 
         </div>
       )}
 
-      <div className="compras-list">
-        {visiveis.map((l, i) => {
-          const k = chave(l);
+      <div className="vend-list">
+        {grupos.map((g) => {
+          const { num, nome, itens } = g;
+          const aberto = estaAberto(g);
+          const pend = itens.filter((l) => l.status !== "ok").length;
           return (
-            <ConfRow key={`${l.codigo}-${i}`} l={l} m={meta[l.status]}
-              colALabel={colALabel} colBLabel={colBLabel} vazioALabel={vazioALabel} vazioBLabel={vazioBLabel}
-              aprovado={aprovacoes ? aprovacoes.has(k) : false}
-              onAprovar={() => onAprovarLinha && onAprovarLinha(l.catNum, l.codigo)}
-              onEditar={(patch) => onEditarB && onEditarB(l.catNum, l.codigo, patch)}
-              selecionavel={l.status !== "ok" && !!onAprovarLinha}
-              selecionado={selecionados.has(k)}
-              onToggleSelecionar={() => toggleSel(k)} />
+            <div key={num} className="vend-grupo">
+              <button className="vend-head" onClick={() => toggle(g)}>
+                {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
+                <span className="vend-num mono">{num}</span>
+                <span className="vend-nome">{nome}</span>
+                <span className="vend-count">{itens.length} {itens.length === 1 ? "linha" : "linhas"}</span>
+                <span className={`vend-pend ${pend === 0 ? "ok" : ""}`}>
+                  {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
+                </span>
+              </button>
+              {aberto && (
+                <div className="compras-list">
+                  {itens.map((l, i) => {
+                    const k = chave(l);
+                    return (
+                      <ConfRow key={`${l.codigo}-${i}`} l={l} m={meta[l.status]}
+                        colALabel={colALabel} colBLabel={colBLabel} vazioALabel={vazioALabel} vazioBLabel={vazioBLabel}
+                        aprovado={aprovacoes ? aprovacoes.has(k) : false}
+                        onAprovar={() => onAprovarLinha && onAprovarLinha(l.catNum, l.codigo)}
+                        onEditar={(patch) => onEditarB && onEditarB(l.catNum, l.codigo, patch)}
+                        selecionavel={l.status !== "ok" && !!onAprovarLinha}
+                        selecionado={selecionados.has(k)}
+                        onToggleSelecionar={() => toggleSel(k)} />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -1431,17 +1522,14 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
   const [aprovacoes, setAprovacoes] = useState(() => new Set());
   const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
 
-  const linhasBrutas = useMemo(() => {
-    const out = [];
-    obra.categorias.filter(naoEhVerbaPadrao).forEach((c) => {
-      conferirVerba(c).forEach((item) => out.push({
-        codigo: item.codigo, catNum: c.num, catNome: c.nome, status: item.status, motivo: item.motivo,
-        a: item.contrato ? { desc: item.contrato.desc, qtd: item.contrato.qtdVendida, un: item.contrato.un, extra: item.contrato.ambiente, valor: null } : null,
-        b: item.planilha ? { desc: item.planilha.desc, qtd: item.planilha.qtdVendida, un: item.planilha.un, extra: item.planilha.marca, valor: item.planilha.custo } : null,
-      }));
-    });
-    return out;
-  }, [obra]);
+  const linhasBrutas = useMemo(() => conferirObra(obra.categorias).map((item) => {
+    const verba = verbaDaLinha(item.contrato, item.planilha);
+    return {
+      codigo: item.codigo, catNum: verba.num, catNome: verba.nome, status: item.status, motivo: item.motivo,
+      a: item.contrato ? { desc: item.contrato.desc, qtd: item.contrato.qtdVendida, un: item.contrato.un, extra: item.contrato.ambiente, valor: null } : null,
+      b: item.planilha ? { desc: item.planilha.desc, qtd: item.planilha.qtdVendida, un: item.planilha.un, extra: item.planilha.marca, valor: item.planilha.custo } : null,
+    };
+  }), [obra]);
 
   // linha aprovada manualmente entra de vez no bucket "OK — bate"
   // (o motivo/badge "Aprovado" continua aparecendo pra diferenciar de
@@ -1496,17 +1584,14 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo }) {
   const [aprovacoes, setAprovacoes] = useState(() => new Set());
   const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
 
-  const linhasBrutas = useMemo(() => {
-    const out = [];
-    obra.categorias.filter(naoEhVerbaPadrao).forEach((c) => {
-      conferirExecutivoVerba(c).forEach((item) => out.push({
-        codigo: item.codigo, catNum: c.num, catNome: c.nome, status: item.status, motivo: item.motivo,
-        a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
-        b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
-      }));
-    });
-    return out;
-  }, [obra]);
+  const linhasBrutas = useMemo(() => conferirExecutivoObra(obra.categorias).map((item) => {
+    const verba = verbaDaLinha(item.planilhaVendido, item.planilhaExecutivo);
+    return {
+      codigo: item.codigo, catNum: verba.num, catNome: verba.nome, status: item.status, motivo: item.motivo,
+      a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
+      b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
+    };
+  }), [obra]);
 
   const linhas = useMemo(() => linhasBrutas.map((l) => (
     aprovacoes.has(`${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
@@ -2906,6 +2991,10 @@ export default function App() {
         .vend-nome { font-size: 13px; color: var(--ink); font-weight: 600; flex: 1; min-width: 0; }
         .vend-count { font-size: 11px; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         .vend-val { font-size: 13px; color: var(--ink); width: 130px; text-align: right; flex-shrink: 0; }
+        /* No depara, o lugar do valor mostra o que ainda falta conferir
+           naquela verba — é a informação que decide se vale abrir. */
+        .vend-pend { font-size: 11.5px; font-weight: 600; color: var(--amber); width: 130px; text-align: right; flex-shrink: 0; }
+        .vend-pend.ok { color: var(--green); font-weight: 500; }
         .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); }
         .vend-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
         .vend-itens td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--ink); vertical-align: top; }
