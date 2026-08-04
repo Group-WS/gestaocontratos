@@ -551,4 +551,8 @@ app.post("/api/executivo/parse", express.raw({ type: "*/*", limit: "30mb" }), as
   }
 });
 
+// O banco de preços (relatório do Sienge) NÃO passa por aqui: o arquivo
+// tem ~19 MB e a Vercel corta requisições acima de 4,5 MB. Ele é lido
+// direto no navegador (web/src/App.jsx), sem envio e sem limite.
+
 module.exports = app;

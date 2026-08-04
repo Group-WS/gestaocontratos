@@ -8,6 +8,7 @@ import {
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
+import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
 import { supabaseConfigurado } from "./lib/supabase";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
@@ -787,6 +788,21 @@ function recalcularCustos(item, patch) {
   const mexeu = (campo) => Object.prototype.hasOwnProperty.call(patch, campo);
   const it = { ...item };
   const qtd = it.qtdVendida;
+
+  // Registra que o executivo mexeu neste item — é o que a planilha
+  // marcava de amarelo na mão. Guardamos o valor ORIGINAL do que veio do
+  // arquivo, pra poder mostrar de onde saiu e pra onde foi.
+  it.alteradoExecutivo = true;
+  it.original = it.original || {
+    qtdVendida: item.qtdVendida, custoMaterial: item.custoMaterial,
+    custoMO: item.custoMO, totalMaterial: item.totalMaterial,
+    totalMO: item.totalMO, custo: item.custo,
+  };
+  // Mexeu na quantidade e não tocou no preço? É o caso que a Priscila
+  // apontou: "o executivo altera e não recalcula preço".
+  const mexeuEmValor = mexeu("custoMaterial") || mexeu("custoMO") || mexeu("totalMaterial") || mexeu("totalMO") || mexeu("custo");
+  if (mexeu("qtdVendida") && !mexeuEmValor) it.precoNaoRevisado = true;
+  if (mexeuEmValor) it.precoNaoRevisado = false;
 
   if (mexeu("custoMaterial") || mexeu("qtdVendida")) {
     if (it.custoMaterial != null && qtd) it.totalMaterial = it.custoMaterial * qtd;
@@ -2001,6 +2017,58 @@ function FaseBloqueada({ onIrParaDepara }) {
 
 // CADERNO DE ESPECIFICAÇÃO — só upload + download, sem leitura/parse.
 // É o PDF com tudo que foi aprovado de produto com o cliente.
+// Sugestões de preço vindas do banco do Sienge — o que foi realmente
+// pago em compras parecidas.
+//
+// Mostra e deixa a pessoa escolher; não preenche sozinho de propósito.
+// A mesma descrição pode aparecer com preços bem diferentes, e ver a
+// faixa é justamente o que revela quando um deles está fora da curva.
+function SugestoesPreco({ descricao, onUsar }) {
+  const [abertas, setAbertas] = useState(false);
+  const [lista, setLista] = useState(null);
+  const [erro, setErro] = useState(null);
+
+  async function buscar() {
+    setAbertas(true);
+    if (lista) return;
+    try {
+      setLista(await sugerirPrecos(descricao));
+    } catch (e) {
+      setErro(e.message || String(e));
+    }
+  }
+
+  if (!abertas) {
+    return (
+      <button className="btn-sugestao" onClick={buscar}>
+        <PackageSearch size={11} /> ver preços de referência
+      </button>
+    );
+  }
+
+  return (
+    <div className="sugestoes">
+      <div className="sugestoes-titulo">
+        Últimas compras parecidas
+        <button className="clear-btn" onClick={() => setAbertas(false)}><X size={11} /></button>
+      </div>
+      {erro && <div className="sugestoes-vazio">{erro}</div>}
+      {!erro && lista === null && <div className="sugestoes-vazio">Buscando…</div>}
+      {!erro && lista && lista.length === 0 && (
+        <div className="sugestoes-vazio">Nada parecido no banco de preços.</div>
+      )}
+      {!erro && lista && lista.map((p, i) => (
+        <button key={i} className="sugestao-linha" onClick={() => onUsar(p.custo_unitario)}>
+          <span className="mono sugestao-preco">{fmtBRL(p.custo_unitario)}</span>
+          <span className="sugestao-un">/{p.unidade || "un"}</span>
+          <span className="sugestao-desc">{p.descricao}</span>
+          <span className="mono sugestao-data">{p.data_ref ? p.data_ref.split("-").reverse().join("/") : ""}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Célula que vira campo ao clicar. O que veio da planilha pode ser
 // corrigido aqui, e o que faltou pode ser lançado na mão — nem tudo
 // chega pronto do arquivo (na planilha real, lâmpadas e fontes vêm com
@@ -2194,9 +2262,17 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                       {itens.map((it, i) => {
                         const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
                         return (
-                          <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
+                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.alteradoExecutivo ? "linha-alterada" : ""}`}>
                             <td className="mono dim">{it.codigo || "—"}</td>
-                            <td>{it.desc}{it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}</td>
+                            <td>
+                              {it.desc}
+                              {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
+                              {it.alteradoExecutivo && <span className="tag-alterado" title="Valor alterado aqui, não veio assim do arquivo">alterado no executivo</span>}
+                              {it.precoNaoRevisado && <span className="tag-preco"><AlertTriangle size={10} /> preço não revisado</span>}
+                              {it.precoNaoRevisado && !obra.comprasLiberadas && (
+                                <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
+                              )}
+                            </td>
                             <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={obra.comprasLiberadas} onSalvar={editar("qtdVendida")} /></td>
                             <td className="mono center dim">{it.un || "—"}</td>
                             <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={obra.comprasLiberadas} onSalvar={editar("custoMaterial")} /></td>
@@ -2345,7 +2421,10 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             <div className="nav-item-text"><div className="nav-item-name">Arquivo</div><div className="nav-item-sub">obras concluídas</div></div>
             {arquivoCount > 0 && <span className="nav-count">{arquivoCount}</span>}
           </button>
-          <button className="nav-item disabled static"><PackageSearch size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">Insumos Sienge</div><div className="nav-item-sub">todas as obras</div></div><span className="soon">em breve</span></button>
+          <button className={`nav-item ${modulo === "precos" ? "active" : ""}`} onClick={() => onModulo("precos")}>
+            <PackageSearch size={16} className="nav-icon" />
+            <div className="nav-item-text"><div className="nav-item-name">Banco de Preços</div><div className="nav-item-sub">insumos do Sienge</div></div>
+          </button>
         </div>
       </div>
 
@@ -2830,6 +2909,271 @@ function AContratarView({ obras }) {
 
       <AContratarBloco titulo="Mão de obra a contratar" Icone={FileText} grupos={servicos} total={totServ} cor="var(--blue)" />
       <AContratarBloco titulo="Produtos a comprar" Icone={ShoppingCart} grupos={produtos} total={totProd} cor="var(--green)" />
+    </>
+  );
+}
+
+/* ============================================================
+   BANCO DE PREÇOS POR INSUMO
+   O que foi realmente pago, vindo do relatório de pedidos do Sienge.
+   ============================================================ */
+
+// O relatório do Sienge é lido NO NAVEGADOR, não no servidor.
+//
+// Motivo: a Vercel corta requisições acima de 4,5 MB, e esse relatório
+// tem 19 MB — ele nunca chegaria lá. Lendo aqui não há envio, não há
+// limite de tamanho nem de tempo, e o arquivo não sai da máquina.
+//
+// A biblioteca de PDF é pesada e só serve pra isso, então entra por
+// import dinâmico: quem nunca abre o Banco de Preços não paga por ela.
+async function extrairTextoPDF(file, onProgresso) {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const partes = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const pagina = await doc.getPage(p);
+    const conteudo = await pagina.getTextContent();
+    partes.push(conteudo.items.map((i) => i.str).join("\n"));
+    if (onProgresso && p % 50 === 0) onProgresso(p, doc.numPages);
+  }
+  return partes.join("\n");
+}
+
+async function lerSiengePDF(file, onProgresso) {
+  const texto = await extrairTextoPDF(file, onProgresso);
+  return parseSiengeTexto(texto);
+}
+
+// Mesma lógica do backend, aqui no navegador. Guarda a compra mais
+// RECENTE de cada (código + descrição + unidade): o relatório é
+// histórico, então a mesma coisa aparece dezenas de vezes.
+//
+// Duas regras que decidem a qualidade do resultado:
+//  - linhas em "vb" saem fora: é valor fechado de serviço, não preço
+//    unitário ("TRANSPORTE /vb" ia de R$ 1 a R$ 12.605)
+//  - a chave inclui a DESCRIÇÃO, não só o código: no Sienge o código é
+//    caixa genérica ("DECORATIVOS OBRAS" cobre R$ 15 a R$ 3.845)
+function parseSiengeTexto(texto) {
+  const linhas = texto.split("\n").map((s) => s.trim());
+  const paraISO = (br) => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(br || "");
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+  };
+
+  let data = null;
+  let fornecedor = null;
+  const mapa = new Map();
+  let descartadosVb = 0;
+
+  for (let i = 0; i < linhas.length; i++) {
+    if (linhas[i] === "Data" && paraISO(linhas[i + 1])) data = paraISO(linhas[i + 1]);
+    if (linhas[i] === "Fornecedor") fornecedor = linhas[i + 1] || null;
+
+    const m = /^(\d{1,6})\s*-\s*(.+)$/.exec(linhas[i]);
+    if (!m) continue;
+
+    const qtd = linhas[i + 1];
+    const unidade = (linhas[i + 2] || "").toLowerCase().trim();
+    const bruto = linhas[i + 3];
+    if (!/^[\d.,]+$/.test(qtd || "") || !/^[\d.,]+$/.test(bruto || "")) continue;
+    const preco = parseBRL(bruto);
+    if (!(preco > 0)) continue;
+    if (unidade === "vb") { descartadosVb += 1; continue; }
+
+    const descricao = m[2].replace(/\s+/g, " ").trim();
+    const chave = `${m[1]}|${descricao}|${unidade}`;
+    const atual = mapa.get(chave);
+    if (!atual || (data && data > atual.dataRef)) {
+      mapa.set(chave, { codigo: m[1], descricao, unidade, custoUnitario: preco, dataRef: data, fornecedor });
+    }
+  }
+
+  return { precos: Array.from(mapa.values()).filter((p) => p.dataRef), descartadosVb };
+}
+
+// Versão Excel/CSV do mesmo relatório: lê por cabeçalho, igual às outras
+// planilhas, e aplica as mesmas regras (fora "vb", mais recente ganha).
+async function lerSiengeExcel(file) {
+  let linhas;
+  if (/\.(xlsx|xlsm|xlsb|xls)$/i.test(file.name)) {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+    linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
+  } else {
+    linhas = parseCSVLinhas(await lerTextoComAcento(file));
+  }
+
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(linhas.length, 40); i++) {
+    const row = (linhas[i] || []).map((c) => String(c || "").toLowerCase());
+    if (row.some((h) => /insumo|descri/.test(h)) && row.some((h) => /pre[çc]o|valor|custo/.test(h))) { headerIdx = i; break; }
+  }
+  if (headerIdx === -1) throw new Error("Não encontrei as colunas de Insumo e Preço nessa planilha.");
+
+  const header = linhas[headerIdx];
+  const usadas = new Set();
+  const reservar = (p) => { const i = acharColuna(header, p, usadas); if (i >= 0) usadas.add(i); return i; };
+  const iCod = reservar([/^c[oó]d/, /^insumo$/]);
+  const iDesc = reservar([/descri/, /insumo/]);
+  const iUn = reservar([/^un\b/, /unidade/]);
+  const iPreco = reservar([/pre[çc]o unit/, /custo unit/, /^pre[çc]o$/, /valor unit/, /^custo$/]);
+  const iData = reservar([/data/, /dt\./, /refer/]);
+  const iForn = reservar([/fornecedor/, /marca/]);
+
+  const mapa = new Map();
+  for (let i = headerIdx + 1; i < linhas.length; i++) {
+    const row = linhas[i];
+    if (!row) continue;
+    const descricao = String(row[iDesc] ?? "").replace(/\s+/g, " ").trim();
+    const preco = parseBRL(row[iPreco]);
+    if (!descricao || !(preco > 0)) continue;
+    const unidade = String(row[iUn] ?? "").toLowerCase().trim();
+    if (unidade === "vb") continue; // valor fechado, não é preço unitário
+
+    const dataRef = normalizarData(row[iData]);
+    if (!dataRef) continue;
+    const codigo = String(row[iCod] ?? "").trim() || "—";
+    const chave = `${codigo}|${descricao}|${unidade}`;
+    const atual = mapa.get(chave);
+    if (!atual || dataRef > atual.dataRef) {
+      mapa.set(chave, { codigo, descricao, unidade, custoUnitario: preco, dataRef, fornecedor: iForn >= 0 ? String(row[iForn] ?? "").trim() || null : null });
+    }
+  }
+  return { precos: Array.from(mapa.values()) };
+}
+
+// aceita Date (do Excel) ou texto "dd/mm/aaaa" e devolve "aaaa-mm-dd"
+function normalizarData(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(v).trim());
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v).trim());
+  return iso ? iso[0] : null;
+}
+
+function BancoPrecosView() {
+  const [busca, setBusca] = useState("");
+  const [precos, setPrecos] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [importando, setImportando] = useState(null);
+  const inputRef = useRef(null);
+
+  async function recarregar(termo = busca) {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const [lista, qtd] = await Promise.all([listarPrecos({ busca: termo }), contarPrecos()]);
+      setPrecos(lista);
+      setTotal(qtd);
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { recarregar(""); }, []);
+
+  // espera a digitação parar antes de consultar o banco
+  useEffect(() => {
+    const t = setTimeout(() => recarregar(busca), 350);
+    return () => clearTimeout(t);
+  }, [busca]);
+
+  async function aoEscolher(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setErro(null);
+    setImportando("Lendo o arquivo…");
+    try {
+      const ehPDF = /\.pdf$/i.test(file.name);
+      const { precos: lidos, descartadosVb } = ehPDF
+        ? await lerSiengePDF(file, (p, t) => setImportando(`Lendo página ${p} de ${t}…`))
+        : await lerSiengeExcel(file);
+      if (!lidos || lidos.length === 0) throw new Error("Não encontrei preços nesse arquivo.");
+      await salvarPrecos(lidos, (feitas, tot) => setImportando(`Gravando ${feitas} de ${tot}…`));
+      setImportando(null);
+      await recarregar();
+      setErro(null);
+      alert(`${lidos.length} insumos importados.${descartadosVb ? ` ${descartadosVb} linhas em "vb" foram ignoradas — valor fechado não serve de preço unitário.` : ""}`);
+    } catch (err) {
+      setImportando(null);
+      setErro(err.message || String(err));
+    }
+  }
+
+  return (
+    <>
+      <div className="import-card">
+        <div className="import-bar">
+          <div className="import-info">
+            <Upload size={14} />
+            <span>Suba o <b>Relação de Pedidos de Compra</b> do Sienge (PDF ou Excel). É o preço realmente pago; linhas em <b>vb</b> são ignoradas, porque valor fechado não serve de referência unitária.</span>
+          </div>
+          <button className="btn-import" disabled={!!importando} onClick={() => inputRef.current && inputRef.current.click()}>
+            <Upload size={13} /> {importando || "Importar do Sienge"}
+          </button>
+          <input ref={inputRef} type="file" accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv" style={{ display: "none" }} onChange={aoEscolher} />
+        </div>
+        {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
+      </div>
+
+      <div className="flat-panel">
+        <div className="flat-panel-header">
+          <div>
+            <div className="flat-panel-title">Preços por insumo{total > 0 && ` — ${total.toLocaleString("pt-BR")} cadastrados`}</div>
+            <div className="flat-panel-sub">Última compra de cada insumo. Reimportar atualiza os preços sem duplicar.</div>
+          </div>
+        </div>
+
+        <div style={{ padding: "0 16px 12px" }}>
+          <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
+            <Search size={13} className="dim" />
+            <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+            {busca && <button className="clear-btn" onClick={() => setBusca("")}><X size={12} /></button>}
+          </div>
+        </div>
+
+        {carregando ? (
+          <div className="empty-note">Carregando…</div>
+        ) : precos.length === 0 ? (
+          <div className="empty-note">
+            {total === 0
+              ? "Nenhum preço cadastrado ainda — importe o relatório do Sienge acima."
+              : "Nenhum insumo encontrado com esse termo."}
+          </div>
+        ) : (
+          <table className="vend-itens">
+            <thead>
+              <tr>
+                <th style={{ width: 70 }}>Código</th>
+                <th>Descrição</th>
+                <th style={{ width: 52 }} className="center">Un.</th>
+                <th style={{ width: 110 }} className="right">Custo unit.</th>
+                <th style={{ width: 92 }} className="center">Data ref.</th>
+                <th style={{ width: 170 }}>Fornecedor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {precos.map((p, i) => (
+                <tr key={`${p.codigo}-${i}`}>
+                  <td className="mono dim">{p.codigo}</td>
+                  <td>{p.descricao}</td>
+                  <td className="mono center dim">{p.unidade || "—"}</td>
+                  <td className="mono right forte">{fmtBRL(p.custo_unitario)}</td>
+                  <td className="mono center dim">{p.data_ref ? p.data_ref.split("-").reverse().join("/") : "—"}</td>
+                  <td className="dim">{p.fornecedor || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </>
   );
 }
@@ -3703,6 +4047,25 @@ export default function App() {
         .btn-add-item { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0 10px 34px; background: transparent; border: 1px dashed var(--border); border-radius: 7px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-3); cursor: pointer; font-family: inherit; }
         .btn-add-item:hover { color: var(--blue); border-color: var(--blue); }
 
+        /* Mesmo amarelo que a planilha usa na mão pra marcar o que o
+           executivo mexeu — só que agora o sistema marca sozinho. */
+        .linha-alterada { background: #FFF2CC; }
+        .tag-alterado { margin-left: 8px; font-size: 10px; font-weight: 600; color: #8A6D1F; background: #fff; border: 1px solid #E8D08B; border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
+        .tag-preco { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 10px; font-weight: 600; color: var(--red); background: #fff; border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
+
+        /* Preços de referência do Sienge — evidência pra decidir, não
+           preenchimento automático. */
+        .btn-sugestao { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; background: none; border: none; padding: 0; font-size: 10.5px; color: var(--blue); cursor: pointer; text-decoration: underline; font-family: inherit; }
+        .sugestoes { margin-top: 8px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-width: 560px; }
+        .sugestoes-titulo { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+        .sugestoes-vazio { font-size: 11px; color: var(--ink-3); padding: 4px 2px; }
+        .sugestao-linha { display: flex; align-items: baseline; gap: 8px; width: 100%; background: none; border: none; border-radius: 6px; padding: 5px 6px; text-align: left; cursor: pointer; font-family: inherit; }
+        .sugestao-linha:hover { background: var(--panel); }
+        .sugestao-preco { font-size: 12px; font-weight: 600; color: var(--ink); flex-shrink: 0; }
+        .sugestao-un { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
+        .sugestao-desc { flex: 1; min-width: 0; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sugestao-data { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
+
         .caderno-info { flex: 1; min-width: 0; }
         .caderno-nome { font-size: 13px; font-weight: 600; color: var(--ink); }
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
@@ -3749,6 +4112,13 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Arquivo</span></div>
           <div className="obra-meta">Obras encerradas, mantidas para consulta</div>
           <ArquivoView obras={obrasConcluidas} onReabrir={marcarAtiva} salvando={salvandoObra} />
+          </>
+          ) : modulo === "precos" ? (
+          <>
+          <div className="eyebrow">REFERÊNCIA DE CUSTO</div>
+          <div className="title-row"><span className="title-accent">Banco de Preços</span></div>
+          <div className="obra-meta">Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge</div>
+          <BancoPrecosView />
           </>
           ) : modulo === "a_contratar" ? (
           <>

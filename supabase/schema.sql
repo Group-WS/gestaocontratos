@@ -97,3 +97,48 @@ drop trigger if exists trg_obra_atualizado on obra;
 create trigger trg_obra_atualizado
   before update on obra
   for each row execute function set_atualizado_em();
+
+-- ============================================================
+-- BANCO DE PRECOS POR INSUMO
+--
+-- Vem do relatorio de pedidos de compra do Sienge: e o que foi
+-- REALMENTE pago, nao preco de tabela. Serve de referencia quando o
+-- time lanca item na mao no Executivo.
+--
+-- Uma linha por (codigo + descricao + unidade), guardando a compra mais
+-- recente. O codigo sozinho nao serve de chave: no Sienge ele e uma
+-- caixa generica ("DECORATIVOS OBRAS" cobre de R$ 15 a R$ 3.845) — quem
+-- identifica o produto e a descricao detalhada.
+--
+-- Linhas em "vb" (verba) ficam de fora na importacao: sao valor fechado
+-- de servico, nao preco unitario, e poluiriam a referencia.
+-- ============================================================
+create table if not exists insumo_preco (
+  id             bigint generated always as identity primary key,
+  codigo         text not null,
+  descricao      text not null,
+  unidade        text not null default '',
+  custo_unitario numeric not null,
+  data_ref       date not null,          -- data da compra que gerou este preco
+  fornecedor     text,
+  atualizado_em  timestamptz default now(),
+  unique (codigo, descricao, unidade)
+);
+
+-- busca por texto da descricao (e o que o time digita)
+create index if not exists idx_insumo_preco_descricao on insumo_preco (descricao);
+create index if not exists idx_insumo_preco_codigo on insumo_preco (codigo);
+
+alter table insumo_preco enable row level security;
+
+drop policy if exists "acesso time (autenticados)" on insumo_preco;
+create policy "acesso time (autenticados)" on insumo_preco
+  for all
+  to authenticated
+  using (true)
+  with check (true);
+
+drop trigger if exists trg_insumo_preco_atualizado on insumo_preco;
+create trigger trg_insumo_preco_atualizado
+  before update on insumo_preco
+  for each row execute function set_atualizado_em();
