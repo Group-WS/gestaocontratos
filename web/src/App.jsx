@@ -996,50 +996,210 @@ function normTxt(s) {
   return semAcento.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-// similaridade por sobreposição de palavras — combina Jaccard com
-// CONTENÇÃO (quanto do lado menor está dentro do maior). Contenção é o
-// que resolve o caso comum "a Planilha tem mais detalhe" — ex: "Embutido
-// recuado 14W" (contrato) × "Embutido recuado 14W Cod. 4473 | Cor:
-// Branco" (planilha): Jaccard sozinho penaliza (poucas palavras em
-// comum proporcionalmente), mas contenção reconhece que 100% do lado
-// menor está contido no maior → mesmo item, só com mais especificação.
-function similaridade(a, b) {
-  const wa = new Set(normTxt(a).split(" ").filter(Boolean));
-  const wb = new Set(normTxt(b).split(" ").filter(Boolean));
-  if (!wa.size || !wb.size) return 0;
-  let inter = 0;
-  wa.forEach((w) => { if (wb.has(w)) inter++; });
-  const jaccard = inter / new Set([...wa, ...wb]).size;
-  const menor = Math.min(wa.size, wb.size);
-  if (menor < 2) return jaccard; // descrição curta demais pra confiar em contenção
-  const contencao = inter / menor;
+// Palavras que aparecem em quase toda descrição sem distinguir nada, ou
+// que são rótulo e não conteúdo ("Cor: Branco" — o que importa é branco).
+const PALAVRAS_VAZIAS = new Set([
+  "de", "da", "do", "das", "dos", "e", "em", "com", "para", "por", "a", "o", "as", "os",
+  "um", "uma", "no", "na", "nos", "nas", "ao", "aos", "sem", "sob", "ou",
+  "cod", "codigo", "ref", "referencia", "cor", "modelo", "tipo", "marca", "linha",
+]);
+
+// Quebra a descrição em palavras comparáveis.
+//
+// O detalhe que faz toda a diferença: na planilha, marca e código vêm
+// grudados — "SnelloPD03000LED3Y". Comparando palavra a palavra, isso é
+// UMA palavra, e ela não é igual a "Snello" do contrato; o par se perde
+// justamente onde é mais óbvio pra um humano. Separar nas fronteiras
+// (minúscula→MAIÚSCULA, letra→dígito, dígito→letra) desfaz a emenda:
+// "Snello PD 03000 LED 3 Y". Aí "Snello" reencontra "Snello".
+//
+// A separação tem que acontecer ANTES de baixar a caixa, senão a pista
+// da maiúscula se perde.
+function tokenizar(s) {
+  const separado = String(s || "")
+    .replace(/([a-zà-ÿ])([A-ZÀ-Ý])/g, "$1 $2")
+    .replace(/([A-Za-zÀ-ÿ])(\d)/g, "$1 $2")
+    .replace(/(\d)([A-Za-zÀ-ÿ])/g, "$1 $2");
+  return normTxt(separado)
+    .split(" ")
+    // fragmentos de 1 letra ("Y", "3") sobram da separação e, por serem
+    // raros, ganhariam peso alto sem significar nada.
+    .filter((w) => w.length > 1 && !PALAVRAS_VAZIAS.has(w));
+}
+
+// Duas palavras são a mesma coisa? Igualdade, ou uma começando a outra —
+// cobre abreviação e código que continua na marca ("snell" / "snello").
+function tokensCasam(a, b) {
+  if (a === b) return 1;
+  const [curto, longo] = a.length <= b.length ? [a, b] : [b, a];
+  if (curto.length >= 4 && longo.startsWith(curto)) return 0.9;
+  return 0;
+}
+
+// Medidas com unidade — 14W, 3000K, 1m, IP65.
+//
+// Elas têm poder de veto. "Embutido recuado 14W" e "Embutido recuado 7W"
+// compartilham quase toda a descrição, mas são luminárias diferentes: o
+// número é o produto. Sem veto, a semelhança das palavras aprovava o par
+// — e aprovar item errado calado é pior que apontar divergência à toa,
+// porque o erro só aparece na obra.
+//
+// Número solto NÃO conta: "Suíte 02" e "Cod. 4473" são lugar e código,
+// não especificação.
+const RE_MEDIDA = /(\d+(?:[.,]\d+)?)\s*(w|k|v|va|mm|cm|m|lm|ip)(?![a-z0-9])/gi;
+
+function medidas(s) {
+  const mapa = new Map(); // unidade -> Set de valores
+  const texto = String(s || "");
+  for (const m of texto.matchAll(RE_MEDIDA)) {
+    const valor = parseFloat(m[1].replace(",", "."));
+    const unidade = m[2].toLowerCase();
+    if (!Number.isFinite(valor)) continue;
+    if (!mapa.has(unidade)) mapa.set(unidade, new Set());
+    mapa.get(unidade).add(valor);
+  }
+  return mapa;
+}
+
+// Só reprova quando os DOIS lados declaram a mesma unidade e discordam.
+// Se o contrato não diz a potência e a planilha diz, isso é detalhamento,
+// não divergência.
+function medidasConflitam(a, b) {
+  const ma = medidas(a);
+  const mb = medidas(b);
+  for (const [unidade, valoresA] of ma) {
+    const valoresB = mb.get(unidade);
+    if (!valoresB || !valoresB.size) continue;
+    const temEmComum = [...valoresA].some((v) => valoresB.has(v));
+    if (!temEmComum) return true;
+  }
+  return false;
+}
+
+// Peso de cada palavra: quanto mais rara dentro do conjunto comparado,
+// mais ela vale. Numa verba de luminárias, "luminaria" está em todas e
+// não ajuda a decidir nada; "recuado" aparece em poucas e é justamente
+// o que separa um item do outro. Sem isso, ruído e sinal pesam igual.
+function construirPeso(...listas) {
+  const freq = new Map();
+  let total = 0;
+  listas.forEach((lista) => (lista || []).forEach((it) => {
+    total += 1;
+    new Set(tokenizar(it.desc)).forEach((w) => freq.set(w, (freq.get(w) || 0) + 1));
+  }));
+  return (w) => Math.log((total + 1) / ((freq.get(w) || 0) + 1)) + 1;
+}
+
+// Similaridade entre duas descrições, com as palavras pesadas.
+// Combina Jaccard com CONTENÇÃO (quanto do lado menor está dentro do
+// maior). Contenção resolve o caso comum "a Planilha tem mais detalhe":
+// "Embutido recuado 14W" × "Embutido recuado 14W Cod. 4473 | Cor:
+// Branco" é o mesmo item, só que mais especificado.
+function similaridade(a, b, peso = () => 1) {
+  // Medida divergente derruba o par independente do resto da frase.
+  // O teto (abaixo de LIMIAR_OK) deixa o par ainda visível como
+  // "diferente" pra você conferir, em vez de sumir como itens avulsos.
+  if (medidasConflitam(a, b)) return 0.35;
+
+  const wa = Array.from(new Set(tokenizar(a)));
+  const wb = Array.from(new Set(tokenizar(b)));
+  if (!wa.length || !wb.length) return 0;
+
+  // cada palavra de um lado casa com no máximo uma do outro
+  const gasto = new Set();
+  let pesoInter = 0;
+  wa.forEach((x) => {
+    let melhor = 0, alvo = null;
+    wb.forEach((y) => {
+      if (gasto.has(y)) return;
+      const s = tokensCasam(x, y);
+      if (s > melhor) { melhor = s; alvo = y; }
+    });
+    if (alvo) { gasto.add(alvo); pesoInter += peso(x) * melhor; }
+  });
+
+  const pesoA = wa.reduce((t, w) => t + peso(w), 0);
+  const pesoB = wb.reduce((t, w) => t + peso(w), 0);
+  const pesoUniao = pesoA + pesoB - pesoInter;
+  const jaccard = pesoUniao > 0 ? pesoInter / pesoUniao : 0;
+  if (Math.min(wa.length, wb.length) < 2) return jaccard; // curta demais pra confiar em contenção
+  const menorPeso = Math.min(pesoA, pesoB);
+  const contencao = menorPeso > 0 ? pesoInter / menorPeso : 0;
   return Math.max(jaccard, contencao);
 }
 
-function qtdBate(a, b) {
-  return a != null && b != null && Math.abs(a - b) < 0.01;
+// "06.01" e "6.1" são o mesmo item escrito de dois jeitos. Zero à
+// esquerda cai; zero à direita fica, porque 6.10 é outro item que não 6.1.
+function normCodigo(c) {
+  if (c == null) return null;
+  const s = String(c).trim().replace(/,/g, ".");
+  if (!s) return null;
+  return s.split(".").map((p) => p.replace(/^0+(?=\d)/, "")).join(".") || null;
 }
 
-// motor genérico de cruzamento por código — 3 status: "ok" (bate),
-// "diferente" (existe nos dois lados mas diverge) e "somente_um" (só
-// existe num dos dois lados). Reutilizado por qualquer par de fontes.
+// Três respostas, não duas: bate, não bate, ou não dá pra comparar.
+// Quando um dos lados não traz quantidade (o contrato costuma não trazer),
+// isso não é divergência — é ausência de informação, e tratar como
+// divergência enchia a tela de alarme falso.
+function compararQtd(a, b) {
+  if (a == null || b == null) return "sem_dado";
+  return Math.abs(a - b) < 0.01 ? "bate" : "difere";
+}
+
+const LIMIAR_OK = 0.6;        // acima disso, considera a mesma descrição
+const LIMIAR_PAREAR = 0.34;   // abaixo disso nem vale comparar: são itens diferentes
+
+// Motor de cruzamento — por DESCRIÇÃO, não por código.
+//
+// O código de item não serve de chave aqui: o "9.9.2" do contrato não é
+// necessariamente o "9.9.2" da planilha, porque cada arquivo é formatado
+// de um jeito. Parear por código produzia comparações erradas com cara
+// de certas. O código entra só como desempate, quando duas candidatas
+// empatam na descrição.
+//
+// Estratégia: calcula a semelhança de todos os pares possíveis, e vai
+// fechando do par mais parecido pro menos, cada item usado uma vez só.
+// Assim o casamento óbvio é decidido antes de sobrar item pra forçar
+// par duvidoso.
 function cruzarItens(itensA, itensB, qtdA, qtdB) {
-  const porCodigo = new Map();
-  (itensA || []).forEach((it) => {
-    if (it.codigo) porCodigo.set(it.codigo, { codigo: it.codigo, a: it, b: null });
+  const listaA = itensA || [];
+  const listaB = itensB || [];
+  const peso = construirPeso(listaA, listaB);
+
+  const candidatos = [];
+  listaA.forEach((ia, i) => {
+    listaB.forEach((ib, j) => {
+      const sim = similaridade(ia.desc, ib.desc, peso);
+      if (sim < LIMIAR_PAREAR) return;
+      const mesmoCodigo = normCodigo(ia.codigo) && normCodigo(ia.codigo) === normCodigo(ib.codigo);
+      candidatos.push({ i, j, sim, desempate: sim + (mesmoCodigo ? 0.001 : 0) });
+    });
   });
-  (itensB || []).forEach((it) => {
-    const key = it.codigo;
-    if (key && porCodigo.has(key)) porCodigo.get(key).b = it;
-    else porCodigo.set(key || `x-${porCodigo.size}`, { codigo: key, a: null, b: it });
+  candidatos.sort((x, y) => y.desempate - x.desempate);
+
+  const pares = [];
+  const usadoA = new Set();
+  const usadoB = new Set();
+  candidatos.forEach(({ i, j, sim }) => {
+    if (usadoA.has(i) || usadoB.has(j)) return;
+    usadoA.add(i); usadoB.add(j);
+    pares.push({ codigo: listaA[i].codigo || listaB[j].codigo, a: listaA[i], b: listaB[j], sim });
   });
-  return Array.from(porCodigo.values()).map((entry) => {
-    const { a, b } = entry;
+
+  // sobras: existem de um lado só
+  listaA.forEach((it, i) => { if (!usadoA.has(i)) pares.push({ codigo: it.codigo, a: it, b: null }); });
+  listaB.forEach((it, j) => { if (!usadoB.has(j)) pares.push({ codigo: it.codigo, a: null, b: it }); });
+
+  return pares.map((entry) => {
+    const { a, b, sim } = entry;
     if (!a || !b) return { ...entry, status: "somente_um" };
-    const bateQtd = qtdBate(qtdA(a), qtdB(b));
-    const sim = similaridade(a.desc, b.desc);
-    if (bateQtd && sim >= 0.6) return { ...entry, status: "ok" };
-    return { ...entry, status: "diferente", motivoBase: !bateQtd && sim < 0.6 ? "ambos" : !bateQtd ? "qtd" : "desc" };
+
+    const qtd = compararQtd(qtdA(a), qtdB(b));
+    const descBate = sim >= LIMIAR_OK;
+
+    if (descBate && qtd !== "difere") return { ...entry, status: "ok", qtdCmp: qtd };
+    const motivoBase = qtd === "difere" && !descBate ? "ambos" : qtd === "difere" ? "qtd" : "desc";
+    return { ...entry, status: "diferente", motivoBase, qtdCmp: qtd };
   });
 }
 
