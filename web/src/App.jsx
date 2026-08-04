@@ -1753,10 +1753,9 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
 function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB }) {
   const [filtro, setFiltro] = useState("todos");
   const [selecionados, setSelecionados] = useState(() => new Set());
-  // Guarda só o que a pessoa mandou abrir/fechar na mão. O resto segue
-  // o padrão: verba com pendência abre, verba resolvida fica recolhida —
-  // quem confere quer cair direto no que falta olhar, não rolar por
-  // dezenas de linhas já conferidas.
+  // Tudo começa recolhido: com 185 linhas, abrir sozinho enterra a visão
+  // geral e a pessoa perde a noção de quanto falta. O contador de
+  // pendências no cabeçalho já diz onde precisa entrar.
   const [manual, setManual] = useState(() => new Map());
 
   if (linhas.length === 0) {
@@ -1783,7 +1782,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, colALabel, colB
     porVerba.get(l.catNum).itens.push(l);
   });
   const grupos = Array.from(porVerba.values());
-  const estaAberto = (g) => (manual.has(g.num) ? manual.get(g.num) : g.itens.some((l) => l.status !== "ok"));
+  const estaAberto = (g) => manual.get(g.num) === true;
   const toggle = (g) => setManual((p) => new Map(p).set(g.num, !estaAberto(g)));
 
   const toggleSel = (k) => setSelecionados((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
@@ -1902,7 +1901,10 @@ const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num
 // Enquanto houver linha pendente, o número aparece como provisório: um
 // item ainda em discussão pode entrar ou sair, e tratar isso como
 // definitivo é o tipo de erro que só aparece quando o dinheiro acabou.
-function ResumoCMV({ linhas, valorVendido }) {
+// Valor de venda e margem NÃO entram aqui: esta tela é usada pela equipe
+// de obra, e valor de venda não é divulgado pra ela. O que a equipe
+// precisa é do teto de custo — quanto pode gastar, no total e por grupo.
+function ResumoCMV({ linhas }) {
   const porVerba = new Map();
   let total = 0;
   let pendentes = 0;
@@ -1918,7 +1920,6 @@ function ResumoCMV({ linhas, valorVendido }) {
   });
 
   const grupos = Array.from(porVerba.values()).sort((a, b) => String(a.num).localeCompare(String(b.num)));
-  const sobra = valorVendido ? valorVendido - total : null;
 
   return (
     <div className="cmv-painel">
@@ -1932,21 +1933,6 @@ function ResumoCMV({ linhas, valorVendido }) {
               : "todas as linhas conferidas"}
           </div>
         </div>
-        {valorVendido > 0 && (
-          <>
-            <div className="cmv-bloco">
-              <div className="cmv-rotulo">Valor vendido</div>
-              <div className="cmv-valor mono dim">{fmtBRL(valorVendido)}</div>
-            </div>
-            <div className="cmv-bloco">
-              <div className="cmv-rotulo">Margem</div>
-              <div className="cmv-valor mono" style={{ color: sobra >= 0 ? "var(--green)" : "var(--red)" }}>
-                {fmtBRL(sobra)}
-              </div>
-              <div className="cmv-sub">{sobra >= 0 ? "dentro do vendido" : "acima do vendido"}</div>
-            </div>
-          </>
-        )}
       </div>
 
       {grupos.length > 0 && (
@@ -2013,15 +1999,32 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
 
   return (
     <>
-      <ResumoCMV linhas={linhas} valorVendido={obra.valorVendido} />
+      <ResumoCMV linhas={linhas} />
 
+      {/* A liberação fica no topo, junto do CMV: é a decisão que esta
+          tela existe pra tomar, e no rodapé de 185 linhas ela sumia.
+          Continua travada até não sobrar pendência — o botão desabilitado
+          comunica o que falta melhor do que um botão ativo que recusa. */}
       {obra.deparaAprovado ? (
         <div className="import-ok"><ShieldCheck size={14} /> Depara aprovado — versão final liberada para o Executivo.</div>
       ) : (
-        <div className="import-bar" style={{ marginBottom: 14 }}>
-          <div className="import-info"><Lock size={14} /><span>Aprove cada linha vermelha/amarela (o valor final vira o que está na <b>Planilha</b>) — quando não sobrar pendência, libera o Executivo.</span></div>
+        <div className="liberacao-barra">
+          <div className="liberacao-texto">
+            {pendentes.length === 0 ? (
+              <><CheckCircle2 size={15} /> <span>Tudo conferido — pode liberar o Executivo.</span></>
+            ) : (
+              <><Lock size={15} /> <span>
+                <b>{pendentes.length}</b> {pendentes.length === 1 ? "linha pendente" : "linhas pendentes"} de aprovação.
+                O Executivo libera quando não sobrar nenhuma — o valor final vira o que está na <b>Planilha</b>.
+              </span></>
+            )}
+          </div>
+          <button className="btn-aprovar" disabled={pendentes.length > 0 || !podeEditar} onClick={onAprovar}>
+            <ShieldCheck size={14} /> Aprovar depara e liberar Executivo
+          </button>
         </div>
       )}
+
       {deslocamento !== 0 && (
         <div className="aviso-deslocamento">
           A planilha numera as verbas <b>{deslocamento > 0 ? `${deslocamento} à frente` : `${-deslocamento} atrás`}</b> do contrato —
@@ -2034,16 +2037,6 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
         vazioTitulo="Nada pra conferir ainda" vazioSub=""
         aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao}
         onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilha(catNum, codigo, patch))} />
-      {!obra.deparaAprovado && (
-        <div className="aprovacao-box">
-          <div className="aprovacao-resumo">
-            {pendentes.length === 0 ? "Todas as divergências foram aprovadas — pronto pra liberar." : `${pendentes.length} ${pendentes.length === 1 ? "linha pendente" : "linhas pendentes"} de aprovação (vermelho ou amarelo acima).`}
-          </div>
-          <button className="btn-aprovar" disabled={pendentes.length > 0 || !podeEditar} onClick={onAprovar}>
-            <ShieldCheck size={14} /> Aprovar depara e liberar Executivo
-          </button>
-        </div>
-      )}
     </>
   );
 }
@@ -4300,6 +4293,12 @@ export default function App() {
         .selecao-massa { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 9px 13px; margin-bottom: 12px; }
         .selecao-massa-texto { font-size: 12px; font-weight: 600; color: var(--ink); }
         .conf-motivo { font-size: 11.5px; color: var(--amber); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft); }
+        /* Barra de liberação no topo — mesma linguagem visual do painel
+           de CMV logo acima, pra ler como uma coisa só. */
+        .liberacao-barra { display: flex; align-items: center; gap: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; }
+        .liberacao-texto { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+        .liberacao-barra .btn-aprovar { flex-shrink: 0; }
+
         .aprovacao-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 16px; }
         .aprovacao-resumo { font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
         .aprovacao-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); margin-bottom: 12px; cursor: pointer; }
