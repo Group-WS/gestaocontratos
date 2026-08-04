@@ -979,13 +979,24 @@ async function lerPlanilhaExcel(file) {
   if (headerIdx === -1) return { itens: [] };
 
   const header = linhas[headerIdx];
-  const iCod = acharColuna(header, [/^c[oó]d/, /item/]);
-  const iVerba = acharColuna(header, [/verba/, /grupo/, /eap/]);
-  const iDesc = acharColuna(header, [/descri/]);
-  const iAmb = acharColuna(header, [/ambiente/, /local/]);
-  const iMarca = acharColuna(header, [/marca/, /fornecedor/]);
-  const iQtd = acharColuna(header, [/qtd/, /quant/]);
-  const iUn = acharColuna(header, [/^un\b/, /unidade/]);
+  // O criativo e o executivo usam o MESMO cabeçalho — Item, Descrição,
+  // Código/especificação/Obs., Fornecedor, Ambiente, Qtd., un, e as cinco
+  // colunas de custo. Ler tudo aqui mantém as duas telas com a mesma
+  // informação, que é o que permite compará-las de verdade.
+  //
+  // A ordem de reserva importa: "Item" e "Código / especificação" as duas
+  // casariam com padrão de código, então o número do item é reservado
+  // primeiro e a especificação pega o que sobrou.
+  const usadasIdent = new Set();
+  const reservarIdent = (p) => { const i = acharColuna(header, p, usadasIdent); if (i >= 0) usadasIdent.add(i); return i; };
+  const iCod = reservarIdent([/^item$/, /^c[oó]d\.?$/, /^c[oó]digo$/]);
+  const iDesc = reservarIdent([/^descri/]);
+  const iEspec = reservarIdent([/especifica/, /^c[oó]d/, /obs/]);
+  const iMarca = reservarIdent([/fornecedor/, /marca/]);
+  const iAmb = reservarIdent([/ambiente/, /local/]);
+  const iQtd = reservarIdent([/qtd/, /quant/]);
+  const iUn = reservarIdent([/^un\b/, /^un\.?$/, /unidade/]);
+  const iVerba = reservarIdent([/verba/, /grupo/, /eap/]);
   // --- Colunas de custo ---
   //
   // O Executivo separa material de mão de obra, e unitário de total:
@@ -995,7 +1006,7 @@ async function lerPlanilhaExcel(file) {
   // A ordem de busca importa: "Custo Total Material" contém "custo
   // total", então as específicas têm que ser achadas ANTES das genéricas,
   // senão o total do material seria lido como custo total do item.
-  const usadas = new Set();
+  const usadas = new Set(usadasIdent);
   const reservar = (padroes) => {
     const i = acharColuna(header, padroes, usadas);
     if (i >= 0) usadas.add(i);
@@ -1038,6 +1049,13 @@ async function lerPlanilhaExcel(file) {
     if (!num) continue;
     const qtdVal = iQtd >= 0 ? parseBRL(row[iQtd]) : null;
     const col = (i) => (i >= 0 ? parseBRL(row[i]) : null);
+    // célula de texto: o Excel guarda 0 onde o campo está vazio, e "0"
+    // na tela é pior que vazio — parece dado
+    const texto = (v) => {
+      if (v == null || v === 0) return null;
+      const t = String(v).replace(/\s+/g, " ").trim();
+      return t && t !== "0" ? t : null;
+    };
 
     // Custos do Executivo, quando a planilha os traz separados
     const custoMaterial = col(iMaterial);
@@ -1065,8 +1083,9 @@ async function lerPlanilhaExcel(file) {
       tipo: custoMaterial != null || totalMaterial != null
         ? ((custoMaterial || totalMaterial || 0) > 0 ? "produto" : "servico")
         : undefined,
-      ambiente: iAmb >= 0 ? String(row[iAmb] ?? "").trim() || null : null,
-      marca: iMarca >= 0 ? String(row[iMarca] ?? "").trim() || null : null,
+      ambiente: texto(row[iAmb]),
+      marca: texto(row[iMarca]),
+      especificacao: texto(row[iEspec]),
       qtdVendida: qtdVal,
       un: iUn >= 0 ? String(row[iUn] ?? "").trim() || null : null,
       custoUnitario, custo,
@@ -1253,16 +1272,25 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, podeEditar }) {
                   <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
                 </button>
                 {aberto && temItens && (
-                  <table className="vend-itens">
+                  /* Mesmas colunas do Executivo, na mesma ordem da
+                     planilha de origem — os dois documentos usam o mesmo
+                     cabeçalho, e manter o padrão é o que deixa comparar
+                     um com o outro sem procurar onde cada coisa está. */
+                  <table className="vend-itens exec-itens">
                     <thead>
                       <tr>
-                        <th style={{ width: 52 }}>Cód.</th>
+                        <th style={{ width: 46 }}>Item</th>
                         <th>Descrição</th>
-                        <th style={{ width: 92 }}>Ambiente</th>
-                        <th style={{ width: 100 }}>Marca</th>
-                        <th style={{ width: 80 }} className="center">Qtd.</th>
-                        <th style={{ width: 100 }} className="right">Valor unit.</th>
-                        <th style={{ width: 100 }} className="right">Valor total</th>
+                        <th style={{ width: 130 }}>Código / especif. / Obs.</th>
+                        <th style={{ width: 96 }}>Fornecedor</th>
+                        <th style={{ width: 80 }}>Ambiente</th>
+                        <th style={{ width: 54 }} className="center">Qtd.</th>
+                        <th style={{ width: 38 }} className="center">Un.</th>
+                        <th style={{ width: 88 }} className="right">Custo<br />Material</th>
+                        <th style={{ width: 88 }} className="right">Custo<br />Mão de Obra</th>
+                        <th style={{ width: 96 }} className="right">Custo Total<br />Material</th>
+                        <th style={{ width: 96 }} className="right">Custo Total<br />Mão de Obra</th>
+                        <th style={{ width: 100 }} className="right">Custo<br />Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1270,11 +1298,16 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, podeEditar }) {
                         <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
                           <td className="mono dim">{it.codigo || "—"}</td>
                           <td>{it.desc}{it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}</td>
-                          <td className="mono center dim">{it.ambiente || "—"}</td>
+                          <td className="dim">{it.especificacao || "—"}</td>
                           <td className="dim">{it.marca || "—"}</td>
-                          <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
-                          <td className="mono right dim">{it.custoUnitario != null ? fmtBRL(it.custoUnitario) : "—"}</td>
-                          <td className="mono right">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
+                          <td className="dim">{it.ambiente || "—"}</td>
+                          <td className="mono center">{it.qtdVendida ?? "—"}</td>
+                          <td className="mono center dim">{it.un || "—"}</td>
+                          <td className="mono right dim">{it.custoMaterial != null ? fmtBRL(it.custoMaterial) : "—"}</td>
+                          <td className="mono right dim">{it.custoMO != null ? fmtBRL(it.custoMO) : "—"}</td>
+                          <td className="mono right">{it.totalMaterial != null ? fmtBRL(it.totalMaterial) : "—"}</td>
+                          <td className="mono right">{it.totalMO != null ? fmtBRL(it.totalMO) : "—"}</td>
+                          <td className="mono right forte">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1573,6 +1606,31 @@ function motivoDiferenca(e) {
   if (e.motivoBase === "qtd") return "Quantidade diferente";
   if (e.motivoBase === "desc") return "Descrição diverge — revisar";
   return "Quantidade e descrição divergem";
+}
+
+// Acha, dentro da verba, o item do criativo que corresponde a este item
+// do executivo — pra coluna "Vendido (criativo)" e a diferença.
+//
+// Usa o mesmo motor do depara: os dois documentos descrevem o mesmo
+// produto com palavras diferentes, e o código não serve de chave (o
+// "3.4" de um não é o "3.4" do outro).
+function casarComCriativo(item, itensCriativo) {
+  const base = itensCriativo || [];
+  if (base.length === 0) return null;
+  const peso = construirPeso(base, [item]);
+
+  let melhor = null;
+  let melhorSim = 0;
+  base.forEach((c) => {
+    const s = similaridade(item.desc, c.desc, peso);
+    if (s > melhorSim) { melhorSim = s; melhor = c; }
+  });
+  if (!melhor || melhorSim < LIMIAR_OK) return null;
+
+  return {
+    qtd: melhor.qtdVendida, custo: melhor.custo, custoUnitario: melhor.custoUnitario,
+    custoMaterial: melhor.custoMaterial ?? null, custoMO: melhor.custoMO ?? null,
+  };
 }
 
 // Junta os itens de todas as verbas numa lista só, carimbando de onde
@@ -2091,6 +2149,69 @@ function FaseBloqueada({ onIrParaDepara }) {
 
 // CADERNO DE ESPECIFICAÇÃO — só upload + download, sem leitura/parse.
 // É o PDF com tudo que foi aprovado de produto com o cliente.
+// Adicionar item pelo banco de insumos, em vez de linha em branco.
+//
+// Digitando, busca no Banco de Preços e traz descrição, unidade e custo
+// unitário já preenchidos — sobra só a quantidade. Assim o item entra
+// com o nome que o Sienge conhece (o que faz a compra casar depois) e
+// com um preço de referência, em vez de nascer vazio e ser preenchido
+// de memória.
+function BuscaInsumo({ onEscolher, onCancelar }) {
+  const [termo, setTermo] = useState("");
+  const [lista, setLista] = useState([]);
+  const [buscando, setBuscando] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  useEffect(() => {
+    if (termo.trim().length < 3) { setLista([]); return; }
+    let vivo = true;
+    setBuscando(true);
+    const t = setTimeout(() => {
+      listarPrecos({ busca: termo, limite: 12 })
+        .then((r) => { if (vivo) { setLista(r); setErro(null); } })
+        .catch((e) => { if (vivo) setErro(e.message || String(e)); })
+        .finally(() => { if (vivo) setBuscando(false); });
+    }, 300);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [termo]);
+
+  return (
+    <div className="busca-insumo">
+      <div className="busca-insumo-topo">
+        <Search size={13} className="dim" />
+        <input
+          autoFocus
+          placeholder="Buscar insumo no banco de preços — ex: spot embutir, fita led, torneira…"
+          value={termo}
+          onChange={(e) => setTermo(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") onCancelar(); }}
+        />
+        <button className="clear-btn" onClick={onCancelar}><X size={13} /></button>
+      </div>
+
+      {erro && <div className="busca-insumo-vazio">{erro}</div>}
+      {!erro && termo.trim().length > 0 && termo.trim().length < 3 && (
+        <div className="busca-insumo-vazio">Digite ao menos 3 letras.</div>
+      )}
+      {!erro && buscando && <div className="busca-insumo-vazio">Buscando…</div>}
+      {!erro && !buscando && termo.trim().length >= 3 && lista.length === 0 && (
+        <div className="busca-insumo-vazio">
+          Nada encontrado. <button className="link-inline" onClick={() => onEscolher(null)}>Criar item em branco</button>
+        </div>
+      )}
+
+      {lista.map((p, i) => (
+        <button key={i} className="busca-insumo-linha" onClick={() => onEscolher(p)}>
+          <span className="mono busca-insumo-cod">{p.codigo}</span>
+          <span className="busca-insumo-desc">{p.descricao}</span>
+          <span className="mono busca-insumo-preco">{fmtBRL(p.custo_unitario)}</span>
+          <span className="busca-insumo-un">/{p.unidade || "un"}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Sugestões de preço vindas do banco do Sienge — o que foi realmente
 // pago em compras parecidas.
 //
@@ -2255,6 +2376,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
   // esconder que a etapa existe.
   const anexados = CADERNOS_EXECUTIVO.filter((c) => (obra.cadernos || {})[c.chave]).length;
   const [cadernosAbertos, setCadernosAbertos] = useState(anexados === 0);
+  // qual verba está com a busca de insumo aberta
+  const [buscandoEm, setBuscandoEm] = useState(null);
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   const somar = (campo) => verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it[campo] || 0), 0), 0);
   const total = somar("custo");
@@ -2349,11 +2472,14 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   <table className="vend-itens exec-itens">
                     <thead>
                       <tr>
-                        <th style={{ width: 52 }}>Cód.</th>
+                        <th style={{ width: 46 }}>Item</th>
                         <th>Descrição</th>
-                        <th style={{ width: 64 }} className="center">Qtd.</th>
-                        <th style={{ width: 40 }} className="center">Un.</th>
-                        <th style={{ width: 92 }} className="right">Custo<br />Material</th>
+                        <th style={{ width: 130 }}>Código / especif. / Obs.</th>
+                        <th style={{ width: 96 }}>Fornecedor</th>
+                        <th style={{ width: 80 }}>Ambiente</th>
+                        <th style={{ width: 54 }} className="center">Qtd.</th>
+                        <th style={{ width: 38 }} className="center">Un.</th>
+                        <th style={{ width: 88 }} className="right">Custo<br />Material</th>
                         <th style={{ width: 92 }} className="right">Custo<br />Mão de Obra</th>
                         <th style={{ width: 100 }} className="right">Custo Total<br />Material</th>
                         <th style={{ width: 100 }} className="right">Custo Total<br />Mão de Obra</th>
@@ -2377,6 +2503,9 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                                 <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
                               )}
                             </td>
+                            <td className="dim">{it.especificacao || "—"}</td>
+                            <td className="dim">{it.marca || "—"}</td>
+                            <td className="dim">{it.ambiente || "—"}</td>
                             <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={congelado} onSalvar={editar("qtdVendida")} /></td>
                             <td className="mono center dim">{it.un || "—"}</td>
                             <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={congelado} onSalvar={editar("custoMaterial")} /></td>
@@ -2401,9 +2530,16 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   </table>
                 )}
                 {aberto && !congelado && (
-                  <button className="btn-add-item" onClick={() => onAdicionarItem(c.num)}>
-                    <Plus size={12} /> Adicionar item nesta verba
-                  </button>
+                  buscandoEm === c.num ? (
+                    <BuscaInsumo
+                      onCancelar={() => setBuscandoEm(null)}
+                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo); setBuscandoEm(null); }}
+                    />
+                  ) : (
+                    <button className="btn-add-item" onClick={() => setBuscandoEm(c.num)}>
+                      <Plus size={12} /> Adicionar item nesta verba
+                    </button>
+                  )
                 )}
               </div>
             );
@@ -3567,6 +3703,17 @@ export default function App() {
   }
 
   async function marcarConcluida(o) {
+    // Concluir tira a obra da lista de todo mundo, e o botão fica ao lado
+    // do nome da obra — dá pra clicar sem querer. Confirmar custa um
+    // segundo; descobrir depois por que a obra sumiu custa bem mais.
+    const ok = window.confirm(
+      `Concluir a obra "${o.nome}"?\n\n` +
+      "Ela sai da lista de obras ativas e vai para o Arquivo, em modo consulta — " +
+      "ninguém do time consegue mais alterar nada nela.\n\n" +
+      "Dá para reabrir depois, pelo Arquivo."
+    );
+    if (!ok) return;
+
     setSalvandoObra(o.id);
     setErroBanco(null);
     try {
@@ -3809,12 +3956,28 @@ export default function App() {
     }));
   }
 
-  function adicionarItemExecutivo(catNum) {
+  // `insumo` vem do Banco de Preços quando a pessoa escolhe um; null
+  // quando ela opta por criar em branco. Vindo do banco, o item já nasce
+  // com o nome que o Sienge conhece — o que faz a compra casar depois —
+  // e com o preço de referência preenchido.
+  function adicionarItemExecutivo(catNum, insumo) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const categorias = o.categorias.map((c) => {
         if (c.num !== catNum) return c;
-        const novo = {
+        const novo = insumo ? {
+          codigo: null, num: catNum,
+          desc: insumo.descricao,
+          un: insumo.unidade || null,
+          qtdVendida: null,
+          custoMaterial: insumo.custo_unitario, custoMO: null,
+          totalMaterial: null, totalMO: null, custo: null,
+          custoUnitario: insumo.custo_unitario,
+          insumoSienge: insumo.codigo,
+          precoRefData: insumo.data_ref,
+          manual: true, tipo: "produto", contavel: false,
+          alteradoExecutivo: true,
+        } : {
           codigo: null, desc: "Novo item — clique para descrever", num: catNum,
           qtdVendida: null, un: null, custoMaterial: null, custoMO: null,
           totalMaterial: null, totalMO: null, custo: null,
@@ -3876,11 +4039,18 @@ export default function App() {
       (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
       const categorias = o.categorias.map((c) => {
         if (!porVerba[c.num]) return c;
-        const simples = porVerba[c.num].map((it) => ({
-          codigo: it.codigo, desc: it.desc, qtdVendida: it.qtdVendida ?? it.qtdExecutivo,
-          un: it.un, custoUnitario: it.custoUnitario, custo: it.custo,
+        // Guarda o item INTEIRO. Antes essa lista era montada campo a
+        // campo, e ficou congelada no tempo: quando as colunas de
+        // material e mão de obra passaram a existir, elas não entraram
+        // aqui — o arquivo trazia os valores e a tela mostrava "—".
+        // Copiar tudo evita que a próxima coluna nova se perca igual.
+        const doArquivo = porVerba[c.num].map((it) => ({
+          ...it,
+          qtdVendida: it.qtdVendida ?? it.qtdExecutivo,
+          // guarda o que o criativo tinha, pra coluna de comparação
+          vendido: casarComCriativo(it, c.itensPlanilha),
         }));
-        return { ...c, itens: porVerba[c.num], itensPlanilhaExecutivo: simples };
+        return { ...c, itens: doArquivo, itensPlanilhaExecutivo: doArquivo };
       });
       return { ...o, categorias };
     }));
@@ -4358,6 +4528,19 @@ export default function App() {
         .celula-input { width: 100%; border: 1px solid var(--blue); border-radius: 5px; padding: 2px 5px; font-size: 11.5px; text-align: right; outline: none; background: #fff; font-family: 'JetBrains Mono', monospace; }
         .btn-add-item { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0 10px 34px; background: transparent; border: 1px dashed var(--border); border-radius: 7px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-3); cursor: pointer; font-family: inherit; }
         .btn-add-item:hover { color: var(--blue); border-color: var(--blue); }
+
+        /* Escolher o insumo no banco em vez de digitar do zero */
+        .busca-insumo { margin: 6px 0 12px 34px; max-width: 720px; background: #fff; border: 1px solid var(--blue); border-radius: 10px; overflow: hidden; }
+        .busca-insumo-topo { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border-soft); }
+        .busca-insumo-topo input { flex: 1; border: none; outline: none; background: transparent; font-size: 12px; color: var(--ink); font-family: inherit; }
+        .busca-insumo-vazio { font-size: 11.5px; color: var(--ink-3); padding: 10px 12px; }
+        .busca-insumo-linha { display: flex; align-items: baseline; gap: 9px; width: 100%; background: none; border: none; border-bottom: 1px solid var(--border-soft); padding: 7px 12px; text-align: left; cursor: pointer; font-family: inherit; }
+        .busca-insumo-linha:last-child { border-bottom: none; }
+        .busca-insumo-linha:hover { background: var(--panel); }
+        .busca-insumo-cod { font-size: 10.5px; color: var(--ink-3); width: 46px; flex-shrink: 0; }
+        .busca-insumo-desc { flex: 1; min-width: 0; font-size: 11.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .busca-insumo-preco { font-size: 12px; font-weight: 600; color: var(--ink); flex-shrink: 0; }
+        .busca-insumo-un { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
 
         /* Mesmo amarelo que a planilha usa na mão pra marcar o que o
            executivo mexeu — só que agora o sistema marca sozinho. */
