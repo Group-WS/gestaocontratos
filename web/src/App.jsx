@@ -555,13 +555,29 @@ const FILTERS = [
 // anteriores (Vendido Contrato, Vendido Planilha, Depara, Executivo)
 // pode mais ser mexido. Compras e Contratos passam a trabalhar em cima
 // de um número que não muda mais debaixo deles.
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, onLiberar, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, onLiberar, onReabrir, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
   return (
     <>
       {obra.comprasLiberadas ? (
-        <div className="import-ok">
-          <ShieldCheck size={14} /> Planilha de Compra liberada — as etapas anteriores estão congeladas.
+        <div className="import-ok liberado-barra">
+          <ShieldCheck size={14} />
+          <span>Planilha de Compra liberada — as etapas anteriores estão congeladas.</span>
+          {/* Toda trava precisa de volta. Sem isso, um clique sem querer
+              congela a obra inteira e só se resolve mexendo no banco —
+              o que ninguém do time consegue fazer. */}
+          {podeEditar && (
+            <button className="btn-reabrir-etapa" onClick={() => {
+              if (window.confirm(
+                "Reabrir as etapas anteriores?\n\n" +
+                "Vendido, Depara e Executivo voltam a aceitar alteração. " +
+                "Use quando algo precisar ser corrigido depois da liberação.\n\n" +
+                "Compras e contratações já feitas não são desfeitas."
+              )) onReabrir();
+            }}>
+              <RotateCcw size={12} /> Reabrir etapas
+            </button>
+          )}
         </div>
       ) : (
         <div className="import-bar" style={{ marginBottom: 14 }}>
@@ -1998,7 +2014,7 @@ const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num
 // Valor de venda e margem NÃO entram aqui: esta tela é usada pela equipe
 // de obra, e valor de venda não é divulgado pra ela. O que a equipe
 // precisa é do teto de custo — quanto pode gastar, no total e por grupo.
-function ResumoCMV({ linhas }) {
+function ResumoCMV({ linhas, categorias }) {
   const porVerba = new Map();
   let total = 0;
   let pendentes = 0;
@@ -2011,6 +2027,21 @@ function ResumoCMV({ linhas }) {
     const atual = porVerba.get(l.catNum) || { num: l.catNum, nome: l.catNome, valor: 0 };
     atual.valor += v;
     porVerba.set(l.catNum, atual);
+  });
+
+  // As verbas fora da conferência entram no CMV mesmo assim.
+  //
+  // "Não conferimos item a item" não é o mesmo que "não custa dinheiro":
+  // móveis sob medida sozinhos dão R$ 141 mil numa obra. Como elas não
+  // geram linha de depara, o valor vem direto da planilha — sem isso o
+  // CMV sai menor que o custo real, que é o pior erro possível num teto
+  // de gastos.
+  (categorias || []).forEach((c) => {
+    if (c.foraDaEapPadrao || !ehVerbaNaoAnalisada(c.num)) return;
+    const valor = (c.itensPlanilha || []).reduce((a, it) => a + (it.custo || 0), 0);
+    if (valor <= 0) return;
+    total += valor;
+    porVerba.set(c.num, { num: c.num, nome: c.nome, valor, foraDaConferencia: true });
   });
 
   const grupos = Array.from(porVerba.values()).sort((a, b) => String(a.num).localeCompare(String(b.num)));
@@ -2035,7 +2066,12 @@ function ResumoCMV({ linhas }) {
           {grupos.map((g) => (
             <div key={g.num} className="cmv-linha">
               <span className="cmv-linha-num mono">{g.num}</span>
-              <span className="cmv-linha-nome">{g.nome}</span>
+              <span className="cmv-linha-nome">
+                {g.nome}
+                {/* entra no valor, mas não passou por conferência item a
+                    item — quem lê o número precisa saber a diferença */}
+                {g.foraDaConferencia && <span className="cmv-tag-na">sem conferência</span>}
+              </span>
               <span className="cmv-linha-barra">
                 <span style={{ width: total > 0 ? `${(g.valor / total) * 100}%` : 0 }} />
               </span>
@@ -2093,7 +2129,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
 
   return (
     <>
-      <ResumoCMV linhas={linhas} />
+      <ResumoCMV linhas={linhas} categorias={obra.categorias} />
 
       {/* A liberação fica no topo, junto do CMV: é a decisão que esta
           tela existe pra tomar, e no rodapé de 185 linhas ela sumia.
@@ -2354,7 +2390,9 @@ const CADERNOS_EXECUTIVO = [
   { chave: "projeto", titulo: "Caderno de Projeto Executivo", sub: "Pranchas e detalhamentos do projeto executivo." },
 ];
 
-function CadernoSlot({ titulo, sub, arquivo, onImportar, congelado }) {
+// Uma linha por caderno, não um bloco. São três anexos de consulta que
+// quase nunca mudam — ocupavam meia tela pra dizer "nenhum arquivo".
+function CadernoSlot({ titulo, arquivo, onImportar, congelado }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
 
@@ -2369,29 +2407,23 @@ function CadernoSlot({ titulo, sub, arquivo, onImportar, congelado }) {
 
   return (
     <div className="caderno-slot">
-      <div className="caderno-slot-head">
-        <div className="caderno-slot-texto">
-          <div className="caderno-slot-titulo">{titulo}</div>
-          <div className="caderno-slot-sub">{sub}</div>
-        </div>
-        <button className="btn-import" disabled={congelado} onClick={() => inputRef.current && inputRef.current.click()}>
-          <Upload size={13} /> {arquivo ? "Substituir" : "Anexar PDF"}
-        </button>
-        <input ref={inputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={aoEscolher} />
-      </div>
-      {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
+      <BookOpen size={14} className={arquivo ? "" : "dim"} />
+      <span className="caderno-slot-titulo">{titulo}</span>
       {arquivo ? (
-        <div className="caderno-card">
-          <BookOpen size={20} className="dim" />
-          <div className="caderno-info">
-            <div className="caderno-nome">{arquivo.nome}</div>
-            <div className="caderno-meta">{arquivo.tamanhoKB} KB</div>
-          </div>
-          <a className="btn-download" href={arquivo.url} download={arquivo.nome}><Download size={13} /> Baixar</a>
-        </div>
+        <>
+          <span className="caderno-slot-arquivo">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
+          <a className="caderno-acao" href={arquivo.url} download={arquivo.nome}><Download size={12} /> Baixar</a>
+        </>
       ) : (
-        <div className="caderno-vazio">Nenhum arquivo anexado.</div>
+        <span className="caderno-slot-vazio">sem arquivo</span>
       )}
+      {!congelado && (
+        <button className="caderno-acao" onClick={() => inputRef.current && inputRef.current.click()}>
+          <Upload size={12} /> {arquivo ? "Trocar" : "Anexar"}
+        </button>
+      )}
+      <input ref={inputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={aoEscolher} />
+      {erro && <span className="caderno-erro">{erro}</span>}
     </div>
   );
 }
@@ -2411,7 +2443,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
   // deles abertos. Abrem sozinhos enquanto nenhum foi anexado, pra não
   // esconder que a etapa existe.
   const anexados = CADERNOS_EXECUTIVO.filter((c) => (obra.cadernos || {})[c.chave]).length;
-  const [cadernosAbertos, setCadernosAbertos] = useState(anexados === 0);
+  // sempre fechado: sao tres anexos de consulta, nao a tarefa da tela
+  const [cadernosAbertos, setCadernosAbertos] = useState(false);
   // qual verba está com a busca de insumo aberta
   const [buscandoEm, setBuscandoEm] = useState(null);
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
@@ -2444,7 +2477,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
         {cadernosAbertos && (
           <div className="caderno-lista">
             {CADERNOS_EXECUTIVO.map((c) => (
-              <CadernoSlot key={c.chave} titulo={c.titulo} sub={c.sub}
+              <CadernoSlot key={c.chave} titulo={c.titulo}
                 arquivo={(obra.cadernos || {})[c.chave]}
                 congelado={congelado}
                 onImportar={(info) => onImportCaderno(c.chave, info)} />
@@ -2453,18 +2486,31 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
         )}
       </div>
 
-      {temBase && !temExecutivo && !congelado && (
+      {temBase && !congelado && (
         <div className="import-card">
           <div className="import-bar">
             <div className="import-info">
               <Copy size={14} />
               <span>
-                Comece pela <b>planilha do criativo</b> ({itensBase} itens já conferidos no depara) e edite a partir dela —
-                o que vier de lá fica marcado, e cada alteração aparece lado a lado com o valor de origem.
+                {temExecutivo ? (
+                  <>Precisa <b>recomeçar</b>? Puxar o criativo de novo troca o Executivo atual pelos {itensBase} itens da planilha original.</>
+                ) : (
+                  <>Comece pela <b>planilha do criativo</b> ({itensBase} itens já conferidos no depara) e edite a partir dela —
+                  o que vier de lá fica marcado, e cada alteração aparece lado a lado com o valor de origem.</>
+                )}
               </span>
             </div>
-            <button className="btn-import" onClick={onPuxarDoCriativo}>
-              <Copy size={13} /> Puxar do criativo
+            <button className="btn-import" onClick={() => {
+              // Recomeçar joga fora o que já foi lançado aqui. Perguntar
+              // custa um clique; refazer custa a tarde.
+              if (temExecutivo && !window.confirm(
+                "Puxar a planilha do criativo de novo?\n\n" +
+                "Tudo que já foi lançado ou editado no Executivo desta obra será trocado pelos itens originais do criativo.\n\n" +
+                "Não dá para desfazer."
+              )) return;
+              onPuxarDoCriativo();
+            }}>
+              <Copy size={13} /> {temExecutivo ? "Recomeçar do criativo" : "Puxar do criativo"}
             </button>
           </div>
         </div>
@@ -3646,7 +3692,11 @@ export default function App() {
   const [registro, setRegistro] = useState(() => new Map());
   const [erroBanco, setErroBanco] = useState(null);
   const [salvandoObra, setSalvandoObra] = useState(null);
-  const [tab, setTab] = useState("comparativo");
+  // null = nenhuma aba aberta: a obra abre mostrando só o cabeçalho e o
+  // resumo. Antes a aba ficava onde a pessoa tinha parado na obra
+  // ANTERIOR, então trocar de obra caía direto numa tela de trabalho de
+  // outra — sem contexto nenhum.
+  const [tab, setTab] = useState(null);
   const [itemFilter, setItemFilter] = useState("todos");
   const [expandedCats, setExpandedCats] = useState(() => new Set(["022519", "062519"]));
 
@@ -4035,6 +4085,12 @@ export default function App() {
   // seguem, e nada das etapas anteriores pode mais ser mexido.
   function liberarCompras() {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, comprasLiberadas: true } : o)));
+  }
+
+  // Desfaz a liberação. Toda trava precisa de volta — sem isso um clique
+  // sem querer congelaria a obra pra sempre.
+  function reabrirCompras() {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, comprasLiberadas: false } : o)));
   }
 
   // Edita, linha a linha, o item do lado "planilha" (coluna B) de um
@@ -4518,12 +4574,18 @@ export default function App() {
         .btn-aprovar:disabled { opacity: 0.4; cursor: not-allowed; }
         .caderno-card { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
         .caderno-lista { display: flex; flex-direction: column; gap: 1px; background: var(--border-soft); }
-        .caderno-slot { background: #fff; padding: 14px 18px; }
-        .caderno-slot-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
-        .caderno-slot-texto { flex: 1; min-width: 0; }
-        .caderno-slot-titulo { font-size: 13px; font-weight: 600; color: var(--ink); }
-        .caderno-slot-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
-        .caderno-vazio { font-size: 11.5px; color: var(--ink-3); font-style: italic; padding: 2px 0 2px 2px; }
+        .caderno-slot { display: flex; align-items: center; gap: 9px; background: #fff; padding: 8px 18px; font-size: 12px; }
+        .caderno-slot-titulo { color: var(--ink); font-weight: 500; }
+        .caderno-slot-arquivo { flex: 1; min-width: 0; color: var(--ink-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .caderno-slot-vazio { flex: 1; color: var(--ink-3); font-size: 11.5px; font-style: italic; }
+        .caderno-acao { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 2px 4px; font-size: 11px; color: var(--blue); cursor: pointer; font-family: inherit; text-decoration: none; flex-shrink: 0; }
+        .caderno-acao:hover { text-decoration: underline; }
+        .caderno-erro { font-size: 11px; color: var(--red); }
+        .escolha-aba { font-size: 12.5px; color: var(--ink-3); padding: 28px 4px; }
+        .liberado-barra { display: flex; align-items: center; gap: 9px; }
+        .liberado-barra span { flex: 1; }
+        .btn-reabrir-etapa { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 11px; color: var(--ink-2); cursor: pointer; font-family: inherit; flex-shrink: 0; }
+        .btn-reabrir-etapa:hover { border-color: var(--ink-2); color: var(--ink); }
         /* Linha que só nomeia um conjunto (qtd e valor zerados) — some do
            depara, mas continua visível na listagem, marcada. */
         .linha-titulo { background: var(--panel); }
@@ -4551,7 +4613,8 @@ export default function App() {
         .cmv-grupos-titulo { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
         .cmv-linha { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 11.5px; }
         .cmv-linha-num { color: var(--ink-3); width: 22px; flex-shrink: 0; }
-        .cmv-linha-nome { color: var(--ink-2); width: 210px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cmv-tag-na { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 1px 6px; white-space: nowrap; }
+        .cmv-linha-nome { color: var(--ink-2); width: 260px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .cmv-linha-barra { flex: 1; height: 6px; background: #fff; border-radius: 20px; overflow: hidden; min-width: 40px; }
         .cmv-linha-barra span { display: block; height: 100%; background: var(--blue); border-radius: 20px; }
         .cmv-linha-valor { width: 110px; text-align: right; color: var(--ink); flex-shrink: 0; }
@@ -4642,7 +4705,7 @@ export default function App() {
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
-          onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setModulo("comparativo"); }} />
+          onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
         <main className="main">
           {avisoMonday && <div className="aviso-monday">{avisoMonday}</div>}
@@ -4718,13 +4781,14 @@ export default function App() {
 
           <TabBar tab={tab} onChange={handleTabChange} obra={obra} />
 
+          {tab === null && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} podeEditar={edicao.minha} />}
           {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} onLiberar={liberarCompras} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
