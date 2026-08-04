@@ -615,13 +615,27 @@ async function lerContratoPDF(file) {
     throw new Error(e.error || `HTTP ${res.status}`);
   }
   const data = await res.json();
+  const mapa = mapearVerbasPeloNome(data.verbas);
   const valores = {};
-  (data.verbas || []).forEach((v) => { if (v.valor != null) valores[v.num] = v.valor; });
+  (data.verbas || []).forEach((v) => { if (v.valor != null) valores[mapa[v.num] || v.num] = v.valor; });
   const itens = (data.itens || []).map((it) => ({
-    num: it.verba, codigo: it.codigo, desc: it.desc,
+    num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: it.desc,
     qtdVendida: it.qtd, un: it.un, ambiente: it.ambiente,
   }));
   return { valores, itens };
+}
+
+// Traduz a numeração do documento pra numeração da EAP, usando o nome de
+// cada verba. Aplicado nos dois lados de propósito: assim nenhum
+// documento precisa numerar "certo" pra conferência funcionar — basta
+// escrever o nome do grupo, que é o que todos escrevem igual.
+function mapearVerbasPeloNome(verbas) {
+  const mapa = {};
+  (verbas || []).forEach((v) => {
+    const eap = verbaPorNome(v.nome);
+    if (eap) mapa[v.num] = eap;
+  });
+  return mapa;
 }
 
 // VENDIDO PLANILHA em PDF — usa o MESMO motor denso do Executivo (não
@@ -642,10 +656,11 @@ async function lerPlanilhaPDF(file) {
     throw new Error(e.error || `HTTP ${res.status}`);
   }
   const data = await res.json();
+  const mapa = mapearVerbasPeloNome(data.verbas);
   const itens = (data.itens || []).map((it) => {
     const temUnit = it.custoMaterial != null || it.custoMO != null;
     return {
-      num: it.verba, codigo: it.codigo, desc: it.desc,
+      num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: it.desc,
       qtdVendida: it.qtd, un: it.un, ambiente: null,
       custoUnitario: temUnit ? (it.custoMaterial || 0) + (it.custoMO || 0) : null,
       custo: it.custoTotal != null ? it.custoTotal : null, marca: null,
@@ -669,11 +684,12 @@ async function lerExecutivoPDF(file) {
     throw new Error(e.error || `HTTP ${res.status}`);
   }
   const data = await res.json();
+  const mapa = mapearVerbasPeloNome(data.verbas);
   const itens = (data.itens || []).map((it) => {
     const tipo = (it.custoMaterial || 0) > 0 ? "produto" : "servico";
     const temUnit = it.custoMaterial != null || it.custoMO != null;
     return {
-      num: it.verba, codigo: it.codigo, desc: it.desc,
+      num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: it.desc,
       tipo, ambiente: null, qtdExecutivo: it.qtd, un: it.un,
       custo: it.custoTotal != null ? it.custoTotal : null,
       contavel: tipo === "produto",
@@ -691,6 +707,56 @@ async function lerExecutivoPDF(file) {
 function verbaDoCodigo(codigo) {
   const m = String(codigo || "").match(/^(\d{1,2})[.\-]/);
   return m ? m[1].padStart(2, "0") : null;
+}
+
+// Descobre a verba da EAP pelo NOME do grupo escrito no documento.
+//
+// Esta é a chave certa. O contrato chama de "6 CLIMATIZAÇÃO/ EXAUSTÃO" e
+// a planilha de "7 CLIMATIZAÇÃO/ EXAUSTÃO" — o número briga, o nome não.
+// Confiar no número fazia os itens de climatização da planilha caírem em
+// "Móveis Sob Medida", e o contrato ficar sem par.
+//
+// Casa por palavra distintiva, não por texto exato, porque a grafia varia
+// ("Pedras — Mármores e Granitos" × "MARMORARIA", acento, barra, caixa).
+const APELIDOS_VERBA = {
+  "01": ["arquitetura", "engenharia", "projeto"],
+  "02": ["complementares"],
+  "03": ["eletric", "eletrica", "iluminacao"],
+  "04": ["gesso", "drywall"],
+  "05": ["pintura"],
+  "06": ["climatizacao", "exaustao", "climatiza"],
+  "07": ["marcenaria", "sob medida"],
+  "08": ["serralheria"],
+  "09": ["vidro", "vidros", "espelho", "espelhos"],
+  "10": ["soltos"],
+  "11": ["estofado", "estofados"],
+  "12": ["marmore", "marmores", "granito", "granitos", "marmoraria", "pedras"],
+  "13": ["louca", "loucas", "metais", "equipamentos"],
+  "14": ["eletroeletronico", "eletroeletronicos"],
+  "15": ["cortina", "cortinas", "persiana", "persianas"],
+  "16": ["decorativo", "decorativos"],
+  "17": ["execucao"],
+  "18": ["sonorizacao"],
+  "19": ["automacao"],
+};
+
+function verbaPorNome(nome) {
+  if (!nome) return null;
+  const texto = normTxt(nome);
+  if (!texto) return null;
+  let achado = null;
+  let melhorTamanho = 0;
+  Object.entries(APELIDOS_VERBA).forEach(([num, apelidos]) => {
+    apelidos.forEach((ap) => {
+      // o apelido mais longo ganha: "sob medida" é mais específico que
+      // "medida", e evita que um grupo case com duas verbas ao acaso
+      if (ap.length > melhorTamanho && new RegExp(`\\b${ap}\\b`).test(texto)) {
+        achado = num;
+        melhorTamanho = ap.length;
+      }
+    });
+  });
+  return achado;
 }
 
 // acha o índice da coluna cujo cabeçalho casa com algum dos padrões
@@ -741,13 +807,29 @@ async function lerPlanilhaExcel(file) {
   const iCustoGenerico = acharColuna(header, [/custo/, /valor/, /preç/]);
 
   const itens = [];
+  // Nome do último grupo que passou — a planilha marca os grupos numa
+  // linha própria ("7 | CLIMATIZAÇÃO/ EXAUSTÃO"), e os itens vêm abaixo
+  // ("7.1", "7.2"). O NOME é o que casa entre os documentos; o número
+  // não, porque a planilha numera diferente do contrato.
+  let grupoAtual = null;
   for (let i = headerIdx + 1; i < linhas.length; i++) {
     const row = linhas[i];
     if (!row || row.every((c) => c == null || String(c).trim() === "")) continue;
     const codigo = iCod >= 0 ? String(row[iCod] ?? "").trim() : null;
     const desc = iDesc >= 0 ? String(row[iDesc] ?? "").trim() : "";
     if (!desc) continue;
-    const num = (iVerba >= 0 ? String(row[iVerba] ?? "").trim().padStart(2, "0") : null) || verbaDoCodigo(codigo);
+
+    // Linha de grupo: código inteiro, sem ponto ("7", não "7.1").
+    if (codigo && /^\d{1,2}$/.test(codigo)) { grupoAtual = desc; continue; }
+    // Ordem de confiança pra decidir a verba:
+    //   1) o NOME do grupo, casado com a EAP — é o único dado que os dois
+    //      documentos escrevem igual ("CLIMATIZAÇÃO/ EXAUSTÃO" nos dois)
+    //   2) a coluna de verba, se a planilha tiver uma
+    //   3) o prefixo do código — último recurso, porque a numeração da
+    //      planilha não acompanha a EAP (climatização vem como 7, não 6)
+    const num = verbaPorNome(grupoAtual)
+      || (iVerba >= 0 ? String(row[iVerba] ?? "").trim().padStart(2, "0") : null)
+      || verbaDoCodigo(codigo);
     if (!num) continue;
     const qtdVal = iQtd >= 0 ? parseBRL(row[iQtd]) : null;
     let custoUnitario = iCustoUnit >= 0 ? parseBRL(row[iCustoUnit]) : null;
