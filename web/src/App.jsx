@@ -82,8 +82,17 @@ const SQUADS = [
 ];
 
 // "R$ 1.234,56" -> 1234.56 ; vazio -> null
+// Converte valor pra número, entendendo o formato brasileiro em texto
+// ("R$ 1.234,56" → 1234.56).
+//
+// Cuidado que custou caro: quando vem do Excel, o valor JÁ É número, e
+// aí o ponto é a casa decimal, não separador de milhar. Convertendo pra
+// texto e apagando os pontos, 223.38 virava 22338 — todos os custos de
+// planilha Excel saíam inflados em milhões. Número entra e sai
+// intocado; só texto passa pela conversão.
 function parseBRL(txt) {
-  if (!txt) return null;
+  if (txt == null || txt === "") return null;
+  if (typeof txt === "number") return Number.isFinite(txt) ? txt : null;
   const n = Number(String(txt).replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
   return Number.isFinite(n) ? n : null;
 }
@@ -765,6 +774,36 @@ function ehLinhaDeTitulo(qtd, custo, custoUnitario) {
   return semQtd && semValor;
 }
 
+// Mantém as colunas de custo coerentes depois de uma edição na tela.
+//
+// As cinco colunas se explicam: total de material = material × qtd, e
+// custo total = total material + total mão de obra. Sem recalcular, quem
+// corrige o custo unitário veria o total antigo do lado — e acreditaria
+// nele.
+//
+// Só recalcula o que DEPENDE do que foi mexido: se a pessoa digitou o
+// total direto, o total é o que ela digitou, não o que a conta daria.
+function recalcularCustos(item, patch) {
+  const mexeu = (campo) => Object.prototype.hasOwnProperty.call(patch, campo);
+  const it = { ...item };
+  const qtd = it.qtdVendida;
+
+  if (mexeu("custoMaterial") || mexeu("qtdVendida")) {
+    if (it.custoMaterial != null && qtd) it.totalMaterial = it.custoMaterial * qtd;
+  }
+  if (mexeu("custoMO") || mexeu("qtdVendida")) {
+    if (it.custoMO != null && qtd) it.totalMO = it.custoMO * qtd;
+  }
+  if (!mexeu("custo")) {
+    if (it.totalMaterial != null || it.totalMO != null) it.custo = (it.totalMaterial || 0) + (it.totalMO || 0);
+  }
+  if (!mexeu("custoUnitario") && (it.custoMaterial != null || it.custoMO != null)) {
+    it.custoUnitario = (it.custoMaterial || 0) + (it.custoMO || 0);
+  }
+  it.ehTitulo = ehLinhaDeTitulo(it.qtdVendida, it.custo, it.custoUnitario);
+  return it;
+}
+
 // Tira a quantidade que vazou pro fim da descrição.
 //
 // Lendo do PDF, a coluna de quantidade às vezes gruda no texto:
@@ -901,7 +940,10 @@ async function lerTextoComAcento(file) {
 // Lê por CABEÇALHO (não por posição fixa), pra aguentar variação de layout.
 async function lerPlanilhaExcel(file) {
   let linhas;
-  if (/\.xlsx?$/i.test(file.name)) {
+  // .xlsm é Excel com macro — é o formato do "Composição de Custo" da
+  // casa. Sem ele na lista, o arquivo caía no caminho de texto simples e
+  // nada era lido. .xlsb entra junto pelo mesmo motivo.
+  if (/\.(xlsx|xlsm|xlsb|xls)$/i.test(file.name)) {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array" });
     linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
@@ -1164,7 +1206,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha }) {
 
   return (
     <>
-      <ImportButton congelado={obra.comprasLiberadas} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xls,.csv,.pdf"
+      <ImportButton congelado={obra.comprasLiberadas} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
         dica={<>Suba o <b>Vendido Planilha</b> — documento mais elaborado, em <b>Excel ou PDF</b>, com <b>marca e custo</b> por item (marca só sai do Excel; do PDF sai descrição, quantidade e custo).</>}
         onFile={aoImportar} />
 
@@ -1959,6 +2001,51 @@ function FaseBloqueada({ onIrParaDepara }) {
 
 // CADERNO DE ESPECIFICAÇÃO — só upload + download, sem leitura/parse.
 // É o PDF com tudo que foi aprovado de produto com o cliente.
+// Célula que vira campo ao clicar. O que veio da planilha pode ser
+// corrigido aqui, e o que faltou pode ser lançado na mão — nem tudo
+// chega pronto do arquivo (na planilha real, lâmpadas e fontes vêm com
+// quantidade e sem custo nenhum).
+function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState("");
+
+  function abrir() {
+    if (congelado) return;
+    setTexto(valor == null ? "" : String(valor).replace(".", ","));
+    setEditando(true);
+  }
+
+  function salvar() {
+    setEditando(false);
+    const limpo = texto.trim();
+    const novo = limpo === "" ? null : parseBRL(limpo);
+    if (novo !== valor) onSalvar(novo);
+  }
+
+  if (editando) {
+    return (
+      <input
+        className="celula-input mono"
+        autoFocus
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onBlur={salvar}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") setEditando(false);
+        }}
+      />
+    );
+  }
+
+  const mostrar = valor == null ? "—" : formato === "moeda" ? fmtBRL(valor) : String(valor);
+  return (
+    <button className={`celula-valor mono ${congelado ? "travada" : ""}`} onClick={abrir} title={congelado ? "Congelado pela liberação de compra" : "Clique para editar"}>
+      {mostrar}
+    </button>
+  );
+}
+
 // Os três cadernos do Executivo. São só arquivo: sobem, ficam guardados
 // e a equipe baixa pra consultar — nada é lido do PDF. A planilha, essa
 // sim, é lida (vem logo abaixo, na mesma tela).
@@ -2014,8 +2101,14 @@ function CadernoSlot({ titulo, sub, arquivo, onImportar, congelado }) {
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
+function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem }) {
   const [abertos, toggle] = useAbertos();
+  // Os cadernos começam recolhidos: são três blocos que empurravam a
+  // planilha pra fora da tela, e na maior parte do tempo ninguém precisa
+  // deles abertos. Abrem sozinhos enquanto nenhum foi anexado, pra não
+  // esconder que a etapa existe.
+  const anexados = CADERNOS_EXECUTIVO.filter((c) => (obra.cadernos || {})[c.chave]).length;
+  const [cadernosAbertos, setCadernosAbertos] = useState(anexados === 0);
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   const somar = (campo) => verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it[campo] || 0), 0), 0);
   const total = somar("custo");
@@ -2033,23 +2126,29 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
   return (
     <>
       <div className="flat-panel">
-        <div className="flat-panel-header">
-          <div>
+        <button className="cadernos-head" onClick={() => setCadernosAbertos((v) => !v)}>
+          {cadernosAbertos ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
+          <div className="cadernos-head-texto">
             <div className="flat-panel-title">Cadernos do Executivo</div>
-            <div className="flat-panel-sub">Arquivos de consulta da equipe — ficam guardados aqui pra download. Nada é lido do PDF.</div>
+            <div className="flat-panel-sub">Arquivos de consulta da equipe — nada é lido do PDF.</div>
           </div>
-        </div>
-        <div className="caderno-lista">
-          {CADERNOS_EXECUTIVO.map((c) => (
-            <CadernoSlot key={c.chave} titulo={c.titulo} sub={c.sub}
-              arquivo={(obra.cadernos || {})[c.chave]}
-              congelado={obra.comprasLiberadas}
-              onImportar={(info) => onImportCaderno(c.chave, info)} />
-          ))}
-        </div>
+          <span className="cadernos-resumo">
+            {anexados === 0 ? "nenhum anexado" : `${anexados} de ${CADERNOS_EXECUTIVO.length} anexado${anexados > 1 ? "s" : ""}`}
+          </span>
+        </button>
+        {cadernosAbertos && (
+          <div className="caderno-lista">
+            {CADERNOS_EXECUTIVO.map((c) => (
+              <CadernoSlot key={c.chave} titulo={c.titulo} sub={c.sub}
+                arquivo={(obra.cadernos || {})[c.chave]}
+                congelado={obra.comprasLiberadas}
+                onImportar={(info) => onImportCaderno(c.chave, info)} />
+            ))}
+          </div>
+        )}
       </div>
 
-      <ImportButton congelado={obra.comprasLiberadas} label="Importar Planilha Executivo" accept=".pdf,.xlsx,.xls,.csv"
+      <ImportButton congelado={obra.comprasLiberadas} label="Importar Planilha Executivo" accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
         dica={<>Suba a <b>Planilha Executivo</b> — descrição, quantidade e valores (unitário e total) por item, dentro de cada grupo.</>}
         onFile={aoImportar} />
 
@@ -2068,8 +2167,9 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
             const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
             return (
               <div key={c.num} className="vend-grupo">
-                <button className="vend-head" onClick={() => temItens && toggle(c.num)} style={{ cursor: temItens ? "pointer" : "default" }}>
-                  {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
+                {/* abre mesmo sem itens: é onde se lança item manual */}
+                <button className="vend-head" onClick={() => toggle(c.num)}>
+                  {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
                   {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
@@ -2091,21 +2191,29 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {itens.map((it, i) => (
-                        <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
-                          <td className="mono dim">{it.codigo || "—"}</td>
-                          <td>{it.desc}{it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}</td>
-                          <td className="mono center">{it.qtdVendida ?? "—"}</td>
-                          <td className="mono center dim">{it.un || "—"}</td>
-                          <td className="mono right dim">{it.custoMaterial != null ? fmtBRL(it.custoMaterial) : "—"}</td>
-                          <td className="mono right dim">{it.custoMO != null ? fmtBRL(it.custoMO) : "—"}</td>
-                          <td className="mono right">{it.totalMaterial != null ? fmtBRL(it.totalMaterial) : "—"}</td>
-                          <td className="mono right">{it.totalMO != null ? fmtBRL(it.totalMO) : "—"}</td>
-                          <td className="mono right forte">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
-                        </tr>
-                      ))}
+                      {itens.map((it, i) => {
+                        const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
+                        return (
+                          <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
+                            <td className="mono dim">{it.codigo || "—"}</td>
+                            <td>{it.desc}{it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}</td>
+                            <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={obra.comprasLiberadas} onSalvar={editar("qtdVendida")} /></td>
+                            <td className="mono center dim">{it.un || "—"}</td>
+                            <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={obra.comprasLiberadas} onSalvar={editar("custoMaterial")} /></td>
+                            <td className="right"><CelulaEditavel valor={it.custoMO} congelado={obra.comprasLiberadas} onSalvar={editar("custoMO")} /></td>
+                            <td className="right"><CelulaEditavel valor={it.totalMaterial} congelado={obra.comprasLiberadas} onSalvar={editar("totalMaterial")} /></td>
+                            <td className="right"><CelulaEditavel valor={it.totalMO} congelado={obra.comprasLiberadas} onSalvar={editar("totalMO")} /></td>
+                            <td className="right forte"><CelulaEditavel valor={it.custo} congelado={obra.comprasLiberadas} onSalvar={editar("custo")} /></td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
+                )}
+                {aberto && !obra.comprasLiberadas && (
+                  <button className="btn-add-item" onClick={() => onAdicionarItem(c.num)}>
+                    <Plus size={12} /> Adicionar item nesta verba
+                  </button>
                 )}
               </div>
             );
@@ -3052,6 +3160,46 @@ export default function App() {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, deparaAprovado: true } : o)));
   }
 
+  // Edita um valor do Executivo direto na tela. Nem tudo chega pronto do
+  // arquivo — na planilha real, lâmpadas e fontes vêm com quantidade e
+  // sem custo — então o time completa aqui.
+  //
+  // Mexe nas duas listas da verba: `itensPlanilhaExecutivo` (o que a tela
+  // mostra) e `itens` (o que alimenta Planilha de Compra, Compras e
+  // Contratos). As duas nascem do mesmo import, na mesma ordem.
+  function editarItemExecutivo(catNum, idx, patch) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        if (c.num !== catNum) return c;
+        const aplicar = (lista) => (lista || []).map((it, i) => (i === idx ? recalcularCustos({ ...it, ...patch }, patch) : it));
+        return { ...c, itensPlanilhaExecutivo: aplicar(c.itensPlanilhaExecutivo), itens: aplicar(c.itens) };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  function adicionarItemExecutivo(catNum) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        if (c.num !== catNum) return c;
+        const novo = {
+          codigo: null, desc: "Novo item — clique para descrever", num: catNum,
+          qtdVendida: null, un: null, custoMaterial: null, custoMO: null,
+          totalMaterial: null, totalMO: null, custo: null,
+          manual: true, tipo: "produto", contavel: false,
+        };
+        return {
+          ...c,
+          itensPlanilhaExecutivo: [...(c.itensPlanilhaExecutivo || []), novo],
+          itens: [...(c.itens || []), novo],
+        };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
   // Libera a Planilha de Compra: a partir daqui, compras e contratações
   // seguem, e nada das etapas anteriores pode mais ser mexido.
   function liberarCompras() {
@@ -3540,6 +3688,21 @@ export default function App() {
         .exec-itens th { line-height: 1.25; }
         .exec-itens td.forte { color: var(--ink); font-weight: 600; }
         .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
+
+        /* Cadernos recolhíveis — ocupavam meia tela sempre abertos */
+        .cadernos-head { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; text-align: left; padding: 16px 18px; cursor: pointer; }
+        .cadernos-head-texto { flex: 1; min-width: 0; }
+        .cadernos-resumo { font-size: 11.5px; color: var(--ink-3); flex-shrink: 0; }
+
+        /* Célula que vira campo ao clicar */
+        .celula-valor { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 2px 5px; font-size: 11.5px; color: var(--ink); cursor: text; width: 100%; text-align: right; font-family: 'JetBrains Mono', monospace; }
+        .celula-valor:hover { border-color: var(--border); background: #fff; }
+        .celula-valor.travada { cursor: default; color: var(--ink-3); }
+        .celula-valor.travada:hover { border-color: transparent; background: transparent; }
+        .celula-input { width: 100%; border: 1px solid var(--blue); border-radius: 5px; padding: 2px 5px; font-size: 11.5px; text-align: right; outline: none; background: #fff; font-family: 'JetBrains Mono', monospace; }
+        .btn-add-item { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0 10px 34px; background: transparent; border: 1px dashed var(--border); border-radius: 7px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-3); cursor: pointer; font-family: inherit; }
+        .btn-add-item:hover { color: var(--blue); border-color: var(--blue); }
+
         .caderno-info { flex: 1; min-width: 0; }
         .caderno-nome { font-size: 13px; font-weight: 600; color: var(--ink); }
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
@@ -3636,7 +3799,7 @@ export default function App() {
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} />}
-          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} onLiberar={liberarCompras} />
