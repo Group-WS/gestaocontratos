@@ -703,6 +703,22 @@ async function lerExecutivoPDF(file) {
   return { itens };
 }
 
+// Linha que nomeia um conjunto, não um item.
+//
+// Na planilha elas vêm com quantidade 0 e valor vazio, e os itens de
+// verdade aparecem logo abaixo: "17.1 Quadros decorativos" (0 · —)
+// seguido de 17.2, 17.3…, ou "17.10 Enxoval" (0 · —) seguido dos jogos
+// de cama. Comparar esses títulos não faz sentido — não são produto,
+// e puxá-los pro depara só gera divergência inventada.
+//
+// Precisa dos DOIS zerados: item com quantidade e sem preço ainda é
+// item (preço a definir), e item com preço e sem quantidade também.
+function ehLinhaDeTitulo(qtd, custo, custoUnitario) {
+  const semQtd = qtd == null || qtd === 0;
+  const semValor = !custo && !custoUnitario;
+  return semQtd && semValor;
+}
+
 // deduz o nº da verba (01–19) a partir do código do item, ex: "6.2" -> "06"
 function verbaDoCodigo(codigo) {
   const m = String(codigo || "").match(/^(\d{1,2})[.\-]/);
@@ -837,7 +853,7 @@ async function lerPlanilhaExcel(file) {
     if (custoUnitario == null && custo != null && qtdVal) custoUnitario = custo / qtdVal;
     if (custo == null && custoUnitario != null && qtdVal) custo = custoUnitario * qtdVal;
     itens.push({
-      num, codigo: codigo || null, desc,
+      num, codigo: codigo || null, desc, ehTitulo: ehLinhaDeTitulo(qtdVal, custo, custoUnitario),
       ambiente: iAmb >= 0 ? String(row[iAmb] ?? "").trim() || null : null,
       marca: iMarca >= 0 ? String(row[iMarca] ?? "").trim() || null : null,
       qtdVendida: qtdVal,
@@ -1035,9 +1051,9 @@ function VendidoPlanilhaView({ obra, onImportPlanilha }) {
                     </thead>
                     <tbody>
                       {itens.map((it, i) => (
-                        <tr key={it.codigo || i}>
+                        <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
                           <td className="mono dim">{it.codigo || "—"}</td>
-                          <td>{it.desc}</td>
+                          <td>{it.desc}{it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}</td>
                           <td className="mono center dim">{it.ambiente || "—"}</td>
                           <td className="dim">{it.marca || "—"}</td>
                           <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
@@ -1355,7 +1371,9 @@ function motivoDiferenca(e) {
 function juntarItens(categorias, campo) {
   const out = [];
   (categorias || []).filter(naoEhVerbaPadrao).forEach((c) => {
-    (c[campo] || []).forEach((it) => out.push({ ...it, verbaNum: c.num, verbaNome: c.nome }));
+    // linhas de título (quantidade e valor zerados) ficam de fora: não
+    // são produto, e comparar título com item gera divergência inventada
+    (c[campo] || []).filter((it) => !it.ehTitulo).forEach((it) => out.push({ ...it, verbaNum: c.num, verbaNome: c.nome }));
   });
   return out;
 }
@@ -1786,7 +1804,16 @@ function FaseBloqueada({ onIrParaDepara }) {
 
 // CADERNO DE ESPECIFICAÇÃO — só upload + download, sem leitura/parse.
 // É o PDF com tudo que foi aprovado de produto com o cliente.
-function CadernoEspecificacaoView({ obra, onImportCaderno }) {
+// Os três cadernos do Executivo. São só arquivo: sobem, ficam guardados
+// e a equipe baixa pra consultar — nada é lido do PDF. A planilha, essa
+// sim, é lida (vem logo abaixo, na mesma tela).
+const CADERNOS_EXECUTIVO = [
+  { chave: "especificacao", titulo: "Caderno de Especificação", sub: "Tudo que foi aprovado de produto junto ao cliente." },
+  { chave: "marcenaria", titulo: "Caderno de Marcenaria", sub: "Projeto e detalhamento dos móveis sob medida." },
+  { chave: "projeto", titulo: "Caderno de Projeto Executivo", sub: "Pranchas e detalhamentos do projeto executivo." },
+];
+
+function CadernoSlot({ titulo, sub, arquivo, onImportar }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
 
@@ -1796,32 +1823,33 @@ function CadernoEspecificacaoView({ obra, onImportCaderno }) {
     if (!file) return;
     setErro(null);
     if (!/\.pdf$/i.test(file.name)) { setErro("Suba um arquivo PDF."); return; }
-    const url = URL.createObjectURL(file);
-    onImportCaderno({ nome: file.name, url, tamanhoKB: Math.round(file.size / 1024) });
+    onImportar({ nome: file.name, url: URL.createObjectURL(file), tamanhoKB: Math.round(file.size / 1024) });
   }
 
   return (
-    <div className="flat-panel">
-      <div className="flat-panel-header">
-        <div>
-          <div className="flat-panel-title">Caderno de Especificação</div>
-          <div className="flat-panel-sub">PDF com tudo que foi aprovado de produto junto ao cliente. Por enquanto, só upload e download — sem leitura automática.</div>
+    <div className="caderno-slot">
+      <div className="caderno-slot-head">
+        <div className="caderno-slot-texto">
+          <div className="caderno-slot-titulo">{titulo}</div>
+          <div className="caderno-slot-sub">{sub}</div>
         </div>
-        <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()}><Upload size={13} /> Importar PDF</button>
+        <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()}>
+          <Upload size={13} /> {arquivo ? "Substituir" : "Anexar PDF"}
+        </button>
         <input ref={inputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={aoEscolher} />
       </div>
       {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
-      {obra.cadernoEspecificacao ? (
+      {arquivo ? (
         <div className="caderno-card">
-          <BookOpen size={22} className="dim" />
+          <BookOpen size={20} className="dim" />
           <div className="caderno-info">
-            <div className="caderno-nome">{obra.cadernoEspecificacao.nome}</div>
-            <div className="caderno-meta">{obra.cadernoEspecificacao.tamanhoKB} KB</div>
+            <div className="caderno-nome">{arquivo.nome}</div>
+            <div className="caderno-meta">{arquivo.tamanhoKB} KB</div>
           </div>
-          <a className="btn-download" href={obra.cadernoEspecificacao.url} download={obra.cadernoEspecificacao.nome}><Download size={13} /> Baixar</a>
+          <a className="btn-download" href={arquivo.url} download={arquivo.nome}><Download size={13} /> Baixar</a>
         </div>
       ) : (
-        <div className="empty-note">Nenhum caderno de especificação importado ainda nesta obra.</div>
+        <div className="caderno-vazio">Nenhum arquivo anexado.</div>
       )}
     </div>
   );
@@ -1831,7 +1859,7 @@ function CadernoEspecificacaoView({ obra, onImportCaderno }) {
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function PlanilhaExecutivoView({ obra, onImportPlanilhaExecutivo }) {
+function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
   const [abertos, toggle] = useAbertos();
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   const total = verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.custo || 0), 0), 0);
@@ -1846,6 +1874,22 @@ function PlanilhaExecutivoView({ obra, onImportPlanilhaExecutivo }) {
 
   return (
     <>
+      <div className="flat-panel">
+        <div className="flat-panel-header">
+          <div>
+            <div className="flat-panel-title">Cadernos do Executivo</div>
+            <div className="flat-panel-sub">Arquivos de consulta da equipe — ficam guardados aqui pra download. Nada é lido do PDF.</div>
+          </div>
+        </div>
+        <div className="caderno-lista">
+          {CADERNOS_EXECUTIVO.map((c) => (
+            <CadernoSlot key={c.chave} titulo={c.titulo} sub={c.sub}
+              arquivo={(obra.cadernos || {})[c.chave]}
+              onImportar={(info) => onImportCaderno(c.chave, info)} />
+          ))}
+        </div>
+      </div>
+
       <ImportButton label="Importar Planilha Executivo" accept=".pdf,.xlsx,.xls,.csv"
         dica={<>Suba a <b>Planilha Executivo</b> — descrição, quantidade e valores (unitário e total) por item, dentro de cada grupo.</>}
         onFile={aoImportar} />
@@ -1885,9 +1929,9 @@ function PlanilhaExecutivoView({ obra, onImportPlanilhaExecutivo }) {
                     </thead>
                     <tbody>
                       {itens.map((it, i) => (
-                        <tr key={it.codigo || i}>
+                        <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
                           <td className="mono dim">{it.codigo || "—"}</td>
-                          <td>{it.desc}</td>
+                          <td>{it.desc}{it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}</td>
                           <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
                           <td className="mono right dim">{it.custoUnitario != null ? fmtBRL(it.custoUnitario) : "—"}</td>
                           <td className="mono right">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
@@ -2042,8 +2086,7 @@ function TabBar({ tab, onChange, obra }) {
     { id: "vendido_contrato", label: "Vendido Contrato", icon: FileText },
     { id: "vendido_planilha", label: "Vendido Planilha", icon: FileText },
     { id: "vendido_conferencia", label: "Depara Contrato x Planilha", icon: GitCompare },
-    { id: "executivo_caderno", label: "Caderno de Especificação", icon: BookOpen, gate: bloqueado },
-    { id: "executivo_planilha", label: "Planilha Executivo", icon: ClipboardList, gate: bloqueado },
+    { id: "executivo", label: "Executivo", icon: BookOpen, gate: bloqueado },
     { id: "executivo_conferencia", label: "Conf. Executivo", icon: GitCompare, gate: bloqueado },
     { id: "comparativo", label: "Comparativo", icon: LayoutGrid },
     { id: "compras", label: "Compras de Produtos", icon: ShoppingCart },
@@ -2858,8 +2901,12 @@ export default function App() {
   const editarItemPlanilhaExecutivo = (catNum, codigo, patch) => editarLinhaDepara("itensPlanilhaExecutivo", catNum, codigo, patch);
 
   // Caderno de Especificação: só guarda o arquivo (upload/download, sem parse).
-  function importCadernoEspecificacao(info) {
-    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, cadernoEspecificacao: info } : o)));
+  // Os cadernos ficam guardados por chave ("especificacao", "marcenaria",
+  // "projeto") — só arquivo pra consulta, nada é lido deles.
+  function importCaderno(chave, info) {
+    setObras((prev) => prev.map((o) => (
+      o.id === selectedId ? { ...o, cadernos: { ...(o.cadernos || {}), [chave]: info } } : o
+    )));
   }
 
   // Planilha Executivo: mesma origem populando dois formatos — o
@@ -3296,6 +3343,18 @@ export default function App() {
         .btn-aprovar:hover:not(:disabled) { background: var(--green); }
         .btn-aprovar:disabled { opacity: 0.4; cursor: not-allowed; }
         .caderno-card { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+        .caderno-lista { display: flex; flex-direction: column; gap: 1px; background: var(--border-soft); }
+        .caderno-slot { background: #fff; padding: 14px 18px; }
+        .caderno-slot-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+        .caderno-slot-texto { flex: 1; min-width: 0; }
+        .caderno-slot-titulo { font-size: 13px; font-weight: 600; color: var(--ink); }
+        .caderno-slot-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+        .caderno-vazio { font-size: 11.5px; color: var(--ink-3); font-style: italic; padding: 2px 0 2px 2px; }
+        /* Linha que só nomeia um conjunto (qtd e valor zerados) — some do
+           depara, mas continua visível na listagem, marcada. */
+        .linha-titulo { background: var(--panel); }
+        .linha-titulo td { color: var(--ink-3); }
+        .tag-na { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
         .caderno-info { flex: 1; min-width: 0; }
         .caderno-nome { font-size: 13px; font-weight: 600; color: var(--ink); }
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
@@ -3392,8 +3451,7 @@ export default function App() {
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} />}
-          {tab === "executivo_caderno" && (obra.deparaAprovado ? <CadernoEspecificacaoView obra={obra} onImportCaderno={importCadernoEspecificacao} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
-          {tab === "executivo_planilha" && (obra.deparaAprovado ? <PlanilhaExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} />
