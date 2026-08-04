@@ -1090,20 +1090,42 @@ function construirPeso(...listas) {
   return (w) => Math.log((total + 1) / ((freq.get(w) || 0) + 1)) + 1;
 }
 
-// Similaridade entre duas descrições, com as palavras pesadas.
-// Combina Jaccard com CONTENÇÃO (quanto do lado menor está dentro do
-// maior). Contenção resolve o caso comum "a Planilha tem mais detalhe":
+// Os três números que governam a conferência. Ficam juntos de propósito:
+// mexer num sem olhar os outros foi exatamente o que fez tapete parear
+// com espelho — o teto de medida ficou ACIMA do mínimo de pareamento, e
+// virou passaporte em vez de barreira. A ordem tem que valer sempre:
+//
+//     LIMIAR_PAREAR  <  TETO_MEDIDA_CONFLITANTE  <  LIMIAR_OK
+//
+const LIMIAR_PAREAR = 0.34;             // abaixo disso são itens diferentes, nem compara
+const TETO_MEDIDA_CONFLITANTE = 0.55;   // medida briga: pareia pra revisão, nunca aprova
+const LIMIAR_OK = 0.6;                  // acima disso, considera a mesma descrição
+
+// A primeira pergunta que uma pessoa faz não é "quantas palavras batem",
+// é "isso é sequer a mesma coisa?". Tapete e espelho morrem aí, por mais
+// parecido que seja o resto da linha (ambos têm medida, ambiente,
+// fornecedor). A palavra que responde isso é a primeira significativa —
+// o tipo do produto.
+//
+// Basta o tipo de UM lado aparecer no outro, em qualquer posição: assim
+// "Pendente Snello" ainda casa com "Luminária Pendente Snello", onde a
+// planilha põe a categoria na frente.
+function mesmoTipo(wa, wb) {
+  if (!wa.length || !wb.length) return false;
+  const apareceEm = (palavra, lista) => lista.some((x) => tokensCasam(palavra, x) > 0);
+  return apareceEm(wa[0], wb) || apareceEm(wb[0], wa);
+}
+
+// Semelhança entre duas descrições, com as palavras pesadas. Combina
+// Jaccard com CONTENÇÃO (quanto do lado menor está dentro do maior).
+// Contenção resolve o caso comum "a Planilha tem mais detalhe":
 // "Embutido recuado 14W" × "Embutido recuado 14W Cod. 4473 | Cor:
 // Branco" é o mesmo item, só que mais especificado.
 function similaridade(a, b, peso = () => 1) {
-  // Medida divergente derruba o par independente do resto da frase.
-  // O teto (abaixo de LIMIAR_OK) deixa o par ainda visível como
-  // "diferente" pra você conferir, em vez de sumir como itens avulsos.
-  if (medidasConflitam(a, b)) return 0.35;
-
   const wa = Array.from(new Set(tokenizar(a)));
   const wb = Array.from(new Set(tokenizar(b)));
   if (!wa.length || !wb.length) return 0;
+  if (!mesmoTipo(wa, wb)) return 0;
 
   // cada palavra de um lado casa com no máximo uma do outro
   const gasto = new Set();
@@ -1122,10 +1144,19 @@ function similaridade(a, b, peso = () => 1) {
   const pesoB = wb.reduce((t, w) => t + peso(w), 0);
   const pesoUniao = pesoA + pesoB - pesoInter;
   const jaccard = pesoUniao > 0 ? pesoInter / pesoUniao : 0;
-  if (Math.min(wa.length, wb.length) < 2) return jaccard; // curta demais pra confiar em contenção
   const menorPeso = Math.min(pesoA, pesoB);
   const contencao = menorPeso > 0 ? pesoInter / menorPeso : 0;
-  return Math.max(jaccard, contencao);
+  // descrição curta demais não sustenta contenção (1 palavra em comum
+  // de 1 daria nota cheia)
+  const bruta = Math.min(wa.length, wb.length) < 2 ? jaccard : Math.max(jaccard, contencao);
+
+  // Medida divergente é TETO sobre a nota real, nunca uma nota fixa.
+  // Como teto, ela derruba "14W × 7W" de 1.00 pra 0.55 — o par continua
+  // visível pra você conferir, mas não passa como aprovado. Como nota
+  // fixa (o erro anterior), ela ERGUIA pares sem nada em comum até
+  // acima do mínimo de pareamento — foi assim que tapete virou par de
+  // espelho: os dois têm medida em metros, e medidas diferentes.
+  return medidasConflitam(a, b) ? Math.min(bruta, TETO_MEDIDA_CONFLITANTE) : bruta;
 }
 
 // "06.01" e "6.1" são o mesmo item escrito de dois jeitos. Zero à
@@ -1145,9 +1176,6 @@ function compararQtd(a, b) {
   if (a == null || b == null) return "sem_dado";
   return Math.abs(a - b) < 0.01 ? "bate" : "difere";
 }
-
-const LIMIAR_OK = 0.6;        // acima disso, considera a mesma descrição
-const LIMIAR_PAREAR = 0.34;   // abaixo disso nem vale comparar: são itens diferentes
 
 // Motor de cruzamento — por DESCRIÇÃO, não por código.
 //
