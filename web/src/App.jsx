@@ -651,8 +651,11 @@ async function lerContratoPDF(file) {
   const valores = {};
   (data.verbas || []).forEach((v) => { if (v.valor != null) valores[mapa[v.num] || v.num] = v.valor; });
   const itens = (data.itens || []).map((it) => ({
-    num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: it.desc,
+    num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: limparQtdColada(it.desc),
     qtdVendida: it.qtd, un: it.un, ambiente: it.ambiente,
+    // o contrato não traz valor por item (é fechado por verba), então
+    // aqui "não foi vendido" se resume a não ter quantidade
+    ehTitulo: ehLinhaDeTitulo(it.qtd, null, null),
   }));
   return { valores, itens };
 }
@@ -691,11 +694,13 @@ async function lerPlanilhaPDF(file) {
   const mapa = mapearVerbasPeloNome(data.verbas);
   const itens = (data.itens || []).map((it) => {
     const temUnit = it.custoMaterial != null || it.custoMO != null;
+    const custoUnitario = temUnit ? (it.custoMaterial || 0) + (it.custoMO || 0) : null;
+    const custo = it.custoTotal != null ? it.custoTotal : null;
     return {
-      num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: it.desc,
+      num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: limparQtdColada(it.desc),
       qtdVendida: it.qtd, un: it.un, ambiente: null,
-      custoUnitario: temUnit ? (it.custoMaterial || 0) + (it.custoMO || 0) : null,
-      custo: it.custoTotal != null ? it.custoTotal : null, marca: null,
+      custoUnitario, custo, marca: null,
+      ehTitulo: ehLinhaDeTitulo(it.qtd, custo, custoUnitario),
     };
   });
   return { itens };
@@ -720,16 +725,25 @@ async function lerExecutivoPDF(file) {
   const itens = (data.itens || []).map((it) => {
     const tipo = (it.custoMaterial || 0) > 0 ? "produto" : "servico";
     const temUnit = it.custoMaterial != null || it.custoMO != null;
+    const custoUnitario = temUnit ? (it.custoMaterial || 0) + (it.custoMO || 0) : null;
+    const custo = it.custoTotal != null ? it.custoTotal : null;
+    const ehTitulo = ehLinhaDeTitulo(it.qtd, custo, custoUnitario);
     return {
-      num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: it.desc,
+      num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: limparQtdColada(it.desc),
       tipo, ambiente: null, qtdExecutivo: it.qtd, un: it.un,
-      custo: it.custoTotal != null ? it.custoTotal : null,
-      contavel: tipo === "produto",
-      sienge: tipo === "produto" ? { status: "nao_encontrado" } : undefined,
+      custo,
+      custoMaterial: it.custoMaterial ?? null, custoMO: it.custoMO ?? null,
+      totalMaterial: it.custoMaterial != null && it.qtd ? it.custoMaterial * it.qtd : null,
+      totalMO: it.custoMO != null && it.qtd ? it.custoMO * it.qtd : null,
+      ehTitulo,
+      // linha sem quantidade e sem valor não foi vendida — não é produto
+      // pra comprar nem serviço pra contratar
+      contavel: tipo === "produto" && !ehTitulo,
+      sienge: tipo === "produto" && !ehTitulo ? { status: "nao_encontrado" } : undefined,
       liberado: false, comprado: false, valorComprado: null, statusContrato: null,
       // campos "simples", no formato da Planilha (Vendido/Executivo) —
       // pra exibir na Planilha Executivo e pro depara Planilha × Planilha:
-      qtdVendida: it.qtd, custoUnitario: temUnit ? (it.custoMaterial || 0) + (it.custoMO || 0) : null,
+      qtdVendida: it.qtd, custoUnitario,
     };
   });
   return { itens };
@@ -749,6 +763,22 @@ function ehLinhaDeTitulo(qtd, custo, custoUnitario) {
   const semQtd = qtd == null || qtd === 0;
   const semValor = !custo && !custoUnitario;
   return semQtd && semValor;
+}
+
+// Tira a quantidade que vazou pro fim da descrição.
+//
+// Lendo do PDF, a coluna de quantidade às vezes gruda no texto:
+// "Quadros decorativos 0,000", "Enxoval- 0,000". Além de feio, a
+// comparação passa a ver um número onde deveria ver só a descrição.
+//
+// Só remove número no formato de quantidade (0,000) no fim da linha —
+// medida de produto ("2,66X4,35M", "0,80x1,60m") termina com letra e
+// não é tocada.
+function limparQtdColada(desc) {
+  return String(desc || "")
+    .replace(/\s+\d{1,3},\d{3}\s*$/, "")
+    .replace(/[\s\-–—:]+$/, "")
+    .trim();
 }
 
 // deduz o nº da verba (01–19) a partir do código do item, ex: "6.2" -> "06"
