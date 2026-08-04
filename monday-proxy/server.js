@@ -3,7 +3,7 @@
  * -----------------------------------------------------------
  * A lógica de verdade (rotas, cache, leitura de PDF) mora em
  * web/api/_lib/mondayApp.js — esse arquivo é o mesmo que a Vercel usa
- * em produção (como função serverless, via web/api/[...path].js).
+ * em produção (como função serverless, via web/api/index.js).
  * Aqui só carregamos o .env e colocamos esse mesmo app pra ouvir
  * numa porta local, pra bater com o proxy do Vite em dev (vite.config.js).
  *

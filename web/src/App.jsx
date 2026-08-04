@@ -5,13 +5,15 @@ import {
   Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
   ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
-  Lock, BookOpen, ShieldCheck
+  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle
 } from "lucide-react";
+import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
+import { supabaseConfigurado } from "./lib/supabase";
 
-// Em dev, "/api/..." funciona porque o Vite faz proxy pro proxy do
-// Monday (vite.config.js). Publicado (Vercel), não existe esse proxy —
-// aí VITE_API_BASE precisa apontar pro backend publicado (ex: Render).
-// Configure essa variável só no build de produção; em dev, deixe vazia.
+// O backend mora no mesmo domínio do site (função serverless da Vercel,
+// em web/api/), então "/api/..." resolve sozinho — em dev pelo proxy do
+// Vite, publicado pela própria Vercel. VITE_API_BASE só é necessária no
+// caso raro de apontar pra um backend em outro domínio.
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const api = (path) => API_BASE + path;
 
@@ -89,9 +91,13 @@ function parseBRL(txt) {
 // converte uma obra vinda do Monday para o formato que o app consome —
 // sempre com a EAP zerada; os uploads reais é que preenchem os dados.
 function mondayObraParaApp(mo, squadNome) {
+  // O código é a chave da obra aqui e no banco. Nem toda obra do Monday
+  // tem um preenchido, e duas sem código colidiriam entre si — por isso
+  // o boardId (único por board) serve de reserva.
+  const codigo = mo.codigo || mo.boardId;
   return {
-    id: mo.codigo || mo.boardId,
-    codigo: mo.codigo,
+    id: codigo,
+    codigo,
     nome: mo.nome,
     squad: squadNome,
     boardId: mo.boardId,
@@ -1494,7 +1500,7 @@ function TopBar() {
   );
 }
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount }) {
   const [search, setSearch] = useState("");
   const [onlyAlert, setOnlyAlert] = useState(false);
   const [squadFilter, setSquadFilter] = useState("todos");
@@ -1539,7 +1545,13 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo }) {
         </button>
 
         <div className="scroll-list">
-          {filtered.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
+          {obras.length === 0 && (
+            <div className="no-results">
+              Nenhuma obra iniciada ainda.
+              {novasCount > 0 && <> Veja <button className="link-inline" onClick={() => onModulo("novas")}>Novas obras</button>.</>}
+            </div>
+          )}
+          {obras.length > 0 && filtered.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
           {groupNames.map((squadName) => (
             <div key={squadName} className="squad-group">
               <div className="squad-group-label">{squadName} · {groups[squadName].length}</div>
@@ -1565,7 +1577,17 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo }) {
 
         <div className="nav-group-label">MÓDULOS</div>
         <div className="nav-list">
+          <button className={`nav-item ${modulo === "novas" ? "active" : ""}`} onClick={() => onModulo("novas")}>
+            <Sparkle size={16} className="nav-icon" />
+            <div className="nav-item-text"><div className="nav-item-name">Novas obras</div><div className="nav-item-sub">vindas do Monday</div></div>
+            {novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
+          </button>
           <button className={`nav-item ${modulo === "a_contratar" ? "active" : ""}`} onClick={() => onModulo("a_contratar")}><ClipboardList size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">A Contratar</div><div className="nav-item-sub">todas as obras</div></div></button>
+          <button className={`nav-item ${modulo === "arquivo" ? "active" : ""}`} onClick={() => onModulo("arquivo")}>
+            <Archive size={16} className="nav-icon" />
+            <div className="nav-item-text"><div className="nav-item-name">Arquivo</div><div className="nav-item-sub">obras concluídas</div></div>
+            {arquivoCount > 0 && <span className="nav-count">{arquivoCount}</span>}
+          </button>
           <button className="nav-item disabled static"><PackageSearch size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">Insumos Sienge</div><div className="nav-item-sub">todas as obras</div></div><span className="soon">em breve</span></button>
         </div>
       </div>
@@ -2057,6 +2079,122 @@ function AContratarView({ obras }) {
 }
 
 /* ============================================================
+   NOVAS OBRAS / ARQUIVO
+   O Monday diz o que existe; estas telas decidem o que entra e o
+   que sai da operação do dia a dia.
+   ============================================================ */
+
+function ObraCard({ o, acao, children }) {
+  return (
+    <div className="obra-card">
+      <div className="obra-card-info">
+        <div className="obra-card-nome">{o.nome}</div>
+        <div className="obra-card-sub mono">
+          #{o.codigo}
+          {o.squad && <> · {o.squad}</>}
+          {o.cliente && o.cliente !== "—" && <> · {o.cliente}</>}
+        </div>
+        {children}
+      </div>
+      {acao}
+    </div>
+  );
+}
+
+function NovasObrasView({ obras, onStart, salvando, semBanco }) {
+  const [search, setSearch] = useState("");
+  const q = search.trim().toLowerCase();
+  const filtradas = obras.filter((o) => !q || `${o.nome} ${o.codigo} ${o.squad}`.toLowerCase().includes(q));
+
+  const grupos = {};
+  filtradas.forEach((o) => { (grupos[o.squad || "Sem squad"] ||= []).push(o); });
+  const nomes = Object.keys(grupos).sort();
+
+  return (
+    <>
+      <div className="secao-intro">
+        <p>
+          Estas obras existem no Monday mas ainda não foram iniciadas aqui. Ao dar start,
+          a obra passa a ser gravada no banco — a partir daí, o que você fizer dentro dela
+          (PDFs, conferências, aprovações) fica salvo e não se perde ao recarregar.
+        </p>
+      </div>
+
+      {semBanco && (
+        <div className="aviso-banco">
+          Banco de dados não configurado neste ambiente — o start não vai gravar nada.
+        </div>
+      )}
+
+      {obras.length > 0 && (
+        <div className="obra-search obra-search-wide">
+          <Search size={13} className="dim" />
+          <input placeholder="Filtrar por nome, código, squad..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
+        </div>
+      )}
+
+      {obras.length === 0 && (
+        <div className="vazio-box">
+          <Sparkle size={26} className="dim" />
+          <div className="vazio-titulo">Nenhuma obra nova</div>
+          <div className="vazio-sub">Todas as obras do Monday já foram iniciadas ou concluídas aqui.</div>
+        </div>
+      )}
+
+      {obras.length > 0 && filtradas.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
+
+      {nomes.map((squad) => (
+        <div key={squad} className="obra-card-grupo">
+          <div className="squad-group-label">{squad} · {grupos[squad].length}</div>
+          {grupos[squad].map((o) => (
+            <ObraCard
+              key={o.id}
+              o={o}
+              acao={
+                <button className="btn-start" disabled={salvando === o.id || semBanco} onClick={() => onStart(o)}>
+                  {salvando === o.id ? "Iniciando…" : <><Play size={13} /> Dar start</>}
+                </button>
+              }
+            />
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function ArquivoView({ obras, onReabrir, salvando }) {
+  return (
+    <>
+      <div className="secao-intro">
+        <p>Obras concluídas. Ficam guardadas para consulta e saem da lista do dia a dia.</p>
+      </div>
+
+      {obras.length === 0 && (
+        <div className="vazio-box">
+          <Archive size={26} className="dim" />
+          <div className="vazio-titulo">Arquivo vazio</div>
+          <div className="vazio-sub">Nenhuma obra foi concluída ainda.</div>
+        </div>
+      )}
+
+      {obras.map((o) => (
+        <ObraCard
+          key={o.id}
+          o={o}
+          acao={
+            <button className="btn-reabrir" disabled={salvando === o.id} onClick={() => onReabrir(o)}>
+              {salvando === o.id ? "Reabrindo…" : <><RotateCcw size={13} /> Reabrir</>}
+            </button>
+          }
+        />
+      ))}
+    </>
+  );
+}
+
+/* ============================================================
    APP
    ============================================================ */
 
@@ -2066,13 +2204,19 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [avisoMonday, setAvisoMonday] = useState(null);
   const [modulo, setModulo] = useState("comparativo");
+  // Registro das obras no nosso banco: código -> { situacao, ... }.
+  // É isso que decide quem aparece na sidebar (ativa), quem está no
+  // Arquivo (concluida) e quem ainda é só sugestão do Monday (ausente).
+  const [registro, setRegistro] = useState(() => new Map());
+  const [erroBanco, setErroBanco] = useState(null);
+  const [salvandoObra, setSalvandoObra] = useState(null);
   const [tab, setTab] = useState("comparativo");
   const [itemFilter, setItemFilter] = useState("todos");
   const [expandedCats, setExpandedCats] = useState(() => new Set(["022519", "062519"]));
 
   // Ao abrir o app, carrega as obras reais do Monday (via proxy). Cada
   // squad aparece assim que responde — um squad lento (ex: Comet) não
-  // segura os demais. Se nenhum squad responder, cai nos dados de exemplo.
+  // segura os demais.
   useEffect(() => {
     let vivo = true;
     const erros = [];
@@ -2089,7 +2233,6 @@ export default function App() {
             const novas = doSquad.filter((o) => !ids.has(o.id));
             return [...prev, ...novas];
           });
-          setSelectedId((prev) => prev || doSquad[0].id);
         })
         .catch(() => { erros.push(squad.nome); })
         .finally(() => {
@@ -2107,6 +2250,74 @@ export default function App() {
 
     return () => { vivo = false; };
   }, []);
+
+  // Quem o time já iniciou. Isso vem do nosso banco, não do Monday —
+  // é o que sobrevive a recarregar a página.
+  useEffect(() => {
+    let vivo = true;
+    listarObras()
+      .then((linhas) => {
+        if (!vivo) return;
+        setRegistro(new Map(linhas.map((l) => [String(l.codigo), l])));
+      })
+      .catch((err) => { if (vivo) setErroBanco(err.message || String(err)); });
+    return () => { vivo = false; };
+  }, []);
+
+  const situacaoDe = (o) => registro.get(String(o.codigo))?.situacao;
+  const obrasAtivas = useMemo(() => obras.filter((o) => situacaoDe(o) === "ativa"), [obras, registro]);
+  const obrasConcluidas = useMemo(() => obras.filter((o) => situacaoDe(o) === "concluida"), [obras, registro]);
+  const obrasNovas = useMemo(() => obras.filter((o) => !situacaoDe(o)), [obras, registro]);
+
+  // Seleciona a primeira obra ativa assim que houver uma, e nunca deixa
+  // uma obra que saiu da sidebar (concluída) presa como selecionada.
+  useEffect(() => {
+    if (obrasAtivas.length === 0) { setSelectedId(null); return; }
+    setSelectedId((prev) => (obrasAtivas.some((o) => o.id === prev) ? prev : obrasAtivas[0].id));
+  }, [obrasAtivas]);
+
+  async function darStart(o) {
+    setSalvandoObra(o.id);
+    setErroBanco(null);
+    try {
+      const linha = await iniciarObra(o);
+      setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
+      setModulo("comparativo");
+      setSelectedId(o.id);
+    } catch (err) {
+      setErroBanco(`Não foi possível iniciar "${o.nome}": ${err.message || err}`);
+    } finally {
+      setSalvandoObra(null);
+    }
+  }
+
+  async function marcarConcluida(o) {
+    setSalvandoObra(o.id);
+    setErroBanco(null);
+    try {
+      const linha = await concluirObra(o.codigo);
+      setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
+    } catch (err) {
+      setErroBanco(`Não foi possível concluir "${o.nome}": ${err.message || err}`);
+    } finally {
+      setSalvandoObra(null);
+    }
+  }
+
+  async function marcarAtiva(o) {
+    setSalvandoObra(o.id);
+    setErroBanco(null);
+    try {
+      const linha = await reabrirObra(o.codigo);
+      setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
+      setModulo("comparativo");
+      setSelectedId(o.id);
+    } catch (err) {
+      setErroBanco(`Não foi possível reabrir "${o.nome}": ${err.message || err}`);
+    } finally {
+      setSalvandoObra(null);
+    }
+  }
 
   const obra = obras.find((o) => o.id === selectedId);
 
@@ -2339,8 +2550,37 @@ export default function App() {
         .main { flex: 1; padding: 32px 40px 60px; max-width: 1260px; }
         .eyebrow { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
         .obra-fictitious { margin-left: 8px; font-size: 10px; background: var(--panel); color: var(--ink-3); padding: 2px 8px; border-radius: 20px; text-transform: none; letter-spacing: 0; font-weight: 500; }
-        .title-row { font-size: 30px; line-height: 1.15; margin-bottom: 8px; }
+        .title-row { font-size: 30px; line-height: 1.15; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
         .title-plain { font-weight: 700; color: var(--ink); }
+
+        /* --- Ciclo de vida da obra: novas / concluir / arquivo --- */
+        .nav-badge-novo { background: var(--blue); }
+        .nav-count { background: var(--panel); color: var(--ink-3); font-size: 10px; font-weight: 600; border-radius: 20px; padding: 1px 6px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+        .link-inline { background: none; border: none; padding: 0; font: inherit; color: var(--blue); cursor: pointer; text-decoration: underline; }
+
+        .secao-intro { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; background: var(--panel); border-radius: 10px; padding: 12px 15px; margin-bottom: 18px; max-width: 720px; }
+        .secao-intro p { margin: 0; }
+        .aviso-banco { background: var(--amber-bg, #FEF3E2); color: var(--amber, #B7791F); border: 1px solid var(--amber, #E8B04B); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
+        .obra-search-wide { max-width: 380px; margin-bottom: 18px; }
+
+        .obra-card-grupo { margin-bottom: 22px; }
+        .obra-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 13px 16px; margin-bottom: 8px; max-width: 720px; }
+        .obra-card-info { min-width: 0; }
+        .obra-card-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+        .obra-card-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+        .btn-start, .btn-reabrir, .btn-concluir { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 7px 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0; font-family: inherit; }
+        .btn-start { background: var(--blue); color: #fff; border: 1px solid var(--blue); }
+        .btn-start:hover:not(:disabled) { filter: brightness(1.08); }
+        .btn-reabrir { background: #fff; color: var(--ink-2); border: 1px solid var(--border); }
+        .btn-reabrir:hover:not(:disabled) { background: var(--panel); }
+        .btn-concluir { background: #fff; color: var(--ink-2); border: 1px solid var(--border); font-size: 11.5px; padding: 6px 11px; }
+        .btn-concluir:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+        .btn-start:disabled, .btn-reabrir:disabled, .btn-concluir:disabled { opacity: 0.55; cursor: default; }
+
+        .vazio-box { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; background: var(--panel); border-radius: 12px; padding: 40px 20px; max-width: 720px; }
+        .vazio-titulo { font-size: 14px; font-weight: 600; color: var(--ink); margin-top: 4px; }
+        .vazio-sub { font-size: 12px; color: var(--ink-3); }
         .title-accent { font-family: 'Newsreader', serif; font-style: italic; font-weight: 500; color: var(--ink); }
         .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
 
@@ -2639,26 +2879,54 @@ export default function App() {
 
       <TopBar />
       <div className="body-layout">
-        <Sidebar obras={obras} selected={selectedId} modulo={modulo} onModulo={setModulo} onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setModulo("comparativo"); }} />
+        <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo}
+          novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
+          onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setModulo("comparativo"); }} />
 
         <main className="main">
           {avisoMonday && <div className="aviso-monday">{avisoMonday}</div>}
-          {modulo === "a_contratar" ? (
+          {erroBanco && <div className="aviso-monday">{erroBanco}</div>}
+          {modulo === "novas" ? (
           <>
-          <div className="eyebrow">TODAS AS OBRAS · {obras.length}</div>
+          <div className="eyebrow">DO MONDAY · {obrasNovas.length}</div>
+          <div className="title-row"><span className="title-accent">Novas obras</span></div>
+          <div className="obra-meta">Obras que ainda não foram iniciadas aqui</div>
+          <NovasObrasView obras={obrasNovas} onStart={darStart} salvando={salvandoObra} semBanco={!supabaseConfigurado} />
+          </>
+          ) : modulo === "arquivo" ? (
+          <>
+          <div className="eyebrow">CONCLUÍDAS · {obrasConcluidas.length}</div>
+          <div className="title-row"><span className="title-accent">Arquivo</span></div>
+          <div className="obra-meta">Obras encerradas, mantidas para consulta</div>
+          <ArquivoView obras={obrasConcluidas} onReabrir={marcarAtiva} salvando={salvandoObra} />
+          </>
+          ) : modulo === "a_contratar" ? (
+          <>
+          <div className="eyebrow">OBRAS ATIVAS · {obrasAtivas.length}</div>
           <div className="title-row"><span className="title-accent">A Contratar</span></div>
           <div className="obra-meta">Planejamento do que precisa ser contratado (mão de obra) e comprado (produtos), por verba da EAP</div>
-          <AContratarView obras={obras} />
+          <AContratarView obras={obrasAtivas} />
           </>
           ) : !obra ? (
-            <div className="empty-note">{loading ? "Carregando obras do Monday…" : "Nenhuma obra encontrada."}</div>
+            <div className="empty-note">
+              {loading
+                ? "Carregando obras do Monday…"
+                : obrasNovas.length > 0
+                ? <>Nenhuma obra iniciada ainda. Comece em <button className="link-inline" onClick={() => setModulo("novas")}>Novas obras</button>.</>
+                : "Nenhuma obra encontrada."}
+            </div>
           ) : (
           <>
           <div className="eyebrow">
             OBRA #{obra.codigo}
             {obra.semDetalhe && <span className="obra-fictitious">SEM DETALHE DE EXECUTIVO — só cadastro do Monday</span>}
           </div>
-          <div className="title-row"><span className="title-accent">{obra.nome}</span></div>
+          <div className="title-row">
+            <span className="title-accent">{obra.nome}</span>
+            <button className="btn-concluir" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
+              {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={13} /> Concluir obra</>}
+            </button>
+          </div>
           <div className="obra-meta">{obra.endereco} · {obra.cliente}</div>
 
           <div className="resumo-label">RESUMO FINANCEIRO</div>
