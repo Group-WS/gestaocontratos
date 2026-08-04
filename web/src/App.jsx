@@ -538,9 +538,28 @@ const FILTERS = [
   { id: "falta", label: "Falta comprar" },
 ];
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter }) {
+// PLANILHA DE COMPRA — a versão que o time libera pra valer.
+//
+// É aqui que a obra deixa de ser rascunho: aprovado, nada das etapas
+// anteriores (Vendido Contrato, Vendido Planilha, Depara, Executivo)
+// pode mais ser mexido. Compras e Contratos passam a trabalhar em cima
+// de um número que não muda mais debaixo deles.
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, onLiberar }) {
+  const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
   return (
     <>
+      {obra.comprasLiberadas ? (
+        <div className="import-ok">
+          <ShieldCheck size={14} /> Planilha de Compra liberada — as etapas anteriores estão congeladas.
+        </div>
+      ) : (
+        <div className="import-bar" style={{ marginBottom: 14 }}>
+          <div className="import-info">
+            <Lock size={14} />
+            <span>Esta é a planilha que libera compras e contratações. Ao liberar, <b>as etapas anteriores são congeladas</b> e não podem mais ser alteradas.</span>
+          </div>
+        </div>
+      )}
       <div className="filter-bar">
         <SlidersHorizontal size={13} className="dim" />
         {FILTERS.map((f) => (
@@ -563,6 +582,19 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
         <div className="legend-item"><span className="legend-dot" style={{ background: "var(--red)" }} /> Estouro crítico / fora de escopo</div>
         <div className="legend-item"><span className="legend-dot" style={{ background: "var(--ink-3)" }} /> Sem lançamento / não se aplica</div>
       </div>
+
+      {!obra.comprasLiberadas && (
+        <div className="aprovacao-box">
+          <div className="aprovacao-resumo">
+            {temItens
+              ? "Ao liberar, esta vira a planilha oficial de compra: Vendido, Depara e Executivo ficam congelados."
+              : "Importe o Executivo desta obra antes de liberar — sem itens não há o que comprar."}
+          </div>
+          <button className="btn-aprovar" disabled={!temItens} onClick={onLiberar}>
+            <ShieldCheck size={14} /> Liberar planilha de compra
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -734,54 +766,104 @@ function verbaDoCodigo(codigo) {
 //
 // Casa por palavra distintiva, não por texto exato, porque a grafia varia
 // ("Pedras — Mármores e Granitos" × "MARMORARIA", acento, barra, caixa).
+// Os apelidos são comparados sobre o nome COMPRIMIDO (sem acento, sem
+// espaço, sem pontuação), pra aguentar as variações que aparecem de
+// verdade: "ELETRO ELETRÔNICOS", "Eletroeletrônico", "ELETRO-ELETRONICO"
+// viram todos "eletroeletronico".
+//
+// São radicais, não palavras inteiras — "climatiza" cobre climatização e
+// climatizacao; "persian" cobre persiana e persianas.
 const APELIDOS_VERBA = {
-  "01": ["arquitetura", "engenharia", "projeto"],
-  "02": ["complementares"],
-  "03": ["eletric", "eletrica", "iluminacao"],
-  "04": ["gesso", "drywall"],
-  "05": ["pintura"],
-  "06": ["climatizacao", "exaustao", "climatiza"],
-  "07": ["marcenaria", "sob medida"],
-  "08": ["serralheria"],
-  "09": ["vidro", "vidros", "espelho", "espelhos"],
-  "10": ["soltos"],
-  "11": ["estofado", "estofados"],
-  "12": ["marmore", "marmores", "granito", "granitos", "marmoraria", "pedras"],
-  "13": ["louca", "loucas", "metais", "equipamentos"],
-  "14": ["eletroeletronico", "eletroeletronicos"],
-  "15": ["cortina", "cortinas", "persiana", "persianas"],
-  "16": ["decorativo", "decorativos"],
-  "17": ["execucao"],
-  "18": ["sonorizacao"],
-  "19": ["automacao"],
+  "01": ["arquitetura", "engenharia", "projetoarquitetonico"],
+  "02": ["servicoscomplementar", "complementar"],
+  "03": ["instalacaoeletrica", "instalacoeseletric", "eletrica", "eletric", "iluminacao", "luminotecnic"],
+  "04": ["gesso", "drywall", "forro"],
+  "05": ["pintura", "pintor"],
+  "06": ["climatiza", "exausta", "arcondicionado"],
+  "07": ["marcenaria", "sobmedida", "moveisplanejado"],
+  "08": ["serralheria", "serralher", "metalon"],
+  "09": ["vidracaria", "vidro", "espelho"],
+  "10": ["moveissolto", "solto"],
+  "11": ["estofado", "estofaria", "tapecaria"],
+  "12": ["marmoraria", "marmore", "granito", "pedra"],
+  "13": ["louca", "metaissanitario", "equipamentoespecial", "metais"],
+  "14": ["eletroeletronic", "eletrodomestic", "eletronic", "eletro"],
+  "15": ["cortina", "persian"],
+  "16": ["decorativo", "decoracao"],
+  "17": ["execucao", "maodeobra"],
+  "18": ["sonorizacao", "audio"],
+  "19": ["automacao", "automatiz"],
 };
+
+// comprime pra comparar: sem acento, sem espaço, sem pontuação
+function comprimirNome(s) {
+  return normTxt(s).replace(/\s+/g, "");
+}
 
 function verbaPorNome(nome) {
   if (!nome) return null;
-  const texto = normTxt(nome);
-  if (!texto) return null;
+  const comprimido = comprimirNome(nome);
+  if (!comprimido) return null;
+
+  // 1) apelido conhecido — o mais longo ganha, porque é o mais
+  //    específico ("eletroeletronic" antes de "eletro", "sobmedida"
+  //    antes de "medida"). Sem isso um nome casaria com duas verbas.
   let achado = null;
-  let melhorTamanho = 0;
+  let melhor = 0;
   Object.entries(APELIDOS_VERBA).forEach(([num, apelidos]) => {
     apelidos.forEach((ap) => {
-      // o apelido mais longo ganha: "sob medida" é mais específico que
-      // "medida", e evita que um grupo case com duas verbas ao acaso
-      if (ap.length > melhorTamanho && new RegExp(`\\b${ap}\\b`).test(texto)) {
-        achado = num;
-        melhorTamanho = ap.length;
-      }
+      if (ap.length > melhor && comprimido.includes(ap)) { achado = num; melhor = ap.length; }
     });
   });
-  return achado;
+  if (achado) return achado;
+
+  // 2) rede de segurança: compara o nome do grupo com o nome da verba na
+  //    EAP pelo mesmo motor do depara. Cobre grafia que eu não previ,
+  //    sem precisar cadastrar apelido novo a cada planilha diferente.
+  let melhorSim = 0;
+  EAP_PADRAO.forEach((c) => {
+    const s = similaridade(nome, c.nome);
+    if (s > melhorSim) { melhorSim = s; achado = c.num; }
+  });
+  return melhorSim >= 0.5 ? achado : null;
 }
 
-// acha o índice da coluna cujo cabeçalho casa com algum dos padrões
-function acharColuna(headerRow, padroes) {
+// Acha o índice da coluna cujo cabeçalho casa com algum dos padrões.
+//
+// `ignorar` pula colunas já atribuídas a outro campo e CONTINUA
+// procurando — não desiste na primeira. Isso importa no Executivo, onde
+// "Custo Total Material" aparece antes de "Custo Total": sem seguir
+// adiante, o custo total do item nunca seria encontrado.
+//
+// O cabeçalho vem com quebra de linha e espaço sobrando ("Custo Total\n
+// Material", " Custo Total "), então normalizamos antes de comparar.
+function acharColuna(headerRow, padroes, ignorar) {
   for (let i = 0; i < headerRow.length; i++) {
-    const h = String(headerRow[i] || "").toLowerCase();
+    if (ignorar && ignorar.has(i)) continue;
+    const h = String(headerRow[i] || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (padroes.some((p) => p.test(h))) return i;
   }
   return -1;
+}
+
+// Lê o arquivo de texto respeitando o acento.
+//
+// CSV exportado do Excel no Windows costuma vir em Windows-1252, não em
+// UTF-8. Lendo como UTF-8, "Brasília" vira "Bras�lia" e o símbolo de
+// diâmetro (Ø) some — descrição corrompida além de feia, atrapalha a
+// comparação, porque as palavras deixam de casar entre os documentos.
+//
+// Tenta UTF-8 primeiro (o formato correto); se aparecer o caractere de
+// substituição, refaz em Windows-1252.
+async function lerTextoComAcento(file) {
+  const buf = await file.arrayBuffer();
+  const utf8 = new TextDecoder("utf-8").decode(buf);
+  if (!utf8.includes("�")) return utf8;
+  try {
+    return new TextDecoder("windows-1252").decode(buf);
+  } catch {
+    return utf8;
+  }
 }
 
 // VENDIDO PLANILHA — documento mais elaborado (Excel), com colunas
@@ -794,7 +876,7 @@ async function lerPlanilhaExcel(file) {
     const wb = XLSX.read(buf, { type: "array" });
     linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
   } else {
-    linhas = parseCSVLinhas(await file.text());
+    linhas = parseCSVLinhas(await lerTextoComAcento(file));
   }
 
   // acha a linha de cabeçalho: a primeira que tem "descri" e (marca ou custo/valor)
@@ -815,12 +897,30 @@ async function lerPlanilhaExcel(file) {
   const iMarca = acharColuna(header, [/marca/, /fornecedor/]);
   const iQtd = acharColuna(header, [/qtd/, /quant/]);
   const iUn = acharColuna(header, [/^un\b/, /unidade/]);
-  // valor unitário e valor total são colunas DISTINTAS quando a planilha
-  // as separa; se só existir uma coluna de custo/valor, tratamos como
-  // total e derivamos o unitário (total ÷ qtd), e vice-versa.
-  const iCustoUnit = acharColuna(header, [/unit[aá]rio/, /vlr\.?\s*unit/, /pre[çc]o\s*unit/, /^pre[çc]o$/]);
-  const iCustoTotal = acharColuna(header, [/total/, /^custo$/, /^valor$/]);
-  const iCustoGenerico = acharColuna(header, [/custo/, /valor/, /preç/]);
+  // --- Colunas de custo ---
+  //
+  // O Executivo separa material de mão de obra, e unitário de total:
+  //   Custo Material | Custo Mão de Obra | Custo Total Material |
+  //   Custo Total Mão de Obra | Custo Total
+  //
+  // A ordem de busca importa: "Custo Total Material" contém "custo
+  // total", então as específicas têm que ser achadas ANTES das genéricas,
+  // senão o total do material seria lido como custo total do item.
+  const usadas = new Set();
+  const reservar = (padroes) => {
+    const i = acharColuna(header, padroes, usadas);
+    if (i >= 0) usadas.add(i);
+    return i;
+  };
+  const iTotalMaterial = reservar([/custo total mat/]);
+  const iTotalMO = reservar([/custo total m[aã]o/]);
+  const iMaterial = reservar([/custo mat/, /^material$/]);
+  const iMO = reservar([/custo m[aã]o/, /^m[aã]o de obra$/]);
+  const iCustoTotal = reservar([/custo total/, /^total$/, /^custo$/, /^valor$/]);
+
+  // Vendido Planilha usa outro vocabulário (unitário/preço) — segue valendo.
+  const iCustoUnit = reservar([/unit[aá]rio/, /vlr\.? unit/, /pre[çc]o unit/, /^pre[çc]o$/]);
+  const iCustoGenerico = reservar([/custo/, /valor/, /preç/]);
 
   const itens = [];
   // Nome do último grupo que passou — a planilha marca os grupos numa
@@ -848,12 +948,34 @@ async function lerPlanilhaExcel(file) {
       || verbaDoCodigo(codigo);
     if (!num) continue;
     const qtdVal = iQtd >= 0 ? parseBRL(row[iQtd]) : null;
+    const col = (i) => (i >= 0 ? parseBRL(row[i]) : null);
+
+    // Custos do Executivo, quando a planilha os traz separados
+    const custoMaterial = col(iMaterial);
+    const custoMO = col(iMO);
+    let totalMaterial = col(iTotalMaterial);
+    let totalMO = col(iTotalMO);
+    // total = unitário × qtd, quando a planilha só traz um dos dois
+    if (totalMaterial == null && custoMaterial != null && qtdVal) totalMaterial = custoMaterial * qtdVal;
+    if (totalMO == null && custoMO != null && qtdVal) totalMO = custoMO * qtdVal;
+
     let custoUnitario = iCustoUnit >= 0 ? parseBRL(row[iCustoUnit]) : null;
     let custo = iCustoTotal >= 0 ? parseBRL(row[iCustoTotal]) : (iCustoUnit < 0 && iCustoGenerico >= 0 ? parseBRL(row[iCustoGenerico]) : null);
+
+    // Sem coluna de custo total, ele é a soma de material + mão de obra —
+    // é assim que o Executivo fecha o valor do item.
+    if (custo == null && (totalMaterial != null || totalMO != null)) custo = (totalMaterial || 0) + (totalMO || 0);
+    if (custoUnitario == null && (custoMaterial != null || custoMO != null)) custoUnitario = (custoMaterial || 0) + (custoMO || 0);
     if (custoUnitario == null && custo != null && qtdVal) custoUnitario = custo / qtdVal;
     if (custo == null && custoUnitario != null && qtdVal) custo = custoUnitario * qtdVal;
+
     itens.push({
       num, codigo: codigo || null, desc, ehTitulo: ehLinhaDeTitulo(qtdVal, custo, custoUnitario),
+      custoMaterial, custoMO, totalMaterial, totalMO,
+      // "tem custo de material" é o que separa produto de serviço
+      tipo: custoMaterial != null || totalMaterial != null
+        ? ((custoMaterial || totalMaterial || 0) > 0 ? "produto" : "servico")
+        : undefined,
       ambiente: iAmb >= 0 ? String(row[iAmb] ?? "").trim() || null : null,
       marca: iMarca >= 0 ? String(row[iMarca] ?? "").trim() || null : null,
       qtdVendida: qtdVal,
@@ -866,7 +988,7 @@ async function lerPlanilhaExcel(file) {
 
 // Um botão de importar reutilizável (Contrato PDF / Planilha Excel),
 // cada um com seu próprio arquivo aceito e sua própria mensagem.
-function ImportButton({ label, accept, dica, onFile }) {
+function ImportButton({ label, accept, dica, onFile, congelado }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
   const [ok, setOk] = useState(null);
@@ -890,8 +1012,11 @@ function ImportButton({ label, accept, dica, onFile }) {
   return (
     <div className="import-card">
       <div className="import-bar">
-        <div className="import-info"><Upload size={14} /><span>{dica}</span></div>
-        <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando}>
+        <div className="import-info">
+          {congelado ? <Lock size={14} /> : <Upload size={14} />}
+          <span>{congelado ? "Planilha de Compra já liberada — esta etapa está congelada e não aceita mais alterações." : dica}</span>
+        </div>
+        <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
           <Upload size={13} /> {carregando ? "Lendo…" : label}
         </button>
         <input ref={inputRef} type="file" accept={accept} style={{ display: "none" }} onChange={aoEscolher} />
@@ -928,7 +1053,7 @@ function VendidoContratoView({ obra, onImportContrato }) {
 
   return (
     <>
-      <ImportButton label="Importar Contrato (PDF)" accept=".pdf"
+      <ImportButton congelado={obra.comprasLiberadas} label="Importar Contrato (PDF)" accept=".pdf"
         dica={<>Suba o <b>Vendido Contrato</b> — o PDF da proposta, exatamente como ele é hoje. Traz só <b>descrição e quantidade</b> (o contrato é fechado por verba, sem valor por item).</>}
         onFile={aoImportar} />
 
@@ -1009,7 +1134,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha }) {
 
   return (
     <>
-      <ImportButton label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xls,.csv,.pdf"
+      <ImportButton congelado={obra.comprasLiberadas} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xls,.csv,.pdf"
         dica={<>Suba o <b>Vendido Planilha</b> — documento mais elaborado, em <b>Excel ou PDF</b>, com <b>marca e custo</b> por item (marca só sai do Excel; do PDF sai descrição, quantidade e custo).</>}
         onFile={aoImportar} />
 
@@ -1738,8 +1863,8 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha }) {
         colALabel="Contrato" colBLabel="Planilha"
         vazioALabel="não está no contrato" vazioBLabel="não está na planilha"
         vazioTitulo="Nada pra conferir ainda" vazioSub=""
-        aprovacoes={aprovacoes} onAprovarLinha={toggleAprovacao}
-        onEditarB={(catNum, codigo, patch) => onEditarPlanilha(catNum, codigo, patch)} />
+        aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas ? undefined : toggleAprovacao}
+        onEditarB={obra.comprasLiberadas ? undefined : ((catNum, codigo, patch) => onEditarPlanilha(catNum, codigo, patch))} />
       {!obra.deparaAprovado && (
         <div className="aprovacao-box">
           <div className="aprovacao-resumo">
@@ -1780,8 +1905,8 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo }) {
       vazioALabel="não está na planilha vendida" vazioBLabel="não está na planilha executivo"
       vazioTitulo="Nada pra conferir ainda"
       vazioSub="Importe a Vendido Planilha e a Planilha Executivo desta obra — o depara aparece aqui automaticamente."
-      aprovacoes={aprovacoes} onAprovarLinha={toggleAprovacao}
-      onEditarB={(catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch)} />
+      aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas ? undefined : toggleAprovacao}
+      onEditarB={obra.comprasLiberadas ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
   );
 }
 
@@ -1813,7 +1938,7 @@ const CADERNOS_EXECUTIVO = [
   { chave: "projeto", titulo: "Caderno de Projeto Executivo", sub: "Pranchas e detalhamentos do projeto executivo." },
 ];
 
-function CadernoSlot({ titulo, sub, arquivo, onImportar }) {
+function CadernoSlot({ titulo, sub, arquivo, onImportar, congelado }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
 
@@ -1833,7 +1958,7 @@ function CadernoSlot({ titulo, sub, arquivo, onImportar }) {
           <div className="caderno-slot-titulo">{titulo}</div>
           <div className="caderno-slot-sub">{sub}</div>
         </div>
-        <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()}>
+        <button className="btn-import" disabled={congelado} onClick={() => inputRef.current && inputRef.current.click()}>
           <Upload size={13} /> {arquivo ? "Substituir" : "Anexar PDF"}
         </button>
         <input ref={inputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={aoEscolher} />
@@ -1862,7 +1987,10 @@ function CadernoSlot({ titulo, sub, arquivo, onImportar }) {
 function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
   const [abertos, toggle] = useAbertos();
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
-  const total = verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.custo || 0), 0), 0);
+  const somar = (campo) => verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it[campo] || 0), 0), 0);
+  const total = somar("custo");
+  const totalMaterial = somar("totalMaterial");
+  const totalMO = somar("totalMO");
 
   async function aoImportar(file) {
     const ehPDF = /\.pdf$/i.test(file.name);
@@ -1885,12 +2013,13 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
           {CADERNOS_EXECUTIVO.map((c) => (
             <CadernoSlot key={c.chave} titulo={c.titulo} sub={c.sub}
               arquivo={(obra.cadernos || {})[c.chave]}
+              congelado={obra.comprasLiberadas}
               onImportar={(info) => onImportCaderno(c.chave, info)} />
           ))}
         </div>
       </div>
 
-      <ImportButton label="Importar Planilha Executivo" accept=".pdf,.xlsx,.xls,.csv"
+      <ImportButton congelado={obra.comprasLiberadas} label="Importar Planilha Executivo" accept=".pdf,.xlsx,.xls,.csv"
         dica={<>Suba a <b>Planilha Executivo</b> — descrição, quantidade e valores (unitário e total) por item, dentro de cada grupo.</>}
         onFile={aoImportar} />
 
@@ -1917,14 +2046,18 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
                   <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
                 </button>
                 {aberto && temItens && (
-                  <table className="vend-itens">
+                  <table className="vend-itens exec-itens">
                     <thead>
                       <tr>
                         <th style={{ width: 52 }}>Cód.</th>
                         <th>Descrição</th>
-                        <th style={{ width: 80 }} className="center">Qtd.</th>
-                        <th style={{ width: 100 }} className="right">Valor unit.</th>
-                        <th style={{ width: 100 }} className="right">Valor total</th>
+                        <th style={{ width: 64 }} className="center">Qtd.</th>
+                        <th style={{ width: 40 }} className="center">Un.</th>
+                        <th style={{ width: 92 }} className="right">Custo<br />Material</th>
+                        <th style={{ width: 92 }} className="right">Custo<br />Mão de Obra</th>
+                        <th style={{ width: 100 }} className="right">Custo Total<br />Material</th>
+                        <th style={{ width: 100 }} className="right">Custo Total<br />Mão de Obra</th>
+                        <th style={{ width: 104 }} className="right">Custo<br />Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1932,9 +2065,13 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
                         <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
                           <td className="mono dim">{it.codigo || "—"}</td>
                           <td>{it.desc}{it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}</td>
-                          <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
-                          <td className="mono right dim">{it.custoUnitario != null ? fmtBRL(it.custoUnitario) : "—"}</td>
-                          <td className="mono right">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
+                          <td className="mono center">{it.qtdVendida ?? "—"}</td>
+                          <td className="mono center dim">{it.un || "—"}</td>
+                          <td className="mono right dim">{it.custoMaterial != null ? fmtBRL(it.custoMaterial) : "—"}</td>
+                          <td className="mono right dim">{it.custoMO != null ? fmtBRL(it.custoMO) : "—"}</td>
+                          <td className="mono right">{it.totalMaterial != null ? fmtBRL(it.totalMaterial) : "—"}</td>
+                          <td className="mono right">{it.totalMO != null ? fmtBRL(it.totalMO) : "—"}</td>
+                          <td className="mono right forte">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1944,7 +2081,13 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo }) {
             );
           })}
         </div>
-        <div className="vend-total"><span className="total-label">Total da planilha executivo</span><span className="mono total-value">{fmtBRL(total)}</span></div>
+        <div className="vend-total">
+          <span className="total-label">Total da planilha executivo</span>
+          <span className="exec-total-parcelas mono">
+            material {fmtBRL(totalMaterial)} · mão de obra {fmtBRL(totalMO)}
+          </span>
+          <span className="mono total-value">{fmtBRL(total)}</span>
+        </div>
       </div>
     </>
   );
@@ -2088,7 +2231,7 @@ function TabBar({ tab, onChange, obra }) {
     { id: "vendido_conferencia", label: "Depara Contrato x Planilha", icon: GitCompare },
     { id: "executivo", label: "Executivo", icon: BookOpen, gate: bloqueado },
     { id: "executivo_conferencia", label: "Conf. Executivo", icon: GitCompare, gate: bloqueado },
-    { id: "comparativo", label: "Comparativo", icon: LayoutGrid },
+    { id: "comparativo", label: "Planilha de Compra", icon: LayoutGrid },
     { id: "compras", label: "Compras de Produtos", icon: ShoppingCart },
     { id: "contratos", label: "Contratos", icon: Link2 },
   ];
@@ -2879,6 +3022,12 @@ export default function App() {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, deparaAprovado: true } : o)));
   }
 
+  // Libera a Planilha de Compra: a partir daqui, compras e contratações
+  // seguem, e nada das etapas anteriores pode mais ser mexido.
+  function liberarCompras() {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, comprasLiberadas: true } : o)));
+  }
+
   // Edita, linha a linha, o item do lado "planilha" (coluna B) de um
   // depara — usado tanto no Depara Contrato×Planilha (edita itensPlanilha)
   // quanto no Conf. Executivo (edita itensPlanilhaExecutivo).
@@ -3355,6 +3504,12 @@ export default function App() {
         .linha-titulo { background: var(--panel); }
         .linha-titulo td { color: var(--ink-3); }
         .tag-na { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
+        /* O Executivo tem 9 colunas — aperta a fonte e deixa rolar na
+           horizontal em tela estreita, sem espremer a descrição. */
+        .exec-itens { font-size: 11.5px; }
+        .exec-itens th { line-height: 1.25; }
+        .exec-itens td.forte { color: var(--ink); font-weight: 600; }
+        .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
         .caderno-info { flex: 1; min-width: 0; }
         .caderno-nome { font-size: 13px; font-weight: 600; color: var(--ink); }
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
@@ -3454,7 +3609,7 @@ export default function App() {
           {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} onLiberar={liberarCompras} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
