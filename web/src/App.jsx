@@ -555,6 +555,67 @@ const FILTERS = [
 // anteriores (Vendido Contrato, Vendido Planilha, Depara, Executivo)
 // pode mais ser mexido. Compras e Contratos passam a trabalhar em cima
 // de um número que não muda mais debaixo deles.
+// Liberação da compra, com a porta de saída pro estouro.
+//
+// Passar do CMV não bloqueia — bloquear empurraria a obra pra fora da
+// plataforma, e aí ninguém enxerga nada. O que muda é o preço de passar:
+// exige justificativa escrita e o nome de quem autorizou, e isso fica
+// gravado na obra. A decisão continua sendo de gente; o registro é que
+// deixa de ser opcional.
+function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
+  const [justificativa, setJustificativa] = useState("");
+  const [aprovador, setAprovador] = useState("");
+
+  const totalExecutivo = obra.categorias.reduce(
+    (a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.excluido ? 0 : (it.custo || 0)), 0), 0);
+  const teto = obra.cmvLiberado || 0;
+  const estouro = teto > 0 ? totalExecutivo - teto : 0;
+  const acimaDoTeto = estouro > 0.01;
+
+  const faltaJustificar = acimaDoTeto && (justificativa.trim().length < 15 || aprovador.trim().length < 3);
+  const bloqueado = !temItens || !podeEditar || faltaJustificar;
+
+  return (
+    <div className={`aprovacao-box ${acimaDoTeto ? "com-estouro" : ""}`}>
+      {acimaDoTeto && (
+        <div className="estouro-aviso">
+          <AlertTriangle size={15} />
+          <span>
+            O Executivo está <b>{fmtBRL(estouro)} acima</b> do CMV liberado ({fmtBRL(teto)}).
+            Dá pra seguir, mas precisa de justificativa e de quem autorizou — fica registrado na obra.
+          </span>
+        </div>
+      )}
+
+      {acimaDoTeto && (
+        <div className="estouro-campos">
+          <label>
+            <span>Por que o custo passou do CMV?</span>
+            <textarea rows={2} value={justificativa} onChange={(e) => setJustificativa(e.target.value)}
+              placeholder="Ex: cliente aprovou troca do ar-condicionado por modelo superior, com aditivo de contrato." />
+          </label>
+          <label>
+            <span>Autorizado por</span>
+            <input value={aprovador} onChange={(e) => setAprovador(e.target.value)} placeholder="Nome de quem aprovou o estouro" />
+          </label>
+        </div>
+      )}
+
+      <div className="aprovacao-resumo">
+        {!temItens
+          ? "Importe o Executivo desta obra antes de liberar — sem itens não há o que comprar."
+          : "Ao liberar, esta vira a planilha oficial de compra: Vendido, Depara e Executivo ficam congelados."}
+      </div>
+
+      <button className="btn-aprovar" disabled={bloqueado} onClick={() => {
+        onLiberar(acimaDoTeto ? { estouro, justificativa: justificativa.trim(), aprovador: aprovador.trim() } : null);
+      }}>
+        <ShieldCheck size={14} /> {acimaDoTeto ? "Liberar com estouro registrado" : "Liberar planilha de compra"}
+      </button>
+    </div>
+  );
+}
+
 function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, onLiberar, onReabrir, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
   return (
@@ -611,16 +672,7 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
       </div>
 
       {!obra.comprasLiberadas && (
-        <div className="aprovacao-box">
-          <div className="aprovacao-resumo">
-            {temItens
-              ? "Ao liberar, esta vira a planilha oficial de compra: Vendido, Depara e Executivo ficam congelados."
-              : "Importe o Executivo desta obra antes de liberar — sem itens não há o que comprar."}
-          </div>
-          <button className="btn-aprovar" disabled={!temItens || !podeEditar} onClick={onLiberar}>
-            <ShieldCheck size={14} /> Liberar planilha de compra
-          </button>
-        </div>
+        <LiberacaoCompra obra={obra} temItens={temItens} podeEditar={podeEditar} onLiberar={onLiberar} />
       )}
     </>
   );
@@ -2178,7 +2230,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
             if (window.confirm(
               `Liberar o CMV de ${fmtBRL(cmvTotal)}?\n\n` +
               "Este vira o teto de custo da obra, e o Executivo e as etapas seguintes abrem para a equipe."
-            )) onAprovar();
+            )) onAprovar(cmvTotal);
           }}>
             <ShieldCheck size={14} /> Liberar CMV
           </button>
@@ -2411,6 +2463,63 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
   );
 }
 
+// SALDO DO EXECUTIVO — o que saiu, o que entrou, e se ainda cabe.
+//
+// Quem edita precisa ver o efeito da própria edição contra o teto, na
+// hora. Sem isso, o estouro só aparece no fechamento, quando o dinheiro
+// já foi gasto.
+//
+// O item excluído continua contando como "retirado": some da soma mas
+// não some da vista — quem olhar depois precisa saber que existiu e
+// quanto valia.
+function SaldoExecutivo({ categorias, cmvLiberado }) {
+  let atual = 0, retirado = 0, acrescido = 0, nExcluidos = 0, nNovos = 0;
+
+  (categorias || []).forEach((c) => {
+    (c.itensPlanilhaExecutivo || []).forEach((it) => {
+      const valor = it.custo || 0;
+      const base = it.vendido?.custo ?? null;
+      if (it.excluido) {
+        retirado += base ?? valor;
+        nExcluidos += 1;
+        return;
+      }
+      atual += valor;
+      if (base == null) { acrescido += valor; if (valor > 0) nNovos += 1; }
+      else if (valor > base) acrescido += valor - base;
+      else if (valor < base) retirado += base - valor;
+    });
+  });
+
+  if (!cmvLiberado || cmvLiberado <= 0) return null;
+
+  const sobra = cmvLiberado - atual;
+  const estourou = sobra < 0;
+
+  return (
+    <div className={`saldo-exec ${estourou ? "estourou" : ""}`}>
+      <div className="saldo-bloco">
+        <div className="saldo-rotulo">CMV liberado</div>
+        <div className="saldo-valor mono">{fmtBRL(cmvLiberado)}</div>
+      </div>
+      <div className="saldo-bloco">
+        <div className="saldo-rotulo">Executivo hoje</div>
+        <div className="saldo-valor mono">{fmtBRL(atual)}</div>
+      </div>
+      <div className="saldo-bloco destaque">
+        <div className="saldo-rotulo">{estourou ? "Acima do CMV" : "Ainda cabe"}</div>
+        <div className="saldo-valor mono" style={{ color: estourou ? "var(--red)" : "var(--green)" }}>
+          {estourou ? "−" : ""}{fmtBRL(Math.abs(sobra))}
+        </div>
+      </div>
+      <div className="saldo-mov">
+        <span className="saldo-mov-item"><ArrowDownRight size={12} /> retirado {fmtBRL(retirado)}{nExcluidos > 0 && ` · ${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"}`}</span>
+        <span className="saldo-mov-item"><ArrowUpRight size={12} /> acrescido {fmtBRL(acrescido)}{nNovos > 0 && ` · ${nNovos} nov${nNovos > 1 ? "os" : "o"}`}</span>
+      </div>
+    </div>
+  );
+}
+
 // Os três cadernos do Executivo. São só arquivo: sobem, ficam guardados
 // e a equipe baixa pra consultar — nada é lido do PDF. A planilha, essa
 // sim, é lida (vem logo abaixo, na mesma tela).
@@ -2478,7 +2587,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
   // qual verba está com a busca de insumo aberta
   const [buscandoEm, setBuscandoEm] = useState(null);
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
-  const somar = (campo) => verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it[campo] || 0), 0), 0);
+  // item excluído não soma: ele fica visível como registro, não como custo
+  const somar = (campo) => verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.excluido ? 0 : (it[campo] || 0)), 0), 0);
   const total = somar("custo");
   const totalMaterial = somar("totalMaterial");
   const totalMO = somar("totalMO");
@@ -2550,6 +2660,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
         dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
 
+      <SaldoExecutivo categorias={obra.categorias} cmvLiberado={obra.cmvLiberado} />
+
       <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilhaExecutivo || [])} />
 
       <div className="flat-panel">
@@ -2564,7 +2676,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
             const itens = c.itensPlanilhaExecutivo || [];
             const temItens = itens.length > 0;
             const aberto = abertos.has(c.num);
-            const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
+            const subtotal = itens.reduce((a, it) => a + (it.excluido ? 0 : (it.custo || 0)), 0);
             // quanto essa verba valia no criativo — a referência do estouro
             const baseVerba = itens.reduce((a, it) => a + (it.vendido?.custo || 0), 0);
             return (
@@ -2601,16 +2713,18 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         <th style={{ width: 104 }} className="right">Custo<br />Total</th>
                         <th style={{ width: 104 }} className="right col-vendido">Vendido<br />(criativo)</th>
                         <th style={{ width: 92 }} className="right col-vendido">Diferença</th>
+                        <th style={{ width: 44 }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {itens.map((it, i) => {
                         const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
                         return (
-                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.alteradoExecutivo ? "linha-alterada" : ""}`}>
+                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""}`}>
                             <td className="mono dim">{it.codigo || "—"}</td>
                             <td>
                               {it.desc}
+                              {it.excluido && <span className="tag-excluido">excluído do executivo — não entra no custo</span>}
                               {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
                               {it.alteradoExecutivo && <span className="tag-alterado" title="Valor alterado aqui, não veio assim do arquivo">alterado no executivo</span>}
                               {it.precoNaoRevisado && <span className="tag-preco"><AlertTriangle size={10} /> preço não revisado</span>}
@@ -2637,6 +2751,17 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                                 if (Math.abs(d) < 0.01) return <span className="dim">—</span>;
                                 return <span style={{ color: d > 0 ? "var(--red)" : "var(--green)", fontWeight: 600 }}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
                               })()}
+                            </td>
+                            <td className="center">
+                              {!congelado && (
+                                <button
+                                  className={`btn-linha-excluir ${it.excluido ? "desfazer" : ""}`}
+                                  title={it.excluido ? "Trazer de volta" : "Excluir do executivo"}
+                                  onClick={() => onEditarItem(c.num, i, { excluido: !it.excluido })}
+                                >
+                                  {it.excluido ? <RotateCcw size={13} /> : <X size={13} />}
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );
@@ -4022,9 +4147,16 @@ export default function App() {
     }));
   }
 
-  // Aprova o Depara Contrato × Planilha desta obra — libera o Executivo.
-  function aprovarDepara() {
-    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, deparaAprovado: true } : o)));
+  // Libera o CMV desta obra e abre o Executivo.
+  //
+  // O valor fica CONGELADO aqui. O Executivo compara o gasto contra ele
+  // — se fosse recalculado a cada abertura, mexer numa linha do depara
+  // moveria o teto junto e o estouro sumiria sozinho. Teto que se ajusta
+  // ao gasto não é teto.
+  function aprovarDepara(cmv) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId
+      ? { ...o, deparaAprovado: true, cmvLiberado: cmv, cmvLiberadoEm: new Date().toISOString(), cmvLiberadoPor: usuario }
+      : o)));
   }
 
   // Edita um valor do Executivo direto na tela. Nem tudo chega pronto do
@@ -4115,8 +4247,17 @@ export default function App() {
 
   // Libera a Planilha de Compra: a partir daqui, compras e contratações
   // seguem, e nada das etapas anteriores pode mais ser mexido.
-  function liberarCompras() {
-    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, comprasLiberadas: true } : o)));
+  // `estouro` vem preenchido quando o Executivo passou do CMV — traz a
+  // justificativa e quem autorizou. Fica gravado na obra: a decisão é de
+  // gente, mas o registro não é opcional.
+  function liberarCompras(estouro) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? {
+      ...o,
+      comprasLiberadas: true,
+      compraLiberadaEm: new Date().toISOString(),
+      compraLiberadaPor: usuario,
+      estouroAprovado: estouro ? { ...estouro, em: new Date().toISOString(), registradoPor: usuario } : null,
+    } : o)));
   }
 
   // Desfaz a liberação. Toda trava precisa de volta — sem isso um clique
@@ -4614,10 +4755,38 @@ export default function App() {
         .caderno-acao:hover { text-decoration: underline; }
         .caderno-erro { font-size: 11px; color: var(--red); }
         .escolha-aba { font-size: 12.5px; color: var(--ink-3); padding: 28px 4px; }
+
+        /* Saldo do Executivo contra o CMV congelado na liberação */
+        .saldo-exec { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; }
+        .saldo-exec.estourou { border-color: var(--red); background: var(--red-bg, #FDEEEC); }
+        .saldo-rotulo { font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; }
+        .saldo-valor { font-size: 17px; font-weight: 600; color: var(--ink); margin-top: 3px; }
+        .saldo-bloco.destaque .saldo-valor { font-size: 19px; }
+        .saldo-mov { display: flex; flex-direction: column; gap: 3px; margin-left: auto; }
+        .saldo-mov-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-2); }
+
+        /* Item excluído: some do custo, não some da vista */
+        .linha-excluida { background: var(--red-bg, #FDEEEC); }
+        .linha-excluida td { color: var(--ink-3); text-decoration: line-through; }
+        .linha-excluida td:nth-child(2) { text-decoration: none; }
+        .exec-itens tr.linha-excluida td:nth-child(1), .exec-itens tr.linha-excluida td:nth-child(2) { background: var(--red-bg, #FDEEEC); }
+        .tag-excluido { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--red); background: #fff; border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; text-decoration: none; display: inline-block; }
+        .btn-linha-excluir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
+        .btn-linha-excluir:hover { color: var(--red); border-color: var(--red); }
+        .btn-linha-excluir.desfazer:hover { color: var(--green); border-color: var(--green); }
         .liberado-barra { display: flex; align-items: center; gap: 9px; }
         .liberado-barra span { flex: 1; }
         .btn-reabrir-etapa { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 11px; color: var(--ink-2); cursor: pointer; font-family: inherit; flex-shrink: 0; }
         .btn-reabrir-etapa:hover { border-color: var(--ink-2); color: var(--ink); }
+
+        /* Estouro do CMV: passa, mas com nome e motivo */
+        .aprovacao-box.com-estouro { border-color: var(--red); }
+        .estouro-aviso { display: flex; align-items: flex-start; gap: 9px; background: var(--red-bg, #FDEEEC); border-radius: 9px; padding: 11px 13px; font-size: 12px; color: var(--red); line-height: 1.5; margin-bottom: 12px; }
+        .estouro-campos { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+        .estouro-campos label { display: flex; flex-direction: column; gap: 4px; }
+        .estouro-campos span { font-size: 11px; font-weight: 600; color: var(--ink-2); }
+        .estouro-campos textarea, .estouro-campos input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; color: var(--ink); outline: none; resize: vertical; }
+        .estouro-campos textarea:focus, .estouro-campos input:focus { border-color: var(--blue); }
         /* Linha que só nomeia um conjunto (qtd e valor zerados) — some do
            depara, mas continua visível na listagem, marcada. */
         .linha-titulo { background: var(--panel); }
