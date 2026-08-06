@@ -2014,12 +2014,16 @@ const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num
 // Valor de venda e margem NÃO entram aqui: esta tela é usada pela equipe
 // de obra, e valor de venda não é divulgado pra ela. O que a equipe
 // precisa é do teto de custo — quanto pode gastar, no total e por grupo.
-function ResumoCMV({ linhas, categorias }) {
+// Calcula o CMV. Separado da tela de propósito: a trava que libera o
+// Executivo precisa decidir pelo MESMO número que a pessoa está vendo —
+// se cada um calculasse do seu jeito, o botão travaria com o painel
+// mostrando valor, e ninguém entenderia por quê.
+function calcularCMV(linhas, categorias) {
   const porVerba = new Map();
   let total = 0;
   let pendentes = 0;
 
-  linhas.forEach((l) => {
+  (linhas || []).forEach((l) => {
     if (l.status !== "ok") pendentes += 1;
     const v = l.b?.valor;
     if (v == null) return;
@@ -2045,6 +2049,11 @@ function ResumoCMV({ linhas, categorias }) {
   });
 
   const grupos = Array.from(porVerba.values()).sort((a, b) => String(a.num).localeCompare(String(b.num)));
+  return { total, pendentes, grupos };
+}
+
+function ResumoCMV({ linhas, categorias }) {
+  const { total, pendentes, grupos } = calcularCMV(linhas, categorias);
 
   return (
     <div className="cmv-painel">
@@ -2126,6 +2135,15 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
   }
 
   const pendentes = linhas.filter((l) => l.status !== "ok");
+  const { total: cmvTotal } = calcularCMV(linhas, obra.categorias);
+
+  // O que precisa estar pronto pra liberar. As duas condições são
+  // diferentes: sem pendência quer dizer "conferido"; CMV maior que zero
+  // quer dizer "tem valor apurado". Dá pra conferir tudo e mesmo assim o
+  // CMV vir zerado — planilha sem coluna de custo, por exemplo — e aí
+  // liberar seria abrir a obra pra comprar contra um teto inexistente.
+  const cmvApurado = cmvTotal > 0;
+  const podeLiberar = pendentes.length === 0 && cmvApurado && podeEditar;
 
   return (
     <>
@@ -2133,24 +2151,36 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
 
       {/* A liberação fica no topo, junto do CMV: é a decisão que esta
           tela existe pra tomar, e no rodapé de 185 linhas ela sumia.
-          Continua travada até não sobrar pendência — o botão desabilitado
-          comunica o que falta melhor do que um botão ativo que recusa. */}
+          O botão desabilitado com o motivo ao lado comunica o que falta
+          melhor do que um botão ativo que recusa o clique. */}
       {obra.deparaAprovado ? (
-        <div className="import-ok"><ShieldCheck size={14} /> Depara aprovado — versão final liberada para o Executivo.</div>
+        <div className="import-ok"><ShieldCheck size={14} /> CMV liberado — Executivo e etapas seguintes abertos.</div>
       ) : (
         <div className="liberacao-barra">
           <div className="liberacao-texto">
-            {pendentes.length === 0 ? (
-              <><CheckCircle2 size={15} /> <span>Tudo conferido — pode liberar o Executivo.</span></>
+            {!cmvApurado ? (
+              <><Lock size={15} /> <span>
+                <b>CMV ainda não apurado.</b> O Executivo abre quando esta conferência produzir um valor —
+                confira se a <b>Planilha</b> subiu com a coluna de custo.
+              </span></>
+            ) : pendentes.length === 0 ? (
+              <><CheckCircle2 size={15} /> <span>
+                Tudo conferido. Liberar o CMV de <b>{fmtBRL(cmvTotal)}</b> abre o Executivo e as etapas seguintes.
+              </span></>
             ) : (
               <><Lock size={15} /> <span>
                 <b>{pendentes.length}</b> {pendentes.length === 1 ? "linha pendente" : "linhas pendentes"} de aprovação.
-                O Executivo libera quando não sobrar nenhuma — o valor final vira o que está na <b>Planilha</b>.
+                O CMV só é liberado quando não sobrar nenhuma — o valor final vira o que está na <b>Planilha</b>.
               </span></>
             )}
           </div>
-          <button className="btn-aprovar" disabled={pendentes.length > 0 || !podeEditar} onClick={onAprovar}>
-            <ShieldCheck size={14} /> Aprovar depara e liberar Executivo
+          <button className="btn-aprovar" disabled={!podeLiberar} onClick={() => {
+            if (window.confirm(
+              `Liberar o CMV de ${fmtBRL(cmvTotal)}?\n\n` +
+              "Este vira o teto de custo da obra, e o Executivo e as etapas seguintes abrem para a equipe."
+            )) onAprovar();
+          }}>
+            <ShieldCheck size={14} /> Liberar CMV
           </button>
         </div>
       )}
@@ -2208,8 +2238,8 @@ function FaseBloqueada({ onIrParaDepara }) {
   return (
     <div className="compras-empty">
       <Lock size={30} className="dim" />
-      <div className="compras-empty-title">Bloqueado até o Depara ser aprovado</div>
-      <div className="compras-empty-sub">Aprove o Depara Contrato × Planilha primeiro — essa etapa libera o Executivo (Caderno de Especificação e Planilha Executivo) pra esta obra.</div>
+      <div className="compras-empty-title">Aguardando a liberação do CMV</div>
+      <div className="compras-empty-sub">Esta etapa abre quando o CMV desta obra for liberado no Depara Contrato × Planilha — é ele que define o teto de custo com que a equipe vai trabalhar daqui pra frente.</div>
       <button className="btn-nova-solicitacao" onClick={onIrParaDepara}>Ir para o Depara</button>
     </div>
   );
@@ -2553,6 +2583,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
                 </button>
                 {aberto && temItens && (
+                  <div className="exec-scroll">
                   <table className="vend-itens exec-itens">
                     <thead>
                       <tr>
@@ -2612,6 +2643,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                       })}
                     </tbody>
                   </table>
+                  </div>
                 )}
                 {aberto && !congelado && (
                   buscandoEm === c.num ? (
@@ -4593,7 +4625,17 @@ export default function App() {
         .tag-na { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
         /* O Executivo tem 9 colunas — aperta a fonte e deixa rolar na
            horizontal em tela estreita, sem espremer a descrição. */
-        .exec-itens { font-size: 11.5px; }
+        /* O Executivo tem 11 colunas e nao cabe na tela. Rola na
+           horizontal dentro do proprio grupo, com Item e Descricao
+           ancorados na esquerda — sem isso a pessoa rola e perde de vista
+           de qual item e o numero que esta olhando. */
+        .exec-scroll { overflow-x: auto; border-top: 1px solid var(--border-soft); }
+        .exec-itens { font-size: 11.5px; min-width: 1180px; border-top: none; }
+        .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #FCFBF8; }
+        .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
+        .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 3; background: #F7F5F0; }
+        .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
+        .exec-itens tr.linha-alterada td:nth-child(1), .exec-itens tr.linha-alterada td:nth-child(2) { background: #FFF2CC; }
         .exec-itens th { line-height: 1.25; }
         .exec-itens td.forte { color: var(--ink); font-weight: 600; }
         .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
