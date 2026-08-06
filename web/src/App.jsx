@@ -2699,21 +2699,21 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   <table className="vend-itens exec-itens">
                     <thead>
                       <tr>
-                        <th style={{ width: 46 }}>Item</th>
-                        <th>Descrição</th>
-                        <th style={{ width: 130 }}>Código / especif. / Obs.</th>
-                        <th style={{ width: 96 }}>Fornecedor</th>
-                        <th style={{ width: 80 }}>Ambiente</th>
-                        <th style={{ width: 54 }} className="center">Qtd.</th>
-                        <th style={{ width: 38 }} className="center">Un.</th>
-                        <th style={{ width: 88 }} className="right">Custo<br />Material</th>
-                        <th style={{ width: 92 }} className="right">Custo<br />Mão de Obra</th>
-                        <th style={{ width: 100 }} className="right">Custo Total<br />Material</th>
-                        <th style={{ width: 100 }} className="right">Custo Total<br />Mão de Obra</th>
-                        <th style={{ width: 104 }} className="right">Custo<br />Total</th>
-                        <th style={{ width: 104 }} className="right col-vendido">Vendido<br />(criativo)</th>
-                        <th style={{ width: 92 }} className="right col-vendido">Diferença</th>
-                        <th style={{ width: 44 }}></th>
+                        <th style={{ width: 44 }}>Item</th>
+                        <th style={{ minWidth: 220 }}>Descrição</th>
+                        <th style={{ width: 112 }}>Código / especif.</th>
+                        <th style={{ width: 86 }}>Fornecedor</th>
+                        <th style={{ width: 76 }}>Ambiente</th>
+                        <th style={{ width: 48 }} className="center">Qtd.</th>
+                        <th style={{ width: 34 }} className="center">Un.</th>
+                        <th style={{ width: 78 }} className="right">Custo<br />Material</th>
+                        <th style={{ width: 78 }} className="right">Custo<br />Mão de Obra</th>
+                        <th style={{ width: 86 }} className="right">Custo Total<br />Material</th>
+                        <th style={{ width: 86 }} className="right">Custo Total<br />Mão de Obra</th>
+                        <th style={{ width: 92 }} className="right">Custo<br />Total</th>
+                        <th style={{ width: 88 }} className="right col-vendido">Vendido<br />(criativo)</th>
+                        <th style={{ width: 78 }} className="right col-vendido">Diferença</th>
+                        <th style={{ width: 36 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4421,6 +4421,10 @@ export default function App() {
         .collapse-row { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-3); margin-top: 8px; padding: 0 6px; cursor: pointer; }
 
         .main { flex: 1; padding: 32px 40px 60px; max-width: 1260px; }
+        /* Nas telas de planilha a largura é o próprio conteúdo: são 13
+           colunas, e limitar em 1260px obrigava a rolar de lado pra ver
+           o custo total — justamente a coluna que mais importa. */
+        .main.larga { max-width: none; }
         .eyebrow { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
         .obra-fictitious { margin-left: 8px; font-size: 10px; background: var(--panel); color: var(--ink-3); padding: 2px 8px; border-radius: 20px; text-transform: none; letter-spacing: 0; font-weight: 500; }
         .title-row { font-size: 30px; line-height: 1.15; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -4799,7 +4803,8 @@ export default function App() {
            ancorados na esquerda — sem isso a pessoa rola e perde de vista
            de qual item e o numero que esta olhando. */
         .exec-scroll { overflow-x: auto; border-top: 1px solid var(--border-soft); }
-        .exec-itens { font-size: 11.5px; min-width: 1180px; border-top: none; }
+        .exec-itens { font-size: 11px; width: 100%; min-width: 1080px; border-top: none; }
+        .exec-itens th, .exec-itens td { padding-left: 7px; padding-right: 7px; }
         .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #FCFBF8; }
         .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
         .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 3; background: #F7F5F0; }
@@ -4918,7 +4923,9 @@ export default function App() {
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
-        <main className="main">
+        {/* As abas de planilha usam a tela inteira: são 13 colunas e não
+            cabem na largura de leitura que serve pro resto do app. */}
+        <main className={`main ${["executivo", "vendido_planilha", "vendido_contrato"].includes(tab) ? "larga" : ""}`}>
           {avisoMonday && <div className="aviso-monday">{avisoMonday}</div>}
           {erroBanco && <div className="aviso-monday">{erroBanco}</div>}
           {modulo === "novas" ? (
