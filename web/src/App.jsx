@@ -1702,6 +1702,8 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, podeEditar }) {
   return (
     <>
       <ImportButton congelado={congelado} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
+        onLimpar={onLimpar} oQueLimpa="os itens do Vendido Planilha"
+        temConteudo={obra.categorias.some((c) => (c.itensPlanilha || []).length)}
         dica={<>Suba o <b>Vendido Planilha</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e o valor total; fornecedor, ambiente, especificação e a separação material/mão de obra existem como coluna e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
 
@@ -3448,6 +3450,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
       )}
 
       <ImportButton congelado={congelado} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
+        onLimpar={onLimparExecutivo} oQueLimpa="os itens da Planilha Executivo"
+        temConteudo={temExecutivo}
         dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
 
