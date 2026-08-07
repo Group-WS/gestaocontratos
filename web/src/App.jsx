@@ -532,7 +532,7 @@ function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter, tip
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width: 52 }}>Cód.</th>
+                        <th style={{ width: 62 }}>Cód.</th>
                         <th>Descrição</th>
                         <th style={{ width: 88 }}>Ambiente</th>
                         <th style={{ width: 84 }} className="center">Qtd. exec.</th>
@@ -577,7 +577,7 @@ function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter, tip
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width: 52 }}>Cód.</th>
+                        <th style={{ width: 62 }}>Cód.</th>
                         <th>Descrição</th>
                         <th style={{ width: 84 }} className="center">Qtd. exec.</th>
                         <th style={{ width: 100 }} className="right">Custo</th>
@@ -1590,7 +1590,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, podeEditar }) {
                   <table className="vend-itens">
                     <thead>
                       <tr>
-                        <th style={{ width: 52 }}>Cód.</th>
+                        <th style={{ width: 62 }}>Cód.</th>
                         <th>Descrição</th>
                         <th style={{ width: 92 }}>Ambiente</th>
                         <th style={{ width: 100 }} className="center">Qtd. vendida</th>
@@ -3424,7 +3424,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   <table className="vend-itens exec-itens">
                     <thead>
                       <tr>
-                        <th style={{ width: 44 }}>Item</th>
+                        <th style={{ width: 56 }}>Item</th>
                         <th style={{ minWidth: 220 }}>Descrição</th>
                         <th style={{ width: 112 }}>Código / especif.</th>
                         <th style={{ width: 86 }}>Fornecedor</th>
@@ -5460,6 +5460,12 @@ export default function App() {
            as colunas deixavam de alinhar de um grupo pro outro. */
         .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); table-layout: fixed; }
         .vend-itens td { overflow-wrap: anywhere; word-break: break-word; }
+        /* A quebra livre acima existe pela especificação gigante, que sem
+           ela estica a coluna e desalinha a tabela. Mas ela também
+           autoriza partir "1.10" em "1.1" e "0" — código de item não é
+           texto corrido, é identificador: quebrado, deixa de identificar. */
+        .vend-itens td:first-child, .vend-itens th:first-child,
+        .exec-itens td:first-child, .exec-itens th:first-child { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
         .vend-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
         .vend-itens td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--ink); vertical-align: top; }
         .vend-itens tr:last-child td { border-bottom: none; }
