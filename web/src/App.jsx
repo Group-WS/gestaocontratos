@@ -5,7 +5,7 @@ import {
   Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
   ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
-  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package
+  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
@@ -1292,7 +1292,7 @@ async function lerPlanilhaExcel(file) {
 
 // Um botão de importar reutilizável (Contrato PDF / Planilha Excel),
 // cada um com seu próprio arquivo aceito e sua própria mensagem.
-function ImportButton({ label, accept, dica, onFile, congelado }) {
+function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
   const [ok, setOk] = useState(null);
@@ -1324,6 +1324,20 @@ function ImportButton({ label, accept, dica, onFile, congelado }) {
           <Upload size={13} /> {carregando ? "Lendo…" : label}
         </button>
         <input ref={inputRef} type="file" accept={accept} style={{ display: "none" }} onChange={aoEscolher} />
+        {/* Subir o arquivo errado tem que ter volta. Sem isto, o unico
+            jeito de desfazer era subir outro por cima — e se o certo
+            ainda nao existisse, a obra ficava com dado errado. */}
+        {onLimpar && temConteudo && !congelado && (
+          <button className="btn-limpar-import" disabled={carregando} onClick={() => {
+            if (window.confirm(
+              `Remover ${oQueLimpa || "os dados importados"}?\n\n` +
+              "Some tudo que veio deste documento nesta obra. As outras etapas não são tocadas.\n\n" +
+              "Não dá pra desfazer — depois é só subir o arquivo de novo."
+            )) { setOk(null); setErro(null); onLimpar(); }
+          }}>
+            <Trash2 size={13} /> Remover
+          </button>
+        )}
       </div>
       {ok && <div className="import-ok"><CheckCircle2 size={14} /> {ok}</div>}
       {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
@@ -1481,7 +1495,7 @@ function derivadosDasCategorias(categorias, obra) {
    só com descrição/ambiente/quantidade (nunca valor por item). Fica
    separado da Planilha de propósito — depois os dois vão ser
    conferidos um contra o outro. */
-function VendidoContratoView({ obra, onImportContrato, podeEditar }) {
+function VendidoContratoView({ obra, onImportContrato, onLimpar, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [filtroVenda, setFiltroVenda] = useState("todos");
@@ -1524,6 +1538,8 @@ function VendidoContratoView({ obra, onImportContrato, podeEditar }) {
   return (
     <>
       <ImportButton congelado={congelado} label="Importar Contrato (PDF)" accept=".pdf"
+        onLimpar={onLimpar} oQueLimpa="os itens e valores do Contrato"
+        temConteudo={obra.categorias.some((c) => (c.itensContrato || []).length)}
         dica={<>Suba o <b>Vendido Contrato</b> — o PDF da proposta, exatamente como ele é hoje. Traz só <b>descrição e quantidade</b> (o contrato é fechado por verba, sem valor por item).</>}
         onFile={aoImportar} />
 
@@ -1639,7 +1655,7 @@ function AvisoPDFPobre({ itens }) {
    Documento mais elaborado (Excel ou PDF), com marca e custo por item.
    Não mexe no valor por verba (esse é do Contrato) — mostra o total dos
    itens da própria planilha, pra depois conferir contra o Contrato. */
-function VendidoPlanilhaView({ obra, onImportPlanilha, podeEditar }) {
+function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [verTexto, setVerTexto] = useState(null);
@@ -3270,7 +3286,7 @@ function CadernoSlot({ titulo, arquivo, onImportar, congelado }) {
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, podeEditar }) {
+function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
   // quando a obra foi liberada antes de o app aprender a salvar.
@@ -4924,6 +4940,25 @@ export default function App() {
 
   // Vendido Planilha (Excel): itens mais elaborados, com marca e custo.
   // Não atualiza o valor por verba (esse vem do Contrato).
+  /* Remove o que veio de UM documento, sem tocar nos outros.
+     Subir o arquivo errado precisa ter volta: antes o unico jeito de
+     desfazer era subir outro por cima, e se o certo ainda nao existisse a
+     obra ficava com o dado errado. */
+  function limparImportacao(campos) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        const limpo = { ...c };
+        campos.forEach((campo) => { limpo[campo] = []; });
+        if (campos.includes("itensContrato")) limpo.vendido = 0;
+        return limpo;
+      // grupo fora do padrao que ficou sem nenhum item some junto
+      }).filter((c) => !c.foraDaEapPadrao || ["itens", "itensContrato", "itensPlanilha", "itensPlanilhaExecutivo"]
+        .some((k) => (c[k] || []).length));
+      return { ...o, categorias };
+    }));
+  }
+
   function importVendidoPlanilha(itens) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
@@ -5389,6 +5424,9 @@ export default function App() {
         .import-card { display: flex; flex-direction: column; gap: 8px; }
         .import-bar { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; background: var(--panel); border: 1px dashed var(--border); border-radius: 12px; padding: 12px 15px; margin-bottom: 0; }
         .import-bar .btn-import { align-self: stretch; justify-content: center; }
+        .btn-limpar-import { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--red); background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 6px 11px; cursor: pointer; flex-shrink: 0; }
+        .btn-limpar-import:hover:not(:disabled) { background: var(--red-bg); border-color: var(--red); }
+        .btn-limpar-import:disabled { opacity: 0.5; cursor: default; }
         .import-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); }
         .btn-import { display: inline-flex; align-items: center; gap: 6px; background: var(--blue); color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
         .btn-import:hover { filter: brightness(1.08); }
@@ -5885,10 +5923,10 @@ export default function App() {
           <TabBar tab={tab} onChange={handleTabChange} obra={obra} />
 
           {tab === null && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
-          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} podeEditar={edicao.minha} />}
-          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} podeEditar={edicao.minha} />}
+          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} podeEditar={edicao.minha} />}
+          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} podeEditar={edicao.minha} />}
-          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
