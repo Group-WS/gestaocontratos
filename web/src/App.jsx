@@ -4609,7 +4609,11 @@ export default function App() {
         .aviso-pobre-sub { color: var(--ink-2); font-size: 11.5px; margin-top: 4px; }
 
         .aviso-deslocamento { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 13px; font-size: 12px; color: var(--ink-2); margin-bottom: 14px; }
-        .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); }
+        /* fixed vale pra todas: cada verba renderiza a própria tabela, e
+           sem isso cada uma calcularia larguras pelo próprio conteúdo —
+           as colunas deixavam de alinhar de um grupo pro outro. */
+        .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); table-layout: fixed; }
+        .vend-itens td { overflow-wrap: anywhere; word-break: break-word; }
         .vend-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
         .vend-itens td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--ink); vertical-align: top; }
         .vend-itens tr:last-child td { border-bottom: none; }
@@ -4803,8 +4807,16 @@ export default function App() {
            ancorados na esquerda — sem isso a pessoa rola e perde de vista
            de qual item e o numero que esta olhando. */
         .exec-scroll { overflow-x: auto; border-top: 1px solid var(--border-soft); }
-        .exec-itens { font-size: 11px; width: 100%; min-width: 1080px; border-top: none; }
+        /* table-layout: fixed é o que mantém as colunas alinhadas entre
+           os grupos. Sem ele o navegador dimensiona cada tabela pelo
+           conteúdo dela, e como cada verba é uma tabela separada, cada
+           uma saía com larguras próprias. Bastava um grupo ter conteúdo
+           incomum — em Climatização, uma URL de 200 caracteres sem
+           espaço — pra desalinhar tudo naquele grupo. */
+        .exec-itens { font-size: 11px; width: 100%; min-width: 1080px; border-top: none; table-layout: fixed; }
         .exec-itens th, .exec-itens td { padding-left: 7px; padding-right: 7px; }
+        /* texto sem espaço (URL, código longo) quebra em vez de esticar */
+        .exec-itens td { overflow-wrap: anywhere; word-break: break-word; }
         .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #FCFBF8; }
         .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
         .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 3; background: #F7F5F0; }
