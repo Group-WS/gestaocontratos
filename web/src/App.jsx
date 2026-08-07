@@ -1328,6 +1328,7 @@ function AvisoPDFPobre({ itens }) {
 function VendidoPlanilhaView({ obra, onImportPlanilha, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
+  const [verTexto, setVerTexto] = useState(null);
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   const totalPlanilha = verbas.reduce((a, c) => a + (c.itensPlanilha || []).reduce((s, it) => s + (it.custo || 0), 0), 0);
 
@@ -1349,6 +1350,8 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, podeEditar }) {
       <ImportButton congelado={congelado} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
         dica={<>Suba o <b>Vendido Planilha</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e o valor total; fornecedor, ambiente, especificação e a separação material/mão de obra existem como coluna e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
+
+      <DetalheTexto item={verTexto} onFechar={() => setVerTexto(null)} />
 
       <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilha || [])} />
 
@@ -1401,10 +1404,15 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, podeEditar }) {
                       {itens.map((it, i) => (
                         <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
                           <td className="mono dim">{it.codigo || "—"}</td>
-                          <td>{it.desc}{it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}</td>
-                          <td className="dim">{it.especificacao || "—"}</td>
-                          <td className="dim">{it.marca || "—"}</td>
-                          <td className="dim">{it.ambiente || "—"}</td>
+                          <td>
+                            <CelulaTexto texto={it.desc} onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
+                            {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
+                          </td>
+                          <td className="dim">
+                            <CelulaTexto texto={it.especificacao} onVerTudo={(t) => setVerTexto({ rotulo: "Código / especificação / Obs.", texto: t })} />
+                          </td>
+                          <td className="dim"><span className="celula-corte" style={{ WebkitLineClamp: 2 }}>{it.marca || "—"}</span></td>
+                          <td className="dim"><span className="celula-corte" style={{ WebkitLineClamp: 2 }}>{it.ambiente || "—"}</span></td>
                           <td className="mono center">{it.qtdVendida ?? "—"}</td>
                           <td className="mono center dim">{it.un || "—"}</td>
                           <td className="mono right dim">{it.custoMaterial != null ? fmtBRL(it.custoMaterial) : "—"}</td>
@@ -2463,6 +2471,56 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
   );
 }
 
+// Texto longo na célula: corta com reticências, e o "i" abre o inteiro.
+//
+// As descrições trazem o link do produto colado no texto — há trechos de
+// 357 caracteres sem um espaço. Deixar isso solto estica a linha e
+// desmonta a tabela. Cortar resolve a vista, mas some com a informação;
+// por isso o "i" mostra tudo, selecionável e com botão de copiar (o
+// código do produto é justamente o que se copia pra comprar).
+function CelulaTexto({ texto, linhas = 2, onVerTudo }) {
+  if (!texto) return <span className="dim">—</span>;
+  const longo = String(texto).length > 60;
+  return (
+    <div className="celula-texto">
+      <span className="celula-corte" style={{ WebkitLineClamp: linhas }}>{texto}</span>
+      {longo && (
+        <button className="btn-info" title="Ver texto completo" onClick={() => onVerTudo(texto)}>i</button>
+      )}
+    </div>
+  );
+}
+
+// Painel com o conteúdo inteiro de um item — pra ler e copiar.
+function DetalheTexto({ item, onFechar }) {
+  const [copiado, setCopiado] = useState(false);
+  if (!item) return null;
+
+  const copiar = () => {
+    navigator.clipboard?.writeText(item.texto).then(() => {
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1800);
+    });
+  };
+
+  return (
+    <div className="detalhe-fundo" onClick={onFechar}>
+      <div className="detalhe-caixa" onClick={(e) => e.stopPropagation()}>
+        <div className="detalhe-topo">
+          <span>{item.rotulo}</span>
+          <button className="clear-btn" onClick={onFechar}><X size={14} /></button>
+        </div>
+        <textarea className="detalhe-texto" readOnly value={item.texto} onFocus={(e) => e.target.select()} />
+        <div className="detalhe-acoes">
+          <button className="btn-editar-linha" onClick={copiar}>
+            <Copy size={12} /> {copiado ? "Copiado" : "Copiar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // SALDO DO EXECUTIVO — o que saiu, o que entrou, e se ainda cabe.
 //
 // Quem edita precisa ver o efeito da própria edição contra o teto, na
@@ -2586,6 +2644,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
   const [cadernosAbertos, setCadernosAbertos] = useState(false);
   // qual verba está com a busca de insumo aberta
   const [buscandoEm, setBuscandoEm] = useState(null);
+  // texto completo aberto no painel de leitura ({rotulo, texto})
+  const [verTexto, setVerTexto] = useState(null);
   const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   // item excluído não soma: ele fica visível como registro, não como custo
   const somar = (campo) => verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.excluido ? 0 : (it[campo] || 0)), 0), 0);
@@ -2660,6 +2720,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
         dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
 
+      <DetalheTexto item={verTexto} onFechar={() => setVerTexto(null)} />
+
       <SaldoExecutivo categorias={obra.categorias} cmvLiberado={obra.cmvLiberado} />
 
       <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilhaExecutivo || [])} />
@@ -2723,7 +2785,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                           <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""}`}>
                             <td className="mono dim">{it.codigo || "—"}</td>
                             <td>
-                              {it.desc}
+                              <CelulaTexto texto={it.desc} onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
                               {it.excluido && <span className="tag-excluido">excluído do executivo — não entra no custo</span>}
                               {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
                               {it.alteradoExecutivo && <span className="tag-alterado" title="Valor alterado aqui, não veio assim do arquivo">alterado no executivo</span>}
@@ -2732,9 +2794,11 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                                 <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
                               )}
                             </td>
-                            <td className="dim">{it.especificacao || "—"}</td>
-                            <td className="dim">{it.marca || "—"}</td>
-                            <td className="dim">{it.ambiente || "—"}</td>
+                            <td className="dim">
+                              <CelulaTexto texto={it.especificacao} onVerTudo={(t) => setVerTexto({ rotulo: "Código / especificação / Obs.", texto: t })} />
+                            </td>
+                            <td className="dim"><span className="celula-corte" style={{ WebkitLineClamp: 2 }}>{it.marca || "—"}</span></td>
+                            <td className="dim"><span className="celula-corte" style={{ WebkitLineClamp: 2 }}>{it.ambiente || "—"}</span></td>
                             <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={congelado} onSalvar={editar("qtdVendida")} /></td>
                             <td className="mono center dim">{it.un || "—"}</td>
                             <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={congelado} onSalvar={editar("custoMaterial")} /></td>
@@ -4814,9 +4878,28 @@ export default function App() {
            incomum — em Climatização, uma URL de 200 caracteres sem
            espaço — pra desalinhar tudo naquele grupo. */
         .exec-itens { font-size: 11px; width: 100%; min-width: 1080px; border-top: none; table-layout: fixed; }
-        .exec-itens th, .exec-itens td { padding-left: 7px; padding-right: 7px; }
+        .exec-itens th, .exec-itens td { padding: 6px 7px; }
         /* texto sem espaço (URL, código longo) quebra em vez de esticar */
-        .exec-itens td { overflow-wrap: anywhere; word-break: break-word; }
+        .exec-itens td { overflow-wrap: anywhere; word-break: break-word; vertical-align: middle; }
+
+        /* Altura de linha constante: o texto corta em N linhas e o resto
+           vai pro painel do "i". Sem isso uma especificação longa fazia
+           a linha crescer e a tabela perder o ritmo. */
+        /* Toda linha com a MESMA altura: duas linhas de texto cabem, o
+           resto vai pro painel do "i". Antes um item de descrição longa
+           ocupava cinco linhas e o seguinte uma — a tabela ficava sem
+           ritmo e difícil de percorrer com o olho. */
+        .exec-itens tbody td { height: 44px; }
+        .celula-texto { display: flex; align-items: flex-start; gap: 5px; }
+        .celula-corte { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; flex: 1; min-width: 0; }
+        .btn-info { flex-shrink: 0; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--border); background: #fff; color: var(--ink-3); font-size: 9.5px; font-weight: 700; font-family: Georgia, serif; font-style: italic; cursor: pointer; line-height: 1; padding: 0; }
+        .btn-info:hover { border-color: var(--blue); color: var(--blue); }
+
+        .detalhe-fundo { position: fixed; inset: 0; background: rgba(20,18,15,0.4); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+        .detalhe-caixa { background: #fff; border-radius: 14px; padding: 18px; width: min(620px, 100%); box-shadow: 0 18px 50px rgba(0,0,0,0.2); }
+        .detalhe-topo { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+        .detalhe-texto { width: 100%; min-height: 140px; border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; font-size: 12.5px; line-height: 1.55; color: var(--ink); font-family: inherit; resize: vertical; outline: none; }
+        .detalhe-acoes { display: flex; justify-content: flex-end; margin-top: 10px; }
         .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #FCFBF8; }
         .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
         .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 3; background: #F7F5F0; }
