@@ -373,13 +373,25 @@ function parseVendidoTexto(texto) {
   // (os dois são caracteres de "palavra"). "und" antes de "un" pra não
   // truncar a unidade errada quando as duas casam no mesmo ponto.
   const reQtdUn = /(\d{1,4}(?:\.\d{3})*,\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
+  // MESMO padrao, exigindo fronteira antes do numero.
+  //
+  // O extrator cola colunas vizinhas: "...Dicroica PAR16" + "4,00" vira
+  // "...Dicroica PAR164,00". Sem fronteira, a regex casa "164,00" — leva o
+  // "16" do PAR16 junto, sobra "PAR" na descricao, e a obra passa a
+  // comprar 164 spots em vez de 4. Erro de 40x, invisivel.
+  //
+  // Com fronteira o numero grudado nao casa. Nesse caso o parser tenta o
+  // padrao solto, mas marca a leitura como duvidosa em vez de aceitar
+  // calado — nao da pra saber se "PAR164,00" e PAR16+4,00, PAR1+64,00 ou
+  // PAR+164,00, e chutar e o que causou o erro.
+  const reQtdUnComFronteira = /(?:^|[\s;:(\-–—])(\d{1,4}(?:\.\d{3})*,\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
 
   const verbas = [];
   const itens = [];
   // Prestacao de contas da leitura. Sem isto, um item perdido no meio do
   // PDF nao deixa rastro nenhum — o import diz "importado" e o numero que
   // faltou so aparece semanas depois, na conferencia.
-  const diagnostico = { linhasNoPdf: linhas.length, semQtd: [], semDescricao: [], itensForaDeVerba: [] };
+  const diagnostico = { linhasNoPdf: linhas.length, semQtd: [], semDescricao: [], itensForaDeVerba: [], qtdDuvidosa: [] };
   let i = 0;
   while (i < linhas.length && !/Descri[çc][aã]o/i.test(linhas[i])) i++;
   i++;
@@ -431,8 +443,27 @@ function parseVendidoTexto(texto) {
         resto += (resto ? " " : "") + lt;
         j++;
       }
-      let qtd = null, un = null, amb = null, custo = null;
-      const mq = resto.match(reQtdUn);
+      let qtd = null, un = null, amb = null, custo = null, qtdDuvidosa = false;
+      // Fronteira primeiro. So cai no padrao solto se o limpo nao achar —
+      // e ai a leitura vai marcada.
+      let mq = resto.match(reQtdUnComFronteira);
+      if (mq) {
+        // o grupo 1 do padrao com fronteira ja e o numero; alinha os
+        // indices pra reaproveitar o mesmo tratamento abaixo
+        mq = { 0: mq[0].replace(/^[\s;:(\-–—]/, ""), 1: mq[1], 2: mq[2],
+               index: mq.index + (mq[0].length - mq[0].replace(/^[\s;:(\-–—]/, "").length) };
+      } else if (reQtdUn.test(resto)) {
+        // Numero grudado em letra: "PAR164,00" pode ser PAR16+4,00,
+        // PAR1+64,00 ou PAR+164,00. Nao da pra saber, entao NAO separa.
+        //
+        // A descricao fica inteira (nada se perde) e a quantidade fica
+        // vazia — que e a verdade: nao foi possivel ler. Inventar 164
+        // onde eram 4 e um erro de compra de 40x que ninguem revisa,
+        // porque o numero parece legitimo. Vazio, aparece na conferencia
+        // e no aviso de importacao.
+        qtdDuvidosa = true;
+        mq = null;
+      }
       if (mq) {
         qtd = parseBRLnum(mq[1]);
         un = mq[2];
@@ -484,6 +515,7 @@ function parseVendidoTexto(texto) {
       if (resto) {
         itens.push({ verba: vAtual, codigo, desc: resto, qtd, un, ambiente: amb, custo });
         if (qtd == null) diagnostico.semQtd.push(codigo);
+        if (qtdDuvidosa) diagnostico.qtdDuvidosa.push(codigo);
         if (!vAtual) diagnostico.itensForaDeVerba.push(codigo);
       } else {
         // linha com cara de item que nao produziu descricao nenhuma
@@ -494,6 +526,32 @@ function parseVendidoTexto(texto) {
     }
     i++;
   }
+  /* RELEITURA — segunda passada por cima do que ja foi lido.
+     A primeira passada le; esta desconfia. Todo erro que ja apareceu aqui
+     tinha a mesma cara: o numero PARECIA legitimo, entao ninguem revisava.
+     164 spots no lugar de 4 so foi notado porque a Priscila conhecia o
+     item. Estes testes existem pra que o proximo nao dependa disso. */
+  const suspeitas = [];
+  const qtds = itens.map((it) => it.qtd).filter((q) => q != null && q > 0);
+  const mediana = qtds.length ? [...qtds].sort((a, b) => a - b)[Math.floor(qtds.length / 2)] : null;
+
+  itens.forEach((it) => {
+    // Descricao terminando em letra+digito e a assinatura do numero
+    // arrancado do meio do texto ("...PAR" era "...PAR16").
+    if (it.qtd != null && /[A-Za-z]$/.test(it.desc) && /\d/.test(it.desc.slice(-6))) {
+      suspeitas.push({ codigo: it.codigo, motivo: "descricao pode ter perdido digitos para a quantidade" });
+    }
+    // Quantidade muito fora da curva do proprio documento.
+    if (mediana != null && it.qtd != null && it.qtd > Math.max(50, mediana * 30)) {
+      suspeitas.push({ codigo: it.codigo, motivo: `quantidade ${it.qtd} muito acima do resto do documento` });
+    }
+    // Descricao curta demais pra ser descricao de item.
+    if (it.desc && it.desc.trim().length < 8) {
+      suspeitas.push({ codigo: it.codigo, motivo: "descricao curta demais — pode ter sido cortada" });
+    }
+  });
+  diagnostico.suspeitas = suspeitas;
+
   diagnostico.verbas = verbas.length;
   diagnostico.itens = itens.length;
   return { verbas, itens, diagnostico };

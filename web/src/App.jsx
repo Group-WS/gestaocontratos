@@ -1528,6 +1528,11 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, podeEditar }) {
     if ((d.semQtd || []).length) alertas.push(`${d.semQtd.length} sem quantidade (${d.semQtd.slice(0, 6).join(", ")}${d.semQtd.length > 6 ? "…" : ""})`);
     if ((d.semDescricao || []).length) alertas.push(`${d.semDescricao.length} sem descrição legível`);
     if ((d.itensForaDeVerba || []).length) alertas.push(`${d.itensForaDeVerba.length} fora de qualquer grupo`);
+    // Quantidade que o leitor se recusou a adivinhar: a descrição veio
+    // colada no número no PDF, e chutar onde separa já produziu "164
+    // unidades" onde eram 4. Estes itens precisam de conferência à mão.
+    if ((d.qtdDuvidosa || []).length) alertas.push(`${d.qtdDuvidosa.length} com quantidade ilegível — preencher à mão (${d.qtdDuvidosa.slice(0, 6).join(", ")}${d.qtdDuvidosa.length > 6 ? "…" : ""})`);
+    if ((d.suspeitas || []).length) alertas.push(`${d.suspeitas.length} suspeito${d.suspeitas.length > 1 ? "s" : ""} na releitura: ${d.suspeitas.slice(0, 3).map((x) => `${x.codigo} (${x.motivo})`).join("; ")}`);
     if ((gruposNaoReconhecidos || []).length) alertas.push(`grupo fora do padrão: ${gruposNaoReconhecidos.join(", ")}`);
 
     const base = `“${file.name}” — ${paginas || "?"} páginas lidas · ${n} verba${n > 1 ? "s" : ""} · ${itens.length} itens.`;
