@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useLayoutEffect } from "react";
 import * as XLSX from "xlsx";
 import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
@@ -1499,6 +1499,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [filtroVenda, setFiltroVenda] = useState("todos");
+  const [verTexto, setVerTexto] = useState(null);
   const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
 
   // A estrutura da EAP nao muda com o filtro — o que muda e quais grupos
@@ -1537,6 +1538,8 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, podeEditar }) {
 
   return (
     <>
+      <DetalheTexto item={verTexto} onFechar={() => setVerTexto(null)} />
+
       <ImportButton congelado={congelado} label="Importar Contrato (PDF)" accept=".pdf"
         onLimpar={onLimpar} oQueLimpa="os itens e valores do Contrato"
         temConteudo={obra.categorias.some((c) => (c.itensContrato || []).length)}
@@ -1600,8 +1603,8 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, podeEditar }) {
                       {itens.map((it, i) => (
                         <tr key={it.codigo || i}>
                           <td className="mono dim">{it.codigo || "—"}</td>
-                          <td>{it.desc}</td>
-                          <td className="mono center dim">{it.ambiente || "—"}</td>
+                          <td><CelulaTexto texto={it.desc} onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} /></td>
+                          <td className="mono center dim"><CelulaTexto texto={it.ambiente} onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })} /></td>
                           <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
                         </tr>
                       ))}
@@ -3092,6 +3095,7 @@ function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState("");
   const editavel = !!onEditar && !congelado;
+  const [alvo, cortado] = useCortado(texto);
 
   if (editando) {
     return (
@@ -3112,11 +3116,11 @@ function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado }) {
   }
 
   const abrir = () => { if (!editavel) return; setRascunho(texto || ""); setEditando(true); };
-  const longo = texto && String(texto).length > 60;
 
   return (
     <div className="celula-texto">
       <span
+        ref={alvo}
         className={`celula-corte ${editavel ? "editavel" : ""}`}
         style={{ WebkitLineClamp: linhas }}
         onClick={abrir}
@@ -3124,11 +3128,39 @@ function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado }) {
       >
         {texto || (editavel ? <span className="dim">clique para preencher</span> : "\u2014")}
       </span>
-      {longo && (
+      {cortado && onVerTudo && (
         <button className="btn-info" title="Ver texto completo" onClick={() => onVerTudo(texto)}>i</button>
       )}
     </div>
   );
+}
+
+/* Diz se o conteúdo do elemento não coube no espaço que ele tem.
+
+   O critério antes era contar letras (">60 caracteres"). Mas o corte é
+   visual: numa coluna de 130px um texto de 45 caracteres já estoura as
+   duas linhas e some, e nenhum "i" aparecia pra recuperá-lo. Contagem de
+   letras não sabe a largura da coluna, o tamanho da fonte nem o tamanho
+   da janela — medir o elemento sabe.
+
+   Observa o redimensionamento porque a mesma célula cabe numa tela larga
+   e não cabe numa estreita; o "i" precisa aparecer e sumir junto. */
+function useCortado(dependencia) {
+  const alvo = useRef(null);
+  const [cortado, setCortado] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = alvo.current;
+    if (!el) { setCortado(false); return; }
+    const medir = () => setCortado(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    medir();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [dependencia]);
+
+  return [alvo, cortado];
 }
 
 // Painel com o conteúdo inteiro de um item — pra ler e copiar.
