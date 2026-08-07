@@ -8,6 +8,7 @@ import {
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
+import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
@@ -26,7 +27,7 @@ const api = (path) => API_BASE + path;
    zerada, em vez de sumir da lista.
    ============================================================ */
 
-const EAP_PADRAO = [
+const EAP_CODIGO = [
   { num: "01", nome: "Arquitetura e Engenharia" },
   { num: "02", nome: "Serviços Complementares" },
   { num: "03", nome: "Civil" },
@@ -61,8 +62,21 @@ const EAP_PADRAO = [
   { num: "32", nome: "Execução e Mão de Obra" },
 ];
 
+
+/* A EAP que esta valendo agora.
+
+   O codigo e a SEMENTE, o banco e a fonte oficial. `definirEapPadrao`
+   abaixo planta a semente no carregamento do modulo; quando a tabela
+   `eap_grupo` responde, ela substitui. Se o banco falhar ou vier vazio, o
+   app segue com a semente — ficar sem EAP e pior que ficar com uma
+   desatualizada, porque sem grupo todo item importado e descartado. */
+definirEapPadrao(EAP_CODIGO, APELIDOS_CODIGO, NAO_ANALISADAS_CODIGO);
+const eapPadrao = () => eapAtual().grupos;
+const apelidosVerba = () => eapAtual().apelidos;
+const verbasNaoAnalisadas = () => eapAtual().naoAnalisadas;
+
 function buildCategorias(overrides, extra) {
-  const base = EAP_PADRAO.map((c) => {
+  const base = eapPadrao().map((c) => {
     const o = overrides.find((x) => x.num === c.num);
     if (!o) return { ...c, vendido: 0, executivo: 0 };
     return { ...c, vendido: o.vendido ?? 0, executivo: o.executivo ?? 0, itens: o.itens };
@@ -995,7 +1009,7 @@ function verbaDoCodigo(codigo) {
 //
 // São radicais, não palavras inteiras — "climatiza" cobre climatização e
 // climatizacao; "persian" cobre persiana e persianas.
-const APELIDOS_VERBA = {
+const APELIDOS_CODIGO = {
   "01": ["arquitetura", "engenharia", "projetoarquitetonico"],
   "02": ["servicoscomplementar", "complementar"],
   "03": ["civil", "alvenaria", "demolicao"],
@@ -1052,7 +1066,7 @@ function verbaPorNome(nome) {
   //    antes de "medida"). Sem isso um nome casaria com duas verbas.
   let achado = null;
   let melhor = 0;
-  Object.entries(APELIDOS_VERBA).forEach(([num, apelidos]) => {
+  Object.entries(apelidosVerba()).forEach(([num, apelidos]) => {
     apelidos.forEach((ap) => {
       if (ap.length > melhor && comprimido.includes(ap)) { achado = num; melhor = ap.length; }
     });
@@ -1063,7 +1077,7 @@ function verbaPorNome(nome) {
   //    EAP pelo mesmo motor do depara. Cobre grafia que eu não previ,
   //    sem precisar cadastrar apelido novo a cada planilha diferente.
   let melhorSim = 0;
-  EAP_PADRAO.forEach((c) => {
+  eapPadrao().forEach((c) => {
     const s = similaridade(nome, c.nome);
     if (s > melhorSim) { melhorSim = s; achado = c.num; }
   });
@@ -1319,6 +1333,58 @@ const FILTROS_VENDA = [
   { id: "vendido", label: "Só o vendido" },
   { id: "nao_vendido", label: "Só o não vendido" },
 ];
+
+/* Encaixa as categorias salvas no padrao ATUAL da EAP.
+
+   Obra salva guarda as proprias categorias. Quando a EAP da empresa foi
+   para 32 grupos, as obras antigas continuaram exibindo os 19 antigos com
+   a numeracao velha — o padrao novo so valia para importacao nova, e a
+   mesma obra mostrava "03 Instalacoes Eletricas" onde o padrao diz "03
+   Civil".
+
+   O encaixe e por NOME, nao por numero: e o nome que sobrevive as duas
+   numeracoes (mesma razao do depara). Casar por numero moveria o conteudo
+   de eletrica para Civil sem nada na tela denunciar.
+
+   Grupo salvo que nao casa com nenhum padrao NAO e descartado: vai para o
+   fim da lista, marcado, do jeito que a regra da empresa pede. Grupo do
+   padrao sem nada na obra aparece vazio — e o "nao vendido" do filtro. */
+function normalizarCategorias(salvas) {
+  const lista = Array.isArray(salvas) ? salvas : [];
+  if (!lista.length) return lista;
+
+  const juntar = (a, b) => {
+    const arr = (k) => [...(a[k] || []), ...(b[k] || [])];
+    return {
+      ...a,
+      vendido: (a.vendido || 0) + (b.vendido || 0),
+      executivo: (a.executivo || 0) + (b.executivo || 0),
+      itens: arr("itens"), itensContrato: arr("itensContrato"),
+      itensPlanilha: arr("itensPlanilha"), itensPlanilhaExecutivo: arr("itensPlanilhaExecutivo"),
+    };
+  };
+
+  const porNum = new Map();
+  const fora = [];
+  lista.forEach((c) => {
+    if (c.foraDaEapPadrao) { fora.push(c); return; }
+    // Só o nome decide. Sem nome reconhecido, o grupo vai pro fim — nunca
+    // se assume que o número salvo significa a mesma coisa hoje.
+    const canon = verbaPorNome(c.nome);
+    if (!canon) { fora.push(c); return; }
+    const ja = porNum.get(canon);
+    porNum.set(canon, ja ? juntar(ja, c) : c);
+  });
+
+  const base = eapPadrao().map((e) => {
+    const c = porNum.get(e.num);
+    if (!c) return { ...e, vendido: 0, executivo: 0 };
+    // guarda de onde veio, pra dar pra auditar a migração depois
+    return { ...c, num: e.num, nome: e.nome, ...(c.num !== e.num ? { numAntigo: c.num } : {}) };
+  });
+
+  return [...base, ...fora.map((c) => ({ ...c, foraDaEapPadrao: true, foraDeEscopoCategoria: true }))];
+}
 
 /* Recalcula o que e DERIVADO das categorias.
 
@@ -2376,7 +2442,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
 // Verbas que não entram no depara — cada uma por um motivo próprio, e o
 // motivo aparece na tela. Elas continuam listadas como "N/A": some da
 // conferência é diferente de ficar explícito que não foi analisado.
-const VERBAS_NAO_ANALISADAS = {
+const NAO_ANALISADAS_CODIGO = {
   "01": "Padrão em toda obra — não muda de contrato pra contrato",
   "02": "Padrão em toda obra — não muda de contrato pra contrato",
   "21": "Móveis sob medida não são conferidos item a item nesta etapa",
@@ -2398,11 +2464,11 @@ const VERBAS_NAO_ANALISADAS = {
    razão pela qual o depara casa por nome e não por código. */
 const ehVerbaNaoAnalisada = (num, nome) => {
   const canonico = (nome ? verbaPorNome(nome) : null) || num;
-  return Object.prototype.hasOwnProperty.call(VERBAS_NAO_ANALISADAS, canonico);
+  return Object.prototype.hasOwnProperty.call(verbasNaoAnalisadas(), canonico);
 };
 const motivoVerbaNaoAnalisada = (num, nome) => {
   const canonico = (nome ? verbaPorNome(nome) : null) || num;
-  return VERBAS_NAO_ANALISADAS[canonico];
+  return verbasNaoAnalisadas()[canonico];
 };
 const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num, c.nome);
 
@@ -4482,6 +4548,17 @@ export default function App() {
   const [tab, setTab] = useState(null);
   const [itemFilter, setItemFilter] = useState("todos");
   const [tipoFilter, setTipoFilter] = useState("todos");
+  const [eapDoBanco, setEapDoBanco] = useState(null);
+
+  // Busca a EAP oficial uma vez, no arranque. Falha aqui não é fatal: o
+  // padrão do código continua valendo, e a tela diz de onde veio.
+  useEffect(() => {
+    let vivo = true;
+    carregarEapDoBanco()
+      .then((r) => { if (vivo && r) setEapDoBanco(r); })
+      .catch((e) => console.warn("EAP do banco indisponível, usando a do código:", e.message || e));
+    return () => { vivo = false; };
+  }, []);
   const [expandedCats, setExpandedCats] = useState(() => new Set(["022519", "062519"]));
 
   // Quem está usando o app. Vira o dono da trava de edição e assina as
@@ -4628,7 +4705,7 @@ export default function App() {
         if (!vivo || !dados) return;
         setObras((prev) => prev.map((o) => (o.codigo === codigo ? {
           ...o,
-          categorias: (dados.categorias || []).length ? dados.categorias : o.categorias,
+          categorias: (dados.categorias || []).length ? normalizarCategorias(dados.categorias) : o.categorias,
           cadernos: dados.cadernos,
           aprovacoes: dados.aprovacoes,
           deparaAprovado: dados.deparaAprovado,
@@ -4644,7 +4721,7 @@ export default function App() {
           // obra volta do banco com os itens certos e os totais do Monday
           // — que sao zero. O cabecalho dizia "R$ 0,00" numa obra com R$
           // 632 mil em produtos.
-          ...derivadosDasCategorias(dados.categorias, o),
+          ...derivadosDasCategorias(normalizarCategorias(dados.categorias), o),
         } : o)));
         const deOutro = dados.editandoPor && dados.editandoPor !== usuario;
         setEdicao({
