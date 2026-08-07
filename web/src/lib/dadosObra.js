@@ -42,6 +42,12 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     aprovacoes: Array.from(conteudo.aprovacoes || []),
     depara_aprovado: !!conteudo.deparaAprovado,
     compras_liberadas: !!conteudo.comprasLiberadas,
+    // O CMV liberado é o teto com que a equipe trabalha daqui pra frente.
+    // Ficava só na memória do navegador: ao recarregar, o resumo do topo
+    // e o fechamento do rodapé do Executivo sumiam sem dizer nada.
+    cmv_liberado: conteudo.cmvLiberado ?? null,
+    cmv_liberado_em: conteudo.cmvLiberadoEm || null,
+    cmv_liberado_por: conteudo.cmvLiberadoPor || null,
     atualizado_por: email || null,
     editando_por: email || null,
     editando_desde: new Date().toISOString(),
@@ -121,6 +127,9 @@ function paraApp(linha) {
     aprovacoes: new Set(linha.aprovacoes || []),
     deparaAprovado: !!linha.depara_aprovado,
     comprasLiberadas: !!linha.compras_liberadas,
+    cmvLiberado: linha.cmv_liberado ?? null,
+    cmvLiberadoEm: linha.cmv_liberado_em || null,
+    cmvLiberadoPor: linha.cmv_liberado_por || null,
     editandoPor: linha.editando_por || null,
     editandoDesde: linha.editando_desde || null,
     atualizadoEm: linha.atualizado_em || null,

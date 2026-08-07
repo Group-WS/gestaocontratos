@@ -65,6 +65,13 @@ create table if not exists obra_dados (
   aprovacoes        jsonb not null default '[]'::jsonb,   -- linhas do depara aprovadas na mao
   depara_aprovado   boolean not null default false,
   compras_liberadas boolean not null default false,
+  -- Teto de custo definido na liberacao do CMV (no depara contrato x
+  -- planilha). Sem estas colunas o valor vivia so na memoria do
+  -- navegador: ao recarregar, a aba Executivo continuava aberta mas o
+  -- resumo do topo e o fechamento do rodape sumiam sem dizer nada.
+  cmv_liberado      numeric,
+  cmv_liberado_em   timestamptz,
+  cmv_liberado_por  text,
   -- trava de edicao
   editando_por      text,                                 -- e-mail de quem esta editando
   editando_desde    timestamptz,
@@ -72,6 +79,12 @@ create table if not exists obra_dados (
   atualizado_em     timestamptz default now(),
   criado_em         timestamptz default now()
 );
+
+-- Para quem ja tinha a tabela criada antes destas colunas existirem:
+-- `create table if not exists` acima nao altera tabela existente.
+alter table obra_dados add column if not exists cmv_liberado     numeric;
+alter table obra_dados add column if not exists cmv_liberado_em  timestamptz;
+alter table obra_dados add column if not exists cmv_liberado_por text;
 
 alter table obra_dados enable row level security;
 

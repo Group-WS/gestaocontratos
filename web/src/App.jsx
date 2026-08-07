@@ -1971,10 +1971,16 @@ const DEPARA_META = {
 // Chamar isso de "Só aparece em um" era mentira — o item está nos dois
 // documentos, idêntico. O que falta ali não é conferir número, é conferir
 // se cabe, se é compatível, se conversa com a planta.
+// Os rótulos do Depara falam de DIVERGÊNCIA — é só isso que aquela etapa
+// faz. O Executivo faz duas coisas: compara números e levanta alerta
+// técnico. "Só aparece em um" numa linha idêntica nos dois documentos era
+// falso; aqui os nomes dizem o que a pessoa precisa FAZER com a linha.
 const EXEC_META = {
-  ...DEPARA_META,
+  ok: { label: "Conferido", sub: "item, qtd. e valor batem", color: "var(--ink-2)", bg: "transparent", Icon: CheckCircle2 },
+  diferente: { label: "Divergente", sub: "está nos dois, mas o número mudou", color: "var(--red)", bg: "var(--red-bg)", Icon: XCircle },
+  somente_um: { label: "Entrou ou saiu", sub: "está em só um dos documentos", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
   conferencia_tecnica: {
-    label: "Conferência técnica", sub: "bate em número, mas precisa de olhar",
+    label: "Conferência técnica", sub: "número bate — falta olhar medida e compatibilidade",
     color: "#B54708", bg: "#FFF4E5", Icon: AlertTriangle,
   },
 };
@@ -2753,6 +2759,36 @@ function DetalheTexto({ item, onFechar }) {
 // O item excluído continua contando como "retirado": some da soma mas
 // não some da vista — quem olhar depois precisa saber que existiu e
 // quanto valia.
+/* Movimento de UMA verba contra o que foi vendido nela.
+
+   Uma verba acima do vendido NÃO é estouro do CMV. O CMV é o total da
+   obra — uma verba a mais compensa outra a menos, e é comum a conta
+   fechar com metade das verbas acima. Quem dá o veredito do CMV é o
+   SaldoExecutivo lá em cima ("Ainda cabe" / "Acima do CMV").
+
+   Aqui a cor mede só o PESO do movimento. Pintar tudo de vermelho fazia
+   "+R$ 13,96 numa verba de R$ 39 mil" (0,03%) gritar igual a "+R$ 2.468
+   numa de R$ 32 mil" (7,6%) — e como a maioria das verbas mexe alguns
+   centavos, a tela inteira ficava vermelha e ninguém achava o que
+   importava. */
+const PESO_ARREDONDAMENTO = 0.01; // até 1% é ruído de conversão/centavo
+const PESO_RELEVANTE = 0.10;      // acima de 10% vale parar e olhar
+
+function deltaVerba(subtotal, base) {
+  const dif = subtotal - base;
+  // Menos de um centavo é igual. "R$ 0,00 vs. vendido" repetido em verde
+  // por metade da lista era ruído puro.
+  if (Math.abs(dif) < 0.01) return { tom: "igual", texto: "igual ao vendido" };
+  if (dif < 0) return { tom: "sobra", texto: `${fmtBRL(-dif)} sobrando` };
+
+  const prop = base > 0 ? dif / base : 1;
+  const tom = prop < PESO_ARREDONDAMENTO ? "leve" : prop < PESO_RELEVANTE ? "medio" : "alto";
+  // A porcentagem é o que torna o número legível: sem ela, R$ 13,96 e
+  // R$ 2.468 parecem o mesmo tipo de problema.
+  const pct = (prop * 100).toLocaleString("pt-BR", { maximumFractionDigits: prop < 0.01 ? 2 : 1 });
+  return { tom, texto: `+${fmtBRL(dif)} acima (${pct}%)` };
+}
+
 function SaldoExecutivo({ categorias, cmvLiberado }) {
   let atual = 0, retirado = 0, acrescido = 0, nExcluidos = 0, nNovos = 0;
 
@@ -2962,8 +2998,9 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
             const temItens = itens.length > 0;
             const aberto = abertos.has(c.num);
             const subtotal = itens.reduce((a, it) => a + (it.excluido ? 0 : (it.custo || 0)), 0);
-            // quanto essa verba valia no criativo — a referência do estouro
+            // quanto essa verba valia no criativo — a referência do movimento
             const baseVerba = itens.reduce((a, it) => a + (it.vendido?.custo || 0), 0);
+            const delta = temItens && baseVerba > 0 ? deltaVerba(subtotal, baseVerba) : null;
             return (
               <div key={c.num} className="vend-grupo">
                 {/* abre mesmo sem itens: é onde se lança item manual */}
@@ -2972,9 +3009,10 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
                   {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
-                  {temItens && baseVerba > 0 && (
-                    <span className="vend-delta" style={{ color: subtotal > baseVerba ? "var(--red)" : "var(--green)" }}>
-                      {subtotal > baseVerba ? "+" : ""}{fmtBRL(subtotal - baseVerba)} vs. vendido
+                  {delta && (
+                    <span className={`vend-delta tom-${delta.tom}`}
+                      title="Movimento desta verba em relação ao que foi vendido nela. Uma verba acima não é estouro do CMV — o CMV é o total da obra, e está no resumo acima.">
+                      {delta.texto}
                     </span>
                   )}
                   <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
@@ -4322,6 +4360,13 @@ export default function App() {
           aprovacoes: dados.aprovacoes,
           deparaAprovado: dados.deparaAprovado,
           comprasLiberadas: dados.comprasLiberadas,
+          // Sem estas três, o CMV liberado se perdia no reload: a aba
+          // Executivo continuava aberta (isso é `deparaAprovado`), mas o
+          // teto voltava vazio e os blocos que dependem dele — resumo do
+          // topo e fechamento do rodapé — simplesmente não renderizavam.
+          cmvLiberado: dados.cmvLiberado,
+          cmvLiberadoEm: dados.cmvLiberadoEm,
+          cmvLiberadoPor: dados.cmvLiberadoPor,
         } : o)));
         const deOutro = dados.editandoPor && dados.editandoPor !== usuario;
         setEdicao({
@@ -5190,7 +5235,15 @@ export default function App() {
         .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
         /* Colunas de origem: o que veio do criativo e o quanto mudou */
         .exec-itens .col-vendido { background: #FAFAF8; }
-        .vend-delta { font-size: 11px; font-weight: 600; flex-shrink: 0; margin-right: 4px; }
+        .vend-delta { font-size: 11px; font-weight: 600; flex-shrink: 0; margin-right: 4px; cursor: help; }
+        /* Vermelho é do CMV, e o CMV é o total — está no resumo do topo.
+           Aqui a cor mede peso: ruído fica apagado, movimento relevante
+           chama, e só o desvio grande da verba usa vermelho. */
+        .vend-delta.tom-igual { color: var(--ink-3); font-weight: 500; }
+        .vend-delta.tom-leve  { color: var(--ink-3); font-weight: 500; }
+        .vend-delta.tom-sobra { color: var(--green); }
+        .vend-delta.tom-medio { color: #B54708; }
+        .vend-delta.tom-alto  { color: var(--red); }
 
         /* CMV liberado — o teto que sai do depara */
         .cmv-painel { background: var(--panel); border-radius: 14px; padding: 16px 18px; margin-bottom: 18px; }
