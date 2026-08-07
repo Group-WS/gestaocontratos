@@ -1455,6 +1455,108 @@ function normTxt(s) {
   return semAcento.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/* ============================================================
+   ALERTA DE CONFERÊNCIA TÉCNICA
+   ------------------------------------------------------------
+   Coisas que batem em custo e quantidade e ainda assim dão errado na
+   obra: a mesa que não passa no elevador, a banqueta na altura errada,
+   a base de monocomando incompatível, o ar-condicionado que não
+   conversa com a infraestrutura da planta.
+
+   As regras são por CATEGORIA e MEDIDA — nunca por nome de modelo,
+   coleção ou fornecedor. Nome de produto muda a cada obra; "mesa maior
+   que 1 m" não muda.
+
+   Na dúvida, alerta. Um alerta a mais custa uma conferência; um a menos
+   custa desmontar móvel dentro do apartamento.
+   ============================================================ */
+
+// Converte as medidas achadas na descrição para METROS.
+//
+// As regras saem do jeito como as planilhas são escritas de verdade:
+// "300x120" é centímetro, "2,40" é metro, "45cm" é 0,45. Número solto
+// acima de 20 só faz sentido como centímetro — não existe mesa de 45 m.
+function medidasEmMetros(texto) {
+  const num = (s) => parseFloat(String(s).replace(",", "."));
+  const paraMetro = (n, unidade) => {
+    if (!Number.isFinite(n)) return null;
+    if (unidade === "mm") return n / 1000;
+    if (unidade === "cm") return n / 100;
+    if (unidade === "m") return n;
+    return n > 20 ? n / 100 : n; // solto: acima de 20 só pode ser cm
+  };
+
+  const achados = [];
+  let resto = texto;
+
+  // "3,00 x 1,20 m" / "300x120" — a unidade final, quando existe, vale
+  // para os dois lados do par
+  resto = resto.replace(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\b/gi, (_, a, b, un) => {
+    const u = un && un.toLowerCase();
+    achados.push(paraMetro(num(a), u));
+    achados.push(paraMetro(num(b), u));
+    return " ";
+  });
+
+  // "45cm", "2,40m"
+  resto = resto.replace(/(\d+(?:[.,]\d+)?)\s*(mm|cm|m)\b/gi, (_, a, un) => {
+    achados.push(paraMetro(num(a), un.toLowerCase()));
+    return " ";
+  });
+
+  // número solto que sobrou
+  const reSolto = /\b(\d+(?:[.,]\d+)?)\b/g;
+  let m;
+  while ((m = reSolto.exec(resto)) !== null) achados.push(paraMetro(num(m[1]), null));
+
+  // acima de 6 m não é móvel: é código, ano, potência — descarta
+  return achados.filter((v) => Number.isFinite(v) && v > 0 && v <= 6);
+}
+
+const ALERTA_MESA_MEDIDA =
+  "verificar se precisa ser bipartida e se passa no elevador, portas e circulacao.";
+const ALERTA_MESA_SEM_MEDIDA =
+  "sem medida na descricao: verificar dimensao e se passa no elevador, portas e circulacao (pode precisar ser bipartida).";
+const ALERTA_BANQUETA =
+  "conferir a altura da banqueta com a altura da bancada.";
+const ALERTA_BASE_MONOCOMANDO =
+  "conferir a base do monocomando no apartamento (deca, docol ou outra) e a compatibilidade do acabamento.";
+const ALERTA_CLIMATIZACAO =
+  "conferir na planta tecnica se a infraestrutura e split, vrf ou cassete, e validar compatibilidade com o equipamento vendido.";
+
+// Devolve a mensagem do primeiro alerta que casar, ou null.
+function alertaConferenciaTecnica(descricao) {
+  const t = normTxt(descricao);
+  if (!t) return null;
+  const tem = (...palavras) => palavras.some((p) => t.includes(p));
+
+  // 1 — MESA / JANTAR / TAMPO: passa no elevador? precisa ser bipartida?
+  if (tem("mesa", "jantar", "tampo")) {
+    const medidas = medidasEmMetros(t);
+    if (medidas.length === 0) return ALERTA_MESA_SEM_MEDIDA;
+    if (Math.max(...medidas) > 1.0) return ALERTA_MESA_MEDIDA;
+    return null; // tem medida e cabe
+  }
+
+  // 2 — BANQUETA: altura tem que casar com a da bancada
+  if (tem("banqueta")) return ALERTA_BANQUETA;
+
+  // 3 — BASE DO MONOCOMANDO: só a base embutida na parede. Torneira,
+  // bica e monocomando de mesa não têm esse problema.
+  if (tem("base") && tem("monocomando", "registro", "chuveiro", "ducha", "pressao")) {
+    const ehDeMesa = tem("torneira", "bica", "de mesa", "lavatorio", "cozinha", "pia");
+    const ehEmbutida = /base[^.]*\b(registro|pressao|embut)/.test(t);
+    if (!ehDeMesa || ehEmbutida) return ALERTA_BASE_MONOCOMANDO;
+  }
+
+  // 4 — CLIMATIZAÇÃO: o equipamento conversa com a infraestrutura?
+  if (tem("ar condicionado", "ar-condicionado", "arcondicionado", "evaporadora", "condensadora", "multi split")) {
+    return ALERTA_CLIMATIZACAO;
+  }
+
+  return null;
+}
+
 // Palavras que aparecem em quase toda descrição sem distinguir nada, ou
 // que são rótulo e não conteúdo ("Cor: Branco" — o que importa é branco).
 const PALAVRAS_VAZIAS = new Set([
@@ -1831,7 +1933,7 @@ function conferirExecutivoObra(categorias) {
   const deslocamento = detectarDeslocamentoVerba(cruzado);
   const linhas = cruzado
     .map((e) => {
-      if (e.status === "somente_um") return { ...e, motivo: e.a && !e.b ? "Está na planilha vendida, mas não na planilha executivo" : "Está na planilha executivo, mas não na planilha vendida" };
+      if (e.status === "somente_um") return { ...e, motivo: e.a && !e.b ? "Está na planilha vendida, mas não na planilha executivo" : "ACRESCENTADO NO EXECUTIVO — não foi vendido ao cliente" };
       if (e.status === "ok") return { ...e, motivo: null };
       return { ...e, motivo: motivoDiferenca(e) };
     })
@@ -1868,12 +1970,13 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   }
 
   return (
-    <div className="conf-row" style={{ background: m.bg }}>
+    <div className={`conf-row ${l.alertaTecnico ? "com-alerta" : ""}`} style={{ background: l.alertaTecnico ? undefined : m.bg }}>
       <div className="conf-row-top">
         {selecionavel && <input type="checkbox" className="conf-check" checked={selecionado} onChange={onToggleSelecionar} aria-label="Selecionar linha" />}
         <span className="mono dim conf-codigo">{l.catNum}.{l.codigo || "—"}</span>
         <span className="conf-badge" style={{ color: m.color, background: m.bg === "transparent" ? "var(--panel)" : m.bg }}><m.Icon size={12} /> {m.label}</span>
         {aprovado && <span className="conf-badge" style={{ color: "var(--green)", background: "var(--green-bg)" }}><CheckCircle2 size={12} /> Aprovado</span>}
+        {l.naoVendido && <span className="conf-badge nao-vendido"><AlertTriangle size={12} /> Não foi vendido</span>}
       </div>
       <div className="conf-cols">
         <div className="conf-col">
@@ -1909,6 +2012,12 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
           ) : <div className="conf-vazio">— {vazioBLabel} —</div>}
         </div>
       </div>
+      {l.alertaTecnico && (
+        <div className="conf-motivo">
+          <span className="alerta-conf">⚠️ <b>Alerta de conferência técnica:</b></span>{" "}
+          <span>{l.alertaTecnico}</span>
+        </div>
+      )}
       {l.motivo && <div className="conf-motivo">{l.motivo}</div>}
       {l.status !== "ok" && !editando && (
         <div className="conf-acoes">
@@ -2266,11 +2375,29 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, podeEditar 
   const [aprovacoes, setAprovacoes] = useState(() => new Set());
   const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
 
-  const linhasBrutas = useMemo(() => conferirExecutivoObra(obra.categorias).linhas.map((item) => ({
-    codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome, status: item.status, motivo: item.motivo,
-    a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
-    b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
-  })), [obra]);
+  const linhasBrutas = useMemo(() => conferirExecutivoObra(obra.categorias).linhas.map((item) => {
+    const desc = item.planilhaExecutivo?.desc || item.planilhaVendido?.desc;
+
+    // Acrescentado no executivo sem ter sido vendido: televisor, máquina
+    // de lavar. Bate valor e quantidade porque não há com o que comparar
+    // — mas é justamente o caso de olhar, porque alguém vai pagar.
+    const soNoExecutivo = !item.planilhaVendido && !!item.planilhaExecutivo;
+    const alertaTecnico = alertaConferenciaTecnica(desc);
+
+    let status = item.status;
+    let motivo = item.motivo;
+    // Alerta técnico puxa pra amarelo mesmo com tudo batendo: o problema
+    // dele não é de número, é de caber e de ser compatível.
+    if (alertaTecnico && status === "ok") { status = "somente_um"; motivo = null; }
+
+    return {
+      codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome,
+      status, motivo, alertaTecnico,
+      naoVendido: soNoExecutivo,
+      a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
+      b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
+    };
+  }), [obra]);
 
   const naoAnalisadas = useMemo(
     () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num)),
@@ -4982,6 +5109,12 @@ export default function App() {
         .fechamento-rotulo { flex: 1; }
         .fechamento-valor { font-size: 14px; font-weight: 600; }
         .fechamento-linha.final .fechamento-valor { font-size: 17px; }
+
+        /* Alerta de conferência técnica: bate em custo e quantidade, mas
+           pode não caber no elevador nem casar com a infraestrutura. */
+        .conf-row.com-alerta { background: #FFF4E5; box-shadow: inset 3px 0 0 #F79009; }
+        .alerta-conf b { color: #D92D20; text-transform: uppercase; font-weight: 700; letter-spacing: 0.01em; }
+        .conf-badge.nao-vendido { color: #B42318; background: #FEE4E2; }
         .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
         .exec-itens tr.linha-alterada td:nth-child(1), .exec-itens tr.linha-alterada td:nth-child(2) { background: #FFF2CC; }
         .exec-itens th { line-height: 1.25; }
