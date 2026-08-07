@@ -1213,10 +1213,22 @@ async function lerPlanilhaExcel(file) {
     //   2) a coluna de verba, se a planilha tiver uma
     //   3) o prefixo do código — último recurso, porque a numeração da
     //      planilha não acompanha a EAP (climatização vem como 7, não 6)
-    const num = verbaPorNome(grupoAtual)
+    // O NÚMERO cru do arquivo só serve quando o nome não resolve E o
+    // grupo do arquivo tem o mesmo nome do grupo padrão de mesmo número.
+    // Fora disso ele mente: a planilha numera climatização como 7, e 7 no
+    // padrão da empresa é Preventivo de Incêndio.
+    const porNome = verbaPorNome(grupoAtual);
+    const num = porNome
       || (iVerba >= 0 ? String(row[iVerba] ?? "").trim().padStart(2, "0") : null)
       || verbaDoCodigo(codigo);
-    if (!num) continue;
+
+    // Grupo que não casa com o padrão NÃO é descartado. Antes havia um
+    // `continue` aqui: o item sumia da importação sem contagem nem aviso,
+    // e o total da planilha vinha menor que o do arquivo sem ninguém
+    // perceber. Agora ele viaja marcado e é agrupado no fim da lista, que
+    // é o que a regra da empresa pede.
+    const foraDoPadrao = !porNome;
+    if (!num && !grupoAtual) continue;
     const qtdVal = iQtd >= 0 ? parseBRL(row[iQtd]) : null;
     const col = (i) => (i >= 0 ? parseBRL(row[i]) : null);
     // célula de texto: o Excel guarda 0 onde o campo está vazio, e "0"
@@ -1248,6 +1260,10 @@ async function lerPlanilhaExcel(file) {
 
     itens.push({
       num, codigo: codigo || null, desc, ehTitulo: ehLinhaDeTitulo(qtdVal, custo, custoUnitario),
+      // Marca de origem pra quem não casou com o padrão: é por ela que o
+      // item é agrupado no fim da lista, com o nome do grupo como veio no
+      // arquivo, em vez de sumir.
+      ...(foraDoPadrao ? { foraDoPadrao: true, grupoOriginal: grupoAtual } : {}),
       custoMaterial, custoMO, totalMaterial, totalMO,
       // "tem custo de material" é o que separa produto de serviço
       tipo: custoMaterial != null || totalMaterial != null
@@ -1333,6 +1349,45 @@ const FILTROS_VENDA = [
   { id: "vendido", label: "Só o vendido" },
   { id: "nao_vendido", label: "Só o não vendido" },
 ];
+
+/* Distribui os itens importados pelas verbas, e leva pro FIM da lista o
+   que não pertence a nenhum grupo do padrão.
+
+   Antes cada importador fazia `porVerba[c.num]` direto. Item cujo grupo
+   não casava com a EAP tinha sido descartado ainda na leitura do arquivo,
+   então nunca chegava aqui — o total da planilha vinha menor que o do
+   arquivo, calado. A regra da empresa é o contrário: o que não está no
+   padrão é acrescido no final. */
+function aplicarItensNasVerbas(categorias, itens, campo) {
+  const padrao = {};
+  const fora = new Map();
+  (itens || []).forEach((it) => {
+    if (it.foraDoPadrao) {
+      const chave = it.grupoOriginal || "Grupo não identificado";
+      if (!fora.has(chave)) fora.set(chave, []);
+      fora.get(chave).push(it);
+    } else if (it.num) {
+      (padrao[it.num] = padrao[it.num] || []).push(it);
+    }
+  });
+
+  const base = categorias
+    .filter((c) => !c.foraDaEapPadrao)
+    .map((c) => (padrao[c.num] ? { ...c, [campo]: padrao[c.num] } : c));
+
+  // grupos fora do padrão que já existiam de outra importação continuam
+  const jaFora = categorias.filter((c) => c.foraDaEapPadrao);
+  const extras = [];
+  fora.forEach((lista, nome) => {
+    const existente = jaFora.find((c) => c.nome === nome);
+    extras.push(existente
+      ? { ...existente, [campo]: lista }
+      : { num: "—", nome, vendido: 0, executivo: 0, foraDaEapPadrao: true, foraDeEscopoCategoria: true, [campo]: lista });
+  });
+  jaFora.forEach((c) => { if (!fora.has(c.nome)) extras.push(c); });
+
+  return [...base, ...extras];
+}
 
 /* Encaixa as categorias salvas no padrao ATUAL da EAP.
 
@@ -4844,9 +4899,7 @@ export default function App() {
   function importVendidoPlanilha(itens) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
-      const porVerba = {};
-      (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
-      const categorias = o.categorias.map((c) => (porVerba[c.num] ? { ...c, itensPlanilha: porVerba[c.num] } : c));
+      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilha");
       return { ...o, categorias };
     }));
   }
@@ -4856,9 +4909,7 @@ export default function App() {
   function importExecutivo(itens) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
-      const porVerba = {};
-      (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
-      const categorias = o.categorias.map((c) => (porVerba[c.num] ? { ...c, itens: porVerba[c.num] } : c));
+      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itens");
       return { ...o, categorias };
     }));
   }
@@ -5018,9 +5069,11 @@ export default function App() {
   function importPlanilhaExecutivo(itens) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
+      // Enriquece antes de distribuir: a comparação com o criativo depende
+      // da verba de destino, que é a mesma em que o item vai cair.
       const porVerba = {};
       (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
-      const categorias = o.categorias.map((c) => {
+      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilhaExecutivo").map((c) => {
         if (!porVerba[c.num]) return c;
         // Guarda o item INTEIRO. Antes essa lista era montada campo a
         // campo, e ficou congelada no tempo: quando as colunas de
