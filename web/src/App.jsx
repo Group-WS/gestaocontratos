@@ -1659,8 +1659,24 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [verTexto, setVerTexto] = useState(null);
-  const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
-  const totalPlanilha = verbas.reduce((a, c) => a + (c.itensPlanilha || []).reduce((s, it) => s + (it.custo || 0), 0), 0);
+  const [filtroVenda, setFiltroVenda] = useState("todos");
+  const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+
+  // Mesma leitura do Vendido Contrato: a EAP inteira sempre aparece, e o
+  // filtro só decide quais grupos dela ficam à vista.
+  const vendidas = todasVerbas.filter((c) => grupoFoiVendido(c.itensPlanilha));
+  const verbas = filtroVenda === "vendido" ? vendidas
+    : filtroVenda === "nao_vendido" ? todasVerbas.filter((c) => !grupoFoiVendido(c.itensPlanilha))
+    : todasVerbas;
+  const contaVenda = {
+    todos: todasVerbas.length,
+    vendido: vendidas.length,
+    nao_vendido: todasVerbas.length - vendidas.length,
+  };
+
+  // O total é sempre o da planilha inteira — filtro é lente, não recorte:
+  // um subtotal que muda conforme o filtro vira número errado no print.
+  const totalPlanilha = todasVerbas.reduce((a, c) => a + (c.itensPlanilha || []).reduce((s, it) => s + (it.custo || 0), 0), 0);
 
   async function aoImportar(file) {
     const ehPDF = /\.pdf$/i.test(file.name);
@@ -1693,6 +1709,17 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, podeEditar }) {
           </div>
         </div>
 
+        <div className="filter-bar venda-bar">
+          <ClipboardList size={13} className="dim" />
+          {FILTROS_VENDA.map((f) => (
+            <button key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
+              onClick={() => setFiltroVenda(f.id)}>
+              {f.label}
+              <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="vend-list">
           {verbas.map((c) => {
             const itens = c.itensPlanilha || [];
@@ -1706,6 +1733,12 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, podeEditar }) {
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
                   {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                  {!grupoFoiVendido(itens) && <span className="vend-nao-vendido">não vendido</span>}
+                  {temItens && itens.filter((it) => !itemFoiVendido(it)).length > 0 && (
+                    <span className="vend-nao-vendido leve">
+                      {itens.filter((it) => !itemFoiVendido(it)).length} sem venda
+                    </span>
+                  )}
                   <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
                 </button>
                 {aberto && temItens && (
