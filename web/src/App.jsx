@@ -590,7 +590,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
 
   const totalExecutivo = obra.categorias.reduce(
     (a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.excluido ? 0 : (it.custo || 0)), 0), 0);
-  const teto = obra.cmvLiberado || 0;
+  const teto = cmvDaObra(obra)?.total || 0;
   const estouro = teto > 0 ? totalExecutivo - teto : 0;
   const acimaDoTeto = estouro > 0.01;
 
@@ -2326,6 +2326,33 @@ function calcularCMV(linhas, categorias) {
   return { total, pendentes, grupos };
 }
 
+/* O CMV do jeito que as telas seguintes devem enxergar.
+
+   O valor gravado manda. Quando ele falta MAS o depara já foi aprovado, a
+   obra passou por uma versão do app que ainda não salvava o CMV: ele
+   existiu, foi aprovado com nome e data, e se perdeu no primeiro reload.
+   Mandar refazer a liberação seria pedir de novo uma decisão que já foi
+   tomada — e, pior, uma decisão que congela etapas.
+
+   Então recalcula da mesma fonte que a liberação usou: as categorias, que
+   sempre foram salvas. `calcularCMV` é pura, então o número que sai aqui é
+   o mesmo que saiu no dia da aprovação. `recuperado` marca essa origem,
+   pra tela poder dizer de onde veio em vez de fingir que estava lá. */
+function cmvDaObra(obra) {
+  if (obra?.cmvLiberado > 0) {
+    return { total: obra.cmvLiberado, grupos: null, recuperado: false };
+  }
+  if (!obra?.deparaAprovado) return null;
+
+  const { linhas } = conferirObra(obra.categorias || []);
+  const mapeadas = linhas.map((item) => ({
+    catNum: item.verba.num, catNome: item.verba.nome, status: item.status,
+    b: item.planilha ? { valor: item.planilha.custo } : null,
+  }));
+  const { total, grupos } = calcularCMV(mapeadas, obra.categorias);
+  return total > 0 ? { total, grupos, recuperado: true } : null;
+}
+
 function ResumoCMV({ linhas, categorias }) {
   const { total, pendentes, grupos } = calcularCMV(linhas, categorias);
 
@@ -2844,7 +2871,7 @@ function deltaVerba(subtotal, base) {
   return { tom, texto: `+${fmtBRL(dif)} acima (${pct}%)` };
 }
 
-function SaldoExecutivo({ categorias, cmvLiberado }) {
+function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
   let atual = 0, retirado = 0, acrescido = 0, nExcluidos = 0, nNovos = 0;
 
   (categorias || []).forEach((c) => {
@@ -2899,7 +2926,7 @@ function SaldoExecutivo({ categorias, cmvLiberado }) {
         <div className="saldo-valor mono">{fmtBRL(atual)}</div>
       </div>
       <div className="saldo-bloco destaque">
-        <div className="saldo-rotulo">{estourou ? "Acima do CMV" : "Ainda cabe"}</div>
+        <div className="saldo-rotulo">{estourou ? "Acima do CMV" : "Ainda cabe"}{recuperado ? " · recalculado" : ""}</div>
         <div className="saldo-valor mono" style={{ color: estourou ? "var(--red)" : "var(--green)" }}>
           {estourou ? "−" : ""}{fmtBRL(Math.abs(sobra))}
         </div>
@@ -2965,6 +2992,10 @@ function CadernoSlot({ titulo, arquivo, onImportar, congelado }) {
 // (produto × serviço classificado pelo custo de material).
 function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
+  // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
+  // quando a obra foi liberada antes de o app aprender a salvar.
+  const cmv = useMemo(() => cmvDaObra(obra), [obra]);
+  const cmvValor = cmv?.total ?? 0;
   const itensBase = obra.categorias.reduce((a, c) => a + (c.itensPlanilha || []).length, 0);
   const temBase = itensBase > 0;
   const temExecutivo = obra.categorias.some((c) => (c.itensPlanilhaExecutivo || []).length > 0);
@@ -3056,7 +3087,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
 
       <DetalheTexto item={verTexto} onFechar={() => setVerTexto(null)} />
 
-      <SaldoExecutivo categorias={obra.categorias} cmvLiberado={obra.cmvLiberado} />
+      <SaldoExecutivo categorias={obra.categorias} cmvLiberado={cmvValor} recuperado={cmv?.recuperado} />
 
       <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilhaExecutivo || [])} />
 
@@ -3211,28 +3242,28 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
           <div className="fechamento-linha">
             <span className="fechamento-rotulo">CMV liberado</span>
             <span className="mono fechamento-valor">
-              {obra.cmvLiberado > 0 ? fmtBRL(obra.cmvLiberado) : "—"}
+              {cmvValor > 0 ? fmtBRL(cmvValor) : "—"}
             </span>
           </div>
           <div className="fechamento-linha">
             <span className="fechamento-rotulo">Alterações do executivo</span>
-            <span className="mono fechamento-valor" style={obra.cmvLiberado > 0 ? { color: total - obra.cmvLiberado > 0 ? "var(--red)" : "var(--green)" } : undefined}>
-              {obra.cmvLiberado > 0
-                ? `${total - obra.cmvLiberado > 0 ? "+" : ""}${fmtBRL(total - obra.cmvLiberado)}`
+            <span className="mono fechamento-valor" style={cmvValor > 0 ? { color: total - cmvValor > 0 ? "var(--red)" : "var(--green)" } : undefined}>
+              {cmvValor > 0
+                ? `${total - cmvValor > 0 ? "+" : ""}${fmtBRL(total - cmvValor)}`
                 : "—"}
             </span>
           </div>
           <div className="fechamento-linha final">
             <span className="fechamento-rotulo">
-              {obra.cmvLiberado > 0
-                ? (total > obra.cmvLiberado ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe")
+              {cmvValor > 0
+                ? (total > cmvValor ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe")
                 : "Saldo final"}
             </span>
-            <span className="mono fechamento-valor" style={obra.cmvLiberado > 0 ? { color: total > obra.cmvLiberado ? "var(--red)" : "var(--green)" } : undefined}>
-              {obra.cmvLiberado > 0 ? fmtBRL(obra.cmvLiberado - total) : "—"}
+            <span className="mono fechamento-valor" style={cmvValor > 0 ? { color: total > cmvValor ? "var(--red)" : "var(--green)" } : undefined}>
+              {cmvValor > 0 ? fmtBRL(cmvValor - total) : "—"}
             </span>
           </div>
-          {!(obra.cmvLiberado > 0) && (
+          {!(cmvValor > 0) && (
             <div className="fechamento-aviso">
               <AlertTriangle size={13} />
               <span>
@@ -3242,6 +3273,18 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
               {onIrParaDepara && (
                 <button type="button" className="btn-reabrir-etapa" onClick={onIrParaDepara}>Ir para o Depara</button>
               )}
+            </div>
+          )}
+          {/* Diz de onde veio o número em vez de fingir que sempre esteve
+              gravado. Some sozinho na próxima gravação da obra, quando o
+              valor recuperado finalmente vai pro banco. */}
+          {cmv?.recuperado && (
+            <div className="fechamento-aviso recuperado">
+              <RotateCcw size={13} />
+              <span>
+                Este CMV foi <b>recalculado a partir do depara aprovado</b> — a obra foi liberada por uma
+                versão anterior do app, que ainda não gravava esse valor. A conta é a mesma da liberação.
+              </span>
             </div>
           )}
         </div>
@@ -5326,6 +5369,8 @@ export default function App() {
         .fechamento-aviso svg { color: #B54708; flex-shrink: 0; }
         .fechamento-aviso span { flex: 1; }
         .fechamento-aviso b { color: #B54708; }
+        .fechamento-aviso.recuperado { background: var(--panel); color: var(--ink-2); }
+        .fechamento-aviso.recuperado svg, .fechamento-aviso.recuperado b { color: var(--ink-2); }
         .saldo-exec.sem-cmv { border-style: dashed; }
         .saldo-exec.sem-cmv .saldo-valor.dim { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 
