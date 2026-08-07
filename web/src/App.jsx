@@ -1320,6 +1320,27 @@ const FILTROS_VENDA = [
   { id: "nao_vendido", label: "Só o não vendido" },
 ];
 
+/* Recalcula o que e DERIVADO das categorias.
+
+   `valorVendido` e `semDetalhe` nascem do cadastro do Monday: o primeiro
+   do campo cmvOrcado (quase sempre vazio), o segundo sempre true. Os dois
+   so eram corrigidos no momento da importacao — ao reabrir a obra salva,
+   voltavam ao estado do Monday e o cabecalho mostrava R$ 0,00 e "so
+   cadastro do Monday" numa obra com planilha, executivo e compras. */
+function derivadosDasCategorias(categorias, obra) {
+  const cats = (categorias || []).length ? categorias : (obra?.categorias || []);
+  const valorVendido = cats.reduce((a, c) => a + (c.vendido || 0), 0);
+  const temConteudo = cats.some((c) =>
+    (c.vendido || 0) > 0 || (c.executivo || 0) > 0 ||
+    (c.itens || []).length || (c.itensContrato || []).length ||
+    (c.itensPlanilha || []).length || (c.itensPlanilhaExecutivo || []).length);
+  return {
+    // sem contrato importado o total fica 0; nesse caso preserva o do Monday
+    valorVendido: valorVendido > 0 ? valorVendido : (obra?.valorVendido || 0),
+    semDetalhe: !temConteudo,
+  };
+}
+
 /* ---- VENDIDO CONTRATO — menu próprio ----
    O PDF da proposta, como ele é hoje: valor por verba (fechado), item
    só com descrição/ambiente/quantidade (nunca valor por item). Fica
@@ -4619,6 +4640,11 @@ export default function App() {
           cmvLiberado: dados.cmvLiberado,
           cmvLiberadoEm: dados.cmvLiberadoEm,
           cmvLiberadoPor: dados.cmvLiberadoPor,
+          // Campos DERIVADOS das categorias. Sem refazer a conta aqui, a
+          // obra volta do banco com os itens certos e os totais do Monday
+          // — que sao zero. O cabecalho dizia "R$ 0,00" numa obra com R$
+          // 632 mil em produtos.
+          ...derivadosDasCategorias(dados.categorias, o),
         } : o)));
         const deOutro = dados.editandoPor && dados.editandoPor !== usuario;
         setEdicao({
