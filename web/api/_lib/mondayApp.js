@@ -362,7 +362,12 @@ function limparDescResidual(desc) {
 function parseVendidoTexto(texto) {
   const linhas = texto.split("\n").map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim() !== "");
   const reItem = /^(\d{1,2}\.\d+)/;
-  const reVerba = /^([1-9]|1[0-9])$/; // 1..19 (exclui "0")
+  // 1..99. Era 1..19, o tamanho da EAP antiga — com o padrao de 32 grupos
+  // da empresa, tudo de 20 a 32 (Climatizacao, Moveis, Estofados, Pedras,
+  // Loucas, Execucao) deixava de ser reconhecido como linha de grupo, e os
+  // itens abaixo grudavam no grupo anterior. Vai ate 99 de proposito: quem
+  // decide se o grupo existe e o NOME, na linha seguinte, nao este numero.
+  const reVerba = /^([1-9][0-9]?)$/;
   // sem \b no final: a unidade costuma vir colada a um dígito de
   // placeholder de coluna (ex: "1,00vb0") — \b falha entre "b" e "0"
   // (os dois são caracteres de "palavra"). "und" antes de "un" pra não
@@ -371,6 +376,10 @@ function parseVendidoTexto(texto) {
 
   const verbas = [];
   const itens = [];
+  // Prestacao de contas da leitura. Sem isto, um item perdido no meio do
+  // PDF nao deixa rastro nenhum — o import diz "importado" e o numero que
+  // faltou so aparece semanas depois, na conferencia.
+  const diagnostico = { linhasNoPdf: linhas.length, semQtd: [], semDescricao: [], itensForaDeVerba: [] };
   let i = 0;
   while (i < linhas.length && !/Descri[çc][aã]o/i.test(linhas[i])) i++;
   i++;
@@ -407,7 +416,14 @@ function parseVendidoTexto(texto) {
       // o ÚLTIMO item do PDF não tem próximo item/verba pra parar, então
       // sem isso ele "engole" o rodapé inteiro dentro da descrição.
       const reRodape = /^(condi[çc][ãa]?[oõ]es de pagamento|observa[çc][oõ]es importantes|total turnkey|esta proposta [ée] v[áa]lida)/i;
-      const jLimite = j + 10; // trava extra, caso o rodapé não use os marcadores acima
+      // Trava de seguranca caso o rodape nao use os marcadores acima.
+      // Era 10 — e descricao de marcenaria passa disso com folga (as do
+      // 2519 tem 8 e 9 linhas). Ao estourar o limite, o laco parava ANTES
+      // de chegar na quantidade, que vem depois da descricao: o item
+      // entrava sem quantidade e sem ambiente, e o grupo inteiro aparecia
+      // como "nao vendido". Os marcadores de rodape e a proxima linha de
+      // item/verba ja param o laco; este numero e so a rede.
+      const jLimite = j + 60;
       while (!reQtdUn.test(resto) && j < linhas.length && j < jLimite && !reItem.test(linhas[j]) && !reVerba.test(linhas[j].trim())) {
         const lt = linhas[j].trim();
         if (reRodape.test(lt)) break;
@@ -433,13 +449,22 @@ function parseVendidoTexto(texto) {
         }
       }
       resto = limparDescResidual(resto.replace(/\s*0$/, "").trim());
-      if (resto) itens.push({ verba: vAtual, codigo, desc: resto, qtd, un, ambiente: amb, custo });
+      if (resto) {
+        itens.push({ verba: vAtual, codigo, desc: resto, qtd, un, ambiente: amb, custo });
+        if (qtd == null) diagnostico.semQtd.push(codigo);
+        if (!vAtual) diagnostico.itensForaDeVerba.push(codigo);
+      } else {
+        // linha com cara de item que nao produziu descricao nenhuma
+        diagnostico.semDescricao.push(codigo);
+      }
       i = j;
       continue;
     }
     i++;
   }
-  return { verbas, itens };
+  diagnostico.verbas = verbas.length;
+  diagnostico.itens = itens.length;
+  return { verbas, itens, diagnostico };
 }
 
 /**
@@ -501,7 +526,7 @@ function parseExecutivoTexto(texto) {
     if (mi) {
       const codigo = mi[1];
       let j = i + 1, descParts = [];
-      const jLimite = j + 10; // mesma trava de segurança do parser do Vendido
+      const jLimite = j + 60; // mesma trava de segurança do parser do Vendido
       while (j < linhas.length && j < jLimite) {
         const lt = linhas[j].trim();
         if (reQtdUnLine.test(lt)) break;

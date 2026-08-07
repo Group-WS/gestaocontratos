@@ -827,7 +827,8 @@ async function lerContratoPDF(file) {
     // aqui "não foi vendido" se resume a não ter quantidade
     ehTitulo: ehLinhaDeTitulo(it.qtd, null, null),
   }));
-  return { valores, itens };
+  return { valores, itens, diagnostico: data.diagnostico, paginas: data.paginas,
+           gruposNaoReconhecidos: (data.verbas || []).filter((v) => !mapa[v.num]).map((v) => v.nome) };
 }
 
 // Traduz a numeração do documento pra numeração da EAP, usando o nome de
@@ -1351,7 +1352,11 @@ const itemFoiVendido = (it) => {
   const qtd = it.qtdVendida ?? it.qtd;
   return !ehLinhaDeTitulo(qtd, it.custo, it.custoUnitario);
 };
-const grupoFoiVendido = (itens) => (itens || []).some(itemFoiVendido);
+// Grupo com qualquer item veio no documento — foi vendido. Antes exigia
+// que ALGUM item tivesse quantidade, e o contrato traz verba fechada
+// ("1,00 vb") ou nem isso: Arquitetura e Engenharia, cheia de itens,
+// aparecia como não vendida.
+const grupoFoiVendido = (itens) => (itens || []).length > 0;
 
 const FILTROS_VENDA = [
   { id: "todos", label: "Todos os grupos" },
@@ -1495,11 +1500,25 @@ function VendidoContratoView({ obra, onImportContrato, podeEditar }) {
   };
 
   async function aoImportar(file) {
-    const { valores, itens } = await lerContratoPDF(file);
+    const { valores, itens, diagnostico, paginas, gruposNaoReconhecidos } = await lerContratoPDF(file);
     const n = Object.keys(valores).length;
-    if (n === 0) throw new Error("Não encontrei verbas (código 01–19) com valor no PDF. Me manda o arquivo que eu ajusto o leitor.");
+    if (n === 0) throw new Error("Não encontrei nenhuma verba com valor no PDF. Me manda o arquivo que eu ajusto o leitor.");
     onImportContrato(valores, itens);
-    return `“${file.name}” importado — ${n} verba${n > 1 ? "s" : ""} · ${itens.length} itens (descrição e quantidade).`;
+
+    // Presta contas da leitura. O que o leitor NÃO conseguiu ler precisa
+    // aparecer aqui, não semanas depois na conferência: um item perdido no
+    // meio do PDF não deixa rastro nenhum sozinho.
+    const d = diagnostico || {};
+    const alertas = [];
+    if ((d.semQtd || []).length) alertas.push(`${d.semQtd.length} sem quantidade (${d.semQtd.slice(0, 6).join(", ")}${d.semQtd.length > 6 ? "…" : ""})`);
+    if ((d.semDescricao || []).length) alertas.push(`${d.semDescricao.length} sem descrição legível`);
+    if ((d.itensForaDeVerba || []).length) alertas.push(`${d.itensForaDeVerba.length} fora de qualquer grupo`);
+    if ((gruposNaoReconhecidos || []).length) alertas.push(`grupo fora do padrão: ${gruposNaoReconhecidos.join(", ")}`);
+
+    const base = `“${file.name}” — ${paginas || "?"} páginas lidas · ${n} verba${n > 1 ? "s" : ""} · ${itens.length} itens.`;
+    return alertas.length
+      ? `${base} ATENÇÃO: ${alertas.join(" · ")}. Confira estes antes de seguir.`
+      : `${base} Todos os itens vieram com grupo e quantidade.`;
   }
 
   return (
