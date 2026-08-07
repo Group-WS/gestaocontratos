@@ -2808,7 +2808,27 @@ function SaldoExecutivo({ categorias, cmvLiberado }) {
     });
   });
 
-  if (!cmvLiberado || cmvLiberado <= 0) return null;
+  // Sem CMV liberado não há teto, e portanto não há saldo. Mas o que a
+  // equipe já mexeu continua sendo informação útil — some o veredito, não
+  // o painel. Antes isto era `return null` e a faixa inteira desaparecia.
+  if (!cmvLiberado || cmvLiberado <= 0) {
+    return (
+      <div className="saldo-exec sem-cmv">
+        <div className="saldo-bloco">
+          <div className="saldo-rotulo">Executivo hoje</div>
+          <div className="saldo-valor mono">{fmtBRL(atual)}</div>
+        </div>
+        <div className="saldo-bloco destaque">
+          <div className="saldo-rotulo">CMV liberado</div>
+          <div className="saldo-valor mono dim">ainda não liberado</div>
+        </div>
+        <div className="saldo-mov">
+          <span className="saldo-mov-item"><ArrowDownRight size={12} /> retirado {fmtBRL(retirado)}{nExcluidos > 0 && ` · ${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"}`}</span>
+          <span className="saldo-mov-item"><ArrowUpRight size={12} /> acrescido {fmtBRL(acrescido)}{nNovos > 0 && ` · ${nNovos} nov${nNovos > 1 ? "os" : "o"}`}</span>
+        </div>
+      </div>
+    );
+  }
 
   const sobra = cmvLiberado - atual;
   const estourou = sobra < 0;
@@ -2888,7 +2908,7 @@ function CadernoSlot({ titulo, arquivo, onImportar, congelado }) {
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, podeEditar }) {
+function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const itensBase = obra.categorias.reduce((a, c) => a + (c.itensPlanilha || []).length, 0);
   const temBase = itensBase > 0;
@@ -3124,29 +3144,52 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
         </div>
 
         {/* Fechamento: de onde partiu, o que mudou, onde chegou — a conta
-            que a pessoa faria na mão ao terminar de editar. */}
-        {obra.cmvLiberado > 0 && (
-          <div className="fechamento">
-            <div className="fechamento-linha">
-              <span className="fechamento-rotulo">CMV liberado</span>
-              <span className="mono fechamento-valor">{fmtBRL(obra.cmvLiberado)}</span>
-            </div>
-            <div className="fechamento-linha">
-              <span className="fechamento-rotulo">Alterações do executivo</span>
-              <span className="mono fechamento-valor" style={{ color: total - obra.cmvLiberado > 0 ? "var(--red)" : "var(--green)" }}>
-                {total - obra.cmvLiberado > 0 ? "+" : ""}{fmtBRL(total - obra.cmvLiberado)}
-              </span>
-            </div>
-            <div className="fechamento-linha final">
-              <span className="fechamento-rotulo">
-                {total > obra.cmvLiberado ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe"}
-              </span>
-              <span className="mono fechamento-valor" style={{ color: total > obra.cmvLiberado ? "var(--red)" : "var(--green)" }}>
-                {fmtBRL(obra.cmvLiberado - total)}
-              </span>
-            </div>
+            que a pessoa faria na mão ao terminar de editar.
+
+            Aparece SEMPRE. Antes era `obra.cmvLiberado > 0 && (...)`: sem
+            CMV liberado o bloco inteiro sumia da tela, sem uma linha
+            explicando por quê. Quem pediu o fechamento e não o via
+            concluía que ele nunca tinha sido feito — e estava certo em
+            concluir, porque a tela não dava outra informação. Faltando o
+            dado, o lugar dele continua ali e diz o que falta. */}
+        <div className="fechamento">
+          <div className="fechamento-linha">
+            <span className="fechamento-rotulo">CMV liberado</span>
+            <span className="mono fechamento-valor">
+              {obra.cmvLiberado > 0 ? fmtBRL(obra.cmvLiberado) : "—"}
+            </span>
           </div>
-        )}
+          <div className="fechamento-linha">
+            <span className="fechamento-rotulo">Alterações do executivo</span>
+            <span className="mono fechamento-valor" style={obra.cmvLiberado > 0 ? { color: total - obra.cmvLiberado > 0 ? "var(--red)" : "var(--green)" } : undefined}>
+              {obra.cmvLiberado > 0
+                ? `${total - obra.cmvLiberado > 0 ? "+" : ""}${fmtBRL(total - obra.cmvLiberado)}`
+                : "—"}
+            </span>
+          </div>
+          <div className="fechamento-linha final">
+            <span className="fechamento-rotulo">
+              {obra.cmvLiberado > 0
+                ? (total > obra.cmvLiberado ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe")
+                : "Saldo final"}
+            </span>
+            <span className="mono fechamento-valor" style={obra.cmvLiberado > 0 ? { color: total > obra.cmvLiberado ? "var(--red)" : "var(--green)" } : undefined}>
+              {obra.cmvLiberado > 0 ? fmtBRL(obra.cmvLiberado - total) : "—"}
+            </span>
+          </div>
+          {!(obra.cmvLiberado > 0) && (
+            <div className="fechamento-aviso">
+              <AlertTriangle size={13} />
+              <span>
+                O <b>CMV desta obra ainda não foi liberado</b> — sem ele não existe teto pra comparar,
+                e o saldo não tem como ser calculado. A liberação acontece no Depara Contrato × Planilha.
+              </span>
+              {onIrParaDepara && (
+                <button type="button" className="btn-reabrir-etapa" onClick={onIrParaDepara}>Ir para o Depara</button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </>
   );
@@ -5213,6 +5256,14 @@ export default function App() {
         .fechamento-rotulo { flex: 1; }
         .fechamento-valor { font-size: 14px; font-weight: 600; }
         .fechamento-linha.final .fechamento-valor { font-size: 17px; }
+        /* Explica o traço no lugar do número. Bloco que some sem dizer
+           nada faz a pessoa achar que a funcionalidade nunca existiu. */
+        .fechamento-aviso { display: flex; align-items: center; gap: 9px; margin-top: 11px; padding: 10px 12px; background: #FFF4E5; border-radius: 9px; font-size: 12px; line-height: 1.5; color: #7A2E0E; }
+        .fechamento-aviso svg { color: #B54708; flex-shrink: 0; }
+        .fechamento-aviso span { flex: 1; }
+        .fechamento-aviso b { color: #B54708; }
+        .saldo-exec.sem-cmv { border-style: dashed; }
+        .saldo-exec.sem-cmv .saldo-valor.dim { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 
         /* Alerta de conferência técnica: bate em custo e quantidade, mas
            pode não caber no elevador nem casar com a infraestrutura. */
@@ -5431,7 +5482,7 @@ export default function App() {
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} podeEditar={edicao.minha} />}
-          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
