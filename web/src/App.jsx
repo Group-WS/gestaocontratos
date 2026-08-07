@@ -1522,36 +1522,53 @@ const ALERTA_BANQUETA =
 const ALERTA_BASE_MONOCOMANDO =
   "conferir a base do monocomando no apartamento (deca, docol ou outra) e a compatibilidade do acabamento.";
 const ALERTA_CLIMATIZACAO =
-  "conferir na planta tecnica se a infraestrutura e split, vrf ou cassete, e validar compatibilidade com o equipamento vendido.";
+  "conferir na planta tecnica se a infraestrutura e split, vrf ou cassete, e validar compatibilidade com os equipamentos vendidos nesta verba.";
+const ALERTA_CLIMATIZACAO_MAO_DE_OBRA =
+  "conferir se a mao de obra contratada corresponde ao tipo de equipamento e ao ponto de infraestrutura previsto na planta.";
 
-// Devolve a mensagem do primeiro alerta que casar, ou null.
+// Devolve { escopo, texto } do primeiro alerta que casar, ou null.
+//
+// O escopo decide ONDE o alerta aparece, e sai da natureza da pergunta:
+//
+//   "item"  — a resposta muda de linha pra linha. Cada mesa tem a sua
+//             medida, cada banqueta a sua altura. Vai na linha.
+//   "grupo" — a resposta é uma só pra verba inteira. A planta tem UMA
+//             infraestrutura de climatização, não uma por aparelho.
+//             Repetir isso em cada linha ocupa cinco vezes o espaço e
+//             faz a pessoa parar de ler na segunda.
 function alertaConferenciaTecnica(descricao) {
   const t = normTxt(descricao);
   if (!t) return null;
   const tem = (...palavras) => palavras.some((p) => t.includes(p));
+  const doItem = (texto) => ({ escopo: "item", texto });
 
   // 1 — MESA / JANTAR / TAMPO: passa no elevador? precisa ser bipartida?
   if (tem("mesa", "jantar", "tampo")) {
     const medidas = medidasEmMetros(t);
-    if (medidas.length === 0) return ALERTA_MESA_SEM_MEDIDA;
-    if (Math.max(...medidas) > 1.0) return ALERTA_MESA_MEDIDA;
+    if (medidas.length === 0) return doItem(ALERTA_MESA_SEM_MEDIDA);
+    if (Math.max(...medidas) > 1.0) return doItem(ALERTA_MESA_MEDIDA);
     return null; // tem medida e cabe
   }
 
   // 2 — BANQUETA: altura tem que casar com a da bancada
-  if (tem("banqueta")) return ALERTA_BANQUETA;
+  if (tem("banqueta")) return doItem(ALERTA_BANQUETA);
 
   // 3 — BASE DO MONOCOMANDO: só a base embutida na parede. Torneira,
   // bica e monocomando de mesa não têm esse problema.
   if (tem("base") && tem("monocomando", "registro", "chuveiro", "ducha", "pressao")) {
     const ehDeMesa = tem("torneira", "bica", "de mesa", "lavatorio", "cozinha", "pia");
     const ehEmbutida = /base[^.]*\b(registro|pressao|embut)/.test(t);
-    if (!ehDeMesa || ehEmbutida) return ALERTA_BASE_MONOCOMANDO;
+    if (!ehDeMesa || ehEmbutida) return doItem(ALERTA_BASE_MONOCOMANDO);
   }
 
-  // 4 — CLIMATIZAÇÃO: o equipamento conversa com a infraestrutura?
-  if (tem("ar condicionado", "ar-condicionado", "arcondicionado", "evaporadora", "condensadora", "multi split")) {
-    return ALERTA_CLIMATIZACAO;
+  // 4 — CLIMATIZAÇÃO. "split" solto entra de propósito: na planilha real
+  // aparece "Ar condicionao Split hi wall" — com o erro de digitação, é
+  // só o "split" que sobra pra reconhecer o item.
+  if (tem("ar condicionado", "ar-condicionado", "arcondicionado", "evaporadora", "condensadora", "split")) {
+    // Mão de obra de instalação não é o equipamento: a pergunta ali é se
+    // o serviço contratado casa com o aparelho, não qual é a infra.
+    if (tem("mao de obra", "instalacao")) return doItem(ALERTA_CLIMATIZACAO_MAO_DE_OBRA);
+    return { escopo: "grupo", texto: ALERTA_CLIMATIZACAO };
   }
 
   return null;
@@ -1949,6 +1966,19 @@ const DEPARA_META = {
   somente_um: { label: "Só aparece em um", sub: "presente em só uma das fontes", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
 };
 
+// O Executivo tem um quarto estado que o Depara não tem: a linha em que
+// número e valor batem perfeitamente e mesmo assim precisa de olhar.
+// Chamar isso de "Só aparece em um" era mentira — o item está nos dois
+// documentos, idêntico. O que falta ali não é conferir número, é conferir
+// se cabe, se é compatível, se conversa com a planta.
+const EXEC_META = {
+  ...DEPARA_META,
+  conferencia_tecnica: {
+    label: "Conferência técnica", sub: "bate em número, mas precisa de olhar",
+    color: "#B54708", bg: "#FFF4E5", Icon: AlertTriangle,
+  },
+};
+
 // componente genérico da tela de conferência — recebe as linhas já
 // cruzadas e normalizadas ({codigo, catNum, catNome, status, motivo,
 // a, b}) e desenha os 3 cards-filtro + a lista lado a lado. Reutilizado
@@ -2029,7 +2059,7 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   );
 }
 
-function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB }) {
+function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB }) {
   const [filtro, setFiltro] = useState("todos");
   const [selecionados, setSelecionados] = useState(() => new Set());
   // Tudo começa recolhido: com 185 linhas, abrir sozinho enterra a visão
@@ -2110,17 +2140,31 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, colALabel, colB
           const { num, nome, itens } = g;
           const aberto = estaAberto(g);
           const pend = itens.filter((l) => l.status !== "ok").length;
+          const alertaGrupo = alertasPorVerba ? alertasPorVerba.get(num) : null;
           return (
             <div key={num} className="vend-grupo">
               <button className="vend-head" onClick={() => toggle(g)}>
                 {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
                 <span className="vend-num mono">{num}</span>
                 <span className="vend-nome">{nome}</span>
+                {/* Marca a verba com alerta técnico mesmo fechada — senão
+                    o aviso fica escondido atrás de um clique que ninguém
+                    sabe que precisa dar. */}
+                {alertaGrupo && <span className="vend-alerta-mark" title="Esta verba tem alerta de conferência técnica"><AlertTriangle size={12} /></span>}
                 <span className="vend-count">{itens.length} {itens.length === 1 ? "linha" : "linhas"}</span>
                 <span className={`vend-pend ${pend === 0 ? "ok" : ""}`}>
                   {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
                 </span>
               </button>
+              {aberto && alertaGrupo && (
+                <div className="grupo-alerta">
+                  <AlertTriangle size={14} />
+                  <div>
+                    <b>Alerta de conferência técnica — vale para toda a verba:</b>{" "}
+                    <span>{alertaGrupo}</span>
+                  </div>
+                </div>
+              )}
               {aberto && (
                 <div className="compras-list">
                   {itens.map((l, i) => {
@@ -2382,17 +2426,21 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, podeEditar 
     // de lavar. Bate valor e quantidade porque não há com o que comparar
     // — mas é justamente o caso de olhar, porque alguém vai pagar.
     const soNoExecutivo = !item.planilhaVendido && !!item.planilhaExecutivo;
-    const alertaTecnico = alertaConferenciaTecnica(desc);
+    const alerta = alertaConferenciaTecnica(desc);
+    const alertaTecnico = alerta && alerta.escopo === "item" ? alerta.texto : null;
+    const alertaGrupo = alerta && alerta.escopo === "grupo" ? alerta.texto : null;
 
     let status = item.status;
     let motivo = item.motivo;
-    // Alerta técnico puxa pra amarelo mesmo com tudo batendo: o problema
-    // dele não é de número, é de caber e de ser compatível.
-    if (alertaTecnico && status === "ok") { status = "somente_um"; motivo = null; }
+    // Alerta de item tira do verde mesmo com tudo batendo: o problema dele
+    // não é de número, é de caber e de ser compatível. Mas não vira
+    // "diferente" nem "só aparece em um" — nenhuma das duas é verdade.
+    // Divergência real é mais urgente e continua mandando no status.
+    if (alertaTecnico && status === "ok") { status = "conferencia_tecnica"; motivo = null; }
 
     return {
       codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome,
-      status, motivo, alertaTecnico,
+      status, motivo, alertaTecnico, alertaGrupo,
       naoVendido: soNoExecutivo,
       a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
       b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
@@ -2408,8 +2456,19 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, podeEditar 
     aprovacoes.has(`${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
   )), [linhasBrutas, aprovacoes]);
 
+  // Um alerta por verba, não um por item. Os textos são idênticos entre
+  // as linhas do mesmo grupo — o primeiro que aparecer serve pra todas.
+  const alertasPorVerba = useMemo(() => {
+    const m = new Map();
+    linhasBrutas.forEach((l) => {
+      if (l.alertaGrupo && !m.has(l.catNum)) m.set(l.catNum, l.alertaGrupo);
+    });
+    return m;
+  }, [linhasBrutas]);
+
   return (
-    <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={DEPARA_META}
+    <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
+      alertasPorVerba={alertasPorVerba}
       colALabel="Planilha (vendido)" colBLabel="Planilha (executivo)"
       vazioALabel="não está na planilha vendida" vazioBLabel="não está na planilha executivo"
       vazioTitulo="Nada pra conferir ainda"
@@ -5115,6 +5174,15 @@ export default function App() {
         .conf-row.com-alerta { background: #FFF4E5; box-shadow: inset 3px 0 0 #F79009; }
         .alerta-conf b { color: #D92D20; text-transform: uppercase; font-weight: 700; letter-spacing: 0.01em; }
         .conf-badge.nao-vendido { color: #B42318; background: #FEE4E2; }
+
+        /* Alerta que vale pra verba inteira: aparece UMA vez, no topo do
+           grupo. A infraestrutura de climatização da planta é uma só — não
+           é uma por aparelho. */
+        .grupo-alerta { display: flex; align-items: flex-start; gap: 9px; background: #FFF4E5; box-shadow: inset 3px 0 0 #F79009; padding: 11px 14px; font-size: 12px; line-height: 1.5; color: #7A2E0E; border-bottom: 1px solid var(--border-soft); }
+        .grupo-alerta svg { color: #B54708; flex-shrink: 0; margin-top: 1px; }
+        .grupo-alerta b { color: #B54708; text-transform: uppercase; font-weight: 700; font-size: 11px; letter-spacing: 0.01em; }
+        /* Marca a verba com alerta mesmo com o grupo fechado */
+        .vend-alerta-mark { display: inline-flex; align-items: center; color: #B54708; flex-shrink: 0; }
         .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
         .exec-itens tr.linha-alterada td:nth-child(1), .exec-itens tr.linha-alterada td:nth-child(2) { background: #FFF2CC; }
         .exec-itens th { line-height: 1.25; }
