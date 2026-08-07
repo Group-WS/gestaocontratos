@@ -1292,7 +1292,7 @@ async function lerPlanilhaExcel(file) {
 
 // Um botão de importar reutilizável (Contrato PDF / Planilha Excel),
 // cada um com seu próprio arquivo aceito e sua própria mensagem.
-function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa }) {
+function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
   const [ok, setOk] = useState(null);
@@ -1318,7 +1318,14 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
       <div className="import-bar">
         <div className="import-info">
           {congelado ? <Lock size={14} /> : <Upload size={14} />}
-          <span>{congelado ? "Planilha de Compra já liberada — esta etapa está congelada e não aceita mais alterações." : dica}</span>
+          {/* Dizer "está congelada" sem dizer como sair é beco sem saída:
+              o botão de reabrir mora em OUTRA aba, e quem chega aqui pra
+              trocar um arquivo errado não tem como adivinhar isso. */}
+          <span>{congelado
+            ? (compraLiberada
+                ? <>Planilha de Compra já liberada — esta etapa está congelada. Para <b>substituir ou remover</b> este documento, reabra as etapas.</>
+                : "Modo leitura — habilite a edição desta obra para importar ou remover.")
+            : dica}</span>
         </div>
         <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
           <Upload size={13} /> {carregando ? "Lendo…" : label}
@@ -1327,6 +1334,18 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
         {/* Subir o arquivo errado tem que ter volta. Sem isto, o unico
             jeito de desfazer era subir outro por cima — e se o certo
             ainda nao existisse, a obra ficava com dado errado. */}
+        {congelado && compraLiberada && onReabrir && (
+          <button className="btn-reabrir-etapa" onClick={() => {
+            if (window.confirm(
+              "Reabrir as etapas anteriores?\n\n" +
+              "Vendido, Depara e Executivo voltam a aceitar alteração. " +
+              "Use quando algo precisar ser corrigido depois da liberação.\n\n" +
+              "Compras e contratações já feitas não são desfeitas."
+            )) onReabrir();
+          }}>
+            <RotateCcw size={12} /> Reabrir etapas
+          </button>
+        )}
         {onLimpar && temConteudo && !congelado && (
           <button className="btn-limpar-import" disabled={carregando} onClick={() => {
             if (window.confirm(
@@ -1495,7 +1514,7 @@ function derivadosDasCategorias(categorias, obra) {
    só com descrição/ambiente/quantidade (nunca valor por item). Fica
    separado da Planilha de propósito — depois os dois vão ser
    conferidos um contra o outro. */
-function VendidoContratoView({ obra, onImportContrato, onLimpar, podeEditar }) {
+function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [filtroVenda, setFiltroVenda] = useState("todos");
@@ -1547,6 +1566,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, podeEditar }) {
 
       <ImportButton congelado={congelado} label="Importar Contrato (PDF)" accept=".pdf"
         onLimpar={onLimpar} oQueLimpa="os itens e valores do Contrato"
+        onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
         temConteudo={obra.categorias.some((c) => (c.itensContrato || []).length)}
         dica={<>Suba o <b>Vendido Contrato</b> — o PDF da proposta, exatamente como ele é hoje. Traz só <b>descrição e quantidade</b> (o contrato é fechado por verba, sem valor por item).</>}
         onFile={aoImportar} />
@@ -1663,7 +1683,7 @@ function AvisoPDFPobre({ itens }) {
    Documento mais elaborado (Excel ou PDF), com marca e custo por item.
    Não mexe no valor por verba (esse é do Contrato) — mostra o total dos
    itens da própria planilha, pra depois conferir contra o Contrato. */
-function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, podeEditar }) {
+function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [verTexto, setVerTexto] = useState(null);
@@ -1703,6 +1723,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, podeEditar }) {
     <>
       <ImportButton congelado={congelado} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
         onLimpar={onLimpar} oQueLimpa="os itens do Vendido Planilha"
+        onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
         temConteudo={obra.categorias.some((c) => (c.itensPlanilha || []).length)}
         dica={<>Suba o <b>Vendido Planilha</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e o valor total; fornecedor, ambiente, especificação e a separação material/mão de obra existem como coluna e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
@@ -3358,7 +3379,7 @@ function CadernoSlot({ titulo, arquivo, onImportar, congelado }) {
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, podeEditar }) {
+function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
   // quando a obra foi liberada antes de o app aprender a salvar.
@@ -3451,6 +3472,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
 
       <ImportButton congelado={congelado} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
         onLimpar={onLimparExecutivo} oQueLimpa="os itens da Planilha Executivo"
+        onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
         temConteudo={temExecutivo}
         dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
@@ -6003,10 +6025,10 @@ export default function App() {
           <TabBar tab={tab} onChange={handleTabChange} obra={obra} />
 
           {tab === null && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
-          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} podeEditar={edicao.minha} />}
-          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} podeEditar={edicao.minha} />}
+          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
+          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} podeEditar={edicao.minha} />}
-          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
