@@ -448,6 +448,38 @@ function parseVendidoTexto(texto) {
           }
         }
       }
+      // O ambiente pode continuar nas linhas seguintes.
+      //
+      // O laco acima para no instante em que quantidade+unidade aparecem,
+      // e no PDF o ambiente vem DEPOIS disso — numa celula que quebra em
+      // varias linhas quando o texto e longo ("Living, Circulacao, Suite
+      // 02"). O que caia na mesma linha da unidade era capturado por
+      // acaso; o resto nunca era lido, e o item ficava sem ambiente.
+      //
+      // Guardas para nao engolir o proximo item: para no codigo do
+      // proximo item, em linha de verba, no rodape, e em linha longa —
+      // ambiente e curto, descricao nao.
+      if (mq) {
+        const partes = amb ? [amb] : [];
+        const MAX_LINHAS_AMB = 3, MAX_CHARS_AMB = 60;
+        while (j < linhas.length && partes.length < MAX_LINHAS_AMB) {
+          const lt = linhas[j].trim();
+          if (!lt) { j++; continue; }
+          if (reItem.test(linhas[j]) || reVerba.test(lt) || reRodape.test(lt)) break;
+          if (reQtdUn.test(lt)) break;              // ja e o proximo item
+          // Linha so com numero e ruido de layout ANTES do ambiente comecar.
+          // Depois que ele comecou, e continuacao: "Suite Master, Suite" /
+          // "01" e uma celula quebrada, e descartar o "01" muda o ambiente.
+          if (reLinhaSoNumero.test(lt)) {
+            if (partes.length === 0 || lt.length > 4) { j++; continue; }
+          }
+          if (lt.length > MAX_CHARS_AMB) break;     // isso e descricao, nao ambiente
+          partes.push(lt);
+          j++;
+        }
+        if (partes.length) amb = partes.join(" ").replace(/\s+/g, " ").trim() || null;
+      }
+
       resto = limparDescResidual(resto.replace(/\s*0$/, "").trim());
       if (resto) {
         itens.push({ verba: vAtual, codigo, desc: resto, qtd, un, ambiente: amb, custo });
