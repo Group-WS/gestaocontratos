@@ -29,23 +29,36 @@ const api = (path) => API_BASE + path;
 const EAP_PADRAO = [
   { num: "01", nome: "Arquitetura e Engenharia" },
   { num: "02", nome: "Serviços Complementares" },
-  { num: "03", nome: "Instalações Elétricas e Iluminação" },
-  { num: "04", nome: "Gesso e Drywall" },
-  { num: "05", nome: "Pintura" },
-  { num: "06", nome: "Climatização / Exaustão" },
-  { num: "07", nome: "Móveis Sob Medida" },
-  { num: "08", nome: "Serralheria" },
-  { num: "09", nome: "Vidros e Espelhos" },
-  { num: "10", nome: "Móveis Soltos" },
-  { num: "11", nome: "Estofados" },
-  { num: "12", nome: "Pedras — Mármores e Granitos" },
-  { num: "13", nome: "Louças, Metais e Equipamentos Especiais" },
-  { num: "14", nome: "Eletroeletrônico" },
-  { num: "15", nome: "Cortinas e Persianas" },
-  { num: "16", nome: "Itens Decorativos" },
-  { num: "17", nome: "Execução e Mão de Obra" },
-  { num: "18", nome: "Sonorização" },
-  { num: "19", nome: "Automação" },
+  { num: "03", nome: "Civil" },
+  { num: "04", nome: "Impermeabilização" },
+  { num: "05", nome: "Instalações Elétricas e Iluminação" },
+  { num: "06", nome: "Instalações Hidrosanitárias" },
+  { num: "07", nome: "Instalações Preventivo de Incêndio" },
+  { num: "08", nome: "Instalações de Comunicação e Dados" },
+  { num: "09", nome: "Sistema de Gás" },
+  { num: "10", nome: "Gesso e Drywall" },
+  { num: "11", nome: "Revestimento Cerâmico" },
+  { num: "12", nome: "Elementos em Madeira" },
+  { num: "13", nome: "Piso Vinílico e Carpete" },
+  { num: "14", nome: "Papel de Parede" },
+  { num: "15", nome: "Rodapés e Boiseries" },
+  { num: "16", nome: "Revestimentos Especiais" },
+  { num: "17", nome: "Parede Verde" },
+  { num: "18", nome: "Pintura" },
+  { num: "19", nome: "Esquadrias" },
+  { num: "20", nome: "Climatização / Exaustão" },
+  { num: "21", nome: "Móveis Sob Medida" },
+  { num: "22", nome: "Serralheria" },
+  { num: "23", nome: "Vidros e Espelhos" },
+  { num: "24", nome: "Móveis Soltos" },
+  { num: "25", nome: "Estofados" },
+  { num: "26", nome: "Pedras — Mármores e Granitos" },
+  { num: "27", nome: "Louças, Metais e Equipamentos Especiais" },
+  { num: "28", nome: "Eletroeletrônico" },
+  { num: "29", nome: "Adega Climatizada" },
+  { num: "30", nome: "Cortinas e Persianas" },
+  { num: "31", nome: "Itens Decorativos" },
+  { num: "32", nome: "Execução e Mão de Obra" },
 ];
 
 function buildCategorias(overrides, extra) {
@@ -960,7 +973,7 @@ function limparQtdColada(desc) {
     .trim();
 }
 
-// deduz o nº da verba (01–19) a partir do código do item, ex: "6.2" -> "06"
+// deduz o nº da verba (01–32) a partir do código do item, ex: "6.2" -> "06"
 function verbaDoCodigo(codigo) {
   const m = String(codigo || "").match(/^(\d{1,2})[.\-]/);
   return m ? m[1].padStart(2, "0") : null;
@@ -985,23 +998,43 @@ function verbaDoCodigo(codigo) {
 const APELIDOS_VERBA = {
   "01": ["arquitetura", "engenharia", "projetoarquitetonico"],
   "02": ["servicoscomplementar", "complementar"],
-  "03": ["instalacaoeletrica", "instalacoeseletric", "eletrica", "eletric", "iluminacao", "luminotecnic"],
-  "04": ["gesso", "drywall", "forro"],
-  "05": ["pintura", "pintor"],
-  "06": ["climatiza", "exausta", "arcondicionado"],
-  "07": ["marcenaria", "sobmedida", "moveisplanejado"],
-  "08": ["serralheria", "serralher", "metalon"],
-  "09": ["vidracaria", "vidro", "espelho"],
-  "10": ["moveissolto", "solto"],
-  "11": ["estofado", "estofaria", "tapecaria"],
-  "12": ["marmoraria", "marmore", "granito", "pedra"],
-  "13": ["louca", "metaissanitario", "equipamentoespecial", "metais"],
-  "14": ["eletroeletronic", "eletrodomestic", "eletronic", "eletro"],
-  "15": ["cortina", "persian"],
-  "16": ["decorativo", "decoracao"],
-  "17": ["execucao", "maodeobra"],
-  "18": ["sonorizacao", "audio"],
-  "19": ["automacao", "automatiz"],
+  "03": ["civil", "alvenaria", "demolicao"],
+  "04": ["impermeabiliza"],
+  "05": ["instalacaoeletrica", "instalacoeseletric", "eletrica", "eletric", "iluminacao", "luminotecnic"],
+  "06": ["hidrosanitar", "hidraulic", "hidro"],
+  "07": ["preventivodeincendio", "preventivo", "incendio", "sprinkler"],
+  "08": ["comunicacaoedados", "cabeamento", "cabeacaoestruturada", "dados", "redelogica"],
+  "09": ["sistemadegas", "gas", "glp"],
+  "10": ["gesso", "drywall", "forro"],
+  "11": ["revestimentoceramic", "ceramic", "porcelanato", "azulejo"],
+  "12": ["elementosemmadeira", "madeira", "deck"],
+  "13": ["pisovinilic", "vinilic", "carpete"],
+  // "papeldeparede" contém "parede": por isso a Parede Verde (17) NÃO pode
+  // ter "parede" solto como apelido, senão papel de parede cai lá.
+  "14": ["papeldeparede", "papelparede"],
+  "15": ["rodape", "boiserie"],
+  "16": ["revestimentoespecial"],
+  // "paisagismo" saiu daqui: PROJETO PAISAGISMO é serviço de projeto
+  // (verba 01), não o jardim vertical construído.
+  "17": ["paredeverde", "jardimvertical"],
+  "18": ["pintura", "pintor"],
+  "19": ["esquadria"],
+  "20": ["climatiza", "exausta", "arcondicionado"],
+  "21": ["marcenaria", "sobmedida", "moveisplanejado"],
+  "22": ["serralheria", "serralher", "metalon"],
+  "23": ["vidracaria", "vidro", "espelho"],
+  "24": ["moveissolto", "solto"],
+  "25": ["estofado", "estofaria", "tapecaria"],
+  "26": ["marmoraria", "marmore", "granito", "pedra"],
+  "27": ["louca", "metaissanitario", "equipamentoespecial", "metais"],
+  "28": ["eletroeletronic", "eletrodomestic", "eletronic", "eletro"],
+  // "adegaclimatizada" contém "climatiza" (verba 20). O apelido longo vem
+  // primeiro de propósito: o desempate é por tamanho, e sem ele toda adega
+  // seria classificada como climatização.
+  "29": ["adegaclimatizada", "adega"],
+  "30": ["cortina", "persian"],
+  "31": ["decorativo", "decoracao"],
+  "32": ["execucao", "maodeobra"],
 };
 
 // comprime pra comparar: sem acento, sem espaço, sem pontuação
@@ -2253,7 +2286,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
               <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />
               <span className="vend-num mono">{c.num}</span>
               <span className="vend-nome">{c.nome}</span>
-              <span className="vend-na-motivo">{VERBAS_NAO_ANALISADAS[c.num]}</span>
+              <span className="vend-na-motivo">{motivoVerbaNaoAnalisada(c.num, c.nome)}</span>
               <span className="vend-pend na">N/A</span>
             </div>
           </div>
@@ -2269,11 +2302,32 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
 const VERBAS_NAO_ANALISADAS = {
   "01": "Padrão em toda obra — não muda de contrato pra contrato",
   "02": "Padrão em toda obra — não muda de contrato pra contrato",
-  "07": "Móveis sob medida não são conferidos item a item nesta etapa",
-  "17": "Valor fictício criado na venda pra separar margem — não representa item real",
+  "21": "Móveis sob medida não são conferidos item a item nesta etapa",
+  "32": "Valor fictício criado na venda pra separar margem — não representa item real",
 };
-const ehVerbaNaoAnalisada = (num) => Object.prototype.hasOwnProperty.call(VERBAS_NAO_ANALISADAS, num);
-const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num);
+/* Resolve pelo NOME, não pelo número.
+
+   A EAP oficial da empresa renumerou tudo: Móveis Sob Medida saiu de 07
+   pra 21, Execução e Mão de Obra saiu de 17 pra 32. Só que 07 e 17 não
+   ficaram vagos — viraram Preventivo de Incêndio e Parede Verde.
+
+   Uma regra indexada por número passaria a marcar N/A justamente esses
+   dois, e voltaria a conferir item a item os móveis sob medida, sem que
+   nada na tela mudasse de aparência. Pior ainda: as obras JÁ SALVAS
+   guardam suas categorias com a numeração antiga, então o mesmo "07"
+   significa uma coisa numa obra velha e outra numa nova.
+
+   O nome do grupo é o que não muda entre as duas numerações — é a mesma
+   razão pela qual o depara casa por nome e não por código. */
+const ehVerbaNaoAnalisada = (num, nome) => {
+  const canonico = (nome ? verbaPorNome(nome) : null) || num;
+  return Object.prototype.hasOwnProperty.call(VERBAS_NAO_ANALISADAS, canonico);
+};
+const motivoVerbaNaoAnalisada = (num, nome) => {
+  const canonico = (nome ? verbaPorNome(nome) : null) || num;
+  return VERBAS_NAO_ANALISADAS[canonico];
+};
+const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num, c.nome);
 
 // CMV LIBERADO — o teto de custo que sai desta conferência.
 //
@@ -2315,7 +2369,7 @@ function calcularCMV(linhas, categorias) {
   // CMV sai menor que o custo real, que é o pior erro possível num teto
   // de gastos.
   (categorias || []).forEach((c) => {
-    if (c.foraDaEapPadrao || !ehVerbaNaoAnalisada(c.num)) return;
+    if (c.foraDaEapPadrao || !ehVerbaNaoAnalisada(c.num, c.nome)) return;
     const valor = (c.itensPlanilha || []).reduce((a, it) => a + (it.custo || 0), 0);
     if (valor <= 0) return;
     total += valor;
@@ -2414,7 +2468,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
   }, [obra]);
 
   const naoAnalisadas = useMemo(
-    () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num)),
+    () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num, c.nome)),
     [obra]
   );
 
@@ -2536,7 +2590,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, podeEditar 
   }), [obra]);
 
   const naoAnalisadas = useMemo(
-    () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num)),
+    () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num, c.nome)),
     [obra]
   );
 
