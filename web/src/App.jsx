@@ -2443,14 +2443,14 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
   function salvar() {
     setEditando(false);
     const limpo = texto.trim();
-    const novo = limpo === "" ? null : parseBRL(limpo);
+    const novo = limpo === "" ? null : (formato === "texto" ? limpo : parseBRL(limpo));
     if (novo !== valor) onSalvar(novo);
   }
 
   if (editando) {
     return (
       <input
-        className="celula-input mono"
+        className={`celula-input ${formato === "texto" ? "texto" : "mono"}`}
         autoFocus
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
@@ -2463,9 +2463,16 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
     );
   }
 
-  const mostrar = valor == null ? "—" : formato === "moeda" ? fmtBRL(valor) : String(valor);
+  const mostrar = valor == null || valor === ""
+    ? (formato === "texto" ? "—" : "—")
+    : formato === "moeda" ? fmtBRL(valor) : String(valor);
+
   return (
-    <button className={`celula-valor mono ${congelado ? "travada" : ""}`} onClick={abrir} title={congelado ? "Congelado pela liberação de compra" : "Clique para editar"}>
+    <button
+      className={`celula-valor ${formato === "texto" ? "texto" : "mono"} ${congelado ? "travada" : ""}`}
+      onClick={abrir}
+      title={congelado ? "Congelado pela liberação de compra" : "Clique para editar"}
+    >
       {mostrar}
     </button>
   );
@@ -2478,12 +2485,42 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
 // desmonta a tabela. Cortar resolve a vista, mas some com a informação;
 // por isso o "i" mostra tudo, selecionável e com botão de copiar (o
 // código do produto é justamente o que se copia pra comprar).
-function CelulaTexto({ texto, linhas = 2, onVerTudo }) {
-  if (!texto) return <span className="dim">—</span>;
-  const longo = String(texto).length > 60;
+function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado }) {
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState("");
+  const editavel = !!onEditar && !congelado;
+
+  if (editando) {
+    return (
+      <textarea
+        className="celula-input texto multi"
+        autoFocus
+        rows={2}
+        value={rascunho}
+        onChange={(e) => setRascunho(e.target.value)}
+        onBlur={() => { setEditando(false); const v = rascunho.trim(); if (v !== (texto || "")) onEditar(v || null); }}
+        onKeyDown={(e) => {
+          // Enter salva. Quem precisar de varias linhas usa Shift+Enter.
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
+          if (e.key === "Escape") setEditando(false);
+        }}
+      />
+    );
+  }
+
+  const abrir = () => { if (!editavel) return; setRascunho(texto || ""); setEditando(true); };
+  const longo = texto && String(texto).length > 60;
+
   return (
     <div className="celula-texto">
-      <span className="celula-corte" style={{ WebkitLineClamp: linhas }}>{texto}</span>
+      <span
+        className={`celula-corte ${editavel ? "editavel" : ""}`}
+        style={{ WebkitLineClamp: linhas }}
+        onClick={abrir}
+        title={editavel ? "Clique para editar" : undefined}
+      >
+        {texto || (editavel ? <span className="dim">clique para preencher</span> : "\u2014")}
+      </span>
       {longo && (
         <button className="btn-info" title="Ver texto completo" onClick={() => onVerTudo(texto)}>i</button>
       )}
@@ -2785,7 +2822,9 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                           <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""}`}>
                             <td className="mono dim">{it.codigo || "—"}</td>
                             <td>
-                              <CelulaTexto texto={it.desc} onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
+                              <CelulaTexto texto={it.desc} congelado={congelado}
+                                onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
+                                onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
                               {it.excluido && <span className="tag-excluido">excluído do executivo — não entra no custo</span>}
                               {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
                               {it.alteradoExecutivo && <span className="tag-alterado" title="Valor alterado aqui, não veio assim do arquivo">alterado no executivo</span>}
@@ -2795,12 +2834,14 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                               )}
                             </td>
                             <td className="dim">
-                              <CelulaTexto texto={it.especificacao} onVerTudo={(t) => setVerTexto({ rotulo: "Código / especificação / Obs.", texto: t })} />
+                              <CelulaTexto texto={it.especificacao} congelado={congelado}
+                                onEditar={(v) => onEditarItem(c.num, i, { especificacao: v })}
+                                onVerTudo={(t) => setVerTexto({ rotulo: "Código / especificação / Obs.", texto: t })} />
                             </td>
-                            <td className="dim"><span className="celula-corte" style={{ WebkitLineClamp: 2 }}>{it.marca || "—"}</span></td>
-                            <td className="dim"><span className="celula-corte" style={{ WebkitLineClamp: 2 }}>{it.ambiente || "—"}</span></td>
+                            <td className="dim"><CelulaTexto texto={it.marca} congelado={congelado} onEditar={(v) => onEditarItem(c.num, i, { marca: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Fornecedor", texto: t })} /></td>
+                            <td className="dim"><CelulaTexto texto={it.ambiente} congelado={congelado} onEditar={(v) => onEditarItem(c.num, i, { ambiente: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })} /></td>
                             <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={congelado} onSalvar={editar("qtdVendida")} /></td>
-                            <td className="mono center dim">{it.un || "—"}</td>
+                            <td className="center"><CelulaEditavel valor={it.un} formato="texto" congelado={congelado} onSalvar={editar("un")} /></td>
                             <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={congelado} onSalvar={editar("custoMaterial")} /></td>
                             <td className="right"><CelulaEditavel valor={it.custoMO} congelado={congelado} onSalvar={editar("custoMO")} /></td>
                             <td className="right"><CelulaEditavel valor={it.totalMaterial} congelado={congelado} onSalvar={editar("totalMaterial")} /></td>
@@ -2857,6 +2898,31 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
           </span>
           <span className="mono total-value">{fmtBRL(total)}</span>
         </div>
+
+        {/* Fechamento: de onde partiu, o que mudou, onde chegou — a conta
+            que a pessoa faria na mão ao terminar de editar. */}
+        {obra.cmvLiberado > 0 && (
+          <div className="fechamento">
+            <div className="fechamento-linha">
+              <span className="fechamento-rotulo">CMV liberado</span>
+              <span className="mono fechamento-valor">{fmtBRL(obra.cmvLiberado)}</span>
+            </div>
+            <div className="fechamento-linha">
+              <span className="fechamento-rotulo">Alterações do executivo</span>
+              <span className="mono fechamento-valor" style={{ color: total - obra.cmvLiberado > 0 ? "var(--red)" : "var(--green)" }}>
+                {total - obra.cmvLiberado > 0 ? "+" : ""}{fmtBRL(total - obra.cmvLiberado)}
+              </span>
+            </div>
+            <div className="fechamento-linha final">
+              <span className="fechamento-rotulo">
+                {total > obra.cmvLiberado ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe"}
+              </span>
+              <span className="mono fechamento-valor" style={{ color: total > obra.cmvLiberado ? "var(--red)" : "var(--green)" }}>
+                {fmtBRL(obra.cmvLiberado - total)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -4902,7 +4968,20 @@ export default function App() {
         .detalhe-acoes { display: flex; justify-content: flex-end; margin-top: 10px; }
         .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #FCFBF8; }
         .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
-        .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 3; background: #F7F5F0; }
+        .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 4; background: #F7F5F0; }
+        /* O cabecalho acompanha a rolagem: editando uma linha la
+           embaixo, sem isso nao da pra saber que coluna e qual. */
+        .exec-itens thead th { position: sticky; top: 0; z-index: 3; background: #F7F5F0; }
+        .celula-corte.editavel { cursor: text; border-radius: 4px; padding: 1px 3px; margin: -1px -3px; }
+        .celula-corte.editavel:hover { background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
+        .celula-input.texto { text-align: left; font-family: inherit; }
+        .celula-input.multi { resize: vertical; line-height: 1.35; }
+        .fechamento { border-top: 2px solid var(--border); padding: 4px 18px 14px; }
+        .fechamento-linha { display: flex; align-items: baseline; justify-content: space-between; padding: 7px 0; font-size: 12.5px; color: var(--ink-2); }
+        .fechamento-linha.final { border-top: 1px solid var(--border-soft); margin-top: 3px; padding-top: 11px; font-weight: 600; color: var(--ink); }
+        .fechamento-rotulo { flex: 1; }
+        .fechamento-valor { font-size: 14px; font-weight: 600; }
+        .fechamento-linha.final .fechamento-valor { font-size: 17px; }
         .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
         .exec-itens tr.linha-alterada td:nth-child(1), .exec-itens tr.linha-alterada td:nth-child(2) { background: #FFF2CC; }
         .exec-itens th { line-height: 1.25; }
