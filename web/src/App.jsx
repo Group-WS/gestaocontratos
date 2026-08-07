@@ -1298,6 +1298,28 @@ function useAbertos() {
   return [abertos, toggle];
 }
 
+/* Vendido x nao vendido, nos dois niveis em que isso existe.
+
+   GRUPO nao vendido: a EAP padrao tem 32 grupos e toda obra mostra os 32.
+   Obra nenhuma vende tudo — a que nao tem nada em Sistema de Gas nao
+   "esqueceu" o grupo, ela simplesmente nao vendeu aquilo. Ver quais
+   ficaram vazios e informacao, nao falha.
+
+   ITEM nao vendido: linha que existe no documento com quantidade E valor
+   zerados. E o caso dos quadros decorativos e do enxoval — entram na
+   proposta pra nomear o escopo, mas nao foram vendidos. */
+const itemFoiVendido = (it) => {
+  const qtd = it.qtdVendida ?? it.qtd;
+  return !ehLinhaDeTitulo(qtd, it.custo, it.custoUnitario);
+};
+const grupoFoiVendido = (itens) => (itens || []).some(itemFoiVendido);
+
+const FILTROS_VENDA = [
+  { id: "todos", label: "Todos os grupos" },
+  { id: "vendido", label: "Só o vendido" },
+  { id: "nao_vendido", label: "Só o não vendido" },
+];
+
 /* ---- VENDIDO CONTRATO — menu próprio ----
    O PDF da proposta, como ele é hoje: valor por verba (fechado), item
    só com descrição/ambiente/quantidade (nunca valor por item). Fica
@@ -1306,7 +1328,20 @@ function useAbertos() {
 function VendidoContratoView({ obra, onImportContrato, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
-  const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+  const [filtroVenda, setFiltroVenda] = useState("todos");
+  const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+
+  // A estrutura da EAP nao muda com o filtro — o que muda e quais grupos
+  // dela aparecem. Grupo continua sendo grupo, item continua dentro dele.
+  const vendidas = todasVerbas.filter((c) => grupoFoiVendido(c.itensContrato));
+  const verbas = filtroVenda === "vendido" ? vendidas
+    : filtroVenda === "nao_vendido" ? todasVerbas.filter((c) => !grupoFoiVendido(c.itensContrato))
+    : todasVerbas;
+  const contaVenda = {
+    todos: todasVerbas.length,
+    vendido: vendidas.length,
+    nao_vendido: todasVerbas.length - vendidas.length,
+  };
 
   async function aoImportar(file) {
     const { valores, itens } = await lerContratoPDF(file);
@@ -1331,6 +1366,19 @@ function VendidoContratoView({ obra, onImportContrato, podeEditar }) {
           <button className="btn-download" onClick={() => exportVendidoCSV(obra)}><Download size={13} /> Baixar tabela (.csv)</button>
         </div>
 
+        {/* O filtro esconde grupos, nunca reorganiza: a ordem da EAP é a
+            mesma nos três estados. */}
+        <div className="filter-bar venda-bar">
+          <ClipboardList size={13} className="dim" />
+          {FILTROS_VENDA.map((f) => (
+            <button key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
+              onClick={() => setFiltroVenda(f.id)}>
+              {f.label}
+              <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="vend-list">
           {verbas.map((c) => {
             const itens = c.itensContrato || [];
@@ -1343,6 +1391,14 @@ function VendidoContratoView({ obra, onImportContrato, podeEditar }) {
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
                   {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                  {/* Grupo da EAP em que esta obra não vendeu nada. Não é
+                      falha nem dado faltando — é o escopo da obra. */}
+                  {!grupoFoiVendido(itens) && <span className="vend-nao-vendido">não vendido</span>}
+                  {temItens && grupoFoiVendido(itens) && itens.filter((it) => !itemFoiVendido(it)).length > 0 && (
+                    <span className="vend-nao-vendido leve">
+                      {itens.filter((it) => !itemFoiVendido(it)).length} sem venda
+                    </span>
+                  )}
                 </button>
                 {aberto && temItens && (
                   <table className="vend-itens">
@@ -5054,6 +5110,9 @@ export default function App() {
         .tipo-chip-conta { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: var(--panel); color: var(--ink-3); }
         .tipo-chip.active .tipo-chip-conta { background: rgba(255,255,255,0.22); color: #fff; }
         .tipo-bar-destino { font-size: 11px; color: var(--ink-3); font-style: italic; margin-left: 3px; }
+        .venda-bar { margin-bottom: 10px; }
+        .vend-nao-vendido { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; flex-shrink: 0; }
+        .vend-nao-vendido.leve { text-transform: none; letter-spacing: 0; font-weight: 500; border-style: dashed; }
 
         .cat-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
         .cat-header { width: 100%; background: transparent; border: none; display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; }
