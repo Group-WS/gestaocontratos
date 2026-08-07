@@ -70,10 +70,19 @@ const EAP_CODIGO = [
    `eap_grupo` responde, ela substitui. Se o banco falhar ou vier vazio, o
    app segue com a semente — ficar sem EAP e pior que ficar com uma
    desatualizada, porque sem grupo todo item importado e descartado. */
-definirEapPadrao(EAP_CODIGO, APELIDOS_CODIGO, NAO_ANALISADAS_CODIGO);
-const eapPadrao = () => eapAtual().grupos;
-const apelidosVerba = () => eapAtual().apelidos;
-const verbasNaoAnalisadas = () => eapAtual().naoAnalisadas;
+// Os acessores caem no código quando o banco ainda não respondeu.
+//
+// Isto já foi uma chamada `definirEapPadrao(...)` aqui em cima, no corpo
+// do módulo — e derrubava o app inteiro: APELIDOS_CODIGO é declarado ~950
+// linhas abaixo, e `const` não pode ser lido antes da declaração. O
+// módulo lançava ReferenceError ao carregar e a tela ficava em branco. O
+// build não pega isso, porque só quebra em execução.
+//
+// Como função, a leitura acontece depois do módulo inteiro carregar, e a
+// ordem das declarações deixa de importar.
+const eapPadrao = () => eapAtual()?.grupos || EAP_CODIGO;
+const apelidosVerba = () => eapAtual()?.apelidos || APELIDOS_CODIGO;
+const verbasNaoAnalisadas = () => eapAtual()?.naoAnalisadas || NAO_ANALISADAS_CODIGO;
 
 function buildCategorias(overrides, extra) {
   const base = eapPadrao().map((c) => {
