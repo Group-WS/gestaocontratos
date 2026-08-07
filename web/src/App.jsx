@@ -5,7 +5,7 @@ import {
   Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
   ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
-  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle
+  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
@@ -421,14 +421,36 @@ function ServicoRow({ item }) {
   );
 }
 
-function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter }) {
+/* Produto e serviço seguem caminhos diferentes depois daqui: produto vira
+   insumo no Sienge, serviço vira contrato. São duas rotinas distintas, com
+   pessoas distintas — daí o filtro ser uma dimensão SEPARADA do filtro de
+   situação, e não mais um chip na mesma fila. Sem isso não dá pra pedir
+   "produtos que ainda estão aguardando liberação", que é a pergunta real
+   de quem vai lançar compra. */
+const TIPOS_COMPRA = [
+  { id: "todos", label: "Produtos e serviços" },
+  { id: "produto", label: "Só produtos", destino: "vinculam insumo do Sienge" },
+  { id: "servico", label: "Só serviços", destino: "viram contrato" },
+];
+
+const ehProduto = (it) => it.tipo === "produto";
+const casaTipo = (it, tipoFilter) =>
+  tipoFilter === "todos" || (tipoFilter === "produto" ? ehProduto(it) : !ehProduto(it));
+
+function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter, tipoFilter = "todos" }) {
   const status = categoriaStatus(cat);
   const diff = cat.executivo - cat.vendido;
   const pct = cat.vendido === 0 ? null : (diff / cat.vendido) * 100;
   const hasItens = Array.isArray(cat.itens) && cat.itens.length > 0;
-  const filteredItens = hasItens ? cat.itens.filter((it) => matchesFilter(it, itemFilter)) : [];
-  const filtering = itemFilter !== "todos";
+  const filteredItens = hasItens
+    ? cat.itens.filter((it) => matchesFilter(it, itemFilter) && casaTipo(it, tipoFilter))
+    : [];
+  const filtering = itemFilter !== "todos" || tipoFilter !== "todos";
   const showExpanded = filtering ? filteredItens.length > 0 : expanded;
+  // Verba que ficou sem nada depois do filtro sai da tela: com 19 verbas,
+  // deixar as vazias faz a pessoa rolar por cabeçalhos que não levam a
+  // lugar nenhum pra achar as três que interessam.
+  if (filtering && filteredItens.length === 0) return null;
 
   return (
     <div className="cat-block">
@@ -616,8 +638,16 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, onLiberar, onReabrir, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
+
+  // Conta na EAP inteira pra estampar no chip. Saber que são 148 produtos
+  // e 43 serviços antes de clicar é o que diz de qual lado começar.
+  const todosItens = obra.categorias.flatMap((c) => c.itens || []);
+  const nProdutos = todosItens.filter(ehProduto).length;
+  const nServicos = todosItens.length - nProdutos;
+  const contaPorTipo = { todos: todosItens.length, produto: nProdutos, servico: nServicos };
+
   return (
     <>
       {obra.comprasLiberadas ? (
@@ -648,6 +678,23 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           </div>
         </div>
       )}
+      {/* Duas dimensões, duas filas. A de cima é o que o item É (e pra onde
+          ele vai depois); a de baixo é em que pé ele está. */}
+      <div className="filter-bar tipo-bar">
+        <Package size={13} className="dim" />
+        {TIPOS_COMPRA.map((t) => (
+          <button key={t.id} className={`filter-chip tipo-chip ${tipoFilter === t.id ? "active" : ""}`}
+            onClick={() => setTipoFilter(t.id)} title={t.destino ? `Estes ${t.destino}` : undefined}>
+            {t.label}
+            <span className="tipo-chip-conta">{contaPorTipo[t.id]}</span>
+          </button>
+        ))}
+        {tipoFilter !== "todos" && (
+          <span className="tipo-bar-destino">
+            {TIPOS_COMPRA.find((t) => t.id === tipoFilter)?.destino}
+          </span>
+        )}
+      </div>
       <div className="filter-bar">
         <SlidersHorizontal size={13} className="dim" />
         {FILTERS.map((f) => (
@@ -662,8 +709,16 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           onToggle={() => toggleCat(cat.num + obra.id)}
           onItemChange={(itemIdx, patch) => updateItem(catIdx, itemIdx, patch)}
           itemFilter={itemFilter}
+          tipoFilter={tipoFilter}
         />
       ))}
+      {temItens && obra.categorias.every((c) => (c.itens || []).filter((it) => matchesFilter(it, itemFilter) && casaTipo(it, tipoFilter)).length === 0) && (
+        <div className="compras-empty">
+          <SlidersHorizontal size={26} className="dim" />
+          <div className="compras-empty-title">Nenhum item com esses filtros</div>
+          <div className="compras-empty-sub">Nenhum item da EAP combina "{TIPOS_COMPRA.find((t) => t.id === tipoFilter)?.label}" com "{FILTERS.find((f) => f.id === itemFilter)?.label}".</div>
+        </div>
+      )}
       <div className="legend">
         <div className="legend-item"><span className="legend-dot" style={{ background: "var(--green)" }} /> Dentro do orçado</div>
         <div className="legend-item"><span className="legend-dot" style={{ background: "var(--amber)" }} /> Acima do orçado (até 15%)</div>
@@ -4252,6 +4307,7 @@ export default function App() {
   // outra — sem contexto nenhum.
   const [tab, setTab] = useState(null);
   const [itemFilter, setItemFilter] = useState("todos");
+  const [tipoFilter, setTipoFilter] = useState("todos");
   const [expandedCats, setExpandedCats] = useState(() => new Set(["022519", "062519"]));
 
   // Quem está usando o app. Vira o dono da trava de edição e assina as
@@ -4741,7 +4797,7 @@ export default function App() {
     }));
   }
 
-  function handleTabChange(t) { setTab(t); setItemFilter("todos"); }
+  function handleTabChange(t) { setTab(t); setItemFilter("todos"); setTipoFilter("todos"); }
 
   return (
     <div className="app">
@@ -4893,6 +4949,14 @@ export default function App() {
         .filter-chip { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .filter-chip:hover { border-color: var(--blue); }
         .filter-chip.active { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+        /* Fila de cima: o que o item É. Fica acima e mais encorpada que a
+           de situação, porque decide qual das duas rotinas — compra no
+           Sienge ou contrato — você está tocando. */
+        .tipo-bar { margin-bottom: 8px; }
+        .tipo-chip { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+        .tipo-chip-conta { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: var(--panel); color: var(--ink-3); }
+        .tipo-chip.active .tipo-chip-conta { background: rgba(255,255,255,0.22); color: #fff; }
+        .tipo-bar-destino { font-size: 11px; color: var(--ink-3); font-style: italic; margin-left: 3px; }
 
         .cat-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
         .cat-header { width: 100%; background: transparent; border: none; display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; }
@@ -5400,7 +5464,7 @@ export default function App() {
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
-          onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTab(null); setModulo("comparativo"); }} />
+          onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
@@ -5485,7 +5549,7 @@ export default function App() {
           {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
