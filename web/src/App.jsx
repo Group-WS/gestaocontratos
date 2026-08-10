@@ -5664,8 +5664,13 @@ export default function App() {
         .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--purple); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; }
 
         .body-layout { display: flex; }
-        .sidebar { width: 288px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; justify-content: space-between; }
-        .sidebar-scroll { padding: 16px 14px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
+        /* Sem space-between: ele funcionava com dois filhos (lista e
+           rodapé), mas o botão de recolher virou um terceiro — e aí o
+           espaçamento automático empurrava a lista pro meio da tela,
+           deixando um vazio enorme embaixo do botão.
+           Agora quem ocupa a sobra é a lista, explicitamente. */
+        .sidebar { width: 288px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
+        .sidebar-scroll { flex: 1; padding: 6px 14px 16px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
         .nav-group-label { font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; }
         .nav-group-label:first-child { margin-top: 0; }
         .obra-search { display: flex; align-items: center; gap: 7px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; margin-bottom: 8px; }
@@ -5696,7 +5701,7 @@ export default function App() {
         .nav-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
         .nav-badge { background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 1px 6px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
         .soon { font-size: 9.5px; color: var(--ink-3); background: var(--panel); padding: 2px 6px; border-radius: 20px; flex-shrink: 0; }
-        .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 14px; }
+        .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 14px; flex-shrink: 0; }
         .profile { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
         .profile:hover { background: var(--panel); }
         .avatar-sm { width: 28px; height: 28px; font-size: 10.5px; }
