@@ -3711,7 +3711,19 @@ function TopBar() {
   );
 }
 
+const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
+
 function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount }) {
+  // Guarda a escolha: quem recolhe quer a tela larga, e ter que recolher
+  // de novo a cada F5 e o tipo de atrito que faz a pessoa desistir do
+  // recurso.
+  const [recolhida, setRecolhida] = useState(() => {
+    try { return localStorage.getItem(CHAVE_SIDEBAR) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(CHAVE_SIDEBAR, recolhida ? "1" : "0"); } catch { /* modo anonimo */ }
+  }, [recolhida]);
+
   const [search, setSearch] = useState("");
   const [onlyAlert, setOnlyAlert] = useState(false);
   const [squadFilter, setSquadFilter] = useState("todos");
@@ -3735,7 +3747,18 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   const groupNames = Object.keys(groups).sort();
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${recolhida ? "recolhida" : ""}`}>
+      {/* No TOPO, não no rodapé: recolher é uma decisão que se toma ao
+          chegar, e no pé da lista o botão ficava abaixo da dobra em tela
+          pequena — existia e ninguém achava. */}
+      <button
+        className="sidebar-toggle"
+        onClick={() => setRecolhida((v) => !v)}
+        title={recolhida ? "Expandir menu" : "Recolher menu"}
+      >
+        {recolhida ? <ChevronRight size={15} /> : <><ChevronLeft size={14} /> <span>Recolher</span></>}
+      </button>
+
       <div className="sidebar-scroll">
         <div className="nav-group-label">OBRAS ATIVAS · {obras.length}</div>
         <div className="obra-search">
@@ -3771,7 +3794,8 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                   const alertCount = obraAlertCount(o);
                   const active = selected === o.id;
                   return (
-                    <button key={o.id} className={`nav-item ${active ? "active" : ""}`} onClick={() => onSelect(o.id)}>
+                    <button key={o.id} className={`nav-item ${active ? "active" : ""}`} onClick={() => onSelect(o.id)}
+                      title={`${o.nome} — #${o.codigo}`}>
                       <Building2 size={16} className="nav-icon" />
                       <div className="nav-item-text">
                         <div className="nav-item-name">{o.nome}</div>
@@ -3788,18 +3812,18 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
         <div className="nav-group-label">MÓDULOS</div>
         <div className="nav-list">
-          <button className={`nav-item ${modulo === "novas" ? "active" : ""}`} onClick={() => onModulo("novas")}>
+          <button className={`nav-item ${modulo === "novas" ? "active" : ""}`} onClick={() => onModulo("novas")} title="Novas obras">
             <Sparkle size={16} className="nav-icon" />
             <div className="nav-item-text"><div className="nav-item-name">Novas obras</div><div className="nav-item-sub">vindas do Monday</div></div>
             {novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
           </button>
-          <button className={`nav-item ${modulo === "a_contratar" ? "active" : ""}`} onClick={() => onModulo("a_contratar")}><ClipboardList size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">A Contratar</div><div className="nav-item-sub">todas as obras</div></div></button>
-          <button className={`nav-item ${modulo === "arquivo" ? "active" : ""}`} onClick={() => onModulo("arquivo")}>
+          <button className={`nav-item ${modulo === "a_contratar" ? "active" : ""}`} onClick={() => onModulo("a_contratar")} title="A Contratar"><ClipboardList size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">A Contratar</div><div className="nav-item-sub">todas as obras</div></div></button>
+          <button className={`nav-item ${modulo === "arquivo" ? "active" : ""}`} onClick={() => onModulo("arquivo")} title="Arquivo">
             <Archive size={16} className="nav-icon" />
             <div className="nav-item-text"><div className="nav-item-name">Arquivo</div><div className="nav-item-sub">obras concluídas</div></div>
             {arquivoCount > 0 && <span className="nav-count">{arquivoCount}</span>}
           </button>
-          <button className={`nav-item ${modulo === "precos" ? "active" : ""}`} onClick={() => onModulo("precos")}>
+          <button className={`nav-item ${modulo === "precos" ? "active" : ""}`} onClick={() => onModulo("precos")} title="Banco de Preços">
             <PackageSearch size={16} className="nav-icon" />
             <div className="nav-item-text"><div className="nav-item-name">Banco de Preços</div><div className="nav-item-sub">insumos do Sienge</div></div>
           </button>
@@ -3812,7 +3836,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           <div className="profile-text"><div className="profile-name">Priscila Wayhs</div><div className="profile-email">priscila.wayhs@groupws…</div></div>
           <ChevronRight size={14} className="dim" />
         </div>
-        <div className="collapse-row"><ChevronLeft size={13} /> Recolher</div>
       </div>
     </aside>
   );
@@ -5346,7 +5369,34 @@ export default function App() {
         .profile-text { flex: 1; min-width: 0; }
         .profile-name { font-size: 12px; font-weight: 600; }
         .profile-email { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .collapse-row { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-3); margin-top: 8px; padding: 0 6px; cursor: pointer; }
+        .sidebar-toggle { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); background: transparent; border: none; border-bottom: 1px solid var(--border); padding: 9px 10px; cursor: pointer; flex-shrink: 0; }
+        .sidebar-toggle:hover { color: var(--ink-1); background: var(--panel); }
+
+        /* RECOLHIDA — só os símbolos.
+           Some tudo que é texto e filtro; ficam os ícones, que já existiam
+           em cada item. O atributo title de cada botão vira o rótulo no
+           hover, e é
+           por isso que ele foi adicionado em todos: sem ele, quatro ícones
+           iguais não dizem nada. */
+        .sidebar.recolhida { width: 62px; }
+        .sidebar.recolhida .sidebar-scroll { padding: 12px 8px; align-items: center; }
+        .sidebar.recolhida .nav-group-label,
+        .sidebar.recolhida .obra-search,
+        .sidebar.recolhida .squad-filter,
+        .sidebar.recolhida .alert-toggle,
+        .sidebar.recolhida .squad-group-label,
+        .sidebar.recolhida .nav-item-text,
+        .sidebar.recolhida .no-results,
+        .sidebar.recolhida .profile-text,
+        .sidebar.recolhida .profile > .lucide-chevron-right { display: none; }
+        .sidebar.recolhida .nav-item { justify-content: center; padding: 10px 0; width: 44px; }
+        .sidebar.recolhida .nav-list { align-items: center; }
+        .sidebar.recolhida .squad-group { width: 100%; }
+        .sidebar.recolhida .sidebar-footer { padding: 10px 8px; }
+        .sidebar.recolhida .profile { justify-content: center; gap: 0; }
+        /* badge vira ponto: o número não cabe, mas "tem alerta" precisa aparecer */
+        .sidebar.recolhida .nav-badge, .sidebar.recolhida .nav-count { position: absolute; top: 4px; right: 2px; min-width: 7px; height: 7px; padding: 0; font-size: 0; border-radius: 50%; }
+        .sidebar.recolhida .nav-item { position: relative; }
 
         .main { flex: 1; padding: 32px 40px 60px; max-width: 1260px; }
         /* Nas telas de planilha a largura é o próprio conteúdo: são 13
