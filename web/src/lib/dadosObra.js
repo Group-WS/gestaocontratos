@@ -68,6 +68,45 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     .upsert(linha, { onConflict: "obra_codigo" })
     .select()
     .single();
+
+  /* Coluna que ainda não existe no banco não pode derrubar o salvamento
+     inteiro.
+
+     Quando o app ganha um campo novo, a coluna correspondente só passa a
+     existir depois que alguém roda a migração — e entre o deploy e o SQL
+     existe uma janela em que o Postgres rejeita o UPSERT todo por causa
+     de uma coluna desconhecida. O efeito era o pior possível: a pessoa
+     continuava trabalhando e NADA era gravado, com um aviso genérico no
+     topo.
+
+     Aqui a gente tira os campos que o banco não conhece e grava o resto.
+     O trabalho é salvo; só os campos novos ficam de fora até a migração
+     rodar — e o aviso diz exatamente isso, em vez de "não consegui". */
+  if (error && (error.code === "PGRST204" || /column .* does not exist|Could not find the/i.test(error.message || ""))) {
+    const desconhecida = (error.message || "").match(/'([^']+)'/)?.[1];
+    const opcionais = [
+      "etapas_concluidas", "cliente_assinou_em", "cliente_assinatura_por",
+      "cliente_assinatura_arq", "cliente_assinatura_obs",
+      "compra_sem_assinatura_por", "compra_sem_assinatura_em", "compra_sem_assinatura_just",
+      "cmv_liberado", "cmv_liberado_em", "cmv_liberado_por",
+    ];
+    const reduzida = { ...linha };
+    opcionais.forEach((c) => { delete reduzida[c]; });
+
+    const retry = await supabase
+      .from("obra_dados")
+      .upsert(reduzida, { onConflict: "obra_codigo" })
+      .select()
+      .single();
+    if (retry.error) throw retry.error;
+
+    const app = paraApp(retry.data);
+    app.migracaoPendente = desconhecida
+      ? `A coluna "${desconhecida}" ainda não existe no banco. Salvei o resto — rode supabase/etapas.sql pra gravar também a esteira e a aprovação do cliente.`
+      : "Faltam colunas novas no banco. Salvei o resto — rode supabase/etapas.sql.";
+    return app;
+  }
+
   if (error) throw error;
   return paraApp(data);
 }

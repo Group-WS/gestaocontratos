@@ -5703,8 +5703,12 @@ export default function App() {
         .profile-text { flex: 1; min-width: 0; }
         .profile-name { font-size: 12px; font-weight: 600; }
         .profile-email { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .sidebar-toggle { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); background: transparent; border: none; border-bottom: 1px solid var(--border); padding: 9px 10px; cursor: pointer; flex-shrink: 0; }
+        /* Discreto: é um controle da barra, não um título. Antes vinha em
+           caixa alta ocupando a largura toda, e competia com o nome da
+           obra logo abaixo. */
+        .sidebar-toggle { display: flex; align-items: center; justify-content: flex-start; gap: 5px; width: auto; margin: 10px 8px 2px; font-size: 11.5px; font-weight: 500; color: var(--ink-3); background: transparent; border: none; border-radius: 6px; padding: 5px 8px; cursor: pointer; flex-shrink: 0; }
         .sidebar-toggle:hover { color: var(--ink-1); background: var(--panel); }
+        .sidebar.recolhida .sidebar-toggle { justify-content: center; margin: 10px auto 2px; }
 
         /* RECOLHIDA — só os símbolos.
            Some tudo que é texto e filtro; ficam os ícones, que já existiam
@@ -5774,7 +5778,13 @@ export default function App() {
         .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
 
         .resumo-label { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px 4px; }
-        .resumo-panel { background: var(--panel); border-radius: 16px; padding: 16px; display: grid; grid-template-columns: repeat(4, 1fr) 250px; gap: 12px; margin-bottom: 28px; }
+        /* Cinco colunas fixas espremiam tudo em tela estreita, e como as
+           células esticam pra igualar a mais alta, cada card ficava com um
+           vazio embaixo do número. Agora as colunas se acomodam à largura
+           e os cards param de esticar. */
+        .resumo-panel { background: var(--panel); border-radius: 16px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: start; gap: 12px; margin-bottom: 28px; }
+        .resumo-panel .mini-stats { grid-column: span 1; min-width: 210px; }
+        @media (min-width: 1500px) { .resumo-panel { grid-template-columns: repeat(4, 1fr) 250px; } }
         .big-card { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 15px 17px; }
         .big-card-label { font-size: 10px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 9px; }
         .big-card-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -5794,7 +5804,10 @@ export default function App() {
         /* ESTEIRA — dois niveis.
            O primeiro separa por momento (planejar / executar), o segundo
            mostra a fila daquele momento com o cumprido marcado. */
-        .nav-obra { margin-bottom: 4px; }
+        .nav-obra { margin-bottom: 18px; }
+        /* Respiro entre a navegação e o conteúdo dela. Coladas, a fila de
+           etapas parecia parte do painel de baixo. */
+        .nav-obra + .resumo-label { margin-top: 0; }
         .nav-grupos { display: flex; gap: 6px; border-bottom: 1px solid var(--border); padding: 0 2px; }
         .nav-grupo { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; color: var(--ink-3); background: transparent; border: none; border-bottom: 2px solid transparent; padding: 11px 14px; margin-bottom: -1px; cursor: pointer; }
         .nav-grupo:hover { color: var(--ink-1); }
@@ -6436,6 +6449,9 @@ export default function App() {
             edicao={edicao} salvando={salvando} carregando={carregandoDados}
             onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
 
+
+          <TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />
+
           {/* Só no Dashboard. Antes ficava acima de todas as abas, ocupando
               o topo mesmo quando a pessoa estava conferindo item a item —
               e repetido em oito telas ele vira moldura, não informação. */}
@@ -6455,8 +6471,6 @@ export default function App() {
             </div>
           </div>
           </>}
-
-          <TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />
 
           {tab === null && grupo !== "dashboard" && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
