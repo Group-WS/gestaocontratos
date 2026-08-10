@@ -630,11 +630,30 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   const estouro = teto > 0 ? totalExecutivo - teto : 0;
   const acimaDoTeto = estouro > 0.01;
 
-  const faltaJustificar = acimaDoTeto && (justificativa.trim().length < 15 || aprovador.trim().length < 3);
+  /* Portão da assinatura do cliente.
+
+     Comprar antes de o cliente aprovar o executivo é assumir, no nome da
+     empresa, um risco que não é da equipe. Por isso bloqueia por padrão —
+     mas não trava de vez: se o cliente assinou no papel e ninguém
+     registrou, travar pararia a obra por um problema de digitação. Um
+     superior libera com justificativa, e fica gravado quem foi. */
+  const semAssinatura = !obra.clienteAssinouEm;
+  const precisaExcecao = acimaDoTeto || semAssinatura;
+  const faltaJustificar = precisaExcecao && (justificativa.trim().length < 15 || aprovador.trim().length < 3);
   const bloqueado = !temItens || !podeEditar || faltaJustificar;
 
   return (
-    <div className={`aprovacao-box ${acimaDoTeto ? "com-estouro" : ""}`}>
+    <div className={`aprovacao-box ${precisaExcecao ? "com-estouro" : ""}`}>
+      {semAssinatura && (
+        <div className="estouro-aviso bloqueio-assinatura">
+          <Lock size={15} />
+          <span>
+            <b>O cliente ainda não aprovou o projeto executivo.</b> Esta planilha não deveria ser
+            liberada antes disso — registre a assinatura na etapa <b>Aprovação do Cliente</b>.
+            Se ela já aconteceu e só falta registrar, um superior pode liberar aqui, com justificativa.
+          </span>
+        </div>
+      )}
       {acimaDoTeto && (
         <div className="estouro-aviso">
           <AlertTriangle size={15} />
@@ -645,16 +664,20 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
         </div>
       )}
 
-      {acimaDoTeto && (
+      {precisaExcecao && (
         <div className="estouro-campos">
           <label>
-            <span>Por que o custo passou do CMV?</span>
+            <span>{semAssinatura && acimaDoTeto ? "Por que liberar sem a assinatura do cliente e acima do CMV?"
+              : semAssinatura ? "Por que liberar sem a aprovação do cliente registrada?"
+              : "Por que o custo passou do CMV?"}</span>
             <textarea rows={2} value={justificativa} onChange={(e) => setJustificativa(e.target.value)}
-              placeholder="Ex: cliente aprovou troca do ar-condicionado por modelo superior, com aditivo de contrato." />
+              placeholder={semAssinatura
+                ? "Ex: cliente assinou o executivo na reunião de 12/08, documento físico a caminho do escritório."
+                : "Ex: cliente aprovou troca do ar-condicionado por modelo superior, com aditivo de contrato."} />
           </label>
           <label>
             <span>Autorizado por</span>
-            <input value={aprovador} onChange={(e) => setAprovador(e.target.value)} placeholder="Nome de quem aprovou o estouro" />
+            <input value={aprovador} onChange={(e) => setAprovador(e.target.value)} placeholder="Nome de quem autorizou a exceção" />
           </label>
         </div>
       )}
@@ -666,9 +689,12 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
       </div>
 
       <button className="btn-aprovar" disabled={bloqueado} onClick={() => {
-        onLiberar(acimaDoTeto ? { estouro, justificativa: justificativa.trim(), aprovador: aprovador.trim() } : null);
+        onLiberar(precisaExcecao
+          ? { estouro: acimaDoTeto ? estouro : 0, semAssinatura,
+              justificativa: justificativa.trim(), aprovador: aprovador.trim() }
+          : null);
       }}>
-        <ShieldCheck size={14} /> {acimaDoTeto ? "Liberar com estouro registrado" : "Liberar planilha de compra"}
+        <ShieldCheck size={14} /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar planilha de compra"}
       </button>
     </div>
   );
@@ -3841,28 +3867,262 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   );
 }
 
-function TabBar({ tab, onChange, obra }) {
-  const bloqueado = !obra.deparaAprovado;
-  const tabs = [
-    { id: "vendido_contrato", label: "Vendido Contrato", icon: FileText },
-    { id: "vendido_planilha", label: "Vendido Planilha", icon: FileText },
-    { id: "vendido_conferencia", label: "Depara Contrato x Planilha", icon: GitCompare },
-    { id: "executivo", label: "Executivo", icon: BookOpen, gate: bloqueado },
-    { id: "executivo_conferencia", label: "Conf. Executivo", icon: GitCompare, gate: bloqueado },
-    { id: "comparativo", label: "Planilha de Compra", icon: LayoutGrid },
-    { id: "compras", label: "Compras de Produtos", icon: ShoppingCart },
-    { id: "contratos", label: "Contratos", icon: Link2 },
-  ];
-  return (
-    <div className="tabbar">
-      {tabs.map((t) => {
-        const Icon = t.icon;
-        return (
-          <button key={t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => onChange(t.id)}>
-            <Icon size={14} /> {t.label} {t.gate && <Lock size={11} className="dim" />}
+
+/* Barra de conclusão da etapa.
+
+   Aparece nas etapas que não têm ato próprio. Depara, Aprovação do
+   Cliente e Planilha de Compra não usam isto: liberar o CMV, registrar a
+   assinatura e liberar as compras JÁ são a conclusão delas, e já gravam
+   quem e quando. Dois botões pro mesmo fato criariam duas verdades. */
+function ConclusaoEtapa({ id, obra, onConcluir, onReabrir, podeEditar, oQueConclui }) {
+  const feita = etapaConcluida(id, obra);
+  const { por, em } = quemConcluiu(id, obra);
+  const congelado = obra.comprasLiberadas || !podeEditar;
+
+  if (feita) {
+    return (
+      <div className="etapa-concluida">
+        <CheckCircle2 size={15} />
+        <span>
+          Etapa concluída{por && <> por <b>{por}</b></>}
+          {em && <> em {new Date(em).toLocaleDateString("pt-BR")}</>}.
+        </span>
+        {!congelado && (
+          <button className="btn-reabrir-etapa" onClick={() => onReabrir(id)}>
+            <RotateCcw size={12} /> Reabrir etapa
           </button>
-        );
-      })}
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="etapa-pendente">
+      <span className="etapa-pendente-texto">
+        {oQueConclui || "Ao concluir, esta etapa fica marcada como cumprida na esteira e libera a próxima."}
+      </span>
+      <button className="btn-liberar" disabled={congelado} onClick={() => onConcluir(id)}>
+        <CheckCircle2 size={14} /> Concluir etapa
+      </button>
+    </div>
+  );
+}
+
+/* APROVAÇÃO DO CLIENTE — o portão entre conferir e comprar.
+
+   Sem este registro a Planilha de Compra não libera. Não é burocracia: é
+   o que separa "a equipe conferiu" de "o cliente concordou com o que vai
+   ser comprado no nome dele". Comprar antes disso é assumir um risco que
+   não é da equipe.
+
+   O anexo é a prova. Se uma compra for questionada meses depois, o
+   documento assinado precisa estar aqui dentro — não no e-mail de alguém
+   que talvez nem trabalhe mais aqui. */
+function AssinaturaClienteView({ obra, onRegistrar, onRemover, podeEditar }) {
+  const jaAssinou = !!obra.clienteAssinouEm;
+  const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
+  const [obs, setObs] = useState("");
+  const [arquivo, setArquivo] = useState(null);
+  const inputRef = useRef(null);
+  const congelado = obra.comprasLiberadas || !podeEditar;
+
+  if (jaAssinou) {
+    const arq = obra.clienteAssinaturaArq;
+    return (
+      <div className="assinatura-ok">
+        <div className="assinatura-selo"><ShieldCheck size={22} /></div>
+        <div className="assinatura-corpo">
+          <div className="assinatura-titulo">Projeto executivo aprovado pelo cliente</div>
+          <div className="assinatura-linha">
+            Assinado em <b>{new Date(obra.clienteAssinouEm + "T12:00:00").toLocaleDateString("pt-BR")}</b>
+            {obra.clienteAssinaturaPor && <> · registrado por <b>{obra.clienteAssinaturaPor}</b></>}
+          </div>
+          {obra.clienteAssinaturaObs && <div className="assinatura-obs">{obra.clienteAssinaturaObs}</div>}
+          {arq && (
+            <div className="assinatura-arq">
+              <FileText size={13} /> {arq.nome}
+              {arq.tamanho ? <span className="dim"> · {(arq.tamanho / 1024).toFixed(0)} KB</span> : null}
+            </div>
+          )}
+          {!arq && <div className="assinatura-sem-arq"><AlertTriangle size={13} /> Registrado sem o documento anexado.</div>}
+        </div>
+        {!congelado && (
+          <button className="btn-limpar-import" onClick={() => {
+            if (window.confirm(
+              "Remover o registro de aprovação do cliente?\n\n" +
+              "A Planilha de Compra volta a ficar bloqueada até um novo registro."
+            )) onRemover();
+          }}><Trash2 size={13} /> Remover</button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="assinatura-form">
+      <div className="import-bar" style={{ marginBottom: 14 }}>
+        <div className="import-info">
+          <Lock size={14} />
+          <span>A <b>Planilha de Compra não libera</b> enquanto o cliente não aprovar o projeto executivo. Registre aqui a assinatura.</span>
+        </div>
+      </div>
+
+      <div className="flat-panel">
+        <div className="flat-panel-header">
+          <div>
+            <div className="flat-panel-title">Registrar aprovação do cliente</div>
+            <div className="flat-panel-sub">Data em que o cliente assinou, mais o documento assinado.</div>
+          </div>
+        </div>
+
+        <div className="assinatura-campos">
+          <label className="campo">
+            <span className="campo-rotulo">Data da assinatura</span>
+            <input type="date" value={data} disabled={congelado}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setData(e.target.value)} />
+          </label>
+
+          <label className="campo campo-largo">
+            <span className="campo-rotulo">Observação <span className="dim">(opcional)</span></span>
+            <input type="text" value={obs} disabled={congelado} placeholder="ex: assinado na reunião de 12/08, com ressalva no item 7.3"
+              onChange={(e) => setObs(e.target.value)} />
+          </label>
+
+          <div className="campo campo-largo">
+            <span className="campo-rotulo">Documento assinado</span>
+            <div className="assinatura-upload">
+              <button className="btn-import" disabled={congelado} onClick={() => inputRef.current?.click()}>
+                <Upload size={13} /> {arquivo ? "Trocar arquivo" : "Anexar documento"}
+              </button>
+              <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: "none" }}
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setArquivo(f); }} />
+              {arquivo
+                ? <span className="assinatura-arq"><FileText size={13} /> {arquivo.name} <span className="dim">· {(arquivo.size / 1024).toFixed(0)} KB</span></span>
+                : <span className="dim">Nenhum arquivo escolhido</span>}
+            </div>
+          </div>
+        </div>
+
+        <div className="assinatura-acoes">
+          {!arquivo && (
+            <span className="assinatura-aviso">
+              <AlertTriangle size={13} /> Sem o documento anexado o registro vale, mas fica sem prova.
+            </span>
+          )}
+          <button className="btn-liberar" disabled={congelado || !data}
+            onClick={() => {
+              if (window.confirm(
+                `Registrar a aprovação do cliente em ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")}?\n\n` +
+                "Isto libera a Planilha de Compra para ser aprovada.\n\n" +
+                (arquivo ? `Documento: ${arquivo.name}` : "ATENÇÃO: sem documento anexado.")
+              )) onRegistrar({ data, obs, arquivo });
+            }}>
+            <ShieldCheck size={14} /> Registrar aprovação
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* A esteira da obra em dois niveis.
+
+   Antes eram oito abas numa fila so, todas com o mesmo peso visual: o
+   contrato que se le uma vez no comeco ficava do lado do diario que se
+   usa todo dia, e nada dizia onde a obra estava. Agora o primeiro nivel
+   separa por MOMENTO (planejar / executar) e o segundo mostra a fila
+   daquele momento, com o que ja foi cumprido marcado.
+
+   ETAPAS_PLANEJAMENTO esta na ordem real do processo — e essa ordem que
+   define o "anterior" de cada etapa. */
+const GRUPOS_OBRA = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
+  { id: "planejamento", label: "Planejamento", icon: ClipboardList },
+  { id: "execucao", label: "Execução de Obra", icon: Building2 },
+];
+
+const ETAPAS_PLANEJAMENTO = [
+  { id: "vendido_contrato", label: "Vendido Contrato", icon: FileText },
+  { id: "vendido_planilha", label: "Vendido Planilha", icon: FileText },
+  { id: "vendido_conferencia", label: "Depara Contrato × Planilha", icon: GitCompare },
+  { id: "executivo", label: "Executivo", icon: BookOpen },
+  { id: "executivo_conferencia", label: "Conf. Executivo", icon: GitCompare },
+  { id: "assinatura_cliente", label: "Aprovação do Cliente", icon: ShieldCheck },
+  { id: "comparativo", label: "Planilha de Compra", icon: LayoutGrid },
+  { id: "compras", label: "Compras de Produtos", icon: ShoppingCart },
+];
+
+const ETAPAS_EXECUCAO = [
+  { id: "contratos", label: "Contratos", icon: Link2 },
+  { id: "diario", label: "Diário de Obra", icon: BookOpen },
+];
+
+const ETAPAS_POR_GRUPO = { planejamento: ETAPAS_PLANEJAMENTO, execucao: ETAPAS_EXECUCAO };
+
+/* Uma etapa esta concluida quando alguem disse que esta.
+
+   Tres delas nao usam o botao generico, porque ja tinham um ato proprio
+   que grava quem e quando — registrar de novo criaria duas verdades
+   sobre o mesmo fato:
+     Depara            -> liberacao do CMV
+     Aprovacao Cliente -> registro da assinatura
+     Planilha de Compra-> liberacao das compras */
+function etapaConcluida(id, obra) {
+  if (id === "vendido_conferencia") return !!obra.deparaAprovado;
+  if (id === "assinatura_cliente") return !!obra.clienteAssinouEm;
+  if (id === "comparativo") return !!obra.comprasLiberadas;
+  return !!(obra.etapasConcluidas || {})[id];
+}
+
+function quemConcluiu(id, obra) {
+  if (id === "vendido_conferencia") return { por: obra.cmvLiberadoPor, em: obra.cmvLiberadoEm };
+  if (id === "assinatura_cliente") return { por: obra.clienteAssinaturaPor, em: obra.clienteAssinouEm };
+  return (obra.etapasConcluidas || {})[id] || {};
+}
+
+function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
+  const etapas = ETAPAS_POR_GRUPO[grupo] || [];
+
+  return (
+    <div className="nav-obra">
+      <div className="nav-grupos">
+        {GRUPOS_OBRA.map((g) => {
+          const Icon = g.icon;
+          const lista = ETAPAS_POR_GRUPO[g.id];
+          const feitas = lista ? lista.filter((e) => etapaConcluida(e.id, obra)).length : 0;
+          return (
+            <button key={g.id} className={`nav-grupo ${grupo === g.id ? "active" : ""}`} onClick={() => onGrupo(g.id)}>
+              <Icon size={15} /> {g.label}
+              {lista && <span className="nav-grupo-progresso">{feitas}/{lista.length}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {etapas.length > 0 && (
+        <div className="tabbar">
+          {etapas.map((t, i) => {
+            const Icon = t.icon;
+            const feita = etapaConcluida(t.id, obra);
+            // Travada enquanto a etapa anterior nao foi cumprida: a esteira
+            // so anda pra frente, e pular etapa e o que gera compra sem
+            // conferencia.
+            const anterior = etapas[i - 1];
+            const travada = grupo === "planejamento" && anterior && !etapaConcluida(anterior.id, obra);
+            return (
+              <button key={t.id}
+                className={`tab ${tab === t.id ? "active" : ""} ${feita ? "feita" : ""} ${travada ? "travada" : ""}`}
+                onClick={() => onChange(t.id)}
+                title={travada ? `Conclua "${anterior.label}" primeiro` : undefined}>
+                {feita ? <CheckCircle2 size={14} className="tab-check" /> : <Icon size={14} />}
+                {t.label}
+                {travada && <Lock size={11} className="dim" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -4764,6 +5024,9 @@ export default function App() {
   // ANTERIOR, então trocar de obra caía direto numa tela de trabalho de
   // outra — sem contexto nenhum.
   const [tab, setTab] = useState(null);
+  // Grupo da esteira (dashboard / planejamento / execucao). A obra abre no
+  // Dashboard: e o resumo, e e a unica tela onde ele aparece agora.
+  const [grupo, setGrupo] = useState("dashboard");
   const [itemFilter, setItemFilter] = useState("todos");
   const [tipoFilter, setTipoFilter] = useState("todos");
   const [eapDoBanco, setEapDoBanco] = useState(null);
@@ -4932,6 +5195,14 @@ export default function App() {
           // Executivo continuava aberta (isso é `deparaAprovado`), mas o
           // teto voltava vazio e os blocos que dependem dele — resumo do
           // topo e fechamento do rodapé — simplesmente não renderizavam.
+          etapasConcluidas: dados.etapasConcluidas,
+          clienteAssinouEm: dados.clienteAssinouEm,
+          clienteAssinaturaPor: dados.clienteAssinaturaPor,
+          clienteAssinaturaArq: dados.clienteAssinaturaArq,
+          clienteAssinaturaObs: dados.clienteAssinaturaObs,
+          compraSemAssinaturaPor: dados.compraSemAssinaturaPor,
+          compraSemAssinaturaEm: dados.compraSemAssinaturaEm,
+          compraSemAssinaturaJust: dados.compraSemAssinaturaJust,
           cmvLiberado: dados.cmvLiberado,
           cmvLiberadoEm: dados.cmvLiberadoEm,
           cmvLiberadoPor: dados.cmvLiberadoPor,
@@ -5206,6 +5477,14 @@ export default function App() {
       compraLiberadaEm: new Date().toISOString(),
       compraLiberadaPor: usuario,
       estouroAprovado: estouro ? { ...estouro, em: new Date().toISOString(), registradoPor: usuario } : null,
+      // Exceção do portão da assinatura, em campo próprio: "quem liberou
+      // compra sem o cliente ter aprovado" é a pergunta que alguém vai
+      // fazer, e ela não pode depender de garimpar dentro do estouro.
+      ...(estouro?.semAssinatura ? {
+        compraSemAssinaturaPor: estouro.aprovador,
+        compraSemAssinaturaEm: new Date().toISOString(),
+        compraSemAssinaturaJust: estouro.justificativa,
+      } : {}),
     } : o)));
   }
 
@@ -5288,7 +5567,62 @@ export default function App() {
     }));
   }
 
+  /* Registra a aprovação do cliente. O arquivo fica só como metadado por
+     enquanto (nome/tamanho) — subir o binário exige o Supabase Storage,
+     que ainda não está montado. Guardar o nome já permite conferir se o
+     documento certo foi anexado; o arquivo em si entra quando o Storage
+     existir. */
+  function registrarAssinaturaCliente({ data, obs, arquivo }) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? {
+      ...o,
+      clienteAssinouEm: data,
+      clienteAssinaturaPor: usuario,
+      clienteAssinaturaObs: obs || null,
+      clienteAssinaturaArq: arquivo ? { nome: arquivo.name, tamanho: arquivo.size } : null,
+    } : o)));
+  }
+
+  function removerAssinaturaCliente() {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? {
+      ...o, clienteAssinouEm: null, clienteAssinaturaPor: null,
+      clienteAssinaturaObs: null, clienteAssinaturaArq: null,
+    } : o)));
+  }
+
+  /* Conclui uma etapa da esteira, gravando quem e quando.
+
+     Só vale para as etapas sem ato próprio: Depara, Aprovação do Cliente e
+     Planilha de Compra já têm o seu (liberar CMV, registrar assinatura,
+     liberar compras) e são lidas dali. */
+  function concluirEtapa(id) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? {
+      ...o,
+      etapasConcluidas: { ...(o.etapasConcluidas || {}), [id]: { por: usuario, em: new Date().toISOString() } },
+    } : o)));
+  }
+
+  function reabrirEtapa(id) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const resto = { ...(o.etapasConcluidas || {}) };
+      delete resto[id];
+      return { ...o, etapasConcluidas: resto };
+    }));
+  }
+
   function handleTabChange(t) { setTab(t); setItemFilter("todos"); setTipoFilter("todos"); }
+
+  /* Trocar de grupo leva pra primeira etapa DELE, nao pra lugar nenhum.
+     Clicar em "Planejamento" e ficar olhando pra tela vazia obrigaria um
+     segundo clique sempre. O Dashboard e a excecao: ele proprio e a tela. */
+  function handleGrupoChange(g) {
+    setGrupo(g);
+    if (g === "dashboard") { setTab(null); return; }
+    const lista = ETAPAS_POR_GRUPO[g] || [];
+    // volta pra ultima etapa cumprida (ou a primeira), que e onde a obra esta
+    const pendente = lista.find((e) => !etapaConcluida(e.id, obra));
+    handleTabChange((pendente || lista[0] || {}).id || null);
+  }
 
   return (
     <div className="app">
@@ -5456,6 +5790,51 @@ export default function App() {
         .mini-stat { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 9px 14px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
         .mini-stat-label { font-size: 9.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
         .mini-stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700; }
+
+        /* ESTEIRA — dois niveis.
+           O primeiro separa por momento (planejar / executar), o segundo
+           mostra a fila daquele momento com o cumprido marcado. */
+        .nav-obra { margin-bottom: 4px; }
+        .nav-grupos { display: flex; gap: 6px; border-bottom: 1px solid var(--border); padding: 0 2px; }
+        .nav-grupo { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; color: var(--ink-3); background: transparent; border: none; border-bottom: 2px solid transparent; padding: 11px 14px; margin-bottom: -1px; cursor: pointer; }
+        .nav-grupo:hover { color: var(--ink-1); }
+        .nav-grupo.active { color: var(--blue); border-bottom-color: var(--blue); }
+        .nav-grupo-progresso { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-3); background: var(--panel); border-radius: 20px; padding: 1px 7px; }
+        .nav-grupo.active .nav-grupo-progresso { color: var(--blue); background: var(--blue-bg); }
+
+        /* etapa cumprida: check verde no lugar do icone */
+        .tab.feita .tab-check { color: var(--green); }
+        .tab.feita { color: var(--ink-2); }
+        /* etapa cuja anterior nao foi cumprida: da pra ver e visitar, mas
+           o cadeado avisa que a esteira ainda nao chegou ali */
+        .tab.travada { opacity: 0.5; }
+
+        .etapa-pendente, .etapa-concluida { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 16px; border-radius: 10px; font-size: 13px; }
+        .etapa-pendente { background: var(--panel); border: 1px solid var(--border); }
+        .etapa-pendente-texto { color: var(--ink-2); flex: 1; }
+        .etapa-concluida { background: var(--green-bg); border: 1px solid var(--green); color: var(--ink-1); }
+        .etapa-concluida svg { color: var(--green); flex-shrink: 0; }
+        .etapa-concluida span { flex: 1; }
+
+        .bloqueio-assinatura { background: var(--red-bg); }
+        .bloqueio-assinatura svg { color: var(--red); }
+
+        .assinatura-ok { display: flex; align-items: flex-start; gap: 16px; padding: 20px; background: var(--green-bg); border: 1px solid var(--green); border-radius: 12px; }
+        .assinatura-selo { color: var(--green); flex-shrink: 0; }
+        .assinatura-corpo { flex: 1; }
+        .assinatura-titulo { font-size: 15px; font-weight: 700; margin-bottom: 5px; }
+        .assinatura-linha { font-size: 13px; color: var(--ink-2); }
+        .assinatura-obs { font-size: 13px; color: var(--ink-2); margin-top: 7px; font-style: italic; }
+        .assinatura-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); margin-top: 8px; }
+        .assinatura-sem-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #B54708; margin-top: 8px; }
+        .assinatura-campos { display: grid; grid-template-columns: 200px 1fr; gap: 16px; padding: 18px 20px; }
+        .campo { display: flex; flex-direction: column; gap: 6px; }
+        .campo-largo { grid-column: 1 / -1; }
+        .campo-rotulo { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+        .campo input { font: inherit; font-size: 13px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; }
+        .assinatura-upload { display: flex; align-items: center; gap: 12px; }
+        .assinatura-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 20px 18px; }
+        .assinatura-aviso { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #B54708; }
 
         .tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
         .tabbar .tab { white-space: nowrap; flex-shrink: 0; }
@@ -6057,6 +6436,10 @@ export default function App() {
             edicao={edicao} salvando={salvando} carregando={carregandoDados}
             onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
 
+          {/* Só no Dashboard. Antes ficava acima de todas as abas, ocupando
+              o topo mesmo quando a pessoa estava conferindo item a item —
+              e repetido em oito telas ele vira moldura, não informação. */}
+          {grupo === "dashboard" && <>
           <div className="resumo-label">RESUMO FINANCEIRO</div>
           <div className="resumo-panel">
             <BigCard label="Valor vendido (contrato)" value={fmtCompactBRL(obra.valorVendido)} sub={fmtBRL(obra.valorVendido)} />
@@ -6071,20 +6454,38 @@ export default function App() {
               <MiniStat label="Prazo de execução" value={obra.prazo ? `${obra.prazo} dias` : "—"} />
             </div>
           </div>
+          </>}
 
-          <TabBar tab={tab} onChange={handleTabChange} obra={obra} />
+          <TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />
 
-          {tab === null && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
+          {tab === null && grupo !== "dashboard" && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
+          {tab === "vendido_contrato" && <ConclusaoEtapa id="vendido_contrato" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que o contrato desta obra foi importado e conferido." />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
+          {tab === "vendido_planilha" && <ConclusaoEtapa id="vendido_planilha" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que a planilha do criativo foi importada e conferida." />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} podeEditar={edicao.minha} />}
           {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo" && <ConclusaoEtapa id="executivo" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que a planilha do executivo está completa e revisada." />}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_conferencia" && <ConclusaoEtapa id="executivo_conferencia" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que a conferência do executivo foi feita e os alertas foram tratados." />}
+          {tab === "assinatura_cliente" && (
+            <AssinaturaClienteView obra={obra} onRegistrar={registrarAssinaturaCliente}
+              onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
+          )}
+          {tab === "diario" && (
+            <div className="compras-empty">
+              <BookOpen size={30} className="dim" />
+              <div className="compras-empty-title">Diário de Obra</div>
+              <div className="compras-empty-sub">Ainda não construímos esta tela — o menu está aqui pra a estrutura ficar de pé. Me diga o que a equipe registra no dia a dia da obra e eu desenho a partir disso.</div>
+            </div>
+          )}
           {tab === "comparativo" && (
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
+          {tab === "compras" && <ConclusaoEtapa id="compras" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que as compras desta obra foram lançadas." />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
+          {tab === "contratos" && <ConclusaoEtapa id="contratos" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que as contratações desta obra foram fechadas." />}
           </>
           )}
         </main>

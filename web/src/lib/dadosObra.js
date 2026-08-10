@@ -42,6 +42,16 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     aprovacoes: Array.from(conteudo.aprovacoes || []),
     depara_aprovado: !!conteudo.deparaAprovado,
     compras_liberadas: !!conteudo.comprasLiberadas,
+    // Esteira: quem concluiu cada etapa, e o portão da assinatura do
+    // cliente que segura a liberação de compras.
+    etapas_concluidas: conteudo.etapasConcluidas || {},
+    cliente_assinou_em: conteudo.clienteAssinouEm || null,
+    cliente_assinatura_por: conteudo.clienteAssinaturaPor || null,
+    cliente_assinatura_arq: conteudo.clienteAssinaturaArq || null,
+    cliente_assinatura_obs: conteudo.clienteAssinaturaObs || null,
+    compra_sem_assinatura_por: conteudo.compraSemAssinaturaPor || null,
+    compra_sem_assinatura_em: conteudo.compraSemAssinaturaEm || null,
+    compra_sem_assinatura_just: conteudo.compraSemAssinaturaJust || null,
     // O CMV liberado é o teto com que a equipe trabalha daqui pra frente.
     // Ficava só na memória do navegador: ao recarregar, o resumo do topo
     // e o fechamento do rodapé do Executivo sumiam sem dizer nada.
@@ -127,6 +137,14 @@ function paraApp(linha) {
     aprovacoes: new Set(linha.aprovacoes || []),
     deparaAprovado: !!linha.depara_aprovado,
     comprasLiberadas: !!linha.compras_liberadas,
+    etapasConcluidas: linha.etapas_concluidas || {},
+    clienteAssinouEm: linha.cliente_assinou_em || null,
+    clienteAssinaturaPor: linha.cliente_assinatura_por || null,
+    clienteAssinaturaArq: linha.cliente_assinatura_arq || null,
+    clienteAssinaturaObs: linha.cliente_assinatura_obs || null,
+    compraSemAssinaturaPor: linha.compra_sem_assinatura_por || null,
+    compraSemAssinaturaEm: linha.compra_sem_assinatura_em || null,
+    compraSemAssinaturaJust: linha.compra_sem_assinatura_just || null,
     cmvLiberado: linha.cmv_liberado ?? null,
     cmvLiberadoEm: linha.cmv_liberado_em || null,
     cmvLiberadoPor: linha.cmv_liberado_por || null,
