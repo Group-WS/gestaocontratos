@@ -384,6 +384,12 @@ function parseVendidoTexto(texto) {
   // padrao solto, mas marca a leitura como duvidosa em vez de aceitar
   // calado — nao da pra saber se "PAR164,00" e PAR16+4,00, PAR1+64,00 ou
   // PAR+164,00, e chutar e o que causou o erro.
+  // Grudada: no maximo 2 digitos antes da virgula, pra pegar a leitura
+  // mais curta possivel. Ver o bloco que a usa.
+  // Um digito primeiro: a regex casa da esquerda, entao com {1,2} ela
+  // acharia "64,00" dentro de "PAR164,00" antes de chegar em "4,00".
+  const reQtdUn1 = /(\d,\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
+  const reQtdUn2 = /(\d{1,2},\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
   const reQtdUnComFronteira = /(?:^|[\s;:(\-–—])(\d{1,4}(?:\.\d{3})*,\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
 
   const verbas = [];
@@ -452,17 +458,25 @@ function parseVendidoTexto(texto) {
         // indices pra reaproveitar o mesmo tratamento abaixo
         mq = { 0: mq[0].replace(/^[\s;:(\-–—]/, ""), 1: mq[1], 2: mq[2],
                index: mq.index + (mq[0].length - mq[0].replace(/^[\s;:(\-–—]/, "").length) };
-      } else if (reQtdUn.test(resto)) {
-        // Numero grudado em letra: "PAR164,00" pode ser PAR16+4,00,
-        // PAR1+64,00 ou PAR+164,00. Nao da pra saber, entao NAO separa.
-        //
-        // A descricao fica inteira (nada se perde) e a quantidade fica
-        // vazia — que e a verdade: nao foi possivel ler. Inventar 164
-        // onde eram 4 e um erro de compra de 40x que ninguem revisa,
-        // porque o numero parece legitimo. Vazio, aparece na conferencia
-        // e no aviso de importacao.
-        qtdDuvidosa = true;
-        mq = null;
+      } else {
+        /* Grudado na descricao. Duas situacoes muito diferentes:
+
+             "...Em Inox1,00un Living"        -> 1,00 e a quantidade
+             "...Dicroica PAR164,00un Living" -> 4,00 e a quantidade,
+                                                 o "16" e do PAR16
+
+           Ler ganancioso da 164 nos dois — e 164 chuveiros e um erro de
+           compra que ninguem revisa, porque o numero parece legitimo.
+           Nao ler nada perde a quantidade de TODAS as linhas grudadas,
+           que e a maioria delas.
+
+           A leitura mais CURTA acerta os dois: em "PAR164,00" pega
+           "4,00", em "Inox1,00" pega "1,00". Quantidade de tres digitos
+           colada na descricao existe, mas e rara — e por isso a linha vai
+           marcada como duvidosa, pra aparecer no aviso de importacao e
+           ser conferida. */
+        mq = resto.match(reQtdUn1) || resto.match(reQtdUn2);
+        if (mq) qtdDuvidosa = true;
       }
       if (mq) {
         qtd = parseBRLnum(mq[1]);

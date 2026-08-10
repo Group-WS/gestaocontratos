@@ -1540,7 +1540,7 @@ function derivadosDasCategorias(categorias, obra) {
    só com descrição/ambiente/quantidade (nunca valor por item). Fica
    separado da Planilha de propósito — depois os dois vão ser
    conferidos um contra o outro. */
-function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, podeEditar }) {
+function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEditarItem, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [filtroVenda, setFiltroVenda] = useState("todos");
@@ -1571,6 +1571,9 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, pode
     const d = diagnostico || {};
     const alertas = [];
     if ((d.semQtd || []).length) alertas.push(`${d.semQtd.length} sem quantidade (${d.semQtd.slice(0, 6).join(", ")}${d.semQtd.length > 6 ? "…" : ""})`);
+    // Quantidade que veio colada na descrição: foi lida, mas a separação é
+    // um palpite. Precisa aparecer com os códigos pra serem conferidos.
+    if ((d.qtdDuvidosa || []).length) alertas.push(`${d.qtdDuvidosa.length} com quantidade colada na descrição, confira (${d.qtdDuvidosa.slice(0, 8).join(", ")}${d.qtdDuvidosa.length > 8 ? "…" : ""})`);
     if ((d.semDescricao || []).length) alertas.push(`${d.semDescricao.length} sem descrição legível`);
     if ((d.itensForaDeVerba || []).length) alertas.push(`${d.itensForaDeVerba.length} fora de qualquer grupo`);
     // Quantidade que o leitor se recusou a adivinhar: a descrição veio
@@ -1654,9 +1657,24 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, pode
                       {itens.map((it, i) => (
                         <tr key={it.codigo || i}>
                           <td className="mono dim">{it.codigo || "—"}</td>
-                          <td><CelulaTexto texto={it.desc} onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} /></td>
-                          <td className="mono center dim"><CelulaTexto texto={it.ambiente} onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })} /></td>
-                          <td className="mono center">{it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
+                          {/* Editáveis: o leitor de PDF acerta a maioria, nunca
+                              todas. Sem poder corrigir na tela, cada linha
+                              torta virava uma rodada minha de conserto — e a
+                              obra ficava parada esperando deploy. */}
+                          <td><CelulaTexto texto={it.desc} linhas={2}
+                            onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })}
+                            onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { desc: v }) : undefined}
+                            congelado={congelado} /></td>
+                          <td className="mono center dim"><CelulaTexto texto={it.ambiente}
+                            onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })}
+                            onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { ambiente: v }) : undefined}
+                            congelado={congelado} /></td>
+                          <td className="mono center">
+                            <CelulaEditavel valor={it.qtdVendida} formato="numero"
+                              onSalvar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { qtdVendida: v }) : undefined}
+                              congelado={congelado} />
+                            {" "}<span className="unit">{it.un}</span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -5334,6 +5352,25 @@ export default function App() {
      Subir o arquivo errado precisa ter volta: antes o unico jeito de
      desfazer era subir outro por cima, e se o certo ainda nao existisse a
      obra ficava com o dado errado. */
+  /* Corrige na tela um item lido do Contrato.
+
+     O leitor de PDF acerta a maioria das linhas, nunca todas — layout de
+     PDF nao tem contrato de formato. Sem poder corrigir aqui, cada linha
+     torta virava uma rodada minha de conserto no parser, com a obra
+     parada esperando deploy. */
+  function editarItemContrato(catNum, codigo, patch) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        if (c.num !== catNum) return c;
+        return { ...c, itensContrato: (c.itensContrato || []).map((it) => (
+          it.codigo === codigo ? { ...it, ...patch, editadoNaMao: true } : it
+        )) };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
   function limparImportacao(campos) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
@@ -6478,7 +6515,7 @@ export default function App() {
           </>}
 
           {tab === null && grupo !== "dashboard" && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
-          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
+          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_contrato" && <ConclusaoEtapa id="vendido_contrato" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que o contrato desta obra foi importado e conferido." />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <ConclusaoEtapa id="vendido_planilha" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que a planilha do criativo foi importada e conferida." />}
