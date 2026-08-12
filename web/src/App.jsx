@@ -3460,9 +3460,25 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
   const [buscandoEm, setBuscandoEm] = useState(null);
   // texto completo aberto no painel de leitura ({rotulo, texto})
   const [verTexto, setVerTexto] = useState(null);
-  const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
-  // item excluído não soma: ele fica visível como registro, não como custo
-  const somar = (campo) => verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.excluido ? 0 : (it[campo] || 0)), 0), 0);
+  const [filtroVenda, setFiltroVenda] = useState("todos");
+  const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+  const vendidas = todasVerbas.filter((c) => grupoFoiVendido(c.itensPlanilhaExecutivo));
+  const verbas = filtroVenda === "vendido" ? vendidas
+    : filtroVenda === "nao_vendido" ? todasVerbas.filter((c) => !grupoFoiVendido(c.itensPlanilhaExecutivo))
+    : todasVerbas;
+  const contaVenda = {
+    todos: todasVerbas.length,
+    vendido: vendidas.length,
+    nao_vendido: todasVerbas.length - vendidas.length,
+  };
+
+  /* Os totais somam TODAS as verbas, nunca as filtradas.
+
+     O filtro é lente de visualização, não recorte de escopo: ver "só o
+     vendido" não pode mudar o total da obra nem o saldo contra o CMV. Um
+     total que muda conforme o filtro é a forma mais rápida de alguém
+     comprar contra um número que não existe. */
+  const somar = (campo) => todasVerbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.excluido ? 0 : (it[campo] || 0)), 0), 0);
   const total = somar("custo");
   const totalMaterial = somar("totalMaterial");
   const totalMO = somar("totalMO");
@@ -3550,6 +3566,18 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
             <div className="flat-panel-sub">Descrição, quantidade e valores por item, conforme a planilha. Clique na verba pra expandir.</div>
           </div>
         </div>
+
+        <div className="filter-bar venda-bar">
+          <ClipboardList size={13} className="dim" />
+          {FILTROS_VENDA.map((f) => (
+            <button key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
+              onClick={() => setFiltroVenda(f.id)}>
+              {f.label}
+              <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="vend-list">
           {verbas.map((c) => {
             const itens = c.itensPlanilhaExecutivo || [];
