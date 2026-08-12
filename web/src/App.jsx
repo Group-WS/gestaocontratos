@@ -1649,8 +1649,8 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                       <tr>
                         <th style={{ width: 62 }}>Cód.</th>
                         <th>Descrição</th>
-                        <th style={{ width: 92 }}>Ambiente</th>
-                        <th style={{ width: 100 }} className="center">Qtd. vendida</th>
+                        <th style={{ width: 150 }}>Ambiente</th>
+                        <th style={{ width: 92 }} className="center">Qtd. vendida</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1661,15 +1661,15 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                               todas. Sem poder corrigir na tela, cada linha
                               torta virava uma rodada minha de conserto — e a
                               obra ficava parada esperando deploy. */}
-                          <td><CelulaTexto texto={it.desc} linhas={2}
+                          <td className="col-desc"><CelulaTexto texto={it.desc} linhas={2}
                             onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })}
                             onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { desc: v }) : undefined}
                             congelado={congelado} /></td>
-                          <td className="mono center dim"><CelulaTexto texto={it.ambiente}
+                          <td className="mono center dim col-amb"><CelulaTexto texto={it.ambiente} linhas={1}
                             onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })}
                             onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { ambiente: v }) : undefined}
                             congelado={congelado} /></td>
-                          <td className="mono center">
+                          <td className="mono center col-qtd">
                             <CelulaEditavel valor={it.qtdVendida} formato="numero"
                               onSalvar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { qtdVendida: v }) : undefined}
                               congelado={congelado} />
@@ -6039,7 +6039,16 @@ export default function App() {
            sem isso cada uma calcularia larguras pelo próprio conteúdo —
            as colunas deixavam de alinhar de um grupo pro outro. */
         .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); table-layout: fixed; }
-        .vend-itens td { overflow-wrap: anywhere; word-break: break-word; }
+        /* Quebra agressiva SÓ onde o texto é longo de verdade.
+           Valia pra toda célula — existia pra impedir que uma URL de 357
+           caracteres esticasse a tabela — e numa coluna estreita partia
+           "Circulação" ao meio, virando "Circulaçã / o". */
+        .vend-itens td.col-desc { overflow-wrap: anywhere; word-break: break-word; }
+        /* Ambiente e quantidade cabem numa linha; o que não couber vira
+           reticências e sai pelo "i", em vez de esticar a linha inteira. */
+        .vend-itens td.col-amb { white-space: nowrap; }
+        .vend-itens td.col-amb .celula-corte { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .vend-itens td.col-qtd { white-space: nowrap; }
         /* A quebra livre acima existe pela especificação gigante, que sem
            ela estica a coluna e desalinha a tabela. Mas ela também
            autoriza partir "1.10" em "1.1" e "0" — código de item não é
