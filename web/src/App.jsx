@@ -5346,9 +5346,15 @@ export default function App() {
       if (o.id !== selectedId) return o;
       const porVerba = {};
       (itens || []).forEach((it) => {
+        // Copia o item INTEIRO em vez de listar campo a campo.
+        //
+        // A lista fixa congelava no tempo: quando o leitor passou a marcar
+        // `qtdColada` (a quantidade que veio grudada na descrição e precisa
+        // ser conferida), a marca morria aqui — o parser mandava, a tela
+        // nunca recebia, e o destaque laranja nunca apareceria. Mesmo erro
+        // que já tinha acontecido no importador do Executivo.
         (porVerba[it.num] = porVerba[it.num] || []).push({
-          codigo: it.codigo, desc: it.desc, ambiente: it.ambiente || "—",
-          qtdVendida: it.qtdVendida, un: it.un,
+          ...it, ambiente: it.ambiente || "—",
         });
       });
       const categorias = o.categorias.map((c) => {
