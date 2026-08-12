@@ -27,5 +27,19 @@ conf("os vizinhos NAO mudam de codigo", inserir(itens,1,{codigo:"3.5.1"})[3].cod
 conf("sem posicao vai pro fim", inserir(itens, null, {codigo:"x"}).map(x=>x.codigo).join(" "), "3.4 3.5 3.6 x");
 conf("indice alem do fim vai pro fim", inserir(itens, 99, {codigo:"x"}).map(x=>x.codigo).join(" "), "3.4 3.5 3.6 x");
 
+console.log("");
+// Ancora: procura o codigo mais proximo ACIMA, nao so o da linha imediata.
+// Inserindo abaixo de uma linha que tambem nasceu aqui (sem codigo), a linha
+// imediata nao serve — e o item nascia com traco, fora da numeracao.
+const acharAncora = (lista, depois) => {
+  for (let k = depois; k >= 0; k--) if (lista[k]?.codigo) return lista[k].codigo;
+  return null;
+};
+const comInserido = [{codigo:"3.14"},{codigo:null},{codigo:"3.20"}];
+conf("ancora pula linha sem codigo", acharAncora(comInserido, 1), "3.14");
+conf("segunda insercao vira 3.14.2",
+     codigoInserido(acharAncora(comInserido,1), [...comInserido,{codigo:"3.14.1"}]), "3.14.2");
+conf("sem nenhum codigo acima", acharAncora([{codigo:null}], 0), "null");
+
 console.log(f===0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f?1:0);

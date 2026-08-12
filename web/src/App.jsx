@@ -3735,7 +3735,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   <table className="vend-itens exec-itens">
                     <thead>
                       <tr>
-                        <th style={{ width: 56 }}>Item</th>
+                        <th style={{ width: 72 }}>Item</th>
                         <th style={{ minWidth: 220 }}>Descrição</th>
                         <th style={{ width: 112 }}>Código / especif.</th>
                         <th style={{ width: 86 }}>Fornecedor</th>
@@ -3749,7 +3749,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         <th style={{ width: 92 }} className="right">Custo<br />Total</th>
                         <th style={{ width: 88 }} className="right col-vendido">Vendido<br />(criativo)</th>
                         <th style={{ width: 78 }} className="right col-diferenca">Diferença</th>
-                        <th style={{ width: 58 }}></th>
+                        <th style={{ width: 36 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3761,7 +3761,23 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         const nav = irParaCelula;
                         return (
                           <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""}`}>
-                            <td className="mono dim">{it.codigo || "—"}</td>
+                            {/* O "+" mora aqui, na coluna congelada.
+                                Ele estava na ÚLTIMA das 15 colunas, e a tabela
+                                rola na horizontal — pra achar o botão era
+                                preciso passar por dez colunas. Na primeira, ele
+                                acompanha a rolagem e está sempre à vista. */}
+                            <td className="mono dim col-item">
+                              <span className="col-item-cod">{it.codigo || "—"}</span>
+                              {!congelado && (
+                                <button
+                                  className="btn-linha-inserir"
+                                  title={`Inserir item abaixo do ${it.codigo || "item"}`}
+                                  onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
+                                >
+                                  <Plus size={12} />
+                                </button>
+                              )}
+                            </td>
                             <td>
                               <CelulaTexto texto={it.desc} congelado={congelado} coord={cel(0)} onNavegar={nav}
                                 onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
@@ -3810,17 +3826,6 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                             <td className="center col-acoes">
                               {!congelado && (
                                 <div className="linha-acoes">
-                                  {/* Inserir ABAIXO desta linha, como o "inserir linha"
-                                      do Excel. Antes só dava pra acrescentar no fim da
-                                      verba, e um item da cozinha ia parar trinta linhas
-                                      abaixo, no meio dos quartos. */}
-                                  <button
-                                    className="btn-linha-inserir"
-                                    title={`Inserir item abaixo do ${it.codigo || "item"}`}
-                                    onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
-                                  >
-                                    <Plus size={13} />
-                                  </button>
                                   <button
                                     className={`btn-linha-excluir ${it.excluido ? "desfazer" : ""}`}
                                     title={it.excluido ? "Trazer de volta" : "Excluir do executivo"}
@@ -5726,9 +5731,18 @@ export default function App() {
           }
           return arr;
         };
-        const acima = depoisDoIndice != null ? (c.itensPlanilhaExecutivo || [])[depoisDoIndice] : null;
-        const comCodigo = { ...novo, codigo: acima ? codigoInserido(acima.codigo, c.itensPlanilhaExecutivo) : null };
-        Object.assign(novo, comCodigo);
+        /* Procura o código mais próximo ACIMA, não só o da linha imediata.
+
+           Inserindo abaixo de uma linha que também nasceu aqui (e ainda não
+           tem código), a linha imediata não serve de âncora — e o item
+           nascia com traço, sem lugar na numeração. Subindo até achar um
+           código de verdade, a segunda inserção vira 3.14.2 em vez de nada. */
+        const lista = c.itensPlanilhaExecutivo || [];
+        let ancora = null;
+        for (let k = depoisDoIndice; k >= 0 && ancora == null; k--) {
+          if (lista[k]?.codigo) ancora = lista[k].codigo;
+        }
+        if (depoisDoIndice != null && ancora) novo.codigo = codigoInserido(ancora, lista);
         return {
           ...c,
           itensPlanilhaExecutivo: inserir(c.itensPlanilhaExecutivo),
@@ -6482,6 +6496,12 @@ export default function App() {
         .tag-excluido { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--red); background: #fff; border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; text-decoration: none; display: inline-block; }
         .btn-linha-excluir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
         .linha-acoes { display: inline-flex; gap: 2px; align-items: center; }
+        .exec-itens td.col-item { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 44px; }
+        .col-item-cod { flex-shrink: 0; }
+        /* Discreto até o mouse passar: 32 linhas com um + aceso viram ruído. */
+        .exec-itens td.col-item .btn-linha-inserir { opacity: 0; transition: opacity .12s; }
+        .exec-itens tr:hover td.col-item .btn-linha-inserir,
+        .exec-itens td.col-item .btn-linha-inserir:focus { opacity: 1; }
         .btn-linha-inserir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
         .btn-linha-inserir:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-bg); }
         .exec-itens td.col-acoes { overflow: visible; }
