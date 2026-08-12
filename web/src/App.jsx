@@ -3562,6 +3562,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
   // sempre fechado: sao tres anexos de consulta, nao a tarefa da tela
   const [cadernosAbertos, setCadernosAbertos] = useState(false);
   // qual verba está com a busca de insumo aberta
+  // Onde a busca de insumo está aberta: { verba, depois } — `depois` é o
+  // índice da linha abaixo da qual inserir, ou null pra acrescentar no fim.
   const [buscandoEm, setBuscandoEm] = useState(null);
   // texto completo aberto no painel de leitura ({rotulo, texto})
   const [verTexto, setVerTexto] = useState(null);
@@ -3747,7 +3749,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         <th style={{ width: 92 }} className="right">Custo<br />Total</th>
                         <th style={{ width: 88 }} className="right col-vendido">Vendido<br />(criativo)</th>
                         <th style={{ width: 78 }} className="right col-vendido">Diferença</th>
-                        <th style={{ width: 36 }}></th>
+                        <th style={{ width: 58 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3796,15 +3798,28 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                                 return <span style={{ color: d > 0 ? "var(--red)" : "var(--green)", fontWeight: 600 }}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
                               })()}
                             </td>
-                            <td className="center">
+                            <td className="center col-acoes">
                               {!congelado && (
-                                <button
-                                  className={`btn-linha-excluir ${it.excluido ? "desfazer" : ""}`}
-                                  title={it.excluido ? "Trazer de volta" : "Excluir do executivo"}
-                                  onClick={() => onEditarItem(c.num, i, { excluido: !it.excluido })}
-                                >
-                                  {it.excluido ? <RotateCcw size={13} /> : <X size={13} />}
-                                </button>
+                                <div className="linha-acoes">
+                                  {/* Inserir ABAIXO desta linha, como o "inserir linha"
+                                      do Excel. Antes só dava pra acrescentar no fim da
+                                      verba, e um item da cozinha ia parar trinta linhas
+                                      abaixo, no meio dos quartos. */}
+                                  <button
+                                    className="btn-linha-inserir"
+                                    title={`Inserir item abaixo do ${it.codigo || "item"}`}
+                                    onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
+                                  >
+                                    <Plus size={13} />
+                                  </button>
+                                  <button
+                                    className={`btn-linha-excluir ${it.excluido ? "desfazer" : ""}`}
+                                    title={it.excluido ? "Trazer de volta" : "Excluir do executivo"}
+                                    onClick={() => onEditarItem(c.num, i, { excluido: !it.excluido })}
+                                  >
+                                    {it.excluido ? <RotateCcw size={13} /> : <X size={13} />}
+                                  </button>
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -3815,14 +3830,14 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   </div>
                 )}
                 {aberto && !congelado && (
-                  buscandoEm === c.num ? (
+                  buscandoEm?.verba === c.num ? (
                     <BuscaInsumo
                       onCancelar={() => setBuscandoEm(null)}
-                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo); setBuscandoEm(null); }}
+                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, buscandoEm.depois); setBuscandoEm(null); }}
                     />
                   ) : (
-                    <button className="btn-add-item" onClick={() => setBuscandoEm(c.num)}>
-                      <Plus size={12} /> Adicionar item nesta verba
+                    <button className="btn-add-item" onClick={() => setBuscandoEm({ verba: c.num, depois: null })}>
+                      <Plus size={12} /> Adicionar item no fim desta verba
                     </button>
                   )
                 )}
@@ -5648,7 +5663,23 @@ export default function App() {
   // quando ela opta por criar em branco. Vindo do banco, o item já nasce
   // com o nome que o Sienge conhece — o que faz a compra casar depois —
   // e com o preço de referência preenchido.
-  function adicionarItemExecutivo(catNum, insumo) {
+  /* Código de uma linha inserida no meio: 3.5 -> 3.5.1, 3.5.2...
+
+     Renumerar tudo pra baixo (o que o Excel faz) faria o mesmo item ter
+     código diferente no criativo e no executivo, e invalidaria qualquer
+     código que alguém tenha anotado. Como sufixo, a linha nova diz de onde
+     nasceu e ninguém mais muda de lugar. */
+  function codigoInserido(codigoAcima, irmaos) {
+    if (!codigoAcima) return null;
+    const usados = new Set((irmaos || []).map((it) => it.codigo).filter(Boolean));
+    for (let n = 1; n < 100; n++) {
+      const tentativa = `${codigoAcima}.${n}`;
+      if (!usados.has(tentativa)) return tentativa;
+    }
+    return null;
+  }
+
+  function adicionarItemExecutivo(catNum, insumo, depoisDoIndice = null) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const categorias = o.categorias.map((c) => {
@@ -5671,10 +5702,28 @@ export default function App() {
           totalMaterial: null, totalMO: null, custo: null,
           manual: true, tipo: "produto", contavel: false,
         };
+        /* Insere DEPOIS da linha escolhida, ou no fim quando nenhuma foi.
+
+           A posição importa: a planilha do executivo é lida na ordem, e um
+           item que pertence ao trecho da cozinha não pode aparecer trinta
+           linhas abaixo, no meio dos quartos, só porque o app só sabia
+           acrescentar no fim. */
+        const inserir = (lista) => {
+          const arr = [...(lista || [])];
+          if (depoisDoIndice == null || depoisDoIndice < 0 || depoisDoIndice >= arr.length) {
+            arr.push(novo);
+          } else {
+            arr.splice(depoisDoIndice + 1, 0, novo);
+          }
+          return arr;
+        };
+        const acima = depoisDoIndice != null ? (c.itensPlanilhaExecutivo || [])[depoisDoIndice] : null;
+        const comCodigo = { ...novo, codigo: acima ? codigoInserido(acima.codigo, c.itensPlanilhaExecutivo) : null };
+        Object.assign(novo, comCodigo);
         return {
           ...c,
-          itensPlanilhaExecutivo: [...(c.itensPlanilhaExecutivo || []), novo],
-          itens: [...(c.itens || []), novo],
+          itensPlanilhaExecutivo: inserir(c.itensPlanilhaExecutivo),
+          itens: inserir(c.itens),
         };
       });
       return { ...o, categorias };
@@ -6423,6 +6472,10 @@ export default function App() {
         .exec-itens tr.linha-excluida td:nth-child(1), .exec-itens tr.linha-excluida td:nth-child(2) { background: var(--red-bg, #FDEEEC); }
         .tag-excluido { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--red); background: #fff; border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; text-decoration: none; display: inline-block; }
         .btn-linha-excluir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
+        .linha-acoes { display: inline-flex; gap: 2px; align-items: center; }
+        .btn-linha-inserir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
+        .btn-linha-inserir:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-bg); }
+        .exec-itens td.col-acoes { overflow: visible; }
         .btn-linha-excluir:hover { color: var(--red); border-color: var(--red); }
         .btn-linha-excluir.desfazer:hover { color: var(--green); border-color: var(--green); }
         .liberado-barra { display: flex; align-items: center; gap: 9px; }
