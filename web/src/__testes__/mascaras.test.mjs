@@ -43,5 +43,15 @@ conf("decimal com virgula", mascaraNumero("9,45").valor, 9.45);
 conf("segunda virgula ignorada", mascaraNumero("9,4,5").texto, "9,45");
 conf("letra descartada", mascaraNumero("9a4").texto, "94");
 
+console.log("\n=== IDA E VOLTA: abrir e fechar sem digitar nao pode mudar o valor ===");
+// Este e o teste que faltava. A primeira versao semeava o campo com
+// String(valor).replace(/\D/g,""), que joga fora a POSICAO da virgula:
+// R$ 2,50 abria como 0,25 e R$ 16.000,00 como 160,00. Como o valor e
+// gravado ao sair da celula, bastava abrir e fechar pra estragar o numero.
+const semearMoeda = (v) => mascaraMoeda(String(Math.round(v * 100))).texto;
+for (const v of [2.5, 16000, 1243.58, 223.38, 0.01, 999999.99, 7.5, 100]) {
+  conf(`abre e fecha ${v}`, mascaraMoeda(semearMoeda(v)).valor, v);
+}
+
 console.log(falhas === 0 ? "\nOK — todas passaram" : `\n${falhas} falha(s)`);
 process.exit(falhas ? 1 : 0);

@@ -3205,11 +3205,25 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado, coord, 
 
   function abrir() {
     if (congelado) return;
-    // Semeia já mascarado, pra digitar por cima sem precisar reformatar.
-    // O `.replace(".", ",")` de antes trocava só o PRIMEIRO ponto, porque
-    // String.replace com string não é global — "1.234.56" virava "1,234.56".
-    setTexto(valor == null ? "" : (ehTexto ? String(valor) : mascarar(String(valor).replace(/\D/g, "")).texto));
+    setTexto(valor == null ? "" : (ehTexto ? String(valor) : semear(valor)));
     setEditando(true);
+  }
+
+  /* Semeia o campo a partir do valor, em CENTAVOS.
+
+     A primeira versão fazia `String(valor).replace(/\D/g, "")` e jogava fora
+     a POSIÇÃO da vírgula: só acertava por acidente quando o número já tinha
+     exatamente duas casas. R$ 2,50 virava 0,25 e R$ 16.000,00 virava 160,00 —
+     e como o valor é gravado ao sair da célula, bastava ABRIR e FECHAR sem
+     digitar nada pra estragar o número. Foi o que produziu aquele
+     R$ 1.243.582.636.622,99 na verba 05.
+
+     Multiplicar por 100 e arredondar é o único caminho que preserva a
+     grandeza: 2.5 -> 250 -> "2,50". */
+  function semear(v) {
+    if (formato === "moeda") return mascaraMoeda(String(Math.round(v * 100))).texto;
+    // quantidade guarda o número como está, só troca o separador decimal
+    return String(v).replace(".", ",");
   }
 
   function salvar() {
@@ -6440,7 +6454,16 @@ export default function App() {
            coluna de 78px partia "R$ 1.234,56" em duas linhas. tabular-nums
            dá largura fixa a cada dígito, então as colunas de valor alinham
            verticalmente como no Excel. */
-        .exec-itens td { white-space: nowrap; vertical-align: middle; font-variant-numeric: tabular-nums; }
+        /* overflow: hidden é o que impede a sobreposição.
+           Com table-layout: fixed e nowrap, um valor maior que a coluna não
+           empurra nada — ele TRANSBORDA e pinta por cima da célula vizinha,
+           e os números aparecem embaralhados uns sobre os outros. Cortando
+           com reticências o número fica legível ou visivelmente truncado,
+           nunca misturado com o do lado. */
+        .exec-itens td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; font-variant-numeric: tabular-nums; }
+        /* A célula em edição precisa vazar por cima das vizinhas, senão o
+           campo fica menor que o número que se está digitando. */
+        .exec-itens td:has(.celula-input) { overflow: visible; position: relative; z-index: 5; }
         /* Só a descrição e a especificação quebram — é onde há texto longo. */
         .exec-itens td:nth-child(2), .exec-itens td:nth-child(3),
         .exec-itens td:nth-child(4), .exec-itens td:nth-child(5) { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
