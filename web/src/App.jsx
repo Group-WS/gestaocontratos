@@ -3748,7 +3748,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         <th style={{ width: 86 }} className="right">Custo Total<br />Mão de Obra</th>
                         <th style={{ width: 92 }} className="right">Custo<br />Total</th>
                         <th style={{ width: 88 }} className="right col-vendido">Vendido<br />(criativo)</th>
-                        <th style={{ width: 78 }} className="right col-vendido">Diferença</th>
+                        <th style={{ width: 78 }} className="right col-diferenca">Diferença</th>
                         <th style={{ width: 58 }}></th>
                       </tr>
                     </thead>
@@ -3788,14 +3788,23 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                             <td className="right"><CelulaEditavel valor={it.totalMaterial} congelado={congelado} onSalvar={editar("totalMaterial")} coord={cel(8)} onNavegar={nav} /></td>
                             <td className="right"><CelulaEditavel valor={it.totalMO} congelado={congelado} onSalvar={editar("totalMO")} coord={cel(9)} onNavegar={nav} /></td>
                             <td className="right forte"><CelulaEditavel valor={it.custo} congelado={congelado} onSalvar={editar("custo")} coord={cel(10)} onNavegar={nav} /></td>
-                            <td className="mono right col-vendido dim">{it.vendido?.custo != null ? fmtBRL(it.vendido.custo) : "—"}</td>
-                            <td className="mono right col-vendido">
+                            {/* Referência, não é editável: fundo próprio e tom
+                                apagado, pra não competir com as colunas em que
+                                se digita. */}
+                            <td className="mono right col-vendido">{it.vendido?.custo != null ? fmtBRL(it.vendido.custo) : <span className="dim">—</span>}</td>
+                            {/* A coluna do veredito. É a única aqui que muda de
+                                cor, e é o que se procura ao varrer a lista. */}
+                            <td className="mono right col-diferenca">
                               {(() => {
                                 const base = it.vendido?.custo;
+                                // Sem referência não há o que comparar — o traço
+                                // diz "não sei", que é diferente de "não mudou".
                                 if (base == null || it.custo == null) return <span className="dim">—</span>;
                                 const d = it.custo - base;
-                                if (Math.abs(d) < 0.01) return <span className="dim">—</span>;
-                                return <span style={{ color: d > 0 ? "var(--red)" : "var(--green)", fontWeight: 600 }}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
+                                // Zero é resposta, não ausência: mostra 0,00 pra
+                                // se distinguir do traço de sem-referência.
+                                if (Math.abs(d) < 0.01) return <span className="dif-igual">{fmtBRL(0)}</span>;
+                                return <span className={d > 0 ? "dif-acima" : "dif-abaixo"}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
                               })()}
                             </td>
                             <td className="center col-acoes">
@@ -6606,7 +6615,23 @@ export default function App() {
         .exec-itens td.forte { color: var(--ink); font-weight: 600; }
         .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
         /* Colunas de origem: o que veio do criativo e o quanto mudou */
-        .exec-itens .col-vendido { background: #FAFAF8; }
+        /* As duas ultimas colunas fazem coisas diferentes e viravam a mesma
+           parede de numeros. Agora se distinguem pelo papel:
+
+             Vendido (criativo) — REFERENCIA. Nao se edita, veio do criativo.
+               Fundo proprio, texto apagado, separada do bloco editavel por
+               uma linha. Esta ali pra ser consultada, nao varrida.
+
+             Diferenca — VEREDITO. E a unica coluna da tabela que muda de
+               cor, e por isso e o que o olho acha primeiro ao procurar o
+               que precisa de atencao. */
+        .exec-itens .col-vendido { background: #F7F6F2; color: var(--ink-3); border-left: 2px solid var(--border); }
+        .exec-itens .col-diferenca { background: #F7F6F2; font-weight: 600; }
+        .dif-acima  { color: var(--red); }
+        .dif-abaixo { color: var(--green); }
+        /* Zero e resposta, nao ausencia: fica visivel mas neutro, pra nao
+           disputar atencao com quem realmente mudou. */
+        .dif-igual  { color: var(--ink-3); font-weight: 500; }
         .vend-delta { font-size: 11px; font-weight: 600; flex-shrink: 0; margin-right: 4px; cursor: help; }
         .vend-base { font-size: 11px; color: var(--ink-3); flex-shrink: 0; margin-right: 8px; cursor: help; font-variant-numeric: tabular-nums; }
         /* Vermelho é do CMV, e o CMV é o total — está no resumo do topo.
