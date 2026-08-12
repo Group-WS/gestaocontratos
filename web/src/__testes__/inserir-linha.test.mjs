@@ -41,5 +41,27 @@ conf("segunda insercao vira 3.14.2",
      codigoInserido(acharAncora(comInserido,1), [...comInserido,{codigo:"3.14.1"}]), "3.14.2");
 conf("sem nenhum codigo acima", acharAncora([{codigo:null}], 0), "null");
 
+console.log("");
+// SUBSTITUICAO: um ato so. O antigo sai marcado e apontando pro novo; o
+// novo entra logo abaixo apontando de volta. Feitas soltas, as duas acoes
+// deixavam a tela cheia de amarelo e vermelho sem dizer o que virou o que.
+const substituir = (lista, idx, novo) => {
+  const marcada = lista.map((it, k) => (k === idx
+    ? { ...it, excluido: true, substituidoPor: novo.codigo, substituidoPorDesc: novo.desc }
+    : it));
+  const comLink = { ...novo, substitui: lista[idx].codigo, substituiDesc: lista[idx].desc };
+  return inserir(marcada, idx, comLink);
+};
+const antes = [{codigo:"3.14", desc:"Spot antigo"}, {codigo:"3.20", desc:"Abajur"}];
+const r = substituir(antes, 0, {codigo:"3.14.1", desc:"Spot novo"});
+
+conf("o antigo fica excluido", r[0].excluido, "true");
+conf("o antigo aponta pro novo", r[0].substituidoPor, "3.14.1");
+conf("o novo entra LOGO ABAIXO", r[1].codigo, "3.14.1");
+conf("o novo aponta pro antigo", r[1].substitui, "3.14");
+conf("o novo guarda a descricao antiga", r[1].substituiDesc, "Spot antigo");
+conf("o vizinho nao se mexe", r[2].codigo, "3.20");
+conf("nada some da lista", r.length, 3);
+
 console.log(f===0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f?1:0);

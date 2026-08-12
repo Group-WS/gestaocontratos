@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
   Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
   ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
+  ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2
 } from "lucide-react";
@@ -3760,7 +3761,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         const cel = (col) => `${i}:${col}`;
                         const nav = irParaCelula;
                         return (
-                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""}`}>
+                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""} ${it.substitui || it.substituiDesc ? "linha-substituta" : ""}`}>
                             {/* O "+" mora aqui, na coluna congelada.
                                 Ele estava na ÚLTIMA das 15 colunas, e a tabela
                                 rola na horizontal — pra achar o botão era
@@ -3768,21 +3769,44 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                                 acompanha a rolagem e está sempre à vista. */}
                             <td className="mono dim col-item">
                               <span className="col-item-cod">{it.codigo || "—"}</span>
-                              {!congelado && (
-                                <button
-                                  className="btn-linha-inserir"
-                                  title={`Inserir item abaixo do ${it.codigo || "item"}`}
-                                  onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
-                                >
-                                  <Plus size={12} />
-                                </button>
+                              {!congelado && !it.excluido && (
+                                <span className="col-item-acoes">
+                                  <button
+                                    className="btn-linha-inserir"
+                                    title={`Inserir item abaixo do ${it.codigo || "item"}`}
+                                    onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
+                                  >
+                                    <Plus size={12} />
+                                  </button>
+                                  {/* Substituir: exclui este e encaixa o escolhido
+                                      logo abaixo, ligado a ele. */}
+                                  <button
+                                    className="btn-linha-substituir"
+                                    title={`Substituir ${it.codigo || "este item"} por outro`}
+                                    onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}
+                                  >
+                                    <ArrowLeftRight size={12} />
+                                  </button>
+                                </span>
                               )}
                             </td>
                             <td>
                               <CelulaTexto texto={it.desc} congelado={congelado} coord={cel(0)} onNavegar={nav}
                                 onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
                                 onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
-                              {it.excluido && <span className="tag-excluido">excluído do executivo — não entra no custo</span>}
+                              {it.excluido && !it.substituidoPorDesc && <span className="tag-excluido">excluído do executivo — não entra no custo</span>}
+                              {/* O par da substituição. Cada lado aponta pro outro,
+                                  então a linha se explica sem precisar procurar. */}
+                              {it.substituidoPorDesc && (
+                                <span className="tag-trocado" title="Este item foi substituído — a linha logo abaixo é a que entrou no lugar">
+                                  <ArrowDown size={10} /> substituído por <b>{it.substituidoPor || it.substituidoPorDesc}</b>
+                                </span>
+                              )}
+                              {it.substituiDesc && (
+                                <span className="tag-substitui" title={`Entrou no lugar de: ${it.substituiDesc}`}>
+                                  <CornerDownRight size={10} /> no lugar de <b>{it.substitui || it.substituiDesc}</b>
+                                </span>
+                              )}
                               {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
                               {it.alteradoExecutivo && <span className="tag-alterado" title="Valor alterado aqui, não veio assim do arquivo">alterado no executivo</span>}
                               {it.precoNaoRevisado && <span className="tag-preco"><AlertTriangle size={10} /> preço não revisado</span>}
@@ -3847,7 +3871,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   buscandoEm?.verba === c.num ? (
                     <BuscaInsumo
                       onCancelar={() => setBuscandoEm(null)}
-                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, buscandoEm.depois); setBuscandoEm(null); }}
+                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, buscandoEm.depois, buscandoEm.substituindo ?? null); setBuscandoEm(null); }}
                     />
                   ) : (
                     <button className="btn-add-item" onClick={() => setBuscandoEm({ verba: c.num, depois: null })}>
@@ -5693,7 +5717,7 @@ export default function App() {
     return null;
   }
 
-  function adicionarItemExecutivo(catNum, insumo, depoisDoIndice = null) {
+  function adicionarItemExecutivo(catNum, insumo, depoisDoIndice = null, substituindo = null) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const categorias = o.categorias.map((c) => {
@@ -5743,10 +5767,29 @@ export default function App() {
           if (lista[k]?.codigo) ancora = lista[k].codigo;
         }
         if (depoisDoIndice != null && ancora) novo.codigo = codigoInserido(ancora, lista);
+
+        /* Substituição é UM ato, não "excluí" + "adicionei".
+
+           Feitas soltas, as duas ações deixavam a tela cheia de amarelo e
+           vermelho sem dizer o que virou o quê — e o item novo ainda ia
+           parar no fim da lista, longe do que ele substituiu. Aqui os dois
+           ficam vizinhos e apontam um pro outro, então a leitura da linha
+           responde sozinha "trocaram o spot da Suíte 01 por este". */
+        const velho = substituindo != null ? lista[substituindo] : null;
+        if (velho) {
+          novo.substitui = velho.codigo || null;
+          novo.substituiDesc = velho.desc || null;
+        }
+        // marca o substituído como excluído e aponta pro novo
+        const marcar = (arr) => arr.map((it, k) => (
+          substituindo != null && k === substituindo
+            ? { ...it, excluido: true, substituidoPor: novo.codigo || null, substituidoPorDesc: novo.desc || null }
+            : it
+        ));
         return {
           ...c,
-          itensPlanilhaExecutivo: inserir(c.itensPlanilhaExecutivo),
-          itens: inserir(c.itens),
+          itensPlanilhaExecutivo: inserir(marcar(c.itensPlanilhaExecutivo || [])),
+          itens: inserir(marcar(c.itens || [])),
         };
       });
       return { ...o, categorias };
@@ -6498,6 +6541,18 @@ export default function App() {
         .linha-acoes { display: inline-flex; gap: 2px; align-items: center; }
         .exec-itens td.col-item { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 44px; }
         .col-item-cod { flex-shrink: 0; }
+        .col-item-acoes { display: inline-flex; gap: 1px; }
+        .btn-linha-substituir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
+        .btn-linha-substituir:hover { color: #B54708; border-color: #F79009; background: #FFF4E5; }
+
+        /* O par da substituição: o que saiu aponta pra baixo, o que entrou
+           aponta pra ele. Mesma cor nos dois lados, pra o olho juntar as
+           duas linhas sem precisar ler. */
+        .tag-trocado, .tag-substitui { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 7px; white-space: nowrap; background: #EEF2FF; color: #3730A3; }
+        .tag-trocado b, .tag-substitui b { font-weight: 700; }
+        /* A linha que entrou fica levemente recuada: lê-se como filha da
+           que saiu, que é a "variação dentro" que a Priscila descreveu. */
+        .exec-itens tr.linha-substituta td:nth-child(2) { padding-left: 18px; box-shadow: inset 3px 0 0 #6366F1; }
         /* Discreto até o mouse passar: 32 linhas com um + aceso viram ruído. */
         .exec-itens td.col-item .btn-linha-inserir { opacity: 0; transition: opacity .12s; }
         .exec-itens tr:hover td.col-item .btn-linha-inserir,
