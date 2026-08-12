@@ -3690,7 +3690,20 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
             const aberto = abertos.has(c.num);
             const subtotal = itens.reduce((a, it) => a + (it.excluido ? 0 : (it.custo || 0)), 0);
             // quanto essa verba valia no criativo — a referência do movimento
-            const baseVerba = itens.reduce((a, it) => a + (it.vendido?.custo || 0), 0);
+            /* O vendido do grupo vem do CRIATIVO INTEIRO, não dos itens que
+               casaram.
+
+               Antes somava `it.vendido?.custo` — e `it.vendido` só existe
+               quando o pareamento por descrição achou o item correspondente.
+               Item removido no executivo, item novo, ou item cujo nome mudou
+               o bastante pra não casar: todos entravam com ZERO na base.
+
+               Na verba 05 isso significou comparar R$ 26.345,88 contra
+               R$ 22.248,95 em vez de contra os R$ 39.905,50 que realmente
+               foram vendidos. A tela dizia "+R$ 4.096,93 acima" numa verba
+               que está R$ 13.559,62 ABAIXO do vendido — inverteu o sinal de
+               uma economia e transformou em estouro. */
+            const baseVerba = (c.itensPlanilha || []).reduce((a, it) => a + (it.custo || 0), 0);
             const delta = temItens && baseVerba > 0 ? deltaVerba(subtotal, baseVerba) : null;
             return (
               <div key={c.num} className="vend-grupo">
@@ -3700,6 +3713,13 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
                   {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                  {/* O vendido fica à vista: sem ele, "acima" e "abaixo" são
+                      afirmações sem referência na tela. */}
+                  {temItens && baseVerba > 0 && (
+                    <span className="vend-base mono" title="Valor vendido deste grupo no criativo — a referência da comparação">
+                      vendido {fmtBRL(baseVerba)}
+                    </span>
+                  )}
                   {delta && (
                     <span className={`vend-delta tom-${delta.tom}`}
                       title="Movimento desta verba em relação ao que foi vendido nela. Uma verba acima não é estouro do CMV — o CMV é o total da obra, e está no resumo acima.">
@@ -6535,6 +6555,7 @@ export default function App() {
         /* Colunas de origem: o que veio do criativo e o quanto mudou */
         .exec-itens .col-vendido { background: #FAFAF8; }
         .vend-delta { font-size: 11px; font-weight: 600; flex-shrink: 0; margin-right: 4px; cursor: help; }
+        .vend-base { font-size: 11px; color: var(--ink-3); flex-shrink: 0; margin-right: 8px; cursor: help; font-variant-numeric: tabular-nums; }
         /* Vermelho é do CMV, e o CMV é o total — está no resumo do topo.
            Aqui a cor mede peso: ruído fica apagado, movimento relevante
            chama, e só o desvio grande da verba usa vermelho. */
