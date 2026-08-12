@@ -386,10 +386,7 @@ function parseVendidoTexto(texto) {
   // PAR+164,00, e chutar e o que causou o erro.
   // Grudada: no maximo 2 digitos antes da virgula, pra pegar a leitura
   // mais curta possivel. Ver o bloco que a usa.
-  // Um digito primeiro: a regex casa da esquerda, entao com {1,2} ela
-  // acharia "64,00" dentro de "PAR164,00" antes de chegar em "4,00".
-  const reQtdUn1 = /(\d,\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
-  const reQtdUn2 = /(\d{1,2},\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
+
   const reQtdUnComFronteira = /(?:^|[\s;:(\-–—])(\d{1,4}(?:\.\d{3})*,\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
 
   const verbas = [];
@@ -459,23 +456,25 @@ function parseVendidoTexto(texto) {
         mq = { 0: mq[0].replace(/^[\s;:(\-–—]/, ""), 1: mq[1], 2: mq[2],
                index: mq.index + (mq[0].length - mq[0].replace(/^[\s;:(\-–—]/, "").length) };
       } else {
-        /* Grudado na descricao. Duas situacoes muito diferentes:
+        /* Grudado na descricao pelo extrator. E AMBIGUO, sem solucao no
+           texto — a diferenca entre os casos e semantica:
 
-             "...Em Inox1,00un Living"        -> 1,00 e a quantidade
-             "...Dicroica PAR164,00un Living" -> 4,00 e a quantidade,
-                                                 o "16" e do PAR16
+             "...recuado 7W" + "12,00"     -> "...recuado 7W12,00"
+             "...Dicroica PAR16" + "4,00"  -> "...Dicroica PAR164,00"
 
-           Ler ganancioso da 164 nos dois — e 164 chuveiros e um erro de
-           compra que ninguem revisa, porque o numero parece legitimo.
-           Nao ler nada perde a quantidade de TODAS as linhas grudadas,
-           que e a maioria delas.
+           Os dois tem a mesma forma (letras, digitos, quantidade colada).
+           No primeiro "7W" e potencia e a quantidade e 12; no segundo o
+           "16" e do modelo PAR16 e a quantidade e 4. Nenhuma regra de
+           texto separa isso.
 
-           A leitura mais CURTA acerta os dois: em "PAR164,00" pega
-           "4,00", em "Inox1,00" pega "1,00". Quantidade de tres digitos
-           colada na descricao existe, mas e rara — e por isso a linha vai
-           marcada como duvidosa, pra aparecer no aviso de importacao e
-           ser conferida. */
-        mq = resto.match(reQtdUn1) || resto.match(reQtdUn2);
+           Entao vale a leitura mais LONGA — todos os digitos ate o
+           caractere nao-numerico anterior. Medido contra os casos reais
+           da 2519 ela acerta 3 de 4, contra 1 de 4 da leitura curta, que
+           chegou a devolver quantidade 0 em "cromado10,00" (leu "0,00").
+
+           Os que ela erra vao marcados como duvidosos: aparecem no aviso
+           de importacao com o codigo, e a celula e editavel na tela. */
+        mq = resto.match(reQtdUn);
         if (mq) qtdDuvidosa = true;
       }
       if (mq) {
@@ -527,7 +526,7 @@ function parseVendidoTexto(texto) {
 
       resto = limparDescResidual(resto.replace(/\s*0$/, "").trim());
       if (resto) {
-        itens.push({ verba: vAtual, codigo, desc: resto, qtd, un, ambiente: amb, custo });
+        itens.push({ verba: vAtual, codigo, desc: resto, qtd, un, ambiente: amb, custo, qtdColada: qtdDuvidosa });
         if (qtd == null) diagnostico.semQtd.push(codigo);
         if (qtdDuvidosa) diagnostico.qtdDuvidosa.push(codigo);
         if (!vAtual) diagnostico.itensForaDeVerba.push(codigo);

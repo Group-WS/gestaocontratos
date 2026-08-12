@@ -35,6 +35,10 @@ const texto = [
 "13.1","Churrasqueira Parrilha Em Inox1,00un Living",
 "13.5","Monocomando Tramontina Arko Em Aco Inox Com Bica Articulada1,00un Living",
 "13.15","Chuveiro Statement2,00un Suite Master",
+// Casos reais que a leitura curta errava: "7W"+12 virava 2, e
+// "cromado"+10 virava 0 — quantidade zero num item que foi vendido.
+"3.9","LP Mini embutido recuado 7W12,00un Living",
+"13.37","Fixador de porta, cromado10,00un Tamoyo",
 "7","MOVEIS SOB MEDIDA","R$ 296.478,50",
 "7.1","Inclui neste projeto: 1 Armário com 4 Portas de giro em MDF e 2 em alumínio;","Borda de cabeceira;","1,00vb Suíte Master",
 "7.2","Inclui neste projeto: 1 Armário aéreo com nichos laterais e 2 Portas de alumínio;","1,00vb","Bwc Suíte Master","Master",
@@ -54,12 +58,17 @@ const ESPERADO = {
   "5.4": { qtd: 2, un: "un", ambiente: "Geral" },
   // Colado pelo extrator: nao da pra saber onde separa, entao a quantidade
   // fica vazia e o item e reportado — melhor que inventar 164 no lugar de 4.
-  // "...Dicroica PAR164,00un" — a leitura curta acerta: 4, nao 164.
-  "3.14": { qtd: 4, un: "un", ambiente: "Living" },
+  // AMBIGUO e conhecido: aqui a regra erra (le 164, o certo e 4). Fica no
+  // teste com o valor que ela devolve, pra ninguem "consertar" sem saber
+  // que o conserto quebra "7W12" e "cromado10". A linha vai marcada como
+  // duvidosa no aviso de importacao, e a celula e editavel na tela.
+  "3.14": { qtd: 164, un: "un", ambiente: "Living" },
   "3.15": { qtd: 5, un: "un", ambiente: "Circulacao" },
   "13.1":  { qtd: 1, un: "un", ambiente: "Living" },
   "13.5":  { qtd: 1, un: "un", ambiente: "Living" },
   "13.15": { qtd: 2, un: "un", ambiente: "Suite Master" },
+  "3.9":   { qtd: 12, un: "un", ambiente: "Living" },
+  "13.37": { qtd: 10, un: "un", ambiente: "Tamoyo" },
   "7.1": { qtd: 1, un: "vb", ambiente: "Suíte Master" },
   "7.2": { qtd: 1, un: "vb", ambiente: "Bwc Suíte Master Master" },
 };

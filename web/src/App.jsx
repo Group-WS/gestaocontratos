@@ -849,6 +849,8 @@ async function lerContratoPDF(file) {
   const itens = (data.itens || []).map((it) => ({
     num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: limparQtdColada(it.desc),
     qtdVendida: it.qtd, un: it.un, ambiente: it.ambiente,
+    // veio colada na descrição: a separação é palpite, marca pra conferir
+    qtdColada: !!it.qtdColada,
     // o contrato não traz valor por item (é fechado por verba), então
     // aqui "não foi vendido" se resume a não ter quantidade
     ehTitulo: ehLinhaDeTitulo(it.qtd, null, null),
@@ -1584,6 +1586,15 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
     if ((gruposNaoReconhecidos || []).length) alertas.push(`grupo fora do padrão: ${gruposNaoReconhecidos.join(", ")}`);
 
     const base = `“${file.name}” — ${paginas || "?"} páginas lidas · ${n} verba${n > 1 ? "s" : ""} · ${itens.length} itens.`;
+
+    /* A quantidade colada é o alerta que mais importa, porque é o único que
+       produz um número ERRADO em vez de vazio — e número errado ninguém
+       revisa, ele parece legítimo. Vem primeiro e nomeado. */
+    if ((d.qtdDuvidosa || []).length) {
+      const cods = d.qtdDuvidosa;
+      return `${base}\n\n⚠️ ${cods.length} ${cods.length === 1 ? "item veio" : "itens vieram"} com a quantidade colada na descrição no PDF — a separação é um palpite e pode estar errada. CONFIRA a quantidade destes: ${cods.join(", ")}. Dá pra corrigir clicando na célula.` +
+        (alertas.length > 1 ? `\n\nOutros pontos: ${alertas.filter((x) => !x.includes("colada")).join(" · ")}.` : "");
+    }
     return alertas.length
       ? `${base} ATENÇÃO: ${alertas.join(" · ")}. Confira estes antes de seguir.`
       : `${base} Todos os itens vieram com grupo e quantidade.`;
@@ -1669,7 +1680,12 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                             onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })}
                             onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { ambiente: v }) : undefined}
                             congelado={congelado} /></td>
-                          <td className="mono center col-qtd">
+                          {/* Quantidade que veio colada na descrição: foi lida
+                              por palpite. Marcada na própria linha, porque o
+                              aviso da importação some quando a pessoa sai da
+                              tela — e o número errado fica. */}
+                          <td className={`mono center col-qtd ${it.qtdColada && !it.editadoNaMao ? "qtd-palpite" : ""}`}
+                            title={it.qtdColada && !it.editadoNaMao ? "No PDF esta quantidade estava colada na descrição — confira e corrija se precisar" : undefined}>
                             <CelulaEditavel valor={it.qtdVendida} formato="numero"
                               onSalvar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { qtdVendida: v }) : undefined}
                               congelado={congelado} />
@@ -6071,6 +6087,7 @@ export default function App() {
         .vend-itens td.col-amb { white-space: nowrap; }
         .vend-itens td.col-amb .celula-corte { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .vend-itens td.col-qtd { white-space: nowrap; }
+        .vend-itens td.qtd-palpite { background: #FFF4E5; box-shadow: inset 0 0 0 1px #F79009; border-radius: 4px; cursor: help; }
         /* A quebra livre acima existe pela especificação gigante, que sem
            ela estica a coluna e desalinha a tabela. Mas ela também
            autoriza partir "1.10" em "1.1" e "0" — código de item não é
