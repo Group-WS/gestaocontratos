@@ -387,6 +387,18 @@ function parseVendidoTexto(texto) {
   // Grudada: no maximo 2 digitos antes da virgula, pra pegar a leitura
   // mais curta possivel. Ver o bloco que a usa.
 
+  /* Codigos de especificacao que TERMINAM em digito.
+     
+     Sao a unica familia em que a leitura longa erra: "PAR16" + "4,00"
+     cola em "PAR164,00" e vira 164. Nos outros casos o que precede a
+     quantidade termina em letra ("7W", "Inox", "cromado") e a leitura
+     longa acerta sozinha.
+     
+     Isto NAO e lista de produto — e designacao tecnica de base e soquete,
+     padrao da industria: PAR16/20/30/38 sao refletores, GU10 e MR16 sao
+     soquetes, E27 e rosca. Nao muda de obra pra obra, do mesmo jeito que o
+     nome do grupo da EAP nao muda. Por isso da pra codificar. */
+  const reCodigoTecnico = /(PAR\s?1[46]|PAR\s?20|PAR\s?30|PAR\s?38|GU\s?10|MR\s?16|AR\s?111|E\s?27|E\s?14|T\s?[58])(\d{1,4}(?:\.\d{3})*,\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
   const reQtdUnComFronteira = /(?:^|[\s;:(\-–—])(\d{1,4}(?:\.\d{3})*,\d{2})\s*(vb|und|un|m²|m2|pç|pc|kg|cj|par|vg)/i;
 
   const verbas = [];
@@ -474,8 +486,16 @@ function parseVendidoTexto(texto) {
 
            Os que ela erra vao marcados como duvidosos: aparecem no aviso
            de importacao com o codigo, e a celula e editavel na tela. */
-        mq = resto.match(reQtdUn);
-        if (mq) qtdDuvidosa = true;
+        // Codigo tecnico terminando em digito vem primeiro: e o unico
+        // jeito de saber que o "16" de PAR16 nao e quantidade.
+        const mc = resto.match(reCodigoTecnico);
+        if (mc) {
+          mq = { 0: mc[2] + (mc[0].endsWith(mc[3]) ? mc[3] : ""), 1: mc[2], 2: mc[3],
+                 index: mc.index + mc[1].length };
+        } else {
+          mq = resto.match(reQtdUn);
+          if (mq) qtdDuvidosa = true;
+        }
       }
       if (mq) {
         qtd = parseBRLnum(mq[1]);

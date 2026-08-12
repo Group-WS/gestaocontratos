@@ -58,11 +58,9 @@ const ESPERADO = {
   "5.4": { qtd: 2, un: "un", ambiente: "Geral" },
   // Colado pelo extrator: nao da pra saber onde separa, entao a quantidade
   // fica vazia e o item e reportado — melhor que inventar 164 no lugar de 4.
-  // AMBIGUO e conhecido: aqui a regra erra (le 164, o certo e 4). Fica no
-  // teste com o valor que ela devolve, pra ninguem "consertar" sem saber
-  // que o conserto quebra "7W12" e "cromado10". A linha vai marcada como
-  // duvidosa no aviso de importacao, e a celula e editavel na tela.
-  "3.14": { qtd: 164, un: "un", ambiente: "Living" },
+  // "PAR16" e designacao tecnica de refletor, nao quantidade: reconhecida
+  // pela lista de codigos, o "4,00" e separado certo.
+  "3.14": { qtd: 4, un: "un", ambiente: "Living" },
   "3.15": { qtd: 5, un: "un", ambiente: "Circulacao" },
   "13.1":  { qtd: 1, un: "un", ambiente: "Living" },
   "13.5":  { qtd: 1, un: "un", ambiente: "Living" },
@@ -84,7 +82,12 @@ for (const it of r.itens) {
     }
   }
 }
-if (!(r.diagnostico.qtdDuvidosa || []).includes("3.14")) { console.error("FALHOU 3.14 devia estar em qtdDuvidosa"); falhas++; }
+// "13.1" continua duvidoso de proposito: "Inox1,00" nao tem codigo tecnico
+// que ancore a separacao, entao a leitura e palpite e precisa ser conferida.
+// Ja o "3.14" saiu da lista — com PAR16 reconhecido, a separacao deixou de
+// ser chute.
+if ((r.diagnostico.qtdDuvidosa || []).includes("3.14")) { console.error("FALHOU 3.14 nao devia mais ser duvidoso: PAR16 e reconhecido"); falhas++; }
+if (!(r.diagnostico.qtdDuvidosa || []).includes("13.1")) { console.error("FALHOU 13.1 devia estar em qtdDuvidosa"); falhas++; }
 const faltando = Object.keys(ESPERADO).filter((c) => !r.itens.some((i) => i.codigo === c));
 if (faltando.length) { console.error("FALHOU itens nao lidos: " + faltando.join(", ")); falhas += faltando.length; }
 if (r.verbas.length !== 4) { console.error("FALHOU verbas: esperava 4, veio " + r.verbas.length); falhas++; }
