@@ -3124,33 +3124,115 @@ function SugestoesPreco({ descricao, onUsar }) {
 // corrigido aqui, e o que faltou pode ser lançado na mão — nem tudo
 // chega pronto do arquivo (na planilha real, lâmpadas e fontes vêm com
 // quantidade e sem custo nenhum).
-function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
+/* Andar pelas células com Tab e Enter, como numa planilha.
+
+   Cada célula editável carrega `data-cel="linha:coluna"`. Navegar é achar a
+   coordenada vizinha no DOM e clicar nela — o editor já abre com `autoFocus`.
+
+   Por que pelo DOM e não por refs: são 15 colunas em 3 componentes
+   diferentes (`CelulaEditavel`, `CelulaTexto`) dentro de uma lista de verbas
+   que abre e fecha. Passar ref por essa árvore inteira exigiria reescrever a
+   tabela toda; a coordenada no DOM resolve com duas linhas e sobrevive a
+   qualquer mudança de layout.
+
+   A ordem de tabulação é a ordem VISUAL das células editáveis — as colunas
+   calculadas (Vendido, Diferença) não têm `data-cel` e por isso são puladas
+   sozinhas, sem precisar de lista de exceção. */
+function irParaCelula(direcao, coord) {
+  if (!coord) return;
+  const celulas = Array.from(document.querySelectorAll("[data-cel]"));
+  const atual = celulas.findIndex((el) => el.dataset.cel === coord);
+  if (atual < 0) return;
+
+  const [linha, coluna] = coord.split(":").map(Number);
+  let alvo = null;
+
+  if (direcao === "proxima") alvo = celulas[atual + 1];
+  else if (direcao === "anterior") alvo = celulas[atual - 1];
+  else if (direcao === "abaixo") {
+    // Mesma coluna, linha de baixo. Se a linha seguinte não tiver aquela
+    // coluna editável, cai na primeira célula dela — melhor que não sair
+    // do lugar.
+    alvo = celulas.find((el) => el.dataset.cel === `${linha + 1}:${coluna}`)
+        || celulas.find((el) => el.dataset.cel?.startsWith(`${linha + 1}:`));
+  }
+  if (!alvo) return;
+
+  // O clique abre o editor; o scroll garante que a célula esteja visível
+  // quando ela está fora da área rolada horizontalmente.
+  alvo.scrollIntoView({ block: "nearest", inline: "nearest" });
+  alvo.click();
+}
+
+/* Máscara de dinheiro: centavos da direita pra esquerda.
+
+   Digitando 1 2 3 4 5 6 o campo vai formando
+     0,01 → 0,12 → 1,23 → 12,34 → 123,45 → 1.234,56
+
+   É o comportamento de caixa de banco, e resolve duas coisas de uma vez.
+   Não exige digitar vírgula nem ponto — quem lança trinta valores seguidos
+   só digita dígito. E fecha a armadilha do `parseBRL`, que apaga TODOS os
+   pontos: digitar "1234.56" com o ponto do teclado numérico virava 123456,
+   um valor cem vezes maior, sem nenhum aviso. */
+function mascaraMoeda(bruto) {
+  const digitos = String(bruto || "").replace(/\D/g, "").slice(0, 15);
+  if (!digitos) return { texto: "", valor: null };
+  const valor = Number(digitos) / 100;
+  return {
+    texto: valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    valor,
+  };
+}
+
+/* Quantidade NÃO usa a máscara de centavos.
+
+   Ali "12" tem que virar 12, não 0,12 — a mesma regra que ajuda no dinheiro
+   atrapalharia na quantidade. Aqui o filtro só impede caractere inválido e
+   uma segunda vírgula; o valor é interpretado quando a pessoa sai da célula. */
+function mascaraNumero(bruto) {
+  const limpo = String(bruto || "").replace(/[^\d,]/g, "");
+  const partes = limpo.split(",");
+  const texto = partes.length > 1 ? `${partes[0]},${partes.slice(1).join("").slice(0, 4)}` : partes[0];
+  return { texto, valor: texto === "" ? null : parseBRL(texto) };
+}
+
+function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado, coord, onNavegar, alinhar }) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState("");
 
+  const ehTexto = formato === "texto";
+  const mascarar = formato === "moeda" ? mascaraMoeda : mascaraNumero;
+
   function abrir() {
     if (congelado) return;
-    setTexto(valor == null ? "" : String(valor).replace(".", ","));
+    // Semeia já mascarado, pra digitar por cima sem precisar reformatar.
+    // O `.replace(".", ",")` de antes trocava só o PRIMEIRO ponto, porque
+    // String.replace com string não é global — "1.234.56" virava "1,234.56".
+    setTexto(valor == null ? "" : (ehTexto ? String(valor) : mascarar(String(valor).replace(/\D/g, "")).texto));
     setEditando(true);
   }
 
   function salvar() {
     setEditando(false);
     const limpo = texto.trim();
-    const novo = limpo === "" ? null : (formato === "texto" ? limpo : parseBRL(limpo));
+    const novo = limpo === "" ? null : (ehTexto ? limpo : mascarar(limpo).valor);
     if (novo !== valor) onSalvar(novo);
+    return novo;
   }
 
   if (editando) {
     return (
       <input
-        className={`celula-input ${formato === "texto" ? "texto" : "mono"}`}
+        className={`celula-input ${ehTexto ? "texto" : "mono"} ${alinhar || ""}`}
         autoFocus
         value={texto}
-        onChange={(e) => setTexto(e.target.value)}
+        onChange={(e) => setTexto(ehTexto ? e.target.value : mascarar(e.target.value).texto)}
         onBlur={salvar}
         onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
+          // Tab e Enter salvam e SEGUEM: é o que faz lançar valor em série
+          // ser rápido. Sem isso cada célula custa um clique.
+          if (e.key === "Tab") { e.preventDefault(); salvar(); onNavegar?.(e.shiftKey ? "anterior" : "proxima", coord); return; }
+          if (e.key === "Enter") { e.preventDefault(); salvar(); onNavegar?.("abaixo", coord); return; }
           if (e.key === "Escape") setEditando(false);
         }}
       />
@@ -3158,14 +3240,15 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
   }
 
   const mostrar = valor == null || valor === ""
-    ? (formato === "texto" ? "—" : "—")
+    ? "—"
     : formato === "moeda" ? fmtBRL(valor) : String(valor);
 
   return (
     <button
-      className={`celula-valor ${formato === "texto" ? "texto" : "mono"} ${congelado ? "travada" : ""}`}
+      data-cel={coord || undefined}
+      className={`celula-valor ${ehTexto ? "texto" : "mono"} ${alinhar || ""} ${congelado ? "travada" : ""}`}
       onClick={abrir}
-      title={congelado ? "Congelado pela liberação de compra" : "Clique para editar"}
+      title={congelado ? "Congelado pela liberação de compra" : "Clique para editar · Tab e Enter andam pelas células"}
     >
       {mostrar}
     </button>
@@ -3179,11 +3262,17 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado }) {
 // desmonta a tabela. Cortar resolve a vista, mas some com a informação;
 // por isso o "i" mostra tudo, selecionável e com botão de copiar (o
 // código do produto é justamente o que se copia pra comprar).
-function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado }) {
+function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado, coord, onNavegar }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState("");
   const editavel = !!onEditar && !congelado;
   const [alvo, cortado] = useCortado(texto);
+
+  const salvar = () => {
+    setEditando(false);
+    const v = rascunho.trim();
+    if (v !== (texto || "")) onEditar(v || null);
+  };
 
   if (editando) {
     return (
@@ -3193,10 +3282,11 @@ function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado }) {
         rows={2}
         value={rascunho}
         onChange={(e) => setRascunho(e.target.value)}
-        onBlur={() => { setEditando(false); const v = rascunho.trim(); if (v !== (texto || "")) onEditar(v || null); }}
+        onBlur={salvar}
         onKeyDown={(e) => {
-          // Enter salva. Quem precisar de varias linhas usa Shift+Enter.
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
+          if (e.key === "Tab") { e.preventDefault(); salvar(); onNavegar?.(e.shiftKey ? "anterior" : "proxima", coord); return; }
+          // Enter salva e desce. Quem precisar de varias linhas usa Shift+Enter.
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); salvar(); onNavegar?.("abaixo", coord); return; }
           if (e.key === "Escape") setEditando(false);
         }}
       />
@@ -3209,10 +3299,11 @@ function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado }) {
     <div className="celula-texto">
       <span
         ref={alvo}
+        data-cel={editavel ? coord : undefined}
+        onClick={abrir}
         className={`celula-corte ${editavel ? "editavel" : ""}`}
         style={{ WebkitLineClamp: linhas }}
-        onClick={abrir}
-        title={editavel ? "Clique para editar" : undefined}
+        title={editavel ? "Clique para editar · Tab e Enter andam pelas células" : undefined}
       >
         {texto || (editavel ? <span className="dim">clique para preencher</span> : "\u2014")}
       </span>
@@ -3628,11 +3719,15 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                     <tbody>
                       {itens.map((it, i) => {
                         const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
+                        // Coordenada da célula na planilha: linha da lista + posição
+                        // visual da coluna. É o que Tab e Enter seguem.
+                        const cel = (col) => `${i}:${col}`;
+                        const nav = irParaCelula;
                         return (
                           <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""}`}>
                             <td className="mono dim">{it.codigo || "—"}</td>
                             <td>
-                              <CelulaTexto texto={it.desc} congelado={congelado}
+                              <CelulaTexto texto={it.desc} congelado={congelado} coord={cel(0)} onNavegar={nav}
                                 onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
                                 onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
                               {it.excluido && <span className="tag-excluido">excluído do executivo — não entra no custo</span>}
@@ -3644,19 +3739,19 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                               )}
                             </td>
                             <td className="dim">
-                              <CelulaTexto texto={it.especificacao} congelado={congelado}
+                              <CelulaTexto texto={it.especificacao} congelado={congelado} coord={cel(1)} onNavegar={nav}
                                 onEditar={(v) => onEditarItem(c.num, i, { especificacao: v })}
                                 onVerTudo={(t) => setVerTexto({ rotulo: "Código / especificação / Obs.", texto: t })} />
                             </td>
-                            <td className="dim"><CelulaTexto texto={it.marca} congelado={congelado} onEditar={(v) => onEditarItem(c.num, i, { marca: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Fornecedor", texto: t })} /></td>
-                            <td className="dim"><CelulaTexto texto={it.ambiente} congelado={congelado} onEditar={(v) => onEditarItem(c.num, i, { ambiente: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })} /></td>
-                            <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={congelado} onSalvar={editar("qtdVendida")} /></td>
-                            <td className="center"><CelulaEditavel valor={it.un} formato="texto" congelado={congelado} onSalvar={editar("un")} /></td>
-                            <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={congelado} onSalvar={editar("custoMaterial")} /></td>
-                            <td className="right"><CelulaEditavel valor={it.custoMO} congelado={congelado} onSalvar={editar("custoMO")} /></td>
-                            <td className="right"><CelulaEditavel valor={it.totalMaterial} congelado={congelado} onSalvar={editar("totalMaterial")} /></td>
-                            <td className="right"><CelulaEditavel valor={it.totalMO} congelado={congelado} onSalvar={editar("totalMO")} /></td>
-                            <td className="right forte"><CelulaEditavel valor={it.custo} congelado={congelado} onSalvar={editar("custo")} /></td>
+                            <td className="dim"><CelulaTexto texto={it.marca} congelado={congelado} coord={cel(2)} onNavegar={nav} onEditar={(v) => onEditarItem(c.num, i, { marca: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Fornecedor", texto: t })} /></td>
+                            <td className="dim"><CelulaTexto texto={it.ambiente} congelado={congelado} coord={cel(3)} onNavegar={nav} onEditar={(v) => onEditarItem(c.num, i, { ambiente: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })} /></td>
+                            <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={congelado} onSalvar={editar("qtdVendida")} coord={cel(4)} onNavegar={nav} alinhar="centro" /></td>
+                            <td className="center"><CelulaEditavel valor={it.un} formato="texto" congelado={congelado} onSalvar={editar("un")} coord={cel(5)} onNavegar={nav} alinhar="centro" /></td>
+                            <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={congelado} onSalvar={editar("custoMaterial")} coord={cel(6)} onNavegar={nav} /></td>
+                            <td className="right"><CelulaEditavel valor={it.custoMO} congelado={congelado} onSalvar={editar("custoMO")} coord={cel(7)} onNavegar={nav} /></td>
+                            <td className="right"><CelulaEditavel valor={it.totalMaterial} congelado={congelado} onSalvar={editar("totalMaterial")} coord={cel(8)} onNavegar={nav} /></td>
+                            <td className="right"><CelulaEditavel valor={it.totalMO} congelado={congelado} onSalvar={editar("totalMO")} coord={cel(9)} onNavegar={nav} /></td>
+                            <td className="right forte"><CelulaEditavel valor={it.custo} congelado={congelado} onSalvar={editar("custo")} coord={cel(10)} onNavegar={nav} /></td>
                             <td className="mono right col-vendido dim">{it.vendido?.custo != null ? fmtBRL(it.vendido.custo) : "—"}</td>
                             <td className="mono right col-vendido">
                               {(() => {
@@ -6320,7 +6415,18 @@ export default function App() {
            horizontal dentro do proprio grupo, com Item e Descricao
            ancorados na esquerda — sem isso a pessoa rola e perde de vista
            de qual item e o numero que esta olhando. */
-        .exec-scroll { overflow-x: auto; border-top: 1px solid var(--border-soft); }
+        /* max-height é o que faz o cabeçalho grudar.
+           O thead já tinha position: sticky; top: 0, mas se ancorava num
+           contêiner que nunca rolava verticalmente — na prática não colava
+           em nada. Com altura máxima a tabela passa a rolar dentro da caixa
+           e o cabeçalho fica à vista, que é o que resolve o "não sei qual
+           coluna estou lendo" numa verba com trinta itens. */
+        .exec-scroll { overflow: auto; max-height: 70vh; border-top: 1px solid var(--border-soft); }
+        /* Zebra e realce da linha sob o cursor: ler a linha inteira sem
+           perder a coluna é metade do trabalho numa tabela de 15 colunas. */
+        .exec-itens tbody tr:nth-child(even) > td { background: #FAF9F6; }
+        .exec-itens tbody tr:hover > td { background: #F0F4FA; }
+        .exec-itens tbody tr:focus-within > td { background: #E8F0FB; }
         /* table-layout: fixed é o que mantém as colunas alinhadas entre
            os grupos. Sem ele o navegador dimensiona cada tabela pelo
            conteúdo dela, e como cada verba é uma tabela separada, cada
@@ -6330,7 +6436,14 @@ export default function App() {
         .exec-itens { font-size: 11px; width: 100%; min-width: 1080px; border-top: none; table-layout: fixed; }
         .exec-itens th, .exec-itens td { padding: 6px 7px; }
         /* texto sem espaço (URL, código longo) quebra em vez de esticar */
-        .exec-itens td { overflow-wrap: anywhere; word-break: break-word; vertical-align: middle; }
+        /* Número não quebra. A regra antiga valia pra TODA célula, e numa
+           coluna de 78px partia "R$ 1.234,56" em duas linhas. tabular-nums
+           dá largura fixa a cada dígito, então as colunas de valor alinham
+           verticalmente como no Excel. */
+        .exec-itens td { white-space: nowrap; vertical-align: middle; font-variant-numeric: tabular-nums; }
+        /* Só a descrição e a especificação quebram — é onde há texto longo. */
+        .exec-itens td:nth-child(2), .exec-itens td:nth-child(3),
+        .exec-itens td:nth-child(4), .exec-itens td:nth-child(5) { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 
         /* Altura de linha constante: o texto corta em N linhas e o resto
            vai pro painel do "i". Sem isso uma especificação longa fazia
@@ -6351,7 +6464,7 @@ export default function App() {
         .detalhe-texto { width: 100%; min-height: 140px; border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; font-size: 12.5px; line-height: 1.55; color: var(--ink); font-family: inherit; resize: vertical; outline: none; }
         .detalhe-acoes { display: flex; justify-content: flex-end; margin-top: 10px; }
         .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #FCFBF8; }
-        .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 52px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
+        .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 56px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
         .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 4; background: #F7F5F0; }
         /* O cabecalho acompanha a rolagem: editando uma linha la
            embaixo, sem isso nao da pra saber que coluna e qual. */
@@ -6436,7 +6549,12 @@ export default function App() {
         .celula-valor:hover { border-color: var(--border); background: #fff; }
         .celula-valor.travada { cursor: default; color: var(--ink-3); }
         .celula-valor.travada:hover { border-color: transparent; background: transparent; }
-        .celula-input { width: 100%; border: 1px solid var(--blue); border-radius: 5px; padding: 2px 5px; font-size: 11.5px; text-align: right; outline: none; background: #fff; font-family: 'JetBrains Mono', monospace; }
+        .celula-input { width: 100%; border: 1px solid var(--blue); border-radius: 5px; padding: 2px 5px; font-size: 11.5px; text-align: right; outline: none; background: #fff; font-family: 'JetBrains Mono', monospace; box-shadow: 0 0 0 2px var(--blue-bg); }
+        /* .celula-valor alinhava TUDO à direita, inclusive Qtd. e Un., que
+           o <td className="center"> pedia centralizadas — o botão de 100% de
+           largura vencia o alinhamento da célula. */
+        .celula-valor.centro, .celula-input.centro { text-align: center; }
+        .celula-valor.texto { font-family: inherit; }
         .btn-add-item { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0 10px 34px; background: transparent; border: 1px dashed var(--border); border-radius: 7px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-3); cursor: pointer; font-family: inherit; }
         .btn-add-item:hover { color: var(--blue); border-color: var(--blue); }
 
