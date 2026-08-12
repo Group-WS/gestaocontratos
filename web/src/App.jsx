@@ -2520,7 +2520,7 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   );
 }
 
-function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB }) {
+function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo }) {
   const [filtro, setFiltro] = useState("todos");
   const [selecionados, setSelecionados] = useState(() => new Set());
   // Tudo começa recolhido: com 185 linhas, abrir sozinho enterra a visão
@@ -2633,7 +2633,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
                     return (
                       <ConfRow key={`${l.codigo}-${i}`} l={l} m={meta[l.status]}
                         colALabel={colALabel} colBLabel={colBLabel} vazioALabel={vazioALabel} vazioBLabel={vazioBLabel}
-                        aprovado={aprovacoes ? aprovacoes.has(k) : false}
+                        aprovado={aprovacoes ? aprovacoes.has(`${escopo}:${k}`) : false}
                         onAprovar={() => onAprovarLinha && onAprovarLinha(l.catNum, l.codigo)}
                         onEditar={(patch) => onEditarB && onEditarB(l.catNum, l.codigo, patch)}
                         selecionavel={l.status !== "ok" && !!onAprovarLinha}
@@ -2818,9 +2818,11 @@ function ResumoCMV({ linhas, categorias }) {
 // DEPARA CONTRATO × PLANILHA — junta as duas fontes numa versão única.
 // Branco = OK, vermelho = diferente entre as duas, amarelo = só existe
 // numa. Precisa ser aprovado (revisão explícita) pra liberar o Executivo.
-function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEditar }) {
-  const [aprovacoes, setAprovacoes] = useState(() => new Set());
-  const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
+function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, onAprovarLinha, podeEditar }) {
+  // Vem da obra e é gravado no banco. Antes era useState local: as
+  // aprovações valiam só na sessão e sumiam no F5.
+  const aprovacoes = obra.aprovacoes || new Set();
+  const toggleAprovacao = (catNum, codigo) => onAprovarLinha("depara", catNum, codigo);
 
   const { linhasBrutas, deslocamento } = useMemo(() => {
     const { linhas, deslocamento } = conferirObra(obra.categorias);
@@ -2843,7 +2845,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
   // (o motivo/badge "Aprovado" continua aparecendo pra diferenciar de
   // um match automático).
   const linhas = useMemo(() => linhasBrutas.map((l) => (
-    aprovacoes.has(`${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
+    aprovacoes.has(`depara:${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
   )), [linhasBrutas, aprovacoes]);
 
   if (linhas.length === 0) {
@@ -2917,16 +2919,18 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, podeEdi
         colALabel="Contrato" colBLabel="Planilha"
         vazioALabel="não está no contrato" vazioBLabel="não está na planilha"
         vazioTitulo="Nada pra conferir ainda" vazioSub=""
-        aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao}
+        aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao} escopo="depara"
         onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilha(catNum, codigo, patch))} />
     </>
   );
 }
 
 // CONF. EXECUTIVO — depara Vendido Planilha × Planilha Executivo.
-function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, podeEditar }) {
-  const [aprovacoes, setAprovacoes] = useState(() => new Set());
-  const toggleAprovacao = (catNum, codigo) => setAprovacoes((prev) => { const n = new Set(prev); n.add(`${catNum}:${codigo}`); return n; });
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar }) {
+  // Vem da obra e é gravado no banco. Antes era useState local: as
+  // aprovações valiam só na sessão e sumiam no F5.
+  const aprovacoes = obra.aprovacoes || new Set();
+  const toggleAprovacao = (catNum, codigo) => onAprovarLinha("exec", catNum, codigo);
 
   const linhasBrutas = useMemo(() => conferirExecutivoObra(obra.categorias).linhas.map((item) => {
     const desc = item.planilhaExecutivo?.desc || item.planilhaVendido?.desc;
@@ -2962,7 +2966,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, podeEditar 
   );
 
   const linhas = useMemo(() => linhasBrutas.map((l) => (
-    aprovacoes.has(`${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
+    aprovacoes.has(`exec:${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
   )), [linhasBrutas, aprovacoes]);
 
   // Um alerta por verba, não um por item. Os textos são idênticos entre
@@ -2982,7 +2986,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, podeEditar 
       vazioALabel="não está na planilha vendida" vazioBLabel="não está na planilha executivo"
       vazioTitulo="Nada pra conferir ainda"
       vazioSub="Importe a Vendido Planilha e a Planilha Executivo desta obra — o depara aparece aqui automaticamente."
-      aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao}
+      aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao} escopo="exec"
       onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
   );
 }
@@ -5650,6 +5654,26 @@ export default function App() {
     }));
   }
 
+  /* Aprovar uma linha de conferência — agora na obra, não no componente.
+
+     As duas telas de conferência guardavam as aprovações num useState
+     local. Elas funcionavam na sessão e sumiam no F5: o trabalho de
+     conferir cento e oitenta linhas se perdia inteiro, e no Depara isso
+     era pior, porque é a aprovação das linhas que libera o CMV.
+
+     A chave leva o ESCOPO junto. As duas telas comparam documentos
+     diferentes e podem ter o mesmo par verba+código: sem o prefixo,
+     aprovar uma linha no Depara marcaria sozinha a linha correspondente na
+     Conferência do Executivo, que é uma conferência que ninguém fez. */
+  function aprovarLinhaConferencia(escopo, catNum, codigo) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const atual = new Set(o.aprovacoes || []);
+      atual.add(`${escopo}:${catNum}:${codigo}`);
+      return { ...o, aprovacoes: atual };
+    }));
+  }
+
   function limparImportacao(campos) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
@@ -6997,9 +7021,9 @@ export default function App() {
           {tab === null && grupo !== "dashboard" && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
-          {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} podeEditar={edicao.minha} />}
+          {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} />}
           {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
-          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "assinatura_cliente" && (
             <AssinaturaClienteView obra={obra} onRegistrar={registrarAssinaturaCliente}
               onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
