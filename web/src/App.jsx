@@ -3886,45 +3886,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 }
 
 
-/* Barra de conclusão da etapa.
-
-   Aparece nas etapas que não têm ato próprio. Depara, Aprovação do
-   Cliente e Planilha de Compra não usam isto: liberar o CMV, registrar a
-   assinatura e liberar as compras JÁ são a conclusão delas, e já gravam
-   quem e quando. Dois botões pro mesmo fato criariam duas verdades. */
-function ConclusaoEtapa({ id, obra, onConcluir, onReabrir, podeEditar, oQueConclui }) {
-  const feita = etapaConcluida(id, obra);
-  const { por, em } = quemConcluiu(id, obra);
-  const congelado = obra.comprasLiberadas || !podeEditar;
-
-  if (feita) {
-    return (
-      <div className="etapa-concluida">
-        <CheckCircle2 size={15} />
-        <span>
-          Etapa concluída{por && <> por <b>{por}</b></>}
-          {em && <> em {new Date(em).toLocaleDateString("pt-BR")}</>}.
-        </span>
-        {!congelado && (
-          <button className="btn-reabrir-etapa" onClick={() => onReabrir(id)}>
-            <RotateCcw size={12} /> Reabrir etapa
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="etapa-pendente">
-      <span className="etapa-pendente-texto">
-        {oQueConclui || "Ao concluir, esta etapa fica marcada como cumprida na esteira e libera a próxima."}
-      </span>
-      <button className="btn-liberar" disabled={congelado} onClick={() => onConcluir(id)}>
-        <CheckCircle2 size={14} /> Concluir etapa
-      </button>
-    </div>
-  );
-}
 
 /* APROVAÇÃO DO CLIENTE — o portão entre conferir e comprar.
 
@@ -4077,6 +4038,16 @@ const ETAPAS_EXECUCAO = [
 ];
 
 const ETAPAS_POR_GRUPO = { planejamento: ETAPAS_PLANEJAMENTO, execucao: ETAPAS_EXECUCAO };
+
+/* Etapas que usam o botão genérico de concluir.
+
+   Fora dela ficam Depara, Aprovação do Cliente e Planilha de Compra: cada
+   uma já tem seu ato próprio (liberar o CMV, registrar a assinatura,
+   liberar as compras), que grava quem e quando. Um segundo botão criaria
+   duas verdades sobre o mesmo fato. */
+const ETAPAS_COM_CONCLUSAO = new Set([
+  "vendido_contrato", "vendido_planilha", "executivo", "executivo_conferencia", "compras", "contratos",
+]);
 
 /* Uma etapa esta concluida quando alguem disse que esta.
 
@@ -4982,41 +4953,70 @@ function ArquivoView({ obras, onReabrir, salvando }) {
 //
 // A trava expira sozinha por inatividade. Sem esse prazo, alguém que
 // fechasse o navegador no meio deixaria a obra travada para sempre.
-function BarraEdicao({ edicao, salvando, carregando, onHabilitar, onFinalizar }) {
+/* Uma barra só, no topo, com as duas decisões da etapa.
+
+   Antes eram dois blocos distantes: o estado da edição em cima e o
+   "Concluir etapa" lá no fim da página, depois de trinta e duas verbas —
+   quem quisesse avançar tinha que rolar até o fim pra descobrir que o
+   botão existia. E são a mesma pergunta: "posso mexer?" e "já terminei?".
+
+   Minimalista de propósito: o estado é um ponto colorido e uma palavra;
+   as ações são texto. O único botão cheio é o de avançar, porque é a
+   única coisa aqui que empurra a obra pra frente. */
+function BarraEtapa({ edicao, salvando, carregando, onHabilitar, onFinalizar,
+                      etapaId, obra, onConcluir, onReabrirEtapa }) {
+  const mostraEtapa = !!etapaId && !!onConcluir;
+  const feita = mostraEtapa && etapaConcluida(etapaId, obra);
+  const { por: porQuem, em } = mostraEtapa ? quemConcluiu(etapaId, obra) : {};
+  const congelado = obra.comprasLiberadas || !edicao.minha;
+
+  let estado;
   if (carregando) {
-    return <div className="barra-edicao"><span className="dim">Carregando o que já foi salvo desta obra…</span></div>;
-  }
-
-  if (edicao.por) {
+    estado = <span className="be-estado"><span className="be-ponto carregando" /> Carregando…</span>;
+  } else if (edicao.por) {
     const desde = edicao.desde ? new Date(edicao.desde).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
-    return (
-      <div className="barra-edicao travada">
-        <Lock size={14} />
-        <span><b>{edicao.por}</b> está editando{desde ? ` desde ${desde}` : ""} — você está vendo, mas não pode alterar.</span>
-        <span className="barra-edicao-nota">Libera sozinho após {MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração.</span>
-      </div>
+    estado = (
+      <span className="be-estado" title={`Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração`}>
+        <Lock size={13} /> <b>{edicao.por}</b> está editando{desde ? ` desde ${desde}` : ""}
+      </span>
     );
-  }
-
-  if (edicao.minha) {
-    return (
-      <div className="barra-edicao editando">
-        <ShieldCheck size={14} />
-        <span>Você está editando esta obra. As alterações são salvas sozinhas.</span>
-        <span className="barra-edicao-status">
-          {salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo ✓" : ""}
-        </span>
-        <button className="btn-finalizar" onClick={onFinalizar} disabled={salvando === "salvando"}>
-          Finalizar e liberar
-        </button>
-      </div>
+  } else if (edicao.minha) {
+    estado = (
+      <span className="be-estado">
+        <span className="be-ponto editando" /> Editando
+        <span className="be-salvo">{salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo" : ""}</span>
+        <button className="be-link" onClick={onFinalizar} disabled={salvando === "salvando"}>finalizar</button>
+      </span>
+    );
+  } else {
+    estado = (
+      <span className="be-estado">
+        <span className="be-ponto" /> Modo leitura
+        <button className="be-link" onClick={onHabilitar}>habilitar edição</button>
+      </span>
     );
   }
 
   return (
-    <div className="barra-edicao">
-      <span className="dim">Modo leitura — habilite a edição para alterar esta obra.</span>
-      <button className="btn-habilitar" onClick={onHabilitar}>Habilitar edição</button>
+    <div className={`barra-etapa ${feita ? "feita" : ""}`}>
+      {estado}
+      <div className="be-dir">
+        {mostraEtapa && (feita ? (
+          <>
+            <span className="be-feita">
+              <CheckCircle2 size={14} /> Concluída
+              {porQuem && <> por <b>{porQuem}</b></>}
+              {em && <> · {new Date(em).toLocaleDateString("pt-BR")}</>}
+            </span>
+            {!congelado && <button className="be-link" onClick={() => onReabrirEtapa(etapaId)}>reabrir</button>}
+          </>
+        ) : (
+          <button className="be-avancar" disabled={congelado} onClick={() => onConcluir(etapaId)}
+            title="Marca esta etapa como cumprida e libera a próxima">
+            <Play size={13} /> Concluir etapa
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -5846,6 +5846,28 @@ export default function App() {
         /* ESTEIRA — dois niveis.
            O primeiro separa por momento (planejar / executar), o segundo
            mostra a fila daquele momento com o cumprido marcado. */
+        /* BARRA DA ETAPA — estado da edição + avanço, numa linha só.
+           Minimalista: o estado é um ponto e uma palavra, as ações
+           secundárias são texto. O único botão cheio é o de avançar,
+           porque é a única coisa aqui que empurra a obra pra frente. */
+        .barra-etapa { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 14px; margin-bottom: 16px; background: #fff; border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; }
+        .barra-etapa.feita { background: var(--green-bg); border-color: var(--green); }
+        .be-estado { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-2); min-width: 0; }
+        .be-estado b { color: var(--ink-1); font-weight: 600; }
+        .be-ponto { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex-shrink: 0; }
+        .be-ponto.editando { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
+        .be-ponto.carregando { background: var(--amber); }
+        .be-salvo { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+        .be-link { font: inherit; font-size: 12px; color: var(--blue); background: transparent; border: none; padding: 0 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+        .be-link:hover { color: var(--ink-1); }
+        .be-link:disabled { color: var(--ink-3); cursor: default; text-decoration: none; }
+        .be-dir { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
+        .be-feita { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+        .be-feita svg { color: var(--green); }
+        .be-avancar { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--blue); border: none; border-radius: 8px; padding: 7px 13px; cursor: pointer; }
+        .be-avancar:hover:not(:disabled) { filter: brightness(1.08); }
+        .be-avancar:disabled { background: var(--border); color: var(--ink-3); cursor: default; }
+
         .nav-obra { margin-bottom: 18px; }
         /* Respiro entre a navegação e o conteúdo dela. Coladas, a fila de
            etapas parecia parte do painel de baixo. */
@@ -6400,16 +6422,6 @@ export default function App() {
         .sugestao-data { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
 
         /* Trava de edição — uma obra por vez, uma pessoa por vez */
-        .barra-edicao { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 9px 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 20px; }
-        .barra-edicao.editando { background: #EAF4EC; border-color: var(--green); color: #2C6B3F; }
-        .barra-edicao.travada { background: var(--amber-bg, #FEF3E2); border-color: var(--amber, #E8B04B); color: var(--amber, #B7791F); }
-        .barra-edicao-status { margin-left: auto; font-size: 11px; opacity: 0.75; font-family: 'JetBrains Mono', monospace; }
-        .barra-edicao-nota { margin-left: auto; font-size: 11px; opacity: 0.8; }
-        .btn-habilitar, .btn-finalizar { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 6px 13px; cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0; }
-        .btn-habilitar { margin-left: auto; background: var(--blue); color: #fff; border: 1px solid var(--blue); }
-        .btn-finalizar { background: #fff; color: #2C6B3F; border: 1px solid var(--green); }
-        .btn-habilitar:hover, .btn-finalizar:hover { filter: brightness(1.05); }
-        .btn-finalizar:disabled { opacity: 0.55; cursor: default; }
 
         .caderno-info { flex: 1; min-width: 0; }
         .caderno-nome { font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -6496,9 +6508,11 @@ export default function App() {
           </div>
           <div className="obra-meta">{obra.endereco} · {obra.cliente}</div>
 
-          <BarraEdicao
+          <BarraEtapa
             edicao={edicao} salvando={salvando} carregando={carregandoDados}
-            onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
+            onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao}
+            etapaId={ETAPAS_COM_CONCLUSAO.has(tab) ? tab : null} obra={obra}
+            onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
 
 
           <TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />
@@ -6525,14 +6539,10 @@ export default function App() {
 
           {tab === null && grupo !== "dashboard" && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
-          {tab === "vendido_contrato" && <ConclusaoEtapa id="vendido_contrato" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que o contrato desta obra foi importado e conferido." />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
-          {tab === "vendido_planilha" && <ConclusaoEtapa id="vendido_planilha" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que a planilha do criativo foi importada e conferida." />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} podeEditar={edicao.minha} />}
           {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
-          {tab === "executivo" && <ConclusaoEtapa id="executivo" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que a planilha do executivo está completa e revisada." />}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
-          {tab === "executivo_conferencia" && <ConclusaoEtapa id="executivo_conferencia" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que a conferência do executivo foi feita e os alertas foram tratados." />}
           {tab === "assinatura_cliente" && (
             <AssinaturaClienteView obra={obra} onRegistrar={registrarAssinaturaCliente}
               onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
@@ -6548,9 +6558,7 @@ export default function App() {
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
-          {tab === "compras" && <ConclusaoEtapa id="compras" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que as compras desta obra foram lançadas." />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
-          {tab === "contratos" && <ConclusaoEtapa id="contratos" obra={obra} onConcluir={concluirEtapa} onReabrir={reabrirEtapa} podeEditar={edicao.minha} oQueConclui="Ao concluir, você confirma que as contratações desta obra foram fechadas." />}
           </>
           )}
         </main>
