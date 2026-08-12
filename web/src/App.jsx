@@ -3761,7 +3761,7 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         const cel = (col) => `${i}:${col}`;
                         const nav = irParaCelula;
                         const linha = (
-                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""} ${it.substitui || it.substituiDesc ? "linha-substituta" : ""} ${buscandoEm?.verba === c.num && buscandoEm?.substituindo === i ? "linha-saindo" : ""}`}>
+                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""} ${it.substitui || it.substituiDesc ? "linha-substituta" : ""} ${it.substituidoPorDesc ? "linha-saiu-por-troca" : ""} ${buscandoEm?.verba === c.num && buscandoEm?.substituindo === i ? "linha-saindo" : ""}`}>
                             {/* O "+" mora aqui, na coluna congelada.
                                 Ele estava na ÚLTIMA das 15 colunas, e a tabela
                                 rola na horizontal — pra achar o botão era
@@ -3794,24 +3794,35 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                               <CelulaTexto texto={it.desc} congelado={congelado} coord={cel(0)} onNavegar={nav}
                                 onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
                                 onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
-                              {it.excluido && !it.substituidoPorDesc && <span className="tag-excluido">excluído do executivo — não entra no custo</span>}
+                              {it.excluido && !it.substituidoPorDesc && <span className="tag-excluido">removido</span>}
                               {/* O par da substituição. Cada lado aponta pro outro,
                                   então a linha se explica sem precisar procurar. */}
+                              {/* O par se explica pela barra e pelo recuo. As
+                                  etiquetas ficam curtas: repetir a descrição
+                                  inteira do outro lado dobrava o texto da linha
+                                  justamente onde já havia texto demais. */}
                               {it.substituidoPorDesc && (
-                                <span className="tag-trocado" title="Este item foi substituído — a linha logo abaixo é a que entrou no lugar">
-                                  <ArrowDown size={10} /> substituído por <b>{it.substituidoPor || it.substituidoPorDesc}</b>
+                                <span className="tag-troca" title={`Substituído por: ${it.substituidoPorDesc}`}>
+                                  <ArrowDown size={10} /> trocado
                                 </span>
                               )}
                               {it.substituiDesc && (
-                                <span className="tag-substitui" title={`Entrou no lugar de: ${it.substituiDesc}`}>
-                                  <CornerDownRight size={10} /> no lugar de <b>{it.substitui || it.substituiDesc}</b>
+                                <span className="tag-troca" title={`Entrou no lugar de: ${it.substituiDesc}`}>
+                                  <CornerDownRight size={10} /> entrou no lugar
                                 </span>
                               )}
                               {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
-                              {it.alteradoExecutivo && <span className="tag-alterado" title="Valor alterado aqui, não veio assim do arquivo">alterado no executivo</span>}
+                              {/* "alterado no executivo" saiu daqui: a barra amarela
+                                  na lateral da linha já diz isso, e a etiqueta
+                                  aparecia em quase toda linha — repetida assim, ela
+                                  parava de informar e só ocupava espaço. */}
                               {it.precoNaoRevisado && <span className="tag-preco"><AlertTriangle size={10} /> preço não revisado</span>}
+                              {/* Só no hover: em trinta linhas seguidas, trinta
+                                  links iguais viram textura, não ação. */}
                               {it.precoNaoRevisado && !obra.comprasLiberadas && (
-                                <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
+                                <span className="so-no-hover">
+                                  <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
+                                </span>
                               )}
                             </td>
                             <td className="dim">
@@ -6568,15 +6579,47 @@ export default function App() {
         .saldo-mov-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-2); }
 
         /* Item excluído: some do custo, não some da vista */
+        /* Fundo cheio só fora do Executivo (Planilha de Compra), onde a
+           exclusão é rara. No Executivo quem marca é a barra lateral. */
         .linha-excluida { background: var(--red-bg, #FDEEEC); }
+        .exec-itens tr.linha-excluida { background: transparent; }
         .linha-excluida td { color: var(--ink-3); text-decoration: line-through; }
         .linha-excluida td:nth-child(2) { text-decoration: none; }
-        .exec-itens tr.linha-excluida td:nth-child(1), .exec-itens tr.linha-excluida td:nth-child(2) { background: var(--red-bg, #FDEEEC); }
-        .tag-excluido { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--red); background: #fff; border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; text-decoration: none; display: inline-block; }
+        .tag-excluido { margin-left: 8px; font-size: 9.5px; font-weight: 600; color: var(--red); text-transform: uppercase; letter-spacing: .04em; }
         .btn-linha-excluir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
         .linha-acoes { display: inline-flex; gap: 2px; align-items: center; }
         .exec-itens td.col-item { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 44px; }
         .col-item-cod { flex-shrink: 0; }
+        /* ESTADO DA LINHA — uma barra na lateral, não a linha inteira pintada.
+
+           Antes cada estado pintava a linha toda: amarelo pra alterado,
+           vermelho pra excluído. Como quase toda linha do executivo é
+           alterada, metade da tabela ficava amarela — e cor que cobre
+           metade da tela deixa de ser aviso, vira papel de parede. Junto
+           com as etiquetas repetindo a mesma coisa, sobrava ruído e faltava
+           hierarquia.
+
+           Agora a barra diz o estado e o fundo fica limpo. Sobra contraste
+           pro que realmente pede ação. */
+        .exec-itens tr.linha-alterada > td:nth-child(2) { box-shadow: inset 3px 0 0 #E8B04B; }
+        .exec-itens tr.linha-excluida > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--red); }
+        .exec-itens tr.linha-excluida > td { color: var(--ink-3); }
+        .exec-itens tr.linha-excluida td:nth-child(2) { text-decoration: none; }
+        .exec-itens tr.linha-excluida .celula-corte { text-decoration: line-through; }
+
+        /* O PAR DA SUBSTITUIÇÃO lê como um bloco só.
+
+           As duas linhas dividem a mesma barra indigo — a de cima abre o
+           par, a de baixo fecha e vem recuada. É a "variação dentro" que a
+           Priscila pediu: o olho junta as duas antes de ler qualquer texto. */
+        .exec-itens tr.linha-saiu-por-troca > td { background: #FBFAFF; }
+        .exec-itens tr.linha-saiu-por-troca > td:nth-child(2) { box-shadow: inset 3px 0 0 #6366F1; }
+        .exec-itens tr.linha-substituta > td { background: #F5F4FF; }
+        .exec-itens tr.linha-substituta > td:nth-child(2) { box-shadow: inset 3px 0 0 #6366F1; padding-left: 22px; }
+
+        /* Só uma etiqueta continua colorida: a que pede ação. */
+        .so-no-hover { opacity: 0; transition: opacity .12s; }
+        .exec-itens tr:hover .so-no-hover, .so-no-hover:focus-within { opacity: 1; }
         .col-item-acoes { display: inline-flex; gap: 1px; }
 
         /* Linha que esta saindo: fica vermelha JA, enquanto a busca esta
@@ -6600,11 +6643,9 @@ export default function App() {
         /* O par da substituição: o que saiu aponta pra baixo, o que entrou
            aponta pra ele. Mesma cor nos dois lados, pra o olho juntar as
            duas linhas sem precisar ler. */
-        .tag-trocado, .tag-substitui { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 7px; white-space: nowrap; background: #EEF2FF; color: #3730A3; }
-        .tag-trocado b, .tag-substitui b { font-weight: 700; }
+        .tag-troca { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 7px; white-space: nowrap; background: #EEF2FF; color: #4338CA; }
         /* A linha que entrou fica levemente recuada: lê-se como filha da
            que saiu, que é a "variação dentro" que a Priscila descreveu. */
-        .exec-itens tr.linha-substituta td:nth-child(2) { padding-left: 18px; box-shadow: inset 3px 0 0 #6366F1; }
         /* Discreto até o mouse passar: 32 linhas com um + aceso viram ruído. */
         .exec-itens td.col-item .btn-linha-inserir { opacity: 0; transition: opacity .12s; }
         .exec-itens tr:hover td.col-item .btn-linha-inserir,
@@ -6737,7 +6778,6 @@ export default function App() {
         /* Marca a verba com alerta mesmo com o grupo fechado */
         .vend-alerta-mark { display: inline-flex; align-items: center; color: #B54708; flex-shrink: 0; }
         .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
-        .exec-itens tr.linha-alterada td:nth-child(1), .exec-itens tr.linha-alterada td:nth-child(2) { background: #FFF2CC; }
         .exec-itens th { line-height: 1.25; }
         .exec-itens td.forte { color: var(--ink); font-weight: 600; }
         .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
@@ -6822,7 +6862,6 @@ export default function App() {
 
         /* Mesmo amarelo que a planilha usa na mão pra marcar o que o
            executivo mexeu — só que agora o sistema marca sozinho. */
-        .linha-alterada { background: #FFF2CC; }
         .tag-alterado { margin-left: 8px; font-size: 10px; font-weight: 600; color: #8A6D1F; background: #fff; border: 1px solid #E8D08B; border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
         .tag-preco { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 10px; font-weight: 600; color: var(--red); background: #fff; border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
 
