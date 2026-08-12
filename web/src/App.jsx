@@ -3760,8 +3760,8 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                         // visual da coluna. É o que Tab e Enter seguem.
                         const cel = (col) => `${i}:${col}`;
                         const nav = irParaCelula;
-                        return (
-                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""} ${it.substitui || it.substituiDesc ? "linha-substituta" : ""}`}>
+                        const linha = (
+                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""} ${it.substitui || it.substituiDesc ? "linha-substituta" : ""} ${buscandoEm?.verba === c.num && buscandoEm?.substituindo === i ? "linha-saindo" : ""}`}>
                             {/* O "+" mora aqui, na coluna congelada.
                                 Ele estava na ÚLTIMA das 15 colunas, e a tabela
                                 rola na horizontal — pra achar o botão era
@@ -3862,18 +3862,54 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
                             </td>
                           </tr>
                         );
+                        /* A busca abre AQUI, como linha da tabela.
+
+                           Antes ela aparecia no rodapé, depois de trinta
+                           linhas: clicava-se no item de cima e a tela pedia
+                           pra procurar lá embaixo, sem nada indicando de qual
+                           item se tratava. Abrindo no lugar, a linha que sai
+                           fica logo acima, vermelha, e a que entra nasce
+                           exatamente onde vai ficar. */
+                        const buscaAqui = buscandoEm?.verba === c.num && buscandoEm?.depois === i;
+                        if (!buscaAqui) return linha;
+                        return (
+                          <React.Fragment key={`${it.codigo || i}-busca`}>
+                            {linha}
+                            <tr className="linha-busca">
+                              <td colSpan={15}>
+                                <div className="busca-na-linha">
+                                  <CornerDownRight size={14} className="dim" />
+                                  <div className="busca-na-linha-campo">
+                                    <div className="busca-na-linha-titulo">
+                                      {buscandoEm.substituindo != null
+                                        ? <>Substituindo <b>{it.desc}</b> — escolha o que entra no lugar</>
+                                        : <>Novo item abaixo de <b>{it.codigo || it.desc}</b></>}
+                                    </div>
+                                    <BuscaInsumo
+                                      onCancelar={() => setBuscandoEm(null)}
+                                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, buscandoEm.depois, buscandoEm.substituindo ?? null); setBuscandoEm(null); }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        );
                       })}
                     </tbody>
                   </table>
                   </div>
                 )}
+                {/* Só o "no fim da verba" abre aqui embaixo. Quem clicou no
+                    + ou no ⇄ de uma linha vê a busca dentro da tabela, na
+                    posição em que o item vai entrar. */}
                 {aberto && !congelado && (
-                  buscandoEm?.verba === c.num ? (
+                  buscandoEm?.verba === c.num && buscandoEm?.depois == null ? (
                     <BuscaInsumo
                       onCancelar={() => setBuscandoEm(null)}
-                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, buscandoEm.depois, buscandoEm.substituindo ?? null); setBuscandoEm(null); }}
+                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, null, null); setBuscandoEm(null); }}
                     />
-                  ) : (
+                  ) : buscandoEm?.verba === c.num ? null : (
                     <button className="btn-add-item" onClick={() => setBuscandoEm({ verba: c.num, depois: null })}>
                       <Plus size={12} /> Adicionar item no fim desta verba
                     </button>
@@ -6542,6 +6578,22 @@ export default function App() {
         .exec-itens td.col-item { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 44px; }
         .col-item-cod { flex-shrink: 0; }
         .col-item-acoes { display: inline-flex; gap: 1px; }
+
+        /* Linha que esta saindo: fica vermelha JA, enquanto a busca esta
+           aberta. Antes so mudava depois de escolher o substituto, entao
+           durante a escolha nada na tela dizia qual item ia sair. */
+        .exec-itens tr.linha-saindo > td { background: var(--red-bg, #FDEEEC); }
+        .exec-itens tr.linha-saindo td:nth-child(2) { text-decoration: line-through; color: var(--ink-3); }
+
+        /* A busca aberta dentro da tabela, no lugar em que o item vai nascer. */
+        .exec-itens tr.linha-busca > td { background: #EEF2FF; padding: 10px 12px 12px; white-space: normal; position: static; overflow: visible; }
+        /* A regra sticky das duas primeiras colunas nao vale nesta linha:
+           ela tem uma celula so, que atravessa a tabela inteira. */
+        .exec-itens tr.linha-busca > td:nth-child(1) { position: static; left: auto; z-index: auto; }
+        .busca-na-linha { display: flex; align-items: flex-start; gap: 8px; padding-left: 22px; }
+        .busca-na-linha-campo { flex: 1; min-width: 0; max-width: 640px; }
+        .busca-na-linha-titulo { font-size: 11.5px; color: #3730A3; margin-bottom: 6px; }
+        .busca-na-linha-titulo b { font-weight: 700; }
         .btn-linha-substituir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
         .btn-linha-substituir:hover { color: #B54708; border-color: #F79009; background: #FFF4E5; }
 
