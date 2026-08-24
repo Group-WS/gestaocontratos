@@ -4,15 +4,16 @@
 -- Reaplicavel: rodar de novo nao quebra nada.
 -- ============================================================
 
--- Hoje o PDF do contrato e lido, os campos sao extraidos e o arquivo e
--- descartado. So o RESULTADO fica gravado.
+-- Deposito dos arquivos que a equipe anexa na obra.
 --
--- O problema aparece toda vez que o leitor melhora: o conserto vale so pra
--- importacoes novas, e a unica saida e a pessoa achar o arquivo de novo e
--- subir. Nesta semana isso aconteceu tres vezes com o mesmo contrato.
+-- Em uso HOJE por: os tres cadernos do Executivo e o documento assinado
+-- pelo cliente. Antes deste bucket o app guardava so o nome do arquivo e
+-- um endereco "blob:", que o navegador apaga ao fechar a aba — na tela
+-- parecia anexado, e depois do F5 o "Baixar" apontava pro nada. No
+-- documento assinado era pior: ele e a prova de que o cliente aprovou a
+-- compra, e a prova nunca chegou a existir.
 --
--- Guardando o arquivo, o app passa a saber que o leitor mudou desde a
--- ultima leitura e oferece reprocessar num clique — sem caçar arquivo.
+-- Enquanto este SQL nao rodar, anexar da erro dizendo exatamente isso.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'obra-arquivos',
@@ -45,17 +46,18 @@ drop policy if exists "time apaga arquivos da obra" on storage.objects;
 create policy "time apaga arquivos da obra" on storage.objects
   for delete to authenticated using (bucket_id = 'obra-arquivos');
 
--- Onde cada arquivo da obra esta guardado, e com qual versao do leitor ele
--- foi processado.
+-- AINDA NAO USADA pelo app. Fica pronta aqui pro passo seguinte: guardar
+-- tambem os arquivos de ORIGEM (contrato, planilha, executivo), que hoje
+-- sao lidos e descartados.
 --
--- Formato:
---   { "contrato":  { "caminho": "...", "nome": "...", "versaoLeitor": 3,
---                    "em": "2026-08-12T...", "por": "email" },
---     "planilha":  { ... },
---     "executivo": { ... } }
+-- Hoje o caderno e o documento assinado ja moram em colunas proprias
+-- (`cadernos` e `cliente_assinatura_arq`), no mesmo formato:
+--   { "caminho": "...", "nome": "...", "tamanhoKB": 812,
+--     "em": "2026-08-12T...", "por": "email" }
 --
--- A versao do leitor e o que permite dizer "o leitor mudou desde a sua
--- ultima importacao" sem adivinhar.
+-- Pros arquivos de origem entra mais um campo, `versaoLeitor` — e o que
+-- vai permitir dizer "o leitor mudou desde a sua ultima importacao,
+-- quer reprocessar?" sem a pessoa ter que cacar o arquivo de novo.
 alter table obra_dados add column if not exists arquivos jsonb not null default '{}'::jsonb;
 
 -- Confere o que entrou:

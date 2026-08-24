@@ -13,6 +13,7 @@ import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
+import { subirArquivo, linkParaBaixar, apagarArquivo, anexoRecuperavel } from "./lib/arquivos";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
 // em web/api/), então "/api/..." resolve sozinho — em dev pelo proxy do
@@ -61,6 +62,8 @@ const EAP_CODIGO = [
   { num: "30", nome: "Cortinas e Persianas" },
   { num: "31", nome: "Itens Decorativos" },
   { num: "32", nome: "Execução e Mão de Obra" },
+  { num: "33", nome: "Equipamentos de Lazer" },
+  { num: "34", nome: "Mobiliário Corporativo" },
 ];
 
 
@@ -395,28 +398,58 @@ function itemEstourou(item) {
 }
 
 // Linha de PRODUTO → segue o fluxo de Compras (Sienge)
-function ProdutoRow({ item, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+function ProdutoRow({ item, sugerido, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
   const estourou = itemEstourou(item);
+  const { material, mo, estimado } = parcelasDoItem(item);
+  // Marcado por gente e marcado por sugestão têm que ser distinguíveis na
+  // hora: sugestão que se parece com decisão é sugestão que ninguém revisa.
+  const marcado = item.compraDecidida ? !!item.liberado : sugerido;
   return (
     <tr className={alertas.length ? "row-alert" : estourou ? "row-estouro" : ""}>
+      <td className="center">
+        <button
+          className={`check-compra ${marcado ? (sugerido ? "sugerido" : "confirmado") : ""}`}
+          onClick={onToggleCompra}
+          title={sugerido ? "Sugerido pela verba — clique pra confirmar" : marcado ? "Vai pra Compras" : "Não vai pra Compras"}
+          aria-label="Selecionar para compra">
+          {marcado && <Check size={13} />}
+        </button>
+      </td>
       <td className="mono dim">{item.codigo}</td>
       <td>
         <div className="item-desc">{item.desc}</div>
         <ItemTags item={item} alertas={alertas} />
+        {/* A parcela de mão de obra do MESMO item não é compra: é
+            contrato. Fica visível aqui porque é onde a pessoa está
+            olhando o item — mas quem a movimenta é o módulo Contratos. */}
+        {mo > 0 && (
+          <span className="tag-mo" title="Parcela de mão de obra deste item — segue para Contratos">
+            <Link2 size={10} /> mão de obra {fmtBRL(mo)} → Contratos
+          </span>
+        )}
         {item.contavel && <SiengeMatch sienge={item.sienge} />}
       </td>
       <td className="mono center dim">{item.ambiente}</td>
       <td className="mono center">
         <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? "—"}</span> <span className="unit">{item.un}</span>
       </td>
+      <td className="mono right">
+        {fmtBRL(material)}
+        {estimado && <span className="dim est-tag" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
+      </td>
+      <td className="mono right dim">{mo > 0 ? fmtBRL(mo) : "—"}</td>
       <td className="mono right">{fmtBRL(item.custo)}</td>
       <td className="center">
         {bloqueado ? (
           <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
+        ) : marcado ? (
+          <span className={sugerido ? "pill pill-sug" : "pill pill-ok"}>
+            {sugerido ? "Sugerido — confirmar" : "No plano de compras"}
+          </span>
         ) : (
-          <span className={item.liberado ? "pill pill-ok" : "pill pill-wait"}>{item.liberado ? "Lançado p/ compra" : "Aguardando liberação"}</span>
+          <span className="pill pill-wait">Fora do plano</span>
         )}
       </td>
       <td className="mono center">
@@ -474,6 +507,63 @@ const ehProduto = (it) => it.tipo === "produto";
 const casaTipo = (it, tipoFilter) =>
   tipoFilter === "todos" || (tipoFilter === "produto" ? ehProduto(it) : !ehProduto(it));
 
+/* ============================================================
+   PLANO DE COMPRAS — o que vai ser comprado, e com que dinheiro
+   ------------------------------------------------------------
+   Um item do Executivo não é "produto OU serviço": ele tem até DUAS
+   parcelas, e cada uma segue seu caminho.
+
+     Spot de Sobrepor Loyo Up MR16   material R$ 182 -> Compras
+                                     mão de obra R$ 180 -> Contratos
+
+   O app decidia um destino só, pelo material ser maior que zero. Na
+   planilha da 2519 isso são 88 itens com as duas parcelas: R$ 1,5 mi de
+   mão de obra que nunca chegava em Contratos e ainda inflava o total de
+   Compras. O mesmo dinheiro errado nos dois lados.
+   ============================================================ */
+
+// Quanto do item é material e quanto é mão de obra.
+//
+// A planilha traz as duas colunas. Quando não trouxe (importação por PDF,
+// que perde coluna), o app cai no que sabia antes: produto era tudo
+// material, serviço era tudo mão de obra — e a linha fica marcada como
+// estimada, pra ninguém tratar palpite como número da planilha.
+function parcelasDoItem(it) {
+  const qtd = it.qtdExecutivo ?? it.qtdVendida ?? null;
+  const mat = it.totalMaterial ?? (it.custoMaterial != null && qtd ? it.custoMaterial * qtd : null);
+  const mo = it.totalMO ?? (it.custoMO != null && qtd ? it.custoMO * qtd : null);
+  if (mat == null && mo == null) {
+    return ehProduto(it)
+      ? { material: it.custo || 0, mo: 0, estimado: true }
+      : { material: 0, mo: it.custo || 0, estimado: true };
+  }
+  return { material: mat || 0, mo: mo || 0, estimado: false };
+}
+
+/* Verbas que a equipe normalmente compra.
+
+   Serve pra SUGERIR, nunca pra decidir: a pergunta "precisa comprar
+   isto?" depende do que já existe na obra e do que o cliente levou, e
+   isso nenhuma regra sabe. A sugestão só poupa a marcação óbvia. */
+const VERBAS_DE_COMPRA = new Set([
+  "05", // Instalações Elétricas e Iluminação
+  "11", // Revestimento Cerâmico (material)
+  "13", // Piso Vinílico e Carpete (material)
+  "14", // Papel de Parede
+  "20", // Climatização / Exaustão (material)
+  "24", // Móveis Soltos
+  "27", // Louças, Metais e Equipamentos Especiais
+  "28", // Eletroeletrônico
+  "33", // Equipamentos de Lazer
+  "34", // Mobiliário Corporativo
+]);
+
+// Sugerido = ninguém decidiu ainda, tem parcela de material e a verba é
+// das que se compra. Assim que alguém clica, `compraDecidida` fica de pé
+// e a sugestão sai de cena — inclusive quando a decisão foi "não".
+const sugeridoParaCompra = (it, catNum) =>
+  !it.compraDecidida && !it.ehTitulo && parcelasDoItem(it).material > 0 && VERBAS_DE_COMPRA.has(catNum);
+
 function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter, tipoFilter = "todos" }) {
   const status = categoriaStatus(cat);
   const diff = cat.executivo - cat.vendido;
@@ -518,7 +608,13 @@ function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter, tip
           {filtering && filteredItens.length === 0 ? null : (() => {
             const produtos = filteredItens.filter((it) => it.tipo === "produto");
             const servicos = filteredItens.filter((it) => it.tipo !== "produto");
-            const totalProd = produtos.reduce((a, it) => a + (it.custo || 0), 0);
+            /* Do bloco de produtos, só a parcela de MATERIAL é compra —
+               somar o custo total aqui era contar a mão de obra do item
+               como se fosse mercadoria. A parcela de mão de obra desses
+               mesmos produtos aparece ao lado, porque ela existe e vai
+               pra Contratos; ela só não entra no número da compra. */
+            const totalProd = produtos.reduce((a, it) => a + parcelasDoItem(it).material, 0);
+            const moDosProdutos = produtos.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
             const totalServ = servicos.reduce((a, it) => a + (it.custo || 0), 0);
             return (
             <>
@@ -528,16 +624,22 @@ function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter, tip
                     <ShoppingCart size={14} />
                     <span className="fluxo-titulo">Produtos</span>
                     <span className="fluxo-dest">→ Compras (Sienge)</span>
-                    <span className="fluxo-meta">{produtos.length} {produtos.length === 1 ? "item" : "itens"} · {fmtBRL(totalProd)}</span>
+                    <span className="fluxo-meta">
+                      {produtos.length} {produtos.length === 1 ? "item" : "itens"} · {fmtBRL(totalProd)} de material
+                      {moDosProdutos > 0 && <span className="dim"> · + {fmtBRL(moDosProdutos)} de mão de obra → Contratos</span>}
+                    </span>
                   </div>
                   <table>
                     <thead>
                       <tr>
+                        <th style={{ width: 34 }} className="center" title="Selecionar para compra">Compr.</th>
                         <th style={{ width: 62 }}>Cód.</th>
                         <th>Descrição</th>
                         <th style={{ width: 88 }}>Ambiente</th>
                         <th style={{ width: 84 }} className="center">Qtd. exec.</th>
-                        <th style={{ width: 100 }} className="right">Custo</th>
+                        <th style={{ width: 100 }} className="right">Material</th>
+                        <th style={{ width: 100 }} className="right">Mão de obra</th>
+                        <th style={{ width: 100 }} className="right">Custo total</th>
                         <th style={{ width: 140 }} className="center">Situação de compra</th>
                         <th style={{ width: 90 }} className="center">Qtd. comprada</th>
                         <th style={{ width: 106 }} className="right">Valor comprado</th>
@@ -549,6 +651,16 @@ function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter, tip
                         const idx = cat.itens.indexOf(it);
                         return (
                           <ProdutoRow key={it.codigo} item={it}
+                            sugerido={sugeridoParaCompra(it, cat.num)}
+                            onToggleCompra={() => onItemChange(idx, {
+                              // Clicar inverte o que está na tela. Numa linha
+                              // sugerida — que já aparece marcada — o clique é o
+                              // "não". Aceitar é o botão "Confirmar sugestões"
+                              // lá em cima, que é o caminho comum: a pessoa
+                              // aceita o lote e tira as poucas que não vão.
+                              compraDecidida: true,
+                              liberado: !(it.compraDecidida ? !!it.liberado : sugeridoParaCompra(it, cat.num)),
+                            })}
                             onAprovar={() => onItemChange(idx, { statusEscopo: "aprovado" })}
                             onToggleComprado={() => onItemChange(idx, { comprado: !it.comprado })}
                             onValorComprado={(v) => {
@@ -686,7 +798,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
       <div className="aprovacao-resumo">
         {!temItens
           ? "Importe o Executivo desta obra antes de liberar — sem itens não há o que comprar."
-          : "Ao liberar, esta vira a planilha oficial de compra: Vendido, Depara e Executivo ficam congelados."}
+          : "Ao liberar, este vira o plano oficial de compra: Vendido, Depara e Executivo ficam congelados."}
       </div>
 
       <button className="btn-aprovar" disabled={bloqueado} onClick={() => {
@@ -695,14 +807,32 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
               justificativa: justificativa.trim(), aprovador: aprovador.trim() }
           : null);
       }}>
-        <ShieldCheck size={14} /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar planilha de compra"}
+        <ShieldCheck size={14} /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar plano de compras"}
       </button>
     </div>
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
+
+  // O placar da seleção. Sem ele a pessoa só descobre o tamanho do que
+  // escolheu abrindo verba por verba — e o número que importa não é
+  // quantos itens, é quanto de material vai pra compra.
+  const plano = useMemo(() => {
+    let confirmados = 0, sugestoes = 0, materialNoPlano = 0, moForaDoPlano = 0;
+    obra.categorias.forEach((cat) => (cat.itens || []).forEach((it) => {
+      if (!ehProduto(it) || it.ehTitulo) return;
+      const sug = sugeridoParaCompra(it, cat.num);
+      const marcado = it.compraDecidida ? !!it.liberado : sug;
+      if (!marcado) return;
+      const { material, mo } = parcelasDoItem(it);
+      materialNoPlano += material;
+      moForaDoPlano += mo;
+      if (sug) sugestoes += 1; else confirmados += 1;
+    }));
+    return { confirmados, sugestoes, materialNoPlano, moForaDoPlano };
+  }, [obra]);
 
   // Conta na EAP inteira pra estampar no chip. Saber que são 148 produtos
   // e 43 serviços antes de clicar é o que diz de qual lado começar.
@@ -716,7 +846,7 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
       {obra.comprasLiberadas ? (
         <div className="import-ok liberado-barra">
           <ShieldCheck size={14} />
-          <span>Planilha de Compra liberada — as etapas anteriores estão congeladas.</span>
+          <span>Plano de Compras liberado — as etapas anteriores estão congeladas.</span>
           {/* Toda trava precisa de volta. Sem isso, um clique sem querer
               congela a obra inteira e só se resolve mexendo no banco —
               o que ninguém do time consegue fazer. */}
@@ -737,8 +867,31 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
         <div className="import-bar" style={{ marginBottom: 14 }}>
           <div className="import-info">
             <Lock size={14} />
-            <span>Esta é a planilha que libera compras e contratações. Ao liberar, <b>as etapas anteriores são congeladas</b> e não podem mais ser alteradas.</span>
+            <span>Este é o plano que libera compras e contratações. Ao liberar, <b>as etapas anteriores são congeladas</b> e não podem mais ser alteradas.</span>
           </div>
+        </div>
+      )}
+      {temItens && !obra.comprasLiberadas && (
+        <div className="plano-barra">
+          <div className="plano-num">
+            <div className="plano-valor mono">{fmtBRL(plano.materialNoPlano)}</div>
+            <div className="plano-rotulo">material no plano · {plano.confirmados + plano.sugestoes} {plano.confirmados + plano.sugestoes === 1 ? "item" : "itens"}</div>
+          </div>
+          {plano.moForaDoPlano > 0 && (
+            <div className="plano-num plano-num-mo">
+              <div className="plano-valor mono dim">{fmtBRL(plano.moForaDoPlano)}</div>
+              <div className="plano-rotulo">de mão de obra nesses itens — vai pra Contratos, não pra compra</div>
+            </div>
+          )}
+          {plano.sugestoes > 0 && podeEditar && (
+            <div className="plano-sug">
+              <Sparkles size={13} />
+              <span><b>{plano.sugestoes}</b> {plano.sugestoes === 1 ? "sugerido aguardando confirmação" : "sugeridos aguardando confirmação"}</span>
+              <button className="btn-confirmar-sug" onClick={onConfirmarSugestoes}>
+                <Check size={12} /> Confirmar {plano.sugestoes === 1 ? "o sugerido" : "os sugeridos"}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {/* Duas dimensões, duas filas. A de cima é o que o item É (e pra onde
@@ -1352,7 +1505,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
               trocar um arquivo errado não tem como adivinhar isso. */}
           <span>{congelado
             ? (compraLiberada
-                ? <>Planilha de Compra já liberada — esta etapa está congelada. Para <b>substituir ou remover</b> este documento, reabra as etapas.</>
+                ? <>Plano de Compras já liberado — esta etapa está congelada. Para <b>substituir ou remover</b> este documento, reabra as etapas.</>
                 : "Modo leitura — habilite a edição desta obra para importar ou remover.")
             : dica}</span>
         </div>
@@ -1662,7 +1815,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                         <th style={{ width: 62 }}>Cód.</th>
                         <th>Descrição</th>
                         <th style={{ width: 150 }}>Ambiente</th>
-                        <th style={{ width: 92 }} className="center">Qtd. vendida</th>
+                        <th style={{ width: 104 }} className="center">Qtd. vendida</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1687,10 +1840,16 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                               tela — e o número errado fica. */}
                           <td className={`mono center col-qtd ${it.qtdColada && !it.editadoNaMao ? "qtd-palpite" : ""}`}
                             title={it.qtdColada && !it.editadoNaMao ? "No PDF esta quantidade estava colada na descrição — confira e corrija se precisar" : undefined}>
-                            <CelulaEditavel valor={it.qtdVendida} formato="numero"
-                              onSalvar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { qtdVendida: v }) : undefined}
-                              congelado={congelado} />
-                            {" "}<span className="unit">{it.un}</span>
+                            {/* Valor e unidade lado a lado, cada um com seu
+                                espaço. Antes o botão de editar ocupava 100% da
+                                célula e a unidade vinha depois, empurrada pra
+                                fora dos 92px: aparecia "1 v", "30 u". */}
+                            <div className="qtd-celula">
+                              <CelulaEditavel valor={it.qtdVendida} formato="numero"
+                                onSalvar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { qtdVendida: v }) : undefined}
+                                congelado={congelado} />
+                              <span className="unit">{it.un || ""}</span>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1901,13 +2060,17 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
    partida pra revisão humana.
    ============================================================ */
 
-function normTxt(s) {
-  // remove acentos (NFD separa a letra do acento; filtramos os marcadores
-  // combinantes por code point, em vez de regex, pra evitar problema de
-  // caractere invisível na faixa Unicode).
-  const semAcento = String(s || "").toLowerCase().normalize("NFD")
+// Baixa a caixa e tira os acentos, sem tocar na pontuação. (NFD separa a
+// letra do acento; filtramos os marcadores combinantes por code point, em
+// vez de regex, pra evitar problema de caractere invisível na faixa
+// Unicode.)
+function semAcentos(s) {
+  return String(s || "").toLowerCase().normalize("NFD")
     .split("").filter((ch) => { const cp = ch.codePointAt(0); return cp < 0x0300 || cp > 0x036f; }).join("");
-  return semAcento.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normTxt(s) {
+  return semAcentos(s).replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /* ============================================================
@@ -1931,6 +2094,17 @@ function normTxt(s) {
 // As regras saem do jeito como as planilhas são escritas de verdade:
 // "300x120" é centímetro, "2,40" é metro, "45cm" é 0,45. Número solto
 // acima de 20 só faz sentido como centímetro — não existe mesa de 45 m.
+//
+// IMPORTANTE: recebe o texto com a PONTUAÇÃO INTACTA (só sem acento e em
+// minúscula), não o `normTxt`. A medida é o único lugar da descrição em
+// que a vírgula significa alguma coisa, e o `normTxt` troca pontuação por
+// espaço: "0,42m" virava "0 42m", lido como 42 metros e descartado por
+// grande demais — daí o "sem medida" numa descrição que tinha medida.
+// Pior era o silêncio: "Mesa de jantar redonda 1,40m" virava 1 m e
+// passava batido, justo a mesa redonda, que não biparte.
+//
+// Ponto de milhar ("18.000 BTU") vira número grande e cai no filtro de
+// 6 m lá embaixo — por isso não precisa de tratamento próprio.
 function medidasEmMetros(texto) {
   const num = (s) => parseFloat(String(s).replace(",", "."));
   const paraMetro = (n, unidade) => {
@@ -1959,6 +2133,16 @@ function medidasEmMetros(texto) {
     return " ";
   });
 
+  // Número que CONTA alguma coisa não mede nada. "Sofá Living 3 lugares"
+  // virava 3 metros e disparava o alerta de peça grande pelo motivo
+  // errado; "cooktop 5 bocas" e "cassete 4 vias" tinham o mesmo destino.
+  // Some antes do palpite do número solto — os pares e as unidades
+  // explícitas ("2,40 m") já foram lidos acima e não passam por aqui.
+  resto = resto.replace(
+    /\b\d+(?:[.,]\d+)?\s*(lugares?|assentos?|portas?|gavetas?|bocas?|vias?|pecas?|modulos?|nichos?|prateleiras?)\b/gi,
+    " "
+  );
+
   // número solto que sobrou
   const reSolto = /\b(\d+(?:[.,]\d+)?)\b/g;
   let m;
@@ -1972,8 +2156,87 @@ const ALERTA_MESA_MEDIDA =
   "verificar se precisa ser bipartida e se passa no elevador, portas e circulacao.";
 const ALERTA_MESA_SEM_MEDIDA =
   "sem medida na descricao: verificar dimensao e se passa no elevador, portas e circulacao (pode precisar ser bipartida).";
+
+// Acima disto, a peça precisa ser olhada antes de subir. Fica em 1,00 m
+// de propósito, mesmo sendo um corte que gera confêrencia: um alerta a
+// mais custa uma medida conferida, um a menos custa desmontar móvel
+// dentro do apartamento.
+const MESA_GRANDE_M = 1.0;
+
+// Tipos de mesa que são pequenos POR DEFINIÇÃO. Só valem quando a
+// descrição não trouxe medida nenhuma: aí o tipo responde no lugar dela,
+// em vez de mandar toda "Mesa Lateral Fulana" pra conferência. Se a
+// medida estiver escrita, ela manda — mesa de centro de 1,20 m alerta
+// igual, o nome não a torna pequena.
+const MESA_PEQUENA_POR_TIPO = [
+  "lateral", "cabeceira", "canto", "apoio", "centro", "recanto",
+];
+
+// Quando não há nem medida nem tipo, sobra o qualificador de altura:
+// "Mesa Class Alta", "Mesa Class Média", "Mesa Starck Baixa". No catálogo
+// isso é o trio de mesas de apoio de alturas diferentes, e sem esta pista
+// as três voltam pra conferência a cada obra.
+//
+// "alta" é a duvidosa das três — mesa alta também é mesa de bar, que é
+// grande. Por isso o qualificador só vale como "pequena" quando não há
+// nada de bar por perto; com bar na descrição, volta a alertar.
+const MESA_QUALIFICADOR_ALTURA = /\b(alta|media|baixa)\b/;
+const MESA_DE_BAR = ["bar", "bistro", "pub", "bancada", "banqueta", "alto padrao"];
+
+function mesaPequenaPeloNome(t) {
+  if (MESA_PEQUENA_POR_TIPO.some((p) => t.includes(p))) return true;
+  return MESA_QUALIFICADOR_ALTURA.test(t) && !MESA_DE_BAR.some((p) => t.includes(p));
+}
+
+// ESTOFADO — mesma pergunta da mesa, resposta pior. A mesa às vezes
+// biparte; sofá e chaise raramente têm essa saída, e o que não passa
+// volta pro fornecedor.
+const ALERTA_ESTOFADO_MEDIDA =
+  "conferir se passa no elevador, portas e curva de escada — sofa raramente e bipartido.";
+const ALERTA_ESTOFADO_SEM_MEDIDA =
+  "sem medida na descricao: conferir dimensao e o acesso (elevador, portas, curva de escada) antes de fechar.";
+
+// Peça de sentar que é pequena por definição. Banqueta fica de fora de
+// propósito: ela já tem regra própria (altura contra a bancada), que
+// roda antes desta.
+const ESTOFADO_PEQUENO_POR_TIPO = ["cadeira", "poltrona", "puff", "pufe", "banco"];
+const ESTOFADO = ["sofa", "chaise", "namoradeira", "estofado", "recamier", ...ESTOFADO_PEQUENO_POR_TIPO];
+
+/* Palavra inteira, não pedaço de palavra.
+
+   As pistas de estofado são curtas e colidem: "sofa" acha SOFANI (que é
+   fornecedor), "banco" acharia "bancos" e qualquer coisa que comece
+   igual. Nas pistas longas ("climatizacao") o substring não incomoda;
+   aqui incomoda. O `s?` no fim aceita o plural sem abrir a porta pro
+   resto. */
+function temPalavra(t, palavras) {
+  return palavras.some((p) => new RegExp(`\\b${p}s?\\b`).test(t));
+}
+
+// "mesa" aparece em coisas que não são o móvel: luminária DE MESA, cuba
+// com "mesa para torneira", espelho de mesa. Iam todas pra conferência
+// de elevador sem ter o que conferir.
+//
+// A lista é de OUTROS PRODUTOS, não de palavras soltas: só desarma a
+// pista fraca ("mesa"). "jantar" e "tampo" continuam valendo sozinhos,
+// senão uma bancada de pedra descrita com cuba — que é justamente o que
+// não passa no elevador — sairia da regra calada.
+const NAO_E_MOVEL_DE_MESA = [
+  "luminaria", "abajur", "lustre", "pendente", "arandela",
+  "cuba", "torneira", "monocomando", "ducha",
+  "espelho", "ventilador", "relogio",
+  "toalha", "jogo americano",
+];
+
+function ehMovelDeMesa(t) {
+  if (/\bjantar\b|\btampo\b/.test(t)) return true;
+  if (!t.includes("mesa")) return false;
+  return !NAO_E_MOVEL_DE_MESA.some((p) => t.includes(p));
+}
 const ALERTA_BANQUETA =
   "conferir a altura da banqueta com a altura da bancada.";
+const ALERTA_RECORTE_CUBA =
+  "conferir se o recorte da pedra bate com a cuba efetivamente comprada (modelo, medida e tipo de instalacao) antes de liberar o corte.";
 const ALERTA_BASE_MONOCOMANDO =
   "conferir a base do monocomando no apartamento (deca, docol ou outra) e a compatibilidade do acabamento.";
 const ALERTA_CLIMATIZACAO =
@@ -1998,17 +2261,41 @@ function alertaConferenciaTecnica(descricao) {
   const doItem = (texto) => ({ escopo: "item", texto });
 
   // 1 — MESA / JANTAR / TAMPO: passa no elevador? precisa ser bipartida?
-  if (tem("mesa", "jantar", "tampo")) {
-    const medidas = medidasEmMetros(t);
-    if (medidas.length === 0) return doItem(ALERTA_MESA_SEM_MEDIDA);
-    if (Math.max(...medidas) > 1.0) return doItem(ALERTA_MESA_MEDIDA);
-    return null; // tem medida e cabe
+  if (ehMovelDeMesa(t)) {
+    // Do texto com pontuação, não do `t`: ver medidasEmMetros.
+    const medidas = medidasEmMetros(semAcentos(descricao));
+    if (medidas.length > 0) {
+      return Math.max(...medidas) > MESA_GRANDE_M ? doItem(ALERTA_MESA_MEDIDA) : null;
+    }
+    // Sem medida escrita, quem responde é o nome.
+    if (mesaPequenaPeloNome(t)) return null;
+    return doItem(ALERTA_MESA_SEM_MEDIDA);
   }
 
-  // 2 — BANQUETA: altura tem que casar com a da bancada
+  // 2 — BANQUETA: altura tem que casar com a da bancada. Vem antes do
+  // estofado de propósito — a pergunta dela é outra.
   if (tem("banqueta")) return doItem(ALERTA_BANQUETA);
 
-  // 3 — BASE DO MONOCOMANDO: só a base embutida na parede. Torneira,
+  // 3 — ESTOFADO: mesma conta da mesa, com o mesmo corte de 1,00 m.
+  // Sofá de dois lugares já passa de 1,60 m, então quase sempre cai — o
+  // que está certo: ele não biparte, e o que não sobe volta pro
+  // fornecedor. Cadeira, poltrona e puff são pequenos por definição.
+  if (temPalavra(t, ESTOFADO)) {
+    const medidas = medidasEmMetros(semAcentos(descricao));
+    if (medidas.length > 0) {
+      return Math.max(...medidas) > MESA_GRANDE_M ? doItem(ALERTA_ESTOFADO_MEDIDA) : null;
+    }
+    if (temPalavra(t, ESTOFADO_PEQUENO_POR_TIPO)) return null;
+    return doItem(ALERTA_ESTOFADO_SEM_MEDIDA);
+  }
+
+  // 4 — PEDRA COM RECORTE PRA CUBA. A marcenaria da planilha vem como
+  // valor fechado ("Marcenaria [MAT]"), sem peça pra medir — mas a
+  // bancada de pedra vem descrita, e é onde o erro custa caro: furo
+  // errado em granito não tem conserto, refaz a peça.
+  if (temPalavra(t, ["recorte"]) && temPalavra(t, ["cuba"])) return doItem(ALERTA_RECORTE_CUBA);
+
+  // 5 — BASE DO MONOCOMANDO: só a base embutida na parede. Torneira,
   // bica e monocomando de mesa não têm esse problema.
   if (tem("base") && tem("monocomando", "registro", "chuveiro", "ducha", "pressao")) {
     const ehDeMesa = tem("torneira", "bica", "de mesa", "lavatorio", "cozinha", "pia");
@@ -2016,7 +2303,7 @@ function alertaConferenciaTecnica(descricao) {
     if (!ehDeMesa || ehEmbutida) return doItem(ALERTA_BASE_MONOCOMANDO);
   }
 
-  // 4 — CLIMATIZAÇÃO. "split" solto entra de propósito: na planilha real
+  // 6 — CLIMATIZAÇÃO. "split" solto entra de propósito: na planilha real
   // aparece "Ar condicionao Split hi wall" — com o erro de digitação, é
   // só o "split" que sobra pra reconhecer o item.
   if (tem("ar condicionado", "ar-condicionado", "arcondicionado", "evaporadora", "condensadora", "split")) {
@@ -2027,6 +2314,88 @@ function alertaConferenciaTecnica(descricao) {
   }
 
   return null;
+}
+
+/* ============================================================
+   ALERTAS DE CONJUNTO
+   ------------------------------------------------------------
+   Estes não olham um item: olham o que a verba tem JUNTO. A pergunta
+   deles não cabe numa linha — "3000K e 4000K no mesmo lugar" só existe
+   quando os dois estão lá, e nenhuma das duas linhas está errada
+   sozinha.
+
+   Por isso eles ficam calados quando está tudo coerente. Na 2519 os
+   quatro itens com temperatura declarada são todos 4000K, e a regra não
+   diz nada — que é o comportamento certo.
+   ============================================================ */
+
+const ACABAMENTOS = [
+  "cromado", "escovado", "acetinado", "grafite", "dourado", "black",
+  "preto", "fosco", "polido", "niquel", "bronze", "champanhe",
+];
+
+// Só louça e metal entram na conta de acabamento. Pedra também é descrita
+// como "escovado" ("Siena Escovado"), e comparar acabamento de granito com
+// acabamento de torneira geraria divergência onde não há.
+const LOUCA_METAL = [
+  "cuba", "torneira", "monocomando", "ducha", "chuveiro", "registro",
+  "misturador", "valvula",
+];
+
+/**
+ * Alertas que valem pra verba inteira, a partir das linhas dela.
+ *
+ * Recebe [{ desc, ambiente }] e devolve os textos que se aplicam.
+ */
+function alertasDeConjunto(itens) {
+  const out = [];
+  const linhas = (itens || []).map((i) => ({
+    t: normTxt(i.desc),
+    amb: String(i.ambiente || "").trim(),
+  }));
+
+  // 1 — TEMPERATURA DE COR MISTURADA. A faixa evita confundir com
+  // código ou potência: fora de 2000K–7000K não é temperatura de luz.
+  const temps = new Set();
+  linhas.forEach(({ t }) => {
+    const m = t.match(/\b(\d{4})\s*k\b/);
+    if (!m) return;
+    const k = Number(m[1]);
+    if (k >= 2000 && k <= 7000) temps.add(k);
+  });
+  if (temps.size > 1) {
+    const lista = [...temps].sort((a, b) => a - b).join("K, ");
+    out.push(`temperaturas de cor diferentes nesta verba (${lista}K) — conferir se a mistura e proposital.`);
+  }
+
+  // 2 — FITA DE LED SEM FONTE. Cada trecho de fita precisa da sua; o
+  // que falta só aparece na instalação, com o forro já fechado.
+  const fitas = linhas.filter(({ t }) => /\bfita\b/.test(t) && /\bled\b/.test(t)).length;
+  const fontes = linhas.filter(({ t }) => temPalavra(t, ["fonte", "driver", "transformador"])).length;
+  if (fitas > 0 && fontes < fitas) {
+    out.push(`${fitas} ${fitas === 1 ? "trecho" : "trechos"} de fita de led e ${fontes} ${fontes === 1 ? "fonte" : "fontes"} nesta verba — conferir se cada trecho tem a sua.`);
+  }
+
+  // 3 — ACABAMENTO MISTURADO DENTRO DO MESMO AMBIENTE. Entre ambientes
+  // a diferença é normal (cozinha inox, lavabo grafite); no mesmo
+  // banheiro é que ela não casa. Sem a coluna Ambiente preenchida esta
+  // regra simplesmente não fala — melhor calada do que comparando a
+  // obra inteira e acusando o que é intencional.
+  const porAmbiente = new Map();
+  linhas.forEach(({ t, amb }) => {
+    if (!amb || !temPalavra(t, LOUCA_METAL)) return;
+    const achados = ACABAMENTOS.filter((a) => temPalavra(t, [a]));
+    if (achados.length === 0) return;
+    if (!porAmbiente.has(amb)) porAmbiente.set(amb, new Set());
+    achados.forEach((a) => porAmbiente.get(amb).add(a));
+  });
+  const misturados = [...porAmbiente.entries()].filter(([, s]) => s.size > 1);
+  if (misturados.length > 0) {
+    const detalhe = misturados.map(([amb, s]) => `${amb} (${[...s].join(", ")})`).join("; ");
+    out.push(`acabamentos diferentes de louca/metal no mesmo ambiente: ${detalhe} — conferir se casam.`);
+  }
+
+  return out;
 }
 
 // Palavras que aparecem em quase toda descrição sem distinguir nada, ou
@@ -2621,8 +2990,18 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
                 <div className="grupo-alerta">
                   <AlertTriangle size={14} />
                   <div>
-                    <b>Alerta de conferência técnica — vale para toda a verba:</b>{" "}
-                    <span>{alertaGrupo}</span>
+                    <b>
+                      {alertaGrupo.length === 1
+                        ? "Alerta de conferência técnica — vale para toda a verba:"
+                        : `${alertaGrupo.length} alertas de conferência técnica nesta verba:`}
+                    </b>{" "}
+                    {alertaGrupo.length === 1 ? (
+                      <span>{alertaGrupo[0]}</span>
+                    ) : (
+                      <ul className="grupo-alerta-lista">
+                        {alertaGrupo.map((texto) => <li key={texto}>{texto}</li>)}
+                      </ul>
+                    )}
                   </div>
                 </div>
               )}
@@ -2954,6 +3333,10 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
     return {
       codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome,
       status, motivo, alertaTecnico, alertaGrupo,
+      // Guardados pra alimentar os alertas de conjunto, que precisam ver
+      // as linhas da verba juntas — não uma de cada vez.
+      desc,
+      ambiente: item.planilhaExecutivo?.ambiente || item.planilhaVendido?.ambiente || null,
       naoVendido: soNoExecutivo,
       a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
       b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
@@ -2969,12 +3352,27 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
     aprovacoes.has(`exec:${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
   )), [linhasBrutas, aprovacoes]);
 
-  // Um alerta por verba, não um por item. Os textos são idênticos entre
-  // as linhas do mesmo grupo — o primeiro que aparecer serve pra todas.
+  /* Os alertas da verba, de duas origens.
+
+     A primeira vem de um item que fala pelo grupo — a climatização é
+     uma só na planta, então repetir a pergunta em cada aparelho ocupa
+     cinco vezes o espaço e faz parar de ler na segunda linha.
+
+     A segunda só existe olhando as linhas juntas: temperatura de cor
+     misturada, fita sem fonte, acabamento que não casa. Nenhuma delas
+     cabe numa linha sozinha. */
   const alertasPorVerba = useMemo(() => {
     const m = new Map();
+    const porVerba = new Map();
     linhasBrutas.forEach((l) => {
-      if (l.alertaGrupo && !m.has(l.catNum)) m.set(l.catNum, l.alertaGrupo);
+      if (!porVerba.has(l.catNum)) porVerba.set(l.catNum, []);
+      porVerba.get(l.catNum).push(l);
+      if (l.alertaGrupo && !m.has(l.catNum)) m.set(l.catNum, [l.alertaGrupo]);
+    });
+    porVerba.forEach((linhas, num) => {
+      const doConjunto = alertasDeConjunto(linhas);
+      if (doConjunto.length === 0) return;
+      m.set(num, [...(m.get(num) || []), ...doConjunto]);
     });
     return m;
   }, [linhasBrutas]);
@@ -3267,7 +3665,7 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado, coord, 
       data-cel={coord || undefined}
       className={`celula-valor ${ehTexto ? "texto" : "mono"} ${alinhar || ""} ${congelado ? "travada" : ""}`}
       onClick={abrir}
-      title={congelado ? "Congelado pela liberação de compra" : "Clique para editar · Tab e Enter andam pelas células"}
+      title={congelado ? "Congelado pela liberação de compra" : (onNavegar ? "Clique para editar · Tab e Enter andam pelas células" : "Clique para editar")}
     >
       {mostrar}
     </button>
@@ -3509,18 +3907,53 @@ const CADERNOS_EXECUTIVO = [
 
 // Uma linha por caderno, não um bloco. São três anexos de consulta que
 // quase nunca mudam — ocupavam meia tela pra dizer "nenhum arquivo".
-function CadernoSlot({ titulo, arquivo, onImportar, congelado }) {
+function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, congelado }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [baixando, setBaixando] = useState(false);
 
-  function aoEscolher(e) {
+  async function aoEscolher(e) {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!file) return;
     setErro(null);
     if (!/\.pdf$/i.test(file.name)) { setErro("Suba um arquivo PDF."); return; }
-    onImportar({ nome: file.name, url: URL.createObjectURL(file), tamanhoKB: Math.round(file.size / 1024) });
+
+    // Sem banco (modo local) segue o `blob:` de antes: some ao fechar a
+    // aba, mas anexar continua funcionando pra quem roda sem Supabase.
+    if (!supabaseConfigurado) {
+      onImportar({ nome: file.name, url: URL.createObjectURL(file), tamanhoKB: Math.round(file.size / 1024) });
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      const info = await subirArquivo({ obraCodigo, chave, file, por: usuario });
+      onImportar(info, arquivo?.caminho || null);
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setEnviando(false);
+    }
   }
+
+  async function baixar() {
+    if (arquivo?.url) { window.open(arquivo.url, "_blank"); return; }
+    setErro(null);
+    setBaixando(true);
+    try {
+      window.open(await linkParaBaixar(arquivo.caminho), "_blank");
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setBaixando(false);
+    }
+  }
+
+  // Anexo de antes de o app guardar o arquivo: só o nome ficou gravado.
+  // Dizer isso é melhor do que oferecer um "Baixar" que não baixa nada.
+  const perdido = arquivo && !anexoRecuperavel(arquivo);
 
   return (
     <div className="caderno-slot">
@@ -3529,14 +3962,20 @@ function CadernoSlot({ titulo, arquivo, onImportar, congelado }) {
       {arquivo ? (
         <>
           <span className="caderno-slot-arquivo">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
-          <a className="caderno-acao" href={arquivo.url} download={arquivo.nome}><Download size={12} /> Baixar</a>
+          {perdido ? (
+            <span className="caderno-slot-vazio">arquivo não guardado — anexe de novo</span>
+          ) : (
+            <button className="caderno-acao" onClick={baixar} disabled={baixando}>
+              <Download size={12} /> {baixando ? "Abrindo…" : "Baixar"}
+            </button>
+          )}
         </>
       ) : (
         <span className="caderno-slot-vazio">sem arquivo</span>
       )}
       {!congelado && (
-        <button className="caderno-acao" onClick={() => inputRef.current && inputRef.current.click()}>
-          <Upload size={12} /> {arquivo ? "Trocar" : "Anexar"}
+        <button className="caderno-acao" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
+          <Upload size={12} /> {enviando ? "Enviando…" : arquivo ? "Trocar" : "Anexar"}
         </button>
       )}
       <input ref={inputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={aoEscolher} />
@@ -3549,7 +3988,7 @@ function CadernoSlot({ titulo, arquivo, onImportar, congelado }) {
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar }) {
+function ExecutivoView({ obra, usuario, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
   // quando a obra foi liberada antes de o app aprender a salvar.
@@ -3619,10 +4058,11 @@ function ExecutivoView({ obra, onImportCaderno, onImportPlanilhaExecutivo, onEdi
         {cadernosAbertos && (
           <div className="caderno-lista">
             {CADERNOS_EXECUTIVO.map((c) => (
-              <CadernoSlot key={c.chave} titulo={c.titulo}
+              <CadernoSlot key={c.chave} titulo={c.titulo} chave={c.chave}
                 arquivo={(obra.cadernos || {})[c.chave]}
+                obraCodigo={obra.codigo} usuario={usuario}
                 congelado={congelado}
-                onImportar={(info) => onImportCaderno(c.chave, info)} />
+                onImportar={(info, anterior) => onImportCaderno(c.chave, info, anterior)} />
             ))}
           </div>
         )}
@@ -4166,7 +4606,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
 /* APROVAÇÃO DO CLIENTE — o portão entre conferir e comprar.
 
-   Sem este registro a Planilha de Compra não libera. Não é burocracia: é
+   Sem este registro o Plano de Compras não libera. Não é burocracia: é
    o que separa "a equipe conferiu" de "o cliente concordou com o que vai
    ser comprado no nome dele". Comprar antes disso é assumir um risco que
    não é da equipe.
@@ -4174,13 +4614,56 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
    O anexo é a prova. Se uma compra for questionada meses depois, o
    documento assinado precisa estar aqui dentro — não no e-mail de alguém
    que talvez nem trabalhe mais aqui. */
-function AssinaturaClienteView({ obra, onRegistrar, onRemover, podeEditar }) {
+function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEditar }) {
   const jaAssinou = !!obra.clienteAssinouEm;
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
   const [obs, setObs] = useState("");
   const [arquivo, setArquivo] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erroArq, setErroArq] = useState(null);
+  const [baixando, setBaixando] = useState(false);
   const inputRef = useRef(null);
   const congelado = obra.comprasLiberadas || !podeEditar;
+
+  /* O documento sobe ANTES de a aprovação ser registrada.
+
+     A ordem importa: se o upload falhar, o registro não acontece e a
+     pessoa vê o motivo, em vez de ficar com uma aprovação registrada
+     apontando pra um documento que nunca foi guardado. */
+  async function registrar() {
+    if (!window.confirm(
+      `Registrar a aprovação do cliente em ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")}?\n\n` +
+      "Isto libera o Plano de Compras para ser aprovado.\n\n" +
+      (arquivo ? `Documento: ${arquivo.name}` : "ATENÇÃO: sem documento anexado.")
+    )) return;
+
+    setErroArq(null);
+    if (!arquivo) { onRegistrar({ data, obs, arq: null }); return; }
+
+    setEnviando(true);
+    try {
+      const arq = supabaseConfigurado
+        ? await subirArquivo({ obraCodigo: obra.codigo, chave: "assinatura-cliente", file: arquivo, por: usuario })
+        : { nome: arquivo.name, tamanhoKB: Math.round(arquivo.size / 1024), url: URL.createObjectURL(arquivo) };
+      onRegistrar({ data, obs, arq });
+    } catch (err) {
+      setErroArq(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function baixarDocumento(arq) {
+    if (arq.url) { window.open(arq.url, "_blank"); return; }
+    setBaixando(true);
+    try {
+      window.open(await linkParaBaixar(arq.caminho), "_blank");
+    } catch (err) {
+      setErroArq(err.message);
+    } finally {
+      setBaixando(false);
+    }
+  }
 
   if (jaAssinou) {
     const arq = obra.clienteAssinaturaArq;
@@ -4197,16 +4680,25 @@ function AssinaturaClienteView({ obra, onRegistrar, onRemover, podeEditar }) {
           {arq && (
             <div className="assinatura-arq">
               <FileText size={13} /> {arq.nome}
-              {arq.tamanho ? <span className="dim"> · {(arq.tamanho / 1024).toFixed(0)} KB</span> : null}
+              {arq.tamanhoKB ? <span className="dim"> · {arq.tamanhoKB} KB</span>
+                : arq.tamanho ? <span className="dim"> · {(arq.tamanho / 1024).toFixed(0)} KB</span> : null}
+              {anexoRecuperavel(arq)
+                ? <button className="caderno-acao" onClick={() => baixarDocumento(arq)} disabled={baixando}>
+                    <Download size={12} /> {baixando ? "Abrindo…" : "Baixar"}
+                  </button>
+                /* Registro de antes de o app guardar o arquivo: ficou o
+                   nome, não a prova. Some quando um novo for anexado. */
+                : <span className="assinatura-sem-arq"><AlertTriangle size={13} /> só o nome ficou guardado</span>}
             </div>
           )}
           {!arq && <div className="assinatura-sem-arq"><AlertTriangle size={13} /> Registrado sem o documento anexado.</div>}
+          {erroArq && <div className="assinatura-sem-arq"><AlertTriangle size={13} /> {erroArq}</div>}
         </div>
         {!congelado && (
           <button className="btn-limpar-import" onClick={() => {
             if (window.confirm(
               "Remover o registro de aprovação do cliente?\n\n" +
-              "A Planilha de Compra volta a ficar bloqueada até um novo registro."
+              "O Plano de Compras volta a ficar bloqueado até um novo registro."
             )) onRemover();
           }}><Trash2 size={13} /> Remover</button>
         )}
@@ -4219,7 +4711,7 @@ function AssinaturaClienteView({ obra, onRegistrar, onRemover, podeEditar }) {
       <div className="import-bar" style={{ marginBottom: 14 }}>
         <div className="import-info">
           <Lock size={14} />
-          <span>A <b>Planilha de Compra não libera</b> enquanto o cliente não aprovar o projeto executivo. Registre aqui a assinatura.</span>
+          <span>O <b>Plano de Compras não libera</b> enquanto o cliente não aprovar o projeto executivo. Registre aqui a assinatura.</span>
         </div>
       </div>
 
@@ -4266,15 +4758,9 @@ function AssinaturaClienteView({ obra, onRegistrar, onRemover, podeEditar }) {
               <AlertTriangle size={13} /> Sem o documento anexado o registro vale, mas fica sem prova.
             </span>
           )}
-          <button className="btn-liberar" disabled={congelado || !data}
-            onClick={() => {
-              if (window.confirm(
-                `Registrar a aprovação do cliente em ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")}?\n\n` +
-                "Isto libera a Planilha de Compra para ser aprovada.\n\n" +
-                (arquivo ? `Documento: ${arquivo.name}` : "ATENÇÃO: sem documento anexado.")
-              )) onRegistrar({ data, obs, arquivo });
-            }}>
-            <ShieldCheck size={14} /> Registrar aprovação
+          {erroArq && <span className="assinatura-aviso"><AlertTriangle size={13} /> {erroArq}</span>}
+          <button className="btn-liberar" disabled={congelado || !data || enviando} onClick={registrar}>
+            <ShieldCheck size={14} /> {enviando ? "Guardando documento…" : "Registrar aprovação"}
           </button>
         </div>
       </div>
@@ -4305,7 +4791,7 @@ const ETAPAS_PLANEJAMENTO = [
   { id: "executivo", label: "Executivo", icon: BookOpen },
   { id: "executivo_conferencia", label: "Conf. Executivo", icon: GitCompare },
   { id: "assinatura_cliente", label: "Aprovação do Cliente", icon: ShieldCheck },
-  { id: "comparativo", label: "Planilha de Compra", icon: LayoutGrid },
+  { id: "comparativo", label: "Plano de Compras", icon: LayoutGrid },
   { id: "compras", label: "Compras de Produtos", icon: ShoppingCart },
 ];
 
@@ -4318,7 +4804,7 @@ const ETAPAS_POR_GRUPO = { planejamento: ETAPAS_PLANEJAMENTO, execucao: ETAPAS_E
 
 /* Etapas que usam o botão genérico de concluir.
 
-   Fora dela ficam Depara, Aprovação do Cliente e Planilha de Compra: cada
+   Fora dela ficam Depara, Aprovação do Cliente e Plano de Compras: cada
    uma já tem seu ato próprio (liberar o CMV, registrar a assinatura,
    liberar as compras), que grava quem e quando. Um segundo botão criaria
    duas verdades sobre o mesmo fato. */
@@ -4333,7 +4819,7 @@ const ETAPAS_COM_CONCLUSAO = new Set([
    sobre o mesmo fato:
      Depara            -> liberacao do CMV
      Aprovacao Cliente -> registro da assinatura
-     Planilha de Compra-> liberacao das compras */
+     Plano de Compras  -> liberacao das compras */
 function etapaConcluida(id, obra) {
   if (id === "vendido_conferencia") return !!obra.deparaAprovado;
   if (id === "assinatura_cliente") return !!obra.clienteAssinouEm;
@@ -5724,7 +6210,7 @@ export default function App() {
   // sem custo — então o time completa aqui.
   //
   // Mexe nas duas listas da verba: `itensPlanilhaExecutivo` (o que a tela
-  // mostra) e `itens` (o que alimenta Planilha de Compra, Compras e
+  // mostra) e `itens` (o que alimenta Plano de Compras, Compras e
   // Contratos). As duas nascem do mesmo import, na mesma ordem.
   function editarItemExecutivo(catNum, idx, patch) {
     setObras((prev) => prev.map((o) => {
@@ -5867,7 +6353,7 @@ export default function App() {
     }));
   }
 
-  // Libera a Planilha de Compra: a partir daqui, compras e contratações
+  // Libera o Plano de Compras: a partir daqui, compras e contratações
   // seguem, e nada das etapas anteriores pode mais ser mexido.
   // `estouro` vem preenchido quando o Executivo passou do CMV — traz a
   // justificativa e quem autorizou. Fica gravado na obra: a decisão é de
@@ -5875,6 +6361,17 @@ export default function App() {
   function liberarCompras(estouro) {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? {
       ...o,
+      /* Sugestão pendente na hora de liberar vira decisão.
+
+         Ela já estava marcada e já contava no total do plano — deixá-la
+         num terceiro estado depois do congelamento criaria item que a
+         tela dizia que ia pra compra e que Compras nunca receberia. */
+      categorias: o.categorias.map((cat) => ({
+        ...cat,
+        itens: (cat.itens || []).map((it) =>
+          sugeridoParaCompra(it, cat.num) ? { ...it, compraDecidida: true, liberado: true } : it
+        ),
+      })),
       comprasLiberadas: true,
       compraLiberadaEm: new Date().toISOString(),
       compraLiberadaPor: usuario,
@@ -5892,6 +6389,27 @@ export default function App() {
 
   // Desfaz a liberação. Toda trava precisa de volta — sem isso um clique
   // sem querer congelaria a obra pra sempre.
+  /* Aceita de uma vez tudo que o sistema sugeriu.
+
+     É o caminho comum do Plano de Compras: a pessoa olha o lote, aceita,
+     e depois tira as poucas linhas que não vão. O contrário — marcar
+     item por item as 60 luminárias de uma obra — é o que faz alguém
+     desistir da tela e voltar pro Excel. */
+  function confirmarSugestoesCompra() {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      return {
+        ...o,
+        categorias: o.categorias.map((cat) => ({
+          ...cat,
+          itens: (cat.itens || []).map((it) =>
+            sugeridoParaCompra(it, cat.num) ? { ...it, compraDecidida: true, liberado: true } : it
+          ),
+        })),
+      };
+    }));
+  }
+
   function reabrirCompras() {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, comprasLiberadas: false } : o)));
   }
@@ -5920,10 +6438,12 @@ export default function App() {
   // Caderno de Especificação: só guarda o arquivo (upload/download, sem parse).
   // Os cadernos ficam guardados por chave ("especificacao", "marcenaria",
   // "projeto") — só arquivo pra consulta, nada é lido deles.
-  function importCaderno(chave, info) {
+  function importCaderno(chave, info, caminhoAnterior) {
     setObras((prev) => prev.map((o) => (
       o.id === selectedId ? { ...o, cadernos: { ...(o.cadernos || {}), [chave]: info } } : o
     )));
+    // Trocar o caderno já gravou o novo; o antigo vira lixo no Storage.
+    if (caminhoAnterior) apagarArquivo(caminhoAnterior);
   }
 
   // Planilha Executivo: mesma origem populando dois formatos — o
@@ -5969,32 +6489,34 @@ export default function App() {
     }));
   }
 
-  /* Registra a aprovação do cliente. O arquivo fica só como metadado por
-     enquanto (nome/tamanho) — subir o binário exige o Supabase Storage,
-     que ainda não está montado. Guardar o nome já permite conferir se o
-     documento certo foi anexado; o arquivo em si entra quando o Storage
-     existir. */
-  function registrarAssinaturaCliente({ data, obs, arquivo }) {
+  /* Registra a aprovação do cliente.
+
+     O documento já subiu pro Storage antes de chegar aqui: `arq` é o que
+     ficou guardado dele (nome + caminho), não o File do navegador. */
+  function registrarAssinaturaCliente({ data, obs, arq }) {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? {
       ...o,
       clienteAssinouEm: data,
       clienteAssinaturaPor: usuario,
       clienteAssinaturaObs: obs || null,
-      clienteAssinaturaArq: arquivo ? { nome: arquivo.name, tamanho: arquivo.size } : null,
+      clienteAssinaturaArq: arq || null,
     } : o)));
   }
 
   function removerAssinaturaCliente() {
+    const arq = obras.find((o) => o.id === selectedId)?.clienteAssinaturaArq;
     setObras((prev) => prev.map((o) => (o.id === selectedId ? {
       ...o, clienteAssinouEm: null, clienteAssinaturaPor: null,
       clienteAssinaturaObs: null, clienteAssinaturaArq: null,
     } : o)));
+    // Removido o registro, o documento dele não tem mais a que servir.
+    if (arq?.caminho) apagarArquivo(arq.caminho);
   }
 
   /* Conclui uma etapa da esteira, gravando quem e quando.
 
      Só vale para as etapas sem ato próprio: Depara, Aprovação do Cliente e
-     Planilha de Compra já têm o seu (liberar CMV, registrar assinatura,
+     Plano de Compras já têm o seu (liberar CMV, registrar assinatura,
      liberar compras) e são lidas dali. */
   function concluirEtapa(id) {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? {
@@ -6269,6 +6791,9 @@ export default function App() {
         .assinatura-obs { font-size: 13px; color: var(--ink-2); margin-top: 7px; font-style: italic; }
         .assinatura-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); margin-top: 8px; }
         .assinatura-sem-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #B54708; margin-top: 8px; }
+        /* Quando o aviso vem na mesma linha do nome do arquivo, o
+           respiro de cima é do bloco, não dele. */
+        .assinatura-arq .assinatura-sem-arq { margin-top: 0; font-size: 11.5px; }
         .assinatura-campos { display: grid; grid-template-columns: 200px 1fr; gap: 16px; padding: 18px 20px; }
         .campo { display: flex; flex-direction: column; gap: 6px; }
         .campo-largo { grid-column: 1 / -1; }
@@ -6368,6 +6893,29 @@ export default function App() {
         .pill { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-wait { background: var(--panel); color: var(--ink-3); }
+        .pill-sug { background: var(--amber-bg, #FEF3C7); color: #B54708; }
+
+        /* PLANO DE COMPRAS — seleção do que vai ser comprado.
+
+           A marca da sugestão é TRACEJADA, e a da pessoa é cheia. As duas
+           contam no total do plano, mas só uma foi decidida por alguém —
+           e é isso que a borda diz sem precisar de legenda. */
+        .check-compra { width: 19px; height: 19px; border-radius: 5px; border: 1.5px solid var(--linha); background: var(--card); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #fff; padding: 0; }
+        .check-compra:hover { border-color: var(--blue); }
+        .check-compra.confirmado { background: var(--blue); border-color: var(--blue); }
+        .check-compra.sugerido { background: transparent; border-style: dashed; border-color: #B54708; color: #B54708; }
+        .est-tag { font-size: 9.5px; margin-left: 4px; font-style: italic; }
+        /* A parcela de mão de obra do item aparece na linha de compra só
+           como informação: ela segue pra Contratos, e quem a movimenta é
+           aquele módulo. */
+        .tag-mo { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: var(--ink-3); background: var(--panel); border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
+        .plano-barra { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--linha); border-radius: 10px; padding: 13px 18px; margin-bottom: 12px; }
+        .plano-valor { font-size: 17px; font-weight: 700; }
+        .plano-rotulo { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+        .plano-num-mo { padding-left: 26px; border-left: 1px solid var(--linha); }
+        .plano-sug { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #B54708; margin-left: auto; }
+        .btn-confirmar-sug { display: inline-flex; align-items: center; gap: 4px; background: #B54708; color: #fff; border: none; border-radius: 6px; padding: 5px 11px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-confirmar-sug:hover { filter: brightness(1.1); }
         .contrato-cell { vertical-align: middle; }
         .contrato-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
         .contrato-blocked { display: inline-block; font-size: 11px; font-weight: 600; color: var(--red); background: var(--red-bg); padding: 4px 10px; border-radius: 20px; }
@@ -6436,7 +6984,15 @@ export default function App() {
         .vend-itens td.col-amb { white-space: nowrap; }
         .vend-itens td.col-amb .celula-corte { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .vend-itens td.col-qtd { white-space: nowrap; }
-        .vend-itens td.qtd-palpite { background: #FFF4E5; box-shadow: inset 0 0 0 1px #F79009; border-radius: 4px; cursor: help; }
+        /* Valor à direita, unidade à esquerda, larguras próprias. */
+        .qtd-celula { display: flex; align-items: baseline; justify-content: flex-end; gap: 5px; }
+        .qtd-celula .celula-valor, .qtd-celula .celula-input { width: auto; min-width: 40px; flex: 0 1 auto; text-align: right; }
+        .qtd-celula .unit { flex: 0 0 24px; text-align: left; }
+        /* Marca de palpite: risco na borda, não caixa em volta.
+           Como boa parte das linhas vem com a quantidade colada, a caixa
+           laranja em cada célula virava uma parede — e parede não sinaliza
+           nada, porque não tem contraste com o resto. */
+        .vend-itens td.qtd-palpite { background: #FFFBF4; box-shadow: inset 3px 0 0 #F79009; cursor: help; }
         /* A quebra livre acima existe pela especificação gigante, que sem
            ela estica a coluna e desalinha a tabela. Mas ela também
            autoriza partir "1.10" em "1.1" e "0" — código de item não é
@@ -6590,6 +7146,9 @@ export default function App() {
         .caderno-slot-vazio { flex: 1; color: var(--ink-3); font-size: 11.5px; font-style: italic; }
         .caderno-acao { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 2px 4px; font-size: 11px; color: var(--blue); cursor: pointer; font-family: inherit; text-decoration: none; flex-shrink: 0; }
         .caderno-acao:hover { text-decoration: underline; }
+        /* Enquanto o arquivo sobe, a ação some do azul: clicar de novo
+           não adianta, e nada pior do que um botão que parece pronto. */
+        .caderno-acao:disabled { color: var(--ink-3); cursor: default; text-decoration: none; }
         .caderno-erro { font-size: 11px; color: var(--red); }
         .escolha-aba { font-size: 12.5px; color: var(--ink-3); padding: 28px 4px; }
 
@@ -6603,7 +7162,7 @@ export default function App() {
         .saldo-mov-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-2); }
 
         /* Item excluído: some do custo, não some da vista */
-        /* Fundo cheio só fora do Executivo (Planilha de Compra), onde a
+        /* Fundo cheio só fora do Executivo (Plano de Compras), onde a
            exclusão é rara. No Executivo quem marca é a barra lateral. */
         .linha-excluida { background: var(--red-bg, #FDEEEC); }
         .exec-itens tr.linha-excluida { background: transparent; }
@@ -6769,6 +7328,10 @@ export default function App() {
         .celula-corte.editavel { cursor: text; border-radius: 4px; padding: 1px 3px; margin: -1px -3px; }
         .celula-corte.editavel:hover { background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
         .celula-input.texto { text-align: left; font-family: inherit; }
+        /* O campo de texto em edição fica com a cara de campo: fundo branco,
+           borda azul e altura de linha própria. Antes se confundia com a
+           tabela e parecia um retângulo vazio atravessando a linha. */
+        .vend-itens .celula-input.texto { padding: 4px 7px; line-height: 1.4; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
         .celula-input.multi { resize: vertical; line-height: 1.35; }
         .fechamento { border-top: 2px solid var(--border); padding: 4px 18px 14px; }
         .fechamento-linha { display: flex; align-items: baseline; justify-content: space-between; padding: 7px 0; font-size: 12.5px; color: var(--ink-2); }
@@ -6797,6 +7360,10 @@ export default function App() {
            grupo. A infraestrutura de climatização da planta é uma só — não
            é uma por aparelho. */
         .grupo-alerta { display: flex; align-items: flex-start; gap: 9px; background: #FFF4E5; box-shadow: inset 3px 0 0 #F79009; padding: 11px 14px; font-size: 12px; line-height: 1.5; color: #7A2E0E; border-bottom: 1px solid var(--border-soft); }
+        /* Com mais de um alerta na verba, texto corrido vira parede: cada
+           um é uma conferência diferente, com resposta diferente. */
+        .grupo-alerta-lista { margin: 4px 0 0; padding-left: 17px; }
+        .grupo-alerta-lista li { margin-bottom: 3px; }
         .grupo-alerta svg { color: #B54708; flex-shrink: 0; margin-top: 1px; }
         .grupo-alerta b { color: #B54708; text-transform: uppercase; font-weight: 700; font-size: 11px; letter-spacing: 0.01em; }
         /* Marca a verba com alerta mesmo com o grupo fechado */
@@ -7022,10 +7589,10 @@ export default function App() {
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} />}
-          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} usuario={usuario} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "assinatura_cliente" && (
-            <AssinaturaClienteView obra={obra} onRegistrar={registrarAssinaturaCliente}
+            <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}
               onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
           )}
           {tab === "diario" && (
@@ -7036,7 +7603,7 @@ export default function App() {
             </div>
           )}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
