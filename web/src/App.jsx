@@ -1340,7 +1340,42 @@ async function lerPlanilhaExcel(file) {
   }
   if (headerIdx === -1) return { itens: [] };
 
-  const header = linhas[headerIdx];
+  /* Cabeçalho de DUAS linhas.
+
+     No criativo da 2405 os títulos são quebrados em duas alturas:
+
+       linha 0   ... Qtd. | un | Custo    | Custo       | Custo Total | Custo Total | Custo
+       linha 1                   Material | Mão de Obra | Material    | Mão de Obra | Total
+
+     Lendo só a primeira, cinco colunas viram "Custo"/"Custo Total" e ficam
+     indistinguíveis — foi o que fez o app dizer "faltam Custo Material e
+     Mão de Obra" num arquivo Excel que tinha as duas.
+
+     Junta a linha seguinte quando ela é continuação: sem código de item na
+     primeira coluna, rótulos curtos e nenhum valor. Linha de dado não
+     satisfaz as três condições ao mesmo tempo. */
+  const ehContinuacaoDeCabecalho = (row) => {
+    if (!row) return false;
+    const cels = row.map((c) => String(c ?? "").trim());
+    if (/^\d/.test(cels[0] || "")) return false;
+    const preenchidas = cels.filter((c) => c !== "" && c !== "0");
+    if (preenchidas.length === 0) return false;
+    return preenchidas.every((c) => c.length <= 22 && !/^[\d.,\s]+$/.test(c) && !/^R\$/.test(c));
+  };
+
+  let header = linhas[headerIdx];
+  if (ehContinuacaoDeCabecalho(linhas[headerIdx + 1])) {
+    const seg = linhas[headerIdx + 1];
+    const largura = Math.max(header.length, seg.length);
+    const juntos = [];
+    for (let j = 0; j < largura; j++) {
+      const a = String(header[j] ?? "").trim();
+      const b = String(seg[j] ?? "").trim();
+      juntos[j] = [a, b].filter((x) => x && x !== "0").join(" ");
+    }
+    header = juntos;
+    headerIdx += 1;  // a continuação não é dado; os itens começam depois dela
+  }
   // O criativo e o executivo usam o MESMO cabeçalho — Item, Descrição,
   // Código/especificação/Obs., Fornecedor, Ambiente, Qtd., un, e as cinco
   // colunas de custo. Ler tudo aqui mantém as duas telas com a mesma
