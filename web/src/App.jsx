@@ -4212,7 +4212,7 @@ function ExecutivoView({ obra, usuario, onImportCaderno, onImportPlanilhaExecuti
                 </button>
                 {aberto && temItens && (
                   <div className="exec-scroll">
-                  <table className="vend-itens exec-itens">
+                  <table className="vend-itens exec-itens exec-editavel">
                     <thead>
                       <tr>
                         <th style={{ width: 72 }}>Item</th>
@@ -7355,7 +7355,14 @@ export default function App() {
         .detalhe-texto { width: 100%; min-height: 140px; border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; font-size: 12.5px; line-height: 1.55; color: var(--ink); font-family: inherit; resize: vertical; outline: none; }
         .detalhe-acoes { display: flex; justify-content: flex-end; margin-top: 10px; }
         .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #FCFBF8; }
-        .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 56px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
+        /* O deslocamento da 2a coluna congelada TEM que ser a largura exata
+           da 1a — e as duas tabelas que usam este CSS tem larguras
+           diferentes: 46px na Vendido Planilha, 72px no Executivo (que
+           carrega o botao de inserir). Com um valor fixo de 56px, uma sobrava
+           10px e deixava o texto passar por baixo, a outra cobria 16px do
+           conteudo: era o que cortava as letras de "CODIGO / ESPECIF.". */
+        .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 46px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
+        .exec-editavel th:nth-child(2), .exec-editavel td:nth-child(2) { left: 72px; }
         .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 4; background: #F7F5F0; }
         /* O cabecalho acompanha a rolagem: editando uma linha la
            embaixo, sem isso nao da pra saber que coluna e qual. */
@@ -7404,7 +7411,9 @@ export default function App() {
         /* Marca a verba com alerta mesmo com o grupo fechado */
         .vend-alerta-mark { display: inline-flex; align-items: center; color: #B54708; flex-shrink: 0; }
         .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
-        .exec-itens th { line-height: 1.25; }
+        /* Cabecalho de duas linhas ("Codigo / especif. / Obs.") precisa de
+           altura pra segunda linha caber inteira, senao ela sai cortada. */
+        .exec-itens th { line-height: 1.25; white-space: normal; vertical-align: bottom; padding-top: 8px; padding-bottom: 6px; }
         .exec-itens td.forte { color: var(--ink); font-weight: 600; }
         .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
         /* Colunas de origem: o que veio do criativo e o quanto mudou */
