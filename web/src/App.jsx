@@ -397,11 +397,18 @@ function itemEstourou(item) {
    escondendo os R$ 180. A alocacao sai das PARCELAS, que e a unica
    leitura capaz de dizer "os dois". */
 const ALOC_MAT = "MAT", ALOC_MO = "MO", ALOC_AMBOS = "AMBOS";
+// A sigla e o que cabe na celula; o nome por extenso e o que a pessoa
+// procura no filtro. Os dois em caixa alta, como a empresa padronizou.
 const ROTULO_ALOC = { MAT: "MAT", MO: "MO", AMBOS: "MAT/MO" };
+const NOME_ALOC = { MAT: "MATERIAL (MAT)", MO: "MÃO DE OBRA (MO)", AMBOS: "MAT/MO" };
 
 const ehProduto = (it) => it.tipo === "produto";
 
 function alocacaoDoItem(it) {
+  // Correcao na mao ganha de tudo. O que a planilha traz e uma leitura,
+  // nao um decreto: item lancado inteiro na coluna de material as vezes e
+  // servico, e so quem conhece a obra sabe.
+  if (it.alocacaoManual) return it.alocacaoManual;
   // Avulso nao tem valor nenhum (so o pedido), entao quem declara a
   // alocacao e quem pediu — nao ha parcela pra deduzir dela.
   if (it.avulso) return it.alocacao || ALOC_MAT;
@@ -418,16 +425,42 @@ function alocacaoDoItem(it) {
    numeros dos chips nao fechariam com o da tela, e numero que nao fecha
    e numero em que ninguem confia. */
 const FILTROS_ALOC = [
-  { id: "todos", label: "MAT e MO" },
-  { id: ALOC_MAT, label: "Só MATERIAL (MAT)", destino: "viram insumo no Sienge" },
-  { id: ALOC_MO, label: "Só Mão de Obra (MO)", destino: "viram contrato" },
-  { id: ALOC_AMBOS, label: "MAT/MO", destino: "seguem os dois caminhos" },
+  { id: "todos", label: "MAT E MO" },
+  { id: ALOC_MAT, label: NOME_ALOC.MAT, destino: "viram insumo no Sienge" },
+  { id: ALOC_MO, label: NOME_ALOC.MO, destino: "viram contrato" },
+  { id: ALOC_AMBOS, label: NOME_ALOC.AMBOS, destino: "seguem os dois caminhos" },
 ];
 const casaAloc = (it, f) => f === "todos" || alocacaoDoItem(it) === f;
 
-function TagAloc({ aloc }) {
+/* A etiqueta da alocacao — e, quando da pra corrigir, o proprio controle.
+
+   E um <select> de verdade por cima da etiqueta, transparente: a pessoa
+   clica onde ja estava olhando, o teclado navega e o leitor de tela
+   anuncia. Um botao que cicla MAT -> MO -> MAT/MO seria menos codigo e
+   obrigaria a passar pelas opcoes erradas ate chegar na certa.
+
+   Corrigida na mao, a etiqueta ganha um ponto: valor que nao e mais o
+   que a planilha disse nunca pode ficar calado na tela. */
+function TagAloc({ aloc, manual, onChange }) {
   if (!aloc) return <span className="dim">—</span>;
-  return <span className={`aloc aloc-${String(aloc).toLowerCase()}`}>{ROTULO_ALOC[aloc]}</span>;
+  const etiqueta = (
+    <span className={`aloc aloc-${String(aloc).toLowerCase()} ${manual ? "aloc-manual" : ""}`}
+      title={manual ? "Alocação corrigida à mão — o valor deste item foi para esta coluna" : undefined}>
+      {ROTULO_ALOC[aloc]}
+    </span>
+  );
+  if (!onChange) return etiqueta;
+  return (
+    <span className="aloc-edit">
+      {etiqueta}
+      <select value={aloc} onChange={(e) => onChange(e.target.value)} aria-label="Alocação de recurso"
+        title="Trocar a alocação. O valor do item vai junto pra coluna escolhida — o total não muda.">
+        <option value={ALOC_MAT}>{NOME_ALOC.MAT}</option>
+        <option value={ALOC_MO}>{NOME_ALOC.MO}</option>
+        <option value={ALOC_AMBOS}>{NOME_ALOC.AMBOS}</option>
+      </select>
+    </span>
+  );
 }
 
 /* Uma linha do plano, com MAT e MO lado a lado no MESMO item.
@@ -440,11 +473,11 @@ function TagAloc({ aloc }) {
 
    O que NAO mudou: MO continua indo pra Contratos, nao pra Compras. A
    linha so de MO nao ganha caixinha de compra — ela diz pra onde vai. */
-function LinhaPlano({ item, sugerido, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+function LinhaPlano({ item, sugerido, onAlocar, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
   const estourou = itemEstourou(item);
-  const { material, mo, estimado } = parcelasDoItem(item);
+  const { material, mo, estimado, manual } = parcelasDoItem(item);
   const aloc = alocacaoDoItem(item);
   const compravel = aloc !== ALOC_MO;   // so quem tem material vai pra Compras
   // Marcado por gente e marcado por sugestao tem que ser distinguiveis na
@@ -481,14 +514,14 @@ function LinhaPlano({ item, sugerido, onToggleCompra, onAprovar, onToggleComprad
       <td className="mono center">
         <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? item.qtd ?? "—"}</span> <span className="unit">{item.un}</span>
       </td>
-      <td className="center"><TagAloc aloc={aloc} /></td>
+      <td className="center"><TagAloc aloc={aloc} manual={!!item.alocacaoManual} onChange={onAlocar} /></td>
       <td className="mono right">
         {material > 0 ? fmtBRL(material) : <span className="dim">—</span>}
-        {estimado && material > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
+        {estimado && !manual && material > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
       </td>
       <td className="mono right">
         {mo > 0 ? fmtBRL(mo) : <span className="dim">—</span>}
-        {estimado && mo > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de mão de obra — assumido o custo total">est.</span>}
+        {estimado && !manual && mo > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de mão de obra — assumido o custo total">est.</span>}
       </td>
       <td className="mono right">{item.custo != null ? fmtBRL(item.custo) : <span className="dim">a orçar</span>}</td>
       <td className="center">
@@ -547,6 +580,25 @@ function LinhaPlano({ item, sugerido, onToggleCompra, onAprovar, onToggleComprad
 // material, serviço era tudo mão de obra — e a linha fica marcada como
 // estimada, pra ninguém tratar palpite como número da planilha.
 function parcelasDoItem(it) {
+  const base = parcelasDaPlanilha(it);
+  if (!it.alocacaoManual) return base;
+  /* Corrigiu a alocacao, o dinheiro acompanha — senao a correcao seria
+     enfeite e a verba continuaria contando pro lado errado.
+
+     O TOTAL do item nunca muda: o valor troca de coluna, MAT vira MO ou
+     o contrario, e a soma MAT+MO do grupo fica identica. Nenhuma
+     correcao aqui cria ou destroi dinheiro, e por isso nenhuma delas
+     mexe no CMV.
+
+     MAT/MO devolve a divisao que a planilha trouxe: e o jeito de
+     desfazer, sem precisar lembrar dos numeros originais. */
+  const total = base.material + base.mo;
+  if (it.alocacaoManual === ALOC_MAT) return { ...base, material: total, mo: 0, manual: true };
+  if (it.alocacaoManual === ALOC_MO) return { ...base, material: 0, mo: total, manual: true };
+  return { ...base, manual: true };
+}
+
+function parcelasDaPlanilha(it) {
   const qtd = it.qtdExecutivo ?? it.qtdVendida ?? null;
   const mat = it.totalMaterial ?? (it.custoMaterial != null && qtd ? it.custoMaterial * qtd : null);
   const mo = it.totalMO ?? (it.custoMO != null && qtd ? it.custoMO * qtd : null);
@@ -645,6 +697,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange }) {
                 return (
                   <LinhaPlano key={it.codigo} item={it}
                     sugerido={sugeridoParaCompra(it, cat.num)}
+                    onAlocar={(v) => onItemChange(idx, { alocacaoManual: v })}
                     onToggleCompra={() => onItemChange(idx, {
                       // Clicar inverte o que esta na tela. Numa linha
                       // sugerida — que ja aparece marcada — o clique e o
@@ -771,8 +824,8 @@ function FormAvulsa({ obra, onCriar }) {
         <span className="form-label" style={{ display: "block" }}>Alocação de recurso</span>
         <div className="aloc-escolha">
           {[
-            { id: ALOC_MAT, rot: "MAT", sub: "só material" },
-            { id: ALOC_MO, rot: "MO", sub: "só mão de obra" },
+            { id: ALOC_MAT, rot: "MAT", sub: "só MATERIAL" },
+            { id: ALOC_MO, rot: "MO", sub: "só MÃO DE OBRA" },
             { id: ALOC_AMBOS, rot: "MAT/MO", sub: "os dois" },
           ].map((o) => (
             <button key={o.id} type="button"
@@ -785,7 +838,7 @@ function FormAvulsa({ obra, onCriar }) {
         </div>
         {aloc === ALOC_MO && (
           <div className="form-avulsa-aviso">
-            Só mão de obra vai para <b>Contratos</b>, não para Compras.
+            Só MÃO DE OBRA vai para <b>Contratos</b>, não para Compras.
           </div>
         )}
       </div>
@@ -1072,11 +1125,16 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           <div className="compras-empty-sub">Nenhum item da EAP combina "{FILTROS_ALOC.find((t) => t.id === tipoFilter)?.label}" com "{FILTERS.find((f) => f.id === itemFilter)?.label}"{soVendido ? " dentro do que foi vendido" : ""}.</div>
         </div>
       )}
+      {/* A legenda antiga explicava as cores da barra vendido × executivo,
+          que saiu junto com a tabela velha — ficou nomeando cor que a tela
+          não tem mais. Aqui a dúvida é outra: o que cada sigla quer dizer
+          e pra onde o item vai depois daqui. */}
       <div className="legend">
-        <div className="legend-item"><span className="legend-dot" style={{ background: "var(--green)" }} /> Dentro do orçado</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "var(--amber)" }} /> Acima do orçado (até 15%)</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "var(--red)" }} /> Estouro crítico / fora de escopo</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "var(--ink-3)" }} /> Sem lançamento / não se aplica</div>
+        <div className="legend-item"><span className="aloc aloc-mat">MAT</span> MATERIAL — vai pra Compras</div>
+        <div className="legend-item"><span className="aloc aloc-mo">MO</span> MÃO DE OBRA — vai pra Contratos</div>
+        <div className="legend-item"><span className="aloc aloc-ambos">MAT/MO</span> As duas parcelas — segue os dois caminhos</div>
+        <div className="legend-item"><span className="aloc aloc-mat aloc-manual">MAT</span> O ponto marca alocação corrigida à mão</div>
+        <div className="legend-item"><span className="tag-avulso"><Plus size={9} /> avulsa</span> Pedido fora do executivo, ainda sem valor</div>
       </div>
 
       {!obra.comprasLiberadas && (
@@ -7086,7 +7144,13 @@ export default function App() {
         .grp-tot-rot { font-size: 9.5px; font-weight: 700; color: var(--ink-3); letter-spacing: 0.06em; }
         .grp-tot-val { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
         .grp-itens { border-top: 1px solid var(--border); background: #FCFBF8; overflow-x: auto; }
-        .grp-itens table { width: 100%; border-collapse: collapse; }
+        /* As 12 colunas somam mais que a largura util da tela. Sem um
+           minimo, o navegador espremia justamente a coluna flexivel — a
+           descricao — e "Anotacao de responsabilidade tecnica" saia em
+           quatro linhas ao lado de colunas de valor com folga sobrando.
+           Com o minimo a tabela rola na horizontal e a descricao respira. */
+        .grp-itens table { width: 100%; min-width: 1200px; border-collapse: collapse; }
+        .grp-itens th:nth-child(3), .grp-itens td:nth-child(3) { min-width: 230px; }
         .grp-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
         .grp-itens td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 12.5px; }
         .grp-itens th.center, .grp-itens td.center { text-align: center; }
@@ -7100,6 +7164,16 @@ export default function App() {
         .aloc-mat { background: var(--blue-bg); color: var(--blue); }
         .aloc-mo { background: var(--panel); color: var(--ink-2); }
         .aloc-ambos { background: linear-gradient(105deg, var(--blue-bg) 50%, var(--panel) 50%); color: var(--ink-2); }
+        /* Ponto na etiqueta = alocacao corrigida a mao. Numero que nao e
+           mais o que a planilha disse nao pode ficar calado na tela. */
+        .aloc-manual { box-shadow: inset 0 0 0 1px var(--purple); position: relative; }
+        .aloc-manual::after { content: ""; position: absolute; top: -2px; right: -2px; width: 5px; height: 5px; border-radius: 50%; background: var(--purple); }
+        /* O select de verdade fica por cima da etiqueta, invisivel: a
+           pessoa clica onde ja estava olhando e o teclado continua indo. */
+        .aloc-edit { position: relative; display: inline-block; }
+        .aloc-edit select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-family: inherit; }
+        .aloc-edit:hover .aloc { box-shadow: inset 0 0 0 1px var(--ink-3); }
+        .aloc-edit select:focus-visible + .aloc, .aloc-edit:focus-within .aloc { box-shadow: inset 0 0 0 2px var(--ink); }
 
         /* Avulso e a linha que NAO veio da planilha. Fica visivelmente
            diferente porque a pergunta "de onde saiu isto?" aparece toda

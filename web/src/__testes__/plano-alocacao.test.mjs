@@ -34,6 +34,7 @@ const { alocacaoDoItem, casaAloc, parcelasDoItem, matchesFilter, ALOC_MAT, ALOC_
   eval(`(function () {
     ${trecho("const ALOC_MAT =", "function TagAloc")}
     ${pega("function parcelasDoItem(")}
+    ${pega("function parcelasDaPlanilha(")}
     ${pega("function itemAlertas(")}
     ${pega("function matchesFilter(")}
     return { alocacaoDoItem, casaAloc, parcelasDoItem, matchesFilter, ALOC_MAT, ALOC_MO, ALOC_AMBOS, FILTROS_ALOC };
@@ -103,6 +104,34 @@ const moAntes = grupo.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
 const comAvulso = [...grupo, avulso_mat, avulso_ambos];
 conf("total MAT do grupo não muda com avulso", comAvulso.reduce((a, it) => a + parcelasDoItem(it).material, 0), matAntes);
 conf("total MO do grupo não muda com avulso", comAvulso.reduce((a, it) => a + parcelasDoItem(it).mo, 0), moAntes);
+
+/* ---- 6. correção na mão: manda na classificação E no dinheiro ---- */
+// O que a planilha traz é leitura, não decreto. Item lançado inteiro na
+// coluna de material às vezes é serviço, e só quem conhece a obra sabe.
+const spot_pra_mo = { ...spot, alocacaoManual: ALOC_MO };
+const spot_pra_mat = { ...spot, alocacaoManual: ALOC_MAT };
+const spot_devolvido = { ...spot, alocacaoManual: ALOC_AMBOS };
+
+conf("correção manual ganha das parcelas", alocacaoDoItem(spot_pra_mo), ALOC_MO);
+conf("... e ganha até do que o avulso declarou", alocacaoDoItem({ ...avulso_mat, alocacaoManual: ALOC_MO }), ALOC_MO);
+
+conf("virou MO: material zera", parcelasDoItem(spot_pra_mo).material, 0);
+conf("virou MO: mão de obra recebe o total", parcelasDoItem(spot_pra_mo).mo, 362);
+conf("virou MAT: material recebe o total", parcelasDoItem(spot_pra_mat).material, 362);
+conf("virou MAT: mão de obra zera", parcelasDoItem(spot_pra_mat).mo, 0);
+conf("MAT/MO devolve a divisão da planilha", parcelasDoItem(spot_devolvido).material, 182);
+conf("... nos dois lados", parcelasDoItem(spot_devolvido).mo, 180);
+conf("a linha fica marcada como corrigida", parcelasDoItem(spot_pra_mo).manual, true);
+conf("sem correção, nada de manual", parcelasDoItem(spot).manual, undefined);
+
+/* A garantia que importa: correção move dinheiro de coluna, NUNCA cria
+   nem destrói. Se o total do grupo mudasse, uma reclassificação passaria
+   a mexer no teto de gastos sem ninguém ter gastado nada. */
+const soma = (l) => l.reduce((a, it) => a + parcelasDoItem(it).material + parcelasDoItem(it).mo, 0);
+const antes = [spot, so_mat, so_mo];
+const depois = [spot_pra_mo, so_mat, { ...so_mo, alocacaoManual: ALOC_MAT }];
+conf("MAT+MO do grupo é o mesmo depois de corrigir", soma(depois), soma(antes));
+conf("mas o dinheiro trocou de coluna", depois.reduce((a, it) => a + parcelasDoItem(it).material, 0), 900 + 1200);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
