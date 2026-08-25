@@ -401,8 +401,13 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
         <div className="dash-anel-linha">
           <svg width="84" height="84" viewBox="0 0 84 84" className="dash-anel">
             <circle cx="42" cy="42" r="34" fill="none" stroke="var(--border)" strokeWidth="9" />
-            <circle cx="42" cy="42" r="34" fill="none" stroke="var(--green)" strokeWidth="9" strokeLinecap="round"
-              strokeDasharray={`${(pctComprado / 100) * anel} ${anel}`} transform="rotate(-90 42 42)" />
+            {/* Em 0% o arco nao e desenhado: com strokeLinecap redondo,
+                comprimento zero vira um pontinho verde no topo do anel —
+                parece "comecou alguma coisa" numa obra sem uma compra. */}
+            {pctComprado > 0 && (
+              <circle cx="42" cy="42" r="34" fill="none" stroke="var(--green)" strokeWidth="9" strokeLinecap="round"
+                strokeDasharray={`${(pctComprado / 100) * anel} ${anel}`} transform="rotate(-90 42 42)" />
+            )}
             <text x="42" y="47" textAnchor="middle" className="dash-anel-txt">{pctComprado.toFixed(0)}%</text>
           </svg>
           <div>
