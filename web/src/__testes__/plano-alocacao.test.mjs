@@ -40,7 +40,7 @@ const api = eval(`(function () {
       "Móveis Soltos": "24", "Louças, Metais e Equipamentos Especiais": "27",
       "Execução e Mão de Obra": "32", "Pintura": "18", "Serralheria": "22",
     })[n] || null;
-    ${trecho("const ALOC_MAT =", "function TagAloc")}
+    ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
     ${pega("function parcelasDoItem(")}
     ${pega("function parcelasDaPlanilha(")}
     ${pega("function itemAlertas(")}

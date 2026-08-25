@@ -870,6 +870,56 @@ function diasAte(data, hoje = new Date()) {
 
 const fmtData = (d) => (d ? d.toLocaleDateString("pt-BR") : "—");
 
+/* CANAIS DE COMPRA — por onde o produto e pedido.
+
+   Sienge e o caminho formal, com cadastro de insumo. Mehoo, Automacao e
+   Cortinas sao categorias de filtro: servem pra separar o que vai pra
+   cada fornecedor na hora de mandar o pedido.
+
+   Os simbolos sao DESENHADOS aqui, nao sao a marca de ninguem: sao
+   iniciais em etiqueta colorida. Colar o logo do Sienge dentro do app
+   seria usar marca alheia sem permissao, e uma sigla cumpre o papel — que
+   e reconhecer o canal de relance numa lista de 200 linhas. */
+const CANAIS_COMPRA = [
+  { id: "sienge",   sigla: "SG", nome: "Sienge",               cor: "var(--blue)",   bg: "var(--blue-bg)" },
+  { id: "mehoo",    sigla: "MH", nome: "Mehoo",                cor: "var(--purple)", bg: "#EFEAFB" },
+  { id: "automacao",sigla: "AU", nome: "Automação",            cor: "var(--green)",  bg: "var(--green-bg)" },
+  { id: "cortinas", sigla: "CP", nome: "Cortinas e Persianas", cor: "#B54708",       bg: "var(--amber-bg)" },
+];
+const canalPorId = (id) => CANAIS_COMPRA.find((c) => c.id === id) || null;
+
+/* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
+
+   Os testes recortam o trecho ACIMA desta linha e rodam de verdade. JSX
+   dentro do recorte quebra o eval com "Unexpected token '<'", que nao diz
+   nada sobre a causa — ja aconteceu quatro vezes.
+
+   Componente novo entra DEPOIS deste marcador. Funcao pura entra antes. */
+
+function TagCanal({ id, comNome }) {
+  const c = canalPorId(id);
+  if (!c) return null;
+  return (
+    <span className="tag-canal" style={{ color: c.cor, background: c.bg }} title={`Compra por ${c.nome}`}>
+      <b>{c.sigla}</b>{comNome ? ` ${c.nome}` : ""}
+    </span>
+  );
+}
+
+/* A coluna de situacao virou LEITURA, nao controle.
+
+   Quem escolhe o canal e a tela de Compras de Produtos; quem contrata a
+   mao de obra e a de Contratos. Aqui o Plano de Compras so mostra em que
+   pe cada linha esta — e "sem informacao" e uma resposta legitima, bem
+   melhor que uma caixinha que finge que a decisao se toma aqui. */
+function SituacaoCompra({ item }) {
+  if (item.canalCompra) return <TagCanal id={item.canalCompra} comNome />;
+  if (item.statusContrato) {
+    return <span className="pill pill-ok">{CONTRATO_STAGES[item.statusContrato]?.label || "contratado"}</span>;
+  }
+  return <span className="pill pill-wait">sem informação</span>;
+}
+
 function TagAloc({ aloc, manual, onChange }) {
   // alocacaoDoItem nunca devolve vazio; se devolver, e defeito e tem que
   // gritar na tela, nao virar um tracinho discreto que ninguem investiga.
@@ -904,19 +954,15 @@ function TagAloc({ aloc, manual, onChange }) {
 
    O que NAO mudou: MO continua indo pra Contratos, nao pra Compras. A
    linha so de MO nao ganha caixinha de compra — ela diz pra onde vai. */
-function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
-  const estourou = itemEstourou(item);
   const { material, mo, estimado, manual } = parcelasDoItem(item);
   const aloc = alocacaoDoItem(item, cat);
   const compravel = aloc !== ALOC_MO;   // so quem tem material vai pra Compras
-  // Marcado por gente e marcado por sugestao tem que ser distinguiveis na
-  // hora: sugestao que se parece com decisao e sugestao que ninguem revisa.
-  const marcado = !!item.liberado;
 
   return (
-    <tr className={item.avulso ? "row-avulso" : alertas.length ? "row-alert" : estourou ? "row-estouro" : ""}>
+    <tr className={item.avulso ? "row-avulso" : alertas.length ? "row-alert" : ""}>
       {/* A coluna "Compr." saiu.
 
           Ela era uma caixinha de marcar que dizia exatamente o que a
@@ -994,43 +1040,9 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onToggleComp
           : fmtBRL(material + mo)}
       </td>
       <td className="center">
-        {!compravel ? (
-          <span className="pill pill-wait" title="Mão de obra: segue para Contratos, não para Compras">
-            <Link2 size={10} /> Contratos
-          </span>
-        ) : bloqueado ? (
-          <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
-        ) : (
-          <button className={`pill pill-btn ${marcado ? "pill-ok" : "pill-wait"}`}
-            onClick={onToggleCompra}
-            title={marcado ? "Clique pra tirar do plano de compras" : "Clique pra incluir no plano de compras"}>
-            {marcado ? "No plano de compras" : "Fora do plano"}
-          </button>
-        )}
-      </td>
-      <td className="mono center">
-        {compravel ? (
-          <input className="input-valor input-qtd" type="text" placeholder="—"
-            value={item.qtdComprada != null ? item.qtdComprada.toString().replace(".", ",") : ""}
-            onChange={(e) => onQtdComprada(e.target.value)} />
-        ) : <span className="dim">—</span>}
-      </td>
-      <td className="mono right">
-        {compravel ? (
-          <>
-            <input className={`input-valor ${estourou ? "input-estouro" : ""}`} type="text" placeholder="—"
-              value={item.valorComprado != null ? item.valorComprado.toString().replace(".", ",") : ""}
-              onChange={(e) => onValorComprado(e.target.value)} />
-            {estourou && <div className="estouro-tag"><AlertTriangle size={10} /> estourou</div>}
-          </>
-        ) : <span className="dim">—</span>}
-      </td>
-      <td className="center">
-        {compravel ? (
-          <button className={item.comprado ? "check check-on" : "check"} onClick={onToggleComprado} aria-label="Marcar como comprado">
-            {item.comprado && <Check size={13} />}
-          </button>
-        ) : <span className="dim">—</span>}
+        {bloqueado
+          ? <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
+          : <SituacaoCompra item={item} />}
       </td>
     </tr>
   );
@@ -1162,10 +1174,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
                 <th style={{ width: 100 }} className="right">MAT</th>
                 <th style={{ width: 100 }} className="right">MO</th>
                 <th style={{ width: 100 }} className="right">Total</th>
-                <th style={{ width: 140 }} className="center">Situação de compra</th>
-                <th style={{ width: 88 }} className="center">Qtd. comprada</th>
-                <th style={{ width: 106 }} className="right">Valor comprado</th>
-                <th style={{ width: 56 }} className="center">Comprado</th>
+                <th style={{ width: 160 }} className="center">Situação de compra</th>
               </tr>
             </thead>
             <tbody>
@@ -1176,17 +1185,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
                     onAlocar={(v) => onAlocar(it, idx, v)}
                     onSepararMO={onSepararMO ? () => onSepararMO(it.codigo) : null}
                     onJuntarMO={onJuntarMO ? () => onJuntarMO(it.codigo) : null}
-                    onToggleCompra={() => onItemChange(idx, { compraDecidida: true, liberado: !it.liberado })}
                     onAprovar={() => onItemChange(idx, { statusEscopo: "aprovado" })}
-                    onToggleComprado={() => onItemChange(idx, { comprado: !it.comprado })}
-                    onValorComprado={(v) => {
-                      const num = parseFloat(v.replace(/\./g, "").replace(",", "."));
-                      onItemChange(idx, { valorComprado: isNaN(num) ? null : num });
-                    }}
-                    onQtdComprada={(v) => {
-                      const num = parseFloat(v.replace(/\./g, "").replace(",", "."));
-                      onItemChange(idx, { qtdComprada: isNaN(num) ? null : num });
-                    }}
                   />
                 );
               })}
@@ -7951,7 +7950,7 @@ export default function App() {
            descricao — e "Anotacao de responsabilidade tecnica" saia em
            quatro linhas ao lado de colunas de valor com folga sobrando.
            Com o minimo a tabela rola na horizontal e a descricao respira. */
-        .grp-itens table { width: 100%; min-width: 1170px; border-collapse: collapse; }
+        .grp-itens table { width: 100%; min-width: 940px; border-collapse: collapse; }
         .grp-itens th:nth-child(2), .grp-itens td:nth-child(2) { min-width: 230px; }
         /* A situacao virou o controle de incluir/tirar do plano. */
         .pill-btn { border: none; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
@@ -8077,6 +8076,8 @@ export default function App() {
 
         .btn-approve { display: inline-flex; align-items: center; gap: 4px; background: var(--ink); color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }
         .btn-approve:hover { background: var(--blue); }
+        .tag-canal { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+        .tag-canal b { font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; }
         .pill { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-wait { background: var(--panel); color: var(--ink-3); }

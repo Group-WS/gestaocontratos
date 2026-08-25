@@ -32,7 +32,7 @@ const { servicosMO } = eval(`(function () {
   const padraoDaDescricao = () => null;
   const verbaPorNome = (n) => ({ "Gesso e Drywall": "10", "Pintura": "18", "Serralheria": "22",
     "Instalações Elétricas e Iluminação": "05", "Execução e Mão de Obra": "32" })[n] || null;
-  ${trecho("const ALOC_MAT =", "function TagAloc")}
+  ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
   ${bloco("function servicosMO(")}

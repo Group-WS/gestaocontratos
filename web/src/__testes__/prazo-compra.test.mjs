@@ -27,7 +27,7 @@ const { prazoDoGrupo, dataLimiteCompra, diasAte, PRAZOS_COMPRA } =
       "Móveis Soltos": "24", "Louças, Metais e Equipamentos Especiais": "27",
       "Eletroeletrônico": "28", "Pintura": "18", "Serralheria": "22",
     })[n] || null;
-    ${trecho("const PRAZOS_COMPRA = {", "function TagAloc")}
+    ${trecho("const PRAZOS_COMPRA = {", "/* =====[ FIM DO MODELO PURO")}
     return { prazoDoGrupo, dataLimiteCompra, diasAte, PRAZOS_COMPRA };
   })()`);
 
