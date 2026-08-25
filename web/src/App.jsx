@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
+import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
@@ -569,14 +570,22 @@ const ehVerbaMatMoSempre = (num, nome) =>
   VERBAS_MAT_MO_SEMPRE.has((nome ? verbaPorNome(nome) : null) || num);
 
 function alocacaoDoItem(it, cat) {
-  // Correcao na mao ganha de tudo. O que a planilha traz e uma leitura,
-  // nao um decreto: item lancado inteiro na coluna de material as vezes e
-  // servico, e so quem conhece a obra sabe.
+  // Correcao NESTA obra ganha de tudo. O que a planilha traz e uma
+  // leitura, nao um decreto: item lancado inteiro na coluna de material
+  // as vezes e servico, e so quem conhece a obra sabe.
   if (it.alocacaoManual) return it.alocacaoManual;
-  // Linha que nasceu de uma separacao ja tem lado definido; deixar a
-  // regra do grupo mandar nela desfaria a separacao na tela.
+  // Linha que nasceu de uma separacao ja tem lado definido; deixar
+  // qualquer regra mandar nela desfaria a separacao na tela.
   if (it.moSeparada) return ALOC_MAT;
   if (it.separadoDe) return ALOC_MO;
+  /* Decisao da empresa pra essa descricao.
+
+     "Anotacao de responsabilidade tecnica - RRT" e mao de obra em toda
+     obra que a casa faz; "Cacambas de entulho" tambem. Decidido uma vez,
+     vale sempre — e vem antes das regras de verba porque descricao e mais
+     especifica que grupo. */
+  const daEmpresa = padraoDaDescricao(it.desc);
+  if (daEmpresa) return daEmpresa;
   // Verba de pacote fechado: o fornecedor entrega os dois juntos.
   if (cat && ehVerbaMatMoSempre(cat.num, cat.nome)) return ALOC_AMBOS;
   // Avulso nao tem valor nenhum (so o pedido), entao quem declara a
@@ -829,7 +838,7 @@ function TagAloc({ aloc, manual, onChange }) {
 
    O que NAO mudou: MO continua indo pra Contratos, nao pra Compras. A
    linha so de MO nao ganha caixinha de compra — ela diz pra onde vai. */
-function LinhaPlano({ item, cat, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+function LinhaPlano({ item, cat, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO, onIrParaMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
   const estourou = itemEstourou(item);
@@ -866,7 +875,13 @@ function LinhaPlano({ item, cat, sugerido, verbaMO, onAlocar, onSepararMO, onJun
             e ninguem lembra se e separacao ou duplicata. */}
         {item.moSeparada && (
           <span className="tag-separado">
-            <CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada para {item.moSeparada.paraVerba}
+            <CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada para{" "}
+            {/* Vira link: a linha separada mora em outra verba, no fim da
+                lista e fechada. Sem o atalho a pessoa procura no grupo de
+                origem, nao acha, e conclui que a separacao nao funcionou. */}
+            {onIrParaMO
+              ? <button className="btn-ir-mo" onClick={onIrParaMO} title="Abrir a verba de mão de obra e ver a linha separada">{item.moSeparada.paraVerba} — ver lá</button>
+              : item.moSeparada.paraVerba}
             {onJuntarMO && <button className="btn-juntar" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</button>}
           </span>
         )}
@@ -987,7 +1002,13 @@ function parcelasDoItem(it) {
      aqui seria contar o mesmo dinheiro nos dois lugares — e o total da
      obra subiria sozinho, sem ninguem ter gasto nada. */
   const base = it.moSeparada ? { ...daPlanilha, mo: 0, moSeparada: true } : daPlanilha;
-  if (!it.alocacaoManual) return base;
+  /* Decisao de gente move o dinheiro junto — seja a desta obra ou o
+     padrao da empresa. Linha nascida de separacao fica fora: as parcelas
+     dela ja foram definidas na hora de partir, e aplicar o padrao por
+     cima devolveria o valor pra coluna errada. */
+  const decidida = it.alocacaoManual
+    || (it.moSeparada || it.separadoDe ? null : padraoDaDescricao(it.desc));
+  if (!decidida) return base;
   /* Corrigiu a alocacao, o dinheiro acompanha — senao a correcao seria
      enfeite e a verba continuaria contando pro lado errado.
 
@@ -999,8 +1020,8 @@ function parcelasDoItem(it) {
      MAT/MO devolve a divisao que a planilha trouxe: e o jeito de
      desfazer, sem precisar lembrar dos numeros originais. */
   const total = base.material + base.mo;
-  if (it.alocacaoManual === ALOC_MAT) return { ...base, material: total, mo: 0, manual: true };
-  if (it.alocacaoManual === ALOC_MO) return { ...base, material: 0, mo: total, manual: true };
+  if (decidida === ALOC_MAT) return { ...base, material: total, mo: 0, manual: true };
+  if (decidida === ALOC_MO) return { ...base, material: 0, mo: total, manual: true };
   return { ...base, manual: true };
 }
 
@@ -1104,7 +1125,7 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
   );
 }
 
-function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehVerbaMO, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega }) {
+function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, verbaMO, ehVerbaMO, onSepararMO, onJuntarMO, onSepararGrupo, onIrParaMO, dataEntrega }) {
   const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
   const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
   const nAvulsos = itens.filter((it) => it.avulso).length;
@@ -1113,7 +1134,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
   const aSeparar = ehVerbaMO ? 0 : itens.filter((it) => podeSepararMO(it, cat)).length;
 
   return (
-    <div className="grp-block">
+    <div className="grp-block" data-grp={cat.num}>
       {/* Era um <button> so. Virou div com o botao SO na parte esquerda:
           o campo de dias e o "x" de limpar sao controles, e controle
           dentro de botao nao e HTML valido — o clique de um come o do
@@ -1180,10 +1201,11 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
                 return (
                   <LinhaPlano key={it.codigo} item={it} cat={cat}
                     sugerido={sugeridoParaCompra(it, cat.num)}
-                    onAlocar={(v) => onItemChange(idx, { alocacaoManual: v })}
+                    onAlocar={(v) => onAlocar(it, idx, v)}
                     verbaMO={verbaMO}
                     onSepararMO={ehVerbaMO || !onSepararMO ? null : () => onSepararMO(it.codigo)}
                     onJuntarMO={onJuntarMO ? () => onJuntarMO(it.codigo) : null}
+                    onIrParaMO={ehVerbaMO ? null : onIrParaMO}
                     onToggleCompra={() => onItemChange(idx, {
                       // Clicar inverte o que esta na tela. Numa linha
                       // sugerida — que ja aparece marcada — o clique e o
@@ -1429,7 +1451,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onIrParaDashboard, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onAlocar, onIrParaDashboard, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
 
   /* "Só o vendido" nasce ligado.
@@ -1445,6 +1467,21 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
   // Achada pelo NOME: a EAP renumerou uma vez e obra salva antes da troca
   // guarda a numeracao velha, entao "32" cru nao serve.
   const verbaMO = useMemo(() => achaVerbaMO(obra.categorias), [obra.categorias]);
+
+  /* Leva ate a verba de mao de obra e abre.
+
+     A linha separada mora em OUTRA verba, no fim de uma lista de quinze
+     grupos, fechada. Quem separou procura no grupo de origem, nao acha, e
+     conclui que a separacao nao funcionou — aconteceu duas vezes aqui. */
+  const abrirVerbaMO = (rolar) => {
+    if (!verbaMO) return;
+    const chave = verbaMO.num + obra.id;
+    if (!expandedCats.has(chave)) toggleCat(chave);
+    if (rolar) setTimeout(() => {
+      const el = document.querySelector(`[data-grp="${verbaMO.num}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  };
 
   // Só vale avisar da data faltando se algum grupo de fato tem prazo.
   const temPrazos = useMemo(() => (obra.categorias || []).some((c) =>
@@ -1622,11 +1659,13 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           onToggle={() => toggleCat(cat.num + obra.id)}
           verbaMO={verbaMO ? `${verbaMO.num} ${verbaMO.nome}` : null}
           ehVerbaMO={!!verbaMO && verbaMO.num === cat.num}
-          onSepararMO={(codigo) => onSepararMO(cat.num, codigo)}
+          onSepararMO={(codigo) => { onSepararMO(cat.num, codigo); abrirVerbaMO(false); }}
           onJuntarMO={(codigo) => onJuntarMO(cat.num, codigo)}
-          onSepararGrupo={() => onSepararGrupo(cat.num)}
+          onSepararGrupo={() => { onSepararGrupo(cat.num); abrirVerbaMO(false); }}
+          onIrParaMO={() => abrirVerbaMO(true)}
           dataEntrega={obra.dataEntrega}
           onItemChange={(itemIdx, patch) => updateItem(obra.categorias.indexOf(cat), itemIdx, patch)}
+          onAlocar={(it, itemIdx, v) => onAlocar(obra.categorias.indexOf(cat), itemIdx, it, v)}
         />
       ))}
       {temItens && grupos.length === 0 && (
@@ -6719,6 +6758,10 @@ export default function App() {
     carregarEapDoBanco()
       .then((r) => { if (vivo && r) setEapDoBanco(r); })
       .catch((e) => console.warn("EAP do banco indisponível, usando a do código:", e.message || e));
+    // Alocacoes que a empresa ja decidiu, por descricao. Falhando, o app
+    // segue lendo as parcelas da planilha — que e o que fazia antes.
+    carregarAlocacoesDoBanco()
+      .catch((e) => console.warn("Alocações padrão indisponíveis:", e.message || e));
     return () => { vivo = false; };
   }, []);
   const [expandedCats, setExpandedCats] = useState(() => new Set(["022519", "062519"]));
@@ -7417,6 +7460,25 @@ export default function App() {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, dataEntrega: data || null } : o)));
   }
 
+  /* Corrigir a alocacao de um item vale pra EMPRESA INTEIRA.
+
+     "Anotacao de responsabilidade tecnica - RRT" e mao de obra em toda
+     obra que a casa faz. Corrigir isso obra a obra e refazer a mesma
+     decisao pra sempre, e basta esquecer uma vez pra o valor cair na
+     coluna errada e o contrato nascer menor do que deveria.
+
+     Grava nos dois lugares de proposito: no item, pra tela reagir no
+     clique e a correcao sobreviver mesmo se o banco recusar; e na tabela
+     da empresa, pra toda obra com a mesma descricao ja nascer certa. */
+  function definirAlocacao(catIdx, itemIdx, item, valor) {
+    updateItem(catIdx, itemIdx, { alocacaoManual: valor });
+    salvarAlocacaoPadrao(item.desc, valor, usuario)
+      .catch((e) => setErroBanco(
+        `Alocação aplicada nesta obra, mas não virou padrão da empresa: ${e.message || e}. ` +
+        `Talvez falte rodar supabase/alocacao.sql.`
+      ));
+  }
+
   /* Separa a mao de obra de UM item, na mao.
 
      O de R$ 268 (223 de material + 45 de MO) vira dois: ele mesmo, so
@@ -8010,6 +8072,7 @@ export default function App() {
            verbas diferentes, e a conferencia de meses depois nao sabe se e
            separacao ou duplicata. */
         .tag-separado { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--purple); background: #EFEAFB; border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
+        .btn-ir-mo { background: transparent; border: none; color: var(--purple); text-decoration: underline; font-size: 10px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 0; }
         .btn-juntar { background: transparent; border: none; color: var(--purple); text-decoration: underline; font-size: 10px; cursor: pointer; font-family: inherit; padding: 0 0 0 3px; }
         .btn-avulsa { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 12px; }
         .btn-avulsa:hover { background: var(--purple); }
@@ -8808,7 +8871,7 @@ export default function App() {
             </div>
           )}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
