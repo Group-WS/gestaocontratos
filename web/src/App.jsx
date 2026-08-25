@@ -906,18 +906,27 @@ function TagCanal({ id, comNome }) {
   );
 }
 
-/* A coluna de situacao virou LEITURA, nao controle.
+/* A coluna responde PRA ONDE O ITEM VAI, nao em que pe ele esta.
 
-   Quem escolhe o canal e a tela de Compras de Produtos; quem contrata a
-   mao de obra e a de Contratos. Aqui o Plano de Compras so mostra em que
-   pe cada linha esta — e "sem informacao" e uma resposta legitima, bem
-   melhor que uma caixinha que finge que a decisao se toma aqui. */
-function SituacaoCompra({ item }) {
+   Sao duas perguntas diferentes e elas nao cabem na mesma celula: destino
+   (Sienge, Mehoo, Automacao, Cortinas, Contratos) muda uma vez; estagio
+   (solicitado, pedido feito, recebido) muda toda semana. O estagio mora
+   no funil de Compras de Produtos, que e onde ele e trabalhado.
+
+   Mao de obra nao precisa que ninguem escolha: ela vai pra Contratos por
+   definicao. Deixar "nao identificado" numa linha de MO era o app fingir
+   nao saber uma coisa que ele sabe. */
+function DestinoCompra({ item, aloc }) {
   if (item.canalCompra) return <TagCanal id={item.canalCompra} comNome />;
-  if (item.statusContrato) {
-    return <span className="pill pill-ok">{CONTRATO_STAGES[item.statusContrato]?.label || "contratado"}</span>;
+  if (aloc === ALOC_MO) {
+    const etapa = item.statusContrato ? CONTRATO_STAGES[item.statusContrato]?.label : null;
+    return (
+      <span className="pill pill-contratos" title={etapa || "Mão de obra segue para Contratos"}>
+        <Link2 size={10} /> Contratos{etapa ? ` · ${etapa.toLowerCase()}` : ""}
+      </span>
+    );
   }
-  return <span className="pill pill-wait">sem informação</span>;
+  return <span className="pill pill-wait">não identificado</span>;
 }
 
 function TagAloc({ aloc, manual, onChange }) {
@@ -1042,7 +1051,7 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
       <td className="center">
         {bloqueado
           ? <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
-          : <SituacaoCompra item={item} />}
+          : <DestinoCompra item={item} aloc={aloc} />}
       </td>
     </tr>
   );
@@ -1174,7 +1183,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
                 <th style={{ width: 100 }} className="right">MAT</th>
                 <th style={{ width: 100 }} className="right">MO</th>
                 <th style={{ width: 100 }} className="right">Total</th>
-                <th style={{ width: 160 }} className="center">Situação de compra</th>
+                <th style={{ width: 170 }} className="center">Destino</th>
               </tr>
             </thead>
             <tbody>
@@ -8080,6 +8089,7 @@ export default function App() {
         .tag-canal b { font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; }
         .pill { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
         .pill-ok { background: var(--green-bg); color: var(--green); }
+        .pill-contratos { background: var(--panel); color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
         .pill-wait { background: var(--panel); color: var(--ink-3); }
 
         /* PLANO DE COMPRAS — seleção do que vai ser comprado.
