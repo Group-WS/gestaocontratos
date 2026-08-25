@@ -653,7 +653,19 @@ function LinhaPlano({ item, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO
         {mo > 0 ? fmtBRL(mo) : <span className="dim">—</span>}
         {estimado && !manual && mo > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de mão de obra — assumido o custo total">est.</span>}
       </td>
-      <td className="mono right">{item.custo != null ? fmtBRL(item.custo) : <span className="dim">a orçar</span>}</td>
+      {/* O total sai da SOMA das duas colunas ao lado, nao de `item.custo`.
+
+          Custo e o numero que veio da planilha e ele nao acompanha o que
+          acontece depois: separada a mao de obra, a linha mostrava MAT
+          R$ 1.832, MO vazia e total R$ 2.519 — os R$ 687 que tinham ido
+          pra outra verba continuavam somando ali. Tres colunas na mesma
+          linha que nao fecham entre si e o tipo de erro que faz a pessoa
+          parar de confiar na tela inteira. */}
+      <td className="mono right">
+        {item.custo == null && material + mo === 0
+          ? <span className="dim">a orçar</span>
+          : fmtBRL(material + mo)}
+      </td>
       <td className="center">
         {!compravel ? <span className="pill pill-wait">→ Contratos</span>
           : bloqueado ? <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>

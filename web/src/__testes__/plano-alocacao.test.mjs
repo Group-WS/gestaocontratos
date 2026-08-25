@@ -211,5 +211,15 @@ const totalDe = (cs) => cs.reduce((a, c) => a + (c.itens || []).reduce((b, it) =
 }, 0), 0);
 conf("total da obra não muda ao separar", totalDe(r.categorias), totalDe(cats));
 
+/* ---- 11. as três colunas de dinheiro da linha têm que fechar ---- */
+// Depois de separar, a linha mostrava MAT 1.832, MO vazia e total 2.519:
+// os 687 que já tinham ido pra outra verba continuavam somando ali.
+// O total da linha é MAT + MO, sempre — nunca o custo da planilha.
+const totalDaLinha = (it) => { const pp = parcelasDoItem(it); return pp.material + pp.mo; };
+conf("total da linha fecha com MAT + MO", totalDaLinha(par.original), 182);
+conf("... e não com o custo antigo da planilha", totalDaLinha(par.original) === par.original.custo, false);
+conf("a linha de MO fecha no valor dela", totalDaLinha(par.linhaMO), 180);
+conf("as duas linhas somam o total de antes", totalDaLinha(par.original) + totalDaLinha(par.linhaMO), 362);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
