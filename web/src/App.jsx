@@ -3157,6 +3157,26 @@ function calcularCMV(linhas, categorias) {
     porVerba.set(c.num, { num: c.num, nome: c.nome, valor, foraDaConferencia: true });
   });
 
+  /* Grupo FORA do padrão da EAP também entra no CMV.
+
+     Ficava de fora, e era dinheiro sumindo em silêncio: no criativo da
+     2405 o grupo AUTOMAÇÃO — que não existe na EAP oficial de 32 grupos —
+     tem R$ 24.317,00, e o CMV vinha R$ 24.317,00 menor que a planilha.
+     Nada na tela dizia que aquele valor tinha sido descartado.
+
+     A regra da empresa é acrescentar no final o que não está no padrão.
+     Acrescentar inclui a conta: um teto de gastos que não conta parte do
+     gasto é pior que não ter teto, porque parece confiável.
+
+     Aparece marcado, pra ninguém confundir com verba do padrão. */
+  (categorias || []).forEach((c) => {
+    if (!c.foraDaEapPadrao) return;
+    const valor = (c.itensPlanilha || []).reduce((a, it) => a + (it.custo || 0), 0);
+    if (valor <= 0) return;
+    total += valor;
+    porVerba.set(`fora:${c.nome}`, { num: c.num || "—", nome: c.nome, valor, foraDoPadrao: true });
+  });
+
   const grupos = Array.from(porVerba.values()).sort((a, b) => String(a.num).localeCompare(String(b.num)));
   return { total, pendentes, grupos };
 }
@@ -3216,6 +3236,9 @@ function ResumoCMV({ linhas, categorias }) {
                 {/* entra no valor, mas não passou por conferência item a
                     item — quem lê o número precisa saber a diferença */}
                 {g.foraDaConferencia && <span className="cmv-tag-na">sem conferência</span>}
+                {/* Entra no CMV, mas fica dito: é grupo que a planilha
+                    trouxe e a EAP da empresa não tem. */}
+                {g.foraDoPadrao && <span className="cmv-tag-fora">fora do padrão da EAP</span>}
               </span>
               <span className="cmv-linha-barra">
                 <span style={{ width: total > 0 ? `${(g.valor / total) * 100}%` : 0 }} />
@@ -7458,6 +7481,7 @@ export default function App() {
         .cmv-linha { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 11.5px; }
         .cmv-linha-num { color: var(--ink-3); width: 22px; flex-shrink: 0; }
         .cmv-tag-na { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 1px 6px; white-space: nowrap; }
+        .cmv-tag-fora { display: inline-block; margin-left: 7px; font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 4px; background: #FFF4E5; color: #B54708; vertical-align: middle; }
         .cmv-linha-nome { color: var(--ink-2); width: 260px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .cmv-linha-barra { flex: 1; height: 6px; background: #fff; border-radius: 20px; overflow: hidden; min-width: 40px; }
         .cmv-linha-barra span { display: block; height: 100%; background: var(--blue); border-radius: 20px; }
