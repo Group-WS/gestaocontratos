@@ -300,73 +300,173 @@ function exportExecutivoCSV(obra) {
    ============================================================ */
 
 
-function BigCard({ label, value, delta, deltaGood, sub, progress }) {
-  return (
-    <div className="big-card">
-      <div className="big-card-label">{label}</div>
-      <div className="big-card-row">
-        <div className="big-card-value">{value}</div>
-        {delta && <span className={`delta ${deltaGood ? "delta-good" : "delta-bad"}`}><ArrowUpRight size={13} /> {delta}</span>}
-      </div>
-      {progress != null && (
-        <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.min(progress, 100)}%` }} /></div>
-      )}
-      {sub && <div className="big-card-sub">{sub}</div>}
-    </div>
-  );
-}
 
-/* Dashboard: a data que comanda todos os prazos, e o atalho das avulsas.
+/* DASHBOARD DA OBRA
 
-   A data de entrega nao e cadastro qualquer — e dela que sai a data
-   limite de compra de cada grupo da EAP. Sem ela preenchida o alerta que
-   existe pra evitar que um item de 75 dias de entrega seja comprado com
-   40 simplesmente nao funciona. Por isso ela mora aqui, ao lado do
-   resumo, e nao escondida numa tela de configuracao. */
-function EntregaEAvulsas({ obra, podeEditar, onDataEntrega, onIrParaCompras }) {
+   Antes era uma grade de sete caixas do mesmo tamanho, todas gritando
+   igual: quem abria nao sabia onde olhar primeiro. Agora sao tres
+   perguntas, na ordem em que se faz:
+
+     1. O executivo cabe no que foi vendido?
+     2. Quanto ja foi comprado, e ate quando da pra comprar?
+     3. Tem algo pedindo atencao?
+
+   A ultima faixa fica VERDE E CURTA quando nao ha nada — painel que
+   sempre mostra as mesmas seis caixas ensina a nao olhar pra ele. */
+function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras }) {
+  // A data digitada so vale quando ela manda salvar. Campo de data que
+  // grava sozinho a cada tecla dispara gravacao com ano pela metade —
+  // "0002-11-20" chega no banco antes de "2026-11-20".
+  const [rascunho, setRascunho] = useState(obra.dataEntrega || "");
+  useEffect(() => { setRascunho(obra.dataEntrega || ""); }, [obra.dataEntrega, obra.id]);
+  const sujo = rascunho !== (obra.dataEntrega || "");
+
+  const vendido = obra.valorVendido || totals.totalVendido || 0;
+  const exec = totals.totalExecutivo || 0;
+  const dif = exec - vendido;
+  const pctExec = vendido > 0 ? (exec / vendido) * 100 : 0;
+  const dentro = dif <= 0;
+
+  const faltamEntrega = obra.dataEntrega ? diasAte(new Date(`${obra.dataEntrega}T12:00:00`)) : null;
+
+  // O prazo que vence primeiro entre todos os grupos com regra. E a unica
+  // data que muda o que a pessoa faz HOJE.
+  const proximo = useMemo(() => {
+    if (!obra.dataEntrega) return null;
+    let melhor = null;
+    (obra.categorias || []).forEach((c) => {
+      const p = prazoDoGrupo(c, c.itens);
+      if (!p) return;
+      const d = dataLimiteCompra(obra.dataEntrega, p.dias);
+      if (d && (!melhor || d < melhor.data)) melhor = { data: d, grupo: c.nome, num: c.num };
+    });
+    return melhor;
+  }, [obra.categorias, obra.dataEntrega]);
+  const faltamPrazo = proximo ? diasAte(proximo.data) : null;
+
   const avulsas = useMemo(() => (obra.categorias || [])
-    .flatMap((c) => (c.itens || []).filter((it) => it.avulso)), [obra]);
-  const pendentes = avulsas.filter((a) => !a.comprado).length;
-  const faltam = obra.dataEntrega ? diasAte(new Date(`${obra.dataEntrega}T12:00:00`)) : null;
+    .flatMap((c) => (c.itens || []).filter((it) => it.avulso)), [obra.categorias]);
+  const avulsasAbertas = avulsas.filter((a) => !a.comprado).length;
+
+  const atencao = [
+    totals.criticos > 0 && { tom: "red", txt: `${totals.criticos} ${totals.criticos === 1 ? "categoria em estouro crítico" : "categorias em estouro crítico"}` },
+    totals.itensAlerta > 0 && { tom: "amber", txt: `${totals.itensAlerta} ${totals.itensAlerta === 1 ? "item com alerta" : "itens com alerta"} de escopo ou quantidade` },
+    avulsasAbertas > 0 && { tom: "purple", txt: `${avulsasAbertas} ${avulsasAbertas === 1 ? "compra avulsa pendente" : "compras avulsas pendentes"}` },
+    !obra.dataEntrega && { tom: "amber", txt: "sem data de entrega — os prazos de compra não são calculados" },
+    faltamPrazo != null && faltamPrazo < 0 && { tom: "red", txt: `prazo de compra de ${proximo.grupo} venceu` },
+  ].filter(Boolean);
+
+  const anel = 2 * Math.PI * 34;
+  const pctComprado = Math.max(0, Math.min(totals.pct || 0, 100));
 
   return (
-    <div className="entrega-panel">
-      <div className="entrega-bloco">
-        <div className="mini-stat-label">Data de entrega da obra</div>
-        <input className="entrega-input" type="date" value={obra.dataEntrega || ""}
-          disabled={!podeEditar}
-          onChange={(e) => onDataEntrega(e.target.value || null)} />
-        <div className="entrega-sub">
-          {obra.dataEntrega
-            ? (faltam < 0 ? `passou há ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
-              : faltam === 0 ? "é hoje"
-              : `faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`)
-            : "dela sai o prazo de compra de cada grupo da EAP"}
+    <div className="dash">
+      {/* 1. O executivo cabe no vendido? */}
+      <section className="dash-hero">
+        <div className="dash-hero-topo">
+          <div>
+            <div className="dash-rot">Orçamento da obra</div>
+            <div className="dash-hero-nums">
+              <div className="dash-num">
+                <div className="dash-num-val mono">{fmtCompactBRL(vendido)}</div>
+                <div className="dash-num-rot">vendido em contrato</div>
+              </div>
+              <ArrowRightIcon />
+              <div className="dash-num">
+                <div className="dash-num-val mono">{fmtCompactBRL(exec)}</div>
+                <div className="dash-num-rot">somatório do executivo</div>
+              </div>
+            </div>
+          </div>
+          <div className={`dash-delta ${dentro ? "ok" : "ruim"}`}>
+            {dif === 0 ? <Minus size={15} /> : dentro ? <ArrowDownRight size={15} /> : <ArrowUpRight size={15} />}
+            <div>
+              <div className="dash-delta-val mono">{dif > 0 ? "+" : ""}{fmtBRL(dif)}</div>
+              <div className="dash-delta-rot">{dentro ? "dentro do vendido" : "acima do vendido"}</div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div className="entrega-bloco">
-        <div className="mini-stat-label">Compras avulsas</div>
-        <div className="mini-stat-value">{avulsas.length}</div>
-        <div className="entrega-sub">
-          {avulsas.length === 0 ? "nenhuma registrada"
-            : `${pendentes} ${pendentes === 1 ? "pendente de compra" : "pendentes de compra"}`}
+        {/* A barra cheia e o vendido; o preenchido, o executivo. Passou de
+            100%, o excedente aparece hachurado depois da linha. */}
+        <div className="dash-barra">
+          <div className={`dash-barra-fill ${dentro ? "ok" : "ruim"}`} style={{ width: `${Math.min(pctExec, 100)}%` }} />
+          {pctExec > 100 && <div className="dash-barra-over" style={{ width: `${Math.min(pctExec - 100, 40)}%` }} />}
         </div>
-        <button className="btn-atalho" onClick={onIrParaCompras}>
-          <Plus size={12} /> {avulsas.length ? "Ver e solicitar" : "Solicitar compra avulsa"}
+        <div className="dash-barra-rot">{pctExec.toFixed(0)}% do valor vendido</div>
+      </section>
+
+      {/* 2. Quanto ja foi comprado */}
+      <section className="dash-card">
+        <div className="dash-rot">Compras</div>
+        <div className="dash-anel-linha">
+          <svg width="84" height="84" viewBox="0 0 84 84" className="dash-anel">
+            <circle cx="42" cy="42" r="34" fill="none" stroke="var(--border)" strokeWidth="9" />
+            <circle cx="42" cy="42" r="34" fill="none" stroke="var(--green)" strokeWidth="9" strokeLinecap="round"
+              strokeDasharray={`${(pctComprado / 100) * anel} ${anel}`} transform="rotate(-90 42 42)" />
+            <text x="42" y="47" textAnchor="middle" className="dash-anel-txt">{pctComprado.toFixed(0)}%</text>
+          </svg>
+          <div>
+            <div className="dash-num-val mono">{fmtCompactBRL(totals.falta)}</div>
+            <div className="dash-num-rot">ainda falta comprar</div>
+            <div className="dash-mini dim">{fmtBRL(totals.totalComprado)} de {fmtBRL(totals.totalProdutos)}</div>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. Ate quando da pra comprar */}
+      <section className="dash-card">
+        <div className="dash-rot">Entrega da obra</div>
+        <div className="dash-data-linha">
+          <input className="entrega-input" type="date" value={rascunho} disabled={!podeEditar}
+            onChange={(e) => setRascunho(e.target.value)} />
+          {podeEditar && sujo && (
+            <button className="btn-salvar-data" onClick={() => onDataEntrega(rascunho || null)}>Salvar</button>
+          )}
+        </div>
+        <div className="dash-mini">
+          {sujo ? <span className="dash-sujo">alterada — clique em salvar</span>
+            : obra.dataEntrega
+              ? (faltamEntrega < 0 ? `passou há ${Math.abs(faltamEntrega)} dias`
+                : faltamEntrega === 0 ? "é hoje" : `faltam ${faltamEntrega} dias`)
+              : <span className="dim">dela sai o prazo de compra de cada grupo</span>}
+        </div>
+        {proximo && (
+          <div className={`dash-proximo ${faltamPrazo < 0 ? "vencido" : faltamPrazo <= 15 ? "perto" : ""}`}>
+            <Clock size={12} />
+            <div>
+              <div className="dash-proximo-tit">Próximo prazo de compra</div>
+              <div className="dash-proximo-val">
+                {fmtData(proximo.data)} · {proximo.grupo}
+                <span className="dash-proximo-conta">
+                  {faltamPrazo < 0 ? ` — venceu há ${Math.abs(faltamPrazo)} dias`
+                    : faltamPrazo === 0 ? " — é hoje" : ` — faltam ${faltamPrazo} dias`}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* 4. O que pede atencao — curto e verde quando nao ha nada */}
+      <section className={`dash-atencao ${atencao.length ? "" : "tudo-ok"}`}>
+        {atencao.length === 0 ? (
+          <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção nesta obra.</div>
+        ) : atencao.map((a, i) => (
+          <div key={i} className={`dash-alerta ${a.tom}`}>
+            <AlertTriangle size={13} /> {a.txt}
+          </div>
+        ))}
+        <button className="btn-atalho dash-atalho" onClick={onIrParaCompras}>
+          <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
         </button>
-      </div>
+      </section>
     </div>
   );
 }
 
-function MiniStat({ label, value, tone }) {
-  return (
-    <div className="mini-stat">
-      <div className="mini-stat-label">{label}</div>
-      <div className="mini-stat-value" style={tone ? { color: tone } : undefined}>{value}</div>
-    </div>
-  );
-}
+// Seta discreta entre os dois numeros do topo — o vendido VIRA o executivo.
+const ArrowRightIcon = () => <span className="dash-seta" aria-hidden="true">→</span>;
+
 
 
 function SiengeMatch({ sienge }) {
@@ -6419,7 +6519,12 @@ function BarraEtapa({ edicao, salvando, carregando, onHabilitar, onFinalizar,
     estado = (
       <span className="be-estado">
         <span className="be-ponto editando" /> Editando
-        <span className="be-salvo">{salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo" : ""}</span>
+        {/* "salvo" so quando salvou INTEIRO. Enquanto falta coluna no
+            banco a palavra vira "salvo em parte", senao a tela garante
+            uma coisa que nao aconteceu. */}
+        <span className={`be-salvo ${salvando === "parcial" ? "be-parcial" : ""}`}>
+          {salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo" : salvando === "parcial" ? "salvo em parte" : ""}
+        </span>
         <button className="be-link" onClick={onFinalizar} disabled={salvando === "salvando"}>finalizar</button>
       </span>
     );
@@ -6471,6 +6576,9 @@ export default function App() {
   // Arquivo (concluida) e quem ainda é só sugestão do Monday (ausente).
   const [registro, setRegistro] = useState(() => new Map());
   const [erroBanco, setErroBanco] = useState(null);
+  // Coluna que o banco ainda nao tem. Fica visivel ate a migracao rodar —
+  // salvar pela metade em silencio e pior que nao salvar.
+  const [migracao, setMigracao] = useState(null);
   const [salvandoObra, setSalvandoObra] = useState(null);
   // null = nenhuma aba aberta: a obra abre mostrando só o cabeçalho e o
   // resumo. Antes a aba ficava onde a pessoa tinha parado na obra
@@ -6691,8 +6799,16 @@ export default function App() {
     const t = setTimeout(async () => {
       setSalvando("salvando");
       try {
-        await salvarDadosObra(obra.codigo, obra, usuario);
-        setSalvando("salvo");
+        /* O aviso de coluna faltando existia e nunca chegava na tela.
+
+           `salvarDadosObra` tira do payload a coluna que o banco ainda
+           nao conhece, grava o resto e devolve `migracaoPendente` dizendo
+           qual. Ninguem lia esse retorno: o app dizia "salvo", o campo
+           novo voltava vazio no F5 e o defeito parecia estar no campo.
+           Foi o que aconteceu com a data de entrega. */
+        const r = await salvarDadosObra(obra.codigo, obra, usuario);
+        setMigracao(r?.migracaoPendente || null);
+        setSalvando(r?.migracaoPendente ? "parcial" : "salvo");
         setTimeout(() => setSalvando(null), 2000);
       } catch (e) {
         setSalvando(null);
@@ -6718,7 +6834,8 @@ export default function App() {
     if (!obra?.codigo) return;
     setSalvando("salvando");
     try {
-      await salvarDadosObra(obra.codigo, obra, usuario);
+      const r = await salvarDadosObra(obra.codigo, obra, usuario);
+      setMigracao(r?.migracaoPendente || null);
       await liberarEdicao(obra.codigo, usuario);
       setEdicao({ minha: false, por: null, desde: null });
       setSalvando(null);
@@ -6739,9 +6856,6 @@ export default function App() {
     const compras = obraComprasStats(obra);
     return { totalVendido, totalExecutivo, criticos, itensAlerta, ...compras };
   }, [obra]);
-
-  const pctExecutado = obra && obra.valorVendido > 0 ? (totals.totalExecutivo / obra.valorVendido) * 100 : 0;
-  const deltaGood = totals.totalExecutivo <= totals.totalVendido;
 
   function toggleCat(num) {
     setExpandedCats((prev) => { const next = new Set(prev); next.has(num) ? next.delete(num) : next.add(num); return next; });
@@ -7487,6 +7601,55 @@ export default function App() {
         .title-accent { font-family: 'Newsreader', serif; font-style: italic; font-weight: 500; color: var(--ink); }
         .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
 
+        /* DASHBOARD DA OBRA
+           Tres perguntas na ordem em que se faz: o executivo cabe no
+           vendido, quanto ja foi comprado e ate quando da, e o que pede
+           atencao. A ultima faixa fica curta e verde quando nao ha nada —
+           painel que mostra sempre as mesmas caixas ensina a ignorar. */
+        .dash { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 28px; }
+        .dash-hero, .dash-atencao { grid-column: 1 / -1; }
+        .dash-hero, .dash-card, .dash-atencao { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; }
+        .dash-rot { font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+        .dash-hero-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+        .dash-hero-nums { display: flex; align-items: center; gap: 18px; }
+        .dash-num-val { font-family: 'Space Grotesk', sans-serif; font-size: 27px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+        .dash-num-rot { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .dash-seta { font-size: 19px; color: var(--ink-3); padding-bottom: 16px; }
+        .dash-delta { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 9px 14px; }
+        .dash-delta.ok { background: var(--green-bg); color: var(--green); }
+        .dash-delta.ruim { background: var(--red-bg); color: var(--red); }
+        .dash-delta-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .dash-delta-rot { font-size: 10.5px; opacity: 0.85; }
+        /* A barra inteira e o vendido; o preenchido, o executivo. */
+        .dash-barra { position: relative; display: flex; height: 8px; background: var(--panel); border-radius: 20px; overflow: hidden; margin-top: 16px; }
+        .dash-barra-fill.ok { background: var(--green); }
+        .dash-barra-fill.ruim { background: var(--red); }
+        .dash-barra-over { background: repeating-linear-gradient(45deg, var(--red) 0 4px, #E58B85 4px 8px); }
+        .dash-barra-rot { font-size: 10.5px; color: var(--ink-3); margin-top: 6px; }
+        .dash-anel-linha { display: flex; align-items: center; gap: 18px; }
+        .dash-anel-txt { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; fill: var(--ink); }
+        .dash-mini { font-size: 11px; color: var(--ink-2); margin-top: 4px; }
+        .dash-data-linha { display: flex; align-items: center; gap: 8px; }
+        .dash-data-linha .entrega-input { width: auto; flex: 1; margin-top: 0; }
+        .btn-salvar-data { background: var(--ink); color: #fff; border: none; border-radius: 7px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+        .btn-salvar-data:hover { background: var(--blue); }
+        .dash-sujo { color: var(--amber); font-weight: 600; }
+        .dash-proximo { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border-soft); color: var(--ink-2); }
+        .dash-proximo-tit { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+        .dash-proximo-val { font-size: 12.5px; margin-top: 2px; }
+        .dash-proximo-conta { color: var(--ink-3); }
+        .dash-proximo.perto, .dash-proximo.perto .dash-proximo-conta { color: var(--amber); }
+        .dash-proximo.vencido, .dash-proximo.vencido .dash-proximo-conta { color: var(--red); font-weight: 600; }
+        .dash-atencao { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 13px 20px; }
+        .dash-atencao.tudo-ok { background: var(--green-bg); border-color: #C9E5D4; }
+        .dash-alerta { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+        .dash-alerta.ok { color: var(--green); }
+        .dash-alerta.red { color: var(--red); }
+        .dash-alerta.amber { color: var(--amber); }
+        .dash-alerta.purple { color: var(--purple); }
+        .dash-atalho { margin-left: auto; margin-top: 0; }
+        @media (max-width: 900px) { .dash { grid-template-columns: 1fr; } }
+
         .resumo-label { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px 4px; }
         /* Cinco colunas fixas espremiam tudo em tela estreita, e como as
            células esticam pra igualar a mais alta, cada card ficava com um
@@ -7641,6 +7804,10 @@ export default function App() {
         /* Dashboard: a data que comanda os prazos, e as avulsas. */
         .entrega-panel { display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
         .aviso-entrega { margin-bottom: 12px; align-items: center; }
+        .aviso-migracao { display: flex; align-items: center; gap: 9px; background: var(--amber-bg); color: #7A4C0A; border: 1px solid #E8CE9A; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 14px; }
+        .aviso-x { margin-left: auto; background: transparent; border: none; color: inherit; cursor: pointer; display: flex; opacity: 0.6; }
+        .aviso-x:hover { opacity: 1; }
+        .be-parcial { color: var(--amber); font-weight: 600; }
         .entrega-bloco { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 14px; }
         .entrega-input { width: 100%; margin-top: 3px; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; font-size: 13px; font-family: 'JetBrains Mono', monospace; color: var(--ink); background: #fff; }
         .entrega-input:focus { border-color: var(--ink); outline: none; }
@@ -8403,6 +8570,13 @@ export default function App() {
         <main className={`main ${["executivo", "vendido_planilha", "vendido_contrato"].includes(tab) ? "larga" : ""}`}>
           {avisoMonday && <div className="aviso-monday">{avisoMonday}</div>}
           {erroBanco && <div className="aviso-monday">{erroBanco}</div>}
+          {migracao && (
+            <div className="aviso-migracao">
+              <AlertTriangle size={14} />
+              <span>{migracao}</span>
+              <button className="aviso-x" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></button>
+            </div>
+          )}
           {modulo === "novas" ? (
           <>
           <div className="eyebrow">DO MONDAY · {obrasNovas.length}</div>
@@ -8471,23 +8645,9 @@ export default function App() {
               o topo mesmo quando a pessoa estava conferindo item a item —
               e repetido em oito telas ele vira moldura, não informação. */}
           {grupo === "dashboard" && <>
-          <div className="resumo-label">RESUMO FINANCEIRO</div>
-          <div className="resumo-panel">
-            <BigCard label="Valor vendido (contrato)" value={fmtCompactBRL(obra.valorVendido)} sub={fmtBRL(obra.valorVendido)} />
-            <BigCard label="Somatório do executivo" value={fmtCompactBRL(totals.totalExecutivo)}
-              delta={`${pctExecutado.toFixed(0)}%`} deltaGood={deltaGood} sub={`${deltaGood ? "dentro do" : "acima do"} valor vendido`} />
-            <BigCard label="% comprado" value={`${totals.pct.toFixed(0)}%`} progress={totals.pct}
-              sub={`${fmtCompactBRL(totals.totalComprado)} de ${fmtCompactBRL(totals.totalProdutos)} em produtos`} />
-            <BigCard label="Falta comprar" value={fmtCompactBRL(totals.falta)} sub="em produtos já liberados" />
-            <div className="mini-stats">
-              <MiniStat label="Categorias em estouro crítico" value={totals.criticos} tone={totals.criticos > 0 ? "var(--red)" : "var(--green)"} />
-              <MiniStat label="Itens com alerta de escopo/qtd." value={totals.itensAlerta} tone={totals.itensAlerta > 0 ? "var(--amber)" : "var(--green)"} />
-              <MiniStat label="Prazo de execução" value={obra.prazo ? `${obra.prazo} dias` : "—"} />
-            </div>
-            <EntregaEAvulsas obra={obra} podeEditar={edicao.minha}
-              onDataEntrega={definirDataEntrega}
-              onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }} />
-          </div>
+          <DashboardObra obra={obra} totals={totals} podeEditar={edicao.minha}
+            onDataEntrega={definirDataEntrega}
+            onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }} />
           </>}
 
           {tab === null && grupo !== "dashboard" && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
