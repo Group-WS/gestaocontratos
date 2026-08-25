@@ -26,6 +26,10 @@ const trecho = (de, ate) => {
 };
 
 const { servicosMO } = eval(`(function () {
+  /* Sem padrao da empresa: estes testes verificam o que a PLANILHA e as
+     regras de verba decidem. O padrao por descricao tem teste proprio em
+     alocacao-padrao.test.mjs. */
+  const padraoDaDescricao = () => null;
   const verbaPorNome = (n) => ({ "Gesso e Drywall": "10", "Pintura": "18", "Serralheria": "22",
     "Instalações Elétricas e Iluminação": "05", "Execução e Mão de Obra": "32" })[n] || null;
   ${trecho("const ALOC_MAT =", "function TagAloc")}

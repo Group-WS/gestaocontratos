@@ -52,6 +52,8 @@ const codigo = [
 ].join("\n");
 
 const { parcelasDoItem, sugeridoParaCompra, VERBAS_DE_COMPRA } = eval(`(function () {
+  // Sem padrao da empresa: aqui se testa o que a planilha decide.
+  const padraoDaDescricao = () => null;
   ${src.match(/^const ALOC_MAT = .*$/m)[0]}
   ${codigo}
   return { parcelasDoItem, sugeridoParaCompra, VERBAS_DE_COMPRA };
