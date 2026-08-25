@@ -18,25 +18,44 @@
  */
 const src = (await import("fs")).readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
 
-/* Recorta um trecho do App.jsx pra rodar de verdade — e RECLAMA quando a
-   marca some.
+/* Recorta PEÇAS NOMEADAS do App.jsx pra rodar de verdade.
 
-   Antes o corte ia de "const ehProduto" ate "function CategoriaBlock(".
-   Quando esse componente foi substituido, o indexOf devolveu -1, o slice
-   aceitou calado e o eval recebeu a metade do arquivo com JSX dentro. O
-   teste morreu com "Unexpected token '<'", que nao diz nada sobre a
-   causa. Marca que nao existe mais tem que dizer o proprio nome. */
-const pedaco = (de, ate) => {
-  const i = src.indexOf(de), f = src.indexOf(ate);
-  if (i === -1) throw new Error(`não achei no App.jsx o início: ${de}`);
-  if (f === -1) throw new Error(`não achei no App.jsx o fim: ${ate}`);
-  return src.slice(i, f);
+   Não fatiar intervalo. Este teste já quebrou duas vezes cortando "de X
+   até Y": primeiro quando CategoriaBlock foi substituído, depois quando
+   um componente novo apareceu entre parcelasDoItem e GrupoPlano — nas
+   duas o eval recebeu JSX e morreu com "Unexpected token '<'", que não
+   diz nada sobre a causa.
+
+   Pedaço nomeado só quebra quando a função que ele nomeia some de fato,
+   e aí o erro diz qual. */
+const bloco = (assinatura, fim = "\n}\n") => {
+  const i = src.indexOf(assinatura);
+  if (i === -1) throw new Error(`não achei no App.jsx: ${assinatura}`);
+  const f = src.indexOf(fim, i);
+  if (f === -1) throw new Error(`não achei o fim de: ${assinatura}`);
+  return src.slice(i, f + fim.length);
+};
+const ate = (assinatura, terminador) => {
+  const i = src.indexOf(assinatura);
+  if (i === -1) throw new Error(`não achei no App.jsx: ${assinatura}`);
+  const f = src.indexOf(terminador, i);
+  if (f === -1) throw new Error(`não achei o fim de: ${assinatura}`);
+  return src.slice(i, f + terminador.length);
 };
 
-const codigo = src.match(/^const ehProduto = .*$/m)[0] + "\n" +
-  pedaco("function parcelasDoItem(", "function GrupoPlano(");
-const { parcelasDoItem, sugeridoParaCompra, VERBAS_DE_COMPRA } =
-  eval(`(function(){ ${codigo}; return { parcelasDoItem, sugeridoParaCompra, VERBAS_DE_COMPRA }; })()`);
+const codigo = [
+  src.match(/^const ehProduto = .*$/m)[0],
+  bloco("function parcelasDoItem("),
+  bloco("function parcelasDaPlanilha("),
+  ate("const VERBAS_DE_COMPRA = new Set([", "]);"),
+  ate("const sugeridoParaCompra =", "VERBAS_DE_COMPRA.has(catNum);"),
+].join("\n");
+
+const { parcelasDoItem, sugeridoParaCompra, VERBAS_DE_COMPRA } = eval(`(function () {
+  ${src.match(/^const ALOC_MAT = .*$/m)[0]}
+  ${codigo}
+  return { parcelasDoItem, sugeridoParaCompra, VERBAS_DE_COMPRA };
+})()`);
 
 let falhas = 0;
 const conf = (nome, obtido, esperado) => {
