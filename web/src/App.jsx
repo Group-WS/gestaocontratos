@@ -636,24 +636,22 @@ const PRAZOS_COMPRA = {
 // Grupo fora da EAP padrao nao tem numero canonico — entra pelo nome.
 const PRAZOS_FORA_DO_PADRAO = [{ casa: /automa[çc]/i, dias: 30 }];
 
-// A chave do prazo manual segue a regra da casa: nome primeiro, porque e
-// o que sobrevive a renumeracao da EAP (ver verbaPorNome).
-const chavePrazo = (cat) => verbaPorNome(cat.nome) || cat.nome || cat.num;
+/* Devolve { dias, fornecedor, incerto } ou null quando o grupo nao tem
+   regra.
 
-/* Devolve { dias, origem, fornecedor, incerto } ou null quando o grupo
-   nao tem regra nem prazo preenchido a mao. */
-function prazoDoGrupo(cat, itens, prazosManuais) {
-  const manual = prazosManuais ? prazosManuais[chavePrazo(cat)] : null;
-  if (manual != null && manual !== "" && Number.isFinite(Number(manual))) {
-    return { dias: Number(manual), origem: "manual" };
-  }
+   Grupo sem regra nao mostra nada — nem campo em branco pra preencher na
+   mao. Vinte celulas vazias pedindo um numero que ninguem tem competem
+   com as cinco que carregam a informacao de verdade, e a tela passa a
+   parecer incompleta em vez de precisa. Grupo novo que precisar de prazo
+   entra na tabela acima, que e uma linha. */
+function prazoDoGrupo(cat, itens) {
   if (cat.foraDaEapPadrao) {
     const r = PRAZOS_FORA_DO_PADRAO.find((x) => x.casa.test(cat.nome || ""));
-    return r ? { dias: r.dias, origem: "regra" } : null;
+    return r ? { dias: r.dias } : null;
   }
   const regra = PRAZOS_COMPRA[verbaPorNome(cat.nome) || cat.num];
   if (!regra) return null;
-  if (regra.dias != null) return { dias: regra.dias, origem: "regra" };
+  if (regra.dias != null) return { dias: regra.dias };
 
   const nosItens = regra.porFornecedor.filter((r) =>
     (itens || []).some((it) => r.casa.test(String(it.marca || it.fornecedor || it.especificacao || ""))));
@@ -662,10 +660,10 @@ function prazoDoGrupo(cat, itens, prazosManuais) {
        da regra, marcado como incerto: errar pro lado da compra adiantada
        custa estoque; errar pro outro custa a entrega da obra. */
     const pior = regra.porFornecedor.reduce((a, b) => (b.dias > a.dias ? b : a));
-    return { dias: pior.dias, origem: "regra", fornecedor: pior.nome, incerto: true };
+    return { dias: pior.dias, fornecedor: pior.nome, incerto: true };
   }
   const pior = nosItens.reduce((a, b) => (b.dias > a.dias ? b : a));
-  return { dias: pior.dias, origem: "regra", fornecedor: pior.nome, varios: nosItens.length > 1 };
+  return { dias: pior.dias, fornecedor: pior.nome, varios: nosItens.length > 1 };
 }
 
 /* A data limite, contada pra tras a partir da entrega.
@@ -956,25 +954,12 @@ const sugeridoParaCompra = (it, catNum) =>
    Grupo sem regra nasce em branco pra ser preenchido na mao — em dias, e
    nao em data, porque dia de antecedencia sobrevive a mudanca da data de
    entrega da obra, e data digitada nao. */
-function PrazoCompra({ cat, itens, dataEntrega, prazosManuais, onPrazo }) {
-  const [rascunho, setRascunho] = useState("");
-  const prazo = prazoDoGrupo(cat, itens, prazosManuais);
-
-  if (!prazo) {
-    return (
-      <div className="grp-prazo">
-        <div className="grp-tot-rot">COMPRAR ATÉ</div>
-        {onPrazo ? (
-          <input className="prazo-input" type="text" inputMode="numeric" placeholder="dias"
-            value={rascunho}
-            onChange={(e) => setRascunho(e.target.value.replace(/\D/g, "").slice(0, 4))}
-            onBlur={() => { if (rascunho) { onPrazo(chavePrazo(cat), Number(rascunho)); setRascunho(""); } }}
-            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-            title="Quantos dias antes da entrega da obra este grupo precisa estar comprado" />
-        ) : <span className="dim">—</span>}
-      </div>
-    );
-  }
+function PrazoCompra({ cat, itens, dataEntrega }) {
+  const prazo = prazoDoGrupo(cat, itens);
+  // Celula vazia, e nao ausente: sem ela as colunas MAT e MO dos grupos
+  // sem regra deslizariam pra esquerda e a lista deixaria de ser lida
+  // como coluna.
+  if (!prazo) return <div className="grp-prazo" />;
 
   const limite = dataLimiteCompra(dataEntrega, prazo.dias);
   const faltam = diasAte(limite);
@@ -984,23 +969,17 @@ function PrazoCompra({ cat, itens, dataEntrega, prazosManuais, onPrazo }) {
     : faltam === 0 ? "é hoje"
     : `faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`;
 
-  const porque = prazo.origem === "manual"
-    ? `${prazo.dias} dias, preenchido à mão`
-    : prazo.incerto
-      ? `${prazo.dias} dias — nenhum fornecedor reconhecido nas linhas, então vale o prazo mais longo (${prazo.fornecedor})`
-      : prazo.fornecedor
-        ? `${prazo.dias} dias (${prazo.fornecedor})${prazo.varios ? " — o mais apertado do grupo" : ""}`
-        : `${prazo.dias} dias antes da entrega`;
+  const porque = prazo.incerto
+    ? `${prazo.dias} dias — nenhum fornecedor reconhecido nas linhas, então vale o prazo mais longo (${prazo.fornecedor})`
+    : prazo.fornecedor
+      ? `${prazo.dias} dias (${prazo.fornecedor})${prazo.varios ? " — o mais apertado do grupo" : ""}`
+      : `${prazo.dias} dias antes da entrega`;
 
   return (
     <div className={`grp-prazo ${tom}`} title={porque}>
       <div className="grp-tot-rot">
         COMPRAR ATÉ
         {prazo.incerto && <span className="prazo-marca" title={porque}>?</span>}
-        {prazo.origem === "manual" && onPrazo && (
-          <button className="prazo-limpar" title="Apagar o prazo preenchido à mão"
-            onClick={() => onPrazo(chavePrazo(cat), null)}>×</button>
-        )}
       </div>
       {limite ? (
         <>
@@ -1020,7 +999,7 @@ function PrazoCompra({ cat, itens, dataEntrega, prazosManuais, onPrazo }) {
   );
 }
 
-function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehVerbaMO, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega, prazosManuais, onPrazo }) {
+function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehVerbaMO, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega }) {
   const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
   const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
   const nAvulsos = itens.filter((it) => it.avulso).length;
@@ -1046,8 +1025,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
           </div>
         </button>
         <div className="grp-dir">
-          <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega}
-            prazosManuais={prazosManuais} onPrazo={onPrazo} />
+          <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega} />
           <div className="grp-tot">
             <div className="grp-tot-rot">MAT</div>
             <div className={`grp-tot-val mono ${mat > 0 ? "" : "dim"}`}>{mat > 0 ? fmtBRL(mat) : "—"}</div>
@@ -1346,7 +1324,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onPrazo, onIrParaDashboard, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onIrParaDashboard, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
 
   /* "Só o vendido" nasce ligado.
@@ -1365,7 +1343,7 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
 
   // Só vale avisar da data faltando se algum grupo de fato tem prazo.
   const temPrazos = useMemo(() => (obra.categorias || []).some((c) =>
-    prazoDoGrupo(c, c.itens, obra.prazosCompra)), [obra.categorias, obra.prazosCompra]);
+    prazoDoGrupo(c, c.itens)), [obra.categorias]);
 
   // O placar da seleção. Sem ele a pessoa só descobre o tamanho do que
   // escolheu abrindo verba por verba — e o número que importa não é
@@ -1543,8 +1521,6 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           onJuntarMO={(codigo) => onJuntarMO(cat.num, codigo)}
           onSepararGrupo={() => onSepararGrupo(cat.num)}
           dataEntrega={obra.dataEntrega}
-          prazosManuais={obra.prazosCompra}
-          onPrazo={podeEditar ? onPrazo : null}
           onItemChange={(itemIdx, patch) => updateItem(obra.categorias.indexOf(cat), itemIdx, patch)}
         />
       ))}
@@ -6684,7 +6660,6 @@ export default function App() {
           cmvLiberadoEm: dados.cmvLiberadoEm,
           cmvLiberadoPor: dados.cmvLiberadoPor,
           dataEntrega: dados.dataEntrega,
-          prazosCompra: dados.prazosCompra,
           // Campos DERIVADOS das categorias. Sem refazer a conta aqui, a
           // obra volta do banco com os itens certos e os totais do Monday
           // — que sao zero. O cabecalho dizia "R$ 0,00" numa obra com R$
@@ -7208,17 +7183,6 @@ export default function App() {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, dataEntrega: data || null } : o)));
   }
 
-  // Prazo preenchido a mao, pros grupos sem regra. `null` apaga e devolve
-  // o campo em branco — sem isso um numero errado ficaria pra sempre.
-  function definirPrazoCompra(chave, dias) {
-    setObras((prev) => prev.map((o) => {
-      if (o.id !== selectedId) return o;
-      const atual = { ...(o.prazosCompra || {}) };
-      if (dias == null) delete atual[chave]; else atual[chave] = dias;
-      return { ...o, prazosCompra: atual };
-    }));
-  }
-
   /* Separa a mao de obra de UM item, na mao.
 
      O de R$ 268 (223 de material + 45 de MO) vira dois: ele mesmo, so
@@ -7672,12 +7636,7 @@ export default function App() {
         .prazo-sem-data { font-size: 10.5px; max-width: 140px; line-height: 1.3; }
         .grp-prazo.prazo-perto .grp-tot-val, .grp-prazo.prazo-perto .prazo-conta { color: var(--amber); }
         .grp-prazo.prazo-vencido .grp-tot-val, .grp-prazo.prazo-vencido .prazo-conta { color: var(--red); font-weight: 700; }
-        .prazo-input { width: 66px; text-align: right; border: 1px dashed var(--border); border-radius: 6px; padding: 3px 7px; font-size: 12px; font-family: 'JetBrains Mono', monospace; background: transparent; color: var(--ink); }
-        .prazo-input:hover { border-color: var(--blue); }
-        .prazo-input:focus { border-style: solid; border-color: var(--ink); outline: none; }
         .prazo-marca { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; background: var(--amber-bg); color: var(--amber); font-size: 9px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
-        .prazo-limpar { background: transparent; border: none; color: var(--ink-3); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 0 0 4px; }
-        .prazo-limpar:hover { color: var(--red); }
 
         /* Dashboard: a data que comanda os prazos, e as avulsas. */
         .entrega-panel { display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
@@ -8549,7 +8508,7 @@ export default function App() {
             </div>
           )}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onPrazo={definirPrazoCompra} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}

@@ -20,7 +20,7 @@ const trecho = (de, ate) => {
   return src.slice(i, f);
 };
 
-const { prazoDoGrupo, dataLimiteCompra, diasAte, chavePrazo, PRAZOS_COMPRA } =
+const { prazoDoGrupo, dataLimiteCompra, diasAte, PRAZOS_COMPRA } =
   eval(`(function () {
     const verbaPorNome = (n) => ({
       "Instalações Elétricas e Iluminação": "05", "Climatização / Exaustão": "20",
@@ -28,7 +28,7 @@ const { prazoDoGrupo, dataLimiteCompra, diasAte, chavePrazo, PRAZOS_COMPRA } =
       "Eletroeletrônico": "28", "Pintura": "18", "Serralheria": "22",
     })[n] || null;
     ${trecho("const PRAZOS_COMPRA = {", "function TagAloc")}
-    return { prazoDoGrupo, dataLimiteCompra, diasAte, chavePrazo, PRAZOS_COMPRA };
+    return { prazoDoGrupo, dataLimiteCompra, diasAte, PRAZOS_COMPRA };
   })()`);
 
 let f = 0;
@@ -39,7 +39,7 @@ const conf = (n, o, e) => {
 };
 
 const g = (num, nome, extra = {}) => ({ num, nome, ...extra });
-const dias = (cat, itens, manuais) => { const p = prazoDoGrupo(cat, itens, manuais); return p ? p.dias : null; };
+const dias = (cat, itens) => { const p = prazoDoGrupo(cat, itens); return p ? p.dias : null; };
 
 /* ---- 1. as regras que a Priscila passou ---- */
 conf("iluminação: 30 dias", dias(g("05", "Instalações Elétricas e Iluminação")), 30);
@@ -75,17 +75,11 @@ conf("sem fornecedor reconhecido: assume o mais longo", dias(loucas, semForneced
 conf("... e marca como incerto", prazoDoGrupo(loucas, semFornecedor).incerto, true);
 conf("verba vazia também assume o mais longo", dias(loucas, []), 90);
 
-/* ---- 3. prazo preenchido à mão ---- */
-const manuais = { "28": 45 };
-conf("preenchido à mão vale", dias(g("28", "Eletroeletrônico"), [], manuais), 45);
-conf("... e se identifica como manual",
-  prazoDoGrupo(g("28", "Eletroeletrônico"), [], manuais).origem, "manual");
-conf("mão ganha da regra", dias(g("24", "Móveis Soltos"), [], { "24": 10 }), 10);
-conf("valor lixo é ignorado", dias(g("28", "Eletroeletrônico"), [], { "28": "abc" }), null);
-conf("vazio é ignorado", dias(g("28", "Eletroeletrônico"), [], { "28": "" }), null);
-// A chave segue o nome, que é o que sobrevive à renumeração da EAP.
-conf("a chave vem do nome, não do número velho",
-  chavePrazo({ num: "06", nome: "Climatização / Exaustão" }), "20");
+/* ---- 3. grupo sem regra não mostra nada ---- */
+// Vinte células vazias pedindo um número que ninguém tem competem com as
+// cinco que carregam informação de verdade. Sem regra, sem célula.
+conf("sem regra devolve null, não um zero", prazoDoGrupo(g("28", "Eletroeletrônico"), []), null);
+conf("... e não um objeto vazio", prazoDoGrupo(g("18", "Pintura"), []) === null, true);
 
 /* ---- 4. a data, contada pra trás ---- */
 const limite = dataLimiteCompra("2026-12-15", 30);

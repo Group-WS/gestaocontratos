@@ -55,10 +55,8 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     // O CMV liberado é o teto com que a equipe trabalha daqui pra frente.
     // Ficava só na memória do navegador: ao recarregar, o resumo do topo
     // e o fechamento do rodapé do Executivo sumiam sem dizer nada.
-    // A data de entrega comanda os prazos de compra de todos os grupos,
-    // e os prazos preenchidos a mao valem pros grupos sem regra.
+    // A data de entrega comanda o prazo de compra de todos os grupos.
     data_entrega: conteudo.dataEntrega || null,
-    prazos_compra: conteudo.prazosCompra || {},
     cmv_liberado: conteudo.cmvLiberado ?? null,
     cmv_liberado_em: conteudo.cmvLiberadoEm || null,
     cmv_liberado_por: conteudo.cmvLiberadoPor || null,
@@ -93,7 +91,7 @@ export async function salvarDadosObra(codigo, conteudo, email) {
       "cliente_assinatura_arq", "cliente_assinatura_obs",
       "compra_sem_assinatura_por", "compra_sem_assinatura_em", "compra_sem_assinatura_just",
       "cmv_liberado", "cmv_liberado_em", "cmv_liberado_por",
-      "data_entrega", "prazos_compra",
+      "data_entrega",
     ];
     const reduzida = { ...linha };
     opcionais.forEach((c) => { delete reduzida[c]; });
@@ -190,7 +188,6 @@ function paraApp(linha) {
     compraSemAssinaturaEm: linha.compra_sem_assinatura_em || null,
     compraSemAssinaturaJust: linha.compra_sem_assinatura_just || null,
     dataEntrega: linha.data_entrega || null,
-    prazosCompra: linha.prazos_compra || {},
     cmvLiberado: linha.cmv_liberado ?? null,
     cmvLiberadoEm: linha.cmv_liberado_em || null,
     cmvLiberadoPor: linha.cmv_liberado_por || null,
