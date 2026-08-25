@@ -55,6 +55,10 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     // O CMV liberado é o teto com que a equipe trabalha daqui pra frente.
     // Ficava só na memória do navegador: ao recarregar, o resumo do topo
     // e o fechamento do rodapé do Executivo sumiam sem dizer nada.
+    // A data de entrega comanda os prazos de compra de todos os grupos,
+    // e os prazos preenchidos a mao valem pros grupos sem regra.
+    data_entrega: conteudo.dataEntrega || null,
+    prazos_compra: conteudo.prazosCompra || {},
     cmv_liberado: conteudo.cmvLiberado ?? null,
     cmv_liberado_em: conteudo.cmvLiberadoEm || null,
     cmv_liberado_por: conteudo.cmvLiberadoPor || null,
@@ -89,6 +93,7 @@ export async function salvarDadosObra(codigo, conteudo, email) {
       "cliente_assinatura_arq", "cliente_assinatura_obs",
       "compra_sem_assinatura_por", "compra_sem_assinatura_em", "compra_sem_assinatura_just",
       "cmv_liberado", "cmv_liberado_em", "cmv_liberado_por",
+      "data_entrega", "prazos_compra",
     ];
     const reduzida = { ...linha };
     opcionais.forEach((c) => { delete reduzida[c]; });
@@ -102,8 +107,8 @@ export async function salvarDadosObra(codigo, conteudo, email) {
 
     const app = paraApp(retry.data);
     app.migracaoPendente = desconhecida
-      ? `A coluna "${desconhecida}" ainda não existe no banco. Salvei o resto — rode supabase/etapas.sql pra gravar também a esteira e a aprovação do cliente.`
-      : "Faltam colunas novas no banco. Salvei o resto — rode supabase/etapas.sql.";
+      ? `A coluna "${desconhecida}" ainda não existe no banco. Salvei o resto — rode o SQL que falta (supabase/etapas.sql ou supabase/prazos.sql).`
+      : "Faltam colunas novas no banco. Salvei o resto — rode os SQL de supabase/.";
     return app;
   }
 
@@ -184,6 +189,8 @@ function paraApp(linha) {
     compraSemAssinaturaPor: linha.compra_sem_assinatura_por || null,
     compraSemAssinaturaEm: linha.compra_sem_assinatura_em || null,
     compraSemAssinaturaJust: linha.compra_sem_assinatura_just || null,
+    dataEntrega: linha.data_entrega || null,
+    prazosCompra: linha.prazos_compra || {},
     cmvLiberado: linha.cmv_liberado ?? null,
     cmvLiberadoEm: linha.cmv_liberado_em || null,
     cmvLiberadoPor: linha.cmv_liberado_por || null,

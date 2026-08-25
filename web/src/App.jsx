@@ -316,6 +316,49 @@ function BigCard({ label, value, delta, deltaGood, sub, progress }) {
   );
 }
 
+/* Dashboard: a data que comanda todos os prazos, e o atalho das avulsas.
+
+   A data de entrega nao e cadastro qualquer — e dela que sai a data
+   limite de compra de cada grupo da EAP. Sem ela preenchida o alerta que
+   existe pra evitar que um item de 75 dias de entrega seja comprado com
+   40 simplesmente nao funciona. Por isso ela mora aqui, ao lado do
+   resumo, e nao escondida numa tela de configuracao. */
+function EntregaEAvulsas({ obra, podeEditar, onDataEntrega, onIrParaCompras }) {
+  const avulsas = useMemo(() => (obra.categorias || [])
+    .flatMap((c) => (c.itens || []).filter((it) => it.avulso)), [obra]);
+  const pendentes = avulsas.filter((a) => !a.comprado).length;
+  const faltam = obra.dataEntrega ? diasAte(new Date(`${obra.dataEntrega}T12:00:00`)) : null;
+
+  return (
+    <div className="entrega-panel">
+      <div className="entrega-bloco">
+        <div className="mini-stat-label">Data de entrega da obra</div>
+        <input className="entrega-input" type="date" value={obra.dataEntrega || ""}
+          disabled={!podeEditar}
+          onChange={(e) => onDataEntrega(e.target.value || null)} />
+        <div className="entrega-sub">
+          {obra.dataEntrega
+            ? (faltam < 0 ? `passou há ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
+              : faltam === 0 ? "é hoje"
+              : `faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`)
+            : "dela sai o prazo de compra de cada grupo da EAP"}
+        </div>
+      </div>
+      <div className="entrega-bloco">
+        <div className="mini-stat-label">Compras avulsas</div>
+        <div className="mini-stat-value">{avulsas.length}</div>
+        <div className="entrega-sub">
+          {avulsas.length === 0 ? "nenhuma registrada"
+            : `${pendentes} ${pendentes === 1 ? "pendente de compra" : "pendentes de compra"}`}
+        </div>
+        <button className="btn-atalho" onClick={onIrParaCompras}>
+          <Plus size={12} /> {avulsas.length ? "Ver e solicitar" : "Solicitar compra avulsa"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MiniStat({ label, value, tone }) {
   return (
     <div className="mini-stat">
@@ -565,6 +608,89 @@ function separarMOnasVerbasDeContrato(categorias, soNaVerba) {
     separados: novas.length,
   };
 }
+
+/* PRAZO DE COMPRA — ate quando o material TEM que estar comprado.
+   ------------------------------------------------------------
+   Conta pra tras a partir da data de entrega da obra. O que atrasa uma
+   obra nao e o preco: e o item que leva 75 dias pra chegar e foi
+   comprado com 40.
+
+   Loucas e Metais tem DOIS prazos, por fornecedor: Docol 90 dias, Bracci
+   30. Um numero so por grupo nao da conta, entao a regra e por
+   fornecedor e o grupo mostra o MAIS APERTADO entre os que ele de fato
+   tem — se ha uma peca Docol na verba, a data do grupo e a dela, senao a
+   compra chega depois da obra entregue.
+
+   Eletroeletronico ainda nao tem prazo definido: fica em branco pra ser
+   preenchido na mao, como qualquer grupo sem regra. */
+const PRAZOS_COMPRA = {
+  "05": { dias: 30 },   // Instalacoes Eletricas e Iluminacao
+  "20": { dias: 30 },   // Climatizacao / Exaustao
+  "24": { dias: 75 },   // Moveis Soltos
+  "27": { porFornecedor: [   // Loucas, Metais e Equipamentos Especiais
+    { casa: /docol/i, nome: "Docol", dias: 90 },
+    { casa: /bracci/i, nome: "Bracci", dias: 30 },
+  ] },
+};
+
+// Grupo fora da EAP padrao nao tem numero canonico — entra pelo nome.
+const PRAZOS_FORA_DO_PADRAO = [{ casa: /automa[çc]/i, dias: 30 }];
+
+// A chave do prazo manual segue a regra da casa: nome primeiro, porque e
+// o que sobrevive a renumeracao da EAP (ver verbaPorNome).
+const chavePrazo = (cat) => verbaPorNome(cat.nome) || cat.nome || cat.num;
+
+/* Devolve { dias, origem, fornecedor, incerto } ou null quando o grupo
+   nao tem regra nem prazo preenchido a mao. */
+function prazoDoGrupo(cat, itens, prazosManuais) {
+  const manual = prazosManuais ? prazosManuais[chavePrazo(cat)] : null;
+  if (manual != null && manual !== "" && Number.isFinite(Number(manual))) {
+    return { dias: Number(manual), origem: "manual" };
+  }
+  if (cat.foraDaEapPadrao) {
+    const r = PRAZOS_FORA_DO_PADRAO.find((x) => x.casa.test(cat.nome || ""));
+    return r ? { dias: r.dias, origem: "regra" } : null;
+  }
+  const regra = PRAZOS_COMPRA[verbaPorNome(cat.nome) || cat.num];
+  if (!regra) return null;
+  if (regra.dias != null) return { dias: regra.dias, origem: "regra" };
+
+  const nosItens = regra.porFornecedor.filter((r) =>
+    (itens || []).some((it) => r.casa.test(String(it.marca || it.fornecedor || it.especificacao || ""))));
+  if (!nosItens.length) {
+    /* Nenhum fornecedor reconhecido nas linhas. Vale o prazo MAIS LONGO
+       da regra, marcado como incerto: errar pro lado da compra adiantada
+       custa estoque; errar pro outro custa a entrega da obra. */
+    const pior = regra.porFornecedor.reduce((a, b) => (b.dias > a.dias ? b : a));
+    return { dias: pior.dias, origem: "regra", fornecedor: pior.nome, incerto: true };
+  }
+  const pior = nosItens.reduce((a, b) => (b.dias > a.dias ? b : a));
+  return { dias: pior.dias, origem: "regra", fornecedor: pior.nome, varios: nosItens.length > 1 };
+}
+
+/* A data limite, contada pra tras a partir da entrega.
+
+   O meio-dia no construtor nao e enfeite: `new Date("2026-12-15")` e
+   meia-noite UTC, que no fuso de Santa Catarina cai no dia 14 — a data
+   apareceria um dia mais cedo do que a pessoa digitou, todo dia. */
+function dataLimiteCompra(dataEntrega, dias) {
+  if (!dataEntrega || dias == null) return null;
+  const d = new Date(`${dataEntrega}T12:00:00`);
+  if (isNaN(d)) return null;
+  d.setDate(d.getDate() - dias);
+  return d;
+}
+
+// Dias inteiros entre hoje e a data, os dois zerados na meia-noite local
+// — senao "faltam 3 dias" viraria 2 ou 4 conforme a hora do dia.
+function diasAte(data, hoje = new Date()) {
+  if (!data) return null;
+  const a = new Date(data.getFullYear(), data.getMonth(), data.getDate());
+  const b = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  return Math.round((a - b) / 86400000);
+}
+
+const fmtData = (d) => (d ? d.toLocaleDateString("pt-BR") : "—");
 
 function TagAloc({ aloc, manual, onChange }) {
   // alocacaoDoItem nunca devolve vazio; se devolver, e defeito e tem que
@@ -820,7 +946,75 @@ const sugeridoParaCompra = (it, catNum) =>
    Antes a tela abria com o grupo inteiro escancarado e 12 colunas, e o
    total so existia dentro do bloco aberto — pra saber o material de
    Moveis Soltos era preciso rolar 26 linhas somando de cabeca. */
-function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehVerbaMO, onSepararMO, onJuntarMO, onSepararGrupo }) {
+/* Ate quando o material deste grupo TEM que estar comprado.
+
+   O numero que importa nao e "quantos dias leva", e "a partir de quando
+   ja e tarde". Por isso a celula mostra a DATA e a contagem, nao o prazo
+   de entrega do fornecedor: ninguem faz essa subtracao de cabeca no meio
+   de uma conferencia de 200 itens.
+
+   Grupo sem regra nasce em branco pra ser preenchido na mao — em dias, e
+   nao em data, porque dia de antecedencia sobrevive a mudanca da data de
+   entrega da obra, e data digitada nao. */
+function PrazoCompra({ cat, itens, dataEntrega, prazosManuais, onPrazo }) {
+  const [rascunho, setRascunho] = useState("");
+  const prazo = prazoDoGrupo(cat, itens, prazosManuais);
+
+  if (!prazo) {
+    return (
+      <div className="grp-prazo">
+        <div className="grp-tot-rot">COMPRAR ATÉ</div>
+        {onPrazo ? (
+          <input className="prazo-input" type="text" inputMode="numeric" placeholder="dias"
+            value={rascunho}
+            onChange={(e) => setRascunho(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            onBlur={() => { if (rascunho) { onPrazo(chavePrazo(cat), Number(rascunho)); setRascunho(""); } }}
+            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+            title="Quantos dias antes da entrega da obra este grupo precisa estar comprado" />
+        ) : <span className="dim">—</span>}
+      </div>
+    );
+  }
+
+  const limite = dataLimiteCompra(dataEntrega, prazo.dias);
+  const faltam = diasAte(limite);
+  const tom = faltam == null ? "" : faltam < 0 ? "prazo-vencido" : faltam <= 15 ? "prazo-perto" : "";
+  const conta = faltam == null ? null
+    : faltam < 0 ? `passou ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
+    : faltam === 0 ? "é hoje"
+    : `faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`;
+
+  const porque = prazo.origem === "manual"
+    ? `${prazo.dias} dias, preenchido à mão`
+    : prazo.incerto
+      ? `${prazo.dias} dias — nenhum fornecedor reconhecido nas linhas, então vale o prazo mais longo (${prazo.fornecedor})`
+      : prazo.fornecedor
+        ? `${prazo.dias} dias (${prazo.fornecedor})${prazo.varios ? " — o mais apertado do grupo" : ""}`
+        : `${prazo.dias} dias antes da entrega`;
+
+  return (
+    <div className={`grp-prazo ${tom}`} title={porque}>
+      <div className="grp-tot-rot">
+        COMPRAR ATÉ
+        {prazo.incerto && <span className="prazo-marca" title={porque}>?</span>}
+        {prazo.origem === "manual" && onPrazo && (
+          <button className="prazo-limpar" title="Apagar o prazo preenchido à mão"
+            onClick={() => onPrazo(chavePrazo(cat), null)}>×</button>
+        )}
+      </div>
+      {limite ? (
+        <>
+          <div className="grp-tot-val mono">{fmtData(limite)}</div>
+          <div className="prazo-conta">{conta}</div>
+        </>
+      ) : (
+        <div className="prazo-sem-data dim">{prazo.dias} dias antes — falta a data de entrega</div>
+      )}
+    </div>
+  );
+}
+
+function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehVerbaMO, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega, prazosManuais, onPrazo }) {
   const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
   const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
   const nAvulsos = itens.filter((it) => it.avulso).length;
@@ -830,16 +1024,24 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
 
   return (
     <div className="grp-block">
-      <button className="grp-head" onClick={onToggle}>
-        <div className="grp-esq">
+      {/* Era um <button> so. Virou div com o botao SO na parte esquerda:
+          o campo de dias e o "x" de limpar sao controles, e controle
+          dentro de botao nao e HTML valido — o clique de um come o do
+          outro. A area de abrir continua sendo a maior parte da linha. */}
+      <div className="grp-head">
+        <button className="grp-toggle" onClick={onToggle}>
+          <div className="grp-esq">
           {expanded ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
           <span className="grp-num mono">{cat.num}</span>
           <span className="grp-nome">{cat.nome}</span>
           {cat.foraDeEscopoCategoria && <span className="chip chip-red"><XCircle size={11} /> Fora do escopo vendido</span>}
           <span className="grp-conta">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>
           {nAvulsos > 0 && <span className="grp-avulsos"><Plus size={9} /> {nAvulsos} avulso{nAvulsos > 1 ? "s" : ""}</span>}
-        </div>
+          </div>
+        </button>
         <div className="grp-dir">
+          <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega}
+            prazosManuais={prazosManuais} onPrazo={onPrazo} />
           <div className="grp-tot">
             <div className="grp-tot-rot">MAT</div>
             <div className={`grp-tot-val mono ${mat > 0 ? "" : "dim"}`}>{mat > 0 ? fmtBRL(mat) : "—"}</div>
@@ -849,7 +1051,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
             <div className={`grp-tot-val mono ${mo > 0 ? "" : "dim"}`}>{mo > 0 ? fmtBRL(mo) : "—"}</div>
           </div>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="grp-itens">
@@ -916,15 +1118,6 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
                 );
               })}
             </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={5} className="right dim">Total do grupo</td>
-                <td className="mono right"><b>{fmtBRL(mat)}</b></td>
-                <td className="mono right"><b>{fmtBRL(mo)}</b></td>
-                <td className="mono right"><b>{fmtBRL(mat + mo)}</b></td>
-                <td colSpan={4}></td>
-              </tr>
-            </tfoot>
           </table>
         </div>
       )}
@@ -1147,7 +1340,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onPrazo, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
 
   /* "Só o vendido" nasce ligado.
@@ -1249,6 +1442,15 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           </div>
         </div>
       )}
+      {/* A avulsa fica no topo, junto do resumo — e uma acao sobre a obra
+          inteira, nao sobre a lista filtrada abaixo. Continua disponivel
+          DEPOIS da liberacao: e pra isso que ela serve, o item que quebrou
+          ou que o cliente pediu depois aparece justamente quando o plano
+          ja fechou. Trava-la junto com as etapas anteriores empurraria a
+          compra pra fora da plataforma, o unico lugar onde ela fica
+          registrada. */}
+      {podeEditar && <FormAvulsa obra={obra} onCriar={onCriarAvulsa} />}
+
       {temItens && !obra.comprasLiberadas && (
         <div className="plano-barra">
           <div className="plano-num">
@@ -1305,13 +1507,6 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
         </button>
       </div>
 
-      {/* A avulsa continua disponível DEPOIS da liberação — é pra isso
-          que ela serve. O item que quebrou ou que o cliente pediu depois
-          aparece justamente quando o plano já está fechado; travá-la
-          junto com as etapas anteriores empurraria a compra pra fora da
-          plataforma, que é o único lugar onde ela fica registrada. */}
-      {podeEditar && <FormAvulsa obra={obra} onCriar={onCriarAvulsa} />}
-
       {grupos.map(({ cat, itens }) => (
         <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens}
           expanded={expandedCats.has(cat.num + obra.id)}
@@ -1321,6 +1516,9 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           onSepararMO={(codigo) => onSepararMO(cat.num, codigo)}
           onJuntarMO={(codigo) => onJuntarMO(cat.num, codigo)}
           onSepararGrupo={() => onSepararGrupo(cat.num)}
+          dataEntrega={obra.dataEntrega}
+          prazosManuais={obra.prazosCompra}
+          onPrazo={podeEditar ? onPrazo : null}
           onItemChange={(itemIdx, patch) => updateItem(obra.categorias.indexOf(cat), itemIdx, patch)}
         />
       ))}
@@ -6459,6 +6657,8 @@ export default function App() {
           cmvLiberado: dados.cmvLiberado,
           cmvLiberadoEm: dados.cmvLiberadoEm,
           cmvLiberadoPor: dados.cmvLiberadoPor,
+          dataEntrega: dados.dataEntrega,
+          prazosCompra: dados.prazosCompra,
           // Campos DERIVADOS das categorias. Sem refazer a conta aqui, a
           // obra volta do banco com os itens certos e os totais do Monday
           // — que sao zero. O cabecalho dizia "R$ 0,00" numa obra com R$
@@ -6974,6 +7174,25 @@ export default function App() {
     }));
   }
 
+  /* A data de entrega da obra, e os prazos de compra que saem dela.
+
+     Um numero so muda a tela inteira: cada grupo passa a saber ate quando
+     o material dele TEM que estar comprado, contando pra tras. */
+  function definirDataEntrega(data) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, dataEntrega: data || null } : o)));
+  }
+
+  // Prazo preenchido a mao, pros grupos sem regra. `null` apaga e devolve
+  // o campo em branco — sem isso um numero errado ficaria pra sempre.
+  function definirPrazoCompra(chave, dias) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const atual = { ...(o.prazosCompra || {}) };
+      if (dias == null) delete atual[chave]; else atual[chave] = dias;
+      return { ...o, prazosCompra: atual };
+    }));
+  }
+
   /* Separa a mao de obra de UM item, na mao.
 
      O de R$ 268 (223 de material + 45 de MO) vira dois: ele mesmo, so
@@ -7401,8 +7620,12 @@ export default function App() {
            A linha fechada carrega o que se pergunta primeiro (quanto de
            MAT, quanto de MO); o item so aparece ao abrir. */
         .grp-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
-        .grp-head { width: 100%; background: transparent; border: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; cursor: pointer; font-family: inherit; text-align: left; }
+        /* O cabecalho deixou de ser um <button> pra caber controle
+           dentro dele (o campo de dias do prazo). Quem abre o grupo agora
+           e so a parte esquerda, que segue sendo a maior area da linha. */
+        .grp-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-right: 16px; }
         .grp-head:hover { background: #FCFBF9; }
+        .grp-toggle { flex: 1; min-width: 0; background: transparent; border: none; padding: 12px 16px; cursor: pointer; font-family: inherit; text-align: left; }
         .grp-esq { display: flex; align-items: center; gap: 10px; min-width: 0; }
         .grp-num { font-size: 11.5px; color: var(--ink-3); width: 20px; flex-shrink: 0; }
         .grp-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -7415,6 +7638,31 @@ export default function App() {
         .grp-tot { min-width: 108px; text-align: right; }
         .grp-tot-rot { font-size: 9.5px; font-weight: 700; color: var(--ink-3); letter-spacing: 0.06em; }
         .grp-tot-val { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+        /* PRAZO DE COMPRA — a data, nao o prazo do fornecedor.
+           Ninguem subtrai 75 dias de cabeca no meio de uma conferencia de
+           200 itens, entao a celula ja mostra a data e a contagem. */
+        .grp-prazo { min-width: 136px; text-align: right; }
+        .prazo-conta { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
+        .prazo-sem-data { font-size: 10.5px; max-width: 140px; line-height: 1.3; }
+        .grp-prazo.prazo-perto .grp-tot-val, .grp-prazo.prazo-perto .prazo-conta { color: var(--amber); }
+        .grp-prazo.prazo-vencido .grp-tot-val, .grp-prazo.prazo-vencido .prazo-conta { color: var(--red); font-weight: 700; }
+        .prazo-input { width: 66px; text-align: right; border: 1px dashed var(--border); border-radius: 6px; padding: 3px 7px; font-size: 12px; font-family: 'JetBrains Mono', monospace; background: transparent; color: var(--ink); }
+        .prazo-input:hover { border-color: var(--blue); }
+        .prazo-input:focus { border-style: solid; border-color: var(--ink); outline: none; }
+        .prazo-marca { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; background: var(--amber-bg); color: var(--amber); font-size: 9px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
+        .prazo-limpar { background: transparent; border: none; color: var(--ink-3); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 0 0 4px; }
+        .prazo-limpar:hover { color: var(--red); }
+
+        /* Dashboard: a data que comanda os prazos, e as avulsas. */
+        .entrega-panel { display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
+        .entrega-bloco { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 14px; }
+        .entrega-input { width: 100%; margin-top: 3px; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; font-size: 13px; font-family: 'JetBrains Mono', monospace; color: var(--ink); background: #fff; }
+        .entrega-input:focus { border-color: var(--ink); outline: none; }
+        .entrega-input:disabled { background: var(--panel); color: var(--ink-3); }
+        .entrega-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.35; }
+        .btn-atalho { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; background: var(--ink); color: #fff; border: none; border-radius: 7px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-atalho:hover { background: var(--purple); }
+
         .grp-itens { border-top: 1px solid var(--border); background: #FCFBF8; overflow-x: auto; }
         /* As 12 colunas somam mais que a largura util da tela. Sem um
            minimo, o navegador espremia justamente a coluna flexivel — a
@@ -8213,9 +8461,14 @@ export default function App() {
           </div>
           <div className="title-row">
             <span className="title-accent">{obra.nome}</span>
-            <button className="btn-concluir" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
-              {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={13} /> Concluir obra</>}
-            </button>
+            {/* Concluir a obra e um ato de fim de tudo. Repetido no topo
+                de oito telas ele fica ao lado do cotovelo de quem esta
+                conferindo item a item — agora mora so no Dashboard. */}
+            {grupo === "dashboard" && (
+              <button className="btn-concluir" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
+                {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={13} /> Concluir obra</>}
+              </button>
+            )}
           </div>
           <div className="obra-meta">{obra.endereco} · {obra.cliente}</div>
 
@@ -8245,6 +8498,9 @@ export default function App() {
               <MiniStat label="Itens com alerta de escopo/qtd." value={totals.itensAlerta} tone={totals.itensAlerta > 0 ? "var(--amber)" : "var(--green)"} />
               <MiniStat label="Prazo de execução" value={obra.prazo ? `${obra.prazo} dias` : "—"} />
             </div>
+            <EntregaEAvulsas obra={obra} podeEditar={edicao.minha}
+              onDataEntrega={definirDataEntrega}
+              onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }} />
           </div>
           </>}
 
@@ -8266,7 +8522,7 @@ export default function App() {
             </div>
           )}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onPrazo={definirPrazoCompra} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
