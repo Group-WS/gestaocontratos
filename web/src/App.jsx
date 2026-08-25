@@ -1120,6 +1120,61 @@ function parcelasDaPlanilha(it) {
   return { material: mat || 0, mo: mo || 0, estimado: false };
 }
 
+/* Ate quando o material deste grupo TEM que estar comprado.
+
+   O numero que importa nao e "quantos dias leva", e "a partir de quando
+   ja e tarde". Por isso a celula mostra a DATA e a contagem, nao o prazo
+   de entrega do fornecedor: ninguem faz essa subtracao de cabeca no meio
+   de uma conferencia de 200 itens.
+
+   Grupo sem regra nasce em branco pra ser preenchido na mao — em dias, e
+   nao em data, porque dia de antecedencia sobrevive a mudanca da data de
+   entrega da obra, e data digitada nao. */
+function PrazoCompra({ cat, itens, dataEntrega }) {
+  const prazo = prazoDoGrupo(cat, itens);
+  // Celula vazia, e nao ausente: sem ela as colunas MAT e MO dos grupos
+  // sem regra deslizariam pra esquerda e a lista deixaria de ser lida
+  // como coluna.
+  if (!prazo) return <div className="grp-prazo" />;
+
+  const limite = dataLimiteCompra(dataEntrega, prazo.dias);
+  const faltam = diasAte(limite);
+  const tom = faltam == null ? "" : faltam < 0 ? "prazo-vencido" : faltam <= 15 ? "prazo-perto" : "";
+  const conta = faltam == null ? null
+    : faltam < 0 ? `passou ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
+    : faltam === 0 ? "é hoje"
+    : `faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`;
+
+  const porque = prazo.incerto
+    ? `${prazo.dias} dias — nenhum fornecedor reconhecido nas linhas, então vale o prazo mais longo (${prazo.fornecedor})`
+    : prazo.fornecedor
+      ? `${prazo.dias} dias (${prazo.fornecedor})${prazo.varios ? " — o mais apertado do grupo" : ""}`
+      : `${prazo.dias} dias antes da entrega`;
+
+  return (
+    <div className={`grp-prazo ${tom}`} title={porque}>
+      <div className="grp-tot-rot">
+        COMPRAR ATÉ
+        {prazo.incerto && <span className="prazo-marca" title={porque}>?</span>}
+      </div>
+      {limite ? (
+        <>
+          <div className="grp-tot-val mono">{fmtData(limite)}</div>
+          <div className="prazo-conta">{conta}</div>
+        </>
+      ) : (
+        /* Sem data de entrega, mostra so a antecedencia. Repetir "falta a
+           data de entrega" em quinze grupos era encher a tela com o mesmo
+           recado — ele passou a ser um aviso unico, no topo. */
+        <>
+          <div className="grp-tot-val mono dim">{prazo.dias} dias</div>
+          <div className="prazo-conta">antes da entrega</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega }) {
   const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
   const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
