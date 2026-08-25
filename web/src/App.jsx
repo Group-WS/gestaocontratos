@@ -30,6 +30,13 @@ const api = (path) => API_BASE + path;
    zerada, em vez de sumir da lista.
    ============================================================ */
 
+/* A EAP oficial da empresa.
+
+   "Execucao e Mao de Obra" SAIU: ela existia pra receber mao de obra
+   solta, e mao de obra agora fica dentro do proprio grupo — a da
+   iluminacao e da iluminacao. Grupo com esse nome que ainda venha de
+   documento antigo nao e descartado: vai pro fim da lista marcado como
+   fora do padrao, com o dinheiro dele contando no CMV do mesmo jeito. */
 const EAP_CODIGO = [
   { num: "01", nome: "Arquitetura e Engenharia" },
   { num: "02", nome: "Serviços Complementares" },
@@ -62,7 +69,6 @@ const EAP_CODIGO = [
   { num: "29", nome: "Adega Climatizada" },
   { num: "30", nome: "Cortinas e Persianas" },
   { num: "31", nome: "Itens Decorativos" },
-  { num: "32", nome: "Execução e Mão de Obra" },
   { num: "33", nome: "Equipamentos de Lazer" },
   { num: "34", nome: "Mobiliário Corporativo" },
 ];
@@ -648,9 +654,6 @@ const podeSepararMO = (it, cat) =>
   && alocacaoDoItem(it, cat) === ALOC_AMBOS
   && parcelasDoItem(it).mo > 0;
 
-const achaVerbaMO = (categorias) =>
-  (categorias || []).find((c) => !c.foraDaEapPadrao && verbaPorNome(c.nome) === "32") || null;
-
 const codigoMOlivre = (usados, prefixo) => {
   let n = 1;
   while (usados.has(`${prefixo}.mo${n}`)) n += 1;
@@ -658,8 +661,13 @@ const codigoMOlivre = (usados, prefixo) => {
 };
 
 /* Parte um item MAT/MO em dois: ele mesmo, agora so com o material, e uma
-   linha nova so com a mao de obra — mesma descricao, mesma quantidade,
-   na verba de Execucao e Mao de Obra.
+   linha nova so com a mao de obra — mesma descricao, mesma quantidade, na
+   MESMA verba, logo abaixo dele.
+
+   A mao de obra da iluminacao e da iluminacao: tirar ela do grupo levava
+   o valor pra longe de onde ele e conferido, e quem separava procurava a
+   linha no grupo de origem, nao achava e concluia que nada tinha
+   acontecido.
 
    Devolve { original, linhaMO } e nao grava nada. Os dois caminhos que
    separam (o botao e a importacao) passam por aqui de proposito: montar
@@ -668,11 +676,11 @@ const codigoMOlivre = (usados, prefixo) => {
    aprendeu a copiar. Por isso a linha nova sai de um espalhamento do
    item inteiro, e so depois os campos que NAO acompanham a mao de obra
    sao zerados. */
-function partirMaoDeObra(item, verbaOrigem, verbaDestino, codigoNovo) {
+function partirMaoDeObra(item, verba, codigoNovo) {
   const { mo } = parcelasDoItem(item);
   if (mo <= 0 || item.moSeparada) return null;
   return {
-    original: { ...item, moSeparada: { valor: mo, paraVerba: verbaDestino, codigo: codigoNovo } },
+    original: { ...item, moSeparada: { valor: mo, codigo: codigoNovo } },
     linhaMO: {
       ...item,
       codigo: codigoNovo,
@@ -686,7 +694,7 @@ function partirMaoDeObra(item, verbaOrigem, verbaDestino, codigoNovo) {
       sienge: null, contavel: false,
       comprado: false, valorComprado: null, qtdComprada: null,
       compraDecidida: false, liberado: false,
-      separadoDe: { codigo: item.codigo, verba: verbaOrigem, desc: item.desc },
+      separadoDe: { codigo: item.codigo, verba, desc: item.desc },
     },
   };
 }
@@ -696,31 +704,89 @@ function partirMaoDeObra(item, verbaOrigem, verbaDestino, codigoNovo) {
    `sonaVerba` limita a um grupo so — e o que o botao do grupo usa. Sem
    ele roda em todas, que e o caso da importacao. */
 function separarMOnasVerbasDeContrato(categorias, soNaVerba) {
-  const destino = achaVerbaMO(categorias);
-  if (!destino) return { categorias, separados: 0 };
-
-  const novas = [];
-  const usados = new Set((destino.itens || []).map((it) => it.codigo));
+  let separados = 0;
   const cats = (categorias || []).map((c) => {
-    if (c.num === destino.num) return c;
     if (soNaVerba ? c.num !== soNaVerba : !separaMOautomatico(c.num, c.nome)) return c;
-    const itens = (c.itens || []).map((it) => {
-      if (!podeSepararMO(it, c)) return it;
-      const codigoNovo = codigoMOlivre(usados, destino.num);
-      const par = partirMaoDeObra(it, c.num, destino.num, codigoNovo);
-      if (!par) return it;
+    const usados = new Set((c.itens || []).map((it) => it.codigo));
+    const itens = [];
+    (c.itens || []).forEach((it) => {
+      if (!podeSepararMO(it, c)) { itens.push(it); return; }
+      const codigoNovo = codigoMOlivre(usados, c.num);
+      const par = partirMaoDeObra(it, c.num, codigoNovo);
+      if (!par) { itens.push(it); return; }
       usados.add(codigoNovo);
-      novas.push(par.linhaMO);
-      return par.original;
+      // A linha de mao de obra entra LOGO ABAIXO da que a gerou: o par
+      // se le junto, e ninguem precisa procurar a metade que sumiu.
+      itens.push(par.original, par.linhaMO);
+      separados += 1;
     });
     return { ...c, itens };
   });
+  return separados ? { categorias: cats, separados } : { categorias, separados: 0 };
+}
 
-  if (!novas.length) return { categorias, separados: 0 };
-  return {
-    categorias: cats.map((c) => (c.num === destino.num ? { ...c, itens: [...(c.itens || []), ...novas] } : c)),
-    separados: novas.length,
-  };
+/* Devolve pro grupo de origem a mao de obra que foi separada pra fora.
+
+   Ate agora a linha separada ia parar numa verba de "Execucao e Mao de
+   Obra". A mao de obra da iluminacao e da iluminacao — o valor ficava
+   longe de onde e conferido, e quem separava nao achava a linha. As obras
+   que ja tinham separacoes se consertam sozinhas ao carregar, em vez de
+   exigir que alguem desfaca e refaca uma a uma. */
+function devolverMOaoGrupoDeOrigem(categorias) {
+  const lista = categorias || [];
+  const fora = [];
+  const limpas = lista.map((c) => {
+    const ficam = [], saem = [];
+    (c.itens || []).forEach((it) => {
+      if (it.separadoDe && it.separadoDe.verba && it.separadoDe.verba !== c.num) saem.push(it);
+      else ficam.push(it);
+    });
+    if (!saem.length) return c;
+    fora.push(...saem);
+    return { ...c, itens: ficam };
+  });
+  if (!fora.length) return lista;
+
+  return limpas.map((c) => {
+    const meus = fora.filter((it) => it.separadoDe.verba === c.num);
+    if (!meus.length) return c;
+    const usados = new Set((c.itens || []).map((it) => it.codigo));
+    const colocados = new Set();
+    const itens = [];
+
+    (c.itens || []).forEach((it) => {
+      const filhas = meus.filter((m) => m.separadoDe.codigo === it.codigo);
+      if (!filhas.length) { itens.push(it); return; }
+      /* Copia em vez de mexer no objeto que veio: a outra ponta guarda o
+         codigo da linha filha, e sem atualizar, "juntar de volta"
+         procuraria uma linha que nao existe mais. Mutar o original
+         mudaria o estado do React por baixo dele. */
+      let pai = it;
+      const novas = [];
+      filhas.forEach((m) => {
+        /* Codigo com prefixo da verba velha dentro de outra verba
+           confunde mais do que ajuda — "32.mo1" no meio da 05. */
+        const doGrupo = String(m.codigo || "").startsWith(`${c.num}.`);
+        const codigo = doGrupo && !usados.has(m.codigo) ? m.codigo : codigoMOlivre(usados, c.num);
+        usados.add(codigo);
+        colocados.add(m);
+        if (pai.moSeparada) pai = { ...pai, moSeparada: { valor: pai.moSeparada.valor, codigo } };
+        novas.push({ ...m, codigo });
+      });
+      itens.push(pai, ...novas);
+    });
+
+    /* Orfa: a linha de origem sumiu (obra reimportada, por exemplo). Vai
+       pro fim do grupo em vez de desaparecer com o valor dentro.
+       Comparada por IDENTIDADE, nao por codigo — o codigo pode ter sido
+       renumerado agora mesmo, e comparar por ele duplicava a linha. */
+    meus.filter((m) => !colocados.has(m)).forEach((m) => {
+      const codigo = usados.has(m.codigo) ? codigoMOlivre(usados, c.num) : m.codigo;
+      usados.add(codigo);
+      itens.push({ ...m, codigo });
+    });
+    return { ...c, itens };
+  });
 }
 
 /* PRAZO DE COMPRA — ate quando o material TEM que estar comprado.
@@ -838,7 +904,7 @@ function TagAloc({ aloc, manual, onChange }) {
 
    O que NAO mudou: MO continua indo pra Contratos, nao pra Compras. A
    linha so de MO nao ganha caixinha de compra — ela diz pra onde vai. */
-function LinhaPlano({ item, cat, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO, onIrParaMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+function LinhaPlano({ item, cat, sugerido, onAlocar, onSepararMO, onJuntarMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
   const estourou = itemEstourou(item);
@@ -875,19 +941,15 @@ function LinhaPlano({ item, cat, sugerido, verbaMO, onAlocar, onSepararMO, onJun
             e ninguem lembra se e separacao ou duplicata. */}
         {item.moSeparada && (
           <span className="tag-separado">
-            <CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada para{" "}
-            {/* Vira link: a linha separada mora em outra verba, no fim da
-                lista e fechada. Sem o atalho a pessoa procura no grupo de
-                origem, nao acha, e conclui que a separacao nao funcionou. */}
-            {onIrParaMO
-              ? <button className="btn-ir-mo" onClick={onIrParaMO} title="Abrir a verba de mão de obra e ver a linha separada">{item.moSeparada.paraVerba} — ver lá</button>
-              : item.moSeparada.paraVerba}
+            {/* A linha separada esta logo abaixo, na mesma verba — nao ha
+                mais pra onde mandar a pessoa. */}
+            <CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo
             {onJuntarMO && <button className="btn-juntar" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</button>}
           </span>
         )}
         {item.separadoDe && (
           <span className="tag-separado">
-            <CornerDownRight size={10} /> mão de obra separada de {item.separadoDe.verba}.{String(item.separadoDe.codigo).split(".").slice(1).join(".") || item.separadoDe.codigo}
+            <CornerDownRight size={10} /> mão de obra do item {item.separadoDe.codigo}
           </span>
         )}
         {item.contavel && <SiengeMatch sienge={item.sienge} />}
@@ -906,7 +968,7 @@ function LinhaPlano({ item, cat, sugerido, verbaMO, onAlocar, onSepararMO, onJun
             pra onde ir. */}
         {podeSepararMO(item, cat) && onSepararMO && (
           <button className="btn-separar" onClick={onSepararMO}
-            title={`Tira a mão de obra deste item e cria uma linha só dela em ${verbaMO || "Execução e Mão de Obra"}, com a mesma descrição e quantidade. O total não muda.`}>
+            title="Tira a mão de obra deste item e cria uma linha só dela logo abaixo, com a mesma descrição e quantidade. O total não muda.">
             <GitCompare size={9} /> separar MO
           </button>
         )}
@@ -1125,13 +1187,13 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
   );
 }
 
-function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, verbaMO, ehVerbaMO, onSepararMO, onJuntarMO, onSepararGrupo, onIrParaMO, dataEntrega }) {
+function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega }) {
   const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
   const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
   const nAvulsos = itens.filter((it) => it.avulso).length;
   // Quantos ainda tem as duas parcelas na mesma linha. E o que o botao do
   // grupo resolve de uma vez, pras obras salvas antes desta regra.
-  const aSeparar = ehVerbaMO ? 0 : itens.filter((it) => podeSepararMO(it, cat)).length;
+  const aSeparar = itens.filter((it) => podeSepararMO(it, cat)).length;
 
   return (
     <div className="grp-block" data-grp={cat.num}>
@@ -1173,7 +1235,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, ve
               <GitCompare size={12} className="dim" />
               <span>
                 <b>{aSeparar}</b> {aSeparar === 1 ? "item tem" : "itens têm"} MAT e MO na mesma linha.
-                {verbaMO ? ` Separar manda a mão de obra pra ${verbaMO}, com a mesma descrição e quantidade.` : ""}
+                {" "}Separar cria a linha de mão de obra logo abaixo, aqui mesmo, com a mesma descrição e quantidade.
               </span>
               <button className="btn-separar-grupo" onClick={onSepararGrupo}>Separar MO do grupo</button>
             </div>
@@ -1202,10 +1264,8 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, ve
                   <LinhaPlano key={it.codigo} item={it} cat={cat}
                     sugerido={sugeridoParaCompra(it, cat.num)}
                     onAlocar={(v) => onAlocar(it, idx, v)}
-                    verbaMO={verbaMO}
-                    onSepararMO={ehVerbaMO || !onSepararMO ? null : () => onSepararMO(it.codigo)}
+                    onSepararMO={onSepararMO ? () => onSepararMO(it.codigo) : null}
                     onJuntarMO={onJuntarMO ? () => onJuntarMO(it.codigo) : null}
-                    onIrParaMO={ehVerbaMO ? null : onIrParaMO}
                     onToggleCompra={() => onItemChange(idx, {
                       // Clicar inverte o que esta na tela. Numa linha
                       // sugerida — que ja aparece marcada — o clique e o
@@ -1466,23 +1526,6 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
 
   // Achada pelo NOME: a EAP renumerou uma vez e obra salva antes da troca
   // guarda a numeracao velha, entao "32" cru nao serve.
-  const verbaMO = useMemo(() => achaVerbaMO(obra.categorias), [obra.categorias]);
-
-  /* Leva ate a verba de mao de obra e abre.
-
-     A linha separada mora em OUTRA verba, no fim de uma lista de quinze
-     grupos, fechada. Quem separou procura no grupo de origem, nao acha, e
-     conclui que a separacao nao funcionou — aconteceu duas vezes aqui. */
-  const abrirVerbaMO = (rolar) => {
-    if (!verbaMO) return;
-    const chave = verbaMO.num + obra.id;
-    if (!expandedCats.has(chave)) toggleCat(chave);
-    if (rolar) setTimeout(() => {
-      const el = document.querySelector(`[data-grp="${verbaMO.num}"]`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 80);
-  };
-
   // Só vale avisar da data faltando se algum grupo de fato tem prazo.
   const temPrazos = useMemo(() => (obra.categorias || []).some((c) =>
     prazoDoGrupo(c, c.itens)), [obra.categorias]);
@@ -1657,12 +1700,9 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
         <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens}
           expanded={expandedCats.has(cat.num + obra.id)}
           onToggle={() => toggleCat(cat.num + obra.id)}
-          verbaMO={verbaMO ? `${verbaMO.num} ${verbaMO.nome}` : null}
-          ehVerbaMO={!!verbaMO && verbaMO.num === cat.num}
-          onSepararMO={(codigo) => { onSepararMO(cat.num, codigo); abrirVerbaMO(false); }}
+          onSepararMO={(codigo) => onSepararMO(cat.num, codigo)}
           onJuntarMO={(codigo) => onJuntarMO(cat.num, codigo)}
-          onSepararGrupo={() => { onSepararGrupo(cat.num); abrirVerbaMO(false); }}
-          onIrParaMO={() => abrirVerbaMO(true)}
+          onSepararGrupo={() => onSepararGrupo(cat.num)}
           dataEntrega={obra.dataEntrega}
           onItemChange={(itemIdx, patch) => updateItem(obra.categorias.indexOf(cat), itemIdx, patch)}
           onAlocar={(it, itemIdx, v) => onAlocar(obra.categorias.indexOf(cat), itemIdx, it, v)}
@@ -1985,7 +2025,6 @@ const APELIDOS_CODIGO = {
   "29": ["adegaclimatizada", "adega"],
   "30": ["cortina", "persian"],
   "31": ["decorativo", "decoracao"],
-  "32": ["execucao", "maodeobra"],
 };
 
 // comprime pra comparar: sem acento, sem espaço, sem pontuação
@@ -3842,7 +3881,6 @@ const NAO_ANALISADAS_CODIGO = {
   "01": "Padrão em toda obra — não muda de contrato pra contrato",
   "02": "Padrão em toda obra — não muda de contrato pra contrato",
   "21": "Móveis sob medida não são conferidos item a item nesta etapa",
-  "32": "Valor fictício criado na venda pra separar margem — não representa item real",
 };
 /* Resolve pelo NOME, não pelo número.
 
@@ -6910,7 +6948,14 @@ export default function App() {
         if (!vivo || !dados) return;
         setObras((prev) => prev.map((o) => (o.codigo === codigo ? {
           ...o,
-          categorias: (dados.categorias || []).length ? normalizarCategorias(dados.categorias) : o.categorias,
+          /* `devolverMOaoGrupoDeOrigem` conserta sozinha as obras que ja
+             tinham separacao: a linha de mao de obra ia parar numa verba
+             de "Execucao e Mao de Obra", longe do grupo onde o valor e
+             conferido. Sem isso, seria preciso desfazer e refazer uma a
+             uma na mao. */
+          categorias: (dados.categorias || []).length
+            ? devolverMOaoGrupoDeOrigem(normalizarCategorias(dados.categorias))
+            : o.categorias,
           cadernos: dados.cadernos,
           aprovacoes: dados.aprovacoes,
           deparaAprovado: dados.deparaAprovado,
@@ -6935,7 +6980,7 @@ export default function App() {
           // obra volta do banco com os itens certos e os totais do Monday
           // — que sao zero. O cabecalho dizia "R$ 0,00" numa obra com R$
           // 632 mil em produtos.
-          ...derivadosDasCategorias(normalizarCategorias(dados.categorias), o),
+          ...derivadosDasCategorias(devolverMOaoGrupoDeOrigem(normalizarCategorias(dados.categorias)), o),
         } : o)));
         const deOutro = dados.editandoPor && dados.editandoPor !== usuario;
         setEdicao({
@@ -7481,23 +7526,27 @@ export default function App() {
 
   /* Separa a mao de obra de UM item, na mao.
 
-     O de R$ 268 (223 de material + 45 de MO) vira dois: ele mesmo, so
-     com os 223, e uma linha de 45 na verba de Execucao e Mao de Obra.
-     O dinheiro nao muda de tamanho, so de lugar. */
+     O de R$ 268 (223 de material + 45 de MO) vira dois: ele mesmo, so com
+     os 223, e uma linha de 45 LOGO ABAIXO, na mesma verba. O dinheiro nao
+     muda de tamanho nem de grupo — a mao de obra da iluminacao continua
+     sendo da iluminacao. */
   function separarMaoDeObra(catNum, codigo) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
-      const destino = achaVerbaMO(o.categorias);
-      if (!destino || destino.num === catNum) return o;
-      const item = (o.categorias.find((c) => c.num === catNum)?.itens || []).find((it) => it.codigo === codigo);
+      const cat = o.categorias.find((c) => c.num === catNum);
+      const item = (cat?.itens || []).find((it) => it.codigo === codigo);
       if (!item) return o;
-      const usados = new Set((destino.itens || []).map((it) => it.codigo));
-      const par = partirMaoDeObra(item, catNum, destino.num, codigoMOlivre(usados, destino.num));
+      const usados = new Set(cat.itens.map((it) => it.codigo));
+      const par = partirMaoDeObra(item, catNum, codigoMOlivre(usados, catNum));
       if (!par) return o;
       return { ...o, categorias: o.categorias.map((c) => {
-        if (c.num === catNum) return { ...c, itens: c.itens.map((it) => (it.codigo === codigo ? par.original : it)) };
-        if (c.num === destino.num) return { ...c, itens: [...(c.itens || []), par.linhaMO] };
-        return c;
+        if (c.num !== catNum) return c;
+        const itens = [];
+        c.itens.forEach((it) => {
+          if (it.codigo !== codigo) { itens.push(it); return; }
+          itens.push(par.original, par.linhaMO);
+        });
+        return { ...c, itens };
       }) };
     }));
   }
@@ -7520,14 +7569,17 @@ export default function App() {
       const item = (o.categorias.find((c) => c.num === catNum)?.itens || []).find((it) => it.codigo === codigo);
       const sep = item?.moSeparada;
       if (!sep) return o;
+      // A linha separada mora na MESMA verba, entao juntar e um passe so:
+      // tira a marca do original e apaga a linha filha ali mesmo.
       return { ...o, categorias: o.categorias.map((c) => {
-        if (c.num === catNum) return { ...c, itens: c.itens.map((it) => {
-          if (it.codigo !== codigo) return it;
-          const { moSeparada, ...resto } = it;
-          return resto;
-        }) };
-        if (c.num === sep.paraVerba) return { ...c, itens: (c.itens || []).filter((it) => it.codigo !== sep.codigo) };
-        return c;
+        if (c.num !== catNum) return c;
+        return { ...c, itens: c.itens
+          .filter((it) => it.codigo !== sep.codigo)
+          .map((it) => {
+            if (it.codigo !== codigo) return it;
+            const { moSeparada, ...resto } = it;
+            return resto;
+          }) };
       }) };
     }));
   }
@@ -8072,7 +8124,6 @@ export default function App() {
            verbas diferentes, e a conferencia de meses depois nao sabe se e
            separacao ou duplicata. */
         .tag-separado { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--purple); background: #EFEAFB; border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
-        .btn-ir-mo { background: transparent; border: none; color: var(--purple); text-decoration: underline; font-size: 10px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 0; }
         .btn-juntar { background: transparent; border: none; color: var(--purple); text-decoration: underline; font-size: 10px; cursor: pointer; font-family: inherit; padding: 0 0 0 3px; }
         .btn-avulsa { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 12px; }
         .btn-avulsa:hover { background: var(--purple); }

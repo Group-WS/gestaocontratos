@@ -46,11 +46,13 @@ const api = eval(`(function () {
     ${pega("function itemAlertas(")}
     ${pega("function matchesFilter(")}
     return { alocacaoDoItem, casaAloc, parcelasDoItem, matchesFilter, partirMaoDeObra,
-             separarMOnasVerbasDeContrato, separaMOautomatico, achaVerbaMO, podeSepararMO, ehVerbaMatMoSempre,
+             separarMOnasVerbasDeContrato, separaMOautomatico, podeSepararMO, ehVerbaMatMoSempre,
+             devolverMOaoGrupoDeOrigem,
              ALOC_MAT, ALOC_MO, ALOC_AMBOS, FILTROS_ALOC, ROTULO_ALOC, NOME_ALOC };
   })()`);
 const { alocacaoDoItem, casaAloc, parcelasDoItem, matchesFilter, partirMaoDeObra,
         separarMOnasVerbasDeContrato, separaMOautomatico, podeSepararMO, ehVerbaMatMoSempre,
+        devolverMOaoGrupoDeOrigem,
         ALOC_MAT, ALOC_MO, ALOC_AMBOS, FILTROS_ALOC, ROTULO_ALOC, NOME_ALOC } = api;
 
 let f = 0;
@@ -184,7 +186,7 @@ conf("a etiqueta das duas parcelas usa +", ROTULO_ALOC.AMBOS, "MAT+MO");
 conf("nenhum rótulo de filtro se repete", new Set(FILTROS_ALOC.map((x) => x.label)).size, FILTROS_ALOC.length);
 
 /* ---- 9. separar a MO em linha própria ---- */
-const par = partirMaoDeObra({ ...spot, codigo: "5.12" }, "05", "32", "32.mo1");
+const par = partirMaoDeObra({ ...spot, codigo: "5.12" }, "05", "05.mo1");
 conf("o original fica só com o material", parcelasDoItem(par.original).material, 182);
 conf("... e sem mão de obra", parcelasDoItem(par.original).mo, 0);
 conf("a linha nova leva só a mão de obra", parcelasDoItem(par.linhaMO).mo, 180);
@@ -199,8 +201,12 @@ conf("as duas pontas do vínculo existem",
 conf("a linha de MO não herda a compra",
   [par.linhaMO.comprado, par.linhaMO.liberado, par.linhaMO.compraDecidida].filter(Boolean).length
   + [par.linhaMO.valorComprado, par.linhaMO.qtdComprada, par.linhaMO.sienge].filter((x) => x != null).length, 0);
-conf("não separa duas vezes", partirMaoDeObra(par.original, "05", "32", "32.mo2"), null);
-conf("não separa quem não tem MO", partirMaoDeObra(so_mat, "24", "32", "32.mo1"), null);
+conf("não separa duas vezes", partirMaoDeObra(par.original, "05", "05.mo2"), null);
+conf("não separa quem não tem MO", partirMaoDeObra(so_mat, "24", "24.mo1"), null);
+// A mão de obra da iluminação é da iluminação: sair do grupo levava o
+// valor pra longe de onde ele é conferido.
+conf("a linha nasce na MESMA verba", par.linhaMO.separadoDe.verba, "05");
+conf("... e com código do grupo", par.linhaMO.codigo.startsWith("05."), true);
 
 /* ---- 10. as verbas em que a MO é sempre contratada ---- */
 conf("iluminação separa sozinha", separaMOautomatico("05", "Instalações Elétricas e Iluminação"), true);
@@ -214,13 +220,15 @@ conf("decide pelo nome, não pelo número velho", separaMOautomatico("06", "Clim
 const cats = [
   { num: "05", nome: "Instalações Elétricas e Iluminação", itens: [{ ...spot, codigo: "5.12" }, { ...so_mat, codigo: "5.13" }] },
   { num: "18", nome: "Pintura", itens: [{ ...spot, codigo: "18.1" }] },
-  { num: "32", nome: "Execução e Mão de Obra", itens: [] },
 ];
 const r = separarMOnasVerbasDeContrato(cats);
-const mo32 = r.categorias.find((c) => c.num === "32").itens;
+const eletrica = r.categorias.find((c) => c.num === "05").itens;
 conf("separou 1 item (só o da iluminação)", r.separados, 1);
-conf("a linha foi pra verba de mão de obra", mo32.length, 1);
-conf("... com o valor da MO", parcelasDoItem(mo32[0]).mo, 180);
+conf("a verba ganhou uma linha", eletrica.length, 3);
+// O par tem que se ler junto: a linha de MO vem logo abaixo da que a gerou.
+conf("a linha de MO vem logo abaixo da origem", eletrica[1].separadoDe.codigo, "5.12");
+conf("... com o valor da MO", parcelasDoItem(eletrica[1]).mo, 180);
+conf("... e sem sair do grupo", eletrica[1].separadoDe.verba, "05");
 conf("pintura ficou intacta", !!r.categorias.find((c) => c.num === "18").itens[0].moSeparada, false);
 
 // Rodar de novo não pode duplicar: o item já separado não separa outra vez.
@@ -242,6 +250,39 @@ conf("total da linha fecha com MAT + MO", totalDaLinha(par.original), 182);
 conf("... e não com o custo antigo da planilha", totalDaLinha(par.original) === par.original.custo, false);
 conf("a linha de MO fecha no valor dela", totalDaLinha(par.linhaMO), 180);
 conf("as duas linhas somam o total de antes", totalDaLinha(par.original) + totalDaLinha(par.linhaMO), 362);
+
+/* ---- 12. obra antiga se conserta ao carregar ---- */
+// Até agora a linha separada ia parar numa verba "Execução e Mão de Obra".
+// Sem migração seria preciso desfazer e refazer uma a uma, na mão.
+const antigas = [
+  { num: "05", nome: "Instalações Elétricas e Iluminação", itens: [
+    { codigo: "5.12", desc: "Spot", totalMaterial: 182, totalMO: 0, custo: 182,
+      moSeparada: { valor: 180, paraVerba: "32", codigo: "32.mo1" } },
+    { codigo: "5.13", desc: "Luminária", totalMaterial: 900, totalMO: 0, custo: 900 },
+  ] },
+  { num: "32", nome: "Execução e Mão de Obra", itens: [
+    { codigo: "32.mo1", desc: "Spot", totalMaterial: 0, totalMO: 180, custo: 180,
+      separadoDe: { codigo: "5.12", verba: "05", desc: "Spot" } },
+    // Item que SEMPRE foi da verba 32, não veio de separação: fica onde está.
+    { codigo: "32.1", desc: "Mão de obra geral", totalMaterial: 0, totalMO: 5000, custo: 5000 },
+  ] },
+];
+const migradas = devolverMOaoGrupoDeOrigem(antigas);
+const el = migradas.find((c) => c.num === "05").itens;
+const v32 = migradas.find((c) => c.num === "32").itens;
+conf("a linha voltou pra verba de origem", el.length, 3);
+conf("... logo abaixo do item que a gerou", el[1].separadoDe.codigo, "5.12");
+conf("... e ganhou código do grupo novo", el[1].codigo.startsWith("05."), true);
+conf("a outra ponta aponta pro código novo", el[0].moSeparada.codigo, el[1].codigo);
+conf("item que sempre foi da 32 fica onde está", v32.length, 1);
+conf("... e é o que não veio de separação", v32[0].codigo, "32.1");
+// O dinheiro não pode mudar de tamanho numa migração.
+const somaDe = (cs) => cs.reduce((a, c) => a + c.itens.reduce((b, it) => {
+  const pp = parcelasDoItem(it); return b + pp.material + pp.mo;
+}, 0), 0);
+conf("migrar não muda o total da obra", somaDe(migradas), somaDe(antigas));
+// Roda a cada carga da obra: rodar de novo não pode mexer em nada.
+conf("é idempotente", JSON.stringify(devolverMOaoGrupoDeOrigem(migradas)), JSON.stringify(migradas));
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
