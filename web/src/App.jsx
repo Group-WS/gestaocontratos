@@ -1008,7 +1008,13 @@ function PrazoCompra({ cat, itens, dataEntrega, prazosManuais, onPrazo }) {
           <div className="prazo-conta">{conta}</div>
         </>
       ) : (
-        <div className="prazo-sem-data dim">{prazo.dias} dias antes — falta a data de entrega</div>
+        /* Sem data de entrega, mostra so a antecedencia. Repetir "falta a
+           data de entrega" em quinze grupos era encher a tela com o mesmo
+           recado — ele passou a ser um aviso unico, no topo. */
+        <>
+          <div className="grp-tot-val mono dim">{prazo.dias} dias</div>
+          <div className="prazo-conta">antes da entrega</div>
+        </>
       )}
     </div>
   );
@@ -1340,7 +1346,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onPrazo, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onPrazo, onIrParaDashboard, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
 
   /* "Só o vendido" nasce ligado.
@@ -1356,6 +1362,10 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
   // Achada pelo NOME: a EAP renumerou uma vez e obra salva antes da troca
   // guarda a numeracao velha, entao "32" cru nao serve.
   const verbaMO = useMemo(() => achaVerbaMO(obra.categorias), [obra.categorias]);
+
+  // Só vale avisar da data faltando se algum grupo de fato tem prazo.
+  const temPrazos = useMemo(() => (obra.categorias || []).some((c) =>
+    prazoDoGrupo(c, c.itens, obra.prazosCompra)), [obra.categorias, obra.prazosCompra]);
 
   // O placar da seleção. Sem ele a pessoa só descobre o tamanho do que
   // escolheu abrindo verba por verba — e o número que importa não é
@@ -1450,6 +1460,22 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           compra pra fora da plataforma, o unico lugar onde ela fica
           registrada. */}
       {podeEditar && <FormAvulsa obra={obra} onCriar={onCriarAvulsa} />}
+
+      {/* Um aviso, nao quinze. O prazo de compra de cada grupo depende
+          desta data, e sem ela o alerta que evita comprar um item de 75
+          dias com 40 simplesmente nao existe. */}
+      {!obra.dataEntrega && temPrazos && (
+        <div className="import-bar aviso-entrega">
+          <div className="import-info">
+            <Clock size={14} />
+            <span>
+              Alguns grupos já têm prazo de compra, mas falta a <b>data de entrega da obra</b> —
+              sem ela não dá pra dizer até quando comprar.
+            </span>
+          </div>
+          <button className="btn-atalho" onClick={onIrParaDashboard}>Definir no Dashboard</button>
+        </div>
+      )}
 
       {temItens && !obra.comprasLiberadas && (
         <div className="plano-barra">
@@ -7504,7 +7530,7 @@ export default function App() {
            e os cards param de esticar. */
         .resumo-panel { background: var(--panel); border-radius: 16px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: start; gap: 12px; margin-bottom: 28px; }
         .resumo-panel .mini-stats { grid-column: span 1; min-width: 210px; }
-        @media (min-width: 1500px) { .resumo-panel { grid-template-columns: repeat(4, 1fr) 250px; } }
+        @media (min-width: 1500px) { .resumo-panel { grid-template-columns: repeat(4, 1fr) 250px 230px; } }
         .big-card { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 15px 17px; }
         .big-card-label { font-size: 10px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 9px; }
         .big-card-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -7655,6 +7681,7 @@ export default function App() {
 
         /* Dashboard: a data que comanda os prazos, e as avulsas. */
         .entrega-panel { display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
+        .aviso-entrega { margin-bottom: 12px; align-items: center; }
         .entrega-bloco { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 14px; }
         .entrega-input { width: 100%; margin-top: 3px; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; font-size: 13px; font-family: 'JetBrains Mono', monospace; color: var(--ink); background: #fff; }
         .entrega-input:focus { border-color: var(--ink); outline: none; }
@@ -8522,7 +8549,7 @@ export default function App() {
             </div>
           )}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onPrazo={definirPrazoCompra} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onPrazo={definirPrazoCompra} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
