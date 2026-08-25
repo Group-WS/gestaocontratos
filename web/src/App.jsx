@@ -904,7 +904,7 @@ function TagAloc({ aloc, manual, onChange }) {
 
    O que NAO mudou: MO continua indo pra Contratos, nao pra Compras. A
    linha so de MO nao ganha caixinha de compra — ela diz pra onde vai. */
-function LinhaPlano({ item, cat, sugerido, onAlocar, onSepararMO, onJuntarMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
   const estourou = itemEstourou(item);
@@ -913,7 +913,7 @@ function LinhaPlano({ item, cat, sugerido, onAlocar, onSepararMO, onJuntarMO, on
   const compravel = aloc !== ALOC_MO;   // so quem tem material vai pra Compras
   // Marcado por gente e marcado por sugestao tem que ser distinguiveis na
   // hora: sugestao que se parece com decisao e sugestao que ninguem revisa.
-  const marcado = item.compraDecidida ? !!item.liberado : sugerido;
+  const marcado = !!item.liberado;
 
   return (
     <tr className={item.avulso ? "row-avulso" : alertas.length ? "row-alert" : estourou ? "row-estouro" : ""}>
@@ -921,9 +921,8 @@ function LinhaPlano({ item, cat, sugerido, onAlocar, onSepararMO, onJuntarMO, on
 
           Ela era uma caixinha de marcar que dizia exatamente o que a
           coluna "Situação de compra", duas casas adiante, ja dizia por
-          extenso — e quando o item era so sugerido a caixinha vinha num
-          tracejado laranja que a distancia parecia alerta. Duas colunas
-          pra mesma informacao, uma delas parecendo erro.
+          extenso, e num tracejado laranja que a distancia parecia
+          alerta. Duas colunas pra mesma informacao, uma parecendo erro.
 
           O controle nao se perdeu: a propria situacao virou o botao. */}
       <td className="mono dim">{item.codigo}</td>
@@ -1002,10 +1001,10 @@ function LinhaPlano({ item, cat, sugerido, onAlocar, onSepararMO, onJuntarMO, on
         ) : bloqueado ? (
           <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
         ) : (
-          <button className={`pill pill-btn ${marcado ? (sugerido ? "pill-sug" : "pill-ok") : "pill-wait"}`}
+          <button className={`pill pill-btn ${marcado ? "pill-ok" : "pill-wait"}`}
             onClick={onToggleCompra}
             title={marcado ? "Clique pra tirar do plano de compras" : "Clique pra incluir no plano de compras"}>
-            {marcado ? (sugerido ? "Sugerido — confirmar" : "No plano de compras") : "Fora do plano"}
+            {marcado ? "No plano de compras" : "Fora do plano"}
           </button>
         )}
       </td>
@@ -1099,94 +1098,6 @@ function parcelasDaPlanilha(it) {
   return { material: mat || 0, mo: mo || 0, estimado: false };
 }
 
-/* Verbas que a equipe normalmente compra.
-
-   Serve pra SUGERIR, nunca pra decidir: a pergunta "precisa comprar
-   isto?" depende do que já existe na obra e do que o cliente levou, e
-   isso nenhuma regra sabe. A sugestão só poupa a marcação óbvia. */
-const VERBAS_DE_COMPRA = new Set([
-  "05", // Instalações Elétricas e Iluminação
-  "11", // Revestimento Cerâmico (material)
-  "13", // Piso Vinílico e Carpete (material)
-  "14", // Papel de Parede
-  "20", // Climatização / Exaustão (material)
-  "24", // Móveis Soltos
-  "27", // Louças, Metais e Equipamentos Especiais
-  "28", // Eletroeletrônico
-  "33", // Equipamentos de Lazer
-  "34", // Mobiliário Corporativo
-]);
-
-// Sugerido = ninguém decidiu ainda, tem parcela de material e a verba é
-// das que se compra. Assim que alguém clica, `compraDecidida` fica de pé
-// e a sugestão sai de cena — inclusive quando a decisão foi "não".
-const sugeridoParaCompra = (it, catNum) =>
-  !it.compraDecidida && !it.ehTitulo && parcelasDoItem(it).material > 0 && VERBAS_DE_COMPRA.has(catNum);
-
-/* Um grupo da EAP dentro do plano.
-
-   A linha fechada responde a pergunta que se faz primeiro: quanto tem de
-   MAT e quanto tem de MO nesta verba. So ao abrir e que vem item por
-   item.
-
-   Antes a tela abria com o grupo inteiro escancarado e 12 colunas, e o
-   total so existia dentro do bloco aberto — pra saber o material de
-   Moveis Soltos era preciso rolar 26 linhas somando de cabeca. */
-/* Ate quando o material deste grupo TEM que estar comprado.
-
-   O numero que importa nao e "quantos dias leva", e "a partir de quando
-   ja e tarde". Por isso a celula mostra a DATA e a contagem, nao o prazo
-   de entrega do fornecedor: ninguem faz essa subtracao de cabeca no meio
-   de uma conferencia de 200 itens.
-
-   Grupo sem regra nasce em branco pra ser preenchido na mao — em dias, e
-   nao em data, porque dia de antecedencia sobrevive a mudanca da data de
-   entrega da obra, e data digitada nao. */
-function PrazoCompra({ cat, itens, dataEntrega }) {
-  const prazo = prazoDoGrupo(cat, itens);
-  // Celula vazia, e nao ausente: sem ela as colunas MAT e MO dos grupos
-  // sem regra deslizariam pra esquerda e a lista deixaria de ser lida
-  // como coluna.
-  if (!prazo) return <div className="grp-prazo" />;
-
-  const limite = dataLimiteCompra(dataEntrega, prazo.dias);
-  const faltam = diasAte(limite);
-  const tom = faltam == null ? "" : faltam < 0 ? "prazo-vencido" : faltam <= 15 ? "prazo-perto" : "";
-  const conta = faltam == null ? null
-    : faltam < 0 ? `passou ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
-    : faltam === 0 ? "é hoje"
-    : `faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`;
-
-  const porque = prazo.incerto
-    ? `${prazo.dias} dias — nenhum fornecedor reconhecido nas linhas, então vale o prazo mais longo (${prazo.fornecedor})`
-    : prazo.fornecedor
-      ? `${prazo.dias} dias (${prazo.fornecedor})${prazo.varios ? " — o mais apertado do grupo" : ""}`
-      : `${prazo.dias} dias antes da entrega`;
-
-  return (
-    <div className={`grp-prazo ${tom}`} title={porque}>
-      <div className="grp-tot-rot">
-        COMPRAR ATÉ
-        {prazo.incerto && <span className="prazo-marca" title={porque}>?</span>}
-      </div>
-      {limite ? (
-        <>
-          <div className="grp-tot-val mono">{fmtData(limite)}</div>
-          <div className="prazo-conta">{conta}</div>
-        </>
-      ) : (
-        /* Sem data de entrega, mostra so a antecedencia. Repetir "falta a
-           data de entrega" em quinze grupos era encher a tela com o mesmo
-           recado — ele passou a ser um aviso unico, no topo. */
-        <>
-          <div className="grp-tot-val mono dim">{prazo.dias} dias</div>
-          <div className="prazo-conta">antes da entrega</div>
-        </>
-      )}
-    </div>
-  );
-}
-
 function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega }) {
   const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
   const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
@@ -1262,19 +1173,10 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
                 const idx = (cat.itens || []).indexOf(it);
                 return (
                   <LinhaPlano key={it.codigo} item={it} cat={cat}
-                    sugerido={sugeridoParaCompra(it, cat.num)}
                     onAlocar={(v) => onAlocar(it, idx, v)}
                     onSepararMO={onSepararMO ? () => onSepararMO(it.codigo) : null}
                     onJuntarMO={onJuntarMO ? () => onJuntarMO(it.codigo) : null}
-                    onToggleCompra={() => onItemChange(idx, {
-                      // Clicar inverte o que esta na tela. Numa linha
-                      // sugerida — que ja aparece marcada — o clique e o
-                      // "nao". Aceitar e o botao "Confirmar sugestoes" la
-                      // em cima, que e o caminho comum: a pessoa aceita o
-                      // lote e tira as poucas que nao vao.
-                      compraDecidida: true,
-                      liberado: !(it.compraDecidida ? !!it.liberado : sugeridoParaCompra(it, cat.num)),
-                    })}
+                    onToggleCompra={() => onItemChange(idx, { compraDecidida: true, liberado: !it.liberado })}
                     onAprovar={() => onItemChange(idx, { statusEscopo: "aprovado" })}
                     onToggleComprado={() => onItemChange(idx, { comprado: !it.comprado })}
                     onValorComprado={(v) => {
@@ -1511,7 +1413,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onAlocar, onIrParaDashboard, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onAlocar, onIrParaDashboard, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
 
   /* "Só o vendido" nasce ligado.
@@ -1534,18 +1436,15 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
   // escolheu abrindo verba por verba — e o número que importa não é
   // quantos itens, é quanto de material vai pra compra.
   const plano = useMemo(() => {
-    let confirmados = 0, sugestoes = 0, materialNoPlano = 0, moForaDoPlano = 0;
+    let confirmados = 0, materialNoPlano = 0, moForaDoPlano = 0;
     obra.categorias.forEach((cat) => (cat.itens || []).forEach((it) => {
-      if (!ehProduto(it) || it.ehTitulo) return;
-      const sug = sugeridoParaCompra(it, cat.num);
-      const marcado = it.compraDecidida ? !!it.liberado : sug;
-      if (!marcado) return;
+      if (!it.liberado || it.ehTitulo) return;
       const { material, mo } = parcelasDoItem(it);
       materialNoPlano += material;
       moForaDoPlano += mo;
-      if (sug) sugestoes += 1; else confirmados += 1;
+      confirmados += 1;
     }));
-    return { confirmados, sugestoes, materialNoPlano, moForaDoPlano };
+    return { confirmados, materialNoPlano, moForaDoPlano };
   }, [obra]);
 
   /* O item que entra na tela.
@@ -1650,15 +1549,6 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
             <div className="plano-num plano-num-mo">
               <div className="plano-valor mono dim">{fmtBRL(plano.moForaDoPlano)}</div>
               <div className="plano-rotulo">de mão de obra nesses itens — vai pra Contratos, não pra compra</div>
-            </div>
-          )}
-          {plano.sugestoes > 0 && podeEditar && (
-            <div className="plano-sug">
-              <Sparkles size={13} />
-              <span><b>{plano.sugestoes}</b> {plano.sugestoes === 1 ? "sugerido aguardando confirmação" : "sugeridos aguardando confirmação"}</span>
-              <button className="btn-confirmar-sug" onClick={onConfirmarSugestoes}>
-                <Check size={12} /> Confirmar {plano.sugestoes === 1 ? "o sugerido" : "os sugeridos"}
-              </button>
             </div>
           )}
         </div>
@@ -7363,9 +7253,7 @@ export default function App() {
          tela dizia que ia pra compra e que Compras nunca receberia. */
       categorias: o.categorias.map((cat) => ({
         ...cat,
-        itens: (cat.itens || []).map((it) =>
-          sugeridoParaCompra(it, cat.num) ? { ...it, compraDecidida: true, liberado: true } : it
-        ),
+        itens: cat.itens || [],
       })),
       comprasLiberadas: true,
       compraLiberadaEm: new Date().toISOString(),
@@ -7390,20 +7278,7 @@ export default function App() {
      e depois tira as poucas linhas que não vão. O contrário — marcar
      item por item as 60 luminárias de uma obra — é o que faz alguém
      desistir da tela e voltar pro Excel. */
-  function confirmarSugestoesCompra() {
-    setObras((prev) => prev.map((o) => {
-      if (o.id !== selectedId) return o;
-      return {
-        ...o,
-        categorias: o.categorias.map((cat) => ({
-          ...cat,
-          itens: (cat.itens || []).map((it) =>
-            sugeridoParaCompra(it, cat.num) ? { ...it, compraDecidida: true, liberado: true } : it
-          ),
-        })),
-      };
-    }));
-  }
+
 
   function reabrirCompras() {
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, comprasLiberadas: false } : o)));
@@ -8205,7 +8080,6 @@ export default function App() {
         .pill { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-wait { background: var(--panel); color: var(--ink-3); }
-        .pill-sug { background: var(--amber-bg, #FEF3C7); color: #B54708; }
 
         /* PLANO DE COMPRAS — seleção do que vai ser comprado.
 
@@ -8221,9 +8095,6 @@ export default function App() {
         .plano-valor { font-size: 17px; font-weight: 700; }
         .plano-rotulo { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
         .plano-num-mo { padding-left: 26px; border-left: 1px solid var(--linha); }
-        .plano-sug { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #B54708; margin-left: auto; }
-        .btn-confirmar-sug { display: inline-flex; align-items: center; gap: 4px; background: #B54708; color: #fff; border: none; border-radius: 6px; padding: 5px 11px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
-        .btn-confirmar-sug:hover { filter: brightness(1.1); }
         .contrato-cell { vertical-align: middle; }
         .contrato-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
         .contrato-blocked { display: inline-block; font-size: 11px; font-weight: 600; color: var(--red); background: var(--red-bg); padding: 4px 10px; border-radius: 20px; }
@@ -8922,7 +8793,7 @@ export default function App() {
             </div>
           )}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
