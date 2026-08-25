@@ -17,7 +17,24 @@
  *      render, e a pessoa desmarcaria a mesma coisa pra sempre.
  */
 const src = (await import("fs")).readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
-const codigo = src.slice(src.indexOf("const ehProduto = "), src.indexOf("function CategoriaBlock("));
+
+/* Recorta um trecho do App.jsx pra rodar de verdade — e RECLAMA quando a
+   marca some.
+
+   Antes o corte ia de "const ehProduto" ate "function CategoriaBlock(".
+   Quando esse componente foi substituido, o indexOf devolveu -1, o slice
+   aceitou calado e o eval recebeu a metade do arquivo com JSX dentro. O
+   teste morreu com "Unexpected token '<'", que nao diz nada sobre a
+   causa. Marca que nao existe mais tem que dizer o proprio nome. */
+const pedaco = (de, ate) => {
+  const i = src.indexOf(de), f = src.indexOf(ate);
+  if (i === -1) throw new Error(`não achei no App.jsx o início: ${de}`);
+  if (f === -1) throw new Error(`não achei no App.jsx o fim: ${ate}`);
+  return src.slice(i, f);
+};
+
+const codigo = src.match(/^const ehProduto = .*$/m)[0] + "\n" +
+  pedaco("function parcelasDoItem(", "function GrupoPlano(");
 const { parcelasDoItem, sugeridoParaCompra, VERBAS_DE_COMPRA } =
   eval(`(function(){ ${codigo}; return { parcelasDoItem, sugeridoParaCompra, VERBAS_DE_COMPRA }; })()`);
 

@@ -249,7 +249,13 @@ function obraComprasStats(o) {
 function matchesFilter(it, filter) {
   if (filter === "todos") return true;
   if (filter === "alerta") return itemAlertas(it).length > 0;
-  if (it.tipo !== "produto") return false; // só produto passa pelo fluxo de compras
+  /* Só quem tem material passa pelo fluxo de compras.
+
+     Antes o teste era `it.tipo !== "produto"`. Como a alocação sai das
+     PARCELAS e não desse campo, um item marcado como serviço mas com a
+     coluna de material preenchida aparecia na lista como MAT e sumia ao
+     filtrar "Liberado p/ compra" — a mesma tela dizendo as duas coisas. */
+  if (alocacaoDoItem(it) === ALOC_MO) return false;
   if (filter === "liberado") return it.liberado === true;
   if (filter === "aguardando") return !it.liberado;
   if (filter === "comprado") return it.comprado === true;
@@ -293,10 +299,6 @@ function exportExecutivoCSV(obra) {
    COMPONENTES PEQUENOS
    ============================================================ */
 
-function StatusText({ status }) {
-  const m = STATUS_META[status];
-  return <span className="status-text" style={{ color: m.color }}>{m.label}</span>;
-}
 
 function BigCard({ label, value, delta, deltaGood, sub, progress }) {
   return (
@@ -323,20 +325,6 @@ function MiniStat({ label, value, tone }) {
   );
 }
 
-function CategoriaBar({ vendido, executivo }) {
-  const max = Math.max(vendido, executivo || 0, 1);
-  const wV = (vendido / max) * 100;
-  const wE = executivo == null ? 0 : (executivo / max) * 100;
-  const over = executivo > vendido;
-  return (
-    <div className="cbar">
-      <div className="cbar-track">
-        <div className="cbar-vendido" style={{ width: `${wV}%` }} />
-        <div className="cbar-exec" style={{ width: `${Math.min(wE, 100)}%`, background: over ? "var(--red)" : "var(--blue)" }} />
-      </div>
-    </div>
-  );
-}
 
 function SiengeMatch({ sienge }) {
   if (!sienge) return null;
@@ -397,115 +385,145 @@ function itemEstourou(item) {
   return item.valorComprado != null && item.custo != null && item.valorComprado > item.custo;
 }
 
-// Linha de PRODUTO → segue o fluxo de Compras (Sienge)
-function ProdutoRow({ item, sugerido, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+/* ALOCACAO DE RECURSO — MAT, MO ou MAT/MO
+   ------------------------------------------------------------
+   A empresa chama material de MAT e mao de obra de MO. Um item do
+   executivo nao e uma coisa OU outra: a planilha traz as duas colunas, e
+   o mesmo spot de sobrepor tem R$ 182 de material e R$ 180 de mao de
+   obra. Esse item e MAT/MO.
+
+   Antes esta tela filtrava por `tipo` (produto/servico), que e um campo
+   de UMA escolha so — nele o spot precisava mentir e virar "produto",
+   escondendo os R$ 180. A alocacao sai das PARCELAS, que e a unica
+   leitura capaz de dizer "os dois". */
+const ALOC_MAT = "MAT", ALOC_MO = "MO", ALOC_AMBOS = "AMBOS";
+const ROTULO_ALOC = { MAT: "MAT", MO: "MO", AMBOS: "MAT/MO" };
+
+const ehProduto = (it) => it.tipo === "produto";
+
+function alocacaoDoItem(it) {
+  // Avulso nao tem valor nenhum (so o pedido), entao quem declara a
+  // alocacao e quem pediu — nao ha parcela pra deduzir dela.
+  if (it.avulso) return it.alocacao || ALOC_MAT;
+  const { material, mo } = parcelasDoItem(it);
+  if (material > 0 && mo > 0) return ALOC_AMBOS;
+  if (mo > 0) return ALOC_MO;
+  if (material > 0) return ALOC_MAT;
+  return ehProduto(it) ? ALOC_MAT : ALOC_MO;  // sem valor: cai no tipo
+}
+
+/* Particao, nao sobreposicao: MAT sao os itens SO de material, MO os SO
+   de mao de obra, MAT/MO os que tem as duas parcelas. As tres contas
+   somadas dao o total da lista — se "MAT" tambem incluisse os MAT/MO os
+   numeros dos chips nao fechariam com o da tela, e numero que nao fecha
+   e numero em que ninguem confia. */
+const FILTROS_ALOC = [
+  { id: "todos", label: "MAT e MO" },
+  { id: ALOC_MAT, label: "Só MATERIAL (MAT)", destino: "viram insumo no Sienge" },
+  { id: ALOC_MO, label: "Só Mão de Obra (MO)", destino: "viram contrato" },
+  { id: ALOC_AMBOS, label: "MAT/MO", destino: "seguem os dois caminhos" },
+];
+const casaAloc = (it, f) => f === "todos" || alocacaoDoItem(it) === f;
+
+function TagAloc({ aloc }) {
+  if (!aloc) return <span className="dim">—</span>;
+  return <span className={`aloc aloc-${String(aloc).toLowerCase()}`}>{ROTULO_ALOC[aloc]}</span>;
+}
+
+/* Uma linha do plano, com MAT e MO lado a lado no MESMO item.
+
+   Antes eram duas tabelas separadas dentro do grupo — "Produtos" e
+   "Servicos / mao de obra". O item que tem as DUAS parcelas so aparecia
+   na de produtos, e a mao de obra dele virava uma tarjinha embaixo da
+   descricao. Na 2519 isso e 88 itens: quem fechava o plano via o
+   material e tinha que cacar a mao de obra deles um a um.
+
+   O que NAO mudou: MO continua indo pra Contratos, nao pra Compras. A
+   linha so de MO nao ganha caixinha de compra — ela diz pra onde vai. */
+function LinhaPlano({ item, sugerido, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
   const estourou = itemEstourou(item);
   const { material, mo, estimado } = parcelasDoItem(item);
-  // Marcado por gente e marcado por sugestão têm que ser distinguíveis na
-  // hora: sugestão que se parece com decisão é sugestão que ninguém revisa.
+  const aloc = alocacaoDoItem(item);
+  const compravel = aloc !== ALOC_MO;   // so quem tem material vai pra Compras
+  // Marcado por gente e marcado por sugestao tem que ser distinguiveis na
+  // hora: sugestao que se parece com decisao e sugestao que ninguem revisa.
   const marcado = item.compraDecidida ? !!item.liberado : sugerido;
+
   return (
-    <tr className={alertas.length ? "row-alert" : estourou ? "row-estouro" : ""}>
+    <tr className={item.avulso ? "row-avulso" : alertas.length ? "row-alert" : estourou ? "row-estouro" : ""}>
       <td className="center">
-        <button
-          className={`check-compra ${marcado ? (sugerido ? "sugerido" : "confirmado") : ""}`}
-          onClick={onToggleCompra}
-          title={sugerido ? "Sugerido pela verba — clique pra confirmar" : marcado ? "Vai pra Compras" : "Não vai pra Compras"}
-          aria-label="Selecionar para compra">
-          {marcado && <Check size={13} />}
-        </button>
+        {compravel ? (
+          <button
+            className={`check-compra ${marcado ? (sugerido ? "sugerido" : "confirmado") : ""}`}
+            onClick={onToggleCompra}
+            title={sugerido ? "Sugerido pela verba — clique pra confirmar" : marcado ? "Vai pra Compras" : "Não vai pra Compras"}
+            aria-label="Selecionar para compra">
+            {marcado && <Check size={13} />}
+          </button>
+        ) : (
+          <span className="dim" title="Mão de obra: segue para Contratos, não para Compras"><Link2 size={12} /></span>
+        )}
       </td>
       <td className="mono dim">{item.codigo}</td>
       <td>
         <div className="item-desc">{item.desc}</div>
-        <ItemTags item={item} alertas={alertas} />
-        {/* A parcela de mão de obra do MESMO item não é compra: é
-            contrato. Fica visível aqui porque é onde a pessoa está
-            olhando o item — mas quem a movimenta é o módulo Contratos. */}
-        {mo > 0 && (
-          <span className="tag-mo" title="Parcela de mão de obra deste item — segue para Contratos">
-            <Link2 size={10} /> mão de obra {fmtBRL(mo)} → Contratos
-          </span>
-        )}
+        {item.avulso
+          ? <span className="tag-avulso" title={item.avulsoEm ? `Pedido em ${new Date(item.avulsoEm).toLocaleDateString("pt-BR")}` : undefined}>
+              <Plus size={9} /> compra avulsa{item.avulsoPor ? ` · ${item.avulsoPor}` : ""}
+            </span>
+          : <ItemTags item={item} alertas={alertas} />}
+        {item.avulso && item.avulsoObs && <div className="avulso-obs">{item.avulsoObs}</div>}
         {item.contavel && <SiengeMatch sienge={item.sienge} />}
       </td>
       <td className="mono center dim">{item.ambiente}</td>
       <td className="mono center">
-        <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? "—"}</span> <span className="unit">{item.un}</span>
+        <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? item.qtd ?? "—"}</span> <span className="unit">{item.un}</span>
+      </td>
+      <td className="center"><TagAloc aloc={aloc} /></td>
+      <td className="mono right">
+        {material > 0 ? fmtBRL(material) : <span className="dim">—</span>}
+        {estimado && material > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
       </td>
       <td className="mono right">
-        {fmtBRL(material)}
-        {estimado && <span className="dim est-tag" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
+        {mo > 0 ? fmtBRL(mo) : <span className="dim">—</span>}
+        {estimado && mo > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de mão de obra — assumido o custo total">est.</span>}
       </td>
-      <td className="mono right dim">{mo > 0 ? fmtBRL(mo) : "—"}</td>
-      <td className="mono right">{fmtBRL(item.custo)}</td>
+      <td className="mono right">{item.custo != null ? fmtBRL(item.custo) : <span className="dim">a orçar</span>}</td>
       <td className="center">
-        {bloqueado ? (
-          <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
-        ) : marcado ? (
-          <span className={sugerido ? "pill pill-sug" : "pill pill-ok"}>
-            {sugerido ? "Sugerido — confirmar" : "No plano de compras"}
-          </span>
-        ) : (
-          <span className="pill pill-wait">Fora do plano</span>
-        )}
+        {!compravel ? <span className="pill pill-wait">→ Contratos</span>
+          : bloqueado ? <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
+          : marcado ? <span className={sugerido ? "pill pill-sug" : "pill pill-ok"}>{sugerido ? "Sugerido — confirmar" : "No plano de compras"}</span>
+          : <span className="pill pill-wait">Fora do plano</span>}
       </td>
       <td className="mono center">
-        <input className="input-valor input-qtd" type="text" placeholder="—"
-          value={item.qtdComprada != null ? item.qtdComprada.toString().replace(".", ",") : ""}
-          onChange={(e) => onQtdComprada(e.target.value)} />
+        {compravel ? (
+          <input className="input-valor input-qtd" type="text" placeholder="—"
+            value={item.qtdComprada != null ? item.qtdComprada.toString().replace(".", ",") : ""}
+            onChange={(e) => onQtdComprada(e.target.value)} />
+        ) : <span className="dim">—</span>}
       </td>
       <td className="mono right">
-        <input className={`input-valor ${estourou ? "input-estouro" : ""}`} type="text" placeholder="—"
-          value={item.valorComprado != null ? item.valorComprado.toString().replace(".", ",") : ""}
-          onChange={(e) => onValorComprado(e.target.value)} />
-        {estourou && <div className="estouro-tag"><AlertTriangle size={10} /> estourou</div>}
+        {compravel ? (
+          <>
+            <input className={`input-valor ${estourou ? "input-estouro" : ""}`} type="text" placeholder="—"
+              value={item.valorComprado != null ? item.valorComprado.toString().replace(".", ",") : ""}
+              onChange={(e) => onValorComprado(e.target.value)} />
+            {estourou && <div className="estouro-tag"><AlertTriangle size={10} /> estourou</div>}
+          </>
+        ) : <span className="dim">—</span>}
       </td>
       <td className="center">
-        <button className={item.comprado ? "check check-on" : "check"} onClick={onToggleComprado} aria-label="Marcar como comprado">
-          {item.comprado && <Check size={13} />}
-        </button>
+        {compravel ? (
+          <button className={item.comprado ? "check check-on" : "check"} onClick={onToggleComprado} aria-label="Marcar como comprado">
+            {item.comprado && <Check size={13} />}
+          </button>
+        ) : <span className="dim">—</span>}
       </td>
     </tr>
   );
 }
-
-// Linha de SERVIÇO / mão de obra → segue o fluxo de Contratos (o status
-// do contrato mora no módulo Contratos, não aqui — evita duplicar/confundir).
-function ServicoRow({ item }) {
-  const alertas = itemAlertas(item);
-  return (
-    <tr className={alertas.length ? "row-alert" : ""}>
-      <td className="mono dim">{item.codigo}</td>
-      <td>
-        <div className="item-desc">{item.desc}</div>
-        <ItemTags item={item} alertas={alertas} />
-      </td>
-      <td className="mono center">
-        <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? "—"}</span> <span className="unit">{item.un}</span>
-      </td>
-      <td className="mono right">{fmtBRL(item.custo)}</td>
-    </tr>
-  );
-}
-
-/* Produto e serviço seguem caminhos diferentes depois daqui: produto vira
-   insumo no Sienge, serviço vira contrato. São duas rotinas distintas, com
-   pessoas distintas — daí o filtro ser uma dimensão SEPARADA do filtro de
-   situação, e não mais um chip na mesma fila. Sem isso não dá pra pedir
-   "produtos que ainda estão aguardando liberação", que é a pergunta real
-   de quem vai lançar compra. */
-const TIPOS_COMPRA = [
-  { id: "todos", label: "Produtos e serviços" },
-  { id: "produto", label: "Só produtos", destino: "vinculam insumo do Sienge" },
-  { id: "servico", label: "Só serviços", destino: "viram contrato" },
-];
-
-const ehProduto = (it) => it.tipo === "produto";
-const casaTipo = (it, tipoFilter) =>
-  tipoFilter === "todos" || (tipoFilter === "produto" ? ehProduto(it) : !ehProduto(it));
 
 /* ============================================================
    PLANO DE COMPRAS — o que vai ser comprado, e com que dinheiro
@@ -564,150 +582,218 @@ const VERBAS_DE_COMPRA = new Set([
 const sugeridoParaCompra = (it, catNum) =>
   !it.compraDecidida && !it.ehTitulo && parcelasDoItem(it).material > 0 && VERBAS_DE_COMPRA.has(catNum);
 
-function CategoriaBlock({ cat, expanded, onToggle, onItemChange, itemFilter, tipoFilter = "todos" }) {
-  const status = categoriaStatus(cat);
-  const diff = cat.executivo - cat.vendido;
-  const pct = cat.vendido === 0 ? null : (diff / cat.vendido) * 100;
-  const hasItens = Array.isArray(cat.itens) && cat.itens.length > 0;
-  const filteredItens = hasItens
-    ? cat.itens.filter((it) => matchesFilter(it, itemFilter) && casaTipo(it, tipoFilter))
-    : [];
-  const filtering = itemFilter !== "todos" || tipoFilter !== "todos";
-  const showExpanded = filtering ? filteredItens.length > 0 : expanded;
-  // Verba que ficou sem nada depois do filtro sai da tela: com 19 verbas,
-  // deixar as vazias faz a pessoa rolar por cabeçalhos que não levam a
-  // lugar nenhum pra achar as três que interessam.
-  if (filtering && filteredItens.length === 0) return null;
+/* Um grupo da EAP dentro do plano.
+
+   A linha fechada responde a pergunta que se faz primeiro: quanto tem de
+   MAT e quanto tem de MO nesta verba. So ao abrir e que vem item por
+   item.
+
+   Antes a tela abria com o grupo inteiro escancarado e 12 colunas, e o
+   total so existia dentro do bloco aberto — pra saber o material de
+   Moveis Soltos era preciso rolar 26 linhas somando de cabeca. */
+function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange }) {
+  const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
+  const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
+  const nAvulsos = itens.filter((it) => it.avulso).length;
 
   return (
-    <div className="cat-block">
-      <button className="cat-header" onClick={() => hasItens && !filtering && onToggle()} style={{ cursor: hasItens && !filtering ? "pointer" : "default" }}>
-        <div className="cat-header-left">
-          {hasItens ? (showExpanded ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />) : <span style={{ width: 15, display: "inline-block" }} />}
-          <span className="cat-num mono">{cat.num}</span>
-          <span className="cat-nome">{cat.nome}</span>
+    <div className="grp-block">
+      <button className="grp-head" onClick={onToggle}>
+        <div className="grp-esq">
+          {expanded ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
+          <span className="grp-num mono">{cat.num}</span>
+          <span className="grp-nome">{cat.nome}</span>
           {cat.foraDeEscopoCategoria && <span className="chip chip-red"><XCircle size={11} /> Fora do escopo vendido</span>}
+          <span className="grp-conta">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>
+          {nAvulsos > 0 && <span className="grp-avulsos"><Plus size={9} /> {nAvulsos} avulso{nAvulsos > 1 ? "s" : ""}</span>}
         </div>
-        <div className="cat-header-right">
-          <CategoriaBar vendido={cat.vendido} executivo={cat.executivo} />
-          <div className="cat-values"><span className="mono dim">{fmtBRL(cat.vendido)}</span><span className="arrow dim">→</span><span className="mono">{fmtBRL(cat.executivo)}</span></div>
-          <div className="cat-diff">
-            {status === "vazio" ? <span className="dim">—</span> : status === "pendente" ? <span className="dim">sem lançamento</span> : (
-              <span style={{ color: STATUS_META[status].color }} className="mono">
-                {diff === 0 ? <Minus size={12} /> : diff > 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                {" "}{diff > 0 ? "+" : ""}{fmtBRL(diff)}{pct != null ? ` (${pct > 0 ? "+" : ""}${pct.toFixed(0)}%)` : ""}
-              </span>
-            )}
+        <div className="grp-dir">
+          <div className="grp-tot">
+            <div className="grp-tot-rot">MAT</div>
+            <div className={`grp-tot-val mono ${mat > 0 ? "" : "dim"}`}>{mat > 0 ? fmtBRL(mat) : "—"}</div>
           </div>
-          <StatusText status={status} />
+          <div className="grp-tot">
+            <div className="grp-tot-rot">MO</div>
+            <div className={`grp-tot-val mono ${mo > 0 ? "" : "dim"}`}>{mo > 0 ? fmtBRL(mo) : "—"}</div>
+          </div>
         </div>
       </button>
 
-      {showExpanded && hasItens && (
-        <div className="cat-items">
-          {filtering && filteredItens.length === 0 ? null : (() => {
-            const produtos = filteredItens.filter((it) => it.tipo === "produto");
-            const servicos = filteredItens.filter((it) => it.tipo !== "produto");
-            /* Do bloco de produtos, só a parcela de MATERIAL é compra —
-               somar o custo total aqui era contar a mão de obra do item
-               como se fosse mercadoria. A parcela de mão de obra desses
-               mesmos produtos aparece ao lado, porque ela existe e vai
-               pra Contratos; ela só não entra no número da compra. */
-            const totalProd = produtos.reduce((a, it) => a + parcelasDoItem(it).material, 0);
-            const moDosProdutos = produtos.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
-            const totalServ = servicos.reduce((a, it) => a + (it.custo || 0), 0);
-            return (
-            <>
-              {produtos.length > 0 && (
-                <div className="fluxo-bloco">
-                  <div className="fluxo-head fluxo-head-produto">
-                    <ShoppingCart size={14} />
-                    <span className="fluxo-titulo">Produtos</span>
-                    <span className="fluxo-dest">→ Compras (Sienge)</span>
-                    <span className="fluxo-meta">
-                      {produtos.length} {produtos.length === 1 ? "item" : "itens"} · {fmtBRL(totalProd)} de material
-                      {moDosProdutos > 0 && <span className="dim"> · + {fmtBRL(moDosProdutos)} de mão de obra → Contratos</span>}
-                    </span>
-                  </div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style={{ width: 34 }} className="center" title="Selecionar para compra">Compr.</th>
-                        <th style={{ width: 62 }}>Cód.</th>
-                        <th>Descrição</th>
-                        <th style={{ width: 88 }}>Ambiente</th>
-                        <th style={{ width: 84 }} className="center">Qtd. exec.</th>
-                        <th style={{ width: 100 }} className="right">Material</th>
-                        <th style={{ width: 100 }} className="right">Mão de obra</th>
-                        <th style={{ width: 100 }} className="right">Custo total</th>
-                        <th style={{ width: 140 }} className="center">Situação de compra</th>
-                        <th style={{ width: 90 }} className="center">Qtd. comprada</th>
-                        <th style={{ width: 106 }} className="right">Valor comprado</th>
-                        <th style={{ width: 58 }} className="center">Comprado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {produtos.map((it) => {
-                        const idx = cat.itens.indexOf(it);
-                        return (
-                          <ProdutoRow key={it.codigo} item={it}
-                            sugerido={sugeridoParaCompra(it, cat.num)}
-                            onToggleCompra={() => onItemChange(idx, {
-                              // Clicar inverte o que está na tela. Numa linha
-                              // sugerida — que já aparece marcada — o clique é o
-                              // "não". Aceitar é o botão "Confirmar sugestões"
-                              // lá em cima, que é o caminho comum: a pessoa
-                              // aceita o lote e tira as poucas que não vão.
-                              compraDecidida: true,
-                              liberado: !(it.compraDecidida ? !!it.liberado : sugeridoParaCompra(it, cat.num)),
-                            })}
-                            onAprovar={() => onItemChange(idx, { statusEscopo: "aprovado" })}
-                            onToggleComprado={() => onItemChange(idx, { comprado: !it.comprado })}
-                            onValorComprado={(v) => {
-                              const num = parseFloat(v.replace(/\./g, "").replace(",", "."));
-                              onItemChange(idx, { valorComprado: isNaN(num) ? null : num });
-                            }}
-                            onQtdComprada={(v) => {
-                              const num = parseFloat(v.replace(/\./g, "").replace(",", "."));
-                              onItemChange(idx, { qtdComprada: isNaN(num) ? null : num });
-                            }}
-                          />
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {servicos.length > 0 && (
-                <div className="fluxo-bloco">
-                  <div className="fluxo-head fluxo-head-servico">
-                    <FileText size={14} />
-                    <span className="fluxo-titulo">Serviços / mão de obra</span>
-                    <span className="fluxo-dest">→ Contratos</span>
-                    <span className="fluxo-meta">{servicos.length} {servicos.length === 1 ? "item" : "itens"} · {fmtBRL(totalServ)}</span>
-                  </div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style={{ width: 62 }}>Cód.</th>
-                        <th>Descrição</th>
-                        <th style={{ width: 84 }} className="center">Qtd. exec.</th>
-                        <th style={{ width: 100 }} className="right">Custo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {servicos.map((it) => <ServicoRow key={it.codigo} item={it} />)}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-            );
-          })()}
+      {expanded && (
+        <div className="grp-itens">
+          <table>
+            <thead>
+              <tr>
+                <th style={{ width: 34 }} className="center" title="Selecionar para compra">Compr.</th>
+                <th style={{ width: 62 }}>Cód.</th>
+                <th>Descrição</th>
+                <th style={{ width: 88 }}>Ambiente</th>
+                <th style={{ width: 78 }} className="center">Qtd.</th>
+                <th style={{ width: 72 }} className="center">Alocação</th>
+                <th style={{ width: 100 }} className="right">MAT</th>
+                <th style={{ width: 100 }} className="right">MO</th>
+                <th style={{ width: 100 }} className="right">Total</th>
+                <th style={{ width: 140 }} className="center">Situação de compra</th>
+                <th style={{ width: 88 }} className="center">Qtd. comprada</th>
+                <th style={{ width: 106 }} className="right">Valor comprado</th>
+                <th style={{ width: 56 }} className="center">Comprado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((it) => {
+                const idx = (cat.itens || []).indexOf(it);
+                return (
+                  <LinhaPlano key={it.codigo} item={it}
+                    sugerido={sugeridoParaCompra(it, cat.num)}
+                    onToggleCompra={() => onItemChange(idx, {
+                      // Clicar inverte o que esta na tela. Numa linha
+                      // sugerida — que ja aparece marcada — o clique e o
+                      // "nao". Aceitar e o botao "Confirmar sugestoes" la
+                      // em cima, que e o caminho comum: a pessoa aceita o
+                      // lote e tira as poucas que nao vao.
+                      compraDecidida: true,
+                      liberado: !(it.compraDecidida ? !!it.liberado : sugeridoParaCompra(it, cat.num)),
+                    })}
+                    onAprovar={() => onItemChange(idx, { statusEscopo: "aprovado" })}
+                    onToggleComprado={() => onItemChange(idx, { comprado: !it.comprado })}
+                    onValorComprado={(v) => {
+                      const num = parseFloat(v.replace(/\./g, "").replace(",", "."));
+                      onItemChange(idx, { valorComprado: isNaN(num) ? null : num });
+                    }}
+                    onQtdComprada={(v) => {
+                      const num = parseFloat(v.replace(/\./g, "").replace(",", "."));
+                      onItemChange(idx, { qtdComprada: isNaN(num) ? null : num });
+                    }}
+                  />
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={6} className="right dim">Total do grupo</td>
+                <td className="mono right"><b>{fmtBRL(mat)}</b></td>
+                <td className="mono right"><b>{fmtBRL(mo)}</b></td>
+                <td className="mono right"><b>{fmtBRL(mat + mo)}</b></td>
+                <td colSpan={4}></td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
     </div>
+  );
+}
+
+/* Pedido de compra avulsa.
+
+   E o item que a obra precisa e o executivo nao tinha: quebrou, o cliente
+   pediu depois, faltou. Aqui SO se registra o pedido — descricao,
+   quantidade, em que verba cai e se e MAT, MO ou os dois.
+
+   Valor nao entra de proposito. Quem descobre quanto custa e a compra,
+   la na frente; um numero chutado agora entraria no total da verba como
+   se fosse orcamento e sujaria a unica coisa que esta tela existe pra
+   proteger, que e o CMV. Por isso o avulso nasce com `custo: null` e as
+   somas de MAT e MO continuam sendo so o que veio da planilha. */
+function FormAvulsa({ obra, onCriar }) {
+  const verbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
+  const [aberto, setAberto] = useState(false);
+  const [verbaNum, setVerbaNum] = useState(verbas[0]?.num || "");
+  const [desc, setDesc] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [un, setUn] = useState("un");
+  const [ambiente, setAmbiente] = useState("");
+  const [aloc, setAloc] = useState(ALOC_MAT);
+
+  function submit(e) {
+    e.preventDefault();
+    if (!desc.trim() || !verbaNum) return;
+    const qtdNum = parseFloat(qtd.replace(/\./g, "").replace(",", "."));
+    onCriar(verbaNum, {
+      desc: desc.trim(),
+      qtdExecutivo: isNaN(qtdNum) ? null : qtdNum,
+      un: un.trim() || "un",
+      ambiente: ambiente.trim() || "",
+      alocacao: aloc,
+      // `tipo` continua existindo pro resto do app (Compras e Contratos
+      // ainda leem esse campo); a alocacao e que manda nesta tela.
+      tipo: aloc === ALOC_MO ? "servico" : "produto",
+      custo: null,
+      avulso: true,
+      // Ja nasce dentro do plano: quem pediu quer comprar, nao propor.
+      compraDecidida: true,
+      liberado: aloc !== ALOC_MO,
+    });
+    setDesc(""); setQtd(""); setAmbiente("");
+    setAberto(false);
+  }
+
+  if (!aberto) {
+    return (
+      <button className="btn-avulsa" onClick={() => setAberto(true)}>
+        <Plus size={14} /> Compra avulsa
+      </button>
+    );
+  }
+
+  return (
+    <form className="form-solicitacao form-avulsa" onSubmit={submit}>
+      <div className="form-solicitacao-title">Solicitar compra avulsa</div>
+      <div className="form-avulsa-nota">
+        Item que a obra precisa e o executivo não tinha. Aqui entra só o pedido —
+        <b> o valor não</b>, porque quem descobre quanto custa é a compra. Nenhum total de verba muda.
+      </div>
+      <div className="form-row">
+        <label className="form-label">Verba da EAP
+          <select className="form-select" value={verbaNum} onChange={(e) => setVerbaNum(e.target.value)}>
+            {verbas.map((c) => <option key={c.num} value={c.num}>{c.num} — {c.nome}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="form-row">
+        <label className="form-label">Descrição
+          <input className="form-input" type="text" value={desc} onChange={(e) => setDesc(e.target.value)}
+            placeholder="Ex: Spot de sobrepor Loyo Up MR16" required autoFocus />
+        </label>
+      </div>
+      <div className="form-row form-row-3">
+        <label className="form-label">Qtd.
+          <input className="form-input" type="text" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="1" />
+        </label>
+        <label className="form-label">Unidade
+          <input className="form-input" type="text" value={un} onChange={(e) => setUn(e.target.value)} placeholder="un" />
+        </label>
+        <label className="form-label">Ambiente
+          <input className="form-input" type="text" value={ambiente} onChange={(e) => setAmbiente(e.target.value)} placeholder="Living" />
+        </label>
+      </div>
+      <div className="form-row">
+        <span className="form-label" style={{ display: "block" }}>Alocação de recurso</span>
+        <div className="aloc-escolha">
+          {[
+            { id: ALOC_MAT, rot: "MAT", sub: "só material" },
+            { id: ALOC_MO, rot: "MO", sub: "só mão de obra" },
+            { id: ALOC_AMBOS, rot: "MAT/MO", sub: "os dois" },
+          ].map((o) => (
+            <button key={o.id} type="button"
+              className={`aloc-op ${aloc === o.id ? "ativo" : ""}`}
+              onClick={() => setAloc(o.id)}>
+              <span className={`aloc aloc-${String(o.id).toLowerCase()}`}>{o.rot}</span>
+              <span className="aloc-op-sub">{o.sub}</span>
+            </button>
+          ))}
+        </div>
+        {aloc === ALOC_MO && (
+          <div className="form-avulsa-aviso">
+            Só mão de obra vai para <b>Contratos</b>, não para Compras.
+          </div>
+        )}
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn-cancelar" onClick={() => setAberto(false)}>Cancelar</button>
+        <button type="submit" className="btn-criar">Registrar pedido</button>
+      </div>
+    </form>
   );
 }
 
@@ -813,8 +899,18 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, podeEditar }) {
+function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onConfirmarSugestoes, onCriarAvulsa, podeEditar }) {
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
+
+  /* "Só o vendido" nasce ligado.
+
+     A EAP padrão tem 32 grupos e obra nenhuma vende os 32; além disso a
+     proposta traz linhas com quantidade E valor zerados só pra nomear
+     escopo (quadro decorativo, enxoval). Nenhuma das duas coisas tem o
+     que comprar, e deixá-las na tela fazia a pessoa rolar por grupos e
+     linhas vazias pra achar as que interessam. Continua dando pra ver
+     tudo — é um clique, e o chip diz quantas estão escondidas. */
+  const [soVendido, setSoVendido] = useState(true);
 
   // O placar da seleção. Sem ele a pessoa só descobre o tamanho do que
   // escolheu abrindo verba por verba — e o número que importa não é
@@ -834,12 +930,40 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
     return { confirmados, sugestoes, materialNoPlano, moForaDoPlano };
   }, [obra]);
 
-  // Conta na EAP inteira pra estampar no chip. Saber que são 148 produtos
-  // e 43 serviços antes de clicar é o que diz de qual lado começar.
-  const todosItens = obra.categorias.flatMap((c) => c.itens || []);
-  const nProdutos = todosItens.filter(ehProduto).length;
-  const nServicos = todosItens.length - nProdutos;
-  const contaPorTipo = { todos: todosItens.length, produto: nProdutos, servico: nServicos };
+  /* O item que entra na tela.
+
+     Três cortes, e cada um responde a uma pergunta diferente:
+     `ehTitulo` é a linha que só nomeia um bloco dentro da verba e nunca
+     foi compra; `itemFoiVendido` separa o que foi vendido do que entrou
+     na proposta zerado; e os filtros de alocação e situação são o que a
+     pessoa escolheu ver.
+
+     Avulso passa por cima do corte do vendido: ele não veio da planilha,
+     então não tem como "ter sido vendido" — é justamente por isso que
+     ele existe. Escondê-lo aqui seria esconder o pedido de quem pediu. */
+  const grupos = useMemo(() => obra.categorias.map((cat) => {
+    const todos = (cat.itens || []).filter((it) => !it.ehTitulo);
+    const base = soVendido ? todos.filter((it) => it.avulso || itemFoiVendido(it)) : todos;
+    return { cat, itens: base.filter((it) => matchesFilter(it, itemFilter) && casaAloc(it, tipoFilter)) };
+  }).filter((g) => g.itens.length > 0), [obra, soVendido, itemFilter, tipoFilter]);
+
+  // Quantas linhas o "só o vendido" está escondendo. Sem esse número o
+  // filtro vira uma caixa-preta: a pessoa não sabe se sumiram 3 linhas
+  // ou 300, e passa a desconfiar do total.
+  const ocultosNaoVendidos = useMemo(() => obra.categorias.reduce((a, c) =>
+    a + (c.itens || []).filter((it) => !it.ehTitulo && !it.avulso && !itemFoiVendido(it)).length, 0), [obra]);
+
+  // Conta na EAP inteira pra estampar no chip. Saber quanto é só MAT,
+  // quanto é só MO e quanto tem as duas parcelas, antes de clicar, é o
+  // que diz de qual lado começar.
+  const todosItens = obra.categorias.flatMap((c) => (c.itens || [])
+    .filter((it) => !it.ehTitulo && (!soVendido || it.avulso || itemFoiVendido(it))));
+  const contaPorAloc = {
+    todos: todosItens.length,
+    [ALOC_MAT]: todosItens.filter((it) => alocacaoDoItem(it) === ALOC_MAT).length,
+    [ALOC_MO]: todosItens.filter((it) => alocacaoDoItem(it) === ALOC_MO).length,
+    [ALOC_AMBOS]: todosItens.filter((it) => alocacaoDoItem(it) === ALOC_AMBOS).length,
+  };
 
   return (
     <>
@@ -894,20 +1018,20 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           )}
         </div>
       )}
-      {/* Duas dimensões, duas filas. A de cima é o que o item É (e pra onde
-          ele vai depois); a de baixo é em que pé ele está. */}
+      {/* Duas dimensões, duas filas. A de cima é a ALOCAÇÃO do recurso —
+          MAT, MO ou os dois; a de baixo é em que pé o item está. */}
       <div className="filter-bar tipo-bar">
         <Package size={13} className="dim" />
-        {TIPOS_COMPRA.map((t) => (
+        {FILTROS_ALOC.map((t) => (
           <button key={t.id} className={`filter-chip tipo-chip ${tipoFilter === t.id ? "active" : ""}`}
             onClick={() => setTipoFilter(t.id)} title={t.destino ? `Estes ${t.destino}` : undefined}>
             {t.label}
-            <span className="tipo-chip-conta">{contaPorTipo[t.id]}</span>
+            <span className="tipo-chip-conta">{contaPorAloc[t.id]}</span>
           </button>
         ))}
         {tipoFilter !== "todos" && (
           <span className="tipo-bar-destino">
-            {TIPOS_COMPRA.find((t) => t.id === tipoFilter)?.destino}
+            {FILTROS_ALOC.find((t) => t.id === tipoFilter)?.destino}
           </span>
         )}
       </div>
@@ -918,21 +1042,34 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
             {f.label}
           </button>
         ))}
+        <span className="filter-sep" />
+        <button className={`filter-chip ${soVendido ? "active" : ""}`}
+          onClick={() => setSoVendido((v) => !v)}
+          title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
+          {soVendido ? "Só o vendido" : "Vendido e não vendido"}
+          {soVendido && ocultosNaoVendidos > 0 && <span className="tipo-chip-conta">{ocultosNaoVendidos} ocultos</span>}
+        </button>
       </div>
-      {obra.categorias.map((cat, catIdx) => (
-        <CategoriaBlock key={cat.num + cat.nome} cat={cat}
+
+      {/* A avulsa continua disponível DEPOIS da liberação — é pra isso
+          que ela serve. O item que quebrou ou que o cliente pediu depois
+          aparece justamente quando o plano já está fechado; travá-la
+          junto com as etapas anteriores empurraria a compra pra fora da
+          plataforma, que é o único lugar onde ela fica registrada. */}
+      {podeEditar && <FormAvulsa obra={obra} onCriar={onCriarAvulsa} />}
+
+      {grupos.map(({ cat, itens }) => (
+        <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens}
           expanded={expandedCats.has(cat.num + obra.id)}
           onToggle={() => toggleCat(cat.num + obra.id)}
-          onItemChange={(itemIdx, patch) => updateItem(catIdx, itemIdx, patch)}
-          itemFilter={itemFilter}
-          tipoFilter={tipoFilter}
+          onItemChange={(itemIdx, patch) => updateItem(obra.categorias.indexOf(cat), itemIdx, patch)}
         />
       ))}
-      {temItens && obra.categorias.every((c) => (c.itens || []).filter((it) => matchesFilter(it, itemFilter) && casaTipo(it, tipoFilter)).length === 0) && (
+      {temItens && grupos.length === 0 && (
         <div className="compras-empty">
           <SlidersHorizontal size={26} className="dim" />
           <div className="compras-empty-title">Nenhum item com esses filtros</div>
-          <div className="compras-empty-sub">Nenhum item da EAP combina "{TIPOS_COMPRA.find((t) => t.id === tipoFilter)?.label}" com "{FILTERS.find((f) => f.id === itemFilter)?.label}".</div>
+          <div className="compras-empty-sub">Nenhum item da EAP combina "{FILTROS_ALOC.find((t) => t.id === tipoFilter)?.label}" com "{FILTERS.find((f) => f.id === itemFilter)?.label}"{soVendido ? " dentro do que foi vendido" : ""}.</div>
         </div>
       )}
       <div className="legend">
@@ -6560,6 +6697,40 @@ export default function App() {
     }));
   }
 
+  /* Registra uma compra avulsa dentro da verba escolhida.
+
+     Segue o mesmo caminho de `criarSolicitacaoContrato` — item novo em
+     `cat.itens` — e de propósito NÃO toca em `itensPlanilhaExecutivo`:
+     avulso não faz parte do executivo que o cliente assinou, e escrever
+     lá seria reescrever um documento aprovado.
+
+     Como nasce com `custo: null`, ele não move total nenhum. O CMV, o
+     valor da verba e as somas de MAT e MO continuam sendo o que veio da
+     planilha — ele é um pedido, e aparece como pedido até a compra
+     acontecer e alguém lançar o valor pago. */
+  function criarCompraAvulsa(verbaNum, novoItem) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        if (c.num !== verbaNum) return c;
+        // O código é a chave da linha na tela. `criarSolicitacaoContrato`
+        // também usa o sufixo ".av", então contar itens não basta: dois
+        // caminhos diferentes chegariam no mesmo código e uma das linhas
+        // sumiria do React. Procura o primeiro livre.
+        const usados = new Set((c.itens || []).map((it) => it.codigo));
+        let n = 1;
+        while (usados.has(`${verbaNum}.av${n}`)) n += 1;
+        return { ...c, itens: [...(c.itens || []), {
+          ...novoItem,
+          codigo: `${verbaNum}.av${n}`,
+          avulsoPor: usuario,
+          avulsoEm: new Date().toISOString(),
+        }] };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
   /* Registra a aprovação do cliente.
 
      O documento já subiu pro Storage antes de chegar aqui: `arq` é o que
@@ -6895,6 +7066,60 @@ export default function App() {
         .venda-bar { margin-bottom: 10px; }
         .vend-nao-vendido { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; flex-shrink: 0; }
         .vend-nao-vendido.leve { text-transform: none; letter-spacing: 0; font-weight: 500; border-style: dashed; }
+
+        /* PLANO DE COMPRAS — grupo da EAP em forma de lista.
+           A linha fechada carrega o que se pergunta primeiro (quanto de
+           MAT, quanto de MO); o item so aparece ao abrir. */
+        .grp-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+        .grp-head { width: 100%; background: transparent; border: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; cursor: pointer; font-family: inherit; text-align: left; }
+        .grp-head:hover { background: #FCFBF9; }
+        .grp-esq { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .grp-num { font-size: 11.5px; color: var(--ink-3); width: 20px; flex-shrink: 0; }
+        .grp-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .grp-conta { font-size: 10.5px; color: var(--ink-3); background: var(--panel); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
+        .grp-avulsos { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--purple); background: #EFEAFB; border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
+        /* MAT e MO em colunas de largura fixa: com valores alinhados da
+           direita, os grupos viram uma coluna so de cima a baixo e da pra
+           comparar verba com verba sem ler numero por numero. */
+        .grp-dir { display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
+        .grp-tot { min-width: 108px; text-align: right; }
+        .grp-tot-rot { font-size: 9.5px; font-weight: 700; color: var(--ink-3); letter-spacing: 0.06em; }
+        .grp-tot-val { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .grp-itens { border-top: 1px solid var(--border); background: #FCFBF8; overflow-x: auto; }
+        .grp-itens table { width: 100%; border-collapse: collapse; }
+        .grp-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+        .grp-itens td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 12.5px; }
+        .grp-itens th.center, .grp-itens td.center { text-align: center; }
+        .grp-itens th.right, .grp-itens td.right { text-align: right; }
+        .grp-itens td.mono { font-variant-numeric: tabular-nums; }
+        .grp-itens tfoot td { border-bottom: none; border-top: 1px solid var(--border); background: #F7F6F2; font-size: 12.5px; }
+
+        /* Alocacao de recurso. MAT/MO ganha as duas cores num degrade de
+           canto — a pessoa reconhece "os dois" sem ler a sigla. */
+        .aloc { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 5px; white-space: nowrap; }
+        .aloc-mat { background: var(--blue-bg); color: var(--blue); }
+        .aloc-mo { background: var(--panel); color: var(--ink-2); }
+        .aloc-ambos { background: linear-gradient(105deg, var(--blue-bg) 50%, var(--panel) 50%); color: var(--ink-2); }
+
+        /* Avulso e a linha que NAO veio da planilha. Fica visivelmente
+           diferente porque a pergunta "de onde saiu isto?" aparece toda
+           vez que alguem confere o plano meses depois. */
+        .row-avulso { background: #FBFAFE; }
+        .row-avulso td:first-child { box-shadow: inset 2px 0 0 var(--purple); }
+        .tag-avulso { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--purple); background: #EFEAFB; border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
+        .avulso-obs { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+
+        .btn-avulsa { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 12px; }
+        .btn-avulsa:hover { background: var(--purple); }
+        .form-avulsa { max-width: 560px; margin-bottom: 12px; }
+        .form-avulsa-nota { font-size: 11.5px; color: var(--ink-2); background: var(--panel); border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; line-height: 1.45; }
+        .form-avulsa-aviso { font-size: 11.5px; color: var(--ink-2); margin-top: 8px; }
+        .aloc-escolha { display: flex; gap: 8px; margin-top: 6px; }
+        .aloc-op { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; cursor: pointer; font-family: inherit; flex: 1; }
+        .aloc-op:hover { border-color: var(--purple); }
+        .aloc-op.ativo { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+        .aloc-op-sub { font-size: 10.5px; color: var(--ink-3); }
+        .filter-sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; }
 
         .cat-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
         .cat-header { width: 100%; background: transparent; border: none; display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; }
@@ -7684,7 +7909,7 @@ export default function App() {
             </div>
           )}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
           {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
