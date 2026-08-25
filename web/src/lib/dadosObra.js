@@ -57,6 +57,9 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     // e o fechamento do rodapé do Executivo sumiam sem dizer nada.
     // A data de entrega comanda o prazo de compra de todos os grupos.
     data_entrega: conteudo.dataEntrega || null,
+    // Escopos de contratacao: o texto do modelo vem copiado dentro de
+    // cada um, entao o documento nao muda quando o modelo muda.
+    escopos: conteudo.escopos || [],
     cmv_liberado: conteudo.cmvLiberado ?? null,
     cmv_liberado_em: conteudo.cmvLiberadoEm || null,
     cmv_liberado_por: conteudo.cmvLiberadoPor || null,
@@ -91,7 +94,7 @@ export async function salvarDadosObra(codigo, conteudo, email) {
       "cliente_assinatura_arq", "cliente_assinatura_obs",
       "compra_sem_assinatura_por", "compra_sem_assinatura_em", "compra_sem_assinatura_just",
       "cmv_liberado", "cmv_liberado_em", "cmv_liberado_por",
-      "data_entrega",
+      "data_entrega", "escopos",
     ];
     const reduzida = { ...linha };
     opcionais.forEach((c) => { delete reduzida[c]; });
@@ -188,6 +191,7 @@ function paraApp(linha) {
     compraSemAssinaturaEm: linha.compra_sem_assinatura_em || null,
     compraSemAssinaturaJust: linha.compra_sem_assinatura_just || null,
     dataEntrega: linha.data_entrega || null,
+    escopos: linha.escopos || [],
     cmvLiberado: linha.cmv_liberado ?? null,
     cmvLiberadoEm: linha.cmv_liberado_em || null,
     cmvLiberadoPor: linha.cmv_liberado_por || null,

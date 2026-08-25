@@ -11,6 +11,7 @@ import {
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
+import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
@@ -5951,6 +5952,248 @@ function servicosMO(obra) {
   return out;
 }
 
+/* ESCOPO DE CONTRATACAO
+
+   Nasce da selecao de servicos da Dashboard MO: a soma da mao de obra
+   deles e o ORCADO, e e contra ele que a proposta do fornecedor e
+   comparada. Quem pede o escopo passa a saber se estourou antes de
+   mandar, nao depois de receber.
+
+   O texto do modelo e COPIADO pra dentro do escopo, nao referenciado. O
+   que a empresa contrata hoje nao pode mudar porque alguem editou o
+   modelo amanha — contrato assinado e um retrato, nao um link. */
+function FormNovoEscopo({ obra, servicos, onCriar, onCancelar }) {
+  const verbas = [...new Set(servicos.map((s) => s.catNum))];
+  const sugerido = verbas.length === 1 ? modeloSugerido(verbaPorNome(servicos[0].catNome) || servicos[0].catNum) : null;
+  const [modelo, setModelo] = useState(sugerido || "");
+  const [fornecedor, setFornecedor] = useState("");
+  const [inicio, setInicio] = useState("");
+  const [fim, setFim] = useState("");
+
+  const orcado = servicos.reduce((a, s) => a + s.mo, 0);
+  const grupos = useMemo(() => modelosPorGrupo(), []);
+
+  function submit(e) {
+    e.preventDefault();
+    if (!modelo) return;
+    const m = MODELOS_ESCOPO[modelo];
+    onCriar({
+      modelo, nome: m.nome, banda: m.banda, modo: m.modo || "medicao",
+      fornecedor: fornecedor.trim() || null, inicio: inicio || null, fim: fim || null,
+      orcado,
+      servicos: servicos.map((s) => ({ catNum: s.catNum, catNome: s.catNome, codigo: s.it.codigo, desc: s.it.desc, mo: s.mo })),
+      // copia, nao referencia
+      itens: JSON.parse(JSON.stringify(m.itens || [])),
+      medicoes: JSON.parse(JSON.stringify(m.medicoes || [])),
+      garantia: [...(m.garantia || [])],
+      crono: JSON.parse(JSON.stringify(m.crono || [])),
+      obs: String(m.obs || "").split("\n").map((t) => t.trim()).filter(Boolean),
+    });
+  }
+
+  return (
+    <form className="form-solicitacao form-escopo" onSubmit={submit}>
+      <div className="form-solicitacao-title">Novo escopo de contratação</div>
+      <div className="form-avulsa-nota">
+        <b>{servicos.length}</b> {servicos.length === 1 ? "serviço" : "serviços"} de{" "}
+        {verbas.length === 1 ? "1 verba" : `${verbas.length} verbas`} ·
+        orçado em <b>{fmtBRL(orcado)}</b> de mão de obra.
+      </div>
+      <div className="form-row">
+        <label className="form-label">Modelo de escopo
+          <select className="form-select" value={modelo} onChange={(e) => setModelo(e.target.value)} required>
+            <option value="">Escolha o modelo…</option>
+            {grupos.map((g) => (
+              <optgroup key={g.grupo} label={g.grupo}>
+                {g.itens.map((i) => <option key={i.id} value={i.id}>{i.nome}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        {sugerido && modelo === sugerido && <div className="form-dica">Sugerido pela verba dos serviços selecionados.</div>}
+      </div>
+      <div className="form-row">
+        <label className="form-label">Fornecedor
+          <input className="form-input" type="text" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
+            placeholder="Deixe em branco se ainda não definiu" />
+        </label>
+      </div>
+      <div className="form-row form-row-3">
+        <label className="form-label">Início<input className="form-input" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} /></label>
+        <label className="form-label">Fim<input className="form-input" type="date" value={fim} onChange={(e) => setFim(e.target.value)} /></label>
+        <span />
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn-cancelar" onClick={onCancelar}>Cancelar</button>
+        <button type="submit" className="btn-criar">Abrir escopo</button>
+      </div>
+    </form>
+  );
+}
+
+/* O escopo aberto: o texto que vai pro contrato, e a conta que importa.
+
+   O comparativo fica no TOPO de proposito. Ele e a razao de a tela
+   existir: o orcado saiu do executivo, o valor do contrato vem da
+   proposta, e a diferenca entre os dois e a unica coisa que muda a
+   decisao de quem esta assinando. */
+function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar }) {
+  const dif = escopo.valorContrato != null ? escopo.valorContrato - escopo.orcado : null;
+  const [valorTxt, setValorTxt] = useState(
+    escopo.valorContrato != null ? mascaraMoeda(String(Math.round(escopo.valorContrato * 100))).texto : ""
+  );
+
+  const somaMed = (escopo.medicoes || []).reduce((a, m) => a + (parseFloat(String(m.p).replace(",", ".")) || 0), 0);
+
+  return (
+    <>
+      <div className="escopo-topo">
+        <button className="btn-voltar" onClick={onVoltar}><ChevronLeft size={14} /> Escopos</button>
+        <div className="escopo-titulo">
+          <div className="escopo-nome">{escopo.nome}</div>
+          <div className="escopo-banda">{escopo.banda}</div>
+        </div>
+        {podeEditar && (
+          <button className="btn-apagar-escopo" onClick={onApagar} title="Apagar este escopo">
+            <Trash2 size={13} /> Apagar
+          </button>
+        )}
+      </div>
+
+      <div className="escopo-conta">
+        <div className="ec-bloco">
+          <div className="ec-rot">Orçado no executivo</div>
+          <div className="ec-val mono">{fmtBRL(escopo.orcado)}</div>
+          <div className="ec-sub">{escopo.servicos.length} {escopo.servicos.length === 1 ? "serviço" : "serviços"}</div>
+        </div>
+        <div className="ec-bloco">
+          <div className="ec-rot">Valor do contrato</div>
+          {podeEditar ? (
+            <input className="ec-input mono" type="text" placeholder="0,00" value={valorTxt}
+              onChange={(e) => {
+                const m = mascaraMoeda(e.target.value);
+                setValorTxt(m.texto);
+                onMudar({ valorContrato: m.valor });
+              }} />
+          ) : <div className="ec-val mono">{escopo.valorContrato != null ? fmtBRL(escopo.valorContrato) : "—"}</div>}
+          <div className="ec-sub">o que o fornecedor cobrou</div>
+        </div>
+        <div className={`ec-bloco ec-dif ${dif == null ? "" : dif > 0 ? "ruim" : "ok"}`}>
+          <div className="ec-rot">Diferença</div>
+          <div className="ec-val mono">
+            {dif == null ? "—" : `${dif > 0 ? "+" : ""}${fmtBRL(dif)}`}
+          </div>
+          <div className="ec-sub">
+            {dif == null ? "lance o valor da proposta"
+              : dif > 0 ? `${((dif / escopo.orcado) * 100).toFixed(0)}% acima do orçado`
+              : dif === 0 ? "exatamente no orçado"
+              : `${((-dif / escopo.orcado) * 100).toFixed(0)}% abaixo do orçado`}
+          </div>
+        </div>
+      </div>
+
+      <div className="escopo-campos">
+        <label className="form-label">Fornecedor
+          <input className="form-input" type="text" value={escopo.fornecedor || ""} disabled={!podeEditar}
+            onChange={(e) => onMudar({ fornecedor: e.target.value || null })} placeholder="—" />
+        </label>
+        <label className="form-label">Início
+          <input className="form-input" type="date" value={escopo.inicio || ""} disabled={!podeEditar}
+            onChange={(e) => onMudar({ inicio: e.target.value || null })} />
+        </label>
+        <label className="form-label">Fim
+          <input className="form-input" type="date" value={escopo.fim || ""} disabled={!podeEditar}
+            onChange={(e) => onMudar({ fim: e.target.value || null })} />
+        </label>
+      </div>
+
+      <SecaoEscopo titulo="Serviços que geraram este escopo" conta={escopo.servicos.length}>
+        <table className="tab-escopo">
+          <thead><tr><th style={{ width: 70 }}>Verba</th><th>Serviço</th><th style={{ width: 110 }} className="right">Mão de obra</th></tr></thead>
+          <tbody>
+            {escopo.servicos.map((s, i) => (
+              <tr key={i}>
+                <td className="mono dim">{s.catNum}</td>
+                <td>{s.desc}</td>
+                <td className="mono right">{fmtBRL(s.mo)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </SecaoEscopo>
+
+      <SecaoEscopo titulo="Escopo dos serviços" conta={(escopo.itens || []).filter((i) => i.tipo === "item").length}>
+        <div className="escopo-itens">
+          {(escopo.itens || []).map((i, k) => (
+            i.tipo === "grupo" ? <div className="ei-grupo" key={k}>{i.d}</div>
+            : i.tipo === "nota" ? <div className="ei-nota" key={k}>{i.d}</div>
+            : <div className="ei-item" key={k}>
+                <span className="ei-qtd mono">{i.q} {i.u}</span>
+                <span className="ei-desc">{i.d}</span>
+                {i.amb && <span className="ei-amb">{i.amb}</span>}
+              </div>
+          ))}
+        </div>
+      </SecaoEscopo>
+
+      <SecaoEscopo titulo={escopo.modo === "parcelado" ? "Parcelas" : "Medições"} conta={(escopo.medicoes || []).length}
+        aviso={somaMed !== 100 && (escopo.medicoes || []).length ? `os percentuais somam ${somaMed}%, não 100%` : null}>
+        <table className="tab-escopo">
+          <thead><tr><th>Etapa</th><th style={{ width: 56 }} className="center">%</th><th style={{ width: 92 }} className="right">Valor</th><th style={{ width: 66 }}>Via</th><th>Condição</th></tr></thead>
+          <tbody>
+            {(escopo.medicoes || []).map((m, k) => {
+              const pct = parseFloat(String(m.p).replace(",", ".")) || 0;
+              const base = escopo.valorContrato ?? escopo.orcado;
+              return (
+                <tr key={k}>
+                  <td>{m.rot}</td>
+                  <td className="mono center">{m.p}%</td>
+                  <td className="mono right">{fmtBRL((base * pct) / 100)}</td>
+                  <td className="mono dim">{m.via}</td>
+                  <td className="ei-cond">{m.cond}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </SecaoEscopo>
+
+      {(escopo.garantia || []).length > 0 && (
+        <SecaoEscopo titulo="Garantia" conta={escopo.garantia.length}>
+          <ul className="escopo-lista">{escopo.garantia.map((g, k) => <li key={k}>{typeof g === "string" ? g : g.t}</li>)}</ul>
+        </SecaoEscopo>
+      )}
+      {(escopo.crono || []).length > 0 && (
+        <SecaoEscopo titulo="Cronograma" conta={escopo.crono.length}>
+          <ul className="escopo-lista">{escopo.crono.map((c, k) => <li key={k}>{typeof c === "string" ? c : (c.t || c.d)}</li>)}</ul>
+        </SecaoEscopo>
+      )}
+      {(escopo.obs || []).length > 0 && (
+        <SecaoEscopo titulo="Observações" conta={escopo.obs.length}>
+          <ul className="escopo-lista">{escopo.obs.map((o, k) => <li key={k}>{typeof o === "string" ? o : o.t}</li>)}</ul>
+        </SecaoEscopo>
+      )}
+    </>
+  );
+}
+
+function SecaoEscopo({ titulo, conta, aviso, children }) {
+  const [aberta, setAberta] = useState(true);
+  return (
+    <div className="escopo-secao">
+      <button className="escopo-secao-head" onClick={() => setAberta((v) => !v)}>
+        {aberta ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
+        <span className="escopo-secao-tit">{titulo}</span>
+        {conta != null && <span className="grp-conta">{conta}</span>}
+        {/* Percentual que nao fecha 100 e erro de contrato, nao detalhe de
+            tela: alguem paga a mais ou o fornecedor fica sem receber. */}
+        {aviso && <span className="escopo-aviso"><AlertTriangle size={11} /> {aviso}</span>}
+      </button>
+      {aberta && <div className="escopo-secao-corpo">{children}</div>}
+    </div>
+  );
+}
+
 /* DASHBOARD MO — a base de orcado de um escopo.
 
    Quem pede um escopo precisa saber, ANTES de mandar pro fornecedor,
@@ -5960,8 +6203,10 @@ function servicosMO(obra) {
 
    O contrato pode juntar verbas diferentes — o mesmo fornecedor as vezes
    pega gesso e pintura — entao a selecao atravessa os grupos. */
-function DashboardMO({ obra, onItemChange, onCriarSolicitacao }) {
+function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, onMudarEscopo, onApagarEscopo, podeEditar }) {
   const [filtro, setFiltro] = useState("todos");
+  const [abrindoEscopo, setAbrindoEscopo] = useState(false);
+  const [escopoAberto, setEscopoAberto] = useState(null);
   const [sel, setSel] = useState(() => new Set());
   const [abertos, setAbertos] = useState(() => new Set());
 
@@ -6009,8 +6254,61 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao }) {
     );
   }
 
+  if (escopoAberto) {
+    const e = (obra.escopos || []).find((x) => x.id === escopoAberto);
+    if (!e) return null;
+    return <EscopoAberto escopo={e} obra={obra} podeEditar={podeEditar}
+      onMudar={(patch) => onMudarEscopo(e.id, patch)}
+      onVoltar={() => setEscopoAberto(null)}
+      onApagar={() => {
+        if (window.confirm(`Apagar o escopo "${e.nome}"?\n\nOs serviços continuam na obra — some só o documento.`)) {
+          onApagarEscopo(e.id);
+          setEscopoAberto(null);
+        }
+      }} />;
+  }
+
+  if (abrindoEscopo) {
+    return <FormNovoEscopo obra={obra} servicos={selecionados}
+      onCancelar={() => setAbrindoEscopo(false)}
+      onCriar={(dados) => {
+        const id = onCriarEscopo(dados);
+        setAbrindoEscopo(false);
+        setSel(new Set());
+        setEscopoAberto(id);
+      }} />;
+  }
+
   return (
     <>
+      {(obra.escopos || []).length > 0 && (
+        <div className="escopo-lista-box">
+          <div className="dash-rot">Escopos desta obra</div>
+          {(obra.escopos || []).map((e) => {
+            const dif = e.valorContrato != null ? e.valorContrato - e.orcado : null;
+            return (
+              <button className="escopo-card" key={e.id} onClick={() => setEscopoAberto(e.id)}>
+                <div className="escopo-card-esq">
+                  <div className="escopo-card-nome">{e.nome}</div>
+                  <div className="escopo-card-sub">
+                    {e.fornecedor || "sem fornecedor"} · {e.servicos.length} {e.servicos.length === 1 ? "serviço" : "serviços"}
+                  </div>
+                </div>
+                <div className="escopo-card-dir">
+                  <div className="mono">{fmtBRL(e.orcado)}</div>
+                  <div className="escopo-card-rot">orçado</div>
+                </div>
+                {dif != null && (
+                  <div className={`escopo-card-dif ${dif > 0 ? "ruim" : "ok"}`}>
+                    {dif > 0 ? "+" : ""}{fmtBRL(dif)}
+                  </div>
+                )}
+                <ChevronRight size={15} className="dim" />
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="mo-topo">
         <div className="mo-num">
           <div className="mo-num-val mono">{fmtBRL(totalMO)}</div>
@@ -6108,6 +6406,11 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao }) {
               {verbasNaSelecao > 1 ? ` de ${verbasNaSelecao} verbas` : ""}
             </div>
           </div>
+          {podeEditar && (
+            <button className="btn-abrir-escopo" onClick={() => setAbrindoEscopo(true)}>
+              <FileText size={13} /> Abrir escopo
+            </button>
+          )}
           <button className="btn-limpar-sel" onClick={() => setSel(new Set())}>Limpar seleção</button>
         </div>
       )}
@@ -6874,6 +7177,7 @@ export default function App() {
           cmvLiberadoEm: dados.cmvLiberadoEm,
           cmvLiberadoPor: dados.cmvLiberadoPor,
           dataEntrega: dados.dataEntrega,
+          escopos: dados.escopos,
           // Campos DERIVADOS das categorias. Sem refazer a conta aqui, a
           // obra volta do banco com os itens certos e os totais do Monday
           // — que sao zero. O cabecalho dizia "R$ 0,00" numa obra com R$
@@ -7467,6 +7771,31 @@ export default function App() {
     }));
   }
 
+  /* O escopo e um retrato, nao um link.
+
+     O texto do modelo ja veio copiado pra dentro dele: o que a empresa
+     contrata hoje nao pode mudar porque alguem editou o modelo amanha. */
+  function criarEscopo(dados) {
+    const id = `esc${Date.now().toString(36)}`;
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? {
+      ...o,
+      escopos: [...(o.escopos || []), { ...dados, id, criadoEm: new Date().toISOString(), criadoPor: usuario, valorContrato: null }],
+    } : o)));
+    return id;
+  }
+
+  function mudarEscopo(id, patch) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? {
+      ...o, escopos: (o.escopos || []).map((e) => (e.id === id ? { ...e, ...patch } : e)),
+    } : o)));
+  }
+
+  function apagarEscopo(id) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? {
+      ...o, escopos: (o.escopos || []).filter((e) => e.id !== id),
+    } : o)));
+  }
+
   /* Registra uma compra avulsa dentro da verba escolhida.
 
      Segue o mesmo caminho de `criarSolicitacaoContrato` — item novo em
@@ -7723,6 +8052,72 @@ export default function App() {
            vendido, quanto ja foi comprado e ate quando da, e o que pede
            atencao. A ultima faixa fica curta e verde quando nao ha nada —
            painel que mostra sempre as mesmas caixas ensina a ignorar. */
+        /* ESCOPO DE CONTRATACAO */
+        .btn-abrir-escopo { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; background: #fff; color: var(--ink); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
+        .btn-abrir-escopo:hover { background: var(--green-bg); color: var(--green); }
+        .mo-escopo-barra .btn-limpar-sel { margin-left: 0; }
+        .form-escopo { max-width: 560px; }
+        .form-dica { font-size: 10.5px; color: var(--green); margin-top: 5px; }
+        .escopo-lista-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+        .escopo-card { width: 100%; display: flex; align-items: center; gap: 16px; background: transparent; border: none; border-top: 1px solid var(--border-soft); padding: 11px 2px; cursor: pointer; font-family: inherit; text-align: left; }
+        .escopo-card:hover { background: #FCFBF9; }
+        .escopo-card-esq { flex: 1; min-width: 0; }
+        .escopo-card-nome { font-size: 13px; font-weight: 600; }
+        .escopo-card-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
+        .escopo-card-dir { text-align: right; font-variant-numeric: tabular-nums; }
+        .escopo-card-rot { font-size: 9.5px; color: var(--ink-3); }
+        .escopo-card-dif { font-size: 12px; font-weight: 700; font-family: 'JetBrains Mono', monospace; padding: 3px 9px; border-radius: 20px; }
+        .escopo-card-dif.ok { background: var(--green-bg); color: var(--green); }
+        .escopo-card-dif.ruim { background: var(--red-bg); color: var(--red); }
+
+        .escopo-topo { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+        .btn-voltar { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 12px; cursor: pointer; font-family: inherit; color: var(--ink-2); flex-shrink: 0; }
+        .btn-voltar:hover { border-color: var(--ink); color: var(--ink); }
+        .escopo-titulo { flex: 1; min-width: 0; }
+        .escopo-nome { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; }
+        .escopo-banda { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+        .btn-apagar-escopo { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 11.5px; cursor: pointer; font-family: inherit; color: var(--ink-3); }
+        .btn-apagar-escopo:hover { border-color: var(--red); color: var(--red); }
+
+        /* A conta fica no TOPO porque e a razao da tela existir: o orcado
+           saiu do executivo, o valor veio da proposta, e a diferenca e a
+           unica coisa que muda a decisao de quem assina. */
+        .escopo-conta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+        .ec-bloco { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+        .ec-rot { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+        .ec-val { font-family: 'Space Grotesk', sans-serif; font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 5px; }
+        .ec-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 3px; }
+        .ec-input { width: 100%; margin-top: 5px; border: 1px solid var(--border); border-radius: 7px; padding: 4px 9px; font-size: 19px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+        .ec-input:focus { border-color: var(--ink); outline: none; }
+        .ec-dif.ok { background: var(--green-bg); border-color: #C9E5D4; color: var(--green); }
+        .ec-dif.ruim { background: var(--red-bg); border-color: #F0C9C6; color: var(--red); }
+        .ec-dif.ok .ec-rot, .ec-dif.ruim .ec-rot, .ec-dif.ok .ec-sub, .ec-dif.ruim .ec-sub { color: inherit; opacity: 0.8; }
+
+        .escopo-campos { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+        .escopo-secao { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+        .escopo-secao-head { width: 100%; display: flex; align-items: center; gap: 9px; background: transparent; border: none; padding: 12px 16px; cursor: pointer; font-family: inherit; text-align: left; }
+        .escopo-secao-head:hover { background: #FCFBF9; }
+        .escopo-secao-tit { font-size: 13px; font-weight: 600; }
+        .escopo-aviso { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; color: var(--red); background: var(--red-bg); border-radius: 20px; padding: 2px 9px; margin-left: auto; }
+        .escopo-secao-corpo { border-top: 1px solid var(--border); padding: 4px 0; overflow-x: auto; }
+        .tab-escopo { width: 100%; border-collapse: collapse; }
+        .tab-escopo th { text-align: left; font-size: 10px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); }
+        .tab-escopo td { padding: 9px 16px; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 12.5px; }
+        .tab-escopo tr:last-child td { border-bottom: none; }
+        .tab-escopo th.right, .tab-escopo td.right { text-align: right; }
+        .tab-escopo th.center, .tab-escopo td.center { text-align: center; }
+        .ei-cond { font-size: 11.5px; color: var(--ink-2); line-height: 1.45; }
+        .escopo-itens { padding: 6px 16px 12px; }
+        .ei-grupo { font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin: 14px 0 6px; }
+        .ei-nota { font-size: 11.5px; color: var(--ink-3); font-style: italic; margin: 6px 0; }
+        .ei-item { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; line-height: 1.5; }
+        .ei-qtd { flex-shrink: 0; width: 58px; color: var(--ink-3); font-size: 11px; }
+        .ei-desc { flex: 1; }
+        .ei-amb { flex-shrink: 0; font-size: 10.5px; color: var(--ink-3); }
+        .escopo-lista { margin: 0; padding: 8px 16px 12px 34px; font-size: 12.5px; line-height: 1.6; color: var(--ink-2); }
+        .escopo-lista li { margin-bottom: 5px; }
+        @media (max-width: 900px) { .escopo-conta, .escopo-campos { grid-template-columns: 1fr; } }
+
         /* DASHBOARD MO — a base de orcado de um escopo. */
         .mo-topo { display: flex; align-items: center; gap: 30px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
         .mo-num-val { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -8807,7 +9202,7 @@ export default function App() {
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
-          {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
+          {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}
           </>
           )}
         </main>
