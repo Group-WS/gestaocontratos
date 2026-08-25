@@ -416,13 +416,24 @@ function parseVendidoTexto(texto) {
     if (reVerba.test(t)) {
       const num = t.padStart(2, "0");
       const nome = (linhas[i + 1] || "").trim();
+      /* Procura o valor da verba nas linhas seguintes — mas SO avanca se
+         achar.
+
+         Antes o `k` do laco era usado como ponto de retomada mesmo quando
+         nenhum R$ aparecia: sem valor, o laco ia ate i+4 e o parser
+         recomecava dali, ENGOLINDO ate tres linhas. Num contrato fechado
+         por verba, que nao tem cifrao nenhum (o da 2506 nao tem um), isso
+         comia os primeiros itens de cada grupo em silencio.
+
+         Agora o ponto de retomada e a linha do nome; so pula alem dela
+         quando o valor foi mesmo encontrado. */
       let valor = null;
-      let k = i + 2;
-      for (; k <= i + 4 && k < linhas.length; k++) {
-        if (/R\$/.test(linhas[k])) {
-          const ns = (linhas[k].match(/[\d.]+,\d{2}/g) || []).map(parseBRLnum).filter((x) => x != null);
+      let k = i + 2;               // retomada padrao: logo depois do nome
+      for (let j = i + 2; j <= i + 4 && j < linhas.length; j++) {
+        if (/R\$/.test(linhas[j])) {
+          const ns = (linhas[j].match(/[\d.]+,\d{2}/g) || []).map(parseBRLnum).filter((x) => x != null);
           if (ns.length) valor = Math.max(...ns);
-          k++;
+          k = j + 1;
           break;
         }
       }

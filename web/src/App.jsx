@@ -1753,7 +1753,17 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
   async function aoImportar(file) {
     const { valores, itens, diagnostico, paginas, gruposNaoReconhecidos } = await lerContratoPDF(file);
     const n = Object.keys(valores).length;
-    if (n === 0) throw new Error("Não encontrei nenhuma verba com valor no PDF. Me manda o arquivo que eu ajusto o leitor.");
+    /* Contrato SEM valor por verba é normal, não é falha.
+
+       A própria dica desta tela diz que o contrato traz só descrição e
+       quantidade. Ainda assim o leitor abortava a importação inteira
+       quando nenhuma verba tinha R$ — e o contrato da 2506, que não tem
+       um único cifrão no documento, era recusado com 17 verbas e 187
+       itens perfeitamente lidos. O erro só faz sentido quando não veio
+       NADA. */
+    if (n === 0 && itens.length === 0) {
+      throw new Error("Não encontrei verbas nem itens neste PDF. Me manda o arquivo que eu ajusto o leitor.");
+    }
     onImportContrato(valores, itens);
 
     // Presta contas da leitura. O que o leitor NÃO conseguiu ler precisa
@@ -1774,7 +1784,10 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
     if ((d.suspeitas || []).length) alertas.push(`${d.suspeitas.length} suspeito${d.suspeitas.length > 1 ? "s" : ""} na releitura: ${d.suspeitas.slice(0, 3).map((x) => `${x.codigo} (${x.motivo})`).join("; ")}`);
     if ((gruposNaoReconhecidos || []).length) alertas.push(`grupo fora do padrão: ${gruposNaoReconhecidos.join(", ")}`);
 
-    const base = `“${file.name}” — ${paginas || "?"} páginas lidas · ${n} verba${n > 1 ? "s" : ""} · ${itens.length} itens.`;
+    const verbasTxt = n === 0
+      ? "sem valor por verba (contrato fechado)"
+      : `${n} verba${n > 1 ? "s" : ""} com valor`;
+    const base = `“${file.name}” — ${paginas || "?"} páginas lidas · ${verbasTxt} · ${itens.length} itens.`;
 
     /* A quantidade colada é o alerta que mais importa, porque é o único que
        produz um número ERRADO em vez de vazio — e número errado ninguém

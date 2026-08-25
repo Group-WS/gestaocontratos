@@ -92,5 +92,26 @@ const faltando = Object.keys(ESPERADO).filter((c) => !r.itens.some((i) => i.codi
 if (faltando.length) { console.error("FALHOU itens nao lidos: " + faltando.join(", ")); falhas += faltando.length; }
 if (r.verbas.length !== 4) { console.error("FALHOU verbas: esperava 4, veio " + r.verbas.length); falhas++; }
 
+// Contrato SEM valor por verba (caso da 2506): a linha depois do nome do
+// grupo e "0,000", nao um R$. O parser tem que devolver as verbas e os
+// itens do mesmo jeito — quem decide se isso e erro e a tela, e ela so
+// deve recusar quando nao veio NADA.
+const semValor = [
+  "Descrição",
+  "2","SERVICOS COMPLEMENTARES","0,0000",
+  "2.1","Anotacao de responsabilidade tecnica - RRT1,00vb0",
+  "2.2","Cacambas de entulho1,00un 0",
+  "6","CLIMATIZACAO/ EXAUSTAO","0,0000",
+  "6.1","Ar-Condicionado Electrolux Split 18.000 BTUs Frio1,00un Living",
+].join("\n");
+const sv = fn(semValor);
+if (sv.verbas.length !== 2) { console.error(`FALHOU sem-valor: esperava 2 verbas, veio ${sv.verbas.length}`); falhas++; }
+if (sv.verbas.some((v) => v.valor != null)) { console.error("FALHOU sem-valor: nenhuma verba devia ter valor"); falhas++; }
+if (sv.itens.length !== 3) { console.error(`FALHOU sem-valor: esperava 3 itens, veio ${sv.itens.length}`); falhas++; }
+const ar = sv.itens.find((i) => i.codigo === "6.1");
+if (!ar || ar.qtd !== 1 || ar.ambiente !== "Living") {
+  console.error(`FALHOU sem-valor 6.1: qtd=${ar && ar.qtd} amb=${ar && ar.ambiente}`); falhas++;
+}
+
 console.log(falhas === 0 ? `\nOK — ${r.itens.length} itens, ${r.verbas.length} verbas, tudo conforme o PDF` : `\n${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);
