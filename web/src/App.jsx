@@ -5861,16 +5861,6 @@ const CONTRATO_PIPELINE = [
 ];
 const PROXIMA_ETAPA = { nao_solicitado: "solicitacao", solicitacao: "aprovacao", aprovacao: "contrato_gerado", contrato_gerado: "previsao_medicao", previsao_medicao: "medicao_liberada" };
 
-function contratosItens(obra) {
-  const out = [];
-  obra.categorias.forEach((cat, catIdx) => {
-    (cat.itens || []).forEach((it, itemIdx) => {
-      if (it.tipo !== "produto") out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome });
-    });
-  });
-  return out;
-}
-
 const contratoBloqueado = (it) => it.foraDeEscopo && it.statusEscopo !== "aprovado";
 const contratoEtapa = (it) => it.statusContrato || "nao_solicitado";
 
@@ -5962,36 +5952,112 @@ function NovaSolicitacaoForm({ obra, onCriar }) {
   );
 }
 
-function ContratosView({ obra, onItemChange, onCriarSolicitacao }) {
+/* Tudo que e MAO DE OBRA na obra.
+
+   Antes a lista era `it.tipo !== "produto"` — o campo de UMA escolha so.
+   O spot de sobrepor, que tem R$ 182 de material e R$ 180 de mao de obra,
+   era carimbado "produto" e os R$ 180 dele nunca chegavam aqui. Agora
+   entra quem TEM parcela de mao de obra, seja ela a linha inteira ou
+   metade dela, e o valor que viaja e a PARCELA, nao o custo do item.
+
+   Material nao entra: ele vira compra, e ja tem tela propria. */
+function servicosMO(obra) {
+  const out = [];
+  (obra.categorias || []).forEach((cat, catIdx) => {
+    (cat.itens || []).forEach((it, itemIdx) => {
+      if (it.ehTitulo) return;
+      const { mo } = parcelasDoItem(it);
+      const aloc = alocacaoDoItem(it, cat);
+      if (mo <= 0 && aloc !== ALOC_MO) return;
+      out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome, mo, aloc,
+        chave: `${catIdx}-${itemIdx}` });
+    });
+  });
+  return out;
+}
+
+/* DASHBOARD MO — a base de orcado de um escopo.
+
+   Quem pede um escopo precisa saber, ANTES de mandar pro fornecedor,
+   quanto aquele conjunto de servicos valia no executivo. Selecionando os
+   servicos aqui, a soma da mao de obra deles vira o teto: chegando a
+   proposta, da pra dizer na hora se estourou.
+
+   O contrato pode juntar verbas diferentes — o mesmo fornecedor as vezes
+   pega gesso e pintura — entao a selecao atravessa os grupos. */
+function DashboardMO({ obra, onItemChange, onCriarSolicitacao }) {
   const [filtro, setFiltro] = useState("todos");
-  const rows = useMemo(() => contratosItens(obra), [obra]);
+  const [sel, setSel] = useState(() => new Set());
+  const [abertos, setAbertos] = useState(() => new Set());
+
+  const rows = useMemo(() => servicosMO(obra), [obra]);
+  const naoBloq = rows.filter((r) => !contratoBloqueado(r.it));
+  const bloqueados = rows.filter((r) => contratoBloqueado(r.it));
+
+  const totalMO = naoBloq.reduce((a, r) => a + r.mo, 0);
+  const contratado = naoBloq.filter((r) => contratoEtapa(r.it) !== "nao_solicitado").reduce((a, r) => a + r.mo, 0);
+  const cntEtapa = (id) => naoBloq.filter((r) => contratoEtapa(r.it) === id).length;
+  const somaEtapa = (id) => naoBloq.filter((r) => contratoEtapa(r.it) === id).reduce((a, r) => a + r.mo, 0);
+
+  const visiveis = filtro === "todos" ? naoBloq : naoBloq.filter((r) => contratoEtapa(r.it) === filtro);
+  const porVerba = useMemo(() => {
+    const m = new Map();
+    visiveis.forEach((r) => {
+      if (!m.has(r.catNum)) m.set(r.catNum, { num: r.catNum, nome: r.catNome, itens: [], total: 0 });
+      const g = m.get(r.catNum);
+      g.itens.push(r); g.total += r.mo;
+    });
+    return [...m.values()];
+  }, [visiveis]);
+
+  const selecionados = naoBloq.filter((r) => sel.has(r.chave));
+  const orcado = selecionados.reduce((a, r) => a + r.mo, 0);
+  const verbasNaSelecao = new Set(selecionados.map((r) => r.catNum)).size;
+
+  const alternar = (chave) => setSel((p) => { const n = new Set(p); n.has(chave) ? n.delete(chave) : n.add(chave); return n; });
+  const alternarGrupo = (g) => setSel((p) => {
+    const n = new Set(p);
+    const todosDentro = g.itens.every((r) => n.has(r.chave));
+    g.itens.forEach((r) => (todosDentro ? n.delete(r.chave) : n.add(r.chave)));
+    return n;
+  });
+  const abrir = (num) => setAbertos((p) => { const n = new Set(p); n.has(num) ? n.delete(num) : n.add(num); return n; });
 
   if (rows.length === 0) {
     return (
       <div className="compras-empty">
         <FileText size={30} className="dim" />
-        <div className="compras-empty-title">Esta obra ainda não tem serviços no executivo</div>
-        <div className="compras-empty-sub">Quando o executivo for carregado, os serviços e o andamento dos contratos aparecem aqui. Ou crie uma solicitação avulsa abaixo.</div>
+        <div className="compras-empty-title">Esta obra ainda não tem mão de obra no executivo</div>
+        <div className="compras-empty-sub">Quando o executivo for carregado, todos os serviços aparecem aqui com o valor de MO — que é a base de orçado de cada escopo. Ou crie uma solicitação avulsa abaixo.</div>
         <NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />
       </div>
     );
   }
 
-  const naoBloq = rows.filter((r) => !contratoBloqueado(r.it));
-  const bloqueados = rows.filter((r) => contratoBloqueado(r.it));
-  const cntEtapa = (id) => naoBloq.filter((r) => contratoEtapa(r.it) === id).length;
-  const somaEtapa = (id) => naoBloq.filter((r) => contratoEtapa(r.it) === id).reduce((a, r) => a + (r.it.custo || 0), 0);
-  const visiveis = filtro === "todos" ? naoBloq : naoBloq.filter((r) => contratoEtapa(r.it) === filtro);
-
   return (
     <>
-      <div className="contratos-toolbar">
+      <div className="mo-topo">
+        <div className="mo-num">
+          <div className="mo-num-val mono">{fmtBRL(totalMO)}</div>
+          <div className="mo-num-rot">de mão de obra no executivo · {naoBloq.length} serviços</div>
+        </div>
+        <div className="mo-num">
+          <div className="mo-num-val mono dim">{fmtBRL(contratado)}</div>
+          <div className="mo-num-rot">já em processo de contratação</div>
+        </div>
+        <div className="mo-num">
+          <div className="mo-num-val mono">{fmtBRL(totalMO - contratado)}</div>
+          <div className="mo-num-rot">ainda a contratar</div>
+        </div>
         <NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />
       </div>
+
       <div className="pipeline">
         {CONTRATO_PIPELINE.map((st, i) => (
           <React.Fragment key={st.id}>
-            <button className={`pipe-node ${filtro === st.id ? "active" : ""}`} style={filtro === st.id ? { borderColor: st.color } : undefined} onClick={() => setFiltro(filtro === st.id ? "todos" : st.id)}>
+            <button className={`pipe-node ${filtro === st.id ? "active" : ""}`}
+              style={filtro === st.id ? { borderColor: st.color } : undefined}
+              onClick={() => setFiltro(filtro === st.id ? "todos" : st.id)}>
               <div className="pipe-count" style={{ color: st.color }}>{cntEtapa(st.id)}</div>
               <div className="pipe-label">{st.curto}</div>
               <div className="pipe-val mono">{fmtCompactBRL(somaEtapa(st.id))}</div>
@@ -6008,19 +6074,68 @@ function ContratosView({ obra, onItemChange, onCriarSolicitacao }) {
         </div>
       )}
 
-      <div className="compras-filtros">
-        <button className={`cfiltro ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>Todos <span className="cbadge">{naoBloq.length}</span></button>
-        {CONTRATO_PIPELINE.map((st) => (
-          <button key={st.id} className={`cfiltro ${filtro === st.id ? "active" : ""}`} onClick={() => setFiltro(st.id)}>{st.curto} <span className="cbadge">{cntEtapa(st.id)}</span></button>
-        ))}
-      </div>
+      {porVerba.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
+      {porVerba.map((g) => {
+        const aberto = abertos.has(g.num);
+        const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
+        return (
+          <div className="grp-block" key={g.num}>
+            <div className="grp-head">
+              <button className="mo-check" onClick={() => alternarGrupo(g)}
+                title={nSel === g.itens.length ? "Tirar o grupo da seleção" : "Selecionar o grupo inteiro"}
+                aria-label="Selecionar grupo">
+                {nSel === g.itens.length ? <Check size={13} /> : nSel > 0 ? <Minus size={13} /> : null}
+              </button>
+              <button className="grp-toggle" onClick={() => abrir(g.num)}>
+                <div className="grp-esq">
+                  {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
+                  <span className="grp-num mono">{g.num}</span>
+                  <span className="grp-nome">{g.nome}</span>
+                  <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "serviço" : "serviços"}</span>
+                  {nSel > 0 && <span className="grp-avulsos">{nSel} no escopo</span>}
+                </div>
+              </button>
+              <div className="grp-dir">
+                <div className="grp-tot">
+                  <div className="grp-tot-rot">MÃO DE OBRA</div>
+                  <div className="grp-tot-val mono">{fmtBRL(g.total)}</div>
+                </div>
+              </div>
+            </div>
+            {aberto && (
+              <div className="grp-itens">
+                <div className="compras-list">
+                  {g.itens.map((r) => (
+                    <div className={`mo-linha ${sel.has(r.chave) ? "sel" : ""}`} key={r.chave}>
+                      <button className="mo-check" onClick={() => alternar(r.chave)} aria-label="Selecionar serviço">
+                        {sel.has(r.chave) && <Check size={13} />}
+                      </button>
+                      <ContratosRow row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
+                      <div className="mo-valor mono">{fmtBRL(r.mo)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
-      <div className="compras-list">
-        {visiveis.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
-        {visiveis.map((r) => (
-          <ContratosRow key={`${r.catIdx}-${r.itemIdx}`} row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
-        ))}
-      </div>
+      {/* A barra de escopo so existe quando ha selecao. Ela e o unico
+          lugar da tela onde o numero que importa aparece somado: e contra
+          ele que a proposta do fornecedor vai ser comparada. */}
+      {selecionados.length > 0 && (
+        <div className="mo-escopo-barra">
+          <div>
+            <div className="mo-escopo-val mono">{fmtBRL(orcado)}</div>
+            <div className="mo-escopo-rot">
+              orçado em {selecionados.length} {selecionados.length === 1 ? "serviço" : "serviços"}
+              {verbasNaSelecao > 1 ? ` de ${verbasNaSelecao} verbas` : ""}
+            </div>
+          </div>
+          <button className="btn-limpar-sel" onClick={() => setSel(new Set())}>Limpar seleção</button>
+        </div>
+      )}
     </>
   );
 }
@@ -7611,6 +7726,26 @@ export default function App() {
            vendido, quanto ja foi comprado e ate quando da, e o que pede
            atencao. A ultima faixa fica curta e verde quando nao ha nada —
            painel que mostra sempre as mesmas caixas ensina a ignorar. */
+        /* DASHBOARD MO — a base de orcado de um escopo. */
+        .mo-topo { display: flex; align-items: center; gap: 30px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
+        .mo-num-val { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .mo-num-rot { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
+        .mo-topo .btn-nova-solicitacao { margin-left: auto; }
+        .mo-check { width: 19px; height: 19px; flex-shrink: 0; border-radius: 5px; border: 1.5px solid var(--border); background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #fff; padding: 0; margin-left: 16px; }
+        .mo-check:hover { border-color: var(--blue); }
+        .mo-linha.sel .mo-check, .grp-head .mo-check:has(svg) { background: var(--blue); border-color: var(--blue); }
+        .mo-linha { display: flex; align-items: center; gap: 10px; padding-right: 14px; }
+        .mo-linha.sel { background: var(--blue-bg); }
+        .mo-linha .compras-row { flex: 1; min-width: 0; }
+        .mo-valor { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 104px; text-align: right; }
+        /* A soma so aparece quando ha selecao: e o unico numero da tela
+           contra o qual a proposta do fornecedor vai ser comparada. */
+        .mo-escopo-barra { position: sticky; bottom: 14px; display: flex; align-items: center; gap: 18px; background: var(--ink); color: #fff; border-radius: 12px; padding: 13px 20px; margin-top: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.18); }
+        .mo-escopo-val { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .mo-escopo-rot { font-size: 11px; opacity: 0.75; margin-top: 1px; }
+        .btn-limpar-sel { margin-left: auto; background: rgba(255,255,255,0.14); color: #fff; border: none; border-radius: 7px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-limpar-sel:hover { background: rgba(255,255,255,0.24); }
+
         .dash { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 28px; }
         .dash-hero, .dash-atencao { grid-column: 1 / -1; }
         .dash-hero, .dash-card, .dash-atencao { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; }
@@ -8676,7 +8811,7 @@ export default function App() {
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onConfirmarSugestoes={confirmarSugestoesCompra} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
-          {tab === "contratos" && <ContratosView obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
+          {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} />}
           </>
           )}
         </main>
