@@ -42,11 +42,11 @@ const api = eval(`(function () {
     ${pega("function itemAlertas(")}
     ${pega("function matchesFilter(")}
     return { alocacaoDoItem, casaAloc, parcelasDoItem, matchesFilter, partirMaoDeObra,
-             separarMOnasVerbasDeContrato, separaMOautomatico, achaVerbaMO,
+             separarMOnasVerbasDeContrato, separaMOautomatico, achaVerbaMO, podeSepararMO, ehVerbaMatMoSempre,
              ALOC_MAT, ALOC_MO, ALOC_AMBOS, FILTROS_ALOC, ROTULO_ALOC, NOME_ALOC };
   })()`);
 const { alocacaoDoItem, casaAloc, parcelasDoItem, matchesFilter, partirMaoDeObra,
-        separarMOnasVerbasDeContrato, separaMOautomatico,
+        separarMOnasVerbasDeContrato, separaMOautomatico, podeSepararMO, ehVerbaMatMoSempre,
         ALOC_MAT, ALOC_MO, ALOC_AMBOS, FILTROS_ALOC, ROTULO_ALOC, NOME_ALOC } = api;
 
 let f = 0;
@@ -152,12 +152,30 @@ const degenerados = [
 ];
 const semAloc = degenerados.filter((it) => !alocacaoDoItem(it));
 conf("nenhum item degenerado fica sem alocação", semAloc.length, 0);
-conf("item vazio cai em MAT (passa pela conferência de compra)", alocacaoDoItem({}), ALOC_MAT);
+conf("item vazio cai em MAT+MO, não num lado chutado", alocacaoDoItem({}), ALOC_AMBOS);
+
+/* ---- 7b. verbas de pacote fechado: sempre MAT+MO, nunca separa ---- */
+// O fornecedor entrega material e mão de obra no mesmo pacote.
+const serralheria = { num: "22", nome: "Serralheria" };
+const iluminacao = { num: "05", nome: "Instalações Elétricas e Iluminação" };
+conf("serralheria é MAT+MO mesmo só com material", alocacaoDoItem(so_mat, serralheria), ALOC_AMBOS);
+conf("vidros e espelhos idem", alocacaoDoItem(so_mat, { num: "23", nome: "Vidros e Espelhos" }), ALOC_AMBOS);
+conf("estofados idem", alocacaoDoItem(so_mat, { num: "25", nome: "Estofados" }), ALOC_AMBOS);
+conf("cortinas e persianas idem", alocacaoDoItem(so_mat, { num: "30", nome: "Cortinas e Persianas" }), ALOC_AMBOS);
+conf("iluminação NÃO é pacote fechado", alocacaoDoItem(so_mat, iluminacao), ALOC_MAT);
+conf("pacote fechado não oferece separar", podeSepararMO(spot, serralheria), false);
+conf("iluminação oferece separar", podeSepararMO(spot, iluminacao), true);
+conf("sem MO não oferece separar", podeSepararMO(so_mat, iluminacao), false);
+conf("eletroeletrônico entrou na separação automática", separaMOautomatico("28", "Eletroeletrônico"), true);
+// Correção na mão ganha até da regra do grupo — quem conhece a obra decide.
+conf("correção na mão ganha do pacote fechado",
+  alocacaoDoItem({ ...so_mat, alocacaoManual: ALOC_MAT }, serralheria), ALOC_MAT);
 
 /* ---- 8. os dois rótulos deixaram de colidir ---- */
 // "MAT E MO" (tudo) e "MAT/MO" (as duas parcelas) ficavam lado a lado na
 // mesma fila, indistinguíveis. Barra = tudo; mais = na mesma linha.
 conf("chip que mostra tudo se chama MAT/MO", FILTROS_ALOC[0].label, "MAT/MO");
+conf("existe um chip só de MAT+MO", FILTROS_ALOC[3].label, "MAT+MO");
 conf("a etiqueta das duas parcelas usa +", ROTULO_ALOC.AMBOS, "MAT+MO");
 conf("nenhum rótulo de filtro se repete", new Set(FILTROS_ALOC.map((x) => x.label)).size, FILTROS_ALOC.length);
 

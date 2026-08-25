@@ -246,7 +246,7 @@ function obraComprasStats(o) {
   return { totalProdutos, totalComprado, falta: totalProdutos - totalComprado, pct };
 }
 
-function matchesFilter(it, filter) {
+function matchesFilter(it, filter, cat) {
   if (filter === "todos") return true;
   if (filter === "alerta") return itemAlertas(it).length > 0;
   /* Só quem tem material passa pelo fluxo de compras.
@@ -255,7 +255,7 @@ function matchesFilter(it, filter) {
      PARCELAS e não desse campo, um item marcado como serviço mas com a
      coluna de material preenchida aparecia na lista como MAT e sumia ao
      filtrar "Liberado p/ compra" — a mesma tela dizendo as duas coisas. */
-  if (alocacaoDoItem(it) === ALOC_MO) return false;
+  if (alocacaoDoItem(it, cat) === ALOC_MO) return false;
   if (filter === "liberado") return it.liberado === true;
   if (filter === "aguardando") return !it.liberado;
   if (filter === "comprado") return it.comprado === true;
@@ -408,15 +408,29 @@ const ALOC_MAT = "MAT", ALOC_MO = "MO", ALOC_AMBOS = "AMBOS";
    Antes os dois se chamavam "MAT/MO" e ficavam lado a lado na mesma
    fila de filtros, indistinguiveis. */
 const ROTULO_ALOC = { MAT: "MAT", MO: "MO", AMBOS: "MAT+MO" };
-const NOME_ALOC = { MAT: "MATERIAL (MAT)", MO: "MÃO DE OBRA (MO)", AMBOS: "NÃO SEPARADOS" };
+const NOME_ALOC = { MAT: "MATERIAL (MAT)", MO: "MÃO DE OBRA (MO)", AMBOS: "MAT+MO" };
 
 const ehProduto = (it) => it.tipo === "produto";
 
-function alocacaoDoItem(it) {
+/* Verbas em que o fornecedor entrega material E mao de obra no mesmo
+   pacote: serralheria, vidros/espelhos, estofados e cortinas/persianas.
+   Nelas o item e MAT+MO por regra da empresa, mesmo quando a planilha
+   preencheu uma coluna so — e nao se separa. */
+const VERBAS_MAT_MO_SEMPRE = new Set(["22", "23", "25", "30"]);
+const ehVerbaMatMoSempre = (num, nome) =>
+  VERBAS_MAT_MO_SEMPRE.has((nome ? verbaPorNome(nome) : null) || num);
+
+function alocacaoDoItem(it, cat) {
   // Correcao na mao ganha de tudo. O que a planilha traz e uma leitura,
   // nao um decreto: item lancado inteiro na coluna de material as vezes e
   // servico, e so quem conhece a obra sabe.
   if (it.alocacaoManual) return it.alocacaoManual;
+  // Linha que nasceu de uma separacao ja tem lado definido; deixar a
+  // regra do grupo mandar nela desfaria a separacao na tela.
+  if (it.moSeparada) return ALOC_MAT;
+  if (it.separadoDe) return ALOC_MO;
+  // Verba de pacote fechado: o fornecedor entrega os dois juntos.
+  if (cat && ehVerbaMatMoSempre(cat.num, cat.nome)) return ALOC_AMBOS;
   // Avulso nao tem valor nenhum (so o pedido), entao quem declara a
   // alocacao e quem pediu — nao ha parcela pra deduzir dela.
   if (it.avulso) return it.alocacao || ALOC_MAT;
@@ -424,14 +438,14 @@ function alocacaoDoItem(it) {
   if (material > 0 && mo > 0) return ALOC_AMBOS;
   if (mo > 0) return ALOC_MO;
   if (material > 0) return ALOC_MAT;
-  /* Ultimo recurso, e ele nunca devolve vazio.
+  /* Nao deu pra classificar: vai pra MAT+MO, nunca pra vazio.
 
-     Insumo sem alocacao e insumo que nao vai pra lugar nenhum: nao entra
-     em Compras, nao vira contrato, e some das duas pontas sem aparecer
-     em relatorio de erro. Item sem valor e sem parcela ainda assim tem
-     que ter um destino — cai no tipo, e na falta dele em MATERIAL, que e
-     o caminho que passa pela conferencia de compra. */
-  return ehProduto(it) || it.tipo == null ? ALOC_MAT : ALOC_MO;
+     Insumo sem alocacao e insumo que nao vai pra lugar nenhum — nao entra
+     em Compras, nao vira contrato, e some das duas pontas sem aparecer em
+     erro nenhum. Mandar pra MAT+MO tem a vantagem de nao chutar um lado:
+     o item aparece no filtro MAT+MO, que e a lista do que ainda falta
+     resolver, em vez de se disfarcar de decisao tomada. */
+  return ALOC_AMBOS;
 }
 
 /* Particao, nao sobreposicao: MAT sao os itens SO de material, MO os SO
@@ -443,9 +457,9 @@ const FILTROS_ALOC = [
   { id: "todos", label: "MAT/MO" },
   { id: ALOC_MAT, label: NOME_ALOC.MAT, destino: "viram insumo no Sienge" },
   { id: ALOC_MO, label: NOME_ALOC.MO, destino: "viram contrato" },
-  { id: ALOC_AMBOS, label: NOME_ALOC.AMBOS, destino: "ainda carregam as duas parcelas na mesma linha" },
+  { id: ALOC_AMBOS, label: NOME_ALOC.AMBOS, destino: "carregam as duas parcelas na mesma linha" },
 ];
-const casaAloc = (it, f) => f === "todos" || alocacaoDoItem(it) === f;
+const casaAloc = (it, f, cat) => f === "todos" || alocacaoDoItem(it, cat) === f;
 
 /* A etiqueta da alocacao — e, quando da pra corrigir, o proprio controle.
 
@@ -464,9 +478,18 @@ const casaAloc = (it, f) => f === "todos" || alocacaoDoItem(it) === f;
    renumerou uma vez — eletrica saiu de 03 pra 05, climatizacao de 06 pra
    20 — e obra salva antes da troca guarda a numeracao velha. Casar por
    numero cru marcaria grupos errados sem nada na tela denunciar. */
-const VERBAS_MO_CONTRATADA = new Set(["05", "20", "24", "27"]);
+const VERBAS_MO_CONTRATADA = new Set(["05", "20", "24", "27", "28"]);
 const separaMOautomatico = (num, nome) =>
   VERBAS_MO_CONTRATADA.has((nome ? verbaPorNome(nome) : null) || num);
+
+/* So faz sentido separar o que TEM mao de obra pra tirar, uma vez so, e
+   fora das verbas de pacote fechado. Sem esse teste o botao aparecia em
+   item de valor zero e nao fazia nada ao ser clicado. */
+const podeSepararMO = (it, cat) =>
+  !it.moSeparada && !it.separadoDe && !it.ehTitulo
+  && !(cat && ehVerbaMatMoSempre(cat.num, cat.nome))
+  && alocacaoDoItem(it, cat) === ALOC_AMBOS
+  && parcelasDoItem(it).mo > 0;
 
 const achaVerbaMO = (categorias) =>
   (categorias || []).find((c) => !c.foraDaEapPadrao && verbaPorNome(c.nome) === "32") || null;
@@ -525,7 +548,7 @@ function separarMOnasVerbasDeContrato(categorias, soNaVerba) {
     if (c.num === destino.num) return c;
     if (soNaVerba ? c.num !== soNaVerba : !separaMOautomatico(c.num, c.nome)) return c;
     const itens = (c.itens || []).map((it) => {
-      if (it.ehTitulo || it.moSeparada || alocacaoDoItem(it) !== ALOC_AMBOS) return it;
+      if (!podeSepararMO(it, c)) return it;
       const codigoNovo = codigoMOlivre(usados, destino.num);
       const par = partirMaoDeObra(it, c.num, destino.num, codigoNovo);
       if (!par) return it;
@@ -577,12 +600,12 @@ function TagAloc({ aloc, manual, onChange }) {
 
    O que NAO mudou: MO continua indo pra Contratos, nao pra Compras. A
    linha so de MO nao ganha caixinha de compra — ela diz pra onde vai. */
-function LinhaPlano({ item, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
+function LinhaPlano({ item, cat, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO, onToggleCompra, onAprovar, onToggleComprado, onValorComprado, onQtdComprada }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
   const estourou = itemEstourou(item);
   const { material, mo, estimado, manual } = parcelasDoItem(item);
-  const aloc = alocacaoDoItem(item);
+  const aloc = alocacaoDoItem(item, cat);
   const compravel = aloc !== ALOC_MO;   // so quem tem material vai pra Compras
   // Marcado por gente e marcado por sugestao tem que ser distinguiveis na
   // hora: sugestao que se parece com decisao e sugestao que ninguem revisa.
@@ -590,19 +613,15 @@ function LinhaPlano({ item, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO
 
   return (
     <tr className={item.avulso ? "row-avulso" : alertas.length ? "row-alert" : estourou ? "row-estouro" : ""}>
-      <td className="center">
-        {compravel ? (
-          <button
-            className={`check-compra ${marcado ? (sugerido ? "sugerido" : "confirmado") : ""}`}
-            onClick={onToggleCompra}
-            title={sugerido ? "Sugerido pela verba — clique pra confirmar" : marcado ? "Vai pra Compras" : "Não vai pra Compras"}
-            aria-label="Selecionar para compra">
-            {marcado && <Check size={13} />}
-          </button>
-        ) : (
-          <span className="dim" title="Mão de obra: segue para Contratos, não para Compras"><Link2 size={12} /></span>
-        )}
-      </td>
+      {/* A coluna "Compr." saiu.
+
+          Ela era uma caixinha de marcar que dizia exatamente o que a
+          coluna "Situação de compra", duas casas adiante, ja dizia por
+          extenso — e quando o item era so sugerido a caixinha vinha num
+          tracejado laranja que a distancia parecia alerta. Duas colunas
+          pra mesma informacao, uma delas parecendo erro.
+
+          O controle nao se perdeu: a propria situacao virou o botao. */}
       <td className="mono dim">{item.codigo}</td>
       <td>
         <div className="item-desc">{item.desc}</div>
@@ -631,14 +650,17 @@ function LinhaPlano({ item, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO
       </td>
       <td className="mono center dim">{item.ambiente}</td>
       <td className="mono center">
-        <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? item.qtd ?? "—"}</span> <span className="unit">{item.un}</span>
+        {/* `qtdVendida` entra na conta: o leitor do executivo grava a
+            quantidade nesse campo, e a tela so olhava `qtdExecutivo` — o
+            numero vinha certo do arquivo e virava travessao na tabela. */}
+        <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? item.qtdVendida ?? item.qtd ?? "—"}</span> <span className="unit">{item.un}</span>
       </td>
       <td className="center">
         <TagAloc aloc={aloc} manual={!!item.alocacaoManual} onChange={onAlocar} />
         {/* So faz sentido separar o que TEM as duas parcelas, e so uma
             vez. Item que ja mora na propria verba de mao de obra nao tem
             pra onde ir. */}
-        {aloc === ALOC_AMBOS && !item.moSeparada && onSepararMO && (
+        {podeSepararMO(item, cat) && onSepararMO && (
           <button className="btn-separar" onClick={onSepararMO}
             title={`Tira a mão de obra deste item e cria uma linha só dela em ${verbaMO || "Execução e Mão de Obra"}, com a mesma descrição e quantidade. O total não muda.`}>
             <GitCompare size={9} /> separar MO
@@ -667,10 +689,19 @@ function LinhaPlano({ item, sugerido, verbaMO, onAlocar, onSepararMO, onJuntarMO
           : fmtBRL(material + mo)}
       </td>
       <td className="center">
-        {!compravel ? <span className="pill pill-wait">→ Contratos</span>
-          : bloqueado ? <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
-          : marcado ? <span className={sugerido ? "pill pill-sug" : "pill pill-ok"}>{sugerido ? "Sugerido — confirmar" : "No plano de compras"}</span>
-          : <span className="pill pill-wait">Fora do plano</span>}
+        {!compravel ? (
+          <span className="pill pill-wait" title="Mão de obra: segue para Contratos, não para Compras">
+            <Link2 size={10} /> Contratos
+          </span>
+        ) : bloqueado ? (
+          <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
+        ) : (
+          <button className={`pill pill-btn ${marcado ? (sugerido ? "pill-sug" : "pill-ok") : "pill-wait"}`}
+            onClick={onToggleCompra}
+            title={marcado ? "Clique pra tirar do plano de compras" : "Clique pra incluir no plano de compras"}>
+            {marcado ? (sugerido ? "Sugerido — confirmar" : "No plano de compras") : "Fora do plano"}
+          </button>
+        )}
       </td>
       <td className="mono center">
         {compravel ? (
@@ -795,7 +826,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
   const nAvulsos = itens.filter((it) => it.avulso).length;
   // Quantos ainda tem as duas parcelas na mesma linha. E o que o botao do
   // grupo resolve de uma vez, pras obras salvas antes desta regra.
-  const aSeparar = ehVerbaMO ? 0 : itens.filter((it) => !it.moSeparada && alocacaoDoItem(it) === ALOC_AMBOS).length;
+  const aSeparar = ehVerbaMO ? 0 : itens.filter((it) => podeSepararMO(it, cat)).length;
 
   return (
     <div className="grp-block">
@@ -838,7 +869,6 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
           <table>
             <thead>
               <tr>
-                <th style={{ width: 34 }} className="center" title="Selecionar para compra">Compr.</th>
                 <th style={{ width: 62 }}>Cód.</th>
                 <th>Descrição</th>
                 <th style={{ width: 88 }}>Ambiente</th>
@@ -857,7 +887,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
               {itens.map((it) => {
                 const idx = (cat.itens || []).indexOf(it);
                 return (
-                  <LinhaPlano key={it.codigo} item={it}
+                  <LinhaPlano key={it.codigo} item={it} cat={cat}
                     sugerido={sugeridoParaCompra(it, cat.num)}
                     onAlocar={(v) => onItemChange(idx, { alocacaoManual: v })}
                     verbaMO={verbaMO}
@@ -888,7 +918,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, verbaMO, ehV
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={6} className="right dim">Total do grupo</td>
+                <td colSpan={5} className="right dim">Total do grupo</td>
                 <td className="mono right"><b>{fmtBRL(mat)}</b></td>
                 <td className="mono right"><b>{fmtBRL(mo)}</b></td>
                 <td className="mono right"><b>{fmtBRL(mat + mo)}</b></td>
@@ -1166,7 +1196,7 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
   const grupos = useMemo(() => obra.categorias.map((cat) => {
     const todos = (cat.itens || []).filter((it) => !it.ehTitulo);
     const base = soVendido ? todos.filter((it) => it.avulso || itemFoiVendido(it)) : todos;
-    return { cat, itens: base.filter((it) => matchesFilter(it, itemFilter) && casaAloc(it, tipoFilter)) };
+    return { cat, itens: base.filter((it) => matchesFilter(it, itemFilter, cat) && casaAloc(it, tipoFilter, cat)) };
   }).filter((g) => g.itens.length > 0), [obra, soVendido, itemFilter, tipoFilter]);
 
   // Quantas linhas o "só o vendido" está escondendo. Sem esse número o
@@ -1179,12 +1209,14 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
   // quanto é só MO e quanto tem as duas parcelas, antes de clicar, é o
   // que diz de qual lado começar.
   const todosItens = obra.categorias.flatMap((c) => (c.itens || [])
-    .filter((it) => !it.ehTitulo && (!soVendido || it.avulso || itemFoiVendido(it))));
+    .filter((it) => !it.ehTitulo && (!soVendido || it.avulso || itemFoiVendido(it)))
+    .map((it) => [it, c]));
+  const contaAloc = (a) => todosItens.filter(([it, c]) => alocacaoDoItem(it, c) === a).length;
   const contaPorAloc = {
     todos: todosItens.length,
-    [ALOC_MAT]: todosItens.filter((it) => alocacaoDoItem(it) === ALOC_MAT).length,
-    [ALOC_MO]: todosItens.filter((it) => alocacaoDoItem(it) === ALOC_MO).length,
-    [ALOC_AMBOS]: todosItens.filter((it) => alocacaoDoItem(it) === ALOC_AMBOS).length,
+    [ALOC_MAT]: contaAloc(ALOC_MAT),
+    [ALOC_MO]: contaAloc(ALOC_MO),
+    [ALOC_AMBOS]: contaAloc(ALOC_AMBOS),
   };
 
   return (
@@ -6906,6 +6938,10 @@ export default function App() {
         const doArquivo = porVerba[c.num].map((it) => ({
           ...it,
           qtdVendida: it.qtdVendida ?? it.qtdExecutivo,
+          // Item vindo do EXECUTIVO tem quantidade de executivo. O leitor
+          // grava so em `qtdVendida` (o campo que o criativo usa), e todo
+          // o resto do app pergunta por `qtdExecutivo`.
+          qtdExecutivo: it.qtdExecutivo ?? it.qtdVendida,
           // guarda o que o criativo tinha, pra coluna de comparação
           vendido: casarComCriativo(it, c.itensPlanilha),
         }));
@@ -7385,8 +7421,11 @@ export default function App() {
            descricao — e "Anotacao de responsabilidade tecnica" saia em
            quatro linhas ao lado de colunas de valor com folga sobrando.
            Com o minimo a tabela rola na horizontal e a descricao respira. */
-        .grp-itens table { width: 100%; min-width: 1200px; border-collapse: collapse; }
-        .grp-itens th:nth-child(3), .grp-itens td:nth-child(3) { min-width: 230px; }
+        .grp-itens table { width: 100%; min-width: 1170px; border-collapse: collapse; }
+        .grp-itens th:nth-child(2), .grp-itens td:nth-child(2) { min-width: 230px; }
+        /* A situacao virou o controle de incluir/tirar do plano. */
+        .pill-btn { border: none; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+        .pill-btn:hover { filter: brightness(0.95); box-shadow: inset 0 0 0 1px currentColor; }
         .grp-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
         .grp-itens td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 12.5px; }
         .grp-itens th.center, .grp-itens td.center { text-align: center; }
@@ -7518,10 +7557,6 @@ export default function App() {
            A marca da sugestão é TRACEJADA, e a da pessoa é cheia. As duas
            contam no total do plano, mas só uma foi decidida por alguém —
            e é isso que a borda diz sem precisar de legenda. */
-        .check-compra { width: 19px; height: 19px; border-radius: 5px; border: 1.5px solid var(--linha); background: var(--card); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #fff; padding: 0; }
-        .check-compra:hover { border-color: var(--blue); }
-        .check-compra.confirmado { background: var(--blue); border-color: var(--blue); }
-        .check-compra.sugerido { background: transparent; border-style: dashed; border-color: #B54708; color: #B54708; }
         .est-tag { font-size: 9.5px; margin-left: 4px; font-style: italic; }
         /* A parcela de mão de obra do item aparece na linha de compra só
            como informação: ela segue pra Contratos, e quem a movimenta é
