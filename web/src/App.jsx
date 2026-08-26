@@ -5958,7 +5958,7 @@ function ComprasView({ obra, onItemChange }) {
                       <th style={{ width: 74 }} className="center">Qtd.</th>
                       <th style={{ width: 104 }} className="right">Material</th>
                       <th style={{ width: 112 }} className="center">Canal</th>
-                      {baseSienge && <th style={{ width: 170 }}>Insumo mãe</th>}
+                      {baseSienge && <th style={{ width: 186 }}>Insumo mãe</th>}
                       {baseSienge && <th style={{ width: 340 }}>Detalhe do insumo</th>}
                     </tr>
                   </thead>
@@ -6057,22 +6057,36 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge,
           {!casamento ? <span className="dim">—</span> : !maeAtual ? (
             <div className="casa casa-sem"><span className="casa-bola" /> não existe</div>
           ) : (
-            <div className={`casa casa-${status}`}>
+            /* O nome inteiro, em duas linhas.
+
+               Era um <select> nativo dentro de 170px: "LUMINÁRIA - ARANDELA"
+               virava "LUMINÁRIA - ARAND" e a pessoa escolhia entre textos
+               cortados. Agora o texto e' livre pra quebrar, e o seletor fica
+               transparente por cima — mesmo truque da etiqueta de alocacao:
+               clica onde ja estava olhando, o teclado navega e o leitor de
+               tela anuncia. */
+            <div className={`mae-cel casa-${status}`}>
               <span className="casa-bola" />
-              {/* Trocar a mae so faz sentido quando ha mais de uma
-                  candidata; com uma so, o select seria decoracao. */}
-              {casamento.maes.length > 1 ? (
-                <select className="casa-sel" value={maeAtual.grupo.codigo}
-                  onChange={(e) => onItemChange({ maeSienge: e.target.value, detalheSienge: null })}
-                  title="Que coisa é, antes de qual variante">
-                  {casamento.maes.map((x) => (
-                    <option key={x.grupo.codigo} value={x.grupo.codigo}>
-                      {x.grupo.codigo} · {x.grupo.nome}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span><b>{maeAtual.grupo.codigo}</b> · {maeAtual.grupo.nome}</span>
+              <div className="mae-txt">
+                <span className="mae-cod mono">{maeAtual.grupo.codigo}</span>
+                <span className="mae-nome">{maeAtual.grupo.nome}</span>
+              </div>
+              {/* Trocar so faz sentido com mais de uma candidata; com uma
+                  so, a setinha prometeria uma escolha que nao existe. */}
+              {casamento.maes.length > 1 && (
+                <>
+                  <ChevronDown size={12} className="mae-seta" />
+                  <select className="mae-sel" value={maeAtual.grupo.codigo}
+                    onChange={(e) => onItemChange({ maeSienge: e.target.value, detalheSienge: null })}
+                    aria-label="Insumo mãe no Sienge"
+                    title="Que coisa é, antes de qual variante">
+                    {casamento.maes.map((x) => (
+                      <option key={x.grupo.codigo} value={x.grupo.codigo}>
+                        {x.grupo.codigo} · {x.grupo.nome}
+                      </option>
+                    ))}
+                  </select>
+                </>
               )}
             </div>
           )}
@@ -8562,6 +8576,19 @@ export default function App() {
         .linha-sel { background: var(--blue-bg); }
         /* Tres respostas, tres cores: "nao achei" manda cadastrar,
            "achei parecido" manda olhar antes de cadastrar. */
+        /* O nome da mae inteiro: era um <select> nativo espremido em 170px,
+           onde "LUMINÁRIA - ARANDELA" virava "LUMINÁRIA - ARAND". */
+        .mae-cel { position: relative; display: flex; align-items: flex-start; gap: 6px; padding: 2px 4px; border: 1px solid transparent; border-radius: 6px; }
+        .mae-cel:hover { border-color: var(--border); background: #fff; }
+        .mae-cel .casa-bola { margin-top: 5px; }
+        .mae-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .mae-cod { font-size: 10.5px; font-weight: 700; }
+        .mae-nome { font-size: 11px; line-height: 1.35; color: var(--ink-2); }
+        .mae-seta { flex-shrink: 0; margin-top: 3px; color: var(--ink-3); }
+        .mae-sel { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-family: inherit; }
+        .mae-cel.casa-exato .mae-cod { color: var(--green); }
+        .mae-cel.casa-aproximado .mae-cod { color: var(--amber); }
+        .mae-cel.casa-sem .mae-cod { color: var(--red); }
         .casa { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; }
         .casa-bola { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
         .casa-exato .casa-bola { background: var(--green); }
