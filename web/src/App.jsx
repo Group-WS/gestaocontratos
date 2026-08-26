@@ -5750,6 +5750,9 @@ function ComprasView({ obra, onItemChange }) {
     return [...m.values()];
   }, [visiveis]);
 
+  // As maes saem da base inteira, uma vez so.
+  const maes = useMemo(() => (baseSienge ? indiceDeMaes(baseSienge) : null), [baseSienge]);
+
   // Casa uma vez e guarda: refazer a cada render seria 200 x 2.700
   // comparacoes por tecla digitada.
   const casamentos = useMemo(() => {
@@ -5901,7 +5904,7 @@ function ComprasView({ obra, onItemChange }) {
                       <th style={{ width: 104 }} className="right">Material</th>
                       <th style={{ width: 112 }} className="center">Canal</th>
                       {baseSienge && <th style={{ width: 190 }}>Insumo no Sienge</th>}
-                      {baseSienge && <th style={{ width: 230 }}>Descrição no padrão</th>}
+                      {baseSienge && <th style={{ width: 260 }}>Detalhe do insumo</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -5909,6 +5912,7 @@ function ComprasView({ obra, onItemChange }) {
                       <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)}
                         onSelecionar={() => alternar(r.chave)}
                         casamento={casamentos.get(r.chave)}
+                        maes={maes}
                         mostrarSienge={!!baseSienge}
                         onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
                     ))}
@@ -5947,12 +5951,15 @@ function ComprasView({ obra, onItemChange }) {
   );
 }
 
-function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge, onItemChange }) {
+function LinhaCompra({ row, selecionado, onSelecionar, casamento, maes, mostrarSienge, onItemChange }) {
   const { it, material } = row;
   const padrao = descricaoSienge({
     marca: it.marca, desc: it.desc, modelo: it.modelo, cor: it.cor,
-    codigo: it.codigoFornecedor || it.especificacao,
+    codigo: it.codigoFornecedor,
   });
+  /* A mae vem do insumo que CASOU; num item sem casamento nao ha de onde
+     tirar, e chutar pelo texto poria o produto pendurado num pai errado. */
+  const mae = casamento?.insumo ? insumoMae(casamento.insumo.descricao, maes) : null;
 
   return (
     <tr className={selecionado ? "linha-sel" : ""}>
@@ -5996,15 +6003,27 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge,
       {mostrarSienge && (
         <td>
           {/* So faz sentido gerar descricao pro que vai ser cadastrado. */}
-          {casamento && casamento.status === VERMELHO ? (
-            <div className="padrao-cel">
-              <code className="padrao-txt">{padrao || "—"}</code>
-              <button className="btn-copiar" onClick={() => navigator.clipboard?.writeText(padrao)}
-                title="Copiar pra colar no cadastro do Sienge">
-                <Copy size={11} />
-              </button>
-            </div>
-          ) : <span className="dim">—</span>}
+          <div className="detalhe-cel">
+            {/* A mae so aparece quando o insumo casou e a base tem uma de
+                verdade — ver indiceDeMaes: prefixo com um filho so e parte
+                do nome, nao hierarquia. */}
+            {mae && <div className="det-mae" title="Insumo mãe no Sienge">{mae}</div>}
+            {casamento && casamento.status === VERMELHO ? (
+              <div className="padrao-cel">
+                <code className="padrao-txt">{padrao || "—"}</code>
+                <button className="btn-copiar" onClick={() => navigator.clipboard?.writeText(padrao)}
+                  title="Copiar pra colar no cadastro do Sienge">
+                  <Copy size={11} />
+                </button>
+              </div>
+            ) : casamento?.insumo ? (
+              <div className="det-desc">{casamento.insumo.descricao}</div>
+            ) : null}
+            {/* A especificacao vem do executivo e e o que distingue duas
+                pecas de mesmo nome — sem ela, "Cuba de apoio" e todas as
+                cubas de apoio que existem. */}
+            {it.especificacao && <div className="det-espec">{it.especificacao}</div>}
+          </div>
         </td>
       )}
     </tr>
@@ -8453,6 +8472,10 @@ export default function App() {
         .casa-sem .casa-bola { background: var(--red); }
         .casa-sem { color: var(--red); font-weight: 600; }
         .casa-sel { max-width: 168px; font-size: 11px; border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-family: inherit; background: #fff; color: var(--ink); }
+        .detalhe-cel { display: flex; flex-direction: column; gap: 3px; }
+        .det-mae { font-size: 9.5px; font-weight: 700; color: var(--purple); text-transform: uppercase; letter-spacing: 0.04em; }
+        .det-desc { font-size: 11px; color: var(--ink-2); line-height: 1.4; }
+        .det-espec { font-size: 10.5px; color: var(--ink-3); line-height: 1.4; font-style: italic; }
         .padrao-cel { display: flex; align-items: flex-start; gap: 6px; }
         .padrao-txt { font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.45; background: var(--panel); border-radius: 4px; padding: 4px 6px; flex: 1; word-break: break-word; }
         .btn-copiar { background: transparent; border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; cursor: pointer; color: var(--ink-3); display: inline-flex; flex-shrink: 0; }

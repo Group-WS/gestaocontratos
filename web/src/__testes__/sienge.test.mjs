@@ -7,7 +7,7 @@
  * insumo errado; marcar de vermelho o que já existe faz cadastrar um
  * duplicado, e a base do Sienge incha com o mesmo produto em dois códigos.
  */
-import { casarInsumo, semelhanca, descricaoSienge, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
+import { casarInsumo, semelhanca, descricaoSienge, indiceDeMaes, insumoMae, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -83,6 +83,32 @@ conf("só a descrição também serve",
   descricaoSienge({ desc: "Spot de embutir" }), "SPOT DE EMBUTIR");
 conf("nada dentro não gera separador", descricaoSienge({}), "");
 conf("espaço em branco não conta", descricaoSienge({ marca: "  ", desc: "Cuba" }), "CUBA");
+
+/* ---- 6. o insumo mãe, só quando ele existe ---- */
+// O Sienge não exporta coluna de pai: o agrupamento vem embutido na
+// descrição, antes do primeiro " - ". Só que isso vale pra metade da
+// base — medindo o relatório real, 122 de 265 prefixos têm UM filho só, e
+// aí o texto antes do traço é parte do nome, não hierarquia.
+const comMae = [
+  { codigo: 1, descricao: "FERRAMENTAS MANUAIS E ACESSÓRIOS - ESTILETE" },
+  { codigo: 2, descricao: "FERRAMENTAS MANUAIS E ACESSÓRIOS - LIXADOR MANUAL" },
+  { codigo: 3, descricao: "FERRAMENTAS MANUAIS E ACESSÓRIOS - CORTANTES" },
+  { codigo: 4, descricao: "ASSINATURA DE PERIÓDICO - REVISTA TÉCNICA" },
+  { codigo: 5, descricao: "TORNEIRA DOCOL LOFT" },
+];
+const maes = indiceDeMaes(comMae);
+conf("acha a mãe com três filhos", maes.has("FERRAMENTAS MANUAIS E ACESSÓRIOS"), true);
+// Pendurar produto num pai inventado faz alguém cadastrar errado no Sienge.
+conf("prefixo com UM filho não vira mãe", maes.has("ASSINATURA DE PERIÓDICO"), false);
+conf("só uma mãe de verdade nessa base", maes.size, 1);
+conf("o filho aponta pra mãe", insumoMae(comMae[0].descricao, maes), "FERRAMENTAS MANUAIS E ACESSÓRIOS");
+conf("o solitário não aponta pra nada", insumoMae(comMae[3].descricao, maes), null);
+conf("descrição sem traço não tem mãe", insumoMae(comMae[4].descricao, maes), null);
+conf("sem índice não inventa mãe", insumoMae(comMae[0].descricao, null), null);
+conf("base vazia não tem mãe nenhuma", indiceDeMaes([]).size, 0);
+// Prefixo curto demais não é agrupador — é ruído de pontuação.
+conf("prefixo de duas letras é ignorado",
+  indiceDeMaes([{ descricao: "AB - X" }, { descricao: "AB - Y" }]).size, 0);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

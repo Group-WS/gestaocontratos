@@ -69,6 +69,42 @@ export function casarInsumo(desc, base) {
   return { status: LARANJA, insumo: notas[0].insumo, score: notas[0].score, alternativas: notas };
 }
 
+/* INSUMO MÃE — o agrupador, quando ele existe de verdade.
+ *
+ * O relatório do Sienge não traz coluna de pai: o agrupamento vive
+ * embutido na própria descrição, antes do primeiro " - ", como em
+ * "FERRAMENTAS MANUAIS E ACESSÓRIOS - ESTILETE".
+ *
+ * Só que isso vale pra metade da base. Medindo os 2.701 insumos do
+ * relatório: 53% têm o prefixo, e de 265 prefixos distintos, 122 têm UM
+ * único filho — nesses o texto antes do traço é parte do nome, não um
+ * pai ("ASSINATURA DE PERIÓDICO", "PROJETO SPDA").
+ *
+ * Por isso a regra é: só é mãe quem tem pelo menos DOIS filhos. Chamar de
+ * mãe um prefixo solitário inventaria uma hierarquia que o Sienge não
+ * tem, e alguém cadastraria insumo pendurado num pai que não existe. */
+export function indiceDeMaes(base) {
+  const cont = new Map();
+  (base || []).forEach((i) => {
+    const m = String(i.descricao || "").match(/^(.*?)\s+-\s+/);
+    if (!m) return;
+    const chave = m[1].trim();
+    if (chave.length < 3) return;
+    cont.set(chave, (cont.get(chave) || 0) + 1);
+  });
+  const maes = new Set();
+  cont.forEach((n, chave) => { if (n >= 2) maes.add(chave); });
+  return maes;
+}
+
+/** Devolve a mãe do insumo, ou null quando a base não tem uma de verdade. */
+export function insumoMae(descricao, maes) {
+  const m = String(descricao || "").match(/^(.*?)\s+-\s+/);
+  if (!m || !maes) return null;
+  const chave = m[1].trim();
+  return maes.has(chave) ? chave : null;
+}
+
 /* Descrição no padrão da casa: MARCA / DESCRIÇÃO / MODELO / COR / CÓDIGO.
  *
  * Campo que não existe é PULADO, não vira espaço vazio nem "—": a
