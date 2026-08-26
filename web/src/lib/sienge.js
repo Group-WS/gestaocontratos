@@ -11,9 +11,20 @@
  * segunda manda olhar antes de cadastrar.
  */
 
+/* Normaliza pra comparar — mas NÃO quebra número.
+ *
+ * "9.000 BTUS" e "18.000 BTUS" empatavam em 100%: o ponto virava espaço,
+ * "9" e "18" eram descartados por serem curtos, e sobrava "000" nos dois.
+ * A capacidade é justamente o que mais distingue um ar-condicionado do
+ * outro, e era a única coisa que a comparação não via.
+ *
+ * Por isso o separador de milhar sai ANTES: 9.000 vira 9000, 18.000 vira
+ * 18000, e aí os dois deixam de ser a mesma palavra. */
 export const norm = (s) => String(s || "")
   .normalize("NFD").replace(/[̀-ͯ]/g, "")
-  .toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  .toLowerCase()
+  .replace(/(\d)[.,](\d)/g, "$1$2")
+  .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 
 /* Palavras que não distinguem produto nenhum. Sem tirá-las, "Kit de
    instalação para banheira" casa com "Kit de instalação para chuveiro"
@@ -21,7 +32,10 @@ export const norm = (s) => String(s || "")
 const VAZIAS = new Set(["de", "da", "do", "das", "dos", "para", "p", "com", "sem", "em", "e",
   "a", "o", "as", "os", "um", "uma", "no", "na", "por", "kit", "cor", "un", "und", "pc"]);
 
-const palavras = (s) => norm(s).split(" ").filter((p) => p.length > 2 && !VAZIAS.has(p));
+/* Número entra mesmo curto: "18" e "220v" distinguem produto, e eram
+   descartados pela regra de tamanho junto com "de" e "da". */
+export const palavras = (s) => norm(s).split(" ")
+  .filter((p) => (p.length > 2 || /\d/.test(p)) && !VAZIAS.has(p));
 
 /* Quanto duas descrições se parecem, de 0 a 1.
 
@@ -69,40 +83,79 @@ export function casarInsumo(desc, base) {
   return { status: LARANJA, insumo: notas[0].insumo, score: notas[0].score, alternativas: notas };
 }
 
-/* INSUMO MÃE — o agrupador, quando ele existe de verdade.
+/* MÃE E DETALHE — a estrutura real da base do Sienge.
  *
- * O relatório do Sienge não traz coluna de pai: o agrupamento vive
- * embutido na própria descrição, antes do primeiro " - ", como em
- * "FERRAMENTAS MANUAIS E ACESSÓRIOS - ESTILETE".
+ * O CÓDIGO é a mãe, e ele se repete. Debaixo do 275 (AR CONDICIONADO)
+ * moram dezenas de variantes; debaixo do 6050 (CONDENSADORA), outras
+ * tantas. A descrição carrega as duas coisas separadas por " / ":
  *
- * Só que isso vale pra metade da base. Medindo os 2.701 insumos do
- * relatório: 53% têm o prefixo, e de 265 prefixos distintos, 122 têm UM
- * único filho — nesses o texto antes do traço é parte do nome, não um
- * pai ("ASSINATURA DE PERIÓDICO", "PROJETO SPDA").
+ *   275 | AR CONDICIONADO / ELECTROLUX / SPLIT 9.000 BTUS QUENTE/FRIO
+ *         └── mãe ──────┘   └────────── detalhe ──────────────────┘
  *
- * Por isso a regra é: só é mãe quem tem pelo menos DOIS filhos. Chamar de
- * mãe um prefixo solitário inventaria uma hierarquia que o Sienge não
- * tem, e alguém cadastraria insumo pendurado num pai que não existe. */
-export function indiceDeMaes(base) {
-  const cont = new Map();
-  (base || []).forEach((i) => {
-    const m = String(i.descricao || "").match(/^(.*?)\s+-\s+/);
-    if (!m) return;
-    const chave = m[1].trim();
-    if (chave.length < 3) return;
-    cont.set(chave, (cont.get(chave) || 0) + 1);
-  });
-  const maes = new Set();
-  cont.forEach((n, chave) => { if (n >= 2) maes.add(chave); });
-  return maes;
+ * Tratar cada linha como um insumo solto — que era o que eu fazia — faz a
+ * escolha virar uma lista de dezenas de textos quase iguais, onde a
+ * pessoa compara "9.000" com "18.000" no meio de uma frase. Separando,
+ * ela primeiro confirma QUE COISA é (ar-condicionado), e só depois
+ * escolhe QUAL (marca, capacidade, ciclo).
+ */
+
+const SEP = " / ";
+
+export function partesDoInsumo(descricao) {
+  const p = String(descricao || "").split(SEP).map((x) => x.trim()).filter(Boolean);
+  return { mae: p[0] || "", detalhe: p.slice(1).join(SEP) };
 }
 
-/** Devolve a mãe do insumo, ou null quando a base não tem uma de verdade. */
-export function insumoMae(descricao, maes) {
-  const m = String(descricao || "").match(/^(.*?)\s+-\s+/);
-  if (!m || !maes) return null;
-  const chave = m[1].trim();
-  return maes.has(chave) ? chave : null;
+/** Agrupa a base por código: cada grupo é uma mãe com suas variantes. */
+export function agruparPorMae(base) {
+  const m = new Map();
+  (base || []).forEach((i) => {
+    const { mae, detalhe } = partesDoInsumo(i.descricao);
+    const chave = String(i.codigo);
+    if (!m.has(chave)) m.set(chave, { codigo: chave, nome: mae, variantes: [] });
+    const g = m.get(chave);
+    // Codigo com nomes de mae diferentes: fica o mais frequente, que e o
+    // que a base de fato chama aquilo.
+    g.variantes.push({ ...i, mae, detalhe: detalhe || mae });
+  });
+  m.forEach((g) => {
+    const cont = new Map();
+    g.variantes.forEach((v) => cont.set(v.mae, (cont.get(v.mae) || 0) + 1));
+    g.nome = [...cont.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  });
+  return [...m.values()];
+}
+
+/* Acha a MÃE do item — que coisa é, antes de qual variante.
+ *
+ * Compara contra o nome da mãe E contra as variantes: "Ar-condicionado
+ * Electrolux 9.000" casa com a mãe pelo nome, mas "Condensadora Split
+ * 18.000" só casa pela variante, porque o nome da mãe sozinho ("
+ * CONDENSADORA") tem uma palavra só. */
+export function acharMaes(desc, grupos, limite = 4) {
+  const notas = (grupos || []).map((g) => {
+    const porNome = semelhanca(desc, g.nome);
+    const porVariante = g.variantes.reduce((melhor, v) => Math.max(melhor, semelhanca(desc, v.descricao)), 0);
+    return { grupo: g, score: Math.max(porNome, porVariante) };
+  }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score);
+  return notas.slice(0, limite);
+}
+
+/* Ordena as variantes de UMA mãe e diz quais palavras casaram.
+ *
+ * As palavras casadas voltam junto de proposito: "62%" nao ajuda ninguem
+ * a decidir entre duas condensadoras. Ver que casou ELECTROLUX e 18.000 e
+ * que NAO casou quente/frio e o que permite escolher com seguranca. */
+export function ordenarDetalhes(desc, grupo) {
+  const alvo = new Set(palavras(desc));
+  return (grupo?.variantes || [])
+    .map((v) => {
+      const dele = new Set(palavras(v.descricao));
+      const casaram = [...alvo].filter((p) => dele.has(p));
+      const faltaram = [...alvo].filter((p) => !dele.has(p));
+      return { insumo: v, score: semelhanca(desc, v.descricao), casaram, faltaram };
+    })
+    .sort((a, b) => b.score - a.score || b.casaram.length - a.casaram.length);
 }
 
 /* Descrição no padrão da casa: MARCA / DESCRIÇÃO / MODELO / COR / CÓDIGO.

@@ -7,7 +7,7 @@
  * insumo errado; marcar de vermelho o que já existe faz cadastrar um
  * duplicado, e a base do Sienge incha com o mesmo produto em dois códigos.
  */
-import { casarInsumo, semelhanca, descricaoSienge, indiceDeMaes, insumoMae, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
+import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -84,31 +84,53 @@ conf("só a descrição também serve",
 conf("nada dentro não gera separador", descricaoSienge({}), "");
 conf("espaço em branco não conta", descricaoSienge({ marca: "  ", desc: "Cuba" }), "CUBA");
 
-/* ---- 6. o insumo mãe, só quando ele existe ---- */
-// O Sienge não exporta coluna de pai: o agrupamento vem embutido na
-// descrição, antes do primeiro " - ". Só que isso vale pra metade da
-// base — medindo o relatório real, 122 de 265 prefixos têm UM filho só, e
-// aí o texto antes do traço é parte do nome, não hierarquia.
-const comMae = [
-  { codigo: 1, descricao: "FERRAMENTAS MANUAIS E ACESSÓRIOS - ESTILETE" },
-  { codigo: 2, descricao: "FERRAMENTAS MANUAIS E ACESSÓRIOS - LIXADOR MANUAL" },
-  { codigo: 3, descricao: "FERRAMENTAS MANUAIS E ACESSÓRIOS - CORTANTES" },
-  { codigo: 4, descricao: "ASSINATURA DE PERIÓDICO - REVISTA TÉCNICA" },
-  { codigo: 5, descricao: "TORNEIRA DOCOL LOFT" },
+/* ---- 6. mãe e detalhe: a estrutura real da base ---- */
+// O CÓDIGO é a mãe e ele se repete. Debaixo do 275 (AR CONDICIONADO)
+// moram dezenas de variantes. Tratar cada linha como insumo solto fazia a
+// escolha virar uma lista de textos quase iguais, onde a pessoa compara
+// "9.000" com "18.000" no meio de uma frase.
+const arCond = [
+  { codigo: 275, descricao: "AR CONDICIONADO / ELECTROLUX / SPLIT 9.000 BTUS QUENTE/FRIO" },
+  { codigo: 275, descricao: "AR CONDICIONADO / ELECTROLUX / SPLIT 18.000 BTUS QUENTE/FRIO" },
+  { codigo: 275, descricao: "AR CONDICIONADO / LG / DUAL INVERTER 12.000 BTUS" },
+  { codigo: 6050, descricao: "CONDENSADORA / ELECTROLUX / SPLIT 9.000 BTUs" },
 ];
-const maes = indiceDeMaes(comMae);
-conf("acha a mãe com três filhos", maes.has("FERRAMENTAS MANUAIS E ACESSÓRIOS"), true);
-// Pendurar produto num pai inventado faz alguém cadastrar errado no Sienge.
-conf("prefixo com UM filho não vira mãe", maes.has("ASSINATURA DE PERIÓDICO"), false);
-conf("só uma mãe de verdade nessa base", maes.size, 1);
-conf("o filho aponta pra mãe", insumoMae(comMae[0].descricao, maes), "FERRAMENTAS MANUAIS E ACESSÓRIOS");
-conf("o solitário não aponta pra nada", insumoMae(comMae[3].descricao, maes), null);
-conf("descrição sem traço não tem mãe", insumoMae(comMae[4].descricao, maes), null);
-conf("sem índice não inventa mãe", insumoMae(comMae[0].descricao, null), null);
-conf("base vazia não tem mãe nenhuma", indiceDeMaes([]).size, 0);
-// Prefixo curto demais não é agrupador — é ruído de pontuação.
-conf("prefixo de duas letras é ignorado",
-  indiceDeMaes([{ descricao: "AB - X" }, { descricao: "AB - Y" }]).size, 0);
+conf("separa mãe de detalhe", partesDoInsumo(arCond[0].descricao).mae, "AR CONDICIONADO");
+conf("... e o resto é o detalhe", partesDoInsumo(arCond[0].descricao).detalhe,
+  "ELECTROLUX / SPLIT 9.000 BTUS QUENTE/FRIO");
+conf("descrição sem barra é só mãe", partesDoInsumo("ESTILETE").mae, "ESTILETE");
+
+const gr = agruparPorMae(arCond);
+conf("duas mães", gr.length, 2);
+conf("o código 275 junta as três variantes",
+  gr.find((g) => g.codigo === "275").variantes.length, 3);
+conf("a mãe é nomeada pelo primeiro segmento",
+  gr.find((g) => g.codigo === "275").nome, "AR CONDICIONADO");
+
+/* ---- 7. a capacidade não pode ser jogada fora ---- */
+// "9.000" e "18.000" empatavam em 100%: o ponto virava espaço, "9" e "18"
+// eram descartados por serem curtos, e sobrava "000" nos dois. É
+// justamente o que mais distingue um ar-condicionado do outro.
+const alvo = "Ar-condicionado Electrolux Split 18.000 BTUs Quente/Frio";
+const maeCerta = acharMaes(alvo, gr)[0];
+conf("acha a mãe certa", maeCerta.grupo.codigo, "275");
+const det = ordenarDetalhes(alvo, maeCerta.grupo);
+conf("18.000 vem em primeiro", det[0].insumo.descricao.includes("18.000"), true);
+conf("... com tudo batendo", det[0].faltaram.length, 0);
+conf("9.000 fica atrás", det[1].insumo.descricao.includes("9.000"), true);
+conf("... e diz que faltou a capacidade", det[1].faltaram.includes("18000"), true);
+conf("o de 9.000 não empata com o de 18.000", det[0].score > det[1].score, true);
+// Número curto entra: "18" e "220v" distinguem produto e eram descartados
+// pela regra de tamanho junto com "de" e "da".
+conf("número de dois dígitos conta", norm("18.000 BTUS"), "18000 btus");
+conf("vírgula decimal também junta", norm("2,5 TR"), "25 tr");
+
+/* ---- 8. a mãe errada não pode ganhar ---- */
+// Condensadora e ar-condicionado são coisas diferentes no Sienge.
+const alvoCond = "Condensadora Electrolux Split 9.000";
+conf("condensadora acha a própria mãe", acharMaes(alvoCond, gr)[0].grupo.codigo, "6050");
+conf("mãe nenhuma quando nada casa", acharMaes("Bancada de mármore", gr).length, 0);
+conf("base vazia não tem mãe", agruparPorMae([]).length, 0);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

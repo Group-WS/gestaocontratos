@@ -15,7 +15,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { casarInsumo, descricaoSienge, VERDE, LARANJA, VERMELHO } from "./lib/sienge";
+import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes } from "./lib/sienge";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
@@ -5750,17 +5750,24 @@ function ComprasView({ obra, onItemChange }) {
     return [...m.values()];
   }, [visiveis]);
 
-  // As maes saem da base inteira, uma vez so.
-  const maes = useMemo(() => (baseSienge ? indiceDeMaes(baseSienge) : null), [baseSienge]);
+  /* A base agrupada por MAE: o codigo do Sienge se repete, e debaixo de
+     cada um moram as variantes. Agrupar uma vez custa uma passada; fazer
+     por linha custaria 126 x 10.507. */
+  const grupos = useMemo(() => (baseSienge ? agruparPorMae(baseSienge) : null), [baseSienge]);
 
   // Casa uma vez e guarda: refazer a cada render seria 200 x 2.700
   // comparacoes por tecla digitada.
   const casamentos = useMemo(() => {
-    if (!baseSienge) return new Map();
+    if (!grupos) return new Map();
     const m = new Map();
-    rows.forEach((r) => m.set(r.chave, casarInsumo(r.it.desc, baseSienge)));
+    rows.forEach((r) => {
+      const maes = acharMaes(r.it.desc, grupos);
+      const melhor = maes[0] || null;
+      // Sem mae provavel nao ha o que escolher: e caso de cadastrar.
+      m.set(r.chave, { maes, detalhes: melhor ? ordenarDetalhes(r.it.desc, melhor.grupo) : [] });
+    });
     return m;
-  }, [baseSienge, rows]);
+  }, [grupos, rows]);
 
   const selecionados = rows.filter((r) => sel.has(r.chave));
   const totalSel = selecionados.reduce((a, r) => a + r.material, 0);
@@ -5903,8 +5910,8 @@ function ComprasView({ obra, onItemChange }) {
                       <th style={{ width: 74 }} className="center">Qtd.</th>
                       <th style={{ width: 104 }} className="right">Material</th>
                       <th style={{ width: 112 }} className="center">Canal</th>
-                      {baseSienge && <th style={{ width: 190 }}>Insumo no Sienge</th>}
-                      {baseSienge && <th style={{ width: 260 }}>Detalhe do insumo</th>}
+                      {baseSienge && <th style={{ width: 170 }}>Insumo mãe</th>}
+                      {baseSienge && <th style={{ width: 340 }}>Detalhe do insumo</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -5912,7 +5919,6 @@ function ComprasView({ obra, onItemChange }) {
                       <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)}
                         onSelecionar={() => alternar(r.chave)}
                         casamento={casamentos.get(r.chave)}
-                        maes={maes}
                         mostrarSienge={!!baseSienge}
                         onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
                     ))}
@@ -5951,15 +5957,25 @@ function ComprasView({ obra, onItemChange }) {
   );
 }
 
-function LinhaCompra({ row, selecionado, onSelecionar, casamento, maes, mostrarSienge, onItemChange }) {
+function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge, onItemChange }) {
   const { it, material } = row;
   const padrao = descricaoSienge({
-    marca: it.marca, desc: it.desc, modelo: it.modelo, cor: it.cor,
-    codigo: it.codigoFornecedor,
+    marca: it.marca, desc: it.desc, modelo: it.modelo, cor: it.cor, codigo: it.codigoFornecedor,
   });
-  /* A mae vem do insumo que CASOU; num item sem casamento nao ha de onde
-     tirar, e chutar pelo texto poria o produto pendurado num pai errado. */
-  const mae = casamento?.insumo ? insumoMae(casamento.insumo.descricao, maes) : null;
+
+  // A mae escolhida: a que o casamento sugeriu, ou a que a pessoa trocou.
+  const maeAtual = (casamento?.maes || []).find((x) => x.grupo.codigo === it.maeSienge)
+    || (casamento?.maes || [])[0] || null;
+  const detalhes = maeAtual
+    ? (maeAtual.grupo.codigo === casamento?.maes?.[0]?.grupo.codigo
+        ? casamento.detalhes
+        : ordenarDetalhes(it.desc, maeAtual.grupo))
+    : [];
+  const escolhido = it.detalheSienge;
+  /* Verde e mae achada COM detalhe que bate; laranja e mae achada e
+     detalhe por escolher; vermelho e nem mae. Sao tres perguntas
+     diferentes e cada uma manda pra um lado: comprar, conferir, cadastrar. */
+  const status = !maeAtual ? "sem" : (escolhido || detalhes[0]?.score >= 0.95) ? "exato" : "aproximado";
 
   return (
     <tr className={selecionado ? "linha-sel" : ""}>
@@ -5972,58 +5988,82 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, maes, mostrarS
       <td>
         <div className="item-desc">{it.desc}</div>
         {it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{it.ambiente}</span>}
+        {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
+            "Cuba de apoio" e todas as cubas de apoio que existem. */}
+        {it.especificacao && <div className="det-espec">{it.especificacao}</div>}
       </td>
       <td className="mono center">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
       <td className="mono right">{fmtBRL(material)}</td>
       <td className="center">
         {it.canalCompra ? <TagCanal id={it.canalCompra} comNome /> : <span className="pill pill-wait">—</span>}
       </td>
+
       {mostrarSienge && (
         <td>
-          {!casamento ? <span className="dim">—</span> : (
-            <div className={`casa casa-${casamento.status}`}>
+          {!casamento ? <span className="dim">—</span> : !maeAtual ? (
+            <div className="casa casa-sem"><span className="casa-bola" /> não existe</div>
+          ) : (
+            <div className={`casa casa-${status}`}>
               <span className="casa-bola" />
-              {casamento.status === VERDE && <span title={casamento.insumo.descricao}>{casamento.insumo.codigo} · igual</span>}
-              {casamento.status === LARANJA && (
-                <select className="casa-sel" value={it.insumoSienge || casamento.insumo.codigo}
-                  onChange={(e) => onItemChange({ insumoSienge: e.target.value })}
-                  title="Confira antes de aceitar — parecido não é igual">
-                  {casamento.alternativas.map((a) => (
-                    <option key={a.insumo.codigo} value={a.insumo.codigo}>
-                      {a.insumo.codigo} · {a.insumo.descricao.slice(0, 44)} ({Math.round(a.score * 100)}%)
+              {/* Trocar a mae so faz sentido quando ha mais de uma
+                  candidata; com uma so, o select seria decoracao. */}
+              {casamento.maes.length > 1 ? (
+                <select className="casa-sel" value={maeAtual.grupo.codigo}
+                  onChange={(e) => onItemChange({ maeSienge: e.target.value, detalheSienge: null })}
+                  title="Que coisa é, antes de qual variante">
+                  {casamento.maes.map((x) => (
+                    <option key={x.grupo.codigo} value={x.grupo.codigo}>
+                      {x.grupo.codigo} · {x.grupo.nome}
                     </option>
                   ))}
                 </select>
+              ) : (
+                <span><b>{maeAtual.grupo.codigo}</b> · {maeAtual.grupo.nome}</span>
               )}
-              {casamento.status === VERMELHO && <span>não existe — cadastrar</span>}
             </div>
           )}
         </td>
       )}
+
       {mostrarSienge && (
         <td>
-          {/* So faz sentido gerar descricao pro que vai ser cadastrado. */}
-          <div className="detalhe-cel">
-            {/* A mae so aparece quando o insumo casou e a base tem uma de
-                verdade — ver indiceDeMaes: prefixo com um filho so e parte
-                do nome, nao hierarquia. */}
-            {mae && <div className="det-mae" title="Insumo mãe no Sienge">{mae}</div>}
-            {casamento && casamento.status === VERMELHO ? (
-              <div className="padrao-cel">
-                <code className="padrao-txt">{padrao || "—"}</code>
-                <button className="btn-copiar" onClick={() => navigator.clipboard?.writeText(padrao)}
-                  title="Copiar pra colar no cadastro do Sienge">
-                  <Copy size={11} />
+          {!maeAtual ? (
+            <div className="padrao-cel">
+              <code className="padrao-txt">{padrao || "—"}</code>
+              <button className="btn-copiar" onClick={() => navigator.clipboard?.writeText(padrao)}
+                title="Copiar pra colar no cadastro do Sienge"><Copy size={11} /></button>
+            </div>
+          ) : (
+            <div className="detalhe-cel">
+              {/* As opcoes ja cadastradas debaixo desta mae, ordenadas.
+                  Mostrar o que FALTOU casar e o que permite decidir: "62%"
+                  nao ajuda ninguem a escolher entre duas condensadoras. */}
+              {detalhes.slice(0, 4).map((d, k) => (
+                <button key={d.insumo.descricao + k}
+                  className={`det-opcao ${escolhido === d.insumo.descricao ? "escolhida" : ""}`}
+                  onClick={() => onItemChange({
+                    detalheSienge: escolhido === d.insumo.descricao ? null : d.insumo.descricao,
+                    maeSienge: maeAtual.grupo.codigo,
+                  })}
+                  title={d.insumo.descricao}>
+                  <span className="det-opcao-txt">{d.insumo.detalhe}</span>
+                  {d.faltaram.length > 0
+                    ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
+                    : <span className="det-bate">bate tudo</span>}
                 </button>
-              </div>
-            ) : casamento?.insumo ? (
-              <div className="det-desc">{casamento.insumo.descricao}</div>
-            ) : null}
-            {/* A especificacao vem do executivo e e o que distingue duas
-                pecas de mesmo nome — sem ela, "Cuba de apoio" e todas as
-                cubas de apoio que existem. */}
-            {it.especificacao && <div className="det-espec">{it.especificacao}</div>}
-          </div>
+              ))}
+              {detalhes.length === 0 && <span className="dim">sem variante cadastrada</span>}
+              {/* Nenhuma serve: gera o descritivo pra cadastrar na mao. */}
+              <details className="det-gerar">
+                <summary>nenhuma serve — gerar descritivo</summary>
+                <div className="padrao-cel">
+                  <code className="padrao-txt">{padrao || "—"}</code>
+                  <button className="btn-copiar" onClick={() => navigator.clipboard?.writeText(padrao)}
+                    title="Copiar pra colar no cadastro do Sienge"><Copy size={11} /></button>
+                </div>
+              </details>
+            </div>
+          )}
         </td>
       )}
     </tr>
@@ -8472,6 +8512,15 @@ export default function App() {
         .casa-sem .casa-bola { background: var(--red); }
         .casa-sem { color: var(--red); font-weight: 600; }
         .casa-sel { max-width: 168px; font-size: 11px; border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-family: inherit; background: #fff; color: var(--ink); }
+        .det-opcao { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-family: inherit; }
+        .det-opcao:hover { background: var(--panel); }
+        .det-opcao.escolhida { border-color: var(--green); background: var(--green-bg); }
+        .det-opcao-txt { flex: 1; font-size: 11px; color: var(--ink-2); line-height: 1.35; }
+        .det-falta { font-size: 9.5px; color: var(--amber); white-space: nowrap; flex-shrink: 0; }
+        .det-bate { font-size: 9.5px; color: var(--green); font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+        .det-gerar { margin-top: 4px; }
+        .det-gerar summary { font-size: 10px; color: var(--ink-3); cursor: pointer; }
+        .det-gerar summary:hover { color: var(--ink); }
         .detalhe-cel { display: flex; flex-direction: column; gap: 3px; }
         .det-mae { font-size: 9.5px; font-weight: 700; color: var(--purple); text-transform: uppercase; letter-spacing: 0.04em; }
         .det-desc { font-size: 11px; color: var(--ink-2); line-height: 1.4; }
