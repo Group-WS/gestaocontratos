@@ -35,6 +35,34 @@ export async function listarPrecos({ busca = "", limite = 200 } = {}) {
   return data || [];
 }
 
+/* Toda a base, pra casar item por item sem ida e volta ao banco.
+ *
+ * O casamento compara CADA item da obra contra a base inteira — 200 itens
+ * contra 2.700 insumos. Fazer isso por consulta seria 200 chamadas e uma
+ * tela travada; a base cabe na memória e cabe de sobra.
+ *
+ * Pagina de mil em mil porque o PostgREST corta em 1.000 por padrão, e
+ * uma base cortada casa de vermelho o que existe — o pior erro possível
+ * aqui, porque manda cadastrar duplicado.
+ */
+export async function carregarTodosInsumos() {
+  if (!supabaseConfigurado) return [];
+  const todos = [];
+  const passo = 1000;
+  for (let de = 0; ; de += passo) {
+    const { data, error } = await supabase
+      .from("insumo_preco")
+      .select("codigo, descricao, unidade, custo_unitario")
+      .range(de, de + passo - 1);
+    if (error) throw error;
+    todos.push(...(data || []));
+    if (!data || data.length < passo) break;
+  }
+  return todos.map((i) => ({
+    codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, custoUnitario: i.custo_unitario,
+  }));
+}
+
 export async function contarPrecos() {
   if (!supabaseConfigurado) return 0;
   const { count, error } = await supabase

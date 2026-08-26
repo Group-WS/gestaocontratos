@@ -15,7 +15,8 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
+import { casarInsumo, descricaoSienge, VERDE, LARANJA, VERMELHO } from "./lib/sienge";
+import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 import { subirArquivo, linkParaBaixar, apagarArquivo, anexoRecuperavel } from "./lib/arquivos";
@@ -5698,183 +5699,315 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
    ============================================================ */
 
 // achata os produtos de todas as verbas, guardando os índices pra edição
-function comprasItens(obra) {
+
+/* Tudo que e MATERIAL na obra.
+
+   A lista era `it.tipo === "produto"` — o mesmo campo de UMA escolha que
+   ja tinha escondido a mao de obra do spot na tela de Contratos. Aqui o
+   erro e o espelho: item marcado como servico com material lancado nunca
+   aparecia pra comprar.
+
+   Entra quem TEM parcela de material, e o valor que viaja e a PARCELA. */
+function produtosMAT(obra) {
   const out = [];
-  obra.categorias.forEach((cat, catIdx) => {
+  (obra.categorias || []).forEach((cat, catIdx) => {
     (cat.itens || []).forEach((it, itemIdx) => {
-      if (it.tipo === "produto") out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome });
+      if (it.ehTitulo) return;
+      const { material } = parcelasDoItem(it);
+      const aloc = alocacaoDoItem(it, cat);
+      if (material <= 0 && aloc !== ALOC_MAT) return;
+      out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome, material, aloc,
+        chave: `${catIdx}-${itemIdx}` });
     });
   });
   return out;
 }
 
-const isFalta = (it) => it.liberado && !it.lancadoSienge && !it.comprado;
-const isLancado = (it) => it.lancadoSienge && !it.comprado;
-const isComprado = (it) => !!it.comprado;
-const isSemInsumo = (it) => isFalta(it) && (it.sienge?.status === "nao_encontrado");
-
-function ComprasRow({ row, onItemChange }) {
-  const { it, catNum, catNome } = row;
-  const [sugAberta, setSugAberta] = useState(false);
-  const [copiado, setCopiado] = useState(false);
-  const status = it.sienge?.status || (it.contavel ? "nao_encontrado" : null);
-  const codigo = it.sienge?.codigo;
-  const sug = it.sugestaoSienge;
-
-  let badge = null;
-  if (status === "match") badge = <span className="sg-badge sg-match"><CheckCircle2 size={12} /> Sienge {codigo} · confere</span>;
-  else if (status === "parcial") badge = <span className="sg-badge sg-parcial"><AlertTriangle size={12} /> Sienge {codigo} · revisar</span>;
-  else if (status === "nao_encontrado") badge = <span className="sg-badge sg-nao"><XCircle size={12} /> Sem insumo — cadastrar</span>;
-
-  // Status do processo é uma TAG (não há integração com o Sienge): o
-  // comprador lança/cadastra por fora e marca aqui em que fase está.
-  const estado = it.comprado ? "comprado" : it.lancadoSienge ? "lancado" : "falta";
-  const setEstado = (v) => {
-    if (v === "falta") onItemChange({ lancadoSienge: false, comprado: false });
-    else if (v === "lancado") onItemChange({ lancadoSienge: true, comprado: false });
-    else onItemChange({ lancadoSienge: true, comprado: true });
-  };
-
-  const textoSug = sug ? `${sug.marca} / ${sug.descricao} / ${sug.cor} / ${sug.codigo}` : "";
-  const copiar = () => {
-    if (navigator.clipboard) navigator.clipboard.writeText(textoSug);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 1600);
-  };
-
-  return (
-    <div className="compras-rowwrap">
-      <div className="compras-row">
-        <div className="compras-row-main">
-          <div className="compras-desc">{it.desc}</div>
-          <div className="compras-meta mono">{catNum} · {catNome} · {it.ambiente} · {it.qtdExecutivo ?? "—"} {it.un}</div>
-        </div>
-        <div className="compras-custo mono">{fmtBRL(it.custo)}</div>
-        <div className="compras-sg">
-          {badge}
-          {status === "nao_encontrado" && sug && (
-            <button className="sug-toggle" onClick={() => setSugAberta((v) => !v)}>
-              <Sparkles size={11} /> {sugAberta ? "ocultar sugestão" : "sugestão de cadastro"}
-            </button>
-          )}
-        </div>
-        <div className="compras-acao">
-          <select className={`proc-tag proc-${estado}`} value={estado} onChange={(e) => setEstado(e.target.value)} aria-label="Status do processo de compra">
-            <option value="falta">Falta lançar no Sienge</option>
-            <option value="lancado">Lançado no Sienge</option>
-            <option value="comprado">Comprado</option>
-          </select>
-        </div>
-      </div>
-      {sugAberta && sug && (
-        <div className="sugestao-sienge">
-          <div className="sug-title"><Sparkles size={12} /> Sugestão para cadastrar no Sienge <span className="sug-warn">confirme antes de usar</span></div>
-          <div className="sug-row">
-            <code className="sug-code">{textoSug}</code>
-            <button className="sug-copy" onClick={copiar}><Copy size={13} /> {copiado ? "Copiado!" : "Copiar"}</button>
-          </div>
-          <div className="sug-fmt">Formato: MARCA / DESCRIÇÃO / COR / CÓDIGO</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ComprasView({ obra, onItemChange }) {
-  const [filtro, setFiltro] = useState("falta");
-  const [recolhidos, setRecolhidos] = useState(() => new Set());
-  const toggleGrupo = (num) => setRecolhidos((prev) => { const n = new Set(prev); n.has(num) ? n.delete(num) : n.add(num); return n; });
-  const rows = useMemo(() => comprasItens(obra), [obra]);
+  const [etapa, setEtapa] = useState("todos");
+  const [sel, setSel] = useState(() => new Set());
+  const [abertos, setAbertos] = useState(() => new Set());
+  const [baseSienge, setBaseSienge] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erroBase, setErroBase] = useState(null);
+
+  const rows = useMemo(() => produtosMAT(obra), [obra]);
+
+  const visiveis = useMemo(() => {
+    if (etapa === "todos") return rows;
+    if (etapa === "sienge") return rows.filter((r) => r.it.canalCompra === "sienge");
+    if (etapa === "sem_canal") return rows.filter((r) => !r.it.canalCompra);
+    return rows.filter((r) => r.it.canalCompra === etapa);
+  }, [rows, etapa]);
+
+  const porVerba = useMemo(() => {
+    const m = new Map();
+    visiveis.forEach((r) => {
+      if (!m.has(r.catNum)) m.set(r.catNum, { num: r.catNum, nome: r.catNome, itens: [], total: 0 });
+      const g = m.get(r.catNum);
+      g.itens.push(r); g.total += r.material;
+    });
+    return [...m.values()];
+  }, [visiveis]);
+
+  // Casa uma vez e guarda: refazer a cada render seria 200 x 2.700
+  // comparacoes por tecla digitada.
+  const casamentos = useMemo(() => {
+    if (!baseSienge) return new Map();
+    const m = new Map();
+    rows.forEach((r) => m.set(r.chave, casarInsumo(r.it.desc, baseSienge)));
+    return m;
+  }, [baseSienge, rows]);
+
+  const selecionados = rows.filter((r) => sel.has(r.chave));
+  const totalSel = selecionados.reduce((a, r) => a + r.material, 0);
+
+  const alternar = (c) => setSel((p) => { const n = new Set(p); n.has(c) ? n.delete(c) : n.add(c); return n; });
+  const alternarGrupo = (g) => setSel((p) => {
+    const n = new Set(p);
+    const todosDentro = g.itens.every((r) => n.has(r.chave));
+    g.itens.forEach((r) => (todosDentro ? n.delete(r.chave) : n.add(r.chave)));
+    return n;
+  });
+  const abrir = (num) => setAbertos((p) => { const n = new Set(p); n.has(num) ? n.delete(num) : n.add(num); return n; });
+  const selecionarTudo = () => setSel(new Set(visiveis.map((r) => r.chave)));
+
+  function definirCanal(canal) {
+    selecionados.forEach((r) => onItemChange(r.catIdx, r.itemIdx, { canalCompra: canal }));
+    setSel(new Set());
+  }
+
+  async function associar() {
+    setCarregando(true); setErroBase(null);
+    try {
+      const base = await carregarTodosInsumos();
+      setBaseSienge(base);
+      if (!base.length) setErroBase("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços.");
+    } catch (e) {
+      setErroBase(`Não consegui ler a base de insumos: ${e.message || e}`);
+    } finally { setCarregando(false); }
+  }
 
   if (rows.length === 0) {
     return (
       <div className="compras-empty">
         <ShoppingCart size={30} className="dim" />
-        <div className="compras-empty-title">Esta obra ainda não tem produtos no executivo</div>
-        <div className="compras-empty-sub">Quando o executivo for carregado, os produtos liberados aparecem aqui pra você lançar no Sienge.</div>
+        <div className="compras-empty-title">Esta obra ainda não tem material no executivo</div>
+        <div className="compras-empty-sub">Quando o executivo for carregado, tudo que tem parcela de material aparece aqui pra você escolher por onde comprar.</div>
       </div>
     );
   }
 
-  const soma = (pred) => rows.filter((r) => pred(r.it)).reduce((a, r) => a + (r.it.custo || 0), 0);
-  const cnt = (pred) => rows.filter((r) => pred(r.it)).length;
-
-  const filtros = [
-    { id: "falta", label: "Falta lançar", pred: isFalta },
-    { id: "sem_insumo", label: "Sem insumo Sienge", pred: isSemInsumo },
-    { id: "lancado", label: "Lançado", pred: isLancado },
-    { id: "comprado", label: "Comprado", pred: isComprado },
-    { id: "todos", label: "Todos", pred: () => true },
+  const conta = (f) => rows.filter(f).length;
+  const soma = (f) => rows.filter(f).reduce((a, r) => a + r.material, 0);
+  const etapas = [
+    { id: "todos", rot: "Tudo", n: rows.length, v: soma(() => true) },
+    { id: "sem_canal", rot: "Sem canal", n: conta((r) => !r.it.canalCompra), v: soma((r) => !r.it.canalCompra) },
+    ...CANAIS_COMPRA.map((c) => ({ id: c.id, rot: c.nome, n: conta((r) => r.it.canalCompra === c.id), v: soma((r) => r.it.canalCompra === c.id), canal: c.id })),
   ];
-  const pred = filtros.find((f) => f.id === filtro).pred;
-  const visiveis = rows.filter((r) => pred(r.it));
 
   return (
     <>
-      <div className="compras-buckets">
-        <div className="bucket bucket-falta">
-          <div className="bucket-label"><Upload size={13} /> Falta lançar no Sienge</div>
-          <div className="bucket-num">{cnt(isFalta)} <span>itens</span></div>
-          <div className="bucket-sub">{fmtCompactBRL(soma(isFalta))} aguardando</div>
+      <div className="mo-topo">
+        <div className="mo-num">
+          <div className="mo-num-val mono">{fmtBRL(soma(() => true))}</div>
+          <div className="mo-num-rot">de material no executivo · {rows.length} produtos</div>
         </div>
-        <div className="bucket">
-          <div className="bucket-label"><Clock size={13} /> Lançado, aguardando compra</div>
-          <div className="bucket-num" style={{ color: "var(--blue)" }}>{cnt(isLancado)} <span>itens</span></div>
-          <div className="bucket-sub">{fmtCompactBRL(soma(isLancado))} no Sienge</div>
+        <div className="mo-num">
+          <div className="mo-num-val mono dim">{fmtBRL(soma((r) => !!r.it.canalCompra))}</div>
+          <div className="mo-num-rot">já com canal definido</div>
         </div>
-        <div className="bucket">
-          <div className="bucket-label"><Check size={13} /> Comprado</div>
-          <div className="bucket-num" style={{ color: "var(--green)" }}>{cnt(isComprado)} <span>itens</span></div>
-          <div className="bucket-sub">{fmtCompactBRL(soma(isComprado))} concluído</div>
+        <div className="mo-num">
+          <div className="mo-num-val mono">{fmtBRL(soma((r) => !r.it.canalCompra))}</div>
+          <div className="mo-num-rot">ainda sem canal</div>
         </div>
       </div>
 
-      {cnt(isSemInsumo) > 0 && (
-        <div className="compras-alerta">
-          <AlertTriangle size={16} />
-          <span><b>{cnt(isSemInsumo)} {cnt(isSemInsumo) === 1 ? "produto sem insumo" : "produtos sem insumo"} no Sienge</b> — {cnt(isSemInsumo) === 1 ? "precisa" : "precisam"} de cadastro antes de lançar ({fmtCompactBRL(soma(isSemInsumo))})</span>
-        </div>
-      )}
-
-      <div className="compras-filtros">
-        {filtros.map((f) => (
-          <button key={f.id} className={`cfiltro ${filtro === f.id ? "active" : ""}`} onClick={() => setFiltro(f.id)}>
-            {f.label} <span className="cbadge">{cnt(f.pred)}</span>
-          </button>
+      {/* O funil. Cada chip e um estagio, e o numero embaixo diz quanto
+          dinheiro esta parado ali — que e o que decide por onde comecar. */}
+      <div className="funil">
+        {etapas.map((e, i) => (
+          <React.Fragment key={e.id}>
+            <button className={`funil-no ${etapa === e.id ? "ativo" : ""}`} onClick={() => setEtapa(e.id)}>
+              {e.canal && <TagCanal id={e.canal} />}
+              <div className="funil-n">{e.n}</div>
+              <div className="funil-rot">{e.rot}</div>
+              <div className="funil-v mono">{fmtCompactBRL(e.v)}</div>
+            </button>
+            {i === 1 && <ChevronRight size={14} className="pipe-arrow dim" />}
+          </React.Fragment>
         ))}
       </div>
 
-      {(() => {
-        if (visiveis.length === 0) return <div className="empty-note">Nada neste filtro.</div>;
-        const porVerba = [];
-        visiveis.forEach((r) => {
-          let g = porVerba.find((x) => x.num === r.catNum);
-          if (!g) { g = { num: r.catNum, nome: r.catNome, rows: [] }; porVerba.push(g); }
-          g.rows.push(r);
-        });
-        porVerba.sort((a, b) => String(a.num).localeCompare(String(b.num), undefined, { numeric: true }));
-        return porVerba.map((g) => {
-          const recolhido = recolhidos.has(g.num);
-          return (
-            <div key={g.num} className="compras-grupo">
-              <button className="compras-grupo-head" onClick={() => toggleGrupo(g.num)}>
-                {recolhido ? <ChevronRight size={15} className="dim" /> : <ChevronDown size={15} className="dim" />}
-                <span className="cg-num mono">{g.num}</span>
-                <span className="cg-nome">{g.nome}</span>
-                <span className="cg-meta mono">{g.rows.length} {g.rows.length === 1 ? "item" : "itens"} · {fmtBRL(g.rows.reduce((a, r) => a + (r.it.custo || 0), 0))}</span>
+      {etapa === "sienge" && (
+        <div className="assoc-barra">
+          <PackageSearch size={15} className="dim" />
+          <span>
+            {baseSienge
+              ? `${baseSienge.length} insumos do Sienge carregados — verde é igual, laranja é parecido (confira), vermelho não existe e precisa cadastrar.`
+              : "Associe estes produtos aos insumos já cadastrados no Sienge antes de lançar a compra."}
+          </span>
+          <button className="btn-doc" onClick={associar} disabled={carregando}>
+            {carregando ? "Procurando…" : <><PackageSearch size={13} /> {baseSienge ? "Associar de novo" : "Associar insumos"}</>}
+          </button>
+        </div>
+      )}
+      {erroBase && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erroBase}</span></div>}
+
+      <div className="sel-barra-topo">
+        <button className="btn-sel-tudo" onClick={selecionarTudo}>
+          <Check size={12} /> Selecionar os {visiveis.length} desta etapa
+        </button>
+        {sel.size > 0 && <button className="btn-limpar-sel-claro" onClick={() => setSel(new Set())}>Limpar seleção</button>}
+      </div>
+
+      {porVerba.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
+      {porVerba.map((g) => {
+        const aberto = abertos.has(g.num);
+        const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
+        return (
+          <div className="grp-block" key={g.num}>
+            <div className="grp-head">
+              <button className="mo-check" onClick={() => alternarGrupo(g)}
+                title={nSel === g.itens.length ? "Tirar o grupo da seleção" : "Selecionar a verba inteira"}
+                aria-label="Selecionar verba">
+                {nSel === g.itens.length ? <Check size={13} /> : nSel > 0 ? <Minus size={13} /> : null}
               </button>
-              {!recolhido && (
-                <div className="compras-list">
-                  {g.rows.map((r) => (
-                    <ComprasRow key={`${r.catIdx}-${r.itemIdx}`} row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
-                  ))}
+              <button className="grp-toggle" onClick={() => abrir(g.num)}>
+                <div className="grp-esq">
+                  {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
+                  <span className="grp-num mono">{g.num}</span>
+                  <span className="grp-nome">{g.nome}</span>
+                  <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "produto" : "produtos"}</span>
+                  {nSel > 0 && <span className="grp-avulsos">{nSel} selecionados</span>}
                 </div>
-              )}
+              </button>
+              <div className="grp-dir">
+                <div className="grp-tot">
+                  <div className="grp-tot-rot">MATERIAL</div>
+                  <div className="grp-tot-val mono">{fmtBRL(g.total)}</div>
+                </div>
+              </div>
             </div>
-          );
-        });
-      })()}
+            {aberto && (
+              <div className="grp-itens">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 34 }} />
+                      <th style={{ width: 62 }}>Cód.</th>
+                      <th>Descrição</th>
+                      <th style={{ width: 74 }} className="center">Qtd.</th>
+                      <th style={{ width: 104 }} className="right">Material</th>
+                      <th style={{ width: 112 }} className="center">Canal</th>
+                      {baseSienge && <th style={{ width: 190 }}>Insumo no Sienge</th>}
+                      {baseSienge && <th style={{ width: 230 }}>Descrição no padrão</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.itens.map((r) => (
+                      <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)}
+                        onSelecionar={() => alternar(r.chave)}
+                        casamento={casamentos.get(r.chave)}
+                        mostrarSienge={!!baseSienge}
+                        onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* A escolha do canal fica na barra da selecao: e uma decisao sobre
+          o LOTE, nao sobre uma linha. Marcar 40 produtos e ter que
+          escolher o canal 40 vezes e a mesma decisao repetida 40 vezes. */}
+      {selecionados.length > 0 && (
+        <div className="mo-escopo-barra">
+          <div>
+            <div className="mo-escopo-val mono">{fmtBRL(totalSel)}</div>
+            <div className="mo-escopo-rot">
+              {selecionados.length} {selecionados.length === 1 ? "produto selecionado" : "produtos selecionados"}
+            </div>
+          </div>
+          <div className="canal-escolha">
+            {CANAIS_COMPRA.map((c) => (
+              <button key={c.id} className="btn-canal" onClick={() => definirCanal(c.id)}
+                title={`Marcar os selecionados como compra por ${c.nome}`}>
+                <TagCanal id={c.id} comNome />
+              </button>
+            ))}
+            <button className="btn-canal btn-canal-limpar" onClick={() => definirCanal(null)}
+              title="Tirar o canal dos selecionados">tirar canal</button>
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge, onItemChange }) {
+  const { it, material } = row;
+  const padrao = descricaoSienge({
+    marca: it.marca, desc: it.desc, modelo: it.modelo, cor: it.cor,
+    codigo: it.codigoFornecedor || it.especificacao,
+  });
+
+  return (
+    <tr className={selecionado ? "linha-sel" : ""}>
+      <td className="center">
+        <button className="mo-check mo-check-tab" onClick={onSelecionar} aria-label="Selecionar produto">
+          {selecionado && <Check size={13} />}
+        </button>
+      </td>
+      <td className="mono dim">{it.codigo}</td>
+      <td>
+        <div className="item-desc">{it.desc}</div>
+        {it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{it.ambiente}</span>}
+      </td>
+      <td className="mono center">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
+      <td className="mono right">{fmtBRL(material)}</td>
+      <td className="center">
+        {it.canalCompra ? <TagCanal id={it.canalCompra} comNome /> : <span className="pill pill-wait">—</span>}
+      </td>
+      {mostrarSienge && (
+        <td>
+          {!casamento ? <span className="dim">—</span> : (
+            <div className={`casa casa-${casamento.status}`}>
+              <span className="casa-bola" />
+              {casamento.status === VERDE && <span title={casamento.insumo.descricao}>{casamento.insumo.codigo} · igual</span>}
+              {casamento.status === LARANJA && (
+                <select className="casa-sel" value={it.insumoSienge || casamento.insumo.codigo}
+                  onChange={(e) => onItemChange({ insumoSienge: e.target.value })}
+                  title="Confira antes de aceitar — parecido não é igual">
+                  {casamento.alternativas.map((a) => (
+                    <option key={a.insumo.codigo} value={a.insumo.codigo}>
+                      {a.insumo.codigo} · {a.insumo.descricao.slice(0, 44)} ({Math.round(a.score * 100)}%)
+                    </option>
+                  ))}
+                </select>
+              )}
+              {casamento.status === VERMELHO && <span>não existe — cadastrar</span>}
+            </div>
+          )}
+        </td>
+      )}
+      {mostrarSienge && (
+        <td>
+          {/* So faz sentido gerar descricao pro que vai ser cadastrado. */}
+          {casamento && casamento.status === VERMELHO ? (
+            <div className="padrao-cel">
+              <code className="padrao-txt">{padrao || "—"}</code>
+              <button className="btn-copiar" onClick={() => navigator.clipboard?.writeText(padrao)}
+                title="Copiar pra colar no cadastro do Sienge">
+                <Copy size={11} />
+              </button>
+            </div>
+          ) : <span className="dim">—</span>}
+        </td>
+      )}
+    </tr>
   );
 }
 
@@ -8292,6 +8425,43 @@ export default function App() {
         }
 
         @media (max-width: 900px) { .escopo-conta, .escopo-campos { grid-template-columns: 1fr; } }
+
+        /* COMPRAS DE PRODUTOS — o funil. */
+        .funil { display: flex; align-items: stretch; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .funil-no { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; cursor: pointer; font-family: inherit; text-align: center; min-width: 96px; }
+        .funil-no:hover { border-color: var(--ink-3); }
+        .funil-no.ativo { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+        .funil-n { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; }
+        .funil-rot { font-size: 10.5px; color: var(--ink-2); margin-top: 1px; }
+        .funil-v { font-size: 10px; color: var(--ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+        .assoc-barra { display: flex; align-items: center; gap: 10px; background: var(--blue-bg); border: 1px solid #C6DDEE; border-radius: 10px; padding: 11px 15px; font-size: 12px; color: var(--ink-2); margin-bottom: 12px; }
+        .assoc-barra .btn-doc { margin-left: auto; flex-shrink: 0; }
+        .sel-barra-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .btn-sel-tudo { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-2); }
+        .btn-sel-tudo:hover { border-color: var(--ink); color: var(--ink); }
+        .btn-limpar-sel-claro { background: transparent; border: none; color: var(--ink-3); font-size: 11.5px; cursor: pointer; font-family: inherit; text-decoration: underline; }
+        .mo-check-tab { margin-left: 0; }
+        .linha-sel { background: var(--blue-bg); }
+        /* Tres respostas, tres cores: "nao achei" manda cadastrar,
+           "achei parecido" manda olhar antes de cadastrar. */
+        .casa { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; }
+        .casa-bola { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .casa-exato .casa-bola { background: var(--green); }
+        .casa-exato { color: var(--green); font-weight: 600; }
+        .casa-aproximado .casa-bola { background: var(--amber); }
+        .casa-aproximado { color: var(--amber); }
+        .casa-sem .casa-bola { background: var(--red); }
+        .casa-sem { color: var(--red); font-weight: 600; }
+        .casa-sel { max-width: 168px; font-size: 11px; border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-family: inherit; background: #fff; color: var(--ink); }
+        .padrao-cel { display: flex; align-items: flex-start; gap: 6px; }
+        .padrao-txt { font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.45; background: var(--panel); border-radius: 4px; padding: 4px 6px; flex: 1; word-break: break-word; }
+        .btn-copiar { background: transparent; border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; cursor: pointer; color: var(--ink-3); display: inline-flex; flex-shrink: 0; }
+        .btn-copiar:hover { border-color: var(--ink); color: var(--ink); }
+        .canal-escolha { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+        .btn-canal { background: rgba(255,255,255,0.12); border: none; border-radius: 8px; padding: 5px 7px; cursor: pointer; font-family: inherit; }
+        .btn-canal:hover { background: rgba(255,255,255,0.26); }
+        .btn-canal-limpar { color: #fff; font-size: 11px; font-weight: 600; padding: 7px 11px; opacity: 0.75; }
+        .btn-canal-limpar:hover { opacity: 1; }
 
         /* DASHBOARD MO — a base de orcado de um escopo. */
         .mo-topo { display: flex; align-items: center; gap: 30px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }

@@ -59,5 +59,23 @@ conf("o PrazoCompra continua de pé", definidos.has("PrazoCompra"), true);
 });
 conf("achou componentes de verdade (sanidade)", usados.size > 25, true);
 
+/* ---- e as funções de modelo que as telas dependem ---- */
+// O mesmo corte por intervalo que apagou o PrazoCompra apagou depois o
+// `produtosMAT`, e a checagem de componentes não pegou: função não vira
+// <Tag> no JSX. O build passa e a tela quebra ao abrir.
+//
+// Aqui é lista explícita, não varredura. Tentei deduzir "toda função
+// chamada" com regex e o teste passou a acusar palavra de comentário e
+// função de CSS — alarme falso ensina a ignorar o teste, que é pior do
+// que não ter teste. Lista pequena e certa vale mais.
+const declaradas = new Set([...src.matchAll(/function\s+(\w+)/g)].map((m) => m[1]));
+[
+  "produtosMAT", "servicosMO", "parcelasDoItem", "parcelasDaPlanilha",
+  "alocacaoDoItem", "prazoDoGrupo", "dataLimiteCompra", "diasAte",
+  "partirMaoDeObra", "separarMOnasVerbasDeContrato", "devolverMOaoGrupoDeOrigem",
+  "normalizarCategorias", "derivadosDasCategorias", "calcularCMV",
+  "verbaPorNome", "ehLinhaDeTitulo", "itemAlertas", "matchesFilter",
+].forEach((f) => conf(`${f}() existe`, declaradas.has(f), true));
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

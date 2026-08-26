@@ -25,7 +25,7 @@ const trecho = (de, ate) => {
   return src.slice(i, f);
 };
 
-const { servicosMO } = eval(`(function () {
+const { servicosMO, produtosMAT } = eval(`(function () {
   /* Sem padrao da empresa: estes testes verificam o que a PLANILHA e as
      regras de verba decidem. O padrao por descricao tem teste proprio em
      alocacao-padrao.test.mjs. */
@@ -36,7 +36,8 @@ const { servicosMO } = eval(`(function () {
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
   ${bloco("function servicosMO(")}
-  return { servicosMO };
+  ${bloco("function produtosMAT(")}
+  return { servicosMO, produtosMAT };
 })()`);
 
 let f = 0;
@@ -78,6 +79,27 @@ conf("a seleção atravessa verbas", new Set(rows.map((r) => r.catNum)).size, 3)
 conf("cada linha sabe de que verba veio", spot.catNum, "05");
 // A chave tem que ser única, senão duas linhas viram uma na seleção.
 conf("chave única por serviço", new Set(rows.map((r) => r.chave)).size, rows.length);
+
+/* ---- o espelho: Compras de Produtos ---- */
+// A lista de compras tinha o MESMO defeito, do outro lado: era
+// `tipo === "produto"`, então item marcado como serviço com material
+// lançado nunca aparecia pra comprar.
+const prods = produtosMAT(obra);
+// Spot (182 de material) e luminária (900). Pintura e gesso são MO pura.
+conf("entra quem TEM material", prods.length, 2);
+conf("... incluindo o item com as duas parcelas",
+  prods.some((r) => r.it.desc === "Spot de sobrepor"), true);
+conf("serviço puro fica de fora", prods.some((r) => r.it.desc === "Pintura 3 demãos"), false);
+conf("linha de título fica de fora", prods.some((r) => r.it.ehTitulo), false);
+// O valor que viaja é a PARCELA de material: mandar os R$ 362 do spot
+// pra compra pagaria a mão de obra dele como se fosse mercadoria.
+const spotC = prods.find((r) => r.it.desc === "Spot de sobrepor");
+conf("o valor é a parcela de material", spotC.material, 182);
+conf("... e não o custo do item", spotC.material === spotC.it.custo, false);
+// Nenhum item pode aparecer nas DUAS telas com o valor cheio — cada uma
+// leva a sua parcela, e as duas somadas dão o item.
+const moDoSpot = rows.find((r) => r.it.desc === "Spot de sobrepor");
+conf("as duas telas somadas dão o item inteiro", spotC.material + moDoSpot.mo, 362);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
