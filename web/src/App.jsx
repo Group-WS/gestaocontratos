@@ -12,6 +12,9 @@ import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
+import {
+  ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
+} from "./lib/parcelas";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
@@ -6040,6 +6043,13 @@ function FormNovoEscopo({ obra, servicos, onCriar, onCancelar }) {
       // copia, nao referencia
       itens: JSON.parse(JSON.stringify(m.itens || [])),
       medicoes: JSON.parse(JSON.stringify(m.medicoes || [])),
+      // Modelo parcelado ja nasce com as quatro parcelas divididas sobre o
+      // orcado. Escopo aberto com a tabela de pagamento em branco e uma
+      // conta que alguem vai ter que fazer na mao depois.
+      parcelas: (m.modo === "parcelado")
+        ? ajustarQtdParcelas(parcelasPadrao(), 4, orcado)
+        : [],
+      venc1: "", intervalo: "30",
       garantia: [...(m.garantia || [])],
       crono: JSON.parse(JSON.stringify(m.crono || [])),
       obs: String(m.obs || "").split("\n").map((t) => t.trim()).filter(Boolean),
@@ -6086,36 +6096,39 @@ function FormNovoEscopo({ obra, servicos, onCriar, onCancelar }) {
   );
 }
 
-/* O escopo aberto: o texto que vai pro contrato, e a conta que importa.
+/* O escopo aberto: a conta em cima, a folha embaixo.
 
-   O comparativo fica no TOPO de proposito. Ele e a razao de a tela
-   existir: o orcado saiu do executivo, o valor do contrato vem da
-   proposta, e a diferenca entre os dois e a unica coisa que muda a
-   decisao de quem esta assinando. */
+   A conta nao vai pro papel — ela e pra quem decide assinar, nao pro
+   fornecedor. O CSS de impressao esconde tudo menos a folha. */
 function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar }) {
   const dif = escopo.valorContrato != null ? escopo.valorContrato - escopo.orcado : null;
   const [valorTxt, setValorTxt] = useState(
     escopo.valorContrato != null ? mascaraMoeda(String(Math.round(escopo.valorContrato * 100))).texto : ""
   );
-
   const somaMed = (escopo.medicoes || []).reduce((a, m) => a + (parseFloat(String(m.p).replace(",", ".")) || 0), 0);
 
   return (
     <>
-      <div className="escopo-topo">
-        <button className="btn-voltar" onClick={onVoltar}><ChevronLeft size={14} /> Escopos</button>
+      <div className="escopo-topo naoimprime">
+        <button className="btn-voltar" onClick={onVoltar}><ChevronLeft size={14} /> Voltar</button>
         <div className="escopo-titulo">
           <div className="escopo-nome">{escopo.nome}</div>
-          <div className="escopo-banda">{escopo.banda}</div>
+          <div className="escopo-banda">{escopo.fornecedor || "sem fornecedor"} · {escopo.servicos.length} {escopo.servicos.length === 1 ? "serviço" : "serviços"}</div>
         </div>
+        <button className="btn-doc" onClick={() => baixarEscopoWord(escopo, obra)} title="Baixa um .doc que o Word abre editável">
+          <Download size={13} /> Word
+        </button>
+        <button className="btn-doc" onClick={() => window.print()} title="Abre a impressão do navegador — escolha Salvar como PDF">
+          <FileText size={13} /> PDF
+        </button>
         {podeEditar && (
           <button className="btn-apagar-escopo" onClick={onApagar} title="Apagar este escopo">
-            <Trash2 size={13} /> Apagar
+            <Trash2 size={13} />
           </button>
         )}
       </div>
 
-      <div className="escopo-conta">
+      <div className="escopo-conta naoimprime">
         <div className="ec-bloco">
           <div className="ec-rot">Orçado no executivo</div>
           <div className="ec-val mono">{fmtBRL(escopo.orcado)}</div>
@@ -6126,18 +6139,25 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
           {podeEditar ? (
             <input className="ec-input mono" type="text" placeholder="0,00" value={valorTxt}
               onChange={(e) => {
-                const m = mascaraMoeda(e.target.value);
-                setValorTxt(m.texto);
-                onMudar({ valorContrato: m.valor });
-              }} />
+              const m = mascaraMoeda(e.target.value);
+              setValorTxt(m.texto);
+              /* Mudou o total, as parcelas redividem. Deixar o valor novo
+                 em cima da divisao velha e a forma mais silenciosa de o
+                 contrato somar diferente do que ele diz que vale. */
+              const base = m.valor ?? escopo.orcado;
+              onMudar({
+                valorContrato: m.valor,
+                ...(escopo.modo === "parcelado" && (escopo.parcelas || []).length
+                  ? { parcelas: ratearParcelas(escopo.parcelas, base, true) }
+                  : {}),
+              });
+            }} />
           ) : <div className="ec-val mono">{escopo.valorContrato != null ? fmtBRL(escopo.valorContrato) : "—"}</div>}
           <div className="ec-sub">o que o fornecedor cobrou</div>
         </div>
         <div className={`ec-bloco ec-dif ${dif == null ? "" : dif > 0 ? "ruim" : "ok"}`}>
           <div className="ec-rot">Diferença</div>
-          <div className="ec-val mono">
-            {dif == null ? "—" : `${dif > 0 ? "+" : ""}${fmtBRL(dif)}`}
-          </div>
+          <div className="ec-val mono">{dif == null ? "—" : `${dif > 0 ? "+" : ""}${fmtBRL(dif)}`}</div>
           <div className="ec-sub">
             {dif == null ? "lance o valor da proposta"
               : dif > 0 ? `${((dif / escopo.orcado) * 100).toFixed(0)}% acima do orçado`
@@ -6147,7 +6167,14 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
         </div>
       </div>
 
-      <div className="escopo-campos">
+      {somaMed !== 100 && (escopo.medicoes || []).length > 0 && (
+        <div className="aviso-migracao naoimprime">
+          <AlertTriangle size={14} />
+          <span>Os percentuais das medições somam <b>{somaMed}%</b>, não 100% — alguém paga a mais ou o fornecedor fica sem receber.</span>
+        </div>
+      )}
+
+      <div className="escopo-campos naoimprime">
         <label className="form-label">Fornecedor
           <input className="form-input" type="text" value={escopo.fornecedor || ""} disabled={!podeEditar}
             onChange={(e) => onMudar({ fornecedor: e.target.value || null })} placeholder="—" />
@@ -6162,92 +6189,188 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
         </label>
       </div>
 
-      <SecaoEscopo titulo="Serviços que geraram este escopo" conta={escopo.servicos.length}>
-        <table className="tab-escopo">
-          <thead><tr><th style={{ width: 70 }}>Verba</th><th>Serviço</th><th style={{ width: 110 }} className="right">Mão de obra</th></tr></thead>
-          <tbody>
-            {escopo.servicos.map((s, i) => (
-              <tr key={i}>
-                <td className="mono dim">{s.catNum}</td>
-                <td>{s.desc}</td>
-                <td className="mono right">{fmtBRL(s.mo)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </SecaoEscopo>
-
-      <SecaoEscopo titulo="Escopo dos serviços" conta={(escopo.itens || []).filter((i) => i.tipo === "item").length}>
-        <div className="escopo-itens">
-          {(escopo.itens || []).map((i, k) => (
-            i.tipo === "grupo" ? <div className="ei-grupo" key={k}>{i.d}</div>
-            : i.tipo === "nota" ? <div className="ei-nota" key={k}>{i.d}</div>
-            : <div className="ei-item" key={k}>
-                <span className="ei-qtd mono">{i.q} {i.u}</span>
-                <span className="ei-desc">{i.d}</span>
-                {i.amb && <span className="ei-amb">{i.amb}</span>}
-              </div>
-          ))}
+      {escopo.modo === "parcelado" && podeEditar && (
+        <div className="parc-controles naoimprime">
+          <div className="dash-rot">Parcelas</div>
+          <div className="parc-linha">
+            <label className="form-label">Quantas
+              <input className="form-input" type="number" min="1" max="60"
+                value={(escopo.parcelas || []).length || 1}
+                onChange={(e) => onMudar({
+                  parcelas: ajustarQtdParcelas(escopo.parcelas, Number(e.target.value), escopo.valorContrato ?? escopo.orcado),
+                })} />
+            </label>
+            <label className="form-label">1º vencimento
+              <input className="form-input" type="date" value={escopo.venc1 || ""}
+                onChange={(e) => onMudar({ venc1: e.target.value })} />
+            </label>
+            <label className="form-label">Intervalo (dias)
+              <input className="form-input" type="number" min="0" value={escopo.intervalo || "30"}
+                onChange={(e) => onMudar({ intervalo: e.target.value })} />
+            </label>
+            {/* Vencimento cai sempre na sexta: a casa paga fornecedor
+                nesse dia, e data no meio da semana volta pro financeiro
+                pra ser remarcada. */}
+            <button className="btn-doc" disabled={!escopo.venc1}
+              onClick={() => onMudar({ parcelas: sugerirDatas(escopo.parcelas, escopo.venc1, escopo.intervalo) })}
+              title={escopo.venc1 ? "Preenche os vencimentos de tantos em tantos dias, sempre numa sexta" : "Informe o 1º vencimento primeiro"}>
+              <Clock size={13} /> Sugerir datas
+            </button>
+          </div>
         </div>
-      </SecaoEscopo>
+      )}
 
-      <SecaoEscopo titulo={escopo.modo === "parcelado" ? "Parcelas" : "Medições"} conta={(escopo.medicoes || []).length}
-        aviso={somaMed !== 100 && (escopo.medicoes || []).length ? `os percentuais somam ${somaMed}%, não 100%` : null}>
-        <table className="tab-escopo">
-          <thead><tr><th>Etapa</th><th style={{ width: 56 }} className="center">%</th><th style={{ width: 92 }} className="right">Valor</th><th style={{ width: 66 }}>Via</th><th>Condição</th></tr></thead>
-          <tbody>
-            {(escopo.medicoes || []).map((m, k) => {
-              const pct = parseFloat(String(m.p).replace(",", ".")) || 0;
-              const base = escopo.valorContrato ?? escopo.orcado;
-              return (
-                <tr key={k}>
-                  <td>{m.rot}</td>
-                  <td className="mono center">{m.p}%</td>
-                  <td className="mono right">{fmtBRL((base * pct) / 100)}</td>
-                  <td className="mono dim">{m.via}</td>
-                  <td className="ei-cond">{m.cond}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </SecaoEscopo>
-
-      {(escopo.garantia || []).length > 0 && (
-        <SecaoEscopo titulo="Garantia" conta={escopo.garantia.length}>
-          <ul className="escopo-lista">{escopo.garantia.map((g, k) => <li key={k}>{typeof g === "string" ? g : g.t}</li>)}</ul>
-        </SecaoEscopo>
-      )}
-      {(escopo.crono || []).length > 0 && (
-        <SecaoEscopo titulo="Cronograma" conta={escopo.crono.length}>
-          <ul className="escopo-lista">{escopo.crono.map((c, k) => <li key={k}>{typeof c === "string" ? c : (c.t || c.d)}</li>)}</ul>
-        </SecaoEscopo>
-      )}
-      {(escopo.obs || []).length > 0 && (
-        <SecaoEscopo titulo="Observações" conta={escopo.obs.length}>
-          <ul className="escopo-lista">{escopo.obs.map((o, k) => <li key={k}>{typeof o === "string" ? o : o.t}</li>)}</ul>
-        </SecaoEscopo>
-      )}
+      <DocumentoEscopo escopo={escopo} obra={obra} podeEditar={podeEditar} onMudar={onMudar} />
     </>
   );
 }
 
-function SecaoEscopo({ titulo, conta, aviso, children }) {
-  const [aberta, setAberta] = useState(true);
+/* O escopo como DOCUMENTO, nao como formulario.
+
+   O gerador de escopos da casa acerta nisso: a pessoa ve a folha que vai
+   virar contrato, edita o texto ali mesmo e manda imprimir. Formulario
+   com campos separados obriga a imaginar o resultado; folha mostra.
+
+   PDF sai do window.print() com CSS de impressao — mesmo caminho do
+   gerador. Word sai como HTML com o MIME do Word: abre editavel, que e
+   o que a equipe faz depois (ajusta uma clausula, manda pro fornecedor). */
+function DocumentoEscopo({ escopo, obra, podeEditar, onMudar }) {
+  const base = escopo.valorContrato ?? escopo.orcado;
+  const linhas = (t) => String(t || "").split("\n").filter(Boolean);
+
   return (
-    <div className="escopo-secao">
-      <button className="escopo-secao-head" onClick={() => setAberta((v) => !v)}>
-        {aberta ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
-        <span className="escopo-secao-tit">{titulo}</span>
-        {conta != null && <span className="grp-conta">{conta}</span>}
-        {/* Percentual que nao fecha 100 e erro de contrato, nao detalhe de
-            tela: alguem paga a mais ou o fornecedor fica sem receber. */}
-        {aviso && <span className="escopo-aviso"><AlertTriangle size={11} /> {aviso}</span>}
-      </button>
-      {aberta && <div className="escopo-secao-corpo">{children}</div>}
+    <div className="doc-escopo" id="doc-escopo">
+      <div className="doc-banda">{escopo.banda}</div>
+
+      <div className="doc-cab">
+        <div><span className="doc-rot">Obra</span> {obra.nome}</div>
+        {obra.endereco && <div><span className="doc-rot">Endereço</span> {obra.endereco}</div>}
+        <div><span className="doc-rot">Contratado</span> {escopo.fornecedor || "—"}</div>
+        <div>
+          <span className="doc-rot">Período</span>{" "}
+          {escopo.inicio ? new Date(`${escopo.inicio}T12:00:00`).toLocaleDateString("pt-BR") : "—"}
+          {" a "}
+          {escopo.fim ? new Date(`${escopo.fim}T12:00:00`).toLocaleDateString("pt-BR") : "—"}
+        </div>
+        <div><span className="doc-rot">Valor</span> {escopo.valorContrato != null ? fmtBRL(escopo.valorContrato) : "a definir"}</div>
+      </div>
+
+      <h3 className="doc-h">1. Escopo dos serviços</h3>
+      <div className="doc-itens">
+        {(escopo.itens || []).map((i, k) => (
+          i.tipo === "grupo" ? <div className="doc-grupo" key={k}>{i.d}</div>
+          : i.tipo === "nota" ? <div className="doc-nota" key={k}>{i.d}</div>
+          : (
+            <div className="doc-item" key={k}>
+              <span className="doc-qtd">{i.q} {i.u}</span>
+              {/* Editavel na folha: e aqui que a equipe ajusta a clausula
+                  pro caso da obra, sem sair pro Word antes da hora. */}
+              <span className="doc-desc" contentEditable={podeEditar} suppressContentEditableWarning
+                onBlur={(e) => {
+                  const novo = e.currentTarget.innerText.trim();
+                  if (novo === i.d) return;
+                  onMudar({ itens: escopo.itens.map((x, n) => (n === k ? { ...x, d: novo } : x)) });
+                }}>{i.d}</span>
+              {i.amb && <span className="doc-amb">{i.amb}</span>}
+            </div>
+          )
+        ))}
+      </div>
+
+      <h3 className="doc-h">2. {escopo.modo === "parcelado" ? "Forma de pagamento — parcelas" : "Forma de pagamento — medições"}</h3>
+      {escopo.modo === "parcelado" ? (
+        <table className="doc-tab">
+          <thead><tr><th>Parcela</th><th style={{ width: 96 }}>Vencimento</th><th className="right" style={{ width: 110 }}>Valor</th><th style={{ width: 60 }}>Via</th></tr></thead>
+          <tbody>
+            {(escopo.parcelas || []).map((p, k) => (
+              <tr key={k}>
+                <td>{p.rot}</td>
+                <td className="mono">{p.venc ? new Date(`${p.venc}T12:00:00`).toLocaleDateString("pt-BR") : "—"}</td>
+                <td className="right mono">{fmtBRL(Number(String(p.v).replace(",", ".")) || 0)}</td>
+                <td>{p.via}</td>
+              </tr>
+            ))}
+            {/* A soma fica no papel de proposito: e a linha que o
+                fornecedor confere antes de assinar. */}
+            <tr className="doc-total">
+              <td colSpan={2}>Total</td>
+              <td className="right mono"><b>{fmtBRL(somaParcelas(escopo.parcelas))}</b></td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      ) : (
+      <table className="doc-tab">
+        <thead><tr><th>Etapa</th><th className="center">%</th><th className="right">Valor</th><th>Via</th><th>Condição</th></tr></thead>
+        <tbody>
+          {(escopo.medicoes || []).map((m, k) => {
+            const pct = parseFloat(String(m.p).replace(",", ".")) || 0;
+            return (
+              <tr key={k}>
+                <td>{m.rot}</td>
+                <td className="center mono">{m.p}%</td>
+                <td className="right mono">{fmtBRL((base * pct) / 100)}</td>
+                <td>{m.via}</td>
+                <td className="doc-cond" contentEditable={podeEditar} suppressContentEditableWarning
+                  onBlur={(e) => {
+                    const novo = e.currentTarget.innerText.trim();
+                    if (novo === m.cond) return;
+                    onMudar({ medicoes: escopo.medicoes.map((x, n) => (n === k ? { ...x, cond: novo } : x)) });
+                  }}>{m.cond}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      )}
+
+      {(escopo.garantia || []).length > 0 && <>
+        <h3 className="doc-h">3. Garantia</h3>
+        <ul className="doc-ul">{escopo.garantia.map((g, k) => <li key={k}>{typeof g === "string" ? g : g.t}</li>)}</ul>
+      </>}
+      {(escopo.crono || []).length > 0 && <>
+        <h3 className="doc-h">4. Cronograma</h3>
+        <ul className="doc-ul">{escopo.crono.map((c, k) => <li key={k}>{typeof c === "string" ? c : (c.t || c.d)}</li>)}</ul>
+      </>}
+      {(escopo.obs || []).length > 0 && <>
+        <h3 className="doc-h">{(escopo.crono || []).length ? 5 : 4}. Observações</h3>
+        <ul className="doc-ul">{escopo.obs.map((o, k) => <li key={k}>{typeof o === "string" ? o : o.t}</li>)}</ul>
+      </>}
+
+      <div className="doc-rodape">
+        Serviços deste escopo: {escopo.servicos.map((s) => `${s.catNum} ${s.desc}`).join(" · ")}
+      </div>
     </div>
   );
 }
+
+/* Word de verdade, nao PDF renomeado.
+
+   Word abre HTML como documento editavel quando o MIME e o dele. E o que
+   a equipe precisa depois: ajustar uma clausula e mandar pro fornecedor
+   sem ter que redigitar o escopo inteiro. O window.print() resolve o PDF,
+   mas PDF ninguem edita. */
+function baixarEscopoWord(escopo, obra) {
+  const doc = document.getElementById("doc-escopo");
+  if (!doc) return;
+  const html = `<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8">
+<style>
+ body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #111; }
+ h3 { font-size: 12pt; margin: 18pt 0 6pt; border-bottom: 1px solid #999; padding-bottom: 3pt; }
+ table { width: 100%; border-collapse: collapse; margin: 6pt 0; }
+ th, td { border: 1px solid #bbb; padding: 5pt 7pt; font-size: 10pt; text-align: left; vertical-align: top; }
+ th { background: #eee; }
+ .doc-banda { font-size: 14pt; font-weight: bold; margin-bottom: 10pt; }
+ .doc-rot { font-weight: bold; }
+ .doc-grupo { font-weight: bold; margin: 10pt 0 4pt; }
+ .doc-qtd { font-weight: bold; margin-right: 8pt; }
+ .doc-item { margin-bottom: 5pt; }
+ .center { text-align: center; } .right { text-align: right; }
+</style></head><body>${doc.innerHTML}</body></html>`;
+  const nome = `escopo-${(escopo.nome || "").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").toLowerCase()}-${obra.codigo}.doc`;
+  downloadFile(nome, html, "application/msword");
+}
+
 
 /* DASHBOARD MO — a base de orcado de um escopo.
 
@@ -6266,6 +6389,16 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
   const [abertos, setAbertos] = useState(() => new Set());
 
   const rows = useMemo(() => servicosMO(obra), [obra]);
+  /* De qual escopo cada servico faz parte.
+
+     A lupa fica na LINHA, nao numa lista separada em cima: o escopo e
+     sobre aqueles servicos, e procurar por ele numa segunda lista e
+     desfazer o vinculo que a pessoa acabou de criar. */
+  const escopoDoServico = useMemo(() => {
+    const m = new Map();
+    (obra.escopos || []).forEach((e) => (e.servicos || []).forEach((sv) => m.set(`${sv.catNum}|${sv.codigo}`, e)));
+    return m;
+  }, [obra.escopos]);
   const naoBloq = rows.filter((r) => !contratoBloqueado(r.it));
   const bloqueados = rows.filter((r) => contratoBloqueado(r.it));
 
@@ -6336,34 +6469,6 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
 
   return (
     <>
-      {(obra.escopos || []).length > 0 && (
-        <div className="escopo-lista-box">
-          <div className="dash-rot">Escopos desta obra</div>
-          {(obra.escopos || []).map((e) => {
-            const dif = e.valorContrato != null ? e.valorContrato - e.orcado : null;
-            return (
-              <button className="escopo-card" key={e.id} onClick={() => setEscopoAberto(e.id)}>
-                <div className="escopo-card-esq">
-                  <div className="escopo-card-nome">{e.nome}</div>
-                  <div className="escopo-card-sub">
-                    {e.fornecedor || "sem fornecedor"} · {e.servicos.length} {e.servicos.length === 1 ? "serviço" : "serviços"}
-                  </div>
-                </div>
-                <div className="escopo-card-dir">
-                  <div className="mono">{fmtBRL(e.orcado)}</div>
-                  <div className="escopo-card-rot">orçado</div>
-                </div>
-                {dif != null && (
-                  <div className={`escopo-card-dif ${dif > 0 ? "ruim" : "ok"}`}>
-                    {dif > 0 ? "+" : ""}{fmtBRL(dif)}
-                  </div>
-                )}
-                <ChevronRight size={15} className="dim" />
-              </button>
-            );
-          })}
-        </div>
-      )}
       <div className="mo-topo">
         <div className="mo-num">
           <div className="mo-num-val mono">{fmtBRL(totalMO)}</div>
@@ -6433,15 +6538,24 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
             {aberto && (
               <div className="grp-itens">
                 <div className="compras-list">
-                  {g.itens.map((r) => (
-                    <div className={`mo-linha ${sel.has(r.chave) ? "sel" : ""}`} key={r.chave}>
-                      <button className="mo-check" onClick={() => alternar(r.chave)} aria-label="Selecionar serviço">
-                        {sel.has(r.chave) && <Check size={13} />}
-                      </button>
-                      <ContratosRow row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
-                      <div className="mo-valor mono">{fmtBRL(r.mo)}</div>
-                    </div>
-                  ))}
+                  {g.itens.map((r) => {
+                    const esc = escopoDoServico.get(`${r.catNum}|${r.it.codigo}`);
+                    return (
+                      <div className={`mo-linha ${sel.has(r.chave) ? "sel" : ""} ${esc ? "com-escopo" : ""}`} key={r.chave}>
+                        <button className="mo-check" onClick={() => alternar(r.chave)} aria-label="Selecionar serviço">
+                          {sel.has(r.chave) && <Check size={13} />}
+                        </button>
+                        <ContratosRow row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
+                        <div className="mo-valor mono">{fmtBRL(r.mo)}</div>
+                        {esc ? (
+                          <button className="btn-lupa" onClick={() => setEscopoAberto(esc.id)}
+                            title={`Ver o escopo "${esc.nome}"${esc.fornecedor ? ` — ${esc.fornecedor}` : ""}`}>
+                            <Search size={14} />
+                          </button>
+                        ) : <span className="btn-lupa-vazio" />}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -8113,31 +8227,23 @@ export default function App() {
         .mo-escopo-barra .btn-limpar-sel { margin-left: 0; }
         .form-escopo { max-width: 560px; }
         .form-dica { font-size: 10.5px; color: var(--green); margin-top: 5px; }
-        .escopo-lista-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
-        .escopo-card { width: 100%; display: flex; align-items: center; gap: 16px; background: transparent; border: none; border-top: 1px solid var(--border-soft); padding: 11px 2px; cursor: pointer; font-family: inherit; text-align: left; }
-        .escopo-card:hover { background: #FCFBF9; }
-        .escopo-card-esq { flex: 1; min-width: 0; }
-        .escopo-card-nome { font-size: 13px; font-weight: 600; }
-        .escopo-card-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
-        .escopo-card-dir { text-align: right; font-variant-numeric: tabular-nums; }
-        .escopo-card-rot { font-size: 9.5px; color: var(--ink-3); }
-        .escopo-card-dif { font-size: 12px; font-weight: 700; font-family: 'JetBrains Mono', monospace; padding: 3px 9px; border-radius: 20px; }
-        .escopo-card-dif.ok { background: var(--green-bg); color: var(--green); }
-        .escopo-card-dif.ruim { background: var(--red-bg); color: var(--red); }
+        .btn-lupa { flex-shrink: 0; background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 5px 7px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
+        .btn-lupa:hover { border-color: var(--ink); color: var(--ink); background: #fff; }
+        .btn-lupa-vazio { flex-shrink: 0; width: 30px; }
+        .mo-linha.com-escopo { box-shadow: inset 2px 0 0 var(--green); }
 
-        .escopo-topo { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+        .escopo-topo { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
         .btn-voltar { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 12px; cursor: pointer; font-family: inherit; color: var(--ink-2); flex-shrink: 0; }
         .btn-voltar:hover { border-color: var(--ink); color: var(--ink); }
         .escopo-titulo { flex: 1; min-width: 0; }
-        .escopo-nome { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; }
-        .escopo-banda { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
-        .btn-apagar-escopo { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 11.5px; cursor: pointer; font-family: inherit; color: var(--ink-3); }
+        .escopo-nome { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; }
+        .escopo-banda { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+        .btn-doc { display: inline-flex; align-items: center; gap: 5px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-doc:hover { background: var(--blue); }
+        .btn-apagar-escopo { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; cursor: pointer; color: var(--ink-3); display: inline-flex; }
         .btn-apagar-escopo:hover { border-color: var(--red); color: var(--red); }
 
-        /* A conta fica no TOPO porque e a razao da tela existir: o orcado
-           saiu do executivo, o valor veio da proposta, e a diferenca e a
-           unica coisa que muda a decisao de quem assina. */
-        .escopo-conta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+        .escopo-conta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
         .ec-bloco { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
         .ec-rot { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
         .ec-val { font-family: 'Space Grotesk', sans-serif; font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 5px; }
@@ -8147,30 +8253,44 @@ export default function App() {
         .ec-dif.ok { background: var(--green-bg); border-color: #C9E5D4; color: var(--green); }
         .ec-dif.ruim { background: var(--red-bg); border-color: #F0C9C6; color: var(--red); }
         .ec-dif.ok .ec-rot, .ec-dif.ruim .ec-rot, .ec-dif.ok .ec-sub, .ec-dif.ruim .ec-sub { color: inherit; opacity: 0.8; }
+        .escopo-campos { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 18px; }
 
-        .escopo-campos { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-        .escopo-secao { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
-        .escopo-secao-head { width: 100%; display: flex; align-items: center; gap: 9px; background: transparent; border: none; padding: 12px 16px; cursor: pointer; font-family: inherit; text-align: left; }
-        .escopo-secao-head:hover { background: #FCFBF9; }
-        .escopo-secao-tit { font-size: 13px; font-weight: 600; }
-        .escopo-aviso { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; color: var(--red); background: var(--red-bg); border-radius: 20px; padding: 2px 9px; margin-left: auto; }
-        .escopo-secao-corpo { border-top: 1px solid var(--border); padding: 4px 0; overflow-x: auto; }
-        .tab-escopo { width: 100%; border-collapse: collapse; }
-        .tab-escopo th { text-align: left; font-size: 10px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); }
-        .tab-escopo td { padding: 9px 16px; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 12.5px; }
-        .tab-escopo tr:last-child td { border-bottom: none; }
-        .tab-escopo th.right, .tab-escopo td.right { text-align: right; }
-        .tab-escopo th.center, .tab-escopo td.center { text-align: center; }
-        .ei-cond { font-size: 11.5px; color: var(--ink-2); line-height: 1.45; }
-        .escopo-itens { padding: 6px 16px 12px; }
-        .ei-grupo { font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin: 14px 0 6px; }
-        .ei-nota { font-size: 11.5px; color: var(--ink-3); font-style: italic; margin: 6px 0; }
-        .ei-item { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; line-height: 1.5; }
-        .ei-qtd { flex-shrink: 0; width: 58px; color: var(--ink-3); font-size: 11px; }
-        .ei-desc { flex: 1; }
-        .ei-amb { flex-shrink: 0; font-size: 10.5px; color: var(--ink-3); }
-        .escopo-lista { margin: 0; padding: 8px 16px 12px 34px; font-size: 12.5px; line-height: 1.6; color: var(--ink-2); }
-        .escopo-lista li { margin-bottom: 5px; }
+        /* A FOLHA. Largura de A4 e fundo branco de proposito: a pessoa
+           enxerga o documento que vai virar contrato, nao um formulario. */
+        .doc-escopo { background: #fff; border: 1px solid var(--border); border-radius: 4px; max-width: 210mm; margin: 0 auto; padding: 26mm 22mm; font-size: 12px; line-height: 1.6; color: #16181A; box-shadow: 0 2px 14px rgba(0,0,0,0.06); }
+        .doc-banda { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 18px; }
+        .doc-cab { display: grid; gap: 3px; font-size: 12px; padding-bottom: 14px; border-bottom: 1px solid #DDD; margin-bottom: 6px; }
+        .doc-rot { font-weight: 700; display: inline-block; min-width: 82px; color: #55595E; }
+        .doc-h { font-family: 'Space Grotesk', sans-serif; font-size: 13.5px; font-weight: 700; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #DDD; }
+        .doc-item { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid #F0F0EE; }
+        .doc-qtd { flex-shrink: 0; width: 52px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #6A6E72; padding-top: 2px; }
+        .doc-desc { flex: 1; }
+        .doc-desc:focus, .doc-cond:focus { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 3px; }
+        .doc-amb { flex-shrink: 0; font-size: 10.5px; color: #85898D; }
+        .doc-grupo { font-weight: 700; margin: 16px 0 4px; font-size: 12px; }
+        .doc-nota { font-style: italic; color: #6A6E72; margin: 6px 0; }
+        .doc-tab { width: 100%; border-collapse: collapse; margin-top: 4px; }
+        .doc-tab th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #55595E; padding: 6px 8px; border-bottom: 1px solid #CCC; }
+        .doc-tab td { padding: 8px; border-bottom: 1px solid #F0F0EE; vertical-align: top; font-size: 11.5px; }
+        .doc-tab .center { text-align: center; } .doc-tab .right { text-align: right; }
+        .doc-cond { line-height: 1.5; }
+        .parc-controles { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+        .parc-linha { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+        .parc-linha .form-label { flex: 1; min-width: 110px; }
+        .doc-total td { border-top: 1px solid #CCC; border-bottom: none; font-weight: 700; }
+        .doc-ul { margin: 4px 0 0; padding-left: 20px; }
+        .doc-ul li { margin-bottom: 5px; }
+        .doc-rodape { margin-top: 26px; padding-top: 12px; border-top: 1px solid #DDD; font-size: 10px; color: #85898D; line-height: 1.5; }
+
+        /* PDF sai daqui: o navegador imprime so a folha. */
+        @media print {
+          .naoimprime, .sidebar, .topbar, .nav-obra, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
+          .app, .body-layout, .main { background: #fff !important; padding: 0 !important; margin: 0 !important; display: block !important; }
+          .doc-escopo { border: none; box-shadow: none; border-radius: 0; max-width: none; padding: 0; margin: 0; }
+          .doc-item, .doc-tab tr { break-inside: avoid; }
+          .doc-h { break-after: avoid; }
+        }
+
         @media (max-width: 900px) { .escopo-conta, .escopo-campos { grid-template-columns: 1fr; } }
 
         /* DASHBOARD MO — a base de orcado de um escopo. */

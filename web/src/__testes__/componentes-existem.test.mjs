@@ -54,7 +54,7 @@ conf("nenhum componente usado sem existir", faltando.join(", ") || "nenhum", "ne
 conf("o PrazoCompra continua de pé", definidos.has("PrazoCompra"), true);
 // A tela do plano depende destes; se um sumir, a aba fica em branco.
 ["GrupoPlano", "LinhaPlano", "TagAloc", "TagCanal", "DestinoCompra", "ComparativoView",
- "DashboardObra", "DashboardMO", "EscopoAberto", "FormNovoEscopo", "SecaoEscopo"].forEach((c) => {
+ "DashboardObra", "DashboardMO", "EscopoAberto", "FormNovoEscopo", "DocumentoEscopo"].forEach((c) => {
   conf(`${c} existe`, definidos.has(c), true);
 });
 conf("achou componentes de verdade (sanidade)", usados.size > 25, true);
