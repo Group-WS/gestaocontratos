@@ -953,7 +953,7 @@ function DestinoCompra({ item, aloc }) {
      sido comprado, mesmo com a compra marcada na tela de Compras. */
   if (item.comprado) {
     return (
-      <span className="pill pill-ok" title={item.compradoEm
+      <span className="pill pill-ok status-pill" title={item.compradoEm
         ? `Comprado em ${new Date(item.compradoEm).toLocaleDateString("pt-BR")}${item.canalCompra ? ` por ${canalPorId(item.canalCompra)?.nome}` : ""}`
         : "Comprado"}>
         <Check size={11} /> comprado{item.canalCompra ? ` · ${canalPorId(item.canalCompra)?.sigla}` : ""}
@@ -1014,7 +1014,25 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
   const compravel = aloc !== ALOC_MO;   // so quem tem material vai pra Compras
 
   return (
-    <tr className={item.avulso ? "row-avulso" : alertas.length ? "row-alert" : ""}>
+    /* A cor da linha diz o estado sem ocupar coluna nenhuma.
+
+       Verde e comprado, amarelo e falta comprar. Os dois em tom bem
+       claro de proposito: com 174 linhas, cor forte vira parede e para
+       de informar. O verde e um tico mais presente que o amarelo porque
+       ele e a excecao — a maioria falta comprar, e o que muda o dia e
+       ver o que ja saiu.
+
+       Mao de obra fica branca: ela nao e "falta comprar", ela vai pra
+       Contratos. Pintar de amarelo criaria uma pendencia que nao existe.
+
+       Alerta e avulso ganham da cor de status: um problema de escopo
+       importa mais que o andamento da compra. */
+    <tr className={
+      item.avulso ? "row-avulso"
+      : alertas.length ? "row-alert"
+      : item.comprado ? "row-comprado"
+      : compravel ? "row-falta" : ""
+    }>
       {/* A coluna "Compr." saiu.
 
           Ela era uma caixinha de marcar que dizia exatamente o que a
@@ -1734,6 +1752,8 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           não tem mais. Aqui a dúvida é outra: o que cada sigla quer dizer
           e pra onde o item vai depois daqui. */}
       <div className="legend">
+        <div className="legend-item"><span className="legend-quadro q-falta" /> Falta comprar</div>
+        <div className="legend-item"><span className="legend-quadro q-comprado" /> Já comprado</div>
         <div className="legend-item"><span className="aloc aloc-mat">MAT</span> MATERIAL — vai pra Compras</div>
         <div className="legend-item"><span className="aloc aloc-mo">MO</span> MÃO DE OBRA — vai pra Contratos</div>
         <div className="legend-item"><span className="aloc aloc-ambos">MAT+MO</span> As duas parcelas ainda na mesma linha — dá pra separar</div>
@@ -6270,7 +6290,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge,
   const status = !maeAtual ? "sem" : (escolhido || detalhes[0]?.score >= 0.95) ? "exato" : "aproximado";
 
   return (
-    <tr className={selecionado ? "linha-sel" : ""}>
+    <tr className={selecionado ? "linha-sel" : it.comprado ? "row-comprado" : "row-falta"}>
       <td className="center">
         <button className="mo-check mo-check-tab" onClick={onSelecionar} aria-label="Selecionar produto">
           {selecionado && <Check size={13} />}
@@ -9152,6 +9172,17 @@ export default function App() {
         /* Avulso e a linha que NAO veio da planilha. Fica visivelmente
            diferente porque a pergunta "de onde saiu isto?" aparece toda
            vez que alguem confere o plano meses depois. */
+        /* Tom pastel bem claro: com 174 linhas, cor forte vira parede e
+           para de informar. O verde e um tico mais presente porque ele e
+           a excecao — a maioria falta comprar. */
+        .row-falta { background: #FEFCF3; }
+        .row-comprado { background: #F2F9F4; }
+        .grp-itens tbody tr.row-comprado td:first-child { box-shadow: inset 2px 0 0 var(--green); }
+        .grp-itens tbody tr.row-falta td:first-child { box-shadow: inset 2px 0 0 #E5C97A; }
+        .status-pill { display: inline-flex; align-items: center; gap: 4px; }
+        .legend-quadro { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+        .q-falta { background: #FEFCF3; border: 1px solid #E5C97A; }
+        .q-comprado { background: #F2F9F4; border: 1px solid var(--green); }
         .row-avulso { background: #FBFAFE; }
         .row-avulso td:first-child { box-shadow: inset 2px 0 0 var(--purple); }
         .tag-avulso { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--purple); background: #EFEAFB; border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
