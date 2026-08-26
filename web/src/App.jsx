@@ -890,6 +890,8 @@ const CANAIS_COMPRA = [
   { id: "mehoo",    sigla: "MH", nome: "Mehoo",                cor: "var(--purple)", bg: "#EFEAFB" },
   { id: "automacao",sigla: "AU", nome: "Automação",            cor: "var(--green)",  bg: "var(--green-bg)" },
   { id: "cortinas", sigla: "CP", nome: "Cortinas e Persianas", cor: "#B54708",       bg: "var(--amber-bg)" },
+  { id: "gc",       sigla: "GC", nome: "GC",                    cor: "#2E7D8F",       bg: "#E2F0F3" },
+  { id: "estoque",  sigla: "ES", nome: "Estoque",               cor: "#6B5E4A",       bg: "#EFEAE1" },
 ];
 const canalPorId = (id) => CANAIS_COMPRA.find((c) => c.id === id) || null;
 
