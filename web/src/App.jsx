@@ -15,7 +15,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes } from "./lib/sienge";
+import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho } from "./lib/sienge";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
@@ -5728,6 +5728,7 @@ function ComprasView({ obra, onItemChange }) {
   const [sel, setSel] = useState(() => new Set());
   const [abertos, setAbertos] = useState(() => new Set());
   const [baseSienge, setBaseSienge] = useState(null);
+  const [resultado, setResultado] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erroBase, setErroBase] = useState(null);
 
@@ -5786,6 +5787,42 @@ function ComprasView({ obra, onItemChange }) {
     selecionados.forEach((r) => onItemChange(r.catIdx, r.itemIdx, { canalCompra: canal }));
     setSel(new Set());
   }
+
+  /* Associa em massa — mas SO o que bate inteiro.
+
+     Aceitar a melhor sugestao de qualquer jeito seria rapido e errado: a
+     linha de 9.000 BTUs viraria a de 18.000 sem ninguem olhar, e o erro
+     so aparece quando o equipamento chega na obra. O que ficou faltando
+     alguma palavra continua na tela pra ser escolhido a mao, e a tela diz
+     quantos foram. */
+  function associarSelecionados() {
+    let certos = 0, revisar = 0;
+    selecionados.forEach((r) => {
+      const c = casamentos.get(r.chave);
+      const mae = c?.maes?.[0];
+      const melhor = c?.detalhes?.[0];
+      if (!mae || !podeAssociarSozinho(c.detalhes)) { revisar += 1; return; }
+      onItemChange(r.catIdx, r.itemIdx, {
+        maeSienge: mae.grupo.codigo,
+        detalheSienge: melhor.insumo.descricao,
+      });
+      certos += 1;
+    });
+    setResultado({ certos, revisar });
+    setSel(new Set());
+  }
+
+  /* A base carrega sozinha ao entrar na etapa do Sienge.
+
+     Antes as colunas de comparacao so existiam depois de clicar em
+     "Associar insumos" — a pessoa chegava na etapa, via a tabela sem a
+     informacao que ela veio buscar, e tinha que descobrir que havia um
+     botao. A comparacao E a etapa; esconder ela atras de um clique era
+     pedir uma confirmacao pra fazer o obvio. */
+  useEffect(() => {
+    if (etapa !== "sienge" || baseSienge || carregando) return;
+    associar();
+  }, [etapa]);
 
   async function associar() {
     setCarregando(true); setErroBase(null);
@@ -5853,13 +5890,24 @@ function ComprasView({ obra, onItemChange }) {
         <div className="assoc-barra">
           <PackageSearch size={15} className="dim" />
           <span>
-            {baseSienge
-              ? `${baseSienge.length} insumos do Sienge carregados — verde é igual, laranja é parecido (confira), vermelho não existe e precisa cadastrar.`
-              : "Associe estes produtos aos insumos já cadastrados no Sienge antes de lançar a compra."}
+            {carregando ? "Procurando na base do Sienge…"
+              : baseSienge
+                ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Escolha a mãe e a variante em cada linha, ou selecione e associe em massa.`
+                : "Base do Sienge não carregada."}
           </span>
           <button className="btn-doc" onClick={associar} disabled={carregando}>
-            {carregando ? "Procurando…" : <><PackageSearch size={13} /> {baseSienge ? "Associar de novo" : "Associar insumos"}</>}
+            <PackageSearch size={13} /> {carregando ? "Procurando…" : "Recarregar base"}
           </button>
+        </div>
+      )}
+      {resultado && (
+        <div className={`assoc-resultado ${resultado.revisar ? "parcial" : "ok"}`}>
+          {resultado.revisar ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
+          <span>
+            <b>{resultado.certos}</b> {resultado.certos === 1 ? "associado" : "associados"} automaticamente
+            {resultado.revisar > 0 && <> · <b>{resultado.revisar}</b> {resultado.revisar === 1 ? "ficou" : "ficaram"} pra escolher à mão, porque faltou casar alguma palavra</>}
+          </span>
+          <button className="aviso-x" onClick={() => setResultado(null)} aria-label="Fechar"><X size={13} /></button>
         </div>
       )}
       {erroBase && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erroBase}</span></div>}
@@ -5942,6 +5990,12 @@ function ComprasView({ obra, onItemChange }) {
             </div>
           </div>
           <div className="canal-escolha">
+            {etapa === "sienge" && baseSienge && (
+              <button className="btn-associar-sel" onClick={associarSelecionados}
+                title="Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão">
+                <PackageSearch size={13} /> Associar {selecionados.length}
+              </button>
+            )}
             {CANAIS_COMPRA.map((c) => (
               <button key={c.id} className="btn-canal" onClick={() => definirCanal(c.id)}
                 title={`Marcar os selecionados como compra por ${c.nome}`}>
@@ -8495,6 +8549,11 @@ export default function App() {
         .funil-v { font-size: 10px; color: var(--ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
         .assoc-barra { display: flex; align-items: center; gap: 10px; background: var(--blue-bg); border: 1px solid #C6DDEE; border-radius: 10px; padding: 11px 15px; font-size: 12px; color: var(--ink-2); margin-bottom: 12px; }
         .assoc-barra .btn-doc { margin-left: auto; flex-shrink: 0; }
+        .assoc-resultado { display: flex; align-items: center; gap: 9px; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
+        .assoc-resultado.ok { background: var(--green-bg); border: 1px solid #C9E5D4; color: var(--green); }
+        .assoc-resultado.parcial { background: var(--amber-bg); border: 1px solid #E8CE9A; color: #7A4C0A; }
+        .btn-associar-sel { display: inline-flex; align-items: center; gap: 5px; background: #fff; color: var(--ink); border: none; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-right: 6px; }
+        .btn-associar-sel:hover { background: var(--blue-bg); color: var(--blue); }
         .sel-barra-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         .btn-sel-tudo { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-2); }
         .btn-sel-tudo:hover { border-color: var(--ink); color: var(--ink); }

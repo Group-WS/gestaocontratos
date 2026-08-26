@@ -158,6 +158,20 @@ export function ordenarDetalhes(desc, grupo) {
     .sort((a, b) => b.score - a.score || b.casaram.length - a.casaram.length);
 }
 
+/* Dá pra associar sem alguém olhar?
+
+   Só quando a melhor variante casa TODAS as palavras do item. Aceitar a
+   melhor de qualquer jeito seria rápido e errado: a linha de 9.000 BTUs
+   viraria a de 18.000 sem ninguém ver, e o erro só aparece quando o
+   equipamento chega na obra.
+
+   Vale pra associação em massa. Uma a uma a pessoa está olhando, e aí
+   escolher o parecido é decisão dela. */
+export function podeAssociarSozinho(detalhes) {
+  const melhor = (detalhes || [])[0];
+  return !!melhor && melhor.faltaram.length === 0;
+}
+
 /* Descrição no padrão da casa: MARCA / DESCRIÇÃO / MODELO / COR / CÓDIGO.
  *
  * Campo que não existe é PULADO, não vira espaço vazio nem "—": a

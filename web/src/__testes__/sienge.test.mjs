@@ -7,7 +7,7 @@
  * insumo errado; marcar de vermelho o que já existe faz cadastrar um
  * duplicado, e a base do Sienge incha com o mesmo produto em dois códigos.
  */
-import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
+import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -131,6 +131,18 @@ const alvoCond = "Condensadora Electrolux Split 9.000";
 conf("condensadora acha a própria mãe", acharMaes(alvoCond, gr)[0].grupo.codigo, "6050");
 conf("mãe nenhuma quando nada casa", acharMaes("Bancada de mármore", gr).length, 0);
 conf("base vazia não tem mãe", agruparPorMae([]).length, 0);
+
+/* ---- 9. associar em massa só onde não sobra dúvida ---- */
+// Aceitar a melhor sugestão de qualquer jeito seria rápido e errado: a
+// linha de 9.000 viraria a de 18.000 sem ninguém ver, e o erro só aparece
+// quando o equipamento chega na obra.
+conf("associa sozinho quando bate tudo", podeAssociarSozinho(det), true);
+conf("... e o que bate é o de 18.000", det[0].insumo.descricao.includes("18.000"), true);
+const soParecido = ordenarDetalhes("Ar-condicionado Electrolux Split 22.000 BTUs", maeCerta.grupo);
+conf("não associa sozinho faltando a capacidade", podeAssociarSozinho(soParecido), false);
+conf("... porque faltou 22000", soParecido[0].faltaram.includes("22000"), true);
+conf("sem variante nenhuma não associa", podeAssociarSozinho([]), false);
+conf("lista nula não associa", podeAssociarSozinho(null), false);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
