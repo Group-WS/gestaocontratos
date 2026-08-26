@@ -284,8 +284,16 @@ function matchesFilter(it, filter, cat) {
      coluna de material preenchida aparecia na lista como MAT e sumia ao
      filtrar "Liberado p/ compra" — a mesma tela dizendo as duas coisas. */
   if (alocacaoDoItem(it, cat) === ALOC_MO) return false;
-  if (filter === "liberado") return it.liberado === true;
-  if (filter === "aguardando") return !it.liberado;
+  /* "Liberado" e "Aguardando" sairam.
+
+     Eles liam `it.liberado`, que ficou inalcancavel quando o botao de
+     incluir/tirar do plano deu lugar a coluna Destino. Filtro que sempre
+     devolve a mesma coisa e pior que filtro nenhum: a pessoa clica,
+     nada muda, e passa a desconfiar dos outros.
+
+     No lugar entrou "Sem destino", que e a pergunta que a tela de fato
+     responde agora — o que ainda ninguem disse por onde compra. */
+  if (filter === "sem_destino") return !it.canalCompra && !it.comprado;
   if (filter === "comprado") return it.comprado === true;
   if (filter === "falta") return !it.comprado;
   return true;
@@ -311,12 +319,12 @@ function exportVendidoCSV(obra) {
 }
 
 function exportExecutivoCSV(obra) {
-  const rows = [["Verba", "Código", "Descrição", "Tipo", "Ambiente", "Qtd. Executivo", "Custo Total (R$)", "Liberado p/ compra"]];
+  const rows = [["Verba", "Código", "Descrição", "Alocação", "Ambiente", "Qtd. Executivo", "Custo Total (R$)", "Destino"]];
   obra.categorias.forEach((cat) => (cat.itens || []).forEach((it) => {
     rows.push([
-      cat.nome, it.codigo, it.desc, it.tipo === "produto" ? "Produto" : "Serviço",
-      it.ambiente || "", it.qtdExecutivo ?? "", (it.custo ?? 0).toFixed(2).replace(".", ","),
-      it.tipo === "produto" ? (it.liberado ? "Liberado" : "Aguardando") : "—",
+      cat.nome, it.codigo, it.desc, ROTULO_ALOC[alocacaoDoItem(it, cat)] || "—",
+      it.ambiente || "", it.qtdExecutivo ?? it.qtdVendida ?? "", (it.custo ?? 0).toFixed(2).replace(".", ","),
+      it.comprado ? "Comprado" : (it.canalCompra ? canalPorId(it.canalCompra)?.nome : "Sem destino"),
     ]);
   }));
   const csv = rows.map((r) => r.map(csvCell).join(";")).join("\n");
@@ -940,6 +948,18 @@ function TagCanal({ id, comNome }) {
    definicao. Deixar "nao identificado" numa linha de MO era o app fingir
    nao saber uma coisa que ele sabe. */
 function DestinoCompra({ item, aloc }) {
+  /* Comprado ganha do canal na leitura: quem olha o plano quer saber
+     primeiro o que ja resolveu. Sem isto a tela parecia que nada tinha
+     sido comprado, mesmo com a compra marcada na tela de Compras. */
+  if (item.comprado) {
+    return (
+      <span className="pill pill-ok" title={item.compradoEm
+        ? `Comprado em ${new Date(item.compradoEm).toLocaleDateString("pt-BR")}${item.canalCompra ? ` por ${canalPorId(item.canalCompra)?.nome}` : ""}`
+        : "Comprado"}>
+        <Check size={11} /> comprado{item.canalCompra ? ` · ${canalPorId(item.canalCompra)?.sigla}` : ""}
+      </span>
+    );
+  }
   if (item.canalCompra) return <TagCanal id={item.canalCompra} comNome />;
   if (aloc === ALOC_MO) {
     const etapa = item.statusContrato ? CONTRATO_STAGES[item.statusContrato]?.label : null;
@@ -1399,11 +1419,10 @@ function FormAvulsa({ obra, onCriar }) {
 
 const FILTERS = [
   { id: "todos", label: "Todos os itens" },
-  { id: "liberado", label: "Liberado p/ compra" },
-  { id: "aguardando", label: "Aguardando liberação" },
-  { id: "alerta", label: "Com alerta" },
+  { id: "sem_destino", label: "Sem destino" },
   { id: "comprado", label: "Já comprado" },
   { id: "falta", label: "Falta comprar" },
+  { id: "alerta", label: "Com alerta" },
 ];
 
 // PLANILHA DE COMPRA — a versão que o time libera pra valer.
@@ -1521,16 +1540,27 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
   // O placar da seleção. Sem ele a pessoa só descobre o tamanho do que
   // escolheu abrindo verba por verba — e o número que importa não é
   // quantos itens, é quanto de material vai pra compra.
+  /* O placar do topo.
+
+     Ele media `it.liberado` — um campo que ficou INALCANCAVEL quando o
+     botao de incluir/tirar do plano saiu da tabela. Ninguem mais podia
+     mudar, entao a barra mostrava R$ 500 numa obra de R$ 318 mil e a
+     contagem vinha NaN, porque somava uma sugestao que nao existe mais.
+
+     Agora ele le o que a tela de fato mostra: todo o material do plano,
+     a mao de obra que segue pra Contratos, e quanto ja foi comprado. */
   const plano = useMemo(() => {
-    let confirmados = 0, materialNoPlano = 0, moForaDoPlano = 0;
-    obra.categorias.forEach((cat) => (cat.itens || []).forEach((it) => {
-      if (!it.liberado || it.ehTitulo) return;
+    let nItens = 0, materialNoPlano = 0, moForaDoPlano = 0, comprado = 0, nComprados = 0;
+    (obra.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
+      if (it.ehTitulo) return;
       const { material, mo } = parcelasDoItem(it);
+      if (material <= 0 && mo <= 0) return;
       materialNoPlano += material;
       moForaDoPlano += mo;
-      confirmados += 1;
+      nItens += 1;
+      if (it.comprado) { comprado += material; nComprados += 1; }
     }));
-    return { confirmados, materialNoPlano, moForaDoPlano };
+    return { nItens, materialNoPlano, moForaDoPlano, comprado, nComprados };
   }, [obra]);
 
   /* O item que entra na tela.
@@ -1629,12 +1659,20 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
         <div className="plano-barra">
           <div className="plano-num">
             <div className="plano-valor mono">{fmtBRL(plano.materialNoPlano)}</div>
-            <div className="plano-rotulo">material no plano · {plano.confirmados + plano.sugestoes} {plano.confirmados + plano.sugestoes === 1 ? "item" : "itens"}</div>
+            <div className="plano-rotulo">material no plano · {plano.nItens} {plano.nItens === 1 ? "item" : "itens"}</div>
           </div>
           {plano.moForaDoPlano > 0 && (
             <div className="plano-num plano-num-mo">
               <div className="plano-valor mono dim">{fmtBRL(plano.moForaDoPlano)}</div>
-              <div className="plano-rotulo">de mão de obra nesses itens — vai pra Contratos, não pra compra</div>
+              <div className="plano-rotulo">de mão de obra — vai pra Contratos, não pra compra</div>
+            </div>
+          )}
+          {/* Sem isto a tela parecia que nada tinha sido comprado, mesmo
+              com a compra ja marcada la em Compras de Produtos. */}
+          {plano.comprado > 0 && (
+            <div className="plano-num plano-num-ok">
+              <div className="plano-valor mono">{fmtBRL(plano.comprado)}</div>
+              <div className="plano-rotulo">já comprado · {plano.nComprados} {plano.nComprados === 1 ? "item" : "itens"}</div>
             </div>
           )}
         </div>
@@ -9227,6 +9265,8 @@ export default function App() {
         .plano-barra { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--linha); border-radius: 10px; padding: 13px 18px; margin-bottom: 12px; }
         .plano-valor { font-size: 17px; font-weight: 700; }
         .plano-rotulo { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+        .plano-num-ok .plano-valor { color: var(--green); }
+        .plano-num-ok { padding-left: 26px; border-left: 1px solid var(--linha); }
         .plano-num-mo { padding-left: 26px; border-left: 1px solid var(--linha); }
         .contrato-cell { vertical-align: middle; }
         .contrato-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
