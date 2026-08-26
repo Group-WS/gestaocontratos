@@ -25,7 +25,7 @@ const trecho = (de, ate) => {
   return src.slice(i, f);
 };
 
-const { servicosMO, produtosMAT } = eval(`(function () {
+const { servicosMO, produtosMAT, obraComprasStats } = eval(`(function () {
   /* Sem padrao da empresa: estes testes verificam o que a PLANILHA e as
      regras de verba decidem. O padrao por descricao tem teste proprio em
      alocacao-padrao.test.mjs. */
@@ -37,7 +37,8 @@ const { servicosMO, produtosMAT } = eval(`(function () {
   ${bloco("function parcelasDaPlanilha(")}
   ${bloco("function servicosMO(")}
   ${bloco("function produtosMAT(")}
-  return { servicosMO, produtosMAT };
+  ${bloco("function obraComprasStats(")}
+  return { servicosMO, produtosMAT, obraComprasStats };
 })()`);
 
 let f = 0;
@@ -100,6 +101,34 @@ conf("... e não o custo do item", spotC.material === spotC.it.custo, false);
 // leva a sua parcela, e as duas somadas dão o item.
 const moDoSpot = rows.find((r) => r.it.desc === "Spot de sobrepor");
 conf("as duas telas somadas dão o item inteiro", spotC.material + moDoSpot.mo, 362);
+
+/* ---- o total de compras do Dashboard ---- */
+// Este cálculo ficou parado no modelo antigo: filtrava por `tipo` e
+// somava `it.custo`, que inclui a mão de obra. O "% comprado" do
+// Dashboard media compra contra um total que tinha contrato dentro.
+const st = obraComprasStats(obra);
+// Spot 182 + Luminária 900 = 1.082 de material. Pintura e gesso são mão
+// de obra pura e não entram.
+conf("o total é só a parcela de material", st.totalProdutos, 1082);
+conf("... e não o custo cheio do spot", st.totalProdutos === 362 + 900, false);
+conf("nada comprado ainda", st.totalComprado, 0);
+conf("falta comprar tudo", st.falta, 1082);
+
+// Marcar comprado abastece o Dashboard com a MESMA base da tela de
+// compras — senão os dois dão números diferentes pra mesma pergunta.
+const comprada = { categorias: obra.categorias.map((c) => ({
+  ...c, itens: c.itens.map((it) => (it.desc === "Luminária" ? { ...it, comprado: true } : it)),
+})) };
+const st2 = obraComprasStats(comprada);
+conf("comprado soma a parcela de material", st2.totalComprado, 900);
+conf("falta o resto", st2.falta, 182);
+conf("percentual bate", Math.round(st2.pct), 83);
+// O item marcado como serviço COM material entra — era o que o `tipo`
+// escondia da conta.
+conf("serviço com material entra na conta", obraComprasStats({ categorias: [{
+  num: "05", nome: "Instalações Elétricas e Iluminação",
+  itens: [{ desc: "Marcenaria com insumo", tipo: "servico", totalMaterial: 500, totalMO: 0, custo: 500 }],
+}] }).totalProdutos, 500);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

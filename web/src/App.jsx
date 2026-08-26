@@ -247,12 +247,28 @@ function obraAlertCount(o) {
   }, 0);
 }
 
+/* Quanto de MATERIAL a obra tem, e quanto dele ja foi comprado.
+ *
+ * Duas coisas estavam erradas aqui, e as duas pelo mesmo motivo — este
+ * calculo ficou parado no modelo antigo enquanto o resto do app mudou:
+ *
+ *   1. Filtrava por `it.tipo === "produto"`. O campo de UMA escolha, de
+ *      novo: o item marcado como servico com material lancado ficava de
+ *      fora, e o spot com as duas parcelas entrava inteiro.
+ *   2. Somava `it.custo`, que inclui a mao de obra. O "% comprado" do
+ *      Dashboard media compra contra um total que tinha contrato dentro.
+ *
+ * Agora e a PARCELA de material, a mesma base da tela de Compras de
+ * Produtos — senao o Dashboard e a tela de compras dao numeros
+ * diferentes pra mesma pergunta, e ninguem sabe em qual acreditar. */
 function obraComprasStats(o) {
   let totalProdutos = 0, totalComprado = 0;
-  o.categorias.forEach((c) => (c.itens || []).forEach((it) => {
-    if (it.tipo !== "produto" || it.custo == null) return;
-    totalProdutos += it.custo;
-    if (it.comprado) totalComprado += it.valorComprado != null ? it.valorComprado : it.custo;
+  (o.categorias || []).forEach((c) => (c.itens || []).forEach((it) => {
+    if (it.ehTitulo) return;
+    const { material } = parcelasDoItem(it);
+    if (material <= 0 && alocacaoDoItem(it, c) !== ALOC_MAT) return;
+    totalProdutos += material;
+    if (it.comprado) totalComprado += material;
   }));
   const pct = totalProdutos > 0 ? (totalComprado / totalProdutos) * 100 : 0;
   return { totalProdutos, totalComprado, falta: totalProdutos - totalComprado, pct };
@@ -5725,12 +5741,133 @@ function produtosMAT(obra) {
   return out;
 }
 
-function ComprasView({ obra, onItemChange }) {
+/* PEDIDO DE COMPRA — a folha que sai pro fornecedor.
+
+   O cabecalho carrega o que a pessoa do outro lado precisa pra responder
+   sem ligar de volta: qual obra, onde ela fica, por qual canal, quem
+   pediu, e — a que mais importa — ATE QUANDO o material tem que estar
+   comprado. Prazo escondido no sistema e prazo que o fornecedor descobre
+   tarde.
+
+   Valor NAO vai no papel. O que esta aqui e o custo do executivo, que e
+   o nosso teto interno; mandar isso pro fornecedor e entregar a carta na
+   mesa antes de ele fazer a proposta. O Excel leva, porque e uso interno. */
+function PedidoCompra({ obra, canal, itens, usuario }) {
+  const c = canalPorId(canal);
+  const hoje = new Date().toLocaleDateString("pt-BR");
+
+  // O prazo mais apertado entre as verbas do pedido: e a data que manda.
+  const prazo = useMemo(() => {
+    if (!obra.dataEntrega) return null;
+    let melhor = null;
+    [...new Set(itens.map((r) => r.catNum))].forEach((num) => {
+      const cat = (obra.categorias || []).find((x) => x.num === num);
+      const p = cat && prazoDoGrupo(cat, cat.itens);
+      if (!p) return;
+      const d = dataLimiteCompra(obra.dataEntrega, p.dias);
+      if (d && (!melhor || d < melhor)) melhor = d;
+    });
+    return melhor;
+  }, [obra, itens]);
+  const faltam = prazo ? diasAte(prazo) : null;
+
+  return (
+    <div className="doc-escopo pedido-doc" id="doc-pedido">
+      <div className="doc-banda">Pedido de compra — {c ? c.nome : "sem canal"}</div>
+      <div className="doc-cab">
+        <div><span className="doc-rot">Obra</span> {obra.codigo} · {obra.nome}</div>
+        {obra.endereco && <div><span className="doc-rot">Endereço</span> {obra.endereco}</div>}
+        <div><span className="doc-rot">Solicitado por</span> {usuario || "—"} em {hoje}</div>
+        <div><span className="doc-rot">Itens</span> {itens.length} {itens.length === 1 ? "produto" : "produtos"}</div>
+        {prazo && (
+          <div className={faltam < 0 ? "pedido-vencido" : faltam <= 15 ? "pedido-perto" : ""}>
+            <span className="doc-rot">Comprar até</span> {fmtData(prazo)}
+            {faltam != null && (faltam < 0
+              ? ` — venceu há ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
+              : faltam === 0 ? " — é hoje" : ` — faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`)}
+          </div>
+        )}
+        {obra.dataEntrega && (
+          <div><span className="doc-rot">Entrega da obra</span> {new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}</div>
+        )}
+      </div>
+
+      <h3 className="doc-h">Insumos</h3>
+      <table className="doc-tab">
+        <thead>
+          <tr>
+            <th style={{ width: 52 }}>Verba</th>
+            <th>Descrição</th>
+            <th style={{ width: 78 }}>Ambiente</th>
+            <th style={{ width: 62 }} className="center">Qtd.</th>
+            <th style={{ width: 46 }}>Un.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {itens.map((r, k) => (
+            <tr key={k}>
+              <td className="mono">{r.catNum}</td>
+              <td>
+                <div>{r.it.desc}</div>
+                {/* A especificacao e o que evita o fornecedor mandar a
+                    peca parecida — e a pergunta que ele faria por telefone. */}
+                {r.it.especificacao && <div className="ped-espec">{r.it.especificacao}</div>}
+                {r.it.detalheSienge && <div className="ped-sienge">Sienge: {r.it.detalheSienge}</div>}
+              </td>
+              <td>{r.it.ambiente || "—"}</td>
+              <td className="center mono">{r.it.qtdExecutivo ?? r.it.qtdVendida ?? "—"}</td>
+              <td className="mono">{r.it.un || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="doc-rodape">
+        Gerado pelo Gestão de Obras TKWS em {hoje}. Quantidades conforme projeto executivo aprovado.
+      </div>
+    </div>
+  );
+}
+
+/* Excel do pedido — uso INTERNO, entao leva valor.
+ *
+ * A folha que vai pro fornecedor nao mostra o custo do executivo: e o
+ * nosso teto, e entregar isso antes da proposta e abrir o jogo sozinho.
+ * A planilha e pra dentro de casa, pra conferir contra o que voltar. */
+function baixarPedidoExcel(obra, canal, itens, usuario) {
+  const c = canalPorId(canal);
+  const cab = [
+    ["PEDIDO DE COMPRA"],
+    ["Obra", `${obra.codigo} · ${obra.nome}`],
+    ["Endereço", obra.endereco || ""],
+    ["Canal", c ? c.nome : "sem canal"],
+    ["Solicitado por", usuario || ""],
+    ["Data", new Date().toLocaleDateString("pt-BR")],
+    ["Entrega da obra", obra.dataEntrega ? new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR") : ""],
+    [],
+    ["Verba", "Grupo", "Cód.", "Descrição", "Especificação", "Ambiente", "Qtd.", "Un.", "Material (R$)", "Insumo Sienge", "Status"],
+  ];
+  const linhas = itens.map((r) => [
+    r.catNum, r.catNome, r.it.codigo || "", r.it.desc || "", r.it.especificacao || "",
+    r.it.ambiente || "", r.it.qtdExecutivo ?? r.it.qtdVendida ?? "", r.it.un || "",
+    r.material, r.it.detalheSienge || "", r.it.comprado ? "comprado" : "pendente",
+  ]);
+  const total = itens.reduce((a, r) => a + r.material, 0);
+  const ws = XLSX.utils.aoa_to_sheet([...cab, ...linhas, [], ["", "", "", "TOTAL", "", "", "", "", total]]);
+  ws["!cols"] = [{ wch: 7 }, { wch: 26 }, { wch: 8 }, { wch: 48 }, { wch: 30 }, { wch: 14 }, { wch: 7 }, { wch: 6 }, { wch: 14 }, { wch: 40 }, { wch: 11 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Pedido");
+  XLSX.writeFile(wb, `pedido-${c ? c.id : "sem-canal"}-obra-${obra.codigo}.xlsx`);
+}
+
+function ComprasView({ obra, onItemChange, usuario }) {
   const [etapa, setEtapa] = useState("todos");
   const [sel, setSel] = useState(() => new Set());
   const [abertos, setAbertos] = useState(() => new Set());
   const [baseSienge, setBaseSienge] = useState(null);
   const [resultado, setResultado] = useState(null);
+  // O pedido so existe na tela enquanto imprime; fora disso ele nao ocupa
+  // espaco nem confunde com a lista de trabalho.
+  const [pedido, setPedido] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erroBase, setErroBase] = useState(null);
 
@@ -5852,7 +5989,14 @@ function ComprasView({ obra, onItemChange }) {
   const etapas = [
     { id: "todos", rot: "Tudo", n: rows.length, v: soma(() => true) },
     { id: "sem_canal", rot: "Sem canal", n: conta((r) => !r.it.canalCompra), v: soma((r) => !r.it.canalCompra) },
-    ...CANAIS_COMPRA.map((c) => ({ id: c.id, rot: c.nome, n: conta((r) => r.it.canalCompra === c.id), v: soma((r) => r.it.canalCompra === c.id), canal: c.id })),
+    ...CANAIS_COMPRA.map((c) => ({
+      id: c.id, rot: c.nome, canal: c.id,
+      n: conta((r) => r.it.canalCompra === c.id),
+      v: soma((r) => r.it.canalCompra === c.id),
+      // Quantos daquele canal ja foram comprados — e o que diz se o canal
+      // esta andando ou parado.
+      feitos: conta((r) => r.it.canalCompra === c.id && r.it.comprado),
+    })),
   ];
 
   return (
@@ -5870,6 +6014,10 @@ function ComprasView({ obra, onItemChange }) {
           <div className="mo-num-val mono">{fmtBRL(soma((r) => !r.it.canalCompra))}</div>
           <div className="mo-num-rot">ainda sem canal</div>
         </div>
+        <div className="mo-num mo-num-ok">
+          <div className="mo-num-val mono">{fmtBRL(soma((r) => r.it.comprado))}</div>
+          <div className="mo-num-rot">já comprado · vai pro Dashboard</div>
+        </div>
       </div>
 
       {/* O funil. Cada chip e um estagio, e o numero embaixo diz quanto
@@ -5882,6 +6030,11 @@ function ComprasView({ obra, onItemChange }) {
               <div className="funil-n">{e.n}</div>
               <div className="funil-rot">{e.rot}</div>
               <div className="funil-v mono">{fmtCompactBRL(e.v)}</div>
+              {e.canal && e.n > 0 && (
+                <div className={`funil-feitos ${e.feitos === e.n ? "tudo" : ""}`}>
+                  {e.feitos === e.n ? <><Check size={9} /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
+                </div>
+              )}
             </button>
             {i === 1 && <ChevronRight size={14} className="pipe-arrow dim" />}
           </React.Fragment>
@@ -5960,6 +6113,7 @@ function ComprasView({ obra, onItemChange }) {
                       <th style={{ width: 74 }} className="center">Qtd.</th>
                       <th style={{ width: 104 }} className="right">Material</th>
                       <th style={{ width: 112 }} className="center">Canal</th>
+                      <th style={{ width: 104 }} className="center">Status</th>
                       {baseSienge && <th style={{ width: 186 }}>Insumo mãe</th>}
                       {baseSienge && <th style={{ width: 340 }}>Detalhe do insumo</th>}
                     </tr>
@@ -5980,6 +6134,17 @@ function ComprasView({ obra, onItemChange }) {
         );
       })}
 
+      {pedido && (
+        <div className="pedido-wrap">
+          <div className="pedido-topo naoimprime">
+            <span>Pedido pronto — a impressão já abriu. Feche a prévia quando terminar.</span>
+            <button className="btn-doc" onClick={() => window.print()}><FileText size={13} /> Imprimir de novo</button>
+            <button className="btn-voltar" onClick={() => setPedido(null)}><X size={13} /> Fechar</button>
+          </div>
+          <PedidoCompra obra={obra} canal={pedido.canal} itens={pedido.itens} usuario={usuario} />
+        </div>
+      )}
+
       {/* A escolha do canal fica na barra da selecao: e uma decisao sobre
           o LOTE, nao sobre uma linha. Marcar 40 produtos e ter que
           escolher o canal 40 vezes e a mesma decisao repetida 40 vezes. */}
@@ -5992,6 +6157,39 @@ function ComprasView({ obra, onItemChange }) {
             </div>
           </div>
           <div className="canal-escolha">
+            {/* O pedido sai de qualquer canal — inclusive de quem ainda
+                nao tem um: as vezes a lista e pra pedir cotacao antes de
+                decidir por onde comprar. */}
+            <button className="btn-associar-sel" onClick={() => {
+              const canal = etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra || null : etapa;
+              setPedido({ canal, itens: selecionados });
+              setTimeout(() => window.print(), 150);
+            }} title="Abre a impressão do navegador — escolha Salvar como PDF">
+              <FileText size={13} /> PDF
+            </button>
+            <button className="btn-associar-sel" onClick={() => baixarPedidoExcel(
+              obra,
+              etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
+              selecionados, usuario)
+            } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
+              <Download size={13} /> Excel
+            </button>
+            {/* Concluir em massa nao tem risco de casar errado: e a
+                pessoa afirmando que comprou o que ela mesma selecionou. */}
+            {selecionados.some((r) => r.it.canalCompra) && (
+              <button className="btn-associar-sel" onClick={() => {
+                const comCanal = selecionados.filter((r) => r.it.canalCompra);
+                const desmarcar = comCanal.every((r) => r.it.comprado);
+                comCanal.forEach((r) => onItemChange(r.catIdx, r.itemIdx, {
+                  comprado: !desmarcar,
+                  compradoEm: desmarcar ? null : new Date().toISOString(),
+                }));
+                setSel(new Set());
+              }} title="Marca os selecionados que já têm canal — entra no total do Dashboard">
+                <Check size={13} /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
+                  ? "Desmarcar comprado" : "Marcar comprado"}
+              </button>
+            )}
             {etapa === "sienge" && baseSienge && (
               <button className="btn-associar-sel" onClick={associarSelecionados}
                 title="Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão">
@@ -6052,6 +6250,19 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge,
       <td className="mono right">{fmtBRL(material)}</td>
       <td className="center">
         {it.canalCompra ? <TagCanal id={it.canalCompra} comNome /> : <span className="pill pill-wait">—</span>}
+      </td>
+      <td className="center">
+        {/* Sem canal nao ha o que concluir: concluir o que ninguem sabe
+            por onde vai comprar seria marcar comprado no escuro. */}
+        {!it.canalCompra ? <span className="dim">—</span> : (
+          <button className={`pill pill-btn ${it.comprado ? "pill-ok" : "pill-wait"}`}
+            onClick={() => onItemChange({ comprado: !it.comprado, compradoEm: it.comprado ? null : new Date().toISOString() })}
+            title={it.comprado
+              ? `Comprado${it.compradoEm ? ` em ${new Date(it.compradoEm).toLocaleDateString("pt-BR")}` : ""} — clique pra desfazer`
+              : "Marcar como comprado — entra no total do Dashboard"}>
+            {it.comprado ? <><Check size={11} /> comprado</> : "pendente"}
+          </button>
+        )}
       </td>
 
       {mostrarSienge && (
@@ -8565,6 +8776,9 @@ export default function App() {
         .funil-v { font-size: 10px; color: var(--ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
         .assoc-barra { display: flex; align-items: center; gap: 10px; background: var(--blue-bg); border: 1px solid #C6DDEE; border-radius: 10px; padding: 11px 15px; font-size: 12px; color: var(--ink-2); margin-bottom: 12px; }
         .assoc-barra .btn-doc { margin-left: auto; flex-shrink: 0; }
+        .funil-feitos { font-size: 9px; color: var(--ink-3); margin-top: 3px; display: inline-flex; align-items: center; gap: 3px; }
+        .funil-feitos.tudo { color: var(--green); font-weight: 700; }
+        .mo-num-ok .mo-num-val { color: var(--green); }
         .assoc-resultado { display: flex; align-items: center; gap: 9px; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
         .assoc-resultado.ok { background: var(--green-bg); border: 1px solid #C9E5D4; color: var(--green); }
         .assoc-resultado.parcial { background: var(--amber-bg); border: 1px solid #E8CE9A; color: #7A4C0A; }
@@ -8623,6 +8837,14 @@ export default function App() {
         .btn-canal-limpar { color: #fff; font-size: 11px; font-weight: 600; padding: 7px 11px; opacity: 0.75; }
         .btn-canal-limpar:hover { opacity: 1; }
 
+        /* O pedido: mesma folha do escopo, com o cabecalho do pedido. */
+        .pedido-wrap { margin-top: 18px; }
+        .pedido-topo { display: flex; align-items: center; gap: 12px; background: var(--blue-bg); color: var(--blue); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
+        .pedido-topo .btn-voltar { margin-left: auto; }
+        .ped-espec { font-size: 10.5px; color: #6A6E72; font-style: italic; margin-top: 2px; }
+        .ped-sienge { font-size: 10px; color: #85898D; margin-top: 2px; }
+        .pedido-vencido { color: #C2453F; font-weight: 700; }
+        .pedido-perto { color: #B54708; font-weight: 600; }
         /* DASHBOARD MO — a base de orcado de um escopo. */
         .mo-topo { display: flex; align-items: center; gap: 30px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
         .mo-num-val { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -9706,7 +9928,7 @@ export default function App() {
           {tab === "comparativo" && (
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
-          {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} />}
+          {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} usuario={usuario} />}
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}
           </>
           )}
