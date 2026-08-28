@@ -7,7 +7,7 @@
  * insumo errado; marcar de vermelho o que já existe faz cadastrar um
  * duplicado, e a base do Sienge incha com o mesmo produto em dois códigos.
  */
-import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, lerListaDeProdutos, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
+import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, lerListaDeProdutos, lerListaDeProdutosPDF, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -174,6 +174,37 @@ conf("sem coluna conhecida não inventa", lerListaDeProdutos([["a", "b"], ["c", 
 conf("planilha vazia não quebra", lerListaDeProdutos([]).length, 0);
 conf("linha sem descrição é pulada",
   lerListaDeProdutos([["Descrição"], [""], ["Cuba"]]).length, 1);
+
+/* ---- 11. a mesma lista, mas em PDF ---- */
+// O extrator cola as colunas e quebra a descrição em várias linhas. O
+// texto abaixo é do "Insumos Orçados" real da 2307.
+const pdfTxt = [
+  "Insumos Orçados", "Obra", "2307 - Bella Vista",
+  "CódigoInsumoUn.QuantidadePreço unitárioPreço totalData do preço",
+  "405MOBÍLIA SOLTA - POLTRONA / Detalhe: DESTACK /",
+  "POLTRONA TORII / MADEIRA NATURAL (LÂMINA) / COURO",
+  "MEL",
+  "un1,00007.008,85707.008,8630/08/2024",
+  "419MOBÍLIA SOLTA - PUFF / Detalhe: POLLUS / PUFF VEGAS LX /",
+  // Esta linha parece um item novo — "50" seguido de "X" maiúsculo — e
+  // partia a descrição em dois pedaços, os dois sem preço.
+  "50X50X45CM / TECIDO 1546",
+  "un2,00001.200,00002.400,0030/08/2024",
+].join("\n");
+const pl = lerListaDeProdutosPDF(pdfTxt);
+conf("PDF: dois itens, não quatro", pl.length, 2);
+conf("PDF: a medida não virou item", pl.some((x) => /^50X/.test(x.desc)), false);
+conf("PDF: descrição inteira, das três linhas",
+  pl[0].desc, "MOBÍLIA SOLTA - POLTRONA / DESTACK / POLTRONA TORII / MADEIRA NATURAL (LÂMINA) / COURO MEL");
+// "Detalhe:" é rótulo, não conteúdo: aparece em toda linha e, contado
+// como palavra, aproximaria produtos que não têm nada a ver.
+conf("PDF: 'Detalhe:' sai da descrição", /Detalhe/.test(pl[0].desc), false);
+conf("PDF: quantidade da linha colada", pl[0].qtd, 1);
+conf("PDF: unidade", pl[0].un, "un");
+conf("PDF: o segundo item ficou inteiro",
+  /50X50X45CM/.test(pl[1].desc) && pl[1].qtd === 2, true);
+conf("PDF: código do insumo", pl[1].codigoSienge, "419");
+conf("PDF vazio não quebra", lerListaDeProdutosPDF("").length, 0);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

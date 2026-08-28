@@ -261,3 +261,64 @@ export function lerListaDeProdutos(brutas) {
   });
   return saida;
 }
+
+/* A mesma lista, mas vinda de PDF ("Insumos Orcados" do Sienge).
+ *
+ * O extrator de PDF cola as colunas e quebra a descricao em varias
+ * linhas:
+ *
+ *   405MOBILIA SOLTA - POLTRONA / Detalhe: DESTACK /
+ *   POLTRONA TORII / MADEIRA NATURAL (LAMINA) / COURO
+ *   MEL
+ *   un1,00007.008,85707.008,8630/08/2024
+ *   ^^ ^^^^^^ unidade e quantidade grudadas no preco
+ *
+ * Entao a leitura ancora em DOIS pontos: a linha que abre o item
+ * (codigo colado numa descricao em caixa alta) e a linha de valores, que
+ * fecha o bloco. Tudo entre as duas e' continuacao da descricao.
+ *
+ * "Detalhe:" e' rotulo, nao conteudo — sai fora. Ele aparece em toda
+ * linha e, contado como palavra, aproximaria produtos que nao tem nada a
+ * ver so por compartilhar o rotulo.
+ */
+export function lerListaDeProdutosPDF(texto) {
+  const L = String(texto || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  // "un1,0000..." ou "m²12,5000..." — unidade grudada na quantidade.
+  const VALORES = /^([a-zçãµ²³.]{1,4})(\d{1,3}(?:\.\d{3})*,\d{4})/i;
+  /* Codigo seguido de PELO MENOS TRES LETRAS.
+     Sem isso, uma linha de continuacao como "50X50X45CM / TECIDO 1546"
+     passava por item novo — "50" + "X..." em maiuscula — e partia a
+     descricao em dois pedacos, os dois sem preco. Nome de insumo comeca
+     com palavra ("MOBILIA", "COIFA"); medida comeca com numero. */
+  const ABRE = /^(\d{2,6})([A-ZÀ-Ú]{3,}[^]*)$/;
+
+  const saida = [];
+  let atual = null;
+  L.forEach((linha) => {
+    const v = atual && linha.match(VALORES);
+    if (v) {
+      atual.un = v[1].replace(/\.$/, "");
+      atual.qtd = Number(v[2].replace(/\./g, "").replace(",", "."));
+      saida.push(atual);
+      atual = null;
+      return;
+    }
+    const a = linha.match(ABRE);
+    if (a) {
+      // Item novo comecou sem a linha de valores do anterior: guarda o
+      // que tinha em vez de descartar — descricao sem preco ainda serve
+      // pra casar com o insumo.
+      if (atual) saida.push(atual);
+      atual = { codigo: a[1], partes: [a[2]], marca: null, modelo: null, cor: null };
+      return;
+    }
+    if (atual) atual.partes.push(linha);
+  });
+  if (atual) saida.push(atual);
+
+  return saida.map((x) => {
+    const inteiro = x.partes.join(" ").replace(/\s+/g, " ").replace(/\bDetalhe:\s*/gi, "").trim();
+    return { desc: inteiro, codigo: null, codigoSienge: x.codigo, un: x.un || null, qtd: x.qtd ?? null,
+             marca: null, modelo: null, cor: null };
+  }).filter((x) => x.desc);
+}

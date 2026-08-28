@@ -15,7 +15,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos } from "./lib/sienge";
+import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
@@ -5849,10 +5849,22 @@ function GeradorSiengeView() {
     if (!file) return;
     setErro(null);
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      const brutas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
-      const lidas = lerListaDeProdutos(brutas);
-      if (!lidas.length) throw new Error("Não achei uma coluna de descrição neste arquivo. Ela pode se chamar Descrição, Insumo, Produto ou Item.");
+      let lidas;
+      if (/\.pdf$/i.test(file.name)) {
+        /* PDF passa pelo servidor so pra virar texto — quem interpreta e
+           o cliente, igual ao leitor de pedido do Sienge. */
+        const res = await fetch(api("/api/sienge/texto"), {
+          method: "POST", headers: { "Content-Type": "application/pdf" }, body: await file.arrayBuffer(),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+        lidas = lerListaDeProdutosPDF((await res.json()).texto);
+        if (!lidas.length) throw new Error("Não encontrei nenhum insumo neste PDF. Me manda o arquivo que eu ajusto o leitor.");
+      } else {
+        const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        const brutas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
+        lidas = lerListaDeProdutos(brutas);
+        if (!lidas.length) throw new Error("Não achei uma coluna de descrição neste arquivo. Ela pode se chamar Descrição, Insumo, Produto ou Item.");
+      }
       setLinhas(lidas);
       setArquivo(file.name);
       setEscolhas(new Map());
@@ -5894,7 +5906,7 @@ function GeradorSiengeView() {
       <div className="ger-topo">
         <label className="btn-doc">
           <Upload size={13} /> {linhas ? "Trocar arquivo" : "Subir lista de produtos"}
-          <input type="file" accept=".xlsx,.xlsm,.xls,.csv" style={{ display: "none" }}
+          <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
         </label>
         <span className="ger-info">
@@ -5913,8 +5925,11 @@ function GeradorSiengeView() {
           <PackageSearch size={30} className="dim" />
           <div className="compras-empty-title">Suba uma lista de produtos</div>
           <div className="compras-empty-sub">
-            Excel ou CSV com uma coluna de descrição — pode se chamar Descrição, Insumo, Produto ou Item.
-            Colunas de marca, modelo, cor e código entram na descrição gerada, se existirem.
+            <b>Excel ou CSV</b> com uma coluna de descrição — ela pode se chamar Descrição, Insumo,
+            Produto ou Item; marca, modelo, cor e código entram na descrição gerada, se existirem.
+            <br />
+            <b>PDF</b> do relatório "Insumos Orçados" do Sienge também serve.
+            <br />
             Nada é guardado: o arquivo é lido aqui e some quando você sair.
           </div>
         </div>
@@ -5961,8 +5976,11 @@ function LinhaGerador({ linha, escolhida, onEscolher }) {
       <td className="mono dim">{linha.i + 1}</td>
       <td>
         <div className="item-desc">{linha.desc}</div>
-        {(linha.marca || linha.codigo) && (
-          <div className="det-espec">{[linha.marca, linha.modelo, linha.cor, linha.codigo].filter(Boolean).join(" · ")}</div>
+        {(linha.marca || linha.codigo || linha.qtd != null) && (
+          <div className="det-espec">
+            {[linha.qtd != null ? `${linha.qtd} ${linha.un || ""}`.trim() : null,
+              linha.marca, linha.modelo, linha.cor, linha.codigo].filter(Boolean).join(" · ")}
+          </div>
         )}
       </td>
       <td>
