@@ -5918,9 +5918,12 @@ function GeradorSiengeView() {
     }
   }
 
+  /* desc == null e' a escolha POSITIVA de "cadastrar como detalhe novo".
+     Nao e' o mesmo que clicar de novo na variante ja marcada, mas as duas
+     terminam igual: sem variante escolhida, a linha vai pra planilha. */
   const escolher = (i, desc) => setEscolhas((m) => {
     const n = new Map(m);
-    n.get(i) === desc ? n.delete(i) : n.set(i, desc);
+    if (desc == null || n.get(i) === desc) n.delete(i); else n.set(i, desc);
     return n;
   });
 
@@ -6039,7 +6042,7 @@ function GeradorSiengeView() {
           <div className="ger-placar">
             <div className="cf-bloco ok"><div className="cf-n">{achados}</div><div className="cf-rot">já existem no Sienge</div></div>
             <div className={`cf-bloco ${semMae ? "ruim" : "ok"}`}><div className="cf-n">{semMae}</div><div className="cf-rot">precisam ser cadastrados</div></div>
-            <div className="cf-bloco aviso"><div className="cf-n">{escolhas.size}</div><div className="cf-rot">variantes já escolhidas</div></div>
+            <div className="cf-bloco aviso"><div className="cf-n">{paraCadastrar.length}</div><div className="cf-rot">vão pra planilha</div></div>
           </div>
           {/* O template exige tres campos, e um deles o Sienge e' quem
               numera. Dizer QUANTAS linhas vao sair incompletas, antes de
@@ -6186,37 +6189,56 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
             </div>
           )}
 
-          {/* As variantes da mae escolhida. */}
-          {mae && ordenarDetalhes(linha.desc, mae).slice(0, 4).map((d, k) => (
-            <button key={d.insumo.descricao + k}
-              className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
-              onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
-              <span className="det-opcao-txt">{d.insumo.detalhe}</span>
-              {d.faltaram.length > 0
-                ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
-                : <span className="det-bate">bate tudo</span>}
-            </button>
-          ))}
+          {/* A ESCOLHA. Antes ela era invisivel: quem marcava uma variante
+              tirava a linha da planilha sem nada dizer isso, e quem nao
+              marcava nada mandava a linha pra planilha tambem sem nada
+              dizer. Agora as opcoes sao um radio so — as que ja existem no
+              Sienge e a nova — e a marcada e' a que vale. */}
+          <div className="det-escolha">
+            <div className="det-escolha-rot">
+              qual descrição vai pra planilha
+              <span className={escolhida ? "det-selo-fora" : "det-selo-vai"}>
+                {escolhida ? "já cadastrada — fica de fora" : "a nova, abaixo"}
+              </span>
+            </div>
 
-          <details className="det-gerar" open={!!mae && !escolhida}>
-            <summary>{escolhida ? "gerar descritivo mesmo assim" : "nenhuma serve — cadastrar como detalhe novo"}</summary>
-            <div className="padrao-cel">
-              {/* Textarea, e nao um <code> com botao de editar: quem confere
-                  cinquenta linhas nao quer dois cliques por linha. */}
-              <textarea className="padrao-txt padrao-edit" value={descrito} rows={2}
-                spellCheck={false} aria-label="Descrição do detalhe no Sienge"
-                onChange={(e) => onDescrito(e.target.value)} />
-              <div className="padrao-acoes">
-                <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
-                  onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></button>
-                {editado && (
-                  <button className="btn-copiar" title="Voltar ao descritivo gerado"
-                    onClick={() => onDescrito(null)}><RotateCcw size={11} /></button>
-                )}
+            {mae && ordenarDetalhes(linha.desc, mae).slice(0, 4).map((d, k) => (
+              <button key={d.insumo.descricao + k}
+                className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
+                onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
+                <span className="det-radio" />
+                <span className="det-opcao-txt">{d.insumo.detalhe}</span>
+                {d.faltaram.length > 0
+                  ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
+                  : <span className="det-bate">bate tudo</span>}
+              </button>
+            ))}
+
+            <div className={`det-nova ${escolhida ? "fora" : "escolhida"}`}>
+              <button className={`det-opcao ${escolhida ? "" : "escolhida"}`}
+                onClick={() => onEscolher(null)}
+                title="Usar a descrição gerada — é ela que preenche o template do Sienge">
+                <span className="det-radio" />
+                <span className="det-opcao-txt">cadastrar como detalhe novo</span>
+                {editado && <span className="det-falta">editada à mão</span>}
+              </button>
+              <div className="padrao-cel">
+                {/* Textarea, e nao um <code> com botao de editar: quem confere
+                    cinquenta linhas nao quer dois cliques por linha. */}
+                <textarea className="padrao-txt padrao-edit" value={descrito} rows={2}
+                  spellCheck={false} aria-label="Descrição do detalhe no Sienge"
+                  onChange={(e) => onDescrito(e.target.value)} />
+                <div className="padrao-acoes">
+                  <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
+                    onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></button>
+                  {editado && (
+                    <button className="btn-copiar" title="Voltar ao descritivo gerado"
+                      onClick={() => onDescrito(null)}><RotateCcw size={11} /></button>
+                  )}
+                </div>
               </div>
             </div>
-            {editado && <span className="padrao-nota">editado à mão</span>}
-          </details>
+          </div>
         </div>
       </td>
     </tr>
@@ -9512,6 +9534,14 @@ export default function App() {
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
         .btn-template { background: var(--green); }
         .btn-template:hover { background: #247346; }
+        .det-escolha { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; }
+        .det-escolha-rot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; color: var(--ink-3); margin-bottom: 4px; }
+        .det-selo-vai { color: var(--blue); background: var(--blue-bg); border-radius: 4px; padding: 1px 5px; text-transform: none; letter-spacing: 0; }
+        .det-selo-fora { color: var(--green); background: var(--green-bg); border-radius: 4px; padding: 1px 5px; text-transform: none; letter-spacing: 0; }
+        .det-radio { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--ink-3); flex-shrink: 0; align-self: center; }
+        .det-opcao.escolhida .det-radio { border-color: var(--green); box-shadow: inset 0 0 0 2px var(--green-bg); background: var(--green); }
+        .det-nova { border-radius: 6px; padding: 2px; }
+        .det-nova.fora { opacity: .5; }
         .padrao-edit { border: 1px solid var(--line); resize: vertical; min-height: 34px; color: var(--ink); }
         .padrao-edit:focus { outline: none; border-color: var(--blue); background: var(--panel-2); }
         .padrao-acoes { display: flex; flex-direction: column; gap: 3px; }
