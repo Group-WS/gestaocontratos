@@ -11,7 +11,7 @@
  * este teste guarda é a FORMA: se ela sair torta, a pessoa descobre no
  * Sienge, sem pista.
  */
-import { montarTemplateSienge, faltaNoTemplate, CABECALHO_TEMPLATE_SIENGE } from "../lib/sienge.js";
+import { montarTemplateSienge, faltaNoTemplate, CABECALHO_TEMPLATE_SIENGE, codigoAuxiliarDe, sortearAuxiliares } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -70,6 +70,40 @@ conf("linha completa não falta nada",
 conf("linha vazia falta os três", faltaNoTemplate({}).length, 4);
 conf("espaço em branco não conta como preenchido",
   faltaNoTemplate({ ...linha, codigoDetalhe: "   " }).length, 1);
+
+/* ---- Regra "sem fórmulas" ----
+   Célula que começa com = + - @ é fórmula pra qualquer leitor de
+   planilha, e código de fornecedor como "-DR-M" cai nisso. */
+const formula = montarTemplateSienge([{ ...linha, codigoAuxDetalhe: "-DR-M" }]).split("\r\n")[1];
+conf("código que parece fórmula é desarmado", /;\s-DR-M;/.test(formula), true);
+conf("mas o texto continua lá", formula.includes("-DR-M"), true);
+// O desarme não pode inventar aspas: aspas viram máscara na importação.
+conf("desarme não usa aspas", formula.includes('"'), false);
+
+/* ---- Código auxiliar ---- */
+// A planilha de climatização não tem coluna de código: o que ela tem é o
+// modelo do fabricante, que é referência externa do mesmo jeito.
+conf("o código do arquivo vem primeiro", codigoAuxiliarDe({ codigo: "50049", modelo: "ZT-W18" }), "50049");
+conf("sem código, vale o modelo", codigoAuxiliarDe({ modelo: "ZT-W18GTTAA" }), "ZT-W18GTTAA");
+conf("sem nada, fica vazio", codigoAuxiliarDe({ desc: "Spot" }), "");
+
+/* Sorteado, mas nunca repetido: dois detalhes com o mesmo auxiliar é a
+   duplicata que o campo existe pra evitar, e o Sienge aceitaria calado. */
+const semCod = [{ desc: "A" }, { desc: "B" }, { desc: "C" }, { codigo: "50049", desc: "D" }];
+const sorte = sortearAuxiliares(semCod);
+conf("sorteia só pra quem não tem", sorte.size, 3);
+conf("quem já tem código fica de fora", sorte.has(3), false);
+conf("todos com 5 dígitos", [...sorte.values()].every((v) => /^\d{5}$/.test(v)), true);
+conf("nenhum repetido", new Set(sorte.values()).size, 3);
+
+// Cem sorteios seguidos, com um universo estreito: sem o controle de
+// usados isso repetiria quase sempre.
+const muitos = sortearAuxiliares(Array.from({ length: 200 }, (_, k) => ({ desc: "x" + k })));
+conf("duzentos sorteios sem colisão", new Set(muitos.values()).size, 200);
+
+// Codigo que ja existe no Sienge nao pode ser sorteado de novo.
+const evita = sortearAuxiliares([{ desc: "A" }], ["10000", "10001"]);
+conf("não sorteia um código já usado", ["10000", "10001"].includes([...evita.values()][0]), false);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

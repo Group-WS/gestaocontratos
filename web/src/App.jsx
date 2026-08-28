@@ -15,7 +15,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate, norm as normSienge } from "./lib/sienge";
+import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate, norm as normSienge } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
@@ -5863,6 +5863,16 @@ function GeradorSiengeView() {
      modelo). Editado a mao, o texto manda — mas so ate a pessoa desfazer,
      e dai ele volta a acompanhar o fornecedor que estiver la em cima. */
   const [descritos, setDescritos] = useState(() => new Map());
+  /* Os dois codigos do template. O auxiliar sai do arquivo; o codigo do
+     detalhe o arquivo nunca traz — quem numera e' o Sienge, e a base que
+     eu carrego nao guarda o numero do detalhe, so a descricao. Deixar os
+     dois digitaveis aqui e' o que permite baixar o CSV pronto em vez de
+     baixar, abrir no Excel e completar do lado de fora. */
+  const [codAux, setCodAux] = useState(() => new Map());
+  // Quais auxiliares foram SORTEADOS: numero inventado tem que se
+  // anunciar, senao vira dado de verdade na cabeca de quem confere.
+  const [auxSorteado, setAuxSorteado] = useState(() => new Set());
+  const [codDet, setCodDet] = useState(() => new Map());
 
   // A base carrega sozinha: sem ela a tela nao faz nada, e pedir um
   // clique pra habilitar a unica funcao da tela e' cerimonia.
@@ -5909,9 +5919,17 @@ function GeradorSiengeView() {
         lidas = lerListaDeProdutos(brutas);
         if (!lidas.length) throw new Error("Não achei descrição de produto neste arquivo. Se tiver cabeçalho, a coluna pode se chamar Descrição, Insumo, Produto ou Item; se não tiver, eu procuro sozinho a coluna com as descrições — mas aqui não encontrei nenhuma. Me manda o arquivo que eu ajusto o leitor.");
       }
+      /* Sorteio na LEITURA, e nao na hora de montar o CSV: assim o numero
+         que a pessoa ve na tela e' o mesmo que sai no arquivo, e ele nao
+         muda a cada re-render. */
+      const sorteados = sortearAuxiliares(lidas);
       setLinhas(lidas);
       setArquivo(file.name);
       setEscolhas(new Map());
+      setCodAux(sorteados);
+      setAuxSorteado(new Set(sorteados.keys()));
+      setCodDet(new Map());
+      setDescritos(new Map());
     } catch (e) {
       setErro(`Não consegui ler o arquivo: ${e.message || e}`);
       setLinhas(null);
@@ -5937,6 +5955,11 @@ function GeradorSiengeView() {
     const meu = descritos.get(c.i);
     return meu != null ? meu : geradoDe(c);
   }, [descritos, geradoDe]);
+  const auxDe = useCallback((c) => {
+    const meu = codAux.get(c.i);
+    return meu != null ? meu : codigoAuxiliarDe(c);
+  }, [codAux]);
+  const detDe = useCallback((c) => codDet.get(c.i) || "", [codDet]);
   const achados = casados.filter(comMae).length;
   const semMae = casados.length - achados;
 
@@ -5953,15 +5976,12 @@ function GeradorSiengeView() {
         i: c.i,
         maeCodigo: mae?.codigo || "",
         maeNome: mae?.nome || "",
-        // O Sienge e' quem numera o detalhe; o gerador nao tem como saber.
-        codigoDetalhe: "",
-        // O codigo do fornecedor e' o que a casa tem em maos pra
-        // identificar a peca — e' o candidato natural ao auxiliar.
-        codigoAuxDetalhe: c.codigo || c.codigoSienge || "",
+        codigoDetalhe: detDe(c),
+        codigoAuxDetalhe: auxDe(c),
         descricaoDetalhe: descritoDe(c),
         produtoFiscal: "",
       };
-    }), [casados, escolhas, maesEscolhidas, grupos, descritoDe]);
+    }), [casados, escolhas, maesEscolhidas, grupos, descritoDe, auxDe, detDe]);
 
   const incompletas = paraCadastrar.filter((l) => faltaNoTemplate(l).length).length;
 
@@ -6080,6 +6100,12 @@ function GeradorSiengeView() {
                       grupos={grupos}
                       maeEscolhida={maesEscolhidas.get(c.i)}
                       descrito={descritoDe(c)}
+                      aux={auxDe(c)} codDet={detDe(c)} auxSorteado={auxSorteado.has(c.i)}
+                      onAux={(v) => {
+                        setCodAux((m) => new Map(m).set(c.i, v));
+                        setAuxSorteado((g) => { const n = new Set(g); n.delete(c.i); return n; });
+                      }}
+                      onCodDet={(v) => setCodDet((m) => new Map(m).set(c.i, v))}
                       editado={descritos.has(c.i)}
                       onDescrito={(txt) => setDescritos((m) => {
                         const n = new Map(m);
@@ -6108,7 +6134,7 @@ function GeradorSiengeView() {
    la, e o template so cadastra detalhe DENTRO de um insumo existente.
    Por isso nao ha campo de texto livre aqui: ou e' uma das candidatas,
    ou e' uma achada na busca, e as duas saem da mesma base. */
-function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMae, descrito, editado, onDescrito }) {
+function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMae, descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxSorteado }) {
   const [buscando, setBuscando] = useState(false);
   const [termo, setTermo] = useState("");
 
@@ -6239,6 +6265,23 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
                       onClick={() => onDescrito(null)}><RotateCcw size={11} /></button>
                   )}
                 </div>
+              </div>
+              {/* Os dois codigos que o template exige e que a descricao
+                  nao carrega. Ficam aqui embaixo, e nao numa coluna
+                  propria, porque so valem pra linha que vai ser
+                  cadastrada — quem escolheu variante nao preenche nada. */}
+              <div className="det-codigos">
+                <label>
+                  cód. do detalhe
+                  <input className="form-input" value={codDet} placeholder="o Sienge numera"
+                    onChange={(e) => onCodDet(e.target.value)} />
+                </label>
+                <label>
+                  cód. auxiliar {auxSorteado && <span className="det-sorteado">sorteado</span>}
+                  <input className={`form-input ${aux ? "" : "vazio"} ${auxSorteado ? "sorteado" : ""}`}
+                    value={aux} placeholder="referência do fornecedor"
+                    onChange={(e) => onAux(e.target.value)} />
+                </label>
               </div>
             </div>
           </div>
@@ -9537,6 +9580,12 @@ export default function App() {
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
         .btn-template { background: var(--green); }
         .btn-template:hover { background: #247346; }
+        .det-sorteado { color: var(--amber); font-weight: 700; }
+        .det-codigos .form-input.sorteado { border-style: dashed; border-color: var(--amber); }
+        .det-codigos { display: flex; gap: 8px; margin-top: 5px; }
+        .det-codigos label { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--ink-3); }
+        .det-codigos .form-input { margin-top: 0; font-size: 11px; padding: 4px 6px; font-family: 'JetBrains Mono', monospace; }
+        .det-codigos .form-input.vazio { border-color: var(--amber); background: var(--amber-bg); }
         .det-escolha { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; }
         .det-escolha-rot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; color: var(--ink-3); margin-bottom: 4px; }
         .det-selo-vai { color: var(--blue); background: var(--blue-bg); border-radius: 4px; padding: 1px 5px; text-transform: none; letter-spacing: 0; }

@@ -531,12 +531,19 @@ export const CABECALHO_TEMPLATE_SIENGE =
  * perda cosmetica de pontuacao numa descricao de produto — que ja usa
  * "/" como separador — em troca de um arquivo que qualquer leitor abre
  * igual. */
-const celulaCSV = (v) => String(v ?? "")
-  .replace(/\r?\n/g, " ")
-  .replace(/;/g, ",")
-  .replace(/"/g, "'")
-  .replace(/\s+/g, " ")
-  .trim();
+const celulaCSV = (v) => {
+  const t = String(v ?? "")
+    .replace(/\r?\n/g, " ")
+    .replace(/;/g, ",")
+    .replace(/"/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  /* "A planilha nao deve possuir formulas": celula que comeca com = + - @
+     e' formula pra qualquer leitor de planilha, e um codigo de fornecedor
+     como "-DR-M" cairia nisso. O espaco na frente e' o desarme mais
+     barato — nao muda o nome de coluna nenhum e nao inventa aspas. */
+  return /^[=+\-@]/.test(t) ? " " + t : t;
+};
 
 /**
  * Monta o CSV a partir das linhas que precisam de cadastro.
@@ -544,6 +551,46 @@ const celulaCSV = (v) => String(v ?? "")
  * Cada linha e { maeCodigo, maeNome, codigoDetalhe, codigoAuxDetalhe,
  * descricaoDetalhe, produtoFiscal }.
  */
+/* O codigo auxiliar e' o campo onde o Sienge guarda a referencia de FORA
+   — o jeito da casa chamar aquela peca. Por isso a ordem: primeiro o
+   codigo que o proprio arquivo trouxe, e so depois o modelo do
+   fabricante ("ZT-W18GTTAA"), que e' referencia externa do mesmo jeito e
+   costuma ser a unica que existe quando a planilha nao tem coluna de
+   codigo — o caso da lista de climatizacao.
+
+   Vazio nao e' opcao silenciosa: a coluna e' obrigatoria no template, e
+   uma celula em branco so aparece depois, quando o Sienge recusa. */
+export function codigoAuxiliarDe(it) {
+  return String(it?.codigo || it?.codigoSienge || it?.modelo || "").trim();
+}
+
+/**
+ * Sorteia codigo auxiliar pras linhas que nao tem nenhum.
+ *
+ * O campo e' obrigatorio no template, e ha planilha que simplesmente nao
+ * traz codigo nem modelo. Um numero sorteado resolve — mas ele so presta
+ * se for UNICO: dois detalhes com o mesmo auxiliar e' exatamente o tipo
+ * de duplicata que o campo existe pra evitar, e o Sienge aceitaria calado.
+ * Por isso o sorteio conhece os codigos que ja estao no arquivo e os que
+ * ele mesmo acabou de dar.
+ *
+ * Devolve Map<indice, codigo> so pras linhas que precisaram.
+ */
+export function sortearAuxiliares(linhas, jaUsados = []) {
+  const usados = new Set(jaUsados.map((x) => String(x).trim()).filter(Boolean));
+  (linhas || []).forEach((l) => { const c = codigoAuxiliarDe(l); if (c) usados.add(c); });
+
+  const novos = new Map();
+  (linhas || []).forEach((l, i) => {
+    if (codigoAuxiliarDe(l)) return;
+    let n;
+    do { n = String(Math.floor(10000 + Math.random() * 90000)); } while (usados.has(n));
+    usados.add(n);
+    novos.set(i, n);
+  });
+  return novos;
+}
+
 export function montarTemplateSienge(linhas) {
   const corpo = (linhas || []).map((l) => [
     l.maeCodigo, l.maeNome, l.codigoDetalhe, l.codigoAuxDetalhe, l.descricaoDetalhe, l.produtoFiscal,
