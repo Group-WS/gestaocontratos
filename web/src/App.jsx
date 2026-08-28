@@ -6041,10 +6041,31 @@ function ComprasView({ obra, onItemChange, usuario }) {
      Da pra subir mais de um arquivo (a solicitacao em aberto e o pedido)
      e eles se somam, porque a conferencia nao liga de qual documento a
      linha veio: ela so quer saber se o produto esta em algum. */
-  async function lerPdfSienge(file) {
-    if (!file) return;
+  /* Varios arquivos de uma vez.
+
+     A conferencia junta tudo num monte so — a solicitacao em aberto e o
+     pedido respondem a mesma pergunta ("isto esta no Sienge?") — mas
+     ELES SAO LIDOS UM A UM, e um que falha nao derruba os outros: a tela
+     diz qual arquivo deu problema e fica com o que deu certo. Abortar o
+     lote inteiro por causa de um faria a pessoa recomecar a selecao. */
+  async function lerArquivosSienge(files) {
+    const lista = [...(files || [])];
+    if (!lista.length) return;
     setLendoPdf(true); setErroBase(null);
-    try {
+    const falhas = [];
+    for (const file of lista) {
+      try {
+        await lerUmArquivoSienge(file);
+      } catch (e) {
+        falhas.push(`${file.name}: ${e.message || e}`);
+      }
+    }
+    setLendoPdf(false);
+    if (falhas.length) setErroBase(`Não consegui ler ${falhas.length === 1 ? "um arquivo" : `${falhas.length} arquivos`} — ${falhas.join(" · ")}`);
+  }
+
+  async function lerUmArquivoSienge(file) {
+    {
       let doc;
       if (/\.(xlsx|xlsm|xlsb|xls|csv)$/i.test(file.name)) {
         /* Excel nao passa pelo servidor: os dados ja vem em colunas, e
@@ -6062,13 +6083,22 @@ function ComprasView({ obra, onItemChange, usuario }) {
         doc = parsePedidoSienge((await res.json()).texto);
       }
       if (!doc.itens.length) throw new Error("Não encontrei nenhum insumo neste arquivo. Me manda ele que eu ajusto o leitor.");
-      setDoSienge((antes) => ({
-        docs: [...(antes?.docs || []), { nome: file.name, numero: doc.numero, obra: doc.obraCodigo, n: doc.itens.length }],
-        itens: [...(antes?.itens || []), ...doc.itens],
-      }));
-    } catch (e) {
-      setErroBase(`Não consegui ler o PDF do Sienge: ${e.message || e}`);
-    } finally { setLendoPdf(false); }
+      /* Mesmo arquivo de novo SUBSTITUI, nao soma.
+
+         Subir duas vezes duplicaria cada linha, e a conferencia passaria
+         a confirmar produtos com a copia — dando por lancado o que nao
+         foi. Reimportar um export corrigido e o caso comum, entao a
+         troca e o comportamento certo. */
+      const marca = { nome: file.name, numero: doc.numero, obra: doc.obraCodigo, n: doc.itens.length };
+      setDoSienge((antes) => {
+        const docs = (antes?.docs || []).filter((d) => d.nome !== file.name);
+        const itens = (antes?.itens || []).filter((i) => i.arquivo !== file.name);
+        return {
+          docs: [...docs, marca],
+          itens: [...itens, ...doc.itens.map((i) => ({ ...i, arquivo: file.name }))],
+        };
+      });
+    }
   }
 
   async function associar() {
@@ -6162,9 +6192,12 @@ function ComprasView({ obra, onItemChange, usuario }) {
               ate' aqui a tela diz o que DEVERIA ser comprado; o PDF diz o
               que de fato foi lancado. Depois isso vem pela API. */}
           <label className="btn-doc btn-pdf-sienge">
-            <Upload size={13} /> {lendoPdf ? "Lendo…" : "Subir relatório do Sienge"}
-            <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" style={{ display: "none" }} disabled={lendoPdf}
-              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerPdfSienge(f); }} />
+            <Upload size={13} /> {lendoPdf ? "Lendo…" : "Subir relatórios do Sienge"}
+            {/* `multiple`: a solicitacao em aberto e o pedido sao dois
+                arquivos que respondem a mesma pergunta. Um por clique
+                obrigava a repetir o caminho da pasta. */}
+            <input type="file" multiple accept=".xlsx,.xlsm,.xls,.csv,.pdf" style={{ display: "none" }} disabled={lendoPdf}
+              onChange={(e) => { const fs = e.target.files; e.target.value = ""; lerArquivosSienge(fs); }} />
           </label>
           <button className="btn-doc" onClick={associar} disabled={carregando}>
             <PackageSearch size={13} /> {carregando ? "Procurando…" : "Recarregar base"}
@@ -6176,8 +6209,22 @@ function ComprasView({ obra, onItemChange, usuario }) {
         <div className="confronto">
           <div className="confronto-topo">
             <PackageSearch size={15} />
-            <span>
-              Conferência com o Sienge — {doSienge.docs.map((d) => `${d.nome} (${d.n} itens${d.numero ? `, nº ${d.numero}` : ""})`).join(" · ")}
+            <span className="cf-docs">
+              Conferência com o Sienge —{" "}
+              {doSienge.docs.map((d) => (
+                <span className="cf-doc" key={d.nome}>
+                  {d.nome} <b>{d.n}</b>{d.numero ? ` · nº ${d.numero}` : ""}
+                  {/* Tirar um arquivo sem recomecar: as vezes so um deles
+                      estava errado, e refazer a selecao inteira e caro. */}
+                  <button className="cf-doc-x" title="Tirar este arquivo da conferência"
+                    onClick={() => setDoSienge((a2) => {
+                      const docs = a2.docs.filter((x) => x.nome !== d.nome);
+                      return docs.length
+                        ? { docs, itens: a2.itens.filter((i) => i.arquivo !== d.nome) }
+                        : null;
+                    })}><X size={10} /></button>
+                </span>
+              ))}
             </span>
             <button className="btn-voltar" onClick={() => setDoSienge(null)}><X size={13} /> Limpar</button>
           </div>
@@ -9014,6 +9061,10 @@ export default function App() {
         .confronto { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
         .confronto-topo { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink-2); padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
         .confronto-topo span { flex: 1; }
+        .cf-docs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .cf-doc { display: inline-flex; align-items: center; gap: 5px; background: var(--panel); border-radius: 20px; padding: 3px 5px 3px 10px; font-size: 11px; }
+        .cf-doc-x { display: inline-flex; background: transparent; border: none; color: var(--ink-3); cursor: pointer; padding: 2px; border-radius: 50%; }
+        .cf-doc-x:hover { color: var(--red); background: #fff; }
         .confronto-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
         .cf-bloco { border-radius: 10px; padding: 10px 14px; }
         .cf-bloco.ok { background: var(--green-bg); color: var(--green); }
