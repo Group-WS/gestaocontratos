@@ -7,7 +7,7 @@
  * insumo errado; marcar de vermelho o que já existe faz cadastrar um
  * duplicado, e a base do Sienge incha com o mesmo produto em dois códigos.
  */
-import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
+import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, lerListaDeProdutos, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -143,6 +143,37 @@ conf("não associa sozinho faltando a capacidade", podeAssociarSozinho(soParecid
 conf("... porque faltou 22000", soParecido[0].faltaram.includes("22000"), true);
 conf("sem variante nenhuma não associa", podeAssociarSozinho([]), false);
 conf("lista nula não associa", podeAssociarSozinho(null), false);
+
+/* ---- 10. a lista de produtos que a pessoa sobe ---- */
+// Aqui o arquivo não é relatório do Sienge: é o que ela tem na mão — uma
+// lista de fornecedor, um recorte do executivo, uma cotação. A mesma
+// coisa se chama Descrição num lugar, Insumo noutro e Produto num terceiro.
+const lista = lerListaDeProdutos([
+  ["Lista de compras — Salt 1401"],
+  ["Descrição", "Marca", "Modelo", "Cor", "Código"],
+  ["Arandela Thin", "Usina", "19970-900LED3", "Dourado", "DR-M"],
+  ["Spot de embutir", "Nordecor", null, null, "6730"],
+]);
+conf("lê dois produtos", lista.length, 2);
+conf("pega a descrição", lista[0].desc, "Arandela Thin");
+conf("e os campos que existem", lista[0].marca, "Usina");
+// Campo que não existe fica vazio em vez de virar separador solto no
+// cadastro do Sienge.
+conf("campo ausente fica nulo", lista[1].modelo, null);
+conf("... e some da descrição gerada",
+  descricaoSienge(lista[1]), "NORDECOR / SPOT DE EMBUTIR / 6730");
+
+// O cabeçalho se chama de vários jeitos.
+["Insumo", "Produto", "Item"].forEach((nome) => {
+  conf(`cabeçalho "${nome}" também serve`,
+    lerListaDeProdutos([[nome], ["Cuba de apoio"]]).length, 1);
+});
+// Sem coluna reconhecida, devolve nada — em vez de tratar a primeira
+// coluna como descrição e gerar uma lista de lixo.
+conf("sem coluna conhecida não inventa", lerListaDeProdutos([["a", "b"], ["c", "d"]]).length, 0);
+conf("planilha vazia não quebra", lerListaDeProdutos([]).length, 0);
+conf("linha sem descrição é pulada",
+  lerListaDeProdutos([["Descrição"], [""], ["Cuba"]]).length, 1);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

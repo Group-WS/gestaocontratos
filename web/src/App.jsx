@@ -15,7 +15,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura } from "./lib/sienge";
+import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
@@ -5473,6 +5473,10 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             <div className="nav-item-text"><div className="nav-item-name">Arquivo</div><div className="nav-item-sub">obras concluídas</div></div>
             {arquivoCount > 0 && <span className="nav-count">{arquivoCount}</span>}
           </button>
+          <button className={`nav-item ${modulo === "gerador" ? "active" : ""}`} onClick={() => onModulo("gerador")} title="Gerador de códigos Sienge">
+            <PackageSearch size={16} className="nav-icon" />
+            <div className="nav-item-text"><div className="nav-item-name">Gerador de códigos Sienge</div><div className="nav-item-sub">associa uma lista avulsa</div></div>
+          </button>
           <button className={`nav-item ${modulo === "precos" ? "active" : ""}`} onClick={() => onModulo("precos")} title="Banco de Preços">
             <PackageSearch size={16} className="nav-icon" />
             <div className="nav-item-text"><div className="nav-item-name">Banco de Preços</div><div className="nav-item-sub">insumos do Sienge</div></div>
@@ -5798,6 +5802,211 @@ function produtosMAT(obra) {
     });
   });
   return out;
+}
+
+/* GERADOR DE CÓDIGOS SIENGE — avulso, sem obra e sem gravar nada.
+
+   Mesma associação da tela de Compras de Produtos, mas solta: sobe uma
+   lista qualquer de produtos, ela casa com os insumos já cadastrados e
+   diz quais não existem — com a descrição no padrão pronta pra copiar.
+
+   NADA e' guardado. O arquivo e' lido na memoria e some ao sair da tela,
+   de proposito: isto e uma ferramenta de consulta pra quem esta
+   cadastrando no Sienge, nao um cadastro paralelo. Guardar criaria uma
+   segunda verdade sobre quais insumos existem, e a verdade e' o Sienge. */
+function GeradorSiengeView() {
+  const [baseSienge, setBaseSienge] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [linhas, setLinhas] = useState(null);   // o que veio do arquivo
+  const [arquivo, setArquivo] = useState(null);
+  const [escolhas, setEscolhas] = useState(() => new Map());
+
+  // A base carrega sozinha: sem ela a tela nao faz nada, e pedir um
+  // clique pra habilitar a unica funcao da tela e' cerimonia.
+  useEffect(() => {
+    let vivo = true;
+    setCarregando(true);
+    carregarTodosInsumos()
+      .then((b) => { if (vivo) { setBaseSienge(b); if (!b.length) setErro("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços."); } })
+      .catch((e) => { if (vivo) setErro(`Não consegui ler a base de insumos: ${e.message || e}`); })
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+  }, []);
+
+  const grupos = useMemo(() => (baseSienge ? agruparPorMae(baseSienge) : null), [baseSienge]);
+
+  const casados = useMemo(() => {
+    if (!grupos || !linhas) return [];
+    return linhas.map((l, i) => {
+      const maes = acharMaes(l.desc, grupos);
+      const melhor = maes[0] || null;
+      return { i, ...l, maes, detalhes: melhor ? ordenarDetalhes(l.desc, melhor.grupo) : [] };
+    });
+  }, [grupos, linhas]);
+
+  async function lerArquivo(file) {
+    if (!file) return;
+    setErro(null);
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const brutas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
+      const lidas = lerListaDeProdutos(brutas);
+      if (!lidas.length) throw new Error("Não achei uma coluna de descrição neste arquivo. Ela pode se chamar Descrição, Insumo, Produto ou Item.");
+      setLinhas(lidas);
+      setArquivo(file.name);
+      setEscolhas(new Map());
+    } catch (e) {
+      setErro(`Não consegui ler o arquivo: ${e.message || e}`);
+      setLinhas(null);
+    }
+  }
+
+  const escolher = (i, desc) => setEscolhas((m) => {
+    const n = new Map(m);
+    n.get(i) === desc ? n.delete(i) : n.set(i, desc);
+    return n;
+  });
+
+  const achados = casados.filter((c) => c.maes.length).length;
+  const semMae = casados.length - achados;
+
+  function baixarResultado() {
+    const cab = [["Descrição do arquivo", "Marca", "Insumo mãe (cód.)", "Insumo mãe", "Variante escolhida", "Situação", "Descrição pra cadastrar"]];
+    const corpo = casados.map((c) => {
+      const mae = c.maes[0]?.grupo;
+      const escolhida = escolhas.get(c.i) || null;
+      return [
+        c.desc, c.marca || "", mae?.codigo || "", mae?.nome || "", escolhida || "",
+        !mae ? "cadastrar" : escolhida ? "associado" : "escolher variante",
+        !mae || !escolhida ? descricaoSienge({ marca: c.marca, desc: c.desc, modelo: c.modelo, cor: c.cor, codigo: c.codigo }) : "",
+      ];
+    });
+    const ws = XLSX.utils.aoa_to_sheet([...cab, ...corpo]);
+    ws["!cols"] = [{ wch: 52 }, { wch: 18 }, { wch: 14 }, { wch: 30 }, { wch: 48 }, { wch: 18 }, { wch: 56 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Códigos Sienge");
+    XLSX.writeFile(wb, `codigos-sienge-${(arquivo || "lista").replace(/\.[^.]+$/, "")}.xlsx`);
+  }
+
+  return (
+    <>
+      <div className="ger-topo">
+        <label className="btn-doc">
+          <Upload size={13} /> {linhas ? "Trocar arquivo" : "Subir lista de produtos"}
+          <input type="file" accept=".xlsx,.xlsm,.xls,.csv" style={{ display: "none" }}
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
+        </label>
+        <span className="ger-info">
+          {carregando ? "Carregando a base do Sienge…"
+            : baseSienge ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge`
+            : "Base do Sienge indisponível"}
+          {arquivo && ` · ${arquivo}`}
+        </span>
+        {linhas && <button className="btn-doc" onClick={baixarResultado}><Download size={13} /> Baixar resultado</button>}
+      </div>
+
+      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+
+      {!linhas ? (
+        <div className="compras-empty">
+          <PackageSearch size={30} className="dim" />
+          <div className="compras-empty-title">Suba uma lista de produtos</div>
+          <div className="compras-empty-sub">
+            Excel ou CSV com uma coluna de descrição — pode se chamar Descrição, Insumo, Produto ou Item.
+            Colunas de marca, modelo, cor e código entram na descrição gerada, se existirem.
+            Nada é guardado: o arquivo é lido aqui e some quando você sair.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="ger-placar">
+            <div className="cf-bloco ok"><div className="cf-n">{achados}</div><div className="cf-rot">já existem no Sienge</div></div>
+            <div className={`cf-bloco ${semMae ? "ruim" : "ok"}`}><div className="cf-n">{semMae}</div><div className="cf-rot">precisam ser cadastrados</div></div>
+            <div className="cf-bloco aviso"><div className="cf-n">{escolhas.size}</div><div className="cf-rot">variantes já escolhidas</div></div>
+          </div>
+
+          <div className="grp-block">
+            <div className="grp-itens">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 40 }}>#</th>
+                    <th>Produto do arquivo</th>
+                    <th style={{ width: 320 }}>Insumo no Sienge</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {casados.map((c) => (
+                    <LinhaGerador key={c.i} linha={c} escolhida={escolhas.get(c.i)}
+                      onEscolher={(d) => escolher(c.i, d)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function LinhaGerador({ linha, escolhida, onEscolher }) {
+  const mae = linha.maes[0]?.grupo || null;
+  const padrao = descricaoSienge({
+    marca: linha.marca, desc: linha.desc, modelo: linha.modelo, cor: linha.cor, codigo: linha.codigo,
+  });
+  return (
+    <tr className={mae ? (escolhida ? "row-comprado" : "") : "row-falta"}>
+      <td className="mono dim">{linha.i + 1}</td>
+      <td>
+        <div className="item-desc">{linha.desc}</div>
+        {(linha.marca || linha.codigo) && (
+          <div className="det-espec">{[linha.marca, linha.modelo, linha.cor, linha.codigo].filter(Boolean).join(" · ")}</div>
+        )}
+      </td>
+      <td>
+        {!mae ? (
+          <div className="detalhe-cel">
+            <div className="casa casa-sem"><span className="casa-bola" /> não existe — cadastrar</div>
+            <div className="padrao-cel">
+              <code className="padrao-txt">{padrao || "—"}</code>
+              <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
+                onClick={() => navigator.clipboard?.writeText(padrao)}><Copy size={11} /></button>
+            </div>
+          </div>
+        ) : (
+          <div className="detalhe-cel">
+            <div className={`mae-cel casa-${escolhida ? "exato" : "aproximado"}`}>
+              <span className="casa-bola" />
+              <div className="mae-txt">
+                <span className="mae-cod mono">{mae.codigo}</span>
+                <span className="mae-nome">{mae.nome}</span>
+              </div>
+            </div>
+            {linha.detalhes.slice(0, 4).map((d, k) => (
+              <button key={d.insumo.descricao + k}
+                className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
+                onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
+                <span className="det-opcao-txt">{d.insumo.detalhe}</span>
+                {d.faltaram.length > 0
+                  ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
+                  : <span className="det-bate">bate tudo</span>}
+              </button>
+            ))}
+            <details className="det-gerar">
+              <summary>nenhuma serve — gerar descritivo</summary>
+              <div className="padrao-cel">
+                <code className="padrao-txt">{padrao || "—"}</code>
+                <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
+                  onClick={() => navigator.clipboard?.writeText(padrao)}><Copy size={11} /></button>
+              </div>
+            </details>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
 }
 
 /* PEDIDO DE COMPRA — a folha que sai pro fornecedor.
@@ -9101,6 +9310,10 @@ export default function App() {
         .cf-tit.aviso { color: #7A4C0A; }
         .cf-linha { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
         .cf-desc { flex: 1; min-width: 0; }
+        /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
+        .ger-topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 13px 16px; margin-bottom: 12px; }
+        .ger-info { flex: 1; font-size: 12px; color: var(--ink-3); }
+        .ger-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
         /* O pedido: mesma folha do escopo, com o cabecalho do pedido. */
         .pedido-wrap { margin-top: 18px; }
         .pedido-topo { display: flex; align-items: center; gap: 12px; background: var(--blue-bg); color: var(--blue); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
@@ -10129,6 +10342,13 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Arquivo</span></div>
           <div className="obra-meta">Obras encerradas, mantidas para consulta</div>
           <ArquivoView obras={obrasConcluidas} onReabrir={marcarAtiva} salvando={salvandoObra} />
+          </>
+          ) : modulo === "gerador" ? (
+          <>
+          <div className="eyebrow">FERRAMENTA AVULSA</div>
+          <div className="title-row"><span className="title-accent">Gerador de códigos Sienge</span></div>
+          <div className="obra-meta">Sobe uma lista de produtos, casa com os insumos já cadastrados e gera a descrição no padrão do que não existe. Nada é guardado.</div>
+          <GeradorSiengeView />
           </>
           ) : modulo === "precos" ? (
           <>

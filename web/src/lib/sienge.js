@@ -207,3 +207,57 @@ export function descricaoSienge({ marca, desc, modelo, cor, codigo }) {
     .join(" / ")
     .toUpperCase();
 }
+
+/* Le uma lista de produtos de planilha qualquer.
+ *
+ * Aqui o arquivo nao e' um relatorio do Sienge — e' o que a pessoa tem
+ * na mao: uma lista de fornecedor, um recorte do executivo, uma cotacao.
+ * Por isso as colunas sao procuradas por VARIOS nomes: a mesma coisa se
+ * chama Descricao num lugar, Insumo noutro e Produto num terceiro.
+ *
+ * Falta de coluna nao inventa dado: campo que nao existe fica vazio e
+ * some da descricao gerada, em vez de virar separador solto no cadastro.
+ */
+export function lerListaDeProdutos(brutas) {
+  const L = (brutas || []).filter((r) => Array.isArray(r) && r.some((c) => String(c ?? "").trim()));
+  if (!L.length) return [];
+  const limpo = (v) => String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+  const iCab = L.findIndex((r) =>
+    Array.from(r, limpo).some((c) => /descri|insumo|produto|^item$|especifica/.test(c)));
+  if (iCab === -1) return [];
+
+  // Array.from e nao .map: celula vazia e' buraco, e findIndex nao pula
+  // buraco — testar `undefined` casa com padrao errado. Mesma armadilha
+  // que ja fez a coluna de unidade sumir no leitor de pedido.
+  const cab = Array.from(L[iCab], limpo);
+  const acha = (...pads) => {
+    for (const p of pads) {
+      const i = cab.findIndex((c) => p.test(c || ""));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const iDesc = acha(/descri/, /^insumo/, /^produto/, /^item$/);
+  const iMarca = acha(/marca/, /fabricante/, /fornecedor/);
+  const iModelo = acha(/modelo/, /^ref\b/, /referencia/);
+  const iCor = acha(/^cor$/, /acabamento/);
+  const iCodigo = acha(/^cod/, /^c[oó]d/, /^sku$/);
+  if (iDesc === -1) return [];
+
+  const pega = (r, i) => (i >= 0 ? String(r[i] ?? "").replace(/\s+/g, " ").trim() || null : null);
+  const saida = [];
+  L.slice(iCab + 1).forEach((r) => {
+    const desc = pega(r, iDesc);
+    if (!desc) return;
+    if (/^(descri|insumo|produto|item)/.test(limpo(desc))) return;   // cabecalho repetido
+    saida.push({
+      desc,
+      marca: pega(r, iMarca),
+      modelo: pega(r, iModelo),
+      cor: pega(r, iCor),
+      codigo: pega(r, iCodigo),
+    });
+  });
+  return saida;
+}
