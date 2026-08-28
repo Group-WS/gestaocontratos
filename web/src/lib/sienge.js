@@ -233,6 +233,84 @@ export function descricaoSienge({ fornecedor, marca, desc, modelo, cor, especifi
  * Falta de coluna nao inventa dado: campo que nao existe fica vazio e
  * some da descricao gerada, em vez de virar separador solto no cadastro.
  */
+/* ---------------------------------------------------------------------
+   LISTA SEM CABECALHO
+
+   Nem toda planilha de compra tem cabecalho. A de climatizacao comeca no
+   titulo do grupo ("CLIMATIZACAO/ EXAUSTAO") e emenda nas linhas, sem
+   nunca escrever "Descricao" em lugar nenhum — e ate entao o gerador
+   respondia "nao achei uma coluna de descricao", o que e' verdade e nao
+   ajuda em nada: a coluna esta la, so nao tem nome.
+
+   Sem nome, quem identifica a coluna e' o conteudo.
+   --------------------------------------------------------------------- */
+
+const soTexto = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
+
+/* Uma descricao de produto e' uma FRASE: tem espaco, tem letra e tem
+   tamanho. Isso sozinho ja descarta codigo ("5.1"), quantidade, unidade e
+   link — que sao justamente as outras colunas. */
+function pareceFrase(v) {
+  const t = soTexto(v);
+  if (t.length < 10 || !/\s/.test(t)) return false;
+  if (/^https?:/i.test(t)) return false;
+  return (t.match(/[a-zà-ÿ]/gi) || []).length >= 5;
+}
+
+/* Modelo do fabricante: "ZT-W18GTTAA", "S3-W12JAQAL". Bloco unico com
+   letra E numero. O "5.1" da primeira coluna tem numero e nao tem letra,
+   entao nao entra; o link tem letra e numero e e' barrado antes. */
+function pareceModelo(v) {
+  const t = soTexto(v);
+  if (!t || /\s/.test(t) || t.length < 3 || t.length > 24) return false;
+  if (/^https?:/i.test(t)) return false;
+  return /[a-z]/i.test(t) && /\d/.test(t);
+}
+
+const pareceUnidade = (v) => /^(un|und|unid|unidade|p[cç]|pe[cç]a|cj|conj|kit|m|m2|m²|ml|kg)$/i.test(soTexto(v));
+
+/* Coluna vencedora e' a que mais vezes parece o que se procura. Empate
+   fica com a mais a esquerda, que numa planilha de compra e' a que a
+   pessoa preencheu primeiro. */
+function colunaQueMais(L, pred) {
+  const largura = Math.max(...L.map((r) => r.length), 0);
+  let melhor = -1, placar = 0;
+  for (let c = 0; c < largura; c++) {
+    const n = L.reduce((a, r) => a + (pred(r[c]) ? 1 : 0), 0);
+    if (n > placar) { placar = n; melhor = c; }
+  }
+  return placar ? melhor : -1;
+}
+
+export function lerListaSemCabecalho(L) {
+  if (!L || !L.length) return [];
+  const iDesc = colunaQueMais(L, pareceFrase);
+  if (iDesc === -1) return [];
+
+  const iModelo = colunaQueMais(L, (v) => pareceModelo(v));
+  const iUn = colunaQueMais(L, pareceUnidade);
+  const iQtd = colunaQueMais(L, (v) => typeof v === "number" && v > 0 && Number.isFinite(v));
+
+  const pega = (r, i) => (i >= 0 && i !== iDesc ? soTexto(r[i]) || null : null);
+
+  return L.filter((r) => {
+    if (!pareceFrase(r[iDesc])) return false;
+    /* Titulo de grupo tambem e' frase ("CLIMATIZACAO/ EXAUSTAO"), e a
+       unica coisa que o separa de um produto e' estar SOZINHO na linha:
+       produto tem modelo, link, ambiente, unidade. Numero nao conta —
+       titulo de grupo vem com o numero do grupo e com zeros. */
+    return r.some((c, k) => k !== iDesc && typeof c === "string" && /[a-zà-ÿ]/i.test(c));
+  }).map((r) => ({
+    desc: soTexto(r[iDesc]),
+    marca: null,
+    modelo: pega(r, iModelo),
+    cor: null,
+    codigo: null,
+    qtd: iQtd >= 0 && typeof r[iQtd] === "number" ? r[iQtd] : null,
+    un: pega(r, iUn),
+  }));
+}
+
 export function lerListaDeProdutos(brutas) {
   const L = (brutas || []).filter((r) => Array.isArray(r) && r.some((c) => String(c ?? "").trim()));
   if (!L.length) return [];
@@ -240,7 +318,7 @@ export function lerListaDeProdutos(brutas) {
 
   const iCab = L.findIndex((r) =>
     Array.from(r, limpo).some((c) => /descri|insumo|produto|^item$|especifica/.test(c)));
-  if (iCab === -1) return [];
+  if (iCab === -1) return lerListaSemCabecalho(L);
 
   // Array.from e nao .map: celula vazia e' buraco, e findIndex nao pula
   // buraco — testar `undefined` casa com padrao errado. Mesma armadilha
@@ -258,7 +336,7 @@ export function lerListaDeProdutos(brutas) {
   const iModelo = acha(/modelo/, /^ref\b/, /referencia/);
   const iCor = acha(/^cor$/, /acabamento/);
   const iCodigo = acha(/^cod/, /^c[oó]d/, /^sku$/);
-  if (iDesc === -1) return [];
+  if (iDesc === -1) return lerListaSemCabecalho(L);
 
   const pega = (r, i) => (i >= 0 ? String(r[i] ?? "").replace(/\s+/g, " ").trim() || null : null);
   const saida = [];

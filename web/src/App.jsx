@@ -5907,7 +5907,7 @@ function GeradorSiengeView() {
         const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
         const brutas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
         lidas = lerListaDeProdutos(brutas);
-        if (!lidas.length) throw new Error("Não achei uma coluna de descrição neste arquivo. Ela pode se chamar Descrição, Insumo, Produto ou Item.");
+        if (!lidas.length) throw new Error("Não achei descrição de produto neste arquivo. Se tiver cabeçalho, a coluna pode se chamar Descrição, Insumo, Produto ou Item; se não tiver, eu procuro sozinho a coluna com as descrições — mas aqui não encontrei nenhuma. Me manda o arquivo que eu ajusto o leitor.");
       }
       setLinhas(lidas);
       setArquivo(file.name);
@@ -6031,6 +6031,9 @@ function GeradorSiengeView() {
           <div className="compras-empty-sub">
             <b>Excel ou CSV</b> com uma coluna de descrição — ela pode se chamar Descrição, Insumo,
             Produto ou Item; marca, modelo, cor e código entram na descrição gerada, se existirem.
+            <br />
+            <b>Sem cabeçalho também serve</b>: eu acho sozinho a coluna das descrições e, junto
+            dela, o modelo do fabricante, a quantidade e a unidade. Título de grupo não vira produto.
             <br />
             <b>PDF</b> do relatório "Insumos Orçados" do Sienge, ou cotação de fornecedor.
             <br />

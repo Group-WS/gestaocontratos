@@ -269,5 +269,35 @@ conf("sem fornecedor continua funcionando",
   descricaoSienge({ marca: "Usina", desc: "Arandela Thin", modelo: "DR-M" }),
   "USINA / ARANDELA THIN / DR-M");
 
+/* ---- Planilha SEM cabecalho ----
+   A de climatizacao comeca no titulo do grupo e emenda nas linhas, sem
+   nunca escrever "Descricao". Sem nome, quem identifica a coluna e' o
+   conteudo — e o risco aqui e' engolir o titulo do grupo como se fosse
+   produto, que viraria um detalhe "CLIMATIZACAO/ EXAUSTAO" no Sienge. */
+const semCab = [
+  [6, "CLIMATIZAÇÃO/ EXAUSTÃO", null, 0, 0, 0, 0],
+  ["5.1", "Ar-Condicionado Split Cassete 1 Via Inverter WI-FI Conect 18.000 BTUs Quente/Frio 220V", "ZT-W18GTTAA", "https://www.lg.com/br/x", "Living", 2, "un "],
+  [null, "LG / AR CONDICI"],
+  ["5.3", "Ar-Condicionado LG AI Dual Inverter Compact 12.000 BTU Quente/Frio 220V", "S3-W12JAQAL", "https://www.lg.com/br/y", "Cozinha", 1, "un "],
+];
+const sc = lerListaDeProdutos(semCab);
+conf("planilha sem cabeçalho é lida", sc.length, 2);
+conf("o título do grupo não vira produto", sc.some((l) => /CLIMATIZ/i.test(l.desc)), false);
+// Linha solta, sem modelo nem unidade: e' anotacao, nao produto.
+conf("a linha solta não vira produto", sc.some((l) => l.desc === "LG / AR CONDICI"), false);
+conf("o modelo do fabricante é achado", sc[0].modelo, "ZT-W18GTTAA");
+// "5.1" tem numero e nao tem letra — nao pode ser confundido com modelo.
+conf("o código do item não vira modelo", sc[1].modelo, "S3-W12JAQAL");
+conf("a quantidade vem junto", sc[0].qtd, 2);
+conf("a unidade vem junto", sc[0].un, "un");
+conf("o link não vira descrição", /^https?:/.test(sc[0].desc), false);
+
+// Com cabecalho o caminho antigo continua valendo — nada de cair no palpite.
+const comCab = [
+  ["Item", "Descrição", "Marca", "Modelo"],
+  ["1", "Spot de embutir LED 7W", "Usina", "DR-M"],
+];
+conf("com cabeçalho segue pelo caminho antigo", lerListaDeProdutos(comCab)[0].marca, "Usina");
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
