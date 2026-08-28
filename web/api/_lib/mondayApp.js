@@ -644,15 +644,36 @@ function erroDePDF(msg) {
   return "Falha ao ler o PDF: " + m;
 }
 
-app.post("/api/sienge/texto", express.raw({ type: "*/*", limit: "30mb" }), async (req, res) => {
-  try {
-    if (!req.body || !req.body.length) return res.status(400).json({ error: "Envie o PDF no corpo da requisição." });
-    const data = await pdfParse(req.body);
-    res.json({ paginas: data.numpages, texto: data.text });
-  } catch (err) {
-    res.status(422).json({ error: erroDePDF(err.message) });
-  }
-});
+/* Aceita o PDF de dois jeitos: cru, e em base64 dentro de JSON.
+ *
+ * O caminho cru e' o eficiente e funciona pra quase tudo. Mas a Vercel
+ * mexe no corpo binario de alguns arquivos — a cotacao da Macrosul, 5,9
+ * KB e quase toda ASCII, chegava corrompida e o pdfjs acusava "bad XRef
+ * entry". O MESMO arquivo, no MESMO codigo, passa por HTTP local.
+ *
+ * Base64 atravessa qualquer coisa que trate o corpo como texto, ao custo
+ * de 33% a mais de bytes. Por isso ele e' a SEGUNDA tentativa, e nao a
+ * primeira: arquivo grande continua indo cru. */
+function corpoDoPDF(req) {
+  if (req.body && Buffer.isBuffer(req.body) && req.body.length) return req.body;
+  const b64 = req.body && (req.body.pdfBase64 || req.body.pdf);
+  if (typeof b64 === "string" && b64.length) return Buffer.from(b64, "base64");
+  return null;
+}
+
+app.post("/api/sienge/texto",
+  express.json({ limit: "40mb" }),
+  express.raw({ type: "*/*", limit: "30mb" }),
+  async (req, res) => {
+    try {
+      const buf = corpoDoPDF(req);
+      if (!buf) return res.status(400).json({ error: "Envie o PDF no corpo da requisição." });
+      const data = await pdfParse(buf);
+      res.json({ paginas: data.numpages, texto: data.text });
+    } catch (err) {
+      res.status(422).json({ error: erroDePDF(err.message), podeBase64: true });
+    }
+  });
 
 /* ============================================================
  * LEITURA DO EXECUTIVO EM PDF ("Composição de Custo")

@@ -300,6 +300,32 @@ function matchesFilter(it, filter, cat) {
   return true;
 }
 
+/* Texto de um PDF — cru primeiro, base64 se o cru chegar corrompido.
+ *
+ * A Vercel mexe no corpo binario de alguns arquivos. A cotacao da
+ * Macrosul (5,9 KB, quase toda ASCII) chegava corrompida e o leitor
+ * acusava "bad XRef entry"; o MESMO arquivo, no MESMO codigo, passa por
+ * HTTP local. Base64 atravessa qualquer camada que trate o corpo como
+ * texto, ao custo de 33% a mais de bytes — por isso ele e' a segunda
+ * tentativa, e nao a primeira. */
+async function textoDoPDF(buf) {
+  const cru = await fetch(api("/api/sienge/texto"), {
+    method: "POST", headers: { "Content-Type": "application/pdf" }, body: buf,
+  });
+  if (cru.ok) return (await cru.json()).texto;
+
+  const erro = await cru.json().catch(() => ({}));
+  if (!erro.podeBase64) throw new Error(erro.error || `HTTP ${cru.status}`);
+
+  const b64 = btoa(Array.from(new Uint8Array(buf), (b) => String.fromCharCode(b)).join(""));
+  const res = await fetch(api("/api/sienge/texto"), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pdfBase64: b64 }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+  return (await res.json()).texto;
+}
+
 function downloadFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime || "text/plain;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -5853,11 +5879,7 @@ function GeradorSiengeView() {
       if (/\.pdf$/i.test(file.name)) {
         /* PDF passa pelo servidor so pra virar texto — quem interpreta e
            o cliente, igual ao leitor de pedido do Sienge. */
-        const res = await fetch(api("/api/sienge/texto"), {
-          method: "POST", headers: { "Content-Type": "application/pdf" }, body: await file.arrayBuffer(),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
-        const texto = (await res.json()).texto;
+        const texto = await textoDoPDF(await file.arrayBuffer());
         /* Dois formatos de PDF, e a ordem importa: o "Insumos Orcados" do
            Sienge tem estrutura conhecida e e' testado primeiro. Nao sendo
            ele, tenta como cotacao de fornecedor — que e' o caso solto,
@@ -6371,11 +6393,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
         doc = parsePedidoSiengeExcel(linhas);
       } else {
         const buf = await file.arrayBuffer();
-        const res = await fetch(api("/api/sienge/texto"), {
-          method: "POST", headers: { "Content-Type": "application/pdf" }, body: buf,
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
-        doc = parsePedidoSienge((await res.json()).texto);
+        doc = parsePedidoSienge(await textoDoPDF(buf));
       }
       if (!doc.itens.length) throw new Error("Não encontrei nenhum insumo neste arquivo. Me manda ele que eu ajusto o leitor.");
       /* Mesmo arquivo de novo SUBSTITUI, nao soma.
