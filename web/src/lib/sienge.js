@@ -281,6 +281,91 @@ export function lerListaDeProdutos(brutas) {
  * linha e, contado como palavra, aproximaria produtos que nao tem nada a
  * ver so por compartilhar o rotulo.
  */
+/* Cotacao: o CODIGO do fornecedor e' quem abre o item.
+ *
+ * Ele vem sozinho numa linha ("10228.B", "20142") e e' o unico sinal
+ * confiavel de onde um produto comeca — nome de produto se parece com
+ * observacao, com acabamento e com endereco, e filtrar por "parece nome"
+ * trazia 29 linhas onde havia 13 produtos.
+ *
+ * Depois do codigo vem a descricao (uma ou mais linhas), o acabamento
+ * com a quantidade ("AMENDOA/.=1"), a linha de valores colados, e as
+ * observacoes. A observacao entra como especificacao porque ela carrega
+ * o que distingue o item ("TECIDO 694 B", "TAMPO LAMINADO").
+ */
+export function lerCotacaoPDF(texto) {
+  const L = String(texto || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  /* Codigo de fornecedor tem NUMERO. Sem exigir isso, "BAIXA" e
+     "PEDIDO" — palavras soltas da propria cotacao — abriam itens. */
+  const CODIGO = /^(?=.*\d)[A-Z0-9][A-Z0-9.\-]{2,12}$/i;
+  /* Sem \b: em "61UN10" nao ha fronteira entre digito e letra — os dois
+     sao caracteres de palavra. Com \b a linha de valores nunca casava e
+     ia inteira pra dentro da descricao. */
+  const VALORES = /\d,\d{2}.*?(UN|PC|CJ|M2|KG)\d/i;
+  const ACABAMENTO = /^(.*?)\/.*?=\s*(\d+)\s*$/;
+
+  const itens = [];
+  let atual = null;
+  const fechar = () => {
+    if (!atual) return;
+    const desc = atual.desc.join(" ").replace(/\s+/g, " ").trim();
+    if (desc) itens.push({
+      desc, codigo: atual.codigo, cor: atual.cor, qtd: atual.qtd, temValor: atual.passouValor,
+      especificacao: atual.obs.join(" ").replace(/\s+/g, " ").trim() || null,
+      marca: null, modelo: null, un: null,
+    });
+    atual = null;
+  };
+
+  /* Codigo abre item so quando a PROXIMA linha tem cara de descricao.
+
+     "074" e' o modelo do sofa e vem sozinho numa linha: puro numero, tres
+     digitos, identico a um codigo. Ele abria um item novo e o SOFA ARACA
+     inteiro sumia da lista. O que separa os dois e' o que vem depois —
+     codigo e' seguido do nome do produto; modelo, do acabamento. */
+  const temTexto = (t) => (String(t || "").match(/[A-Za-zÀ-ú]/g) || []).length >= 5;
+
+  /* Observacao so aceita linha de TEXTO. Sem isso o ultimo item engolia o
+     rodape ("19.171,11", "0,00Desconto do subtotal:") e o cabecalho
+     colado da pagina seguinte, porque nao havia proximo codigo pra
+     fechar o bloco. */
+  // O rodape tem espacos e letras como qualquer observacao — so o
+  // vocabulario o denuncia. Sem esta lista, o ultimo item da cotacao
+  // sempre termina com o total da nota colado na especificacao.
+  const RODAPE = /valor l[ií]quido|resumo por|desconto do subtotal|valor dos produtos|^frete|vedada a autentica|documento fiscal|comprova pagamento/i;
+  const obsValida = (t) => t.includes(" ") && temTexto(t)
+    && !/^\d[\d.,]*[A-Za-zÀ-ú]/.test(t) && !RODAPE.test(t);
+
+  L.forEach((linha, i) => {
+    if (CODIGO.test(linha) && !VALORES.test(linha) && temTexto(L[i + 1])) {
+      fechar();
+      atual = { codigo: linha, desc: [], obs: [], cor: null, qtd: null, passouValor: false };
+      return;
+    }
+    if (!atual) return;
+    const ac = linha.match(ACABAMENTO);
+    if (ac && !atual.passouValor) {
+      // "./650=1": o acabamento e' so um ponto — nao ha cor, e gravar "."
+      // poria pontuacao no lugar de informacao.
+      const cor = ac[1].trim();
+      atual.cor = /[A-Za-zÀ-ú]/.test(cor) ? cor : null;
+      atual.qtd = Number(ac[2]);
+      return;
+    }
+    if (VALORES.test(linha)) { atual.passouValor = true; return; }
+    // Antes do valor e' descricao; depois, observacao.
+    if (atual.passouValor) { if (obsValida(linha)) atual.obs.push(linha); }
+    else atual.desc.push(linha);
+  });
+  fechar();
+
+  /* So e' produto quem teve LINHA DE VALORES.
+     O numero do documento ("24187") tambem parece codigo e abriria um
+     item com o cabecalho inteiro dentro. Produto tem preco; cabecalho
+     nao. */
+  return itens.filter((x) => x.temValor && (x.desc.match(/[A-Za-zÀ-ú]/g) || []).length >= 6);
+}
+
 export function lerListaDeProdutosPDF(texto) {
   const L = String(texto || "").split("\n").map((x) => x.trim()).filter(Boolean);
   // "un1,0000..." ou "m²12,5000..." — unidade grudada na quantidade.

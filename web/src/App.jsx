@@ -15,7 +15,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF } from "./lib/sienge";
+import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
@@ -5857,8 +5857,14 @@ function GeradorSiengeView() {
           method: "POST", headers: { "Content-Type": "application/pdf" }, body: await file.arrayBuffer(),
         });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
-        lidas = lerListaDeProdutosPDF((await res.json()).texto);
-        if (!lidas.length) throw new Error("Não encontrei nenhum insumo neste PDF. Me manda o arquivo que eu ajusto o leitor.");
+        const texto = (await res.json()).texto;
+        /* Dois formatos de PDF, e a ordem importa: o "Insumos Orcados" do
+           Sienge tem estrutura conhecida e e' testado primeiro. Nao sendo
+           ele, tenta como cotacao de fornecedor — que e' o caso solto,
+           onde cada fornecedor faz do seu jeito. */
+        lidas = lerListaDeProdutosPDF(texto);
+        if (!lidas.length) lidas = lerCotacaoPDF(texto);
+        if (!lidas.length) throw new Error("Não reconheci este PDF — nem como \"Insumos Orçados\" do Sienge, nem como cotação de fornecedor. Me manda o arquivo que eu ajusto o leitor.");
       } else {
         const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
         const brutas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
@@ -5928,7 +5934,7 @@ function GeradorSiengeView() {
             <b>Excel ou CSV</b> com uma coluna de descrição — ela pode se chamar Descrição, Insumo,
             Produto ou Item; marca, modelo, cor e código entram na descrição gerada, se existirem.
             <br />
-            <b>PDF</b> do relatório "Insumos Orçados" do Sienge também serve.
+            <b>PDF</b> do relatório "Insumos Orçados" do Sienge, ou cotação de fornecedor.
             <br />
             Nada é guardado: o arquivo é lido aqui e some quando você sair.
           </div>
@@ -5976,10 +5982,11 @@ function LinhaGerador({ linha, escolhida, onEscolher }) {
       <td className="mono dim">{linha.i + 1}</td>
       <td>
         <div className="item-desc">{linha.desc}</div>
-        {(linha.marca || linha.codigo || linha.qtd != null) && (
+        {(linha.marca || linha.codigo || linha.qtd != null || linha.especificacao) && (
           <div className="det-espec">
             {[linha.qtd != null ? `${linha.qtd} ${linha.un || ""}`.trim() : null,
-              linha.marca, linha.modelo, linha.cor, linha.codigo].filter(Boolean).join(" · ")}
+              linha.marca, linha.modelo, linha.cor, linha.codigo,
+              linha.especificacao].filter(Boolean).join(" · ")}
           </div>
         )}
       </td>

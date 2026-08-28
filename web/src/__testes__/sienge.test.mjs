@@ -7,7 +7,7 @@
  * insumo errado; marcar de vermelho o que já existe faz cadastrar um
  * duplicado, e a base do Sienge incha com o mesmo produto em dois códigos.
  */
-import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, lerListaDeProdutos, lerListaDeProdutosPDF, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
+import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -205,6 +205,46 @@ conf("PDF: o segundo item ficou inteiro",
   /50X50X45CM/.test(pl[1].desc) && pl[1].qtd === 2, true);
 conf("PDF: código do insumo", pl[1].codigoSienge, "419");
 conf("PDF vazio não quebra", lerListaDeProdutosPDF("").length, 0);
+
+/* ---- 12. cotação de fornecedor ---- */
+// Cada fornecedor faz do seu jeito. O texto é da cotação real da Macrosul
+// (2421), com os quatro casos que quebraram a primeira versão.
+const cot = [
+  "NÃO É DOCUMENTO FISCAL - NÃO É VÁLIDO COMO RECIBO",
+  "N° do Documento:", "24187",           // número do documento: parece código
+  "CódigoDescriçãoTotalDescontoItemPreço",
+  "10228.B", "MESA ENTRE 3,00X1,10", "AMENDOA/.=1",
+  "1,00103,61UN10.257,39110.361,00",
+  "TAMPO LAMINADO / CHANFRO 50mm / RAIO 20",
+  "80011", "SOFÁ ARAÇÁ C 2,50 x P 1,30 x A",
+  "074",                                  // o MODELO, e ele parece código
+  "./650=1",                              // acabamento vazio: só pontuação
+  "1,004.515,50UN4.515,5049.031,00",
+  "20130", "BANQUETA TERTÚLIA C/", "ENCOSTO ESTOFADO - BAIXA", "AMENDOA/616=2",
+  "2,001.320,00UN1.320,00131.320,00",
+  "19.171,11", "0,00Desconto do subtotal:", "Valor líquido:",  // rodapé
+].join("\n");
+const q = lerCotacaoPDF(cot);
+conf("três produtos", q.length, 3);
+// "24187" tem dígitos e cara de código, mas não tem linha de valores.
+conf("número do documento não virou item", q.some((x) => x.codigo === "24187"), false);
+// "074" é o modelo do sofá: sem esta regra ele abria item novo e o SOFÁ
+// ARAÇÁ inteiro sumia da lista.
+conf("o modelo não virou item", q.some((x) => x.codigo === "074"), false);
+conf("o sofá sobreviveu", /SOFÁ ARAÇÁ/.test(q[1].desc), true);
+conf("... com o modelo dentro da descrição", /074/.test(q[1].desc), true);
+// "./650=1": acabamento é só pontuação — não há cor.
+conf("acabamento vazio não vira cor", q[1].cor, null);
+conf("cor de verdade é lida", q[0].cor, "AMENDOA");
+// Em "61UN10" não há fronteira entre dígito e letra: com \b a linha de
+// valores nunca casava e ia inteira pra dentro da descrição.
+conf("linha de valores não entra na descrição", /UN10/.test(q[0].desc), false);
+conf("quantidade do acabamento", q[0].qtd, 1);
+conf("quantidade de duas unidades", q[2].qtd, 2);
+// Sem próximo código pra fechar, o último item engolia o rodapé.
+conf("o rodapé não vira especificação do último", q[2].especificacao, null);
+conf("mas a observação de verdade entra", /TAMPO LAMINADO/.test(q[0].especificacao), true);
+conf("cotação vazia não quebra", lerCotacaoPDF("").length, 0);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
