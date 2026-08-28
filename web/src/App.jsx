@@ -15,7 +15,8 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho } from "./lib/sienge";
+import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura } from "./lib/sienge";
+import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
@@ -5926,6 +5927,9 @@ function ComprasView({ obra, onItemChange, usuario }) {
   // O pedido so existe na tela enquanto imprime; fora disso ele nao ocupa
   // espaco nem confunde com a lista de trabalho.
   const [pedido, setPedido] = useState(null);
+  // O que o Sienge diz que foi lancado — vem do PDF que a pessoa sobe.
+  const [doSienge, setDoSienge] = useState(null);
+  const [lendoPdf, setLendoPdf] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erroBase, setErroBase] = useState(null);
 
@@ -5968,6 +5972,13 @@ function ComprasView({ obra, onItemChange, usuario }) {
   }, [grupos, rows]);
 
   const selecionados = rows.filter((r) => sel.has(r.chave));
+
+  /* A conferencia so olha o canal Sienge: e o unico que passa por la. */
+  const confronto = useMemo(() => {
+    if (!doSienge) return null;
+    const doCanal = rows.filter((r) => r.it.canalCompra === "sienge");
+    return conferirComSienge(doCanal, doSienge.itens, cobertura);
+  }, [doSienge, rows]);
   const totalSel = selecionados.reduce((a, r) => a + r.material, 0);
 
   const alternar = (c) => setSel((p) => { const n = new Set(p); n.has(c) ? n.delete(c) : n.add(c); return n; });
@@ -6020,6 +6031,45 @@ function ComprasView({ obra, onItemChange, usuario }) {
     if (etapa !== "sienge" || baseSienge || carregando) return;
     associar();
   }, [etapa]);
+
+  /* Le o PDF do Sienge e confere contra o que esta na tela.
+
+     A pergunta e uma so: faltou lancar alguma compra? O Sienge e onde a
+     compra existe de verdade — enquanto ela nao estiver la, ela nao foi
+     feita, por mais marcada que esteja aqui.
+
+     Da pra subir mais de um arquivo (a solicitacao em aberto e o pedido)
+     e eles se somam, porque a conferencia nao liga de qual documento a
+     linha veio: ela so quer saber se o produto esta em algum. */
+  async function lerPdfSienge(file) {
+    if (!file) return;
+    setLendoPdf(true); setErroBase(null);
+    try {
+      let doc;
+      if (/\.(xlsx|xlsm|xlsb|xls|csv)$/i.test(file.name)) {
+        /* Excel nao passa pelo servidor: os dados ja vem em colunas, e
+           mandar a planilha inteira pra uma funcao serverless so pra
+           voltar com o mesmo conteudo seria uma ida e volta a toa. */
+        const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
+        doc = parsePedidoSiengeExcel(linhas);
+      } else {
+        const buf = await file.arrayBuffer();
+        const res = await fetch(api("/api/sienge/texto"), {
+          method: "POST", headers: { "Content-Type": "application/pdf" }, body: buf,
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+        doc = parsePedidoSienge((await res.json()).texto);
+      }
+      if (!doc.itens.length) throw new Error("Não encontrei nenhum insumo neste arquivo. Me manda ele que eu ajusto o leitor.");
+      setDoSienge((antes) => ({
+        docs: [...(antes?.docs || []), { nome: file.name, numero: doc.numero, obra: doc.obraCodigo, n: doc.itens.length }],
+        itens: [...(antes?.itens || []), ...doc.itens],
+      }));
+    } catch (e) {
+      setErroBase(`Não consegui ler o PDF do Sienge: ${e.message || e}`);
+    } finally { setLendoPdf(false); }
+  }
 
   async function associar() {
     setCarregando(true); setErroBase(null);
@@ -6108,9 +6158,72 @@ function ComprasView({ obra, onItemChange, usuario }) {
                 ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Escolha a mãe e a variante em cada linha, ou selecione e associe em massa.`
                 : "Base do Sienge não carregada."}
           </span>
+          {/* Subir o PDF do Sienge e' o passo que fecha a conferencia:
+              ate' aqui a tela diz o que DEVERIA ser comprado; o PDF diz o
+              que de fato foi lancado. Depois isso vem pela API. */}
+          <label className="btn-doc btn-pdf-sienge">
+            <Upload size={13} /> {lendoPdf ? "Lendo…" : "Subir relatório do Sienge"}
+            <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" style={{ display: "none" }} disabled={lendoPdf}
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerPdfSienge(f); }} />
+          </label>
           <button className="btn-doc" onClick={associar} disabled={carregando}>
             <PackageSearch size={13} /> {carregando ? "Procurando…" : "Recarregar base"}
           </button>
+        </div>
+      )}
+
+      {confronto && (
+        <div className="confronto">
+          <div className="confronto-topo">
+            <PackageSearch size={15} />
+            <span>
+              Conferência com o Sienge — {doSienge.docs.map((d) => `${d.nome} (${d.n} itens${d.numero ? `, nº ${d.numero}` : ""})`).join(" · ")}
+            </span>
+            <button className="btn-voltar" onClick={() => setDoSienge(null)}><X size={13} /> Limpar</button>
+          </div>
+          <div className="confronto-placar">
+            <div className="cf-bloco ok">
+              <div className="cf-n">{confronto.confirmados.length}</div>
+              <div className="cf-rot">confirmados no Sienge</div>
+            </div>
+            {/* O numero que motiva tudo: alguem achou que pediu e nao pediu. */}
+            <div className={`cf-bloco ${confronto.faltaLancar.length ? "ruim" : "ok"}`}>
+              <div className="cf-n">{confronto.faltaLancar.length}</div>
+              <div className="cf-rot">falta lançar no Sienge</div>
+            </div>
+            <div className={`cf-bloco ${confronto.naoListados.length ? "aviso" : "ok"}`}>
+              <div className="cf-n">{confronto.naoListados.length}</div>
+              <div className="cf-rot">no Sienge e não na planilha</div>
+            </div>
+          </div>
+
+          {confronto.faltaLancar.length > 0 && (
+            <div className="cf-lista">
+              <div className="cf-tit ruim">Falta lançar no Sienge</div>
+              {confronto.faltaLancar.map((r) => (
+                <div className="cf-linha" key={r.chave}>
+                  <span className="mono dim">{r.catNum}</span>
+                  <span className="cf-desc">{r.it.desc}</span>
+                  <span className="mono">{fmtBRL(r.material)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {confronto.naoListados.length > 0 && (
+            <div className="cf-lista">
+              {/* Aparece em vez de sumir: pode ser compra que nasceu fora
+                  da planilha, ou a mesma coisa escrita diferente — e as
+                  duas coisas alguem precisa ver. */}
+              <div className="cf-tit aviso">Não listado aqui — está no Sienge e não na planilha</div>
+              {confronto.naoListados.map((s, k) => (
+                <div className="cf-linha" key={k}>
+                  <span className="mono dim">{s.codigo}</span>
+                  <span className="cf-desc">{s.descricao}</span>
+                  <span className="mono dim">{s.qtdPrevista ?? "—"} {s.un}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {resultado && (
@@ -8895,6 +9008,25 @@ export default function App() {
         .btn-canal-limpar { color: #fff; font-size: 11px; font-weight: 600; padding: 7px 11px; opacity: 0.75; }
         .btn-canal-limpar:hover { opacity: 1; }
 
+        /* Conferencia com o Sienge: o que a planilha diz que tem pra
+           comprar chegou mesmo la? */
+        .btn-pdf-sienge { cursor: pointer; }
+        .confronto { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+        .confronto-topo { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink-2); padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
+        .confronto-topo span { flex: 1; }
+        .confronto-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+        .cf-bloco { border-radius: 10px; padding: 10px 14px; }
+        .cf-bloco.ok { background: var(--green-bg); color: var(--green); }
+        .cf-bloco.ruim { background: var(--red-bg); color: var(--red); }
+        .cf-bloco.aviso { background: var(--amber-bg); color: #7A4C0A; }
+        .cf-n { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; }
+        .cf-rot { font-size: 10.5px; opacity: 0.85; }
+        .cf-lista { margin-top: 12px; }
+        .cf-tit { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+        .cf-tit.ruim { color: var(--red); }
+        .cf-tit.aviso { color: #7A4C0A; }
+        .cf-linha { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
+        .cf-desc { flex: 1; min-width: 0; }
         /* O pedido: mesma folha do escopo, com o cabecalho do pedido. */
         .pedido-wrap { margin-top: 18px; }
         .pedido-topo { display: flex; align-items: center; gap: 12px; background: var(--blue-bg); color: var(--blue); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }

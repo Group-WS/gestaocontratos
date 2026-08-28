@@ -52,6 +52,26 @@ export function semelhanca(a, b) {
   return comuns / (A.size + B.size - comuns);
 }
 
+/* Quanto do item da OBRA aparece na linha do Sienge.
+ *
+ * Aqui os dois lados nao sao simetricos: a linha do Sienge carrega a mae
+ * e a especificacao inteira ("MOBILIA SOLTA - POLTRONA / DESTACK /
+ * POLTRONA TORII / MADEIRA NATURAL"), a da obra e curta ("Poltrona Torii
+ * Destack"). Jaccard castiga o lado longo e dava 0,43 pra duas linhas que
+ * sao o mesmo movel.
+ *
+ * A pergunta certa e de CONTENCAO: das palavras que descrevem o item da
+ * obra, quantas estao na linha do Sienge? Palavra a mais do lado de la
+ * nao e divergencia — e detalhe. */
+export function cobertura(itemObra, linhaSienge) {
+  const A = new Set(palavras(itemObra));
+  const B = new Set(palavras(linhaSienge));
+  if (!A.size) return 0;
+  let comuns = 0;
+  A.forEach((p) => { if (B.has(p)) comuns += 1; });
+  return comuns / A.size;
+}
+
 export const VERDE = "exato", LARANJA = "aproximado", VERMELHO = "sem";
 
 /* Acima disto, é a mesma coisa escrita diferente; abaixo, é outro produto.

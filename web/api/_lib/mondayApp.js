@@ -617,6 +617,24 @@ app.post("/api/vendido/parse", express.raw({ type: "*/*", limit: "30mb" }), asyn
   }
 });
 
+/* Texto cru do PDF do Sienge (solicitacao de compra ou pedido).
+ *
+ * Aqui o servidor so EXTRAI; quem interpreta e o cliente
+ * (src/lib/siengePedido.js). E de proposito: o formato do Sienge ainda
+ * vai mudar quando entrar a API, e manter a leitura no front deixa o
+ * ajuste num arquivo so, sem redeploy de funcao serverless.
+ *
+ * pdf-parse ja esta aqui pro Vendido — nao entra dependencia nova. */
+app.post("/api/sienge/texto", express.raw({ type: "*/*", limit: "30mb" }), async (req, res) => {
+  try {
+    if (!req.body || !req.body.length) return res.status(400).json({ error: "Envie o PDF no corpo da requisição." });
+    const data = await pdfParse(req.body);
+    res.json({ paginas: data.numpages, texto: data.text });
+  } catch (err) {
+    res.status(500).json({ error: "Falha ao ler o PDF: " + err.message });
+  }
+});
+
 /* ============================================================
  * LEITURA DO EXECUTIVO EM PDF ("Composição de Custo")
  * Formato bem mais denso que o Vendido: cada verba/item tem uma linha
