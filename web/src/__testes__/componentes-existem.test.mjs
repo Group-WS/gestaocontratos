@@ -59,6 +59,32 @@ conf("o PrazoCompra continua de pé", definidos.has("PrazoCompra"), true);
 });
 conf("achou componentes de verdade (sanidade)", usados.size > 25, true);
 
+/* ---- funções da lib usadas sem importar ---- */
+// O esbuild não reclama de identificador solto: ele empacota, e o erro só
+// aparece quando alguém clica no botão que usa a função. Foi assim que um
+// `norm(...)` sem import passou pelo build e teria quebrado a busca do
+// insumo mãe na primeira digitada.
+const libs = fs.readdirSync(path.join(dir, "..", "lib")).filter((f) => f.endsWith(".js"));
+const exportados = new Set();
+libs.forEach((f) => {
+  const t = fs.readFileSync(path.join(dir, "..", "lib", f), "utf8");
+  [...t.matchAll(/export\s+(?:async\s+)?function\s+(\w+)/g)].forEach((m) => exportados.add(m[1]));
+  [...t.matchAll(/export\s+const\s+(\w+)/g)].forEach((m) => exportados.add(m[1]));
+});
+const importados = new Set(
+  [...src.matchAll(/import\s*\{([^}]+)\}\s*from\s*"\.\/lib\//g)]
+    .flatMap((m) => m[1].split(",").map((x) => x.trim().split(/\s+as\s+/)[0].trim())));
+// Nome exportado por uma lib e CHAMADO no App sem estar importado, e sem
+// ser definido lá dentro.
+const definidosNoApp = new Set([
+  ...[...src.matchAll(/function\s+(\w+)/g)].map((m) => m[1]),
+  ...[...src.matchAll(/\b(?:const|let|var)\s+(\w+)\s*=/g)].map((m) => m[1]),
+]);
+const usadosSemImportar = [...exportados].filter((n) =>
+  new RegExp(`(?<![\\w.])${n}\\s*\\(`).test(src) && !importados.has(n) && !definidosNoApp.has(n));
+conf("nenhuma função de lib usada sem importar",
+  usadosSemImportar.join(", ") || "nenhuma", "nenhuma");
+
 /* ---- e as funções de modelo que as telas dependem ---- */
 // O mesmo corte por intervalo que apagou o PrazoCompra apagou depois o
 // `produtosMAT`, e a checagem de componentes não pegou: função não vira

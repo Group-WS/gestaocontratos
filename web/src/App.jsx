@@ -15,7 +15,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate } from "./lib/sienge";
+import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate, norm as normSienge } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
@@ -5847,6 +5847,13 @@ function GeradorSiengeView() {
   const [linhas, setLinhas] = useState(null);   // o que veio do arquivo
   const [arquivo, setArquivo] = useState(null);
   const [escolhas, setEscolhas] = useState(() => new Map());
+  /* A mae escolhida por linha.
+
+     Ela TEM que existir na base: o Sienge nao aceita insumo que nao esta
+     la, e o template so serve pra cadastrar DETALHE dentro de um insumo
+     que ja existe. Por isso a escolha e' sempre um item da base — nunca
+     texto digitado. */
+  const [maesEscolhidas, setMaesEscolhidas] = useState(() => new Map());
 
   // A base carrega sozinha: sem ela a tela nao faz nada, e pedir um
   // clique pra habilitar a unica funcao da tela e' cerimonia.
@@ -5908,7 +5915,8 @@ function GeradorSiengeView() {
     return n;
   });
 
-  const achados = casados.filter((c) => c.maes.length).length;
+  const comMae = (c) => maesEscolhidas.has(c.i) || c.maes.length > 0;
+  const achados = casados.filter(comMae).length;
   const semMae = casados.length - achados;
 
   /* O template do Sienge so interessa pro que NAO existe la — o resto ja
@@ -5918,7 +5926,8 @@ function GeradorSiengeView() {
   const paraCadastrar = useMemo(() => casados
     .filter((c) => !escolhas.get(c.i))
     .map((c) => {
-      const mae = c.maes[0]?.grupo || null;
+      const esc = maesEscolhidas.get(c.i);
+      const mae = (esc ? (grupos || []).find((g) => g.codigo === esc) : null) || c.maes[0]?.grupo || null;
       return {
         i: c.i,
         maeCodigo: mae?.codigo || "",
@@ -5933,7 +5942,7 @@ function GeradorSiengeView() {
         }),
         produtoFiscal: "",
       };
-    }), [casados, escolhas]);
+    }), [casados, escolhas, maesEscolhidas, grupos]);
 
   const incompletas = paraCadastrar.filter((l) => faltaNoTemplate(l).length).length;
 
@@ -6036,7 +6045,14 @@ function GeradorSiengeView() {
                 <tbody>
                   {casados.map((c) => (
                     <LinhaGerador key={c.i} linha={c} escolhida={escolhas.get(c.i)}
-                      onEscolher={(d) => escolher(c.i, d)} />
+                      onEscolher={(d) => escolher(c.i, d)}
+                      grupos={grupos}
+                      maeEscolhida={maesEscolhidas.get(c.i)}
+                      onMae={(cod) => setMaesEscolhidas((m) => {
+                        const n = new Map(m);
+                        cod ? n.set(c.i, cod) : n.delete(c.i);
+                        return n;
+                      })} />
                   ))}
                 </tbody>
               </table>
@@ -6048,11 +6064,34 @@ function GeradorSiengeView() {
   );
 }
 
-function LinhaGerador({ linha, escolhida, onEscolher }) {
-  const mae = linha.maes[0]?.grupo || null;
+/* Uma linha do gerador: escolher a MAE, depois a variante.
+
+   A mae vem SEMPRE da base — o Sienge nao aceita insumo que nao existe
+   la, e o template so cadastra detalhe DENTRO de um insumo existente.
+   Por isso nao ha campo de texto livre aqui: ou e' uma das candidatas,
+   ou e' uma achada na busca, e as duas saem da mesma base. */
+function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMae }) {
+  const [buscando, setBuscando] = useState(false);
+  const [termo, setTermo] = useState("");
+
+  const candidatas = linha.maes.map((x) => x.grupo);
+  const mae = (maeEscolhida ? (grupos || []).find((g) => g.codigo === maeEscolhida) : null)
+    || candidatas[0] || null;
+
+  /* A busca varre a base inteira, nao so as candidatas: quando o
+     casamento automatico nao acha nada, e' aqui que a pessoa resolve. */
+  const achadas = useMemo(() => {
+    const t = normSienge(termo);
+    if (t.length < 2) return [];
+    return (grupos || [])
+      .filter((g) => normSienge(g.nome).includes(t) || String(g.codigo).includes(t))
+      .slice(0, 8);
+  }, [termo, grupos]);
+
   const padrao = descricaoSienge({
     marca: linha.marca, desc: linha.desc, modelo: linha.modelo, cor: linha.cor, codigo: linha.codigo,
   });
+
   return (
     <tr className={mae ? (escolhida ? "row-comprado" : "") : "row-falta"}>
       <td className="mono dim">{linha.i + 1}</td>
@@ -6067,60 +6106,84 @@ function LinhaGerador({ linha, escolhida, onEscolher }) {
         )}
       </td>
       <td>
-        {!mae ? (
-          <div className="detalhe-cel">
-            <div className="casa casa-sem"><span className="casa-bola" /> não existe — cadastrar</div>
-            <div className="padrao-cel">
-              <code className="padrao-txt">{padrao || "—"}</code>
-              <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
-                onClick={() => navigator.clipboard?.writeText(padrao)}><Copy size={11} /></button>
-            </div>
-          </div>
-        ) : (
-          <div className="detalhe-cel">
+        <div className="detalhe-cel">
+          {/* A MAE, sempre da base. */}
+          {mae ? (
             <div className={`mae-cel casa-${escolhida ? "exato" : "aproximado"}`}>
               <span className="casa-bola" />
               <div className="mae-txt">
                 <span className="mae-cod mono">{mae.codigo}</span>
                 <span className="mae-nome">{mae.nome}</span>
               </div>
+              {candidatas.length > 1 && !buscando && (
+                <>
+                  <ChevronDown size={12} className="mae-seta" />
+                  <select className="mae-sel" value={mae.codigo}
+                    onChange={(e) => onMae(e.target.value)}
+                    aria-label="Insumo mãe no Sienge">
+                    {candidatas.map((g) => (
+                      <option key={g.codigo} value={g.codigo}>{g.codigo} · {g.nome}</option>
+                    ))}
+                  </select>
+                </>
+              )}
             </div>
-            {linha.detalhes.slice(0, 4).map((d, k) => (
-              <button key={d.insumo.descricao + k}
-                className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
-                onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
-                <span className="det-opcao-txt">{d.insumo.detalhe}</span>
-                {d.faltaram.length > 0
-                  ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
-                  : <span className="det-bate">bate tudo</span>}
-              </button>
-            ))}
-            <details className="det-gerar">
-              <summary>nenhuma serve — gerar descritivo</summary>
-              <div className="padrao-cel">
-                <code className="padrao-txt">{padrao || "—"}</code>
-                <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
-                  onClick={() => navigator.clipboard?.writeText(padrao)}><Copy size={11} /></button>
-              </div>
-            </details>
-          </div>
-        )}
+          ) : (
+            <div className="casa casa-sem"><span className="casa-bola" /> sem insumo mãe — escolha um</div>
+          )}
+
+          {/* Procurar outra: e' o caminho quando o casamento automatico
+              erra ou nao acha, e ele nao pode faltar — sem ele a pessoa
+              fica presa com a sugestao errada. */}
+          {!buscando ? (
+            <button className="ger-trocar" onClick={() => setBuscando(true)}>
+              <Search size={10} /> {mae ? "trocar o insumo mãe" : "procurar o insumo mãe"}
+            </button>
+          ) : (
+            <div className="ger-busca">
+              <input className="form-input" autoFocus value={termo} placeholder="nome ou código do insumo…"
+                onChange={(e) => setTermo(e.target.value)} />
+              {achadas.map((g) => (
+                <button key={g.codigo} className="det-opcao"
+                  onClick={() => { onMae(g.codigo); setBuscando(false); setTermo(""); }}>
+                  <span className="mono det-falta">{g.codigo}</span>
+                  <span className="det-opcao-txt">{g.nome}</span>
+                  <span className="det-bate">{g.variantes.length}</span>
+                </button>
+              ))}
+              {termo.length >= 2 && achadas.length === 0 && (
+                <span className="dim" style={{ fontSize: 11 }}>Nenhum insumo com esse nome na base do Sienge.</span>
+              )}
+              <button className="ger-trocar" onClick={() => { setBuscando(false); setTermo(""); }}>cancelar</button>
+            </div>
+          )}
+
+          {/* As variantes da mae escolhida. */}
+          {mae && ordenarDetalhes(linha.desc, mae).slice(0, 4).map((d, k) => (
+            <button key={d.insumo.descricao + k}
+              className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
+              onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
+              <span className="det-opcao-txt">{d.insumo.detalhe}</span>
+              {d.faltaram.length > 0
+                ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
+                : <span className="det-bate">bate tudo</span>}
+            </button>
+          ))}
+
+          <details className="det-gerar" open={!!mae && !escolhida}>
+            <summary>{escolhida ? "gerar descritivo mesmo assim" : "nenhuma serve — cadastrar como detalhe novo"}</summary>
+            <div className="padrao-cel">
+              <code className="padrao-txt">{padrao || "—"}</code>
+              <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
+                onClick={() => navigator.clipboard?.writeText(padrao)}><Copy size={11} /></button>
+            </div>
+          </details>
+        </div>
       </td>
     </tr>
   );
 }
 
-/* PEDIDO DE COMPRA — a folha que sai pro fornecedor.
-
-   O cabecalho carrega o que a pessoa do outro lado precisa pra responder
-   sem ligar de volta: qual obra, onde ela fica, por qual canal, quem
-   pediu, e — a que mais importa — ATE QUANDO o material tem que estar
-   comprado. Prazo escondido no sistema e prazo que o fornecedor descobre
-   tarde.
-
-   Valor NAO vai no papel. O que esta aqui e o custo do executivo, que e
-   o nosso teto interno; mandar isso pro fornecedor e entregar a carta na
-   mesa antes de ele fazer a proposta. O Excel leva, porque e uso interno. */
 function PedidoCompra({ obra, canal, itens, usuario }) {
   const c = canalPorId(canal);
   const hoje = new Date().toLocaleDateString("pt-BR");
@@ -9410,6 +9473,10 @@ export default function App() {
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
         .btn-template { background: var(--green); }
         .btn-template:hover { background: #247346; }
+        .ger-trocar { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; background: transparent; border: none; color: var(--ink-3); text-decoration: underline; font-size: 10px; cursor: pointer; font-family: inherit; padding: 2px 0; }
+        .ger-trocar:hover { color: var(--ink); }
+        .ger-busca { display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--panel); border-radius: 8px; }
+        .ger-busca .form-input { margin-top: 0; font-size: 12px; padding: 5px 8px; }
         .ger-topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 13px 16px; margin-bottom: 12px; }
         .ger-info { flex: 1; font-size: 12px; color: var(--ink-3); }
         .ger-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
