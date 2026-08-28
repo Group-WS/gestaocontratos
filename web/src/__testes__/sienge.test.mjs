@@ -246,5 +246,28 @@ conf("o rodapé não vira especificação do último", q[2].especificacao, null)
 conf("mas a observação de verdade entra", /TAMPO LAMINADO/.test(q[0].especificacao), true);
 conf("cotação vazia não quebra", lerCotacaoPDF("").length, 0);
 
+/* ---- O descritivo: FORNECEDOR / DESCRICAO / COR / ESPECIFICACAO / CODIGO ----
+   O fornecedor abre o detalhe porque a cotacao inteira e' de uma casa so, e
+   e' assim que a base do Sienge escreve. Errar a ORDEM aqui nao quebra nada
+   na hora: quebra depois, quando o detalhe ja esta cadastrado e ninguem
+   reescreve cinquenta linhas na mao. */
+conf("fornecedor abre e codigo fecha",
+  descricaoSienge({ fornecedor: "Macrosul", desc: "Mesa lateral Tropicana", cor: "Amendoa",
+    especificacao: "Somente base e estrutura para tampo de pedra", codigo: "50049" }),
+  "MACROSUL / MESA LATERAL TROPICANA / AMENDOA / SOMENTE BASE E ESTRUTURA PARA TAMPO DE PEDRA / 50049");
+
+conf("marca diferente vem logo depois",
+  descricaoSienge({ fornecedor: "Macrosul", marca: "Usina", desc: "Arandela Thin", modelo: "DR-M" }),
+  "MACROSUL / USINA / ARANDELA THIN / DR-M");
+
+// "MACROSUL / MACROSUL / CADEIRA" seria ruido dentro do cadastro.
+conf("marca igual ao fornecedor nao repete",
+  descricaoSienge({ fornecedor: "Macrosul", marca: "MACROSUL", desc: "Cadeira Cardeal" }),
+  "MACROSUL / CADEIRA CARDEAL");
+
+conf("sem fornecedor continua funcionando",
+  descricaoSienge({ marca: "Usina", desc: "Arandela Thin", modelo: "DR-M" }),
+  "USINA / ARANDELA THIN / DR-M");
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

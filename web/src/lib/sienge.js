@@ -200,8 +200,23 @@ export function podeAssociarSozinho(detalhes) {
  *
  * Tudo em caixa alta porque é assim que a base do Sienge é escrita — e
  * uma linha em caixa mista salta como erro no meio das outras. */
-export function descricaoSienge({ marca, desc, modelo, cor, codigo }) {
-  return [marca, desc, modelo, cor, codigo]
+export function descricaoSienge({ fornecedor, marca, desc, modelo, cor, especificacao, codigo }) {
+  /* O FORNECEDOR abre o detalhe.
+     E' assim que a base do Sienge escreve — "AR CONDICIONADO / ELECTROLUX
+     / SPLIT 9.000 BTUS" — e a cotacao inteira costuma ser de uma casa so,
+     entao ele e' digitado uma vez la em cima e vale pra todas as linhas.
+
+     Marca igual ao fornecedor nao repete: "MACROSUL / MACROSUL / MESA"
+     seria ruido dentro do cadastro, e ninguem apaga isso depois. */
+  const mesmo = (a, b2) => norm(a) && norm(a) === norm(b2);
+  const cabeca = fornecedor && !mesmo(marca, fornecedor) ? [fornecedor, marca] : [fornecedor || marca];
+  /* A ordem e' a da casa, e ela termina no CODIGO:
+       FORNECEDOR / DESCRICAO / COR / ESPECIFICACAO / CODIGO
+     A especificacao entra antes do codigo porque e' o que distingue duas
+     pecas de mesmo nome ("SOMENTE BASE E ESTRUTURA PARA TAMPO DE PEDRA"),
+     e o codigo fecha por ser o identificador — quem procura no cadastro
+     olha o fim da linha. */
+  return [...cabeca, desc, modelo, cor, especificacao, codigo]
     .map((p) => String(p || "").trim())
     .filter(Boolean)
     .join(" / ")

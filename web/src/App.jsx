@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useLayoutEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
@@ -5854,6 +5854,15 @@ function GeradorSiengeView() {
      que ja existe. Por isso a escolha e' sempre um item da base — nunca
      texto digitado. */
   const [maesEscolhidas, setMaesEscolhidas] = useState(() => new Map());
+  /* O fornecedor vale pro arquivo inteiro: a cotacao e' de uma casa so, e
+     digitar o mesmo nome em cada linha seria repetir a mesma informacao
+     dezenas de vezes. Ele abre o detalhe gerado. */
+  const [fornecedor, setFornecedor] = useState("");
+  /* O descritivo gerado e' um bom palpite, nao uma sentenca: o Sienge tem
+     manias que o arquivo nao conta (abreviacao da casa, ordem de cor e
+     modelo). Editado a mao, o texto manda — mas so ate a pessoa desfazer,
+     e dai ele volta a acompanhar o fornecedor que estiver la em cima. */
+  const [descritos, setDescritos] = useState(() => new Map());
 
   // A base carrega sozinha: sem ela a tela nao faz nada, e pedir um
   // clique pra habilitar a unica funcao da tela e' cerimonia.
@@ -5916,6 +5925,15 @@ function GeradorSiengeView() {
   });
 
   const comMae = (c) => maesEscolhidas.has(c.i) || c.maes.length > 0;
+
+  const geradoDe = useCallback((c) => descricaoSienge({
+    fornecedor, marca: c.marca, desc: c.desc, modelo: c.modelo,
+    cor: c.cor, especificacao: c.especificacao, codigo: c.codigo,
+  }), [fornecedor]);
+  const descritoDe = useCallback((c) => {
+    const meu = descritos.get(c.i);
+    return meu != null ? meu : geradoDe(c);
+  }, [descritos, geradoDe]);
   const achados = casados.filter(comMae).length;
   const semMae = casados.length - achados;
 
@@ -5937,12 +5955,10 @@ function GeradorSiengeView() {
         // O codigo do fornecedor e' o que a casa tem em maos pra
         // identificar a peca — e' o candidato natural ao auxiliar.
         codigoAuxDetalhe: c.codigo || c.codigoSienge || "",
-        descricaoDetalhe: descricaoSienge({
-          marca: c.marca, desc: c.desc, modelo: c.modelo, cor: c.cor, codigo: c.codigo,
-        }),
+        descricaoDetalhe: descritoDe(c),
         produtoFiscal: "",
       };
-    }), [casados, escolhas, maesEscolhidas, grupos]);
+    }), [casados, escolhas, maesEscolhidas, grupos, descritoDe]);
 
   const incompletas = paraCadastrar.filter((l) => faltaNoTemplate(l).length).length;
 
@@ -5961,7 +5977,7 @@ function GeradorSiengeView() {
       return [
         c.desc, c.marca || "", mae?.codigo || "", mae?.nome || "", escolhida || "",
         !mae ? "cadastrar" : escolhida ? "associado" : "escolher variante",
-        !mae || !escolhida ? descricaoSienge({ marca: c.marca, desc: c.desc, modelo: c.modelo, cor: c.cor, codigo: c.codigo }) : "",
+        !mae || !escolhida ? descritoDe(c) : "",
       ];
     });
     const ws = XLSX.utils.aoa_to_sheet([...cab, ...corpo]);
@@ -5979,6 +5995,15 @@ function GeradorSiengeView() {
           <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
         </label>
+        {linhas && (
+          <label className="ger-forn">
+            Fornecedor
+            <input className="form-input" type="text" value={fornecedor}
+              onChange={(e) => setFornecedor(e.target.value)}
+              placeholder="ex: Macrosul"
+              title="Abre o descritivo de todas as linhas — a cotação costuma ser de um fornecedor só" />
+          </label>
+        )}
         <span className="ger-info">
           {carregando ? "Carregando a base do Sienge…"
             : baseSienge ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge`
@@ -6048,6 +6073,13 @@ function GeradorSiengeView() {
                       onEscolher={(d) => escolher(c.i, d)}
                       grupos={grupos}
                       maeEscolhida={maesEscolhidas.get(c.i)}
+                      descrito={descritoDe(c)}
+                      editado={descritos.has(c.i)}
+                      onDescrito={(txt) => setDescritos((m) => {
+                        const n = new Map(m);
+                        if (txt == null) n.delete(c.i); else n.set(c.i, txt);
+                        return n;
+                      })}
                       onMae={(cod) => setMaesEscolhidas((m) => {
                         const n = new Map(m);
                         cod ? n.set(c.i, cod) : n.delete(c.i);
@@ -6070,7 +6102,7 @@ function GeradorSiengeView() {
    la, e o template so cadastra detalhe DENTRO de um insumo existente.
    Por isso nao ha campo de texto livre aqui: ou e' uma das candidatas,
    ou e' uma achada na busca, e as duas saem da mesma base. */
-function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMae }) {
+function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMae, descrito, editado, onDescrito }) {
   const [buscando, setBuscando] = useState(false);
   const [termo, setTermo] = useState("");
 
@@ -6087,10 +6119,6 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
       .filter((g) => normSienge(g.nome).includes(t) || String(g.codigo).includes(t))
       .slice(0, 8);
   }, [termo, grupos]);
-
-  const padrao = descricaoSienge({
-    marca: linha.marca, desc: linha.desc, modelo: linha.modelo, cor: linha.cor, codigo: linha.codigo,
-  });
 
   return (
     <tr className={mae ? (escolhida ? "row-comprado" : "") : "row-falta"}>
@@ -6173,10 +6201,21 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
           <details className="det-gerar" open={!!mae && !escolhida}>
             <summary>{escolhida ? "gerar descritivo mesmo assim" : "nenhuma serve — cadastrar como detalhe novo"}</summary>
             <div className="padrao-cel">
-              <code className="padrao-txt">{padrao || "—"}</code>
-              <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
-                onClick={() => navigator.clipboard?.writeText(padrao)}><Copy size={11} /></button>
+              {/* Textarea, e nao um <code> com botao de editar: quem confere
+                  cinquenta linhas nao quer dois cliques por linha. */}
+              <textarea className="padrao-txt padrao-edit" value={descrito} rows={2}
+                spellCheck={false} aria-label="Descrição do detalhe no Sienge"
+                onChange={(e) => onDescrito(e.target.value)} />
+              <div className="padrao-acoes">
+                <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
+                  onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></button>
+                {editado && (
+                  <button className="btn-copiar" title="Voltar ao descritivo gerado"
+                    onClick={() => onDescrito(null)}><RotateCcw size={11} /></button>
+                )}
+              </div>
             </div>
+            {editado && <span className="padrao-nota">editado à mão</span>}
           </details>
         </div>
       </td>
@@ -9473,6 +9512,12 @@ export default function App() {
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
         .btn-template { background: var(--green); }
         .btn-template:hover { background: #247346; }
+        .padrao-edit { border: 1px solid var(--line); resize: vertical; min-height: 34px; color: var(--ink); }
+        .padrao-edit:focus { outline: none; border-color: var(--blue); background: var(--panel-2); }
+        .padrao-acoes { display: flex; flex-direction: column; gap: 3px; }
+        .padrao-nota { font-size: 10px; color: var(--amber); font-weight: 600; margin-left: 2px; }
+        .ger-forn { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
+        .ger-forn .form-input { margin-top: 0; width: 160px; font-size: 12px; padding: 6px 9px; }
         .ger-trocar { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; background: transparent; border: none; color: var(--ink-3); text-decoration: underline; font-size: 10px; cursor: pointer; font-family: inherit; padding: 2px 0; }
         .ger-trocar:hover { color: var(--ink); }
         .ger-busca { display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--panel); border-radius: 8px; }
