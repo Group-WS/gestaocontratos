@@ -625,13 +625,32 @@ app.post("/api/vendido/parse", express.raw({ type: "*/*", limit: "30mb" }), asyn
  * ajuste num arquivo so, sem redeploy de funcao serverless.
  *
  * pdf-parse ja esta aqui pro Vendido — nao entra dependencia nova. */
+/* "bad XRef entry" e' a tabela interna do PDF corrompida — costuma vir de
+   arquivo montado por sistema (o proprio Sienge, ERPs) ou salvo pela
+   metade. A mensagem crua nao diz nada pra quem esta usando, e o
+   caminho de saida existe e e' simples: reabrir e salvar de novo
+   reconstroi essa tabela.
+
+   Traduzir erro tecnico nao e' enfeite: sem isso a pessoa acha que o
+   arquivo dela nao serve e desiste. */
+function erroDePDF(msg) {
+  const m = String(msg || "");
+  if (/xref|invalid pdf structure|startxref|corrupt/i.test(m)) {
+    return "Este PDF está com a estrutura interna danificada (comum em arquivo gerado por sistema). " +
+      "Abra ele e salve de novo — no Mac, Visualizar > Arquivo > Exportar como PDF; no navegador, Imprimir > Salvar como PDF. " +
+      "Isso reconstrói o arquivo e costuma resolver. Se o relatório tiver versão em Excel, ela é mais confiável.";
+  }
+  if (/password|encrypt/i.test(m)) return "Este PDF está protegido por senha — remova a proteção e tente de novo.";
+  return "Falha ao ler o PDF: " + m;
+}
+
 app.post("/api/sienge/texto", express.raw({ type: "*/*", limit: "30mb" }), async (req, res) => {
   try {
     if (!req.body || !req.body.length) return res.status(400).json({ error: "Envie o PDF no corpo da requisição." });
     const data = await pdfParse(req.body);
     res.json({ paginas: data.numpages, texto: data.text });
   } catch (err) {
-    res.status(500).json({ error: "Falha ao ler o PDF: " + err.message });
+    res.status(422).json({ error: erroDePDF(err.message) });
   }
 });
 

@@ -15,7 +15,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF } from "./lib/sienge";
+import { descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
@@ -5889,6 +5889,39 @@ function GeradorSiengeView() {
   const achados = casados.filter((c) => c.maes.length).length;
   const semMae = casados.length - achados;
 
+  /* O template do Sienge so interessa pro que NAO existe la — o resto ja
+     esta cadastrado e reimportar criaria duplicata. Item onde a pessoa
+     escolheu uma variante tambem sai fora: escolher significa "e' este
+     que ja existe". */
+  const paraCadastrar = useMemo(() => casados
+    .filter((c) => !escolhas.get(c.i))
+    .map((c) => {
+      const mae = c.maes[0]?.grupo || null;
+      return {
+        i: c.i,
+        maeCodigo: mae?.codigo || "",
+        maeNome: mae?.nome || "",
+        // O Sienge e' quem numera o detalhe; o gerador nao tem como saber.
+        codigoDetalhe: "",
+        // O codigo do fornecedor e' o que a casa tem em maos pra
+        // identificar a peca — e' o candidato natural ao auxiliar.
+        codigoAuxDetalhe: c.codigo || c.codigoSienge || "",
+        descricaoDetalhe: descricaoSienge({
+          marca: c.marca, desc: c.desc, modelo: c.modelo, cor: c.cor, codigo: c.codigo,
+        }),
+        produtoFiscal: "",
+      };
+    }), [casados, escolhas]);
+
+  const incompletas = paraCadastrar.filter((l) => faltaNoTemplate(l).length).length;
+
+  function baixarTemplate() {
+    const csv = montarTemplateSienge(paraCadastrar);
+    downloadFile(
+      `sienge-importacao-detalhes-${(arquivo || "lista").replace(/\.[^.]+$/, "")}.csv`,
+      csv, "text/csv;charset=utf-8;");
+  }
+
   function baixarResultado() {
     const cab = [["Descrição do arquivo", "Marca", "Insumo mãe (cód.)", "Insumo mãe", "Variante escolhida", "Situação", "Descrição pra cadastrar"]];
     const corpo = casados.map((c) => {
@@ -5921,7 +5954,13 @@ function GeradorSiengeView() {
             : "Base do Sienge indisponível"}
           {arquivo && ` · ${arquivo}`}
         </span>
-        {linhas && <button className="btn-doc" onClick={baixarResultado}><Download size={13} /> Baixar resultado</button>}
+        {linhas && <button className="btn-doc" onClick={baixarResultado}><Download size={13} /> Conferência (Excel)</button>}
+        {linhas && paraCadastrar.length > 0 && (
+          <button className="btn-doc btn-template" onClick={baixarTemplate}
+            title="Template de importação de detalhes do Sienge, em CSV — sobe direto lá">
+            <Download size={13} /> Template do Sienge ({paraCadastrar.length})
+          </button>
+        )}
       </div>
 
       {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
@@ -5945,6 +5984,21 @@ function GeradorSiengeView() {
             <div className="cf-bloco ok"><div className="cf-n">{achados}</div><div className="cf-rot">já existem no Sienge</div></div>
             <div className={`cf-bloco ${semMae ? "ruim" : "ok"}`}><div className="cf-n">{semMae}</div><div className="cf-rot">precisam ser cadastrados</div></div>
             <div className="cf-bloco aviso"><div className="cf-n">{escolhas.size}</div><div className="cf-rot">variantes já escolhidas</div></div>
+          </div>
+          {/* O template exige tres campos, e um deles o Sienge e' quem
+              numera. Dizer QUANTAS linhas vao sair incompletas, antes de
+              baixar, evita a pessoa subir o arquivo e ser recusada la. */}
+          {incompletas > 0 && (
+            <div className="aviso-migracao">
+              <AlertTriangle size={14} />
+              <span>
+                <b>{incompletas}</b> {incompletas === 1 ? "linha vai sair incompleta" : "linhas vão sair incompletas"} no
+                template — o Sienge exige código do insumo, código do detalhe e código auxiliar, e o
+                <b> código do detalhe é ele quem numera</b>. Baixe, preencha as colunas vazias e suba.
+              </span>
+            </div>
+          )}
+          <div style={{ display: "none" }}>
           </div>
 
           <div className="grp-block">
@@ -9336,6 +9390,8 @@ export default function App() {
         .cf-linha { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
         .cf-desc { flex: 1; min-width: 0; }
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
+        .btn-template { background: var(--green); }
+        .btn-template:hover { background: #247346; }
         .ger-topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 13px 16px; margin-bottom: 12px; }
         .ger-info { flex: 1; font-size: 12px; color: var(--ink-3); }
         .ger-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }

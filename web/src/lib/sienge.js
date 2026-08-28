@@ -407,3 +407,73 @@ export function lerListaDeProdutosPDF(texto) {
              marca: null, modelo: null, cor: null };
   }).filter((x) => x.desc);
 }
+
+/* O TEMPLATE DE IMPORTACAO DE DETALHES DO SIENGE.
+ *
+ * E' o destino de tudo isto: o arquivo que sobe no Sienge e cadastra os
+ * detalhes dentro dos insumos, sem ninguem digitar um por um.
+ *
+ * Cabecalho exato, separador PONTO E VIRGULA — o Sienge le assim, e uma
+ * virgula no lugar errado faz ele recusar o arquivo inteiro sem dizer
+ * qual linha.
+ *
+ * Tres colunas sao obrigatorias (marcadas com * no proprio template).
+ * Quando falta uma, a linha sai mesmo assim, VAZIA naquele campo: e
+ * melhor a pessoa ver o buraco na planilha e preencher do que o gerador
+ * inventar um codigo que nao existe no Sienge.
+ */
+export const CABECALHO_TEMPLATE_SIENGE =
+  "Código auxiliar do insumo*;Descrição do insumo;Código do detalhe*;" +
+  "Código auxiliar do detalhe*;Descrição do detalhe*;Produto fiscal";
+
+/* Nada de aspas: o ponto e virgula sai do TEXTO.
+ *
+ * A convencao de CSV manda por o campo entre aspas quando ele contem o
+ * separador. So que o destino aqui e o importador do Sienge, e a regra
+ * da casa e' explicita — sem formulas, sem mascaras, sem mexer nas
+ * colunas. Um campo entre aspas que o parser deles nao entenda desloca
+ * as colunas em silencio, e a importacao entra errada em vez de falhar.
+ *
+ * Entao ";" vira "," e a aspa vira apostrofo dentro do proprio texto. E
+ * perda cosmetica de pontuacao numa descricao de produto — que ja usa
+ * "/" como separador — em troca de um arquivo que qualquer leitor abre
+ * igual. */
+const celulaCSV = (v) => String(v ?? "")
+  .replace(/\r?\n/g, " ")
+  .replace(/;/g, ",")
+  .replace(/"/g, "'")
+  .replace(/\s+/g, " ")
+  .trim();
+
+/**
+ * Monta o CSV a partir das linhas que precisam de cadastro.
+ *
+ * Cada linha e { maeCodigo, maeNome, codigoDetalhe, codigoAuxDetalhe,
+ * descricaoDetalhe, produtoFiscal }.
+ */
+export function montarTemplateSienge(linhas) {
+  const corpo = (linhas || []).map((l) => [
+    l.maeCodigo, l.maeNome, l.codigoDetalhe, l.codigoAuxDetalhe, l.descricaoDetalhe, l.produtoFiscal,
+  ].map(celulaCSV).join(";"));
+  /* SEM BOM. Ele ajudaria o Excel a abrir os acentos, mas este arquivo
+     nao e' pra ser aberto — e' pra ser importado. O BOM gruda um
+     caractere invisivel no comeco de "Código auxiliar do insumo*", e a
+     regra da casa diz pra nao alterar o nome das colunas. Um importador
+     que compare o cabecalho literalmente recusaria o arquivo inteiro, e
+     a causa seria invisivel na tela. */
+  return [CABECALHO_TEMPLATE_SIENGE, ...corpo].join("\r\n") + "\r\n";
+}
+
+/* O que falta pra linha ser aceita pelo Sienge.
+ *
+ * Devolver a lista dos campos vazios — e nao um simples "invalida" —
+ * porque a pessoa precisa saber O QUE preencher, e o gerador nao tem como
+ * saber o codigo que o Sienge vai dar. */
+export function faltaNoTemplate(l) {
+  const falta = [];
+  if (!String(l.maeCodigo || "").trim()) falta.push("código do insumo");
+  if (!String(l.codigoDetalhe || "").trim()) falta.push("código do detalhe");
+  if (!String(l.codigoAuxDetalhe || "").trim()) falta.push("código auxiliar do detalhe");
+  if (!String(l.descricaoDetalhe || "").trim()) falta.push("descrição do detalhe");
+  return falta;
+}
