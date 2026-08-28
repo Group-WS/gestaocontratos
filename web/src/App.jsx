@@ -5992,19 +5992,28 @@ function GeradorSiengeView() {
       csv, "text/csv;charset=utf-8;");
   }
 
+  /* A conferencia e' pra LER, nao pra importar: aqui cabe o que ajuda a
+     pessoa a conferir — quantidade e unidade inclusive. O template do
+     Sienge nao muda por causa disso; la a regra da casa proibe coluna
+     nova, e sao arquivos com destinos diferentes. */
   function baixarResultado() {
-    const cab = [["Descrição do arquivo", "Marca", "Insumo mãe (cód.)", "Insumo mãe", "Variante escolhida", "Situação", "Descrição pra cadastrar"]];
+    const cab = [["Descrição do arquivo", "Qtd.", "Un.", "Marca", "Insumo mãe (cód.)", "Insumo mãe", "Variante escolhida", "Situação", "Descrição pra cadastrar"]];
     const corpo = casados.map((c) => {
-      const mae = c.maes[0]?.grupo;
+      const esc = maesEscolhidas.get(c.i);
+      const mae = (esc ? (grupos || []).find((g) => g.codigo === esc) : null) || c.maes[0]?.grupo;
       const escolhida = escolhas.get(c.i) || null;
       return [
-        c.desc, c.marca || "", mae?.codigo || "", mae?.nome || "", escolhida || "",
+        c.desc,
+        // Numero de verdade, nao texto: assim a coluna soma no Excel.
+        typeof c.qtd === "number" ? c.qtd : "",
+        c.un || "",
+        c.marca || "", mae?.codigo || "", mae?.nome || "", escolhida || "",
         !mae ? "cadastrar" : escolhida ? "associado" : "escolher variante",
         !mae || !escolhida ? descritoDe(c) : "",
       ];
     });
     const ws = XLSX.utils.aoa_to_sheet([...cab, ...corpo]);
-    ws["!cols"] = [{ wch: 52 }, { wch: 18 }, { wch: 14 }, { wch: 30 }, { wch: 48 }, { wch: 18 }, { wch: 56 }];
+    ws["!cols"] = [{ wch: 52 }, { wch: 7 }, { wch: 6 }, { wch: 18 }, { wch: 14 }, { wch: 30 }, { wch: 48 }, { wch: 18 }, { wch: 56 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Códigos Sienge");
     XLSX.writeFile(wb, `codigos-sienge-${(arquivo || "lista").replace(/\.[^.]+$/, "")}.xlsx`);
