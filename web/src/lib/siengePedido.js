@@ -120,10 +120,18 @@ export function parsePedidoSiengeExcel(linhas) {
   const iCab = L.findIndex((r) => r.some((c) => /insumo|descri/.test(norm(c))));
   if (iCab === -1) return { numero: null, obraCodigo: null, itens: [] };
 
-  const cab = L[iCab].map(norm);
+  /* `Array.from` e nao `.map`: a planilha vem com array ESPARSO — celula
+     vazia e um buraco, nao um valor. `.map` pula buraco e o mantem, e
+     `findIndex` (que NAO pula) acabava testando `undefined`.
+
+     O estrago era silencioso e especifico: `/^und/.test(undefined)` testa
+     a string "undefined", que comeca com "und" — entao a coluna de
+     unidade casava com a primeira celula VAZIA do cabecalho, e toda
+     unidade voltava nula. */
+  const cab = Array.from(L[iCab] || [], norm);
   const acha = (...padroes) => {
     for (const p of padroes) {
-      const i = cab.findIndex((c) => p.test(c));
+      const i = cab.findIndex((c) => p.test(c || ""));
       if (i >= 0) return i;
     }
     return -1;

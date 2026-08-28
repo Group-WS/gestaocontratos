@@ -133,5 +133,22 @@ conf("planilha vazia não quebra", parsePedidoSiengeExcel([]).itens.length, 0);
 conf("planilha sem cabeçalho conhecido não inventa item",
   parsePedidoSiengeExcel([["a", "b"], ["c", "d"]]).itens.length, 0);
 
+/* ---- 6. célula vazia não pode virar coluna ---- */
+// A planilha vem com array ESPARSO: célula vazia é um buraco, não um
+// valor. `findIndex` não pula buraco, e `/^und/.test(undefined)` testa a
+// string "undefined" — que começa com "und". A coluna de unidade casava
+// com a primeira célula VAZIA do cabeçalho, e toda unidade voltava nula.
+const esparso = [];
+esparso[0] = "Insumo";
+esparso[2] = "Und.";           // índices 1 e 3 ficam como buraco
+esparso[4] = "Qtd. prevista";
+const linha = [];
+linha[0] = "406 - CADEIRA / WAMOVEL";
+linha[2] = "un";
+linha[4] = "6,0000";
+const esp = parsePedidoSiengeExcel([esparso, linha]);
+conf("buraco no cabeçalho não vira coluna", esp.itens[0].un, "un");
+conf("... e a quantidade vem da coluna certa", esp.itens[0].qtdPrevista, 6);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

@@ -5979,6 +5979,13 @@ function ComprasView({ obra, onItemChange, usuario }) {
     const doCanal = rows.filter((r) => r.it.canalCompra === "sienge");
     return conferirComSienge(doCanal, doSienge.itens, cobertura);
   }, [doSienge, rows]);
+
+  // Pra tabela dizer, linha a linha, se aquilo chegou no Sienge.
+  const lancados = useMemo(() => {
+    const m = new Map();
+    (confronto?.confirmados || []).forEach((c) => m.set(c.chave, c.sienge));
+    return m;
+  }, [confronto]);
   const totalSel = selecionados.reduce((a, r) => a + r.material, 0);
 
   const alternar = (c) => setSel((p) => { const n = new Set(p); n.has(c) ? n.delete(c) : n.add(c); return n; });
@@ -6205,6 +6212,10 @@ function ComprasView({ obra, onItemChange, usuario }) {
         </div>
       )}
 
+      {/* O aviso ficava no FIM da pagina, depois de quinze grupos: quando
+          a leitura do arquivo falhava, a tela parecia nao ter feito nada. */}
+      {erroBase && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erroBase}</span></div>}
+
       {confronto && (
         <div className="confronto">
           <div className="confronto-topo">
@@ -6283,7 +6294,6 @@ function ComprasView({ obra, onItemChange, usuario }) {
           <button className="aviso-x" onClick={() => setResultado(null)} aria-label="Fechar"><X size={13} /></button>
         </div>
       )}
-      {erroBase && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erroBase}</span></div>}
 
       <div className="sel-barra-topo">
         <button className="btn-sel-tudo" onClick={selecionarTudo}>
@@ -6332,8 +6342,11 @@ function ComprasView({ obra, onItemChange, usuario }) {
                       <th style={{ width: 104 }} className="right">Material</th>
                       <th style={{ width: 112 }} className="center">Canal</th>
                       <th style={{ width: 104 }} className="center">Status</th>
-                      {baseSienge && <th style={{ width: 186 }}>Insumo mãe</th>}
-                      {baseSienge && <th style={{ width: 340 }}>Detalhe do insumo</th>}
+                      {doSienge && <th style={{ width: 122 }} className="center">Lançado Sienge</th>}
+                      {/* A mae virou a primeira linha do detalhe: eram
+                          duas colunas contando a mesma historia, e a
+                          tabela so cabia rolando pro lado. */}
+                      {baseSienge && <th style={{ width: 300 }}>Insumo no Sienge</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -6342,6 +6355,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
                         onSelecionar={() => alternar(r.chave)}
                         casamento={casamentos.get(r.chave)}
                         mostrarSienge={!!baseSienge}
+                        lancado={doSienge ? lancados.get(r.chave) || null : undefined}
                         onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
                     ))}
                   </tbody>
@@ -6429,7 +6443,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
   );
 }
 
-function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge, onItemChange }) {
+function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge, lancado, onItemChange }) {
   const { it, material } = row;
   const padrao = descricaoSienge({
     marca: it.marca, desc: it.desc, modelo: it.modelo, cor: it.cor, codigo: it.codigoFornecedor,
@@ -6483,19 +6497,33 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge,
         )}
       </td>
 
+      {/* Lancado no Sienge: a confirmacao de que a compra existe DE FATO.
+          So aparece depois que o relatorio e' subido — antes disso a
+          coluna prometeria uma resposta que ninguem tem. */}
+      {lancado !== undefined && (
+        <td className="center">
+          {lancado ? (
+            <span className="pill pill-ok" title={lancado.descricao}>
+              <Check size={11} /> {lancado.codigo || "sim"}
+            </span>
+          ) : (
+            <span className="pill pill-falta" title="Está no plano e não apareceu no relatório do Sienge">
+              não lançado
+            </span>
+          )}
+        </td>
+      )}
+
       {mostrarSienge && (
         <td>
-          {!casamento ? <span className="dim">—</span> : !maeAtual ? (
-            <div className="casa casa-sem"><span className="casa-bola" /> não existe</div>
-          ) : (
-            /* O nome inteiro, em duas linhas.
+          {/* MAE em cima, variantes embaixo, na MESMA celula.
 
-               Era um <select> nativo dentro de 170px: "LUMINÁRIA - ARANDELA"
-               virava "LUMINÁRIA - ARAND" e a pessoa escolhia entre textos
-               cortados. Agora o texto e' livre pra quebrar, e o seletor fica
-               transparente por cima — mesmo truque da etiqueta de alocacao:
-               clica onde ja estava olhando, o teclado navega e o leitor de
-               tela anuncia. */
+              Eram duas colunas contando a mesma historia — e a tabela so
+              cabia rolando pro lado, que e o oposto de ler uma lista. A
+              mae e' o cabecalho natural das opcoes que vem logo abaixo. */}
+          {!casamento ? <span className="dim">—</span> : !maeAtual ? (
+            <div className="casa casa-sem"><span className="casa-bola" /> não existe no Sienge</div>
+          ) : (
             <div className={`mae-cel casa-${status}`}>
               <span className="casa-bola" />
               <div className="mae-txt">
@@ -6521,11 +6549,6 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge,
               )}
             </div>
           )}
-        </td>
-      )}
-
-      {mostrarSienge && (
-        <td>
           {!maeAtual ? (
             <div className="padrao-cel">
               <code className="padrao-txt">{padrao || "—"}</code>
@@ -9012,7 +9035,7 @@ export default function App() {
            "achei parecido" manda olhar antes de cadastrar. */
         /* O nome da mae inteiro: era um <select> nativo espremido em 170px,
            onde "LUMINÁRIA - ARANDELA" virava "LUMINÁRIA - ARAND". */
-        .mae-cel { position: relative; display: flex; align-items: flex-start; gap: 6px; padding: 2px 4px; border: 1px solid transparent; border-radius: 6px; }
+        .mae-cel { position: relative; display: flex; align-items: flex-start; gap: 6px; padding: 2px 4px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 6px; border-bottom: 1px solid var(--border-soft); }
         .mae-cel:hover { border-color: var(--border); background: #fff; }
         .mae-cel .casa-bola { margin-top: 5px; }
         .mae-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -9322,7 +9345,10 @@ export default function App() {
            descricao — e "Anotacao de responsabilidade tecnica" saia em
            quatro linhas ao lado de colunas de valor com folga sobrando.
            Com o minimo a tabela rola na horizontal e a descricao respira. */
-        .grp-itens table { width: 100%; min-width: 940px; border-collapse: collapse; }
+        /* Sem largura minima gigante: a tabela encolheu de duas colunas
+           de Sienge pra uma, entao ela cabe sem rolar na maioria das
+           telas — e rolar pro lado e o oposto de ler uma lista. */
+        .grp-itens table { width: 100%; min-width: 900px; border-collapse: collapse; }
         .grp-itens th:nth-child(2), .grp-itens td:nth-child(2) { min-width: 230px; }
         /* A situacao virou o controle de incluir/tirar do plano. */
         .pill-btn { border: none; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
@@ -9465,6 +9491,7 @@ export default function App() {
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-contratos { background: var(--panel); color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
         .pill-wait { background: var(--panel); color: var(--ink-3); }
+        .pill-falta { background: #FDF3E3; color: #B54708; }
 
         /* PLANO DE COMPRAS — seleção do que vai ser comprado.
 
