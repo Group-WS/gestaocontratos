@@ -6017,7 +6017,7 @@ function GeradorSiengeView() {
         {linhas && paraCadastrar.length > 0 && (
           <button className="btn-doc btn-template" onClick={baixarTemplate}
             title="Template de importação de detalhes do Sienge, em CSV — sobe direto lá">
-            <Download size={13} /> Template do Sienge ({paraCadastrar.length})
+            <Download size={13} /> Template Sienge para cadastro de detalhe ({paraCadastrar.length})
           </button>
         )}
       </div>
