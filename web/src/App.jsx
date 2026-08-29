@@ -8047,13 +8047,20 @@ function GcLinhaObra({ L, onAbrir }) {
             </span>
           ) : <span className="gc-sem-data">sem data</span>}
         </td>
-        <td className="gc-cel-barra">
-          <GcBarra pct={L.mat.pct} cor={COR_MAT} />
-          <span className="gc-cel-txt mono">{fmtBRL(L.mat.falta)}</span>
+        {/* O flex vai num <div>, nunca no proprio <td>: celula de tabela
+            com display:flex deixa de se comportar como celula, e as duas
+            colunas de valor caem uma embaixo da outra. */}
+        <td>
+          <div className="gc-cel-barra">
+            <GcBarra pct={L.mat.pct} cor={COR_MAT} />
+            <span className="gc-cel-txt mono">{fmtBRL(L.mat.falta)}</span>
+          </div>
         </td>
-        <td className="gc-cel-barra">
-          <GcBarra pct={L.mo.pct} cor={COR_MO} />
-          <span className="gc-cel-txt mono">{fmtBRL(L.mo.falta)}</span>
+        <td>
+          <div className="gc-cel-barra">
+            <GcBarra pct={L.mo.pct} cor={COR_MO} />
+            <span className="gc-cel-txt mono">{fmtBRL(L.mo.falta)}</span>
+          </div>
         </td>
         <td className="center">
           {atrasada ? (
