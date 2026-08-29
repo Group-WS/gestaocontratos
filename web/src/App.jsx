@@ -1326,6 +1326,59 @@ function categoriasComAditivos(categorias, aditivos) {
   });
 }
 
+/**
+ * Os itens da obra achatados, prontos pra virar linha de SUPRESSAO.
+ *
+ * Supressao e' remocao do que ja existe — e o que existe esta na
+ * planilha do executivo. Redigitar a descricao dali abre duas portas
+ * para o erro: escrever diferente (e ai ninguem casa a supressao com a
+ * linha que ela tira) e errar o valor unitario.
+ *
+ * O valor devolvido e' UNITARIO, porque e' o que a linha do aditivo pede.
+ * E a alocacao vem junto: suprimir um item de material tira material, e
+ * deixar isso pro padrao adivinhar seria jogar fora uma informacao que a
+ * obra ja tem decidida.
+ */
+function itensParaSupressao(categorias) {
+  const out = [];
+  (categorias || []).forEach((cat) => {
+    (cat.itens || []).forEach((it) => {
+      if (it.ehTitulo) return;
+      const { material, mo } = parcelasDoItem(it);
+      const total = material + mo;
+      if (total <= 0) return;
+      const qtd = it.qtdExecutivo ?? it.qtdVendida ?? null;
+      const aloc = alocacaoDoItem(it, cat);
+      out.push({
+        chave: `${cat.num}-${it.codigo}`,
+        desc: it.desc || "",
+        ambiente: it.ambiente || "",
+        catNum: cat.num,
+        catNome: cat.nome,
+        qtd: qtd && qtd > 0 ? qtd : 1,
+        un: it.un || "un",
+        // Sem quantidade, o total E' o unitario — dividir por nada
+        // devolveria Infinity e a linha nasceria com valor absurdo.
+        valorUnit: qtd && qtd > 0 ? total / qtd : total,
+        alocacao: aloc,
+      });
+    });
+  });
+  return out;
+}
+
+/* Busca por pedaco de texto, sem acento e sem caixa: quem procura
+   "bancada" tem que achar "BANCADA EM U" e "Bancada ilha". */
+function acharNoExecutivo(itens, termo) {
+  const t = String(termo || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  if (t.length < 2) return [];
+  const partes = t.split(/\s+/);
+  return (itens || []).filter((x) => {
+    const alvo = `${x.desc} ${x.ambiente} ${x.catNome}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    return partes.every((pedaco) => alvo.includes(pedaco));
+  }).slice(0, 6);
+}
+
 /* O resumo que o Dashboard mostra: quantos, de que valor, e se algum
    grupo ficou sem verba. */
 function resumoAditivos(aditivos) {
@@ -8764,12 +8817,60 @@ function DocumentoAditivo({ doc, numero }) {
   );
 }
 
+/* A busca no executivo, embaixo do campo de descrição.
+
+   Aparece sozinha enquanto a pessoa digita e some assim que ela escolhe —
+   ou nunca aparece, se ela preferir escrever à mão. Digitar continua
+   sendo o caminho: obra sem executivo carregado, item que não está na
+   planilha, descrição que ela quer diferente. */
+function BuscaExecutivo({ itens, termo, ativo, onEscolher }) {
+  const achados = useMemo(() => (ativo ? acharNoExecutivo(itens, termo) : []), [itens, termo, ativo]);
+  if (!achados.length) return null;
+  return (
+    <div className="ad-busca">
+      <div className="ad-busca-rot">no executivo da obra</div>
+      {achados.map((x) => (
+        <button key={x.chave} className="ad-busca-item" onClick={() => onEscolher(x)} title={x.desc}>
+          <span className="mono dim">{x.catNum}</span>
+          <span className="ad-busca-desc">{x.desc}</span>
+          {x.ambiente && <span className="ad-busca-amb">{x.ambiente}</span>}
+          <span className="mono ad-busca-qtd">{x.qtd} {x.un}</span>
+          <span className="mono ad-busca-val">{fmtBRL(x.valorUnit)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* O editor. Formulário à esquerda, documento à direita. */
-function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao }) {
+function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, doExecutivo }) {
   const setG = (k, v) => onMudar({ ...g, [k]: v });
   const palpite = useMemo(() => (g.verba ? null : verbaPorNome(g.nome)), [g.verba, g.nome]);
   const palpiteVerba = palpite ? eapPadrao().find((c) => c.num === palpite) : null;
   const setI = (iid, k, v) => onMudar({ ...g, itens: g.itens.map((i) => (i.id === iid ? { ...i, [k]: v } : i)) });
+  /* Pegar do executivo preenche a linha INTEIRA, alocacao inclusive: a
+     obra ja decidiu se aquilo e material ou mao de obra, e deixar o
+     padrao adivinhar de novo jogaria essa decisao fora. */
+  const escolherDoExecutivo = (iid, x) => {
+    const brl = (n) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    onMudar({
+      ...g,
+      // Grupo ainda sem nome herda o da verba do item — e' quase sempre
+      // o que a pessoa ia digitar em seguida.
+      nome: g.nome.trim() || (x.catNome || "").toUpperCase(),
+      verba: g.verba || x.catNum,
+      itens: g.itens.map((i) => (i.id === iid ? {
+        ...i,
+        descricao: x.desc,
+        ambiente: x.ambiente || i.ambiente,
+        qtd: brl(x.qtd),
+        unidade: x.un || i.unidade,
+        valor: brl(x.valorUnit),
+        alocacao: x.alocacao === ALOC_AMBOS ? "AMBOS" : x.alocacao,
+        doExecutivo: x.chave,
+      } : i)),
+    });
+  };
   const addItem = () => onMudar({ ...g, itens: [...g.itens, novoItem()] });
   const delI = (iid) => onMudar({ ...g, itens: g.itens.filter((i) => i.id !== iid) });
   const dupI = (iid) => {
@@ -8811,8 +8912,16 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao })
               <button className="ad-icon" title="Duplicar item" onClick={() => dupI(it.id)}><Plus size={11} /></button>
               <button className="ad-icon del" title="Excluir item" onClick={() => delI(it.id)}><X size={11} /></button>
             </div>
-            <textarea className="form-input ad-desc-in" rows={2} placeholder="Descrição do item"
+            <textarea className="form-input ad-desc-in" rows={2}
+              placeholder={doExecutivo?.length ? "Descrição — ou digite pra buscar no executivo" : "Descrição do item"}
               value={it.descricao} onChange={(e) => setI(it.id, "descricao", e.target.value)} />
+            {/* So na supressao, e so enquanto a linha nao foi resolvida.
+                Supressao e' remocao do que ja existe: redigitar a
+                descricao da planilha abre duas portas pro erro — escrever
+                diferente (e ai ninguem casa a supressao com a linha que
+                ela tira) e errar o valor unitario. */}
+            <BuscaExecutivo itens={doExecutivo} termo={it.descricao} ativo={!it.doExecutivo}
+              onEscolher={(x) => escolherDoExecutivo(it.id, x)} />
             <div className="ad-item-campos">
               <label>Ambiente<input className="form-input" value={it.ambiente}
                 onChange={(e) => setI(it.id, "ambiente", e.target.value)} /></label>
@@ -8842,7 +8951,7 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao })
   );
 }
 
-function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara }) {
+function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara, doExecutivo }) {
   const trocar = (gid, novo) => onMudar(grupos.map((g) => (g.id === gid ? novo : g)));
   const remover = (gid) => onMudar(grupos.filter((g) => g.id !== gid));
   const mover = (gid, d) => {
@@ -8862,7 +8971,7 @@ function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara }) {
       <div className="ad-card-b">
         {grupos.length === 0 && <div className="empty-note">Nenhum grupo — esta seção não aparece no documento.</div>}
         {grupos.map((g, gi) => (
-          <GrupoAditivo key={g.id} sec={sec} g={g} gi={gi}
+          <GrupoAditivo key={g.id} sec={sec} g={g} gi={gi} doExecutivo={doExecutivo}
             onMudar={(novo) => trocar(g.id, novo)}
             onRemover={() => remover(g.id)}
             onMover={(d) => mover(g.id, d)}
@@ -8876,7 +8985,7 @@ function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara }) {
   );
 }
 
-function EditorAditivo({ aditivo, obra, usuario, onVoltar, onSalvo }) {
+function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo }) {
   const [doc, setDoc] = useState(aditivo.doc);
   const [descricao, setDescricao] = useState(aditivo.descricao);
   const [status, setStatus] = useState(aditivo.status);
@@ -8976,6 +9085,7 @@ function EditorAditivo({ aditivo, obra, usuario, onVoltar, onSalvo }) {
           </div>
 
           <SecaoEditor sec="supressao" titulo="Supressão" grupos={doc.supressao || []} total={t.supressao}
+            doExecutivo={doExecutivo}
             onMudar={(g) => mexer({ ...doc, supressao: g })}
             onCopiarPara={(g, it) => copiarPara("supressao", g, it)} />
           <SecaoEditor sec="adicao" titulo="Adição" grupos={doc.adicao || []} total={t.adicao}
@@ -9167,6 +9277,10 @@ function AditivosView({ obras, usuario }) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
   const [abertoId, setAbertoId] = useState(null);
+  /* O executivo da obra escolhida. Ele nao vem junto da lista de obras
+     (que chega do Monday com a EAP vazia), entao e' carregado aqui — e
+     so quando alguem escolhe a obra, porque e' um JSONB gordo. */
+  const [doExecutivo, setDoExecutivo] = useState([]);
 
   useEffect(() => {
     let vivo = true;
@@ -9177,6 +9291,15 @@ function AditivosView({ obras, usuario }) {
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };
   }, []);
+
+  useEffect(() => {
+    if (!obraCodigo) { setDoExecutivo([]); return; }
+    let vivo = true;
+    carregarDadosObra(obraCodigo)
+      .then((d) => { if (vivo) setDoExecutivo(itensParaSupressao(normalizarCategorias(d?.categorias || []))); })
+      .catch(() => { if (vivo) setDoExecutivo([]); });   // sem executivo, digita a mao
+    return () => { vivo = false; };
+  }, [obraCodigo]);
 
   const obra = obras.find((o) => String(o.codigo) === String(obraCodigo)) || null;
   const daObra = useMemo(
@@ -9213,7 +9336,7 @@ function AditivosView({ obras, usuario }) {
   }
 
   if (aberto) {
-    return <EditorAditivo aditivo={aberto} obra={obra} usuario={usuario}
+    return <EditorAditivo aditivo={aberto} obra={obra} usuario={usuario} doExecutivo={doExecutivo}
       onVoltar={() => setAbertoId(null)} onSalvo={trocar} />;
   }
 
@@ -11019,6 +11142,15 @@ export default function App() {
         .pf-ok.compacto { font-size: 10.5px; }
         .pf-desfazer { background: none; border: none; color: var(--ink-3); font-family: inherit; font-size: 10px; text-decoration: underline; cursor: pointer; }
         .ad-tag.aprovado.on.cobra { border-style: dashed; }
+        .ad-busca { border: 1px solid var(--border); border-radius: 8px; margin-top: 5px; overflow: hidden; background: #fff; }
+        .ad-busca-rot { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); padding: 5px 8px 3px; }
+        .ad-busca-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--border-soft); padding: 5px 8px; font-family: inherit; font-size: 11.5px; color: var(--ink); cursor: pointer; }
+        .ad-busca-item:hover { background: var(--blue-bg); }
+        .ad-busca-item .mono { font-size: 10.5px; }
+        .ad-busca-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ad-busca-amb { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+        .ad-busca-qtd { color: var(--ink-3); white-space: nowrap; }
+        .ad-busca-val { color: var(--ink-2); font-weight: 700; white-space: nowrap; }
         .ad-obs { display: block; width: 100%; margin-top: 5px; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); background: var(--panel); resize: vertical; min-height: 24px; }
         .ad-obs:hover { border-color: var(--border); }
         .ad-obs:focus { outline: none; border-color: var(--blue); background: #fff; }

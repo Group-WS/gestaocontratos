@@ -49,7 +49,8 @@ const M = eval(`(function () {
   ${bloco("function obraComprasStats(")}
   ${bloco("function indiceRealDoItem(")}
   return { aditivosPorVerba, aditivosSemVerba, itensDeAditivo, categoriasComAditivos,
-           resumoAditivos, indiceRealDoItem, obraComprasStats };
+           resumoAditivos, indiceRealDoItem, obraComprasStats,
+           itensParaSupressao, acharNoExecutivo };
 })()`);
 
 let f = 0;
@@ -176,6 +177,50 @@ conf("um em rascunho", r.pendentes.length, 1);
 conf("saldo dos aprovados", r.saldo, 3000);
 conf("lista vazia não quebra", M.resumoAditivos([]).saldo, 0);
 conf("indefinido não quebra", M.resumoAditivos(undefined).aprovados.length, 0);
+
+/* ---- 9. Puxar do executivo pra suprimir ----
+   Supressão é remoção do que já existe. Redigitar a descrição da planilha
+   abre duas portas pro erro: escrever diferente — e aí ninguém casa a
+   supressão com a linha que ela tira — e errar o valor unitário. */
+const doExec = [{
+  num: "21", nome: "Móveis Sob Medida", itens: [
+    { codigo: "1", desc: "Bancada em U com 2 gavetões", ambiente: "Cozinha",
+      qtdExecutivo: 2, un: "un", totalMaterial: 9000, totalMO: 1000 },
+    { codigo: "2", desc: "Painel fixado na parede", qtdExecutivo: 0, un: "vb", totalMaterial: 3000 },
+    { codigo: "3", ehTitulo: true, desc: "MARCENARIA" },
+    { codigo: "4", desc: "Linha zerada", qtdExecutivo: 1, totalMaterial: 0, totalMO: 0 },
+  ],
+}];
+const achatados = M.itensParaSupressao(doExec);
+conf("título de bloco não vira item", achatados.some((x) => x.desc === "MARCENARIA"), false);
+conf("linha zerada não vira item", achatados.some((x) => x.desc === "Linha zerada"), false);
+conf("sobram os dois com valor", achatados.length, 2);
+
+const bancada = achatados[0];
+// O valor é UNITÁRIO, que é o que a linha do aditivo pede: 10.000 / 2.
+conf("valor unitário, não total", bancada.valorUnit, 5000);
+conf("quantidade vem junto", bancada.qtd, 2);
+conf("unidade vem junto", bancada.un, "un");
+conf("ambiente vem junto", bancada.ambiente, "Cozinha");
+conf("verba vem junto", bancada.catNum, "21");
+
+/* Sem quantidade, o total É o unitário. Dividir por zero devolveria
+   Infinity e a linha nasceria com valor absurdo no documento do cliente. */
+const painel = achatados[1];
+conf("quantidade zero não vira Infinity", painel.valorUnit, 3000);
+conf("e a quantidade vira 1", painel.qtd, 1);
+
+/* Busca sem acento e sem caixa: quem procura "bancada" tem que achar
+   "BANCADA EM U" e "Bancada ilha". */
+conf("acha por pedaço", M.acharNoExecutivo(achatados, "bancada").length, 1);
+conf("acha sem acento", M.acharNoExecutivo(achatados, "gavetoes").length, 1);
+conf("acha por duas palavras soltas", M.acharNoExecutivo(achatados, "bancada cozinha").length, 1);
+conf("acha pelo ambiente", M.acharNoExecutivo(achatados, "cozinha").length, 1);
+// Uma letra acharia meia planilha e a lista viraria ruído.
+conf("uma letra não busca", M.acharNoExecutivo(achatados, "b").length, 0);
+conf("termo vazio não busca", M.acharNoExecutivo(achatados, "").length, 0);
+conf("sem executivo não quebra", M.acharNoExecutivo(undefined, "bancada").length, 0);
+conf("nada casa devolve vazio", M.acharNoExecutivo(achatados, "geladeira").length, 0);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
