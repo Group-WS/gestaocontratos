@@ -8811,6 +8811,21 @@ function DocumentoAditivo({ doc, numero }) {
             <p>{doc.cond}</p>
           </div>
         )}
+
+        {/* A clausula de prevalencia.
+
+            Texto fixo, em toda proposta de aditivo: aditivo mexe no que
+            ja tinha sido aprovado, e sem isso escrito duas versoes
+            assinadas do mesmo escopo ficariam valendo ao mesmo tempo.
+
+            Pequena e cinza de proposito. Ela precisa ESTAR no documento,
+            nao competir com ele — o que o cliente le e' o que muda e
+            quanto custa. */}
+        <div className="ad-prevalencia">
+          As alterações deste aditivo substituem e alteram diretamente o que havia sido aprovado
+          anteriormente. Portanto, para todos os efeitos, passa a ser considerada válida a última
+          aprovação realizada neste aditivo, prevalecendo sobre as aprovações anteriores.
+        </div>
       </div>
       <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
     </div>
@@ -11269,6 +11284,7 @@ export default function App() {
         .ad-cond { margin-top: 7mm; font-size: 8.4pt; page-break-inside: avoid; }
         .ad-cond h4 { margin: 0 0 1.5mm; font-size: 8.4pt; color: #0E5F6B; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
         .ad-cond p { margin: 0; white-space: pre-line; }
+        .ad-prevalencia { margin-top: 6mm; font-size: 6.6pt; line-height: 1.45; color: #9aa7aa; text-align: justify; page-break-inside: avoid; }
         .ad-pagefoot { margin-top: auto; padding: 8mm 12mm 0; }
         .ad-pagefoot img { display: block; width: 100%; }
         .ad-docwarn { border: 1px dashed #b9ccd0; border-radius: 2mm; padding: 8mm; text-align: center; color: #6b7b7f; font-size: 9pt; }
