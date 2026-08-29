@@ -9027,6 +9027,26 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
     }
   }
 
+  /* O nome do arquivo sai do titulo da pagina — e' assim que todo
+     navegador batiza o "Salvar como PDF". Sem isso o arquivo nascia
+     "Gestao de Obras TKWS — Vendido x Executivo.pdf", e a pessoa que
+     precisa anexar esse PDF no Pipefy depois teria que caçar qual dos
+     cinco arquivos de mesmo nome e' o aditivo certo.
+
+     A barra do numero vira hifen: "2256/1" abriria pasta no nome do
+     arquivo. */
+  function imprimir() {
+    const antes = document.title;
+    const obraNome = (obra?.nome || doc.cliente || "").replace(/[\\/:*?"<>|]/g, "-").trim();
+    document.title = `${aditivo.numero.replace("/", "-")} Aditivo${obraNome ? ` - ${obraNome}` : ""}`;
+    const devolver = () => { document.title = antes; window.removeEventListener("afterprint", devolver); };
+    window.addEventListener("afterprint", devolver);
+    window.print();
+    // Rede de seguranca: navegador que nao dispare `afterprint` deixaria
+    // o titulo trocado na aba pra sempre.
+    setTimeout(devolver, 4000);
+  }
+
   async function mudarStatus(novo) {
     setStatus(novo);
     setSalvando(true); setErro(null);
@@ -9056,7 +9076,7 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
         <button className={`btn-doc ${sujo ? "btn-template" : ""}`} onClick={() => salvar()} disabled={salvando || !sujo}>
           {salvando ? "Salvando…" : sujo ? "Salvar" : "Salvo"}
         </button>
-        <button className="btn-doc" onClick={() => window.print()} title="Abre a impressão do navegador — escolha Salvar como PDF">
+        <button className="btn-doc" onClick={imprimir} title="Abre a impressão do navegador — escolha Salvar como PDF">
           <Download size={13} /> PDF
         </button>
       </div>
