@@ -11,7 +11,7 @@ import {
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
-  rotuloSaldo, numeroAditivo, proximaSeq } from "./lib/aditivoDoc";
+  rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
 import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
@@ -8954,6 +8954,13 @@ function EditorAditivo({ aditivo, obra, usuario, onVoltar, onSalvo }) {
 
       {erro && <div className="aviso-migracao naoimprime"><AlertTriangle size={14} /> <span>{erro}</span></div>}
 
+      {status === "aprovado" && (
+        <div className="naoimprime">
+          <PipefyAditivo a={{ ...aditivo, status, descricao, doc }} obraNome={obra?.nome} usuario={usuario}
+            onMarcar={(v) => { const novo = { ...doc, pipefy: v }; setDoc(novo); salvar({ doc: novo }); }} />
+        </div>
+      )}
+
       <div className="ad-wrap">
         <div className="ad-form naoimprime">
           <div className="ad-card">
@@ -9016,6 +9023,69 @@ function EditorAditivo({ aditivo, obra, usuario, onVoltar, onSalvo }) {
   );
 }
 
+/* A cobranca do Pipefy.
+
+   Aparece assim que o aditivo e' aprovado e so sai quando alguem marcar
+   que enviou. Nao envia sozinho: o formulario tem captcha, e metade dos
+   campos obrigatorios (closer, hunter, indicador, Neolix, parcelamento,
+   data de pagamento, dois anexos) o app nao sabe. Card errado no fluxo
+   comercial e' pior que card nenhum.
+
+   O que ele faz e' tirar o trabalho chato do caminho: abre o formulario
+   com "Aditivo" ja marcado e o valor preenchido, e deixa a vista o resto
+   que a pessoa vai precisar digitar. */
+function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
+  const saldo = a.totalAdicao - a.totalSupressao;
+  const feito = a.doc?.pipefy?.em;
+  const resumo = [
+    `Obra: ${obraNome || a.obraCodigo}`,
+    `Aditivo: ${a.numero}`,
+    `Valor: ${fmtBRL(saldo)}${saldo < 0 ? " (crédito para o cliente)" : ""}`,
+    a.descricao ? `Do que se trata: ${a.descricao}` : null,
+  ].filter(Boolean).join("\n");
+
+  if (feito) {
+    return (
+      <div className={`pf-ok ${compacto ? "compacto" : ""}`}>
+        <CheckCircle2 size={12} />
+        <span>Pipefy enviado{a.doc.pipefy.por ? ` por ${a.doc.pipefy.por}` : ""} em {new Date(feito).toLocaleDateString("pt-BR")}</span>
+        <button className="pf-desfazer" onClick={() => onMarcar(null)}>desfazer</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`pf-box ${compacto ? "compacto" : ""}`}>
+      <div className="pf-topo">
+        <AlertTriangle size={13} />
+        <span><b>Falta a Solicitação de contrato no Pipefy.</b> Aditivo aprovado obriga abrir o card.</span>
+      </div>
+      {!compacto && (
+        <div className="pf-dados">
+          <pre>{resumo}</pre>
+          <button className="btn-copiar" title="Copiar pra colar no formulário"
+            onClick={() => navigator.clipboard?.writeText(resumo)}><Copy size={11} /></button>
+        </div>
+      )}
+      <div className="pf-acoes">
+        <a className="btn-doc btn-template" href={linkPipefy(saldo)} target="_blank" rel="noopener noreferrer">
+          <ArrowUpRight size={13} /> Abrir o formulário
+        </a>
+        <button className="btn-doc" onClick={() => onMarcar({ em: new Date().toISOString(), por: usuario || null })}>
+          Já enviei
+        </button>
+      </div>
+      {!compacto && (
+        <div className="pf-nota">
+          O link já vai com <b>Aditivo</b> marcado e o valor preenchido. O resto — obra, closer, hunter,
+          indicador, Neolix, parcelamento, data de pagamento e os dois anexos — o app não tem como saber,
+          e chutar criaria um card errado no comercial.
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Uma linha da lista.
 
    Aprovar e reprovar acontecem AQUI, sem abrir o documento: a decisao e'
@@ -9026,7 +9096,7 @@ function EditorAditivo({ aditivo, obra, usuario, onVoltar, onSalvo }) {
    A observacao mora dentro do documento salvo (`doc.observacao`), e nao
    numa coluna nova: sem ela a tabela precisaria de mais um `alter table`,
    e migracao e' o passo que trava — este modulo ja custou tres. */
-function LinhaAditivo({ a, usuario, onAbrir, onExcluir, onSalvo, onErro }) {
+function LinhaAditivo({ a, usuario, obraNome, onAbrir, onExcluir, onSalvo, onErro }) {
   const [obs, setObs] = useState(a.doc?.observacao || "");
   const [salvando, setSalvando] = useState(false);
   const saldo = a.totalAdicao - a.totalSupressao;
@@ -9058,6 +9128,10 @@ function LinhaAditivo({ a, usuario, onAbrir, onExcluir, onSalvo, onErro }) {
         <textarea className="ad-obs" rows={1} value={obs} placeholder="observação…"
           onChange={(e) => setObs(e.target.value)}
           onBlur={() => { if (obs !== (a.doc?.observacao || "")) gravar({ doc: { ...a.doc, observacao: obs } }); }} />
+        {a.status === "aprovado" && (
+          <PipefyAditivo a={a} obraNome={obraNome} usuario={usuario} compacto
+            onMarcar={(v) => gravar({ doc: { ...a.doc, observacao: obs, pipefy: v } })} />
+        )}
       </td>
       <td className="right mono">{fmtBRL(a.totalSupressao)}</td>
       <td className="right mono">{fmtBRL(a.totalAdicao)}</td>
@@ -9068,7 +9142,8 @@ function LinhaAditivo({ a, usuario, onAbrir, onExcluir, onSalvo, onErro }) {
       <td className="center">
         <div className="ad-status-sel ad-status-lista">
           {STATUS_ADITIVO.map((st) => (
-            <button key={st.id} className={`ad-tag ${st.id} ${a.status === st.id ? "on" : ""}`}
+            <button key={st.id}
+              className={`ad-tag ${st.id} ${a.status === st.id ? "on" : ""} ${st.id === "aprovado" && pipefyPendente(a) ? "cobra" : ""}`}
               disabled={salvando} onClick={() => gravar({ status: st.id })}
               title={st.id === "rascunho" ? "Volta para rascunho — sai do orçamento"
                 : st.id === "aprovado" ? "Aprovar — passa a contar no Dashboard, no CMV e no Plano de Compras"
@@ -9199,7 +9274,7 @@ function AditivosView({ obras, usuario }) {
                   </thead>
                   <tbody>
                     {daObra.map((a) => (
-                      <LinhaAditivo key={a.id} a={a} usuario={usuario}
+                      <LinhaAditivo key={a.id} a={a} usuario={usuario} obraNome={obra.nome}
                         onAbrir={() => setAbertoId(a.id)}
                         onExcluir={() => excluir(a)}
                         onSalvo={trocar}
@@ -10930,6 +11005,20 @@ export default function App() {
         .ad-tag.reprovado.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 
         .ad-interno { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-3); font-size: 10px; font-style: italic; }
+        .pf-box { border: 1px solid #E8CE9A; background: var(--amber-bg); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+        .pf-box.compacto { margin: 6px 0 0; padding: 7px 9px; border-radius: 8px; }
+        .pf-topo { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #7A4E00; line-height: 1.45; }
+        .pf-box.compacto .pf-topo { font-size: 11px; }
+        .pf-dados { display: flex; align-items: flex-start; gap: 6px; margin: 9px 0; }
+        .pf-dados pre { flex: 1; margin: 0; background: #fff; border-radius: 6px; padding: 8px 10px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; color: var(--ink-2); }
+        .pf-acoes { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
+        .pf-box.compacto .pf-acoes { margin-top: 6px; }
+        .pf-box.compacto .btn-doc { padding: 4px 9px; font-size: 10.5px; }
+        .pf-nota { font-size: 10.5px; color: #7A4E00; margin-top: 8px; line-height: 1.5; opacity: .85; }
+        .pf-ok { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--green); font-weight: 600; margin-top: 6px; }
+        .pf-ok.compacto { font-size: 10.5px; }
+        .pf-desfazer { background: none; border: none; color: var(--ink-3); font-family: inherit; font-size: 10px; text-decoration: underline; cursor: pointer; }
+        .ad-tag.aprovado.on.cobra { border-style: dashed; }
         .ad-obs { display: block; width: 100%; margin-top: 5px; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); background: var(--panel); resize: vertical; min-height: 24px; }
         .ad-obs:hover { border-color: var(--border); }
         .ad-obs:focus { outline: none; border-color: var(--blue); background: #fff; }

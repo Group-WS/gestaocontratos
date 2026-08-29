@@ -8,7 +8,7 @@
  */
 import { parseNum, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
   rotuloSaldo, numeroAditivo, proximaSeq, novoDocumento, novoGrupo, novoItem,
-  CONDICOES_PADRAO } from "../lib/aditivoDoc.js";
+  CONDICOES_PADRAO, linkPipefy, pipefyPendente } from "../lib/aditivoDoc.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -89,6 +89,27 @@ conf("e com um grupo em cada seção", novo.supressao.length + novo.adicao.lengt
 // Dois grupos criados na mesma linha não podem compartilhar id: a tela
 // inteira é indexada por ele.
 conf("ids não colidem", new Set([novoGrupo(1).id, novoGrupo(1).id, novoItem().id]).size, 3);
+
+/* ---- Pipefy ----
+   Aditivo aprovado obriga abrir a "Solicitação de contrato". O app não
+   envia sozinho — o formulário tem captcha, e metade dos campos
+   obrigatórios ele não sabe — mas leva o tipo e o valor prontos. */
+conf("o link marca que é aditivo",
+  /parab_ns_pelo_fechamento_o_que_fechado=Aditivo/.test(linkPipefy(1070)), true);
+conf("e leva o valor", /qual_o_valor_fechado=1070/.test(linkPipefy(1070)), true);
+conf("centavos vão junto", /qual_o_valor_fechado=1070\.5/.test(linkPipefy(1070.5)), true);
+
+/* Saldo negativo é crédito PRO CLIENTE, e o campo do Pipefy é "valor
+   fechado" — mandar negativo ali confundiria o comercial. Vai vazio. */
+conf("crédito não preenche o valor", /qual_o_valor_fechado/.test(linkPipefy(-5057.26)), false);
+conf("mas o link continua abrindo", /public\/form\/9dreYs1N/.test(linkPipefy(-5057.26)), true);
+
+// Só o aprovado cobra: rascunho e reprovado não viram card nenhum.
+conf("aprovado sem Pipefy é pendência", pipefyPendente({ status: "aprovado", doc: {} }), true);
+conf("aprovado com Pipefy não cobra", pipefyPendente({ status: "aprovado", doc: { pipefy: { em: "2026-08-29" } } }), false);
+conf("rascunho não cobra", pipefyPendente({ status: "rascunho", doc: {} }), false);
+conf("reprovado não cobra", pipefyPendente({ status: "reprovado", doc: {} }), false);
+conf("indefinido não quebra", pipefyPendente(undefined), false);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

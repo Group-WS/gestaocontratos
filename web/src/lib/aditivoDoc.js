@@ -100,3 +100,36 @@ export function proximaSeq(existentes) {
   const maior = (existentes || []).reduce((a, x) => Math.max(a, Number(x.seq) || 0), 0);
   return maior + 1;
 }
+
+/* ---------- A solicitacao de contrato no Pipefy ----------
+
+   Aditivo aprovado obriga abrir a "Solicitacao de contrato" no Pipefy. O
+   app NAO envia sozinho, por dois motivos que nao se resolvem com codigo:
+
+   1. O formulario tem captcha. Passar por cima dele nao esta em questao.
+   2. Metade dos campos obrigatorios o app nao sabe e nao tem como saber —
+      closer, hunter, indicador, Neolix, parcelamento, forma e data de
+      pagamento — e ainda ha dois anexos obrigatorios. Um envio automatico
+      com esses campos chutados criaria um card errado no fluxo comercial,
+      que e' pior que card nenhum.
+
+   O que da' pra fazer, e que resolve a parte chata: abrir o formulario ja
+   com o tipo marcado e o valor preenchido, e nao deixar esquecer que ele
+   existe. */
+export const PIPEFY_FORM = "https://app.pipefy.com/public/form/9dreYs1N";
+
+/* Os nomes de campo sao os do proprio formulario — conferidos na pagina.
+   Se o time mexer no formulario, o link continua abrindo; ele so deixa de
+   preencher, que e' a falha certa pra esse tipo de ligacao. */
+export function linkPipefy(saldo) {
+  const q = new URLSearchParams({ parab_ns_pelo_fechamento_o_que_fechado: "Aditivo" });
+  /* Saldo negativo e' credito pro cliente, e o campo do Pipefy e' "valor
+     fechado" — mandar numero negativo ali confundiria o comercial. Nesse
+     caso o campo vai vazio e a pessoa decide o que escrever. */
+  if (saldo > 0) q.set("qual_o_valor_fechado", String(Math.round(saldo * 100) / 100));
+  return `${PIPEFY_FORM}?${q}`;
+}
+
+/* Aprovado sem o Pipefy aberto e' pendencia. Rascunho e reprovado nao
+   viram card nenhum, entao nao cobram nada. */
+export const pipefyPendente = (a) => a?.status === "aprovado" && !a?.doc?.pipefy?.em;
