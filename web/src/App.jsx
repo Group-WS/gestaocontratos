@@ -8987,6 +8987,15 @@ function EditorAditivo({ aditivo, obra, usuario, onVoltar, onSalvo }) {
               <label className="ad-largo" style={{ marginTop: 10, display: "block" }}>Condições de pagamento
                 <textarea className="form-input" rows={3} value={doc.cond || ""}
                   onChange={(e) => campo("cond", e.target.value)} /></label>
+              {/* A observacao e' INTERNA: ela nao sai no documento. E' onde
+                  fica o porque da reprovacao, o que ainda falta combinar,
+                  o nome de quem pediu — coisa que ajuda o time e nao vai
+                  pro cliente. */}
+              <label className="ad-largo" style={{ marginTop: 10, display: "block" }}>
+                Observação <span className="ad-interno">interna — não sai no PDF</span>
+                <textarea className="form-input" rows={3} value={doc.observacao || ""}
+                  placeholder="por que foi reprovado, o que falta combinar, quem pediu…"
+                  onChange={(e) => campo("observacao", e.target.value)} /></label>
             </div>
           </div>
         </div>
@@ -9004,6 +9013,76 @@ function EditorAditivo({ aditivo, obra, usuario, onVoltar, onSalvo }) {
         {["un", "m²", "m", "ml", "vb", "pç", "cj", "kg", "h"].map((u) => <option key={u} value={u} />)}
       </datalist>
     </>
+  );
+}
+
+/* Uma linha da lista.
+
+   Aprovar e reprovar acontecem AQUI, sem abrir o documento: a decisao e'
+   sobre um aditivo que a pessoa ja conhece, e obrigar a entrar, esperar
+   carregar e voltar pra cada um transformava uma decisao de um segundo
+   em quatro cliques.
+
+   A observacao mora dentro do documento salvo (`doc.observacao`), e nao
+   numa coluna nova: sem ela a tabela precisaria de mais um `alter table`,
+   e migracao e' o passo que trava — este modulo ja custou tres. */
+function LinhaAditivo({ a, usuario, onAbrir, onExcluir, onSalvo, onErro }) {
+  const [obs, setObs] = useState(a.doc?.observacao || "");
+  const [salvando, setSalvando] = useState(false);
+  const saldo = a.totalAdicao - a.totalSupressao;
+
+  async function gravar(campos) {
+    setSalvando(true);
+    try {
+      onSalvo(await salvarAditivo(a.id, { usuario, ...campos }));
+    } catch (e) {
+      onErro(`Não consegui salvar: ${e.message || e}`);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td className="mono"><b>{a.numero}</b></td>
+      <td>
+        <button className="ad-linha-desc" onClick={onAbrir}>
+          {a.descricao || <span className="dim">sem descrição — clique para abrir</span>}
+        </button>
+        <div className="ad-linha-data">
+          {dataBR(a.doc?.data)}
+          {a.atualizadoPor ? ` · por ${a.atualizadoPor}` : ""}
+        </div>
+        {/* Salva ao sair do campo, e nao a cada tecla: gravar por tecla
+            manda uma requisicao por letra digitada. */}
+        <textarea className="ad-obs" rows={1} value={obs} placeholder="observação…"
+          onChange={(e) => setObs(e.target.value)}
+          onBlur={() => { if (obs !== (a.doc?.observacao || "")) gravar({ doc: { ...a.doc, observacao: obs } }); }} />
+      </td>
+      <td className="right mono">{fmtBRL(a.totalSupressao)}</td>
+      <td className="right mono">{fmtBRL(a.totalAdicao)}</td>
+      <td className={`right mono ${saldo < 0 ? "ad-credito" : ""}`}>
+        <b>{fmtBRL(saldo)}</b>
+        <div className="ad-linha-data">{rotuloSaldo(saldo)}</div>
+      </td>
+      <td className="center">
+        <div className="ad-status-sel ad-status-lista">
+          {STATUS_ADITIVO.map((st) => (
+            <button key={st.id} className={`ad-tag ${st.id} ${a.status === st.id ? "on" : ""}`}
+              disabled={salvando} onClick={() => gravar({ status: st.id })}
+              title={st.id === "rascunho" ? "Volta para rascunho — sai do orçamento"
+                : st.id === "aprovado" ? "Aprovar — passa a contar no Dashboard, no CMV e no Plano de Compras"
+                : "Reprovar — não entra no orçamento"}>
+              {st.nome}
+            </button>
+          ))}
+        </div>
+      </td>
+      <td className="center">
+        <button className="ad-icon" title="Abrir" onClick={onAbrir}><Search size={12} /></button>
+        <button className="ad-icon del" title="Excluir" onClick={onExcluir}><Trash2 size={12} /></button>
+      </td>
+    </tr>
   );
 }
 
@@ -9114,40 +9193,18 @@ function AditivosView({ obras, usuario }) {
                       <th style={{ width: 120 }} className="right">Supressão</th>
                       <th style={{ width: 120 }} className="right">Adição</th>
                       <th style={{ width: 140 }} className="right">Saldo</th>
-                      <th style={{ width: 130 }} className="center">Status</th>
+                      <th style={{ width: 210 }} className="center">Status</th>
                       <th style={{ width: 90 }} className="center"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {daObra.map((a) => {
-                      const saldo = a.totalAdicao - a.totalSupressao;
-                      const st = STATUS_ADITIVO.find((s) => s.id === a.status) || STATUS_ADITIVO[0];
-                      return (
-                        <tr key={a.id}>
-                          <td className="mono"><b>{a.numero}</b></td>
-                          <td>
-                            <button className="ad-linha-desc" onClick={() => setAbertoId(a.id)}>
-                              {a.descricao || <span className="dim">sem descrição — clique para abrir</span>}
-                            </button>
-                            <div className="ad-linha-data">
-                              {dataBR(a.doc?.data)}
-                              {a.atualizadoPor ? ` · por ${a.atualizadoPor}` : ""}
-                            </div>
-                          </td>
-                          <td className="right mono">{fmtBRL(a.totalSupressao)}</td>
-                          <td className="right mono">{fmtBRL(a.totalAdicao)}</td>
-                          <td className={`right mono ${saldo < 0 ? "ad-credito" : ""}`}>
-                            <b>{fmtBRL(saldo)}</b>
-                            <div className="ad-linha-data">{rotuloSaldo(saldo)}</div>
-                          </td>
-                          <td className="center"><span className={`ad-tag ${st.id} on`}>{st.nome}</span></td>
-                          <td className="center">
-                            <button className="ad-icon" title="Abrir" onClick={() => setAbertoId(a.id)}><Search size={12} /></button>
-                            <button className="ad-icon del" title="Excluir" onClick={() => excluir(a)}><Trash2 size={12} /></button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {daObra.map((a) => (
+                      <LinhaAditivo key={a.id} a={a} usuario={usuario}
+                        onAbrir={() => setAbertoId(a.id)}
+                        onExcluir={() => excluir(a)}
+                        onSalvo={trocar}
+                        onErro={setErro} />
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -10872,6 +10929,13 @@ export default function App() {
         .ad-tag.aprovado.on { background: var(--green-bg); border-color: var(--green); color: var(--green); }
         .ad-tag.reprovado.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 
+        .ad-interno { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-3); font-size: 10px; font-style: italic; }
+        .ad-obs { display: block; width: 100%; margin-top: 5px; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); background: var(--panel); resize: vertical; min-height: 24px; }
+        .ad-obs:hover { border-color: var(--border); }
+        .ad-obs:focus { outline: none; border-color: var(--blue); background: #fff; }
+        .ad-obs::placeholder { color: var(--ink-3); font-style: italic; }
+        .ad-status-lista .ad-tag { padding: 3px 8px; font-size: 10px; }
+        .ad-status-lista { justify-content: center; }
         .ad-obras { display: flex; gap: 7px; flex-wrap: wrap; margin: 16px 0 18px; }
         .ad-obra { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: #fff; border-radius: 10px; padding: 8px 13px; font-size: 12.5px; font-family: inherit; color: var(--ink-2); cursor: pointer; }
         .ad-obra:hover { border-color: var(--ink-3); }
