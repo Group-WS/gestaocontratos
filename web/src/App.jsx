@@ -9,6 +9,11 @@ import {
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
+import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
+  parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
+  rotuloSaldo, numeroAditivo, proximaSeq } from "./lib/aditivoDoc";
+import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
+import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
@@ -5564,6 +5569,7 @@ const MODULOS = [
   { id: "novas", nome: "Novas obras", sub: "vindas do Monday", Icone: Sparkle },
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
   { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
+  { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: PackageSearch },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: Package },
 ];
@@ -8346,6 +8352,506 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
 }
 
 /* ============================================================
+   MÓDULO ADITIVOS
+   Supressão, adição e o saldo entre as duas — guardado por obra,
+   numerado, com status, e com o documento aparecendo do lado
+   enquanto se digita.
+
+   A pré-visualização ao vivo não é enfeite: o documento vai pro
+   cliente, e o que se digita num formulário nunca se parece com
+   o que sai impresso. Ver enquanto escreve é o que evita mandar
+   o PDF e só então descobrir a linha torta.
+   ============================================================ */
+
+const dataBR = (iso) => {
+  if (!iso) return "";
+  const [a, m, d] = String(iso).split("-");
+  return `${d}/${m}/${a}`;
+};
+const numBR = (n) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* Linhas de cabeçalho da descrição ("Inclui neste projeto:", "Descrição
+   Técnica:") vêm em negrito no modelo da empresa. */
+const CHEFES = /^\s*(inclui neste projeto|descri[çc][ãa]o t[ée]cnica|material|ferragens)/i;
+
+function DescricaoDoc({ texto }) {
+  return String(texto || "").split("\n").map((l, i) => (
+    <React.Fragment key={i}>
+      {CHEFES.test(l) ? <span className="ad-dt1">{l}</span> : l}
+      {"\n"}
+    </React.Fragment>
+  ));
+}
+
+function SecaoDoc({ grupos, titulo, classe }) {
+  const usados = (grupos || []).filter((g) => g.nome.trim() || (g.itens || []).some((i) => i.descricao.trim()));
+  if (!usados.length) return null;
+  return (
+    <div className={classe}>
+      <div className="ad-sectitle">{titulo}</div>
+      <table className="ad-dt">
+        <thead>
+          <tr>
+            <th className="c-cod">Item</th><th>Descrição</th><th className="c-amb">Ambiente</th>
+            <th className="c-qtd">Qtd</th><th className="c-un">Un.</th>
+            <th className="c-vu">V. unit.</th><th className="c-vt">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {usados.map((g) => (
+            <React.Fragment key={g.id}>
+              <tr className="g">
+                <td className="c-cod">{g.num}</td>
+                <td colSpan={5}>{g.nome}</td>
+                <td className="c-vt">{fmtBRL(totalGrupo(g))}</td>
+              </tr>
+              {(g.itens || []).map((it, ii) => (
+                (!it.descricao.trim() && !parseNumAd(it.valor)) ? null : (
+                  <tr key={it.id}>
+                    <td className="c-cod">{g.num}.{ii + 1}</td>
+                    <td className="ad-desc"><DescricaoDoc texto={it.descricao} /></td>
+                    <td className="c-amb">{it.ambiente}</td>
+                    <td className="c-qtd">{numBR(parseNumAd(it.qtd))}</td>
+                    <td className="c-un">{it.unidade}</td>
+                    <td className="c-vu">{fmtBRL(parseNumAd(it.valor))}</td>
+                    <td className="c-vt">{fmtBRL(totalItem(it))}</td>
+                  </tr>
+                )
+              ))}
+            </React.Fragment>
+          ))}
+          <tr className="tot">
+            <td colSpan={6}>Total {titulo}</td>
+            <td className="c-vt">{fmtBRL(totalSecao(usados))}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DocumentoAditivo({ doc, numero }) {
+  const t = totaisDoDocumento(doc);
+  const vazio = !(doc.supressao || []).some((g) => g.nome.trim() || g.itens.some((i) => i.descricao.trim()))
+    && !(doc.adicao || []).some((g) => g.nome.trim() || g.itens.some((i) => i.descricao.trim()));
+
+  return (
+    <div className="ad-page" id="doc-aditivo">
+      <img className="ad-brandbar" src={LOGO_WS} alt="" />
+      <div className="ad-inner">
+        <div className="ad-dochead">
+          <div className="t">Proposta de Aditivo{numero ? ` ${numero}` : ""}</div>
+          <div className="meta">
+            <div><b>Cliente:</b> {doc.cliente || "—"}</div>
+            <div><b>Proposta:</b> {doc.proposta || "—"}</div>
+            <div><b>Data:</b> {dataBR(doc.data) || "—"}</div>
+          </div>
+        </div>
+
+        {vazio ? (
+          <div className="ad-docwarn">Preencha ao menos um grupo com itens para o documento aparecer aqui.</div>
+        ) : (
+          <>
+            <SecaoDoc grupos={doc.supressao} titulo="supressão" classe="ad-sec-sup" />
+            <SecaoDoc grupos={doc.adicao} titulo="adição" classe="ad-sec-adi" />
+          </>
+        )}
+
+        <div className="ad-saldo">
+          <div className="l"><span>Total supressão</span><b>{fmtBRL(t.supressao)}</b></div>
+          <div className="l"><span>Total adição</span><b>{fmtBRL(t.adicao)}</b></div>
+          <div className={`l f ${t.saldo < 0 ? "credito" : ""}`}>
+            <span>{rotuloSaldo(t.saldo)}</span><b>{fmtBRL(t.saldo)}</b>
+          </div>
+        </div>
+
+        {String(doc.cond || "").trim() && (
+          <div className="ad-cond">
+            <h4>Condições de pagamento:</h4>
+            <p>{doc.cond}</p>
+          </div>
+        )}
+      </div>
+      <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
+    </div>
+  );
+}
+
+/* O editor. Formulário à esquerda, documento à direita. */
+function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao }) {
+  const setG = (k, v) => onMudar({ ...g, [k]: v });
+  const setI = (iid, k, v) => onMudar({ ...g, itens: g.itens.map((i) => (i.id === iid ? { ...i, [k]: v } : i)) });
+  const addItem = () => onMudar({ ...g, itens: [...g.itens, novoItem()] });
+  const delI = (iid) => onMudar({ ...g, itens: g.itens.filter((i) => i.id !== iid) });
+  const dupI = (iid) => {
+    const k = g.itens.findIndex((i) => i.id === iid);
+    const copia = { ...g.itens[k], id: Math.random().toString(36).slice(2, 9) };
+    onMudar({ ...g, itens: [...g.itens.slice(0, k + 1), copia, ...g.itens.slice(k + 1)] });
+  };
+
+  return (
+    <div className="ad-grupo">
+      <div className="ad-gh">
+        <input className="ad-num" value={g.num} onChange={(e) => setG("num", e.target.value)} title="Nº do grupo" />
+        <input className="ad-gnome" placeholder="NOME DO GRUPO (ex.: MÓVEIS SOB MEDIDA)"
+          value={g.nome} onChange={(e) => setG("nome", e.target.value)} />
+        <span className="ad-sub mono">{fmtBRL(totalGrupo(g))}</span>
+        <button className="ad-icon" title="Mover para cima" onClick={() => onMover(-1)}>↑</button>
+        <button className="ad-icon" title="Mover para baixo" onClick={() => onMover(1)}>↓</button>
+        <button className="ad-icon del" title="Excluir grupo" onClick={onRemover}><Trash2 size={12} /></button>
+      </div>
+
+      <div className="ad-itens">
+        {g.itens.map((it) => (
+          <div key={it.id} className="ad-item">
+            <div className="ad-item-topo">
+              <span className="ad-item-cod mono">{g.num}.{g.itens.indexOf(it) + 1}</span>
+              <span className="ad-item-tot mono">{fmtBRL(totalItem(it))}</span>
+              {/* Copiar pra outra seção é o gesto do dia: quase todo aditivo
+                  suprime uma versão do móvel e adiciona outra, quase igual. */}
+              <button className="ad-icon" title={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`}
+                onClick={() => onOutraSecao(it)}><Copy size={11} /></button>
+              <button className="ad-icon" title="Duplicar item" onClick={() => dupI(it.id)}><Plus size={11} /></button>
+              <button className="ad-icon del" title="Excluir item" onClick={() => delI(it.id)}><X size={11} /></button>
+            </div>
+            <textarea className="form-input ad-desc-in" rows={2} placeholder="Descrição do item"
+              value={it.descricao} onChange={(e) => setI(it.id, "descricao", e.target.value)} />
+            <div className="ad-item-campos">
+              <label>Ambiente<input className="form-input" value={it.ambiente}
+                onChange={(e) => setI(it.id, "ambiente", e.target.value)} /></label>
+              <label>Qtd<input className="form-input" inputMode="decimal" value={it.qtd}
+                onChange={(e) => setI(it.id, "qtd", e.target.value)} /></label>
+              <label>Un.<input className="form-input" list="ad-unidades" value={it.unidade}
+                onChange={(e) => setI(it.id, "unidade", e.target.value)} /></label>
+              <label>Valor unitário<input className="form-input" inputMode="decimal" placeholder="0,00"
+                value={it.valor} onChange={(e) => setI(it.id, "valor", e.target.value)} /></label>
+            </div>
+          </div>
+        ))}
+        <button className="ad-addbtn" onClick={addItem}><Plus size={12} /> Adicionar item</button>
+      </div>
+    </div>
+  );
+}
+
+function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara }) {
+  const trocar = (gid, novo) => onMudar(grupos.map((g) => (g.id === gid ? novo : g)));
+  const remover = (gid) => onMudar(grupos.filter((g) => g.id !== gid));
+  const mover = (gid, d) => {
+    const i = grupos.findIndex((g) => g.id === gid), j = i + d;
+    if (j < 0 || j >= grupos.length) return;
+    const a = [...grupos];
+    [a[i], a[j]] = [a[j], a[i]];
+    onMudar(a);
+  };
+
+  return (
+    <div className={`ad-card ${sec === "supressao" ? "sup" : ""}`}>
+      <div className="ad-card-h">
+        <span>{titulo}</span>
+        <span className="ad-card-tot mono">{fmtBRL(total)}</span>
+      </div>
+      <div className="ad-card-b">
+        {grupos.length === 0 && <div className="empty-note">Nenhum grupo — esta seção não aparece no documento.</div>}
+        {grupos.map((g, gi) => (
+          <GrupoAditivo key={g.id} sec={sec} g={g} gi={gi}
+            onMudar={(novo) => trocar(g.id, novo)}
+            onRemover={() => remover(g.id)}
+            onMover={(d) => mover(g.id, d)}
+            onOutraSecao={(it) => onCopiarPara(g, it)} />
+        ))}
+        <button className="ad-addbtn" onClick={() => onMudar([...grupos, novoGrupo(grupos.length + 1)])}>
+          <Plus size={12} /> Adicionar grupo de {titulo.toLowerCase()}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditorAditivo({ aditivo, obra, usuario, onVoltar, onSalvo }) {
+  const [doc, setDoc] = useState(aditivo.doc);
+  const [descricao, setDescricao] = useState(aditivo.descricao);
+  const [status, setStatus] = useState(aditivo.status);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [sujo, setSujo] = useState(false);
+
+  const t = totaisDoDocumento(doc);
+  const mexer = (novo) => { setDoc(novo); setSujo(true); };
+  const campo = (k, v) => mexer({ ...doc, [k]: v });
+
+  /* Copiar um item pra outra seção: procura o grupo de mesmo nome, e cria
+     um se não existir. É o gesto do dia — quase todo aditivo suprime uma
+     versão do móvel e adiciona outra quase igual. */
+  const copiarPara = (sec, grupo, item) => {
+    const outra = sec === "supressao" ? "adicao" : "supressao";
+    const lista = [...(doc[outra] || [])];
+    const nome = grupo.nome.trim().toUpperCase();
+    let alvo = nome ? lista.find((g) => g.nome.trim().toUpperCase() === nome) : null;
+    const copia = { ...item, id: Math.random().toString(36).slice(2, 9) };
+    if (alvo) {
+      lista[lista.indexOf(alvo)] = { ...alvo, itens: [...alvo.itens, copia] };
+    } else {
+      lista.push({ id: Math.random().toString(36).slice(2, 9), num: String(lista.length + 1), nome: grupo.nome, itens: [copia] });
+    }
+    mexer({ ...doc, [outra]: lista });
+  };
+
+  async function salvar(extra = {}) {
+    setSalvando(true); setErro(null);
+    try {
+      const salvo = await salvarAditivo(aditivo.id, { descricao, status, doc, usuario, ...extra });
+      onSalvo(salvo);
+      setSujo(false);
+    } catch (e) {
+      setErro(`Não consegui salvar: ${e.message || e}`);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function mudarStatus(novo) {
+    setStatus(novo);
+    setSalvando(true); setErro(null);
+    try {
+      onSalvo(await salvarAditivo(aditivo.id, { descricao, status: novo, doc, usuario }));
+      setSujo(false);
+    } catch (e) {
+      setErro(`Não consegui salvar o status: ${e.message || e}`);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="ad-topo naoimprime">
+        <button className="btn-doc" onClick={onVoltar}><ChevronLeft size={13} /> Aditivos da obra</button>
+        <span className="ad-numero mono">{aditivo.numero}</span>
+        <input className="form-input ad-titulo" value={descricao} placeholder="Do que se trata este aditivo"
+          onChange={(e) => { setDescricao(e.target.value); setSujo(true); }} />
+        <div className="ad-status-sel">
+          {STATUS_ADITIVO.map((s) => (
+            <button key={s.id} className={`ad-tag ${s.id} ${status === s.id ? "on" : ""}`}
+              onClick={() => mudarStatus(s.id)} disabled={salvando}>{s.nome}</button>
+          ))}
+        </div>
+        <button className={`btn-doc ${sujo ? "btn-template" : ""}`} onClick={() => salvar()} disabled={salvando || !sujo}>
+          {salvando ? "Salvando…" : sujo ? "Salvar" : "Salvo"}
+        </button>
+        <button className="btn-doc" onClick={() => window.print()} title="Abre a impressão do navegador — escolha Salvar como PDF">
+          <Download size={13} /> PDF
+        </button>
+      </div>
+
+      {erro && <div className="aviso-migracao naoimprime"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+
+      <div className="ad-wrap">
+        <div className="ad-form naoimprime">
+          <div className="ad-card">
+            <div className="ad-card-h"><span>Cabeçalho</span></div>
+            <div className="ad-card-b ad-cab">
+              <label className="ad-largo">Cliente / Obra
+                <input className="form-input" value={doc.cliente} onChange={(e) => campo("cliente", e.target.value)} /></label>
+              <label>Nº da proposta
+                <input className="form-input" value={doc.proposta} onChange={(e) => campo("proposta", e.target.value)} /></label>
+              <label>Data
+                <input className="form-input" type="date" value={doc.data || ""} onChange={(e) => campo("data", e.target.value)} /></label>
+            </div>
+          </div>
+
+          <SecaoEditor sec="supressao" titulo="Supressão" grupos={doc.supressao || []} total={t.supressao}
+            onMudar={(g) => mexer({ ...doc, supressao: g })}
+            onCopiarPara={(g, it) => copiarPara("supressao", g, it)} />
+          <SecaoEditor sec="adicao" titulo="Adição" grupos={doc.adicao || []} total={t.adicao}
+            onMudar={(g) => mexer({ ...doc, adicao: g })}
+            onCopiarPara={(g, it) => copiarPara("adicao", g, it)} />
+
+          <div className="ad-card">
+            <div className="ad-card-h"><span>Fechamento</span></div>
+            <div className="ad-card-b">
+              <div className="ad-resumo"><span>Total supressão</span><b className="mono">{fmtBRL(t.supressao)}</b></div>
+              <div className="ad-resumo"><span>Total adição</span><b className="mono">{fmtBRL(t.adicao)}</b></div>
+              <div className="ad-resumo forte">
+                <span>{rotuloSaldo(t.saldo)}</span>
+                <b className={`mono ${t.saldo < 0 ? "ad-credito" : ""}`}>{fmtBRL(t.saldo)}</b>
+              </div>
+              <label className="ad-largo" style={{ marginTop: 10, display: "block" }}>Condições de pagamento
+                <textarea className="form-input" rows={3} value={doc.cond || ""}
+                  onChange={(e) => campo("cond", e.target.value)} /></label>
+            </div>
+          </div>
+        </div>
+
+        {/* O documento, do lado, atualizando a cada tecla. */}
+        <div className="ad-prev">
+          <div className="ad-prev-h naoimprime">Pré-visualização</div>
+          <div className="ad-prev-box">
+            <DocumentoAditivo doc={doc} numero={aditivo.numero} />
+          </div>
+        </div>
+      </div>
+
+      <datalist id="ad-unidades">
+        {["un", "m²", "m", "ml", "vb", "pç", "cj", "kg", "h"].map((u) => <option key={u} value={u} />)}
+      </datalist>
+    </>
+  );
+}
+
+function AditivosView({ obras, usuario }) {
+  const [obraCodigo, setObraCodigo] = useState(null);
+  const [lista, setLista] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [abertoId, setAbertoId] = useState(null);
+
+  useEffect(() => {
+    let vivo = true;
+    setCarregando(true);
+    listarAditivos()
+      .then((l) => { if (vivo) setLista(l); })
+      .catch((e) => { if (vivo) setErro(`Não consegui carregar os aditivos: ${e.message || e}`); })
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+  }, []);
+
+  const obra = obras.find((o) => String(o.codigo) === String(obraCodigo)) || null;
+  const daObra = useMemo(
+    () => lista.filter((a) => String(a.obraCodigo) === String(obraCodigo)),
+    [lista, obraCodigo]);
+  const aberto = lista.find((a) => a.id === abertoId) || null;
+
+  const trocar = (salvo) => setLista((l) => l.map((a) => (a.id === salvo.id ? salvo : a)));
+
+  async function novo() {
+    if (!obra) return;
+    setErro(null);
+    try {
+      const seq = proximaSeq(daObra);
+      const criado = await criarAditivo({
+        obraCodigo: obra.codigo, seq, descricao: "",
+        doc: novoDocumento(obra), usuario,
+      });
+      setLista((l) => [criado, ...l]);
+      setAbertoId(criado.id);
+    } catch (e) {
+      setErro(`Não consegui criar o aditivo: ${e.message || e}`);
+    }
+  }
+
+  async function excluir(a) {
+    if (!window.confirm(`Excluir o aditivo ${a.numero}? Isso não pode ser desfeito.`)) return;
+    try {
+      await excluirAditivo(a.id);
+      setLista((l) => l.filter((x) => x.id !== a.id));
+    } catch (e) {
+      setErro(`Não consegui excluir: ${e.message || e}`);
+    }
+  }
+
+  if (aberto) {
+    return <EditorAditivo aditivo={aberto} obra={obra} usuario={usuario}
+      onVoltar={() => setAbertoId(null)} onSalvo={trocar} />;
+  }
+
+  const contagem = (cod) => lista.filter((a) => String(a.obraCodigo) === String(cod)).length;
+
+  return (
+    <>
+      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+
+      <div className="ad-obras">
+        {obras.map((o) => {
+          const n = contagem(o.codigo);
+          return (
+            <button key={o.id} className={`ad-obra ${String(o.codigo) === String(obraCodigo) ? "on" : ""}`}
+              onClick={() => setObraCodigo(o.codigo)}>
+              <span className="mono dim">#{o.codigo}</span>
+              <span className="ad-obra-nome">{o.nome}</span>
+              {n > 0 && <span className="ad-obra-n">{n}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {!obra ? (
+        <div className="compras-empty">
+          <FileText size={30} className="dim" />
+          <div className="compras-empty-title">Escolha a obra</div>
+          <div className="compras-empty-sub">
+            Cada aditivo pertence a uma obra e é numerado a partir do centro de custo dela —
+            a obra 2405 gera <b>2405/1</b>, <b>2405/2</b>, e assim por diante.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="ad-cab-obra">
+            <div>
+              <div className="ad-cab-nome">{obra.nome}</div>
+              <div className="ad-cab-sub">centro de custo <b className="mono">{obra.codigo}</b> · próximo será <b className="mono">{numeroAditivo(obra.codigo, proximaSeq(daObra))}</b></div>
+            </div>
+            <button className="btn-doc btn-template" onClick={novo}><Plus size={13} /> Novo aditivo</button>
+          </div>
+
+          {carregando ? <div className="empty-note">Carregando…</div>
+            : daObra.length === 0 ? <div className="empty-note">Nenhum aditivo nesta obra ainda.</div> : (
+            <div className="grp-block">
+              <div className="grp-itens">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 90 }}>Nº</th>
+                      <th>Do que se trata</th>
+                      <th style={{ width: 120 }} className="right">Supressão</th>
+                      <th style={{ width: 120 }} className="right">Adição</th>
+                      <th style={{ width: 140 }} className="right">Saldo</th>
+                      <th style={{ width: 130 }} className="center">Status</th>
+                      <th style={{ width: 90 }} className="center"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {daObra.map((a) => {
+                      const saldo = a.totalAdicao - a.totalSupressao;
+                      const st = STATUS_ADITIVO.find((s) => s.id === a.status) || STATUS_ADITIVO[0];
+                      return (
+                        <tr key={a.id}>
+                          <td className="mono"><b>{a.numero}</b></td>
+                          <td>
+                            <button className="ad-linha-desc" onClick={() => setAbertoId(a.id)}>
+                              {a.descricao || <span className="dim">sem descrição — clique para abrir</span>}
+                            </button>
+                            <div className="ad-linha-data">
+                              {dataBR(a.doc?.data)}
+                              {a.atualizadoPor ? ` · por ${a.atualizadoPor}` : ""}
+                            </div>
+                          </td>
+                          <td className="right mono">{fmtBRL(a.totalSupressao)}</td>
+                          <td className="right mono">{fmtBRL(a.totalAdicao)}</td>
+                          <td className={`right mono ${saldo < 0 ? "ad-credito" : ""}`}>
+                            <b>{fmtBRL(saldo)}</b>
+                            <div className="ad-linha-data">{rotuloSaldo(saldo)}</div>
+                          </td>
+                          <td className="center"><span className={`ad-tag ${st.id} on`}>{st.nome}</span></td>
+                          <td className="center">
+                            <button className="ad-icon" title="Abrir" onClick={() => setAbertoId(a.id)}><Search size={12} /></button>
+                            <button className="ad-icon del" title="Excluir" onClick={() => excluir(a)}><Trash2 size={12} /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/* ============================================================
    BANCO DE PREÇOS POR INSUMO
    O que foi realmente pago, vindo do relatório de pedidos do Sienge.
    ============================================================ */
@@ -10017,12 +10523,131 @@ export default function App() {
         .doc-rodape { margin-top: 26px; padding-top: 12px; border-top: 1px solid #DDD; font-size: 10px; color: #85898D; line-height: 1.5; }
 
         /* PDF sai daqui: o navegador imprime so a folha. */
+        /* ---- ADITIVOS ---- */
+        .ad-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 16px 0 14px; }
+        .ad-numero { font-size: 15px; font-weight: 700; color: var(--ink); }
+        .ad-titulo { margin-top: 0; flex: 1; min-width: 200px; font-size: 13px; }
+        .ad-status-sel { display: flex; gap: 4px; }
+        .ad-tag { border: 1px solid var(--border); background: #fff; border-radius: 20px; padding: 4px 11px; font-size: 11px; font-weight: 700; font-family: inherit; color: var(--ink-3); cursor: pointer; }
+        .ad-tag:hover { border-color: var(--ink-3); }
+        .ad-tag.rascunho.on { background: var(--panel); border-color: var(--ink-3); color: var(--ink-2); }
+        .ad-tag.aprovado.on { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+        .ad-tag.reprovado.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+
+        .ad-obras { display: flex; gap: 7px; flex-wrap: wrap; margin: 16px 0 18px; }
+        .ad-obra { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: #fff; border-radius: 10px; padding: 8px 13px; font-size: 12.5px; font-family: inherit; color: var(--ink-2); cursor: pointer; }
+        .ad-obra:hover { border-color: var(--ink-3); }
+        .ad-obra.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); font-weight: 600; }
+        .ad-obra-nome { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ad-obra-n { background: var(--blue); color: #fff; border-radius: 20px; font-size: 10px; font-weight: 700; padding: 1px 7px; }
+        .ad-cab-obra { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+        .ad-cab-nome { font-size: 16px; font-weight: 700; color: var(--ink); }
+        .ad-cab-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+        .ad-linha-desc { background: none; border: none; padding: 0; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+        .ad-linha-desc:hover { color: var(--blue); text-decoration: underline; }
+        .ad-linha-data { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+        .ad-credito { color: var(--green); }
+
+        .ad-wrap { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(420px, 1fr); gap: 18px; align-items: start; }
+        .ad-form { display: flex; flex-direction: column; gap: 14px; }
+        .ad-card { border: 1px solid var(--border); border-radius: 12px; background: #fff; overflow: hidden; }
+        .ad-card-h { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--panel); font-size: 12.5px; font-weight: 700; color: var(--ink); border-bottom: 1px solid var(--border); }
+        .ad-card.sup .ad-card-h { background: #F7EFED; color: #7d4038; }
+        .ad-card-tot { font-size: 13px; }
+        .ad-card-b { padding: 12px 14px; }
+        .ad-cab { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .ad-cab label, .ad-item-campos label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+        .ad-largo { grid-column: 1 / -1; }
+        .ad-cab .form-input, .ad-item-campos .form-input { margin-top: 3px; width: 100%; font-size: 12.5px; }
+
+        .ad-grupo { border: 1px solid var(--border-soft); border-radius: 9px; margin-bottom: 10px; }
+        .ad-gh { display: flex; align-items: center; gap: 6px; padding: 7px 9px; background: var(--panel); border-bottom: 1px solid var(--border-soft); border-radius: 9px 9px 0 0; }
+        .ad-num { width: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 4px 5px; font-size: 11.5px; font-family: 'JetBrains Mono', monospace; text-align: center; }
+        .ad-gnome { flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; font-family: inherit; font-weight: 600; text-transform: uppercase; }
+        .ad-sub { font-size: 11.5px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+        .ad-icon { background: none; border: none; color: var(--ink-3); cursor: pointer; padding: 3px; border-radius: 5px; display: inline-flex; font-family: inherit; font-size: 12px; }
+        .ad-icon:hover { background: #fff; color: var(--ink); }
+        .ad-icon.del:hover { color: var(--red); }
+        .ad-itens { padding: 9px; }
+        .ad-item { border-bottom: 1px dashed var(--border-soft); padding-bottom: 9px; margin-bottom: 9px; }
+        .ad-item:last-of-type { border-bottom: none; margin-bottom: 4px; }
+        .ad-item-topo { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+        .ad-item-cod { font-size: 10.5px; color: var(--ink-3); font-weight: 700; }
+        .ad-item-tot { flex: 1; font-size: 11.5px; color: var(--ink-2); font-weight: 700; }
+        .ad-desc-in { margin-top: 0; width: 100%; font-size: 12.5px; resize: vertical; }
+        .ad-item-campos { display: grid; grid-template-columns: 1.6fr .8fr .7fr 1.2fr; gap: 7px; margin-top: 6px; }
+        .ad-addbtn { display: inline-flex; align-items: center; gap: 5px; background: none; border: 1px dashed var(--border); border-radius: 8px; padding: 7px 12px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); font-family: inherit; cursor: pointer; width: 100%; justify-content: center; }
+        .ad-addbtn:hover { border-color: var(--ink-3); color: var(--ink); }
+        .ad-resumo { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12.5px; color: var(--ink-2); border-bottom: 1px solid var(--border-soft); }
+        .ad-resumo.forte { font-size: 14px; font-weight: 700; color: var(--ink); border-bottom: none; padding-top: 9px; }
+
+        .ad-prev { position: sticky; top: 12px; }
+        .ad-prev-h { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 7px; }
+        .ad-prev-box { background: var(--panel); border-radius: 10px; padding: 14px; max-height: 78vh; overflow: auto; }
+
+        /* ---- O DOCUMENTO ----
+           Medidas em mm porque ele existe pra virar papel: o que se ve na
+           tela e' a mesma caixa que sai do window.print(). */
+        .ad-page { width: 210mm; background: #fff; color: #1c2426; font-family: 'Century Gothic', 'Questrial', 'Montserrat', sans-serif; font-size: 8.4pt; line-height: 1.35; padding: 0 0 14mm; display: flex; flex-direction: column; box-shadow: 0 4px 18px rgba(0,0,0,.18); transform-origin: top left; }
+        .ad-brandbar { display: block; width: 100%; }
+        .ad-inner { padding: 7mm 12mm 0; flex: 1 0 auto; }
+        .ad-dochead { display: flex; justify-content: space-between; align-items: flex-end; gap: 10mm; border-bottom: 2px solid #0E5F6B; padding-bottom: 3mm; margin-bottom: 5mm; }
+        .ad-dochead .t { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14pt; color: #0E5F6B; letter-spacing: -.01em; line-height: 1.1; }
+        .ad-dochead .meta { font-size: 8.4pt; text-align: right; white-space: nowrap; }
+        .ad-dochead .meta div { margin-top: 1.2mm; }
+        .ad-dochead .meta b { color: #6b7b7f; font-weight: 400; }
+        .ad-sectitle { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 10.5pt; color: #0E5F6B; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 2mm; display: flex; align-items: center; gap: 3mm; page-break-after: avoid; }
+        .ad-sectitle::after { content: ""; flex: 1; height: .5mm; background: #0E5F6B; opacity: .25; }
+        .ad-sec-sup .ad-sectitle { color: #7d4038; }
+        .ad-sec-sup .ad-sectitle::after { background: #7d4038; }
+        table.ad-dt { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+        table.ad-dt th { background: #0E5F6B; color: #fff; font-weight: 700; font-size: 7.2pt; letter-spacing: .05em; text-transform: uppercase; padding: 1.8mm 2mm; text-align: left; border-right: 1px solid rgba(255,255,255,.25); }
+        table.ad-dt th:last-child { border-right: 0; }
+        table.ad-dt td { padding: 1.6mm 2mm; border-bottom: .3mm solid #dfe7e9; vertical-align: top; }
+        table.ad-dt tr.g td { background: #e9f2f4; font-weight: 700; text-transform: uppercase; font-size: 8pt; border-bottom: .3mm solid #b9ccd0; border-top: .3mm solid #b9ccd0; }
+        table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font-size: 9pt; text-transform: uppercase; letter-spacing: .04em; }
+        .ad-sec-sup table.ad-dt th { background: #7d4038; }
+        .ad-sec-sup table.ad-dt tr.g td { background: #f4ebe9; border-color: #dcc4bf; }
+        .ad-sec-sup table.ad-dt tr.tot td { background: #7d4038; }
+        .ad-page .c-cod { width: 12mm; } .ad-page .c-amb { width: 24mm; }
+        .ad-page .c-qtd { width: 14mm; } .ad-page .c-un { width: 9mm; }
+        .ad-page .c-vu { width: 24mm; } .ad-page .c-vt { width: 27mm; }
+        .ad-page td.c-qtd, .ad-page td.c-vu, .ad-page td.c-vt { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .ad-page th.c-qtd, .ad-page th.c-vu, .ad-page th.c-vt { text-align: right; }
+        .ad-page td.c-un, .ad-page th.c-un { text-align: center; }
+        .ad-desc { white-space: pre-line; }
+        .ad-dt1 { font-weight: 700; }
+        .ad-saldo { margin-top: 2mm; margin-left: auto; width: 92mm; border: .4mm solid #0E5F6B; border-radius: 1.5mm; overflow: hidden; }
+        .ad-saldo .l { display: flex; justify-content: space-between; padding: 1.8mm 3mm; font-size: 8.6pt; border-bottom: .3mm solid #dfe7e9; }
+        .ad-saldo .l:last-child { border-bottom: 0; }
+        .ad-saldo .l.f { background: #0E5F6B; color: #fff; font-weight: 700; font-size: 10pt; padding: 2.6mm 3mm; }
+        .ad-saldo .l.f.credito { background: #1f7a54; }
+        .ad-saldo .l b { font-variant-numeric: tabular-nums; }
+        .ad-cond { margin-top: 7mm; font-size: 8.4pt; page-break-inside: avoid; }
+        .ad-cond h4 { margin: 0 0 1.5mm; font-size: 8.4pt; color: #0E5F6B; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+        .ad-cond p { margin: 0; white-space: pre-line; }
+        .ad-pagefoot { margin-top: auto; padding: 8mm 12mm 0; }
+        .ad-pagefoot img { display: block; width: 100%; }
+        .ad-docwarn { border: 1px dashed #b9ccd0; border-radius: 2mm; padding: 8mm; text-align: center; color: #6b7b7f; font-size: 9pt; }
+
+        @media (max-width: 1200px) { .ad-wrap { grid-template-columns: 1fr; } .ad-prev { position: static; } }
+
         @media print {
           .naoimprime, .sidebar, .topbar, .nav-obra, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
           .app, .body-layout, .main { background: #fff !important; padding: 0 !important; margin: 0 !important; display: block !important; }
           .doc-escopo { border: none; box-shadow: none; border-radius: 0; max-width: none; padding: 0; margin: 0; }
           .doc-item, .doc-tab tr { break-inside: avoid; }
           .doc-h { break-after: avoid; }
+          /* O aditivo: some com o formulario e com a moldura, e deixa a
+             pagina do documento ocupar o papel inteiro. A sombra da
+             pre-visualizacao viraria uma mancha cinza na impressao. */
+          .ad-form, .ad-prev-h, .ad-topo { display: none !important; }
+          .ad-wrap { display: block !important; }
+          .ad-prev, .ad-prev-box { position: static !important; max-height: none !important; overflow: visible !important; padding: 0 !important; background: #fff !important; }
+          .ad-page { width: auto !important; box-shadow: none !important; padding: 0 !important; display: block !important; }
+          .ad-page .ad-inner { padding: 6mm 12mm 0; }
+          table.ad-dt tr { break-inside: avoid; }
+          .ad-saldo { break-inside: avoid; }
         }
 
         @media (max-width: 900px) { .escopo-conta, .escopo-campos { grid-template-columns: 1fr; } }
@@ -11246,6 +11871,13 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Gerador de códigos Sienge</span></div>
           <div className="obra-meta">Sobe uma lista de produtos, casa com os insumos já cadastrados e gera a descrição no padrão do que não existe. Nada é guardado.</div>
           <GeradorSiengeView />
+          </>
+          ) : modulo === "aditivos" ? (
+          <>
+          <div className="eyebrow">DOCUMENTO DE OBRA</div>
+          <div className="title-row"><span className="title-accent">Aditivos</span></div>
+          <div className="obra-meta">Supressão e adição por obra, numeradas a partir do centro de custo — o documento aparece do lado enquanto você preenche</div>
+          <AditivosView obras={obrasAtivas} usuario={usuario} />
           </>
           ) : modulo === "precos" ? (
           <>
