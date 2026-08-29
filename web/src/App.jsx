@@ -269,7 +269,11 @@ function obraAlertCount(o) {
  * diferentes pra mesma pergunta, e ninguem sabe em qual acreditar. */
 function obraComprasStats(o) {
   let totalProdutos = 0, totalComprado = 0;
-  (o.categorias || []).forEach((c) => (c.itens || []).forEach((it) => {
+  /* Com os aditivos dentro. O que o Plano de Compras LISTA e o que o
+     Dashboard CONTA tem que ser a mesma coisa — duas telas somando bases
+     diferentes e' como a pessoa descobre que nao pode confiar em nenhuma
+     das duas. */
+  categoriasComAditivos(o.categorias, o.aditivos).forEach((c) => (c.itens || []).forEach((it) => {
     if (it.ehTitulo) return;
     const { material } = parcelasDoItem(it);
     if (material <= 0 && alocacaoDoItem(it, c) !== ALOC_MAT) return;
@@ -381,7 +385,7 @@ function exportExecutivoCSV(obra) {
 
    A ultima faixa fica VERDE E CURTA quando nao ha nada — painel que
    sempre mostra as mesmas seis caixas ensina a nao olhar pra ele. */
-function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras }) {
+function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos }) {
   // A data digitada so vale quando ela manda salvar. Campo de data que
   // grava sozinho a cada tecla dispara gravacao com ano pela metade —
   // "0002-11-20" chega no banco antes de "2026-11-20".
@@ -396,6 +400,11 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   const dentro = dif <= 0;
 
   const faltamEntrega = obra.dataEntrega ? diasAte(new Date(`${obra.dataEntrega}T12:00:00`)) : null;
+
+  /* Aditivo aprovado muda o tamanho da obra, e ate agora ele so existia
+     dentro do proprio modulo — quem abria o Dashboard via o orcamento
+     original e nao sabia que tinha mudado. */
+  const adit = useMemo(() => resumoAditivos(obra.aditivos), [obra.aditivos]);
 
   // O prazo que vence primeiro entre todos os grupos com regra. E a unica
   // data que muda o que a pessoa faz HOJE.
@@ -533,6 +542,55 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
         </button>
       </section>
+
+      {(adit.aprovados.length > 0 || adit.pendentes.length > 0) && (
+        <section className="dash-card dash-aditivos">
+          <div className="dash-rot">ADITIVOS</div>
+          {adit.aprovados.length > 0 ? (
+            <>
+              <div className={`dash-adit-saldo mono ${adit.saldo < 0 ? "credito" : ""}`}>
+                {adit.saldo >= 0 ? "+" : ""}{fmtBRL(adit.saldo)}
+              </div>
+              <div className="dash-adit-sub">
+                {adit.aprovados.length} {adit.aprovados.length === 1 ? "aditivo aprovado" : "aditivos aprovados"} ·
+                {" "}{fmtBRL(adit.adicao)} de adição e {fmtBRL(adit.supressao)} de supressão
+              </div>
+              <div className="dash-adit-lista">
+                {adit.aprovados.map((a) => (
+                  <div key={a.id} className="dash-adit-linha">
+                    <span className="mono">{a.numero}</span>
+                    <span className="dash-adit-desc">{a.descricao || "sem descrição"}</span>
+                    <span className={`mono ${a.totalAdicao - a.totalSupressao < 0 ? "credito" : ""}`}>
+                      {fmtBRL(a.totalAdicao - a.totalSupressao)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="dash-adit-sub">
+              {adit.pendentes.length} {adit.pendentes.length === 1 ? "aditivo em rascunho" : "aditivos em rascunho"} —
+              rascunho não entra no orçamento. Só o aprovado conta.
+            </div>
+          )}
+
+          {/* Grupo aprovado sem verba tem dinheiro dentro e ficaria
+              invisivel no CMV e no Plano de Compras. */}
+          {adit.soltos.length > 0 && (
+            <div className="dash-alerta aviso">
+              <AlertTriangle size={13} />
+              <span>
+                <b>{adit.soltos.length}</b> {adit.soltos.length === 1 ? "grupo aprovado está" : "grupos aprovados estão"} sem
+                verba da EAP — {fmtBRL(adit.soltos.reduce((a, x) => a + x.valor, 0))} que não entra no CMV nem no Plano de Compras.
+              </span>
+            </div>
+          )}
+
+          <button className="btn-atalho dash-atalho" onClick={onIrParaAditivos}>
+            <FileText size={12} /> Ver os aditivos
+          </button>
+        </section>
+      )}
     </div>
   );
 }
@@ -1117,6 +1175,172 @@ function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
   };
 }
 
+/* ============================================================
+   O ADITIVO DENTRO DO ORCAMENTO DA OBRA
+
+   Aditivo APROVADO mexe no dinheiro; rascunho e reprovado nao. E' a
+   unica regra que separa um documento em discussao de um compromisso
+   assumido — e ela precisa valer nas tres telas, senao o Dashboard diz
+   uma coisa e o Plano de Compras outra.
+   ============================================================ */
+
+const aditivoVale = (a) => a?.status === "aprovado";
+
+/* A verba do grupo do aditivo.
+
+   Explicita quando alguem escolheu na tela; senao, adivinhada pelo nome
+   — e da' certo na maioria das vezes porque os nomes que a empresa
+   escreve no aditivo SAO os nomes da EAP ("MOVEIS SOB MEDIDA", "GESSO E
+   DRYWALL"). Mas adivinhacao e' palpite: por isso ela aparece no editor,
+   escrita, pra poder ser corrigida antes de virar dinheiro em tres
+   telas. */
+function verbaDoGrupoAditivo(g) {
+  return g?.verba || verbaPorNome(g?.nome) || null;
+}
+
+/**
+ * O efeito dos aditivos aprovados, verba por verba.
+ *
+ * Adicao e supressao ficam SEPARADAS, e nao como um saldo so.
+ *
+ * Elas nao sao a mesma coisa com o sinal trocado: o que foi adicionado
+ * precisa ser comprado, e o que foi suprimido some do escopo — nao vira
+ * compra negativa. Guardadas juntas, a linha do Plano de Compras
+ * significaria coisas diferentes dependendo do aditivo que a gerou.
+ */
+function aditivosPorVerba(aditivos) {
+  const m = new Map();
+  const pega = (num) => {
+    if (!m.has(num)) m.set(num, { num, adicao: 0, supressao: 0, numeros: new Set() });
+    return m.get(num);
+  };
+  (aditivos || []).filter(aditivoVale).forEach((a) => {
+    ["adicao", "supressao"].forEach((secao) => {
+      (a.doc?.[secao] || []).forEach((g) => {
+        const num = verbaDoGrupoAditivo(g);
+        const valor = totalGrupo(g);
+        if (!num || valor <= 0) return;
+        const v = pega(num);
+        v[secao] += valor;
+        v.numeros.add(a.numero);
+      });
+    });
+  });
+  m.forEach((v) => { v.saldo = v.adicao - v.supressao; });
+  return m;
+}
+
+/* Grupo aprovado que nao achou verba nenhuma. Ele tem dinheiro dentro e
+   ficaria invisivel se a tela so somasse o que casou — o tipo de silencio
+   que faz o total da obra nao fechar sem ninguem saber por que. */
+function aditivosSemVerba(aditivos) {
+  const soltos = [];
+  (aditivos || []).filter(aditivoVale).forEach((a) => {
+    ["adicao", "supressao"].forEach((secao) => {
+      (a.doc?.[secao] || []).forEach((g) => {
+        const valor = totalGrupo(g);
+        if (valor > 0 && !verbaDoGrupoAditivo(g)) {
+          soltos.push({ numero: a.numero, secao, nome: g.nome || "(grupo sem nome)", valor });
+        }
+      });
+    });
+  });
+  return soltos;
+}
+
+/**
+ * As linhas de ADICAO viradas item de obra, pra entrarem no Plano de
+ * Compras dentro da verba delas.
+ *
+ * So adicao. Supressao e' escopo que saiu — ela reduz o valor da verba,
+ * e isso aparece no resumo do grupo, mas ela nao vira linha: uma linha
+ * de compra negativa nao existe no mundo, e alguem tentaria comprar.
+ *
+ * O item nasce com `custo` e sem parcelas de material/mao de obra de
+ * proposito: assim `alocacaoDoItem` decide MAT ou MO pelo mesmo caminho
+ * de sempre — o padrao da empresa por descricao primeiro, as regras de
+ * verba depois. Chutar a alocacao aqui criaria uma segunda verdade.
+ */
+function itensDeAditivo(aditivos) {
+  const out = [];
+  (aditivos || []).filter(aditivoVale).forEach((a) => {
+    (a.doc?.adicao || []).forEach((g) => {
+      const num = verbaDoGrupoAditivo(g);
+      if (!num) return;
+      (g.itens || []).forEach((it, k) => {
+        const valor = totalItem(it);
+        if (!String(it.desc ?? it.descricao ?? "").trim() && valor <= 0) return;
+        /* Parcelas EXPLICITAS, e nao `custo` cru.
+
+           `parcelasDaPlanilha` sem parcela nenhuma cai em `ehProduto`, que
+           le `it.tipo` — campo que o aditivo nao tem. O valor inteiro ia
+           parar em mao de obra, calado, e o material do aditivo nao
+           aparecia pra comprar. Dizendo a parcela aqui, ela e' o que a
+           pessoa escolheu na linha do aditivo, e nao um palpite. */
+        const aloc = it.alocacao || ALOC_MAT;
+        const parcelas = aloc === ALOC_MO ? { totalMaterial: 0, totalMO: valor }
+          : aloc === ALOC_AMBOS ? { totalMaterial: valor / 2, totalMO: valor / 2 }
+          : { totalMaterial: valor, totalMO: 0 };
+        out.push({
+          catNum: num,
+          item: {
+            ...parcelas,
+            /* `codigo` porque a tabela do plano indexa a linha por ele —
+               sem isso todas as linhas de aditivo teriam a mesma chave
+               `undefined` e o React embaralharia as linhas ao editar. */
+            codigo: `AD ${a.numero}.${g.num}.${k + 1}`,
+            id: `aditivo-${a.id}-${g.id}-${it.id}`,
+            desc: String(it.descricao || "").split("\n")[0].trim() || "(sem descrição)",
+            descCompleta: it.descricao || "",
+            ambiente: it.ambiente || "",
+            qtdExecutivo: parseNumAd(it.qtd) || null,
+            un: it.unidade || "",
+            custo: valor,
+            alocacaoManual: aloc,
+            aditivo: a.numero,
+            aditivoId: a.id,
+          },
+        });
+      });
+    });
+  });
+  return out;
+}
+
+/* As categorias da obra COM os itens de aditivo dentro do grupo de cada
+   um. Derivado, nunca guardado: se isso entrasse em `obra.categorias` o
+   proximo salvamento gravaria os itens de aditivo dentro da planilha, e
+   na leitura seguinte eles apareceriam duas vezes — uma como planilha,
+   outra como aditivo. */
+function categoriasComAditivos(categorias, aditivos) {
+  const extras = itensDeAditivo(aditivos);
+  if (!extras.length) return categorias || [];
+  const porVerba = new Map();
+  extras.forEach((x) => {
+    if (!porVerba.has(x.catNum)) porVerba.set(x.catNum, []);
+    porVerba.get(x.catNum).push(x.item);
+  });
+  return (categorias || []).map((c) => {
+    const meus = porVerba.get(c.num);
+    return meus ? { ...c, itens: [...(c.itens || []), ...meus] } : c;
+  });
+}
+
+/* O resumo que o Dashboard mostra: quantos, de que valor, e se algum
+   grupo ficou sem verba. */
+function resumoAditivos(aditivos) {
+  const aprovados = (aditivos || []).filter(aditivoVale);
+  const saldo = aprovados.reduce((a, x) => a + (x.totalAdicao - x.totalSupressao), 0);
+  return {
+    aprovados,
+    pendentes: (aditivos || []).filter((a) => a.status === "rascunho"),
+    saldo,
+    adicao: aprovados.reduce((a, x) => a + x.totalAdicao, 0),
+    supressao: aprovados.reduce((a, x) => a + x.totalSupressao, 0),
+    soltos: aditivosSemVerba(aditivos),
+  };
+}
+
 /* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
 
    Os testes recortam o trecho ACIMA desta linha e rodam de verdade. JSX
@@ -1226,7 +1450,8 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
        Alerta e avulso ganham da cor de status: um problema de escopo
        importa mais que o andamento da compra. */
     <tr className={
-      item.avulso ? "row-avulso"
+      item.aditivo ? "row-aditivo"
+      : item.avulso ? "row-avulso"
       : alertas.length ? "row-alert"
       : item.comprado ? "row-comprado"
       : compravel ? "row-falta" : ""
@@ -1242,7 +1467,11 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
       <td className="mono dim">{item.codigo}</td>
       <td>
         <div className="item-desc">{item.desc}</div>
-        {item.avulso
+        {item.aditivo
+          ? <span className="tag-aditivo" title={item.descCompleta || undefined}>
+              <FileText size={9} /> aditivo {item.aditivo}{item.ambiente ? ` · ${item.ambiente}` : ""}
+            </span>
+          : item.avulso
           ? <span className="tag-avulso" title={item.avulsoEm ? `Pedido em ${new Date(item.avulsoEm).toLocaleDateString("pt-BR")}` : undefined}>
               <Plus size={9} /> compra avulsa{item.avulsoPor ? ` · ${item.avulsoPor}` : ""}
             </span>
@@ -1433,10 +1662,11 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
   );
 }
 
-function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega }) {
+function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega, aditivo }) {
   const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
   const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
   const nAvulsos = itens.filter((it) => it.avulso).length;
+  const nAditivo = itens.filter((it) => it.aditivo).length;
   // Quantos ainda tem as duas parcelas na mesma linha. E o que o botao do
   // grupo resolve de uma vez, pras obras salvas antes desta regra.
   const aSeparar = itens.filter((it) => podeSepararMO(it, cat)).length;
@@ -1456,6 +1686,18 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
           {cat.foraDeEscopoCategoria && <span className="chip chip-red"><XCircle size={11} /> Fora do escopo vendido</span>}
           <span className="grp-conta">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>
           {nAvulsos > 0 && <span className="grp-avulsos"><Plus size={9} /> {nAvulsos} avulso{nAvulsos > 1 ? "s" : ""}</span>}
+          {/* O que veio de aditivo fica dito no cabecalho: o total do
+              grupo cresceu, e sem isso a pessoa procura na planilha uma
+              linha que nunca esteve la. Supressao aparece junto porque
+              ela nao vira item — se so a adicao aparecesse, o grupo
+              pareceria ter crescido mais do que cresceu. */}
+          {aditivo && (
+            <span className="grp-aditivo" title={`Aditivo ${[...aditivo.numeros].join(", ")}`}>
+              <FileText size={9} /> aditivo
+              {aditivo.adicao > 0 && <b className="adit-mais"> +{fmtBRL(aditivo.adicao)}</b>}
+              {aditivo.supressao > 0 && <b className="adit-menos"> −{fmtBRL(aditivo.supressao)}</b>}
+            </span>
+          )}
           </div>
         </button>
         <div className="grp-dir">
@@ -1734,7 +1976,35 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   );
 }
 
-function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onAlocar, onIrParaDashboard, podeEditar }) {
+/* Traduz um indice da lista COM aditivo pro indice na planilha real.
+
+   Devolve null quando o indice cai num item de aditivo: ele existe na
+   tela, mas nao existe em `categorias`, e escrever nele criaria uma
+   linha fantasma dentro da planilha. */
+function indiceRealDoItem(obraCrua, catNum, itemIdx) {
+  const cat = (obraCrua.categorias || []).findIndex((c) => c.num === catNum);
+  if (cat < 0) return null;
+  const reais = (obraCrua.categorias[cat].itens || []).length;
+  if (itemIdx == null || itemIdx < 0 || itemIdx >= reais) return null;
+  return { cat, item: itemIdx };
+}
+
+/* O Plano de Compras enxerga a obra COM os itens de aditivo dentro do
+   grupo de cada um. Derivado aqui, e nunca gravado: se isso entrasse em
+   `obra.categorias` o proximo salvamento gravaria o aditivo dentro da
+   planilha, e na leitura seguinte ele apareceria duas vezes. */
+function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onAlocar, onIrParaDashboard, podeEditar }) {
+  /* A obra COM os itens de aditivo dentro do grupo de cada um.
+
+     Tem que ser a primeira linha: tudo nesta tela le `obra`, e uma copia
+     derivada declarada no meio do componente deixa as linhas de cima
+     lendo a obra sem aditivo — duas verdades no mesmo render. */
+  const obra = useMemo(() => ({
+    ...obraCrua,
+    categorias: categoriasComAditivos(obraCrua.categorias, obraCrua.aditivos),
+  }), [obraCrua]);
+  const aditPorVerba = useMemo(() => aditivosPorVerba(obraCrua.aditivos), [obraCrua.aditivos]);
+
   const temItens = obra.categorias.some((c) => (c.itens || []).length > 0);
 
   /* "Só o vendido" nasce ligado.
@@ -1934,8 +2204,23 @@ function ComparativoView({ obra, expandedCats, toggleCat, updateItem, itemFilter
           onJuntarMO={(codigo) => onJuntarMO(cat.num, codigo)}
           onSepararGrupo={() => onSepararGrupo(cat.num)}
           dataEntrega={obra.dataEntrega}
-          onItemChange={(itemIdx, patch) => updateItem(obra.categorias.indexOf(cat), itemIdx, patch)}
-          onAlocar={(it, itemIdx, v) => onAlocar(obra.categorias.indexOf(cat), itemIdx, it, v)}
+          aditivo={aditPorVerba.get(cat.num)}
+          /* Os itens de aditivo entram DEPOIS dos da planilha, entao um
+             indice alem do fim da lista real e' aditivo — e ele nao mora
+             na planilha. Sem esta trava, editar a linha de um aditivo
+             gravaria um item novo dentro de `categorias`, no indice
+             vazio: na leitura seguinte ele apareceria duas vezes, uma
+             como planilha e outra como aditivo. */
+          onItemChange={(itemIdx, patch) => {
+            const i = indiceRealDoItem(obraCrua, cat.num, itemIdx);
+            if (i == null) return;
+            updateItem(obraCrua.categorias.indexOf(obraCrua.categorias[i.cat]), i.item, patch);
+          }}
+          onAlocar={(it, itemIdx, v) => {
+            const i = indiceRealDoItem(obraCrua, cat.num, itemIdx);
+            if (i == null) return;
+            onAlocar(i.cat, i.item, it, v);
+          }}
         />
       ))}
       {temItens && grupos.length === 0 && (
@@ -8480,6 +8765,8 @@ function DocumentoAditivo({ doc, numero }) {
 /* O editor. Formulário à esquerda, documento à direita. */
 function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao }) {
   const setG = (k, v) => onMudar({ ...g, [k]: v });
+  const palpite = useMemo(() => (g.verba ? null : verbaPorNome(g.nome)), [g.verba, g.nome]);
+  const palpiteVerba = palpite ? eapPadrao().find((c) => c.num === palpite) : null;
   const setI = (iid, k, v) => onMudar({ ...g, itens: g.itens.map((i) => (i.id === iid ? { ...i, [k]: v } : i)) });
   const addItem = () => onMudar({ ...g, itens: [...g.itens, novoItem()] });
   const delI = (iid) => onMudar({ ...g, itens: g.itens.filter((i) => i.id !== iid) });
@@ -8495,6 +8782,14 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao })
         <input className="ad-num" value={g.num} onChange={(e) => setG("num", e.target.value)} title="Nº do grupo" />
         <input className="ad-gnome" placeholder="NOME DO GRUPO (ex.: MÓVEIS SOB MEDIDA)"
           value={g.nome} onChange={(e) => setG("nome", e.target.value)} />
+        {/* A verba e' o que faz este grupo virar dinheiro no orcamento da
+            obra. Adivinhada pelo nome — e escrita aqui justamente pra
+            poder ser corrigida antes de aparecer em tres telas. */}
+        <select className="ad-verba" value={g.verba || ""} onChange={(e) => setG("verba", e.target.value || null)}
+          title="Verba da EAP onde este grupo entra">
+          <option value="">{palpiteVerba ? `auto: ${palpiteVerba.num} ${palpiteVerba.nome}` : "sem verba — não entra no orçamento"}</option>
+          {eapPadrao().map((c) => <option key={c.num} value={c.num}>{c.num} · {c.nome}</option>)}
+        </select>
         <span className="ad-sub mono">{fmtBRL(totalGrupo(g))}</span>
         <button className="ad-icon" title="Mover para cima" onClick={() => onMover(-1)}>↑</button>
         <button className="ad-icon" title="Mover para baixo" onClick={() => onMover(1)}>↓</button>
@@ -8525,6 +8820,17 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao })
                 onChange={(e) => setI(it.id, "unidade", e.target.value)} /></label>
               <label>Valor unitário<input className="form-input" inputMode="decimal" placeholder="0,00"
                 value={it.valor} onChange={(e) => setI(it.id, "valor", e.target.value)} /></label>
+              {/* MAT ou MO decide de que lado do orcamento este item cai
+                  quando o aditivo for aprovado — Plano de Compras ou
+                  Contratos. Sem escolha, tudo caia em mao de obra. */}
+              <label>Alocação
+                <select className="form-input" value={it.alocacao || "MAT"}
+                  onChange={(e) => setI(it.id, "alocacao", e.target.value)}>
+                  <option value="MAT">MATERIAL (MAT)</option>
+                  <option value="MO">MÃO DE OBRA (MO)</option>
+                  <option value="AMBOS">MAT+MO</option>
+                </select>
+              </label>
             </div>
           </div>
         ))}
@@ -9543,6 +9849,13 @@ export default function App() {
     setEdicao({ minha: false, por: null, desde: null });
     const codigo = obra.codigo;
 
+    /* Os aditivos aprovados mexem no orcamento, no CMV e no Plano de
+       Compras — entao eles chegam junto com a obra, e nao so quando
+       alguem abre o modulo. */
+    listarAditivos(codigo)
+      .then((lista) => { if (vivo) setObras((prev) => prev.map((o) => (o.codigo === codigo ? { ...o, aditivos: lista } : o))); })
+      .catch(() => { /* aditivo indisponivel nao pode impedir a obra de abrir */ });
+
     carregarDadosObra(codigo)
       .then((dados) => {
         if (!vivo || !dados) return;
@@ -10524,6 +10837,29 @@ export default function App() {
 
         /* PDF sai daqui: o navegador imprime so a folha. */
         /* ---- ADITIVOS ---- */
+        .row-aditivo { background: #FBF9FF; }
+        .tag-aditivo { display: inline-flex; align-items: center; gap: 4px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; margin-top: 3px; }
+        .grp-aditivo { display: inline-flex; align-items: center; gap: 4px; background: #EFEAFB; color: var(--purple); border-radius: 20px; padding: 2px 9px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+        .item-aditivo { background: #FBF9FF; }
+        .chip-aditivo { display: inline-flex; align-items: center; gap: 3px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-left: 6px; }
+        .cmv-aditivos { margin-top: 16px; padding-top: 4px; border-top: 1px dashed var(--border); }
+        .cmv-aditivos .cmv-grupos-titulo { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .cmv-adit-total { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .cmv-adit-total.credito { color: var(--green); }
+        .cmv-adit-nota { font-size: 11px; color: var(--ink-3); margin: -2px 0 8px; line-height: 1.45; }
+        .cmv-tag-adit { display: inline-block; margin-left: 7px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .cmv-adit-parcelas { display: inline-flex; gap: 8px; font-size: 11px; }
+        .adit-mais { color: var(--blue); }
+        .adit-menos { color: #7d4038; }
+        .cmv-linha-valor.credito { color: var(--green); }
+        .dash-aditivos .dash-adit-saldo { font-family: 'Space Grotesk', sans-serif; font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.15; }
+        .dash-aditivos .dash-adit-saldo.credito { color: var(--green); }
+        .dash-adit-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; }
+        .dash-adit-lista { margin-top: 11px; border-top: 1px solid var(--border-soft); }
+        .dash-adit-linha { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
+        .dash-adit-linha .mono { font-size: 11.5px; font-weight: 700; }
+        .dash-adit-desc { flex: 1; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dash-adit-linha .credito { color: var(--green); }
         .ad-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 16px 0 14px; }
         .ad-numero { font-size: 15px; font-weight: 700; color: var(--ink); }
         .ad-titulo { margin-top: 0; flex: 1; min-width: 200px; font-size: 13px; }
@@ -10575,7 +10911,7 @@ export default function App() {
         .ad-item-cod { font-size: 10.5px; color: var(--ink-3); font-weight: 700; }
         .ad-item-tot { flex: 1; font-size: 11.5px; color: var(--ink-2); font-weight: 700; }
         .ad-desc-in { margin-top: 0; width: 100%; font-size: 12.5px; resize: vertical; }
-        .ad-item-campos { display: grid; grid-template-columns: 1.6fr .8fr .7fr 1.2fr; gap: 7px; margin-top: 6px; }
+        .ad-item-campos { display: grid; grid-template-columns: 1.4fr .7fr .6fr 1.1fr 1.2fr; gap: 7px; margin-top: 6px; }
         .ad-addbtn { display: inline-flex; align-items: center; gap: 5px; background: none; border: 1px dashed var(--border); border-radius: 8px; padding: 7px 12px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); font-family: inherit; cursor: pointer; width: 100%; justify-content: center; }
         .ad-addbtn:hover { border-color: var(--ink-3); color: var(--ink); }
         .ad-resumo { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12.5px; color: var(--ink-2); border-bottom: 1px solid var(--border-soft); }
@@ -11936,7 +12272,8 @@ export default function App() {
           {grupo === "dashboard" && <>
           <DashboardObra obra={obra} totals={totals} podeEditar={edicao.minha}
             onDataEntrega={definirDataEntrega}
-            onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }} />
+            onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }}
+            onIrParaAditivos={() => setModulo("aditivos")} />
           </>}
 
           {tab === null && grupo !== "dashboard" && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}

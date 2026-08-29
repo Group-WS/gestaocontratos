@@ -16,7 +16,12 @@ export const CONDICOES_PADRAO = "Esta proposta é válida por 10 dias.";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
-export const novoItem = () => ({ id: uid(), descricao: "", ambiente: "", qtd: "1,00", unidade: "un", valor: "" });
+/* `alocacao` nasce MAT porque aditivo e', na maioria, coisa pra comprar
+   — movel, louca, eletro. Mas ela e' um campo, e nao um chute escondido:
+   sem ela o valor do item cairia inteiro em mao de obra na hora de entrar
+   no Plano de Compras, e o material do aditivo simplesmente nao apareceria
+   pra comprar. */
+export const novoItem = () => ({ id: uid(), descricao: "", ambiente: "", qtd: "1,00", unidade: "un", valor: "", alocacao: "MAT" });
 export const novoGrupo = (n) => ({ id: uid(), num: String(n), nome: "", itens: [novoItem()] });
 
 export function novoDocumento(obra) {
