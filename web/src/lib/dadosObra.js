@@ -213,16 +213,30 @@ function paraApp(linha) {
  * `cadernos`, `escopos` e o resto de dez obras encheria a memoria com o
  * que esta tela nao le.
  */
-export async function carregarResumoDeVarias(codigos) {
+export async function carregarResumoDeVarias(codigos, onParcial) {
   if (!supabaseConfigurado || !codigos?.length) return new Map();
-  const { data, error } = await supabase
-    .from("obra_dados")
-    .select("obra_codigo, categorias, data_entrega, compras_liberadas")
-    .in("obra_codigo", codigos.map(String));
-  if (error) throw error;
-  return new Map((data || []).map((l) => [String(l.obra_codigo), {
-    categorias: l.categorias || [],
-    dataEntrega: l.data_entrega || null,
-    comprasLiberadas: !!l.compras_liberadas,
-  }]));
+
+  /* Em lotes, e nao tudo numa consulta so. `categorias` e' um JSONB
+     grande; com as quarenta e poucas obras que a empresa tem hoje, uma
+     unica resposta passaria de varios MB e a tela ficaria em branco ate
+     o fim dela. Em lotes o painel vai se preenchendo, e um lote que
+     falha nao derruba os outros. */
+  const LOTE = 12;
+  const tudo = new Map();
+  for (let i = 0; i < codigos.length; i += LOTE) {
+    const fatia = codigos.slice(i, i + LOTE).map(String);
+    const { data, error } = await supabase
+      .from("obra_dados")
+      .select("obra_codigo, categorias, data_entrega, compras_liberadas")
+      .in("obra_codigo", fatia);
+    if (error) throw error;
+    (data || []).forEach((l) => tudo.set(String(l.obra_codigo), {
+      categorias: l.categorias || [],
+      dataEntrega: l.data_entrega || null,
+      comprasLiberadas: !!l.compras_liberadas,
+    }));
+    // Mapa novo a cada lote: o React so re-renderiza se a referencia mudar.
+    if (onParcial) onParcial(new Map(tudo));
+  }
+  return tudo;
 }

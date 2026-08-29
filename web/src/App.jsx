@@ -5554,6 +5554,19 @@ function TopBar() {
 }
 
 const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
+const CHAVE_MODULOS = "tkws.modulos.abertos";
+
+/* Os cinco modulos, num lugar so: a barra os desenha em duas formas —
+   lista com descricao quando aberta, tira de icones quando recolhida — e
+   duas copias do mesmo elenco sairiam do ar uma da outra no primeiro
+   modulo novo. */
+const MODULOS = [
+  { id: "novas", nome: "Novas obras", sub: "vindas do Monday", Icone: Sparkle },
+  { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
+  { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
+  { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: PackageSearch },
+  { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: Package },
+];
 
 function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount }) {
   // Guarda a escolha: quem recolhe quer a tela larga, e ter que recolher
@@ -5565,6 +5578,17 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   useEffect(() => {
     try { localStorage.setItem(CHAVE_SIDEBAR, recolhida ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [recolhida]);
+
+  /* Modulos nascem recolhidos: e' a lista de obras que precisa da tela.
+     A escolha fica guardada, igual a da barra inteira. */
+  const [modulosAbertos, setModulosAbertos] = useState(() => {
+    try { return localStorage.getItem(CHAVE_MODULOS) === "1"; } catch { return false; }
+  });
+  const alternarModulos = () => setModulosAbertos((v) => {
+    const n = !v;
+    try { localStorage.setItem(CHAVE_MODULOS, n ? "1" : "0"); } catch { /* modo anonimo */ }
+    return n;
+  });
 
   const [search, setSearch] = useState("");
   const [onlyAlert, setOnlyAlert] = useState(false);
@@ -5652,28 +5676,44 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           ))}
         </div>
 
-        <div className="nav-group-label">MÓDULOS</div>
-        <div className="nav-list">
-          <button className={`nav-item ${modulo === "novas" ? "active" : ""}`} onClick={() => onModulo("novas")} title="Novas obras">
-            <Sparkle size={16} className="nav-icon" />
-            <div className="nav-item-text"><div className="nav-item-name">Novas obras</div><div className="nav-item-sub">vindas do Monday</div></div>
-            {novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
-          </button>
-          <button className={`nav-item ${modulo === "a_contratar" ? "active" : ""}`} onClick={() => onModulo("a_contratar")} title="Gestão de compras e contratações"><ClipboardList size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">Gestão de compras e contratações</div><div className="nav-item-sub">todas as obras</div></div></button>
-          <button className={`nav-item ${modulo === "arquivo" ? "active" : ""}`} onClick={() => onModulo("arquivo")} title="Arquivo">
-            <Archive size={16} className="nav-icon" />
-            <div className="nav-item-text"><div className="nav-item-name">Arquivo</div><div className="nav-item-sub">obras concluídas</div></div>
-            {arquivoCount > 0 && <span className="nav-count">{arquivoCount}</span>}
-          </button>
-          <button className={`nav-item ${modulo === "gerador" ? "active" : ""}`} onClick={() => onModulo("gerador")} title="Gerador de códigos Sienge">
-            <PackageSearch size={16} className="nav-icon" />
-            <div className="nav-item-text"><div className="nav-item-name">Gerador de códigos Sienge</div><div className="nav-item-sub">associa uma lista avulsa</div></div>
-          </button>
-          <button className={`nav-item ${modulo === "precos" ? "active" : ""}`} onClick={() => onModulo("precos")} title="Banco de Preços">
-            <PackageSearch size={16} className="nav-icon" />
-            <div className="nav-item-text"><div className="nav-item-name">Banco de Preços</div><div className="nav-item-sub">insumos do Sienge</div></div>
-          </button>
-        </div>
+        {/* Os modulos ocupavam dez linhas — cinco itens de duas linhas cada
+            — e empurravam a lista de obras pra fora da tela. Obra e' o
+            que se abre o dia inteiro; modulo e' o que se abre de vez em
+            quando. Recolhido eles viram uma tira de icones: uma linha, e
+            tudo continua a um clique. */}
+        <button className="nav-group-toggle" onClick={alternarModulos}
+          title={modulosAbertos ? "Recolher módulos" : "Abrir módulos"}>
+          <span>MÓDULOS</span>
+          {!modulosAbertos && novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
+          {modulosAbertos ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+
+        {modulosAbertos ? (
+          <div className="nav-list">
+            {MODULOS.map((m) => (
+              <button key={m.id} className={`nav-item ${modulo === m.id ? "active" : ""}`}
+                onClick={() => onModulo(m.id)} title={m.nome}>
+                <m.Icone size={16} className="nav-icon" />
+                <div className="nav-item-text">
+                  <div className="nav-item-name">{m.nome}</div>
+                  <div className="nav-item-sub">{m.sub}</div>
+                </div>
+                {m.id === "novas" && novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
+                {m.id === "arquivo" && arquivoCount > 0 && <span className="nav-count">{arquivoCount}</span>}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="nav-tira">
+            {MODULOS.map((m) => (
+              <button key={m.id} className={`nav-tira-item ${modulo === m.id ? "active" : ""}`}
+                onClick={() => onModulo(m.id)} title={m.nome}>
+                <m.Icone size={16} />
+                {m.id === "novas" && novasCount > 0 && <span className="nav-tira-badge">{novasCount}</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="sidebar-footer">
@@ -8097,6 +8137,108 @@ function GcLinhaObra({ L, onAbrir }) {
   );
 }
 
+/* O filtro de obras.
+
+   Comecou como uma fileira de chips, um por obra. Com as seis de hoje
+   dava certo; com as quarenta e poucas que existem seria um muro de
+   texto ocupando meia tela — e o filtro que ninguem le e' o filtro que
+   ninguem usa.
+
+   Entao: botao que diz quantas estao escolhidas, e uma lista com busca
+   por tras. A lista rola; a busca acha por nome OU por codigo, porque
+   quem trabalha nisso pensa em "2506" tanto quanto em "Salt". */
+function GcFiltroObras({ obras, escolhidas, onMudar }) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const caixa = useRef(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e) => { if (caixa.current && !caixa.current.contains(e.target)) setAberto(false); };
+    const esc = (e) => { if (e.key === "Escape") setAberto(false); };
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", fora);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [aberto]);
+
+  const achadas = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    if (!t) return obras;
+    return obras.filter((o) => `${o.codigo} ${o.nome}`.toLowerCase().includes(t));
+  }, [obras, busca]);
+
+  const alternar = (cod) => {
+    const n = new Set(escolhidas);
+    n.has(cod) ? n.delete(cod) : n.add(cod);
+    onMudar(n);
+  };
+
+  const rotulo = escolhidas.size === 0
+    ? `Todas as ${obras.length} obras`
+    : escolhidas.size === 1
+      ? (obras.find((o) => escolhidas.has(o.codigo))?.nome || "1 obra")
+      : `${escolhidas.size} de ${obras.length} obras`;
+
+  return (
+    <div className="gc-filtro-obras" ref={caixa}>
+      <button className={`gc-filtro-btn ${escolhidas.size ? "on" : ""}`} onClick={() => setAberto((x) => !x)}>
+        <Building2 size={13} />
+        <span className="gc-filtro-rot">{rotulo}</span>
+        <ChevronDown size={13} />
+      </button>
+
+      {aberto && (
+        <div className="gc-filtro-menu">
+          <input className="form-input gc-filtro-busca" autoFocus value={busca}
+            placeholder="nome ou código da obra…" onChange={(e) => setBusca(e.target.value)} />
+
+          <div className="gc-filtro-acoes">
+            <button onClick={() => onMudar(new Set())} disabled={escolhidas.size === 0}>Todas</button>
+            {/* "Marcar as encontradas" e' o que torna a busca util: filtrar
+                por "Salt" e marcar as tres de uma vez, em vez de tres
+                cliques mirados numa lista de quarenta. */}
+            <button onClick={() => onMudar(new Set([...escolhidas, ...achadas.map((o) => o.codigo)]))}
+              disabled={!busca.trim() || achadas.length === 0}>
+              Marcar as {achadas.length} encontradas
+            </button>
+          </div>
+
+          <div className="gc-filtro-lista">
+            {achadas.length === 0 && <div className="empty-note">Nenhuma obra com esse nome ou código.</div>}
+            {achadas.map((o) => (
+              <button key={o.codigo} className={`gc-filtro-item ${escolhidas.has(o.codigo) ? "on" : ""}`}
+                onClick={() => alternar(o.codigo)} title={o.nome}>
+                <span className="gc-filtro-check">{escolhidas.has(o.codigo) && <Check size={11} />}</span>
+                <span className="mono dim">#{o.codigo}</span>
+                <span className="gc-filtro-nome">{o.nome}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* As escolhidas ficam a vista e sao removiveis com um clique. Ate
+          seis; passando disso o resumo cabe melhor que a fileira. */}
+      {escolhidas.size > 0 && escolhidas.size <= 6 && (
+        <div className="gc-filtro-marcadas">
+          {obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
+            <button key={o.codigo} className="gc-filtro-tag" onClick={() => alternar(o.codigo)}
+              title="Tirar do filtro">
+              <span className="mono">#{o.codigo}</span> <X size={10} />
+            </button>
+          ))}
+        </div>
+      )}
+      {escolhidas.size > 6 && (
+        <button className="gc-filtro-limpar" onClick={() => onMudar(new Set())}>limpar filtro</button>
+      )}
+    </div>
+  );
+}
+
 function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   const [horizonte, setHorizonte] = useState(null);
   /* Vazio quer dizer TODAS. Guardar o conjunto das escolhidas, e nao um
@@ -8117,11 +8259,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   const r = useMemo(() => resumoGeral(visiveis, { horizonteDias: horizonte }), [visiveis, horizonte]);
   const t = r.totais;
 
-  const alternar = (cod) => setEscolhidas((g) => {
-    const n = new Set(g);
-    n.has(cod) ? n.delete(cod) : n.add(cod);
-    return n;
-  });
+
 
   if (carregando) return <div className="empty-note">Carregando as obras…</div>;
 
@@ -8147,14 +8285,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
       {comDados.length > 1 && (
         <div className="gc-obras-filtro">
           <span className="gc-horizonte-rot">Obras</span>
-          <button className={`gc-chip ${escolhidas.size === 0 ? "on" : ""}`}
-            onClick={() => setEscolhidas(new Set())}>Todas</button>
-          {comDados.map((o) => (
-            <button key={o.codigo} className={`gc-chip ${escolhidas.has(o.codigo) ? "on" : ""}`}
-              onClick={() => alternar(o.codigo)} title={o.nome}>
-              <span className="mono">#{o.codigo}</span> {o.nome}
-            </button>
-          ))}
+          <GcFiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
         </div>
       )}
 
@@ -8803,7 +8934,9 @@ export default function App() {
     let vivo = true;
     setPainelCarregando(true);
     setPainelErro(null);
-    carregarResumoDeVarias(obrasAtivas.map((o) => o.codigo))
+    /* O parcial faz a tabela ir se preenchendo lote a lote, em vez de
+       ficar em branco ate a ultima obra chegar. */
+    carregarResumoDeVarias(obrasAtivas.map((o) => o.codigo), (m) => { if (vivo) setPainelDados(m); })
       .then((m) => { if (vivo) setPainelDados(m); })
       .catch((e) => { if (vivo) setPainelErro(`Não consegui carregar as obras: ${e.message || e}`); })
       .finally(() => { if (vivo) setPainelCarregando(false); });
@@ -9712,6 +9845,15 @@ export default function App() {
         .squad-group-label { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px; }
         .scroll-list { max-height: 320px; overflow-y: auto; padding-right: 2px; }
         .no-results { font-size: 11.5px; color: var(--ink-3); padding: 10px 6px; }
+        .nav-group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; cursor: pointer; }
+        .nav-group-toggle:hover { color: var(--ink-2); }
+        .nav-group-toggle span:first-child { flex: 1; text-align: left; }
+        .nav-tira { display: flex; align-items: center; gap: 4px; padding: 0 4px; }
+        .nav-tira-item { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; height: 34px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--ink-3); cursor: pointer; }
+        .nav-tira-item:hover { background: var(--panel); color: var(--ink); }
+        .nav-tira-item.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+        .nav-tira-badge { position: absolute; top: 1px; right: 1px; background: var(--blue); color: #fff; font-size: 8.5px; font-weight: 700; border-radius: 20px; padding: 0 4px; line-height: 13px; }
+        .sidebar.recolhida .nav-tira { flex-direction: column; }
         .nav-list { display: flex; flex-direction: column; gap: 2px; }
         .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; border-radius: 8px; padding: 9px 8px; cursor: pointer; text-align: left; transition: background 0.12s ease; }
         .nav-item:hover { background: var(--panel); }
@@ -9748,6 +9890,7 @@ export default function App() {
            iguais não dizem nada. */
         .sidebar.recolhida { width: 62px; }
         .sidebar.recolhida .sidebar-scroll { padding: 12px 8px; align-items: center; }
+        .sidebar.recolhida .nav-group-toggle,
         .sidebar.recolhida .nav-group-label,
         .sidebar.recolhida .obra-search,
         .sidebar.recolhida .squad-filter,
@@ -10996,6 +11139,27 @@ export default function App() {
         .gc-topo-info { font-size: 12px; color: var(--ink-3); }
         .gc-topo-alerta { color: var(--red); }
 
+        .gc-filtro-obras { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .gc-filtro-btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: #fff; color: var(--ink-2); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+        .gc-filtro-btn:hover { border-color: var(--ink-3); }
+        .gc-filtro-btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .gc-filtro-rot { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .gc-filtro-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 330px; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.13); padding: 10px; }
+        .gc-filtro-busca { margin-top: 0; width: 100%; font-size: 12.5px; }
+        .gc-filtro-acoes { display: flex; gap: 8px; margin: 8px 0 6px; }
+        .gc-filtro-acoes button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--blue); cursor: pointer; padding: 0; }
+        .gc-filtro-acoes button:disabled { color: var(--ink-3); cursor: default; }
+        .gc-filtro-lista { max-height: 260px; overflow-y: auto; margin: 0 -4px; }
+        .gc-filtro-item { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; background: none; border: none; border-radius: 6px; padding: 5px 6px; font-family: inherit; font-size: 12px; color: var(--ink); cursor: pointer; }
+        .gc-filtro-item:hover { background: var(--panel); }
+        .gc-filtro-item.on { background: var(--blue-bg); }
+        .gc-filtro-check { width: 14px; height: 14px; border: 1.5px solid var(--ink-3); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
+        .gc-filtro-item.on .gc-filtro-check { background: var(--blue); border-color: var(--blue); }
+        .gc-filtro-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .gc-filtro-marcadas { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+        .gc-filtro-tag { display: inline-flex; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 3px 8px; font-size: 11px; color: var(--ink-2); font-family: inherit; cursor: pointer; }
+        .gc-filtro-tag:hover { border-color: var(--red); color: var(--red); }
+        .gc-filtro-limpar { background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--blue); cursor: pointer; }
         .gc-obras-filtro { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 20px; }
         .gc-obras-filtro .gc-chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gc-obras-filtro .gc-chip .mono { opacity: .6; margin-right: 3px; }
