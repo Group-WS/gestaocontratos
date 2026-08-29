@@ -201,3 +201,28 @@ function paraApp(linha) {
     atualizadoPor: linha.atualizado_por || null,
   };
 }
+
+/**
+ * Carrega o essencial de VARIAS obras de uma vez.
+ *
+ * O painel geral compara obras entre si, e ate agora os dados de uma obra
+ * so chegavam quando alguem abria aquela obra — entao o painel somava,
+ * na pratica, uma obra so. Aqui vem tudo junto.
+ *
+ * Colunas escolhidas a dedo: `categorias` ja e' um JSONB gordo, e trazer
+ * `cadernos`, `escopos` e o resto de dez obras encheria a memoria com o
+ * que esta tela nao le.
+ */
+export async function carregarResumoDeVarias(codigos) {
+  if (!supabaseConfigurado || !codigos?.length) return new Map();
+  const { data, error } = await supabase
+    .from("obra_dados")
+    .select("obra_codigo, categorias, data_entrega, compras_liberadas")
+    .in("obra_codigo", codigos.map(String));
+  if (error) throw error;
+  return new Map((data || []).map((l) => [String(l.obra_codigo), {
+    categorias: l.categorias || [],
+    dataEntrega: l.data_entrega || null,
+    comprasLiberadas: !!l.compras_liberadas,
+  }]));
+}

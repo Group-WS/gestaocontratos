@@ -19,7 +19,7 @@ import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, ac
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import { carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
+import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 import { subirArquivo, linkParaBaixar, apagarArquivo, anexoRecuperavel } from "./lib/arquivos";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
@@ -945,6 +945,172 @@ const CANAIS_COMPRA = [
   { id: "estoque",  sigla: "ES", nome: "Estoque",               cor: "#6B5E4A",       bg: "#EFEAE1" },
 ];
 const canalPorId = (id) => CANAIS_COMPRA.find((c) => c.id === id) || null;
+
+/* Em que pe' esta o contrato daquele servico. Mora aqui em cima, junto do
+   modelo, porque o painel geral depende dele — e o painel geral tem
+   teste, que so alcanca o que esta acima do marcador de fim do modelo. */
+const contratoEtapa = (it) => it.statusContrato || "nao_solicitado";
+
+/* ============================================================
+   PAINEL GERAL DE COMPRAS E CONTRATACOES
+
+   Uma linha por obra e um total por verba, somando TODAS as obras.
+   Responde duas perguntas que so existem fora da obra:
+
+     "quanto falta comprar, e tem obra atrasada?"
+     "quanto tenho pra contratar de pintura nas proximas semanas?"
+
+   A segunda e' a que muda o trabalho: sabendo o volume por verba com
+   antecedencia, da pra chegar no fornecedor com previsao em vez de
+   pedido urgente.
+   ============================================================ */
+
+/* Data em que a coisa PRECISA acontecer.
+
+   Compra tem prazo proprio por verba (iluminacao 30 dias, moveis 75...),
+   contado de tras pra frente a partir da entrega. Mao de obra nao tem
+   prazo configurado — nao existe regra da casa dizendo "gesso se contrata
+   com N dias" —, entao ela se ancora na entrega da obra. Quando a regra
+   de MO existir, e' aqui que ela entra, e o resto da tela nao muda. */
+function dataDeNecessidade(obra, cat, itens, aloc) {
+  if (!obra.dataEntrega) return null;
+  if (aloc === ALOC_MAT) {
+    const p = prazoDoGrupo(cat, itens);
+    if (p) return dataLimiteCompra(obra.dataEntrega, p.dias);
+  }
+  return new Date(`${obra.dataEntrega}T12:00:00`);
+}
+
+/**
+ * Resumo de uma obra: quanto de material, quanto de mao de obra, o que
+ * ja andou e quais grupos estao com a compra vencida.
+ *
+ * MAT feito e' `it.comprado`; MO feita e' qualquer etapa de contrato
+ * fora de "nao_solicitado" — as duas definicoes ja usadas nas telas de
+ * Compras e de Contratos. Inventar uma terceira aqui faria o painel
+ * geral discordar da tela de onde o numero veio.
+ */
+function resumoDaObra(o, hoje = new Date()) {
+  const verbas = new Map();
+  let matTotal = 0, matFeito = 0, moTotal = 0, moFeito = 0;
+
+  (o.categorias || []).forEach((cat) => {
+    const itens = cat.itens || [];
+    itens.forEach((it) => {
+      if (it.ehTitulo) return;
+      const { material, mo } = parcelasDoItem(it);
+      const aloc = alocacaoDoItem(it, cat);
+      if (material <= 0 && mo <= 0) return;
+
+      if (!verbas.has(cat.num)) {
+        verbas.set(cat.num, {
+          num: cat.num, nome: cat.nome, obra: o.codigo, obraNome: o.nome,
+          mat: 0, matFalta: 0, mo: 0, moFalta: 0,
+          quandoMat: dataDeNecessidade(o, cat, itens, ALOC_MAT),
+          quandoMo: dataDeNecessidade(o, cat, itens, ALOC_MO),
+          prazo: prazoDoGrupo(cat, itens),
+        });
+      }
+      const v = verbas.get(cat.num);
+
+      if (material > 0 || aloc === ALOC_MAT) {
+        matTotal += material; v.mat += material;
+        if (it.comprado) matFeito += material; else v.matFalta += material;
+      }
+      if (mo > 0 || aloc === ALOC_MO) {
+        moTotal += mo; v.mo += mo;
+        if (contratoEtapa(it) !== "nao_solicitado") moFeito += mo; else v.moFalta += mo;
+      }
+    });
+  });
+
+  /* Atraso e' prazo vencido COM compra pendente. Grupo ja comprado nao
+     atrasa nada, mesmo com a data para tras — marcar ele de vermelho
+     ensinaria a ignorar o vermelho. */
+  const atrasos = [];
+  const perto = [];
+  verbas.forEach((v) => {
+    if (!v.quandoMat || v.matFalta <= 0 || !v.prazo) return;
+    const dias = diasAte(v.quandoMat, hoje);
+    if (dias < 0) atrasos.push({ ...v, dias });
+    else if (dias <= 15) perto.push({ ...v, dias });
+  });
+  atrasos.sort((a, b) => a.dias - b.dias);
+  perto.sort((a, b) => a.dias - b.dias);
+
+  return {
+    codigo: o.codigo, nome: o.nome, id: o.id,
+    dataEntrega: o.dataEntrega || null,
+    faltamEntrega: o.dataEntrega ? diasAte(new Date(`${o.dataEntrega}T12:00:00`), hoje) : null,
+    mat: { total: matTotal, feito: matFeito, falta: matTotal - matFeito,
+      pct: matTotal > 0 ? (matFeito / matTotal) * 100 : 0 },
+    mo: { total: moTotal, feito: moFeito, falta: moTotal - moFeito,
+      pct: moTotal > 0 ? (moFeito / moTotal) * 100 : 0 },
+    verbas: [...verbas.values()],
+    atrasos, perto,
+    semDados: matTotal === 0 && moTotal === 0,
+  };
+}
+
+/**
+ * Junta as obras: uma linha por obra, e o total por verba somando todas.
+ *
+ * `horizonteDias` recorta pelo que precisa acontecer ate la — vencido
+ * entra sempre, porque atraso nao sai da conta por ser velho. Obra sem
+ * data de entrega nao tem como ser recortada: ela fica de fora do
+ * recorte e e' contada a parte, em vez de sumir calada.
+ */
+function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
+  const linhas = (obras || []).map((o) => resumoDaObra(o, hoje)).filter((L) => !L.semDados);
+  const limite = horizonteDias == null ? null
+    : new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + horizonteDias);
+
+  const dentro = (quando) => {
+    if (limite == null) return true;
+    if (!quando) return false;
+    return quando <= limite;
+  };
+
+  const mat = new Map(), mo = new Map();
+  let semData = 0;
+  linhas.forEach((L) => {
+    if (horizonteDias != null && !L.dataEntrega) {
+      semData += L.mat.falta + L.mo.falta;
+      return;
+    }
+    L.verbas.forEach((v) => {
+      const junta = (mapa, valor, quando) => {
+        if (valor <= 0 || !dentro(quando)) return;
+        if (!mapa.has(v.num)) mapa.set(v.num, { num: v.num, nome: v.nome, total: 0, obras: new Set() });
+        const g = mapa.get(v.num);
+        g.total += valor;
+        g.obras.add(L.codigo);
+      };
+      junta(mat, v.matFalta, v.quandoMat);
+      junta(mo, v.moFalta, v.quandoMo);
+    });
+  });
+
+  const ordena = (m) => [...m.values()].sort((a, b) => b.total - a.total);
+  const somar = (f) => linhas.reduce((a, L) => a + f(L), 0);
+  return {
+    linhas: linhas.sort((a, b) => {
+      // Atrasada primeiro; depois quem entrega antes; sem data por ultimo.
+      if ((b.atrasos.length > 0) - (a.atrasos.length > 0)) return (b.atrasos.length > 0) - (a.atrasos.length > 0);
+      if (!a.dataEntrega) return 1;
+      if (!b.dataEntrega) return -1;
+      return a.dataEntrega < b.dataEntrega ? -1 : 1;
+    }),
+    aComprar: ordena(mat),
+    aContratar: ordena(mo),
+    semData,
+    totais: {
+      matTotal: somar((L) => L.mat.total), matFeito: somar((L) => L.mat.feito),
+      moTotal: somar((L) => L.mo.total), moFeito: somar((L) => L.mo.feito),
+      obrasAtrasadas: linhas.filter((L) => L.atrasos.length > 0).length,
+    },
+  };
+}
 
 /* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
 
@@ -5493,7 +5659,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             <div className="nav-item-text"><div className="nav-item-name">Novas obras</div><div className="nav-item-sub">vindas do Monday</div></div>
             {novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
           </button>
-          <button className={`nav-item ${modulo === "a_contratar" ? "active" : ""}`} onClick={() => onModulo("a_contratar")} title="A Contratar"><ClipboardList size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">A Contratar</div><div className="nav-item-sub">todas as obras</div></div></button>
+          <button className={`nav-item ${modulo === "a_contratar" ? "active" : ""}`} onClick={() => onModulo("a_contratar")} title="Gestão de compras e contratações"><ClipboardList size={16} className="nav-icon" /><div className="nav-item-text"><div className="nav-item-name">Gestão de compras e contratações</div><div className="nav-item-sub">todas as obras</div></div></button>
           <button className={`nav-item ${modulo === "arquivo" ? "active" : ""}`} onClick={() => onModulo("arquivo")} title="Arquivo">
             <Archive size={16} className="nav-icon" />
             <div className="nav-item-text"><div className="nav-item-name">Arquivo</div><div className="nav-item-sub">obras concluídas</div></div>
@@ -7095,7 +7261,6 @@ const CONTRATO_PIPELINE = [
 const PROXIMA_ETAPA = { nao_solicitado: "solicitacao", solicitacao: "aprovacao", aprovacao: "contrato_gerado", contrato_gerado: "previsao_medicao", previsao_medicao: "medicao_liberada" };
 
 const contratoBloqueado = (it) => it.foraDeEscopo && it.statusEscopo !== "aprovado";
-const contratoEtapa = (it) => it.statusContrato || "nao_solicitado";
 
 function ContratosRow({ row, onItemChange }) {
   const { it, catNum, catNome } = row;
@@ -7787,79 +7952,221 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
 }
 
 /* ============================================================
-   MÓDULO A CONTRATAR
-   Dashboard de TODAS as obras: quanto falta contratar (mão de obra)
-   e comprar (produtos), agregado por verba da EAP, com filtro de
-   período. Responde "quanto tenho pra contratar de elétrica nos
-   próximos 6 meses".
+   MÓDULO GESTÃO DE COMPRAS E CONTRATAÇÕES
+   O painel que existe FORA da obra: todas as obras lado a lado,
+   e o volume por verba somando todas elas.
    ============================================================ */
 
-function aContratarAgrega(obras) {
-  const servicos = {};
-  const produtos = {};
-  obras.forEach((o) => {
-    o.categorias.forEach((cat) => {
-      (cat.itens || []).forEach((it) => {
-        const bucket = it.tipo === "produto" ? produtos : servicos;
-        const key = cat.num;
-        if (!bucket[key]) bucket[key] = { num: cat.num, nome: cat.nome, total: 0, itens: 0, obras: new Set() };
-        bucket[key].total += it.custo || 0;
-        bucket[key].itens += 1;
-        bucket[key].obras.add(o.codigo);
-      });
-    });
-  });
-  const toArr = (b) => Object.values(b).filter((g) => g.total > 0).sort((a, z) => z.total - a.total);
-  return { servicos: toArr(servicos), produtos: toArr(produtos) };
+const HORIZONTES = [
+  { dias: null, rot: "Tudo" },
+  { dias: 28, rot: "4 semanas" },
+  { dias: 56, rot: "8 semanas" },
+  { dias: 84, rot: "12 semanas" },
+];
+
+/* MAT azul, MO roxo. O crachá de alocação usa azul e CINZA, e cinza não
+   lê como cor num painel — as duas metades precisam pesar igual aqui. */
+const COR_MAT = "var(--blue)";
+const COR_MO = "var(--purple)";
+
+function GcBarra({ pct, cor }) {
+  return (
+    <div className="gc-track" title={`${Math.round(pct)}%`}>
+      <div className="gc-fill" style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: cor }} />
+    </div>
+  );
 }
 
-function AContratarBloco({ titulo, Icone, grupos, total, cor }) {
-  const max = grupos.length ? grupos[0].total : 1;
+function GcTotal({ rot, feito, total, cor, legenda }) {
+  const pct = total > 0 ? (feito / total) * 100 : 0;
   return (
-    <div className="ac-bloco">
-      <div className="ac-bloco-head">
-        <Icone size={15} style={{ color: cor }} />
-        <span className="ac-bloco-titulo">{titulo}</span>
-        <span className="ac-bloco-total mono" style={{ color: cor }}>{fmtBRL(total)}</span>
-      </div>
-      <div className="ac-list">
-        {grupos.length === 0 && <div className="empty-note">Nada a contratar neste recorte.</div>}
-        {grupos.map((g) => (
-          <div key={g.num} className="ac-row">
-            <span className="ac-num mono">{g.num}</span>
-            <span className="ac-nome">{g.nome}</span>
-            <span className="ac-obras">{g.obras.size} {g.obras.size === 1 ? "obra" : "obras"} · {g.itens} {g.itens === 1 ? "item" : "itens"}</span>
-            <div className="ac-bar-track"><div className="ac-bar" style={{ width: `${(g.total / max) * 100}%`, background: cor }} /></div>
-            <span className="ac-val mono">{fmtBRL(g.total)}</span>
-          </div>
-        ))}
+    <div className="gc-total">
+      <div className="gc-total-rot" style={{ color: cor }}>{rot}</div>
+      <div className="gc-total-val mono">{fmtBRL(total - feito)}</div>
+      <div className="gc-total-sub">{legenda}</div>
+      <GcBarra pct={pct} cor={cor} />
+      <div className="gc-total-pe">
+        <span className="mono">{fmtBRL(feito)}</span> de <span className="mono">{fmtBRL(total)}</span>
+        <b> · {Math.round(pct)}%</b>
       </div>
     </div>
   );
 }
 
-function AContratarView({ obras }) {
-  const [de, setDe] = useState("");
-  const [ate, setAte] = useState("");
-  const { servicos, produtos } = useMemo(() => aContratarAgrega(obras), [obras]);
-  const totServ = servicos.reduce((a, g) => a + g.total, 0);
-  const totProd = produtos.reduce((a, g) => a + g.total, 0);
+/* A lista por verba somando todas as obras. É o pedido central: saber o
+   volume de pintura das próximas semanas antes de precisar dele. */
+function GcPorVerba({ titulo, Icone, grupos, cor, vazio }) {
+  const total = grupos.reduce((a, g) => a + g.total, 0);
+  const max = grupos.length ? grupos[0].total : 1;
+  return (
+    <div className="gc-bloco">
+      <div className="gc-bloco-head">
+        <Icone size={15} style={{ color: cor }} />
+        <span className="gc-bloco-titulo">{titulo}</span>
+        <span className="gc-bloco-total mono" style={{ color: cor }}>{fmtBRL(total)}</span>
+      </div>
+      {grupos.length === 0 ? <div className="empty-note">{vazio}</div> : (
+        <div className="gc-list">
+          {grupos.map((g) => (
+            <div key={g.num} className="gc-row">
+              <span className="gc-num mono">{g.num}</span>
+              <span className="gc-nome">{g.nome}</span>
+              <span className="gc-obras">{g.obras.size} {g.obras.size === 1 ? "obra" : "obras"}</span>
+              <GcBarra pct={(g.total / max) * 100} cor={cor} />
+              <span className="gc-val mono">{fmtBRL(g.total)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GcLinhaObra({ L, onAbrir }) {
+  const [aberto, setAberto] = useState(false);
+  const atrasada = L.atrasos.length > 0;
+  const entrega = L.dataEntrega
+    ? new Date(`${L.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")
+    : null;
 
   return (
     <>
-      <div className="ac-filtros">
-        <div className="ac-periodo">
-          <span className="ac-periodo-label">Período de contratação:</span>
-          <input type="date" value={de} onChange={(e) => setDe(e.target.value)} />
-          <span className="dim">até</span>
-          <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} />
-          {(de || ate) && <button className="ac-limpar" onClick={() => { setDe(""); setAte(""); }}>limpar</button>}
+      <tr className={atrasada ? "gc-obra atrasada" : "gc-obra"}>
+        <td>
+          <button className="gc-obra-nome" onClick={() => onAbrir(L.id)} title="Abrir esta obra">
+            <span className="mono dim">#{L.codigo}</span> {L.nome}
+          </button>
+        </td>
+        <td className="center">
+          {entrega ? (
+            <span className={L.faltamEntrega < 0 ? "gc-venceu" : ""}>
+              {entrega}
+              <span className="gc-dias">{L.faltamEntrega < 0
+                ? `${-L.faltamEntrega} d atrás`
+                : `em ${L.faltamEntrega} d`}</span>
+            </span>
+          ) : <span className="gc-sem-data">sem data</span>}
+        </td>
+        <td className="gc-cel-barra">
+          <GcBarra pct={L.mat.pct} cor={COR_MAT} />
+          <span className="gc-cel-txt mono">{fmtBRL(L.mat.falta)}</span>
+        </td>
+        <td className="gc-cel-barra">
+          <GcBarra pct={L.mo.pct} cor={COR_MO} />
+          <span className="gc-cel-txt mono">{fmtBRL(L.mo.falta)}</span>
+        </td>
+        <td className="center">
+          {atrasada ? (
+            <button className="gc-selo atraso" onClick={() => setAberto((x) => !x)}>
+              <AlertTriangle size={11} /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
+            </button>
+          ) : L.perto.length > 0 ? (
+            <button className="gc-selo perto" onClick={() => setAberto((x) => !x)}>
+              <Clock size={11} /> {L.perto.length} perto do prazo
+            </button>
+          ) : <span className="dim">—</span>}
+        </td>
+      </tr>
+      {aberto && (
+        <tr className="gc-detalhe">
+          <td colSpan={5}>
+            {[...L.atrasos.map((v) => ({ ...v, tipo: "atraso" })),
+              ...L.perto.map((v) => ({ ...v, tipo: "perto" }))].map((v) => (
+              <div key={v.num + v.tipo} className={`gc-prazo ${v.tipo}`}>
+                <span className="mono">{v.num}</span>
+                <span className="gc-prazo-nome">{v.nome}</span>
+                <span className="gc-prazo-quando">
+                  comprar até {v.quandoMat.toLocaleDateString("pt-BR")}
+                  {v.prazo?.fornecedor ? ` (${v.prazo.fornecedor}, ${v.prazo.dias} d)` : ` (${v.prazo.dias} d antes da entrega)`}
+                  {v.dias < 0 ? ` — venceu há ${-v.dias} dias` : ` — faltam ${v.dias} dias`}
+                </span>
+                <span className="mono gc-prazo-val">{fmtBRL(v.matFalta)}</span>
+              </div>
+            ))}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
+  const [horizonte, setHorizonte] = useState(null);
+  const r = useMemo(() => resumoGeral(obras, { horizonteDias: horizonte }), [obras, horizonte]);
+  const t = r.totais;
+
+  if (carregando) return <div className="empty-note">Carregando as obras…</div>;
+
+  return (
+    <>
+      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+
+      <div className="gc-topo">
+        <div className="gc-horizonte">
+          <span className="gc-horizonte-rot">Preciso resolver nas</span>
+          {HORIZONTES.map((h) => (
+            <button key={h.rot} className={`gc-chip ${horizonte === h.dias ? "on" : ""}`}
+              onClick={() => setHorizonte(h.dias)}>{h.rot}</button>
+          ))}
         </div>
-        <div className="ac-periodo-nota">O filtro por período usa o cronograma da obra no Monday — ligação ainda pendente; por enquanto mostra o total de todas as obras.</div>
+        <span className="gc-topo-info">
+          {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"} com planilha
+          {t.obrasAtrasadas > 0 && <b className="gc-topo-alerta"> · {t.obrasAtrasadas} com compra atrasada</b>}
+        </span>
       </div>
 
-      <AContratarBloco titulo="Mão de obra a contratar" Icone={FileText} grupos={servicos} total={totServ} cor="var(--blue)" />
-      <AContratarBloco titulo="Produtos a comprar" Icone={ShoppingCart} grupos={produtos} total={totProd} cor="var(--green)" />
+      <div className="gc-totais">
+        <GcTotal rot="A COMPRAR — MATERIAL" cor={COR_MAT} legenda="ainda não comprado"
+          feito={t.matFeito} total={t.matTotal} />
+        <GcTotal rot="A CONTRATAR — MÃO DE OBRA" cor={COR_MO} legenda="ainda não solicitado"
+          feito={t.moFeito} total={t.moTotal} />
+      </div>
+
+      {/* O que ela mais pediu vem primeiro: o volume por verba, somando
+          todas as obras, é o que permite chegar no fornecedor com
+          previsão em vez de pedido urgente. */}
+      <GcPorVerba titulo="Mão de obra a contratar, por verba" Icone={FileText}
+        grupos={r.aContratar} cor={COR_MO}
+        vazio={horizonte ? "Nada a contratar dentro desse prazo." : "Nada a contratar."} />
+      <GcPorVerba titulo="Material a comprar, por verba" Icone={ShoppingCart}
+        grupos={r.aComprar} cor={COR_MAT}
+        vazio={horizonte ? "Nada a comprar dentro desse prazo." : "Nada a comprar."} />
+
+      {r.semData > 0 && (
+        <div className="gc-nota-semdata">
+          <AlertTriangle size={13} />
+          <span>
+            <b>{fmtBRL(r.semData)}</b> ficou fora do recorte por estar em obra <b>sem data de entrega</b>.
+            Sem a data não há como saber se cai nessas semanas — preencha a entrega no Dashboard da obra.
+          </span>
+        </div>
+      )}
+
+      <div className="gc-bloco">
+        <div className="gc-bloco-head">
+          <Building2 size={15} />
+          <span className="gc-bloco-titulo">Obra por obra</span>
+        </div>
+        <div className="grp-itens gc-tabela">
+          <table>
+            <thead>
+              <tr>
+                <th>Obra</th>
+                <th style={{ width: 130 }} className="center">Entrega</th>
+                <th style={{ width: 190 }}>Comprado · falta</th>
+                <th style={{ width: 190 }}>Contratado · falta</th>
+                <th style={{ width: 130 }} className="center">Prazos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.linhas.length === 0 && (
+                <tr><td colSpan={5}><div className="empty-note">Nenhuma obra ativa tem planilha carregada ainda.</div></td></tr>
+              )}
+              {r.linhas.map((L) => <GcLinhaObra key={L.codigo} L={L} onAbrir={onAbrir} />)}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </>
   );
 }
@@ -8438,6 +8745,48 @@ export default function App() {
 
   const situacaoDe = (o) => registro.get(String(o.codigo))?.situacao;
   const obrasAtivas = useMemo(() => obras.filter((o) => situacaoDe(o) === "ativa"), [obras, registro]);
+
+  /* O painel geral compara obras entre si, e os dados de uma obra so
+     chegam quando alguem ABRE aquela obra — entao ele somava, na
+     pratica, uma obra so. Aqui vem tudo de uma vez, e so quando o painel
+     esta na tela: sao varios JSONB gordos, e quem nunca abre o painel
+     nao tem por que pagar por eles. */
+  const [painelDados, setPainelDados] = useState(null);
+  const [painelCarregando, setPainelCarregando] = useState(false);
+  const [painelErro, setPainelErro] = useState(null);
+
+  useEffect(() => {
+    if (modulo !== "a_contratar" || !obrasAtivas.length || !usuario) return;
+    let vivo = true;
+    setPainelCarregando(true);
+    setPainelErro(null);
+    carregarResumoDeVarias(obrasAtivas.map((o) => o.codigo))
+      .then((m) => { if (vivo) setPainelDados(m); })
+      .catch((e) => { if (vivo) setPainelErro(`Não consegui carregar as obras: ${e.message || e}`); })
+      .finally(() => { if (vivo) setPainelCarregando(false); });
+    return () => { vivo = false; };
+  }, [modulo, obrasAtivas.length, usuario]);
+
+  /* A obra aberta tem edicao em andamento na memoria; o painel nao pode
+     mostrar dela um retrato mais velho do que a tela ao lado. */
+  const obrasDoPainel = useMemo(() => {
+    /* Toda obra ja vem do Monday com a EAP vazia — 32 grupos, zero itens.
+       Entao "tem categorias" nao diz nada; o que diz e' TER ITEM. */
+    const temItens = (cats) => (cats || []).some((c) => (c.itens || []).length);
+    return obrasAtivas.map((o) => {
+      // A obra aberta manda: ela pode ter edicao ainda nao salva na tela.
+      if (o.id === selectedId && temItens(o.categorias)) return o;
+      const salvo = painelDados?.get(String(o.codigo));
+      if (!temItens(salvo?.categorias)) return o;
+      return {
+        ...o,
+        // Mesma migracao que a obra recebe ao abrir: sem ela a mao de
+        // obra separada aparece na verba 32 e nao no grupo dela.
+        categorias: devolverMOaoGrupoDeOrigem(normalizarCategorias(salvo.categorias)),
+        dataEntrega: salvo.dataEntrega,
+      };
+    });
+  }, [obrasAtivas, painelDados, selectedId]);
   const obrasConcluidas = useMemo(() => obras.filter((o) => situacaoDe(o) === "concluida"), [obras, registro]);
   const obrasNovas = useMemo(() => obras.filter((o) => !situacaoDe(o)), [obras, registro]);
 
@@ -10594,23 +10943,59 @@ export default function App() {
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .tab .dim { margin-left: 2px; vertical-align: -1px; }
         /* ---- Módulo A Contratar ---- */
-        .ac-filtros { margin: 18px 0 18px; }
-        .ac-periodo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .ac-periodo-label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
-        .ac-periodo input[type="date"] { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-family: 'Inter', sans-serif; color: var(--ink); background: #fff; }
-        .ac-limpar { background: none; border: none; color: var(--blue); font-size: 12px; font-weight: 600; cursor: pointer; }
-        .ac-periodo-nota { font-size: 11px; color: var(--ink-3); font-style: italic; margin-top: 7px; }
-        .ac-bloco { margin-bottom: 22px; }
-        .ac-bloco-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
-        .ac-bloco-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
-        .ac-bloco-total { margin-left: auto; font-size: 15px; font-weight: 700; }
-        .ac-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--border-soft); }
-        .ac-num { font-size: 11px; color: var(--ink-3); font-weight: 600; width: 22px; flex-shrink: 0; }
-        .ac-nome { font-size: 13px; color: var(--ink); font-weight: 600; width: 230px; flex-shrink: 0; }
-        .ac-obras { font-size: 11px; color: var(--ink-3); width: 130px; flex-shrink: 0; }
-        .ac-bar-track { flex: 1; min-width: 60px; height: 8px; background: var(--panel); border-radius: 20px; overflow: hidden; }
-        .ac-bar { height: 100%; border-radius: 20px; }
-        .ac-val { font-size: 13px; color: var(--ink); width: 96px; text-align: right; flex-shrink: 0; }
+        /* ---- Painel geral de compras e contratacoes ---- */
+        .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }
+        .gc-horizonte { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .gc-horizonte-rot { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-right: 4px; }
+        .gc-chip { border: 1px solid var(--border); background: #fff; color: var(--ink-2); border-radius: 20px; padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+        .gc-chip:hover { border-color: var(--ink-3); }
+        .gc-chip.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .gc-topo-info { font-size: 12px; color: var(--ink-3); }
+        .gc-topo-alerta { color: var(--red); }
+
+        .gc-totais { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
+        .gc-total { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: #fff; }
+        .gc-total-rot { font-size: 10px; font-weight: 800; letter-spacing: .07em; }
+        .gc-total-val { font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-top: 6px; }
+        .gc-total-sub { font-size: 11.5px; color: var(--ink-3); margin-bottom: 12px; }
+        .gc-total-pe { font-size: 11px; color: var(--ink-3); margin-top: 7px; }
+
+        .gc-track { height: 8px; background: var(--panel); border-radius: 20px; overflow: hidden; min-width: 40px; }
+        .gc-fill { height: 100%; border-radius: 20px; }
+
+        .gc-bloco { margin-bottom: 24px; }
+        .gc-bloco-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
+        .gc-bloco-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .gc-bloco-total { margin-left: auto; font-size: 15px; font-weight: 700; }
+        .gc-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--border-soft); }
+        .gc-num { font-size: 11px; color: var(--ink-3); font-weight: 600; width: 22px; flex-shrink: 0; }
+        .gc-nome { font-size: 13px; color: var(--ink); font-weight: 600; width: 230px; flex-shrink: 0; }
+        .gc-obras { font-size: 11px; color: var(--ink-3); width: 68px; flex-shrink: 0; }
+        .gc-row .gc-track { flex: 1; }
+        .gc-val { font-size: 13px; color: var(--ink); width: 106px; text-align: right; flex-shrink: 0; }
+
+        .gc-tabela table { table-layout: fixed; }
+        .gc-tabela td { vertical-align: middle; }
+        .gc-obra-nome { background: none; border: none; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; padding: 0; }
+        .gc-obra-nome:hover { color: var(--blue); text-decoration: underline; }
+        .gc-obra.atrasada { background: var(--red-bg); }
+        .gc-dias { display: block; font-size: 10px; color: var(--ink-3); }
+        .gc-venceu { color: var(--red); font-weight: 600; }
+        .gc-sem-data { font-size: 11px; color: var(--ink-3); font-style: italic; }
+        .gc-cel-barra { display: flex; align-items: center; gap: 8px; }
+        .gc-cel-txt { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+        .gc-selo { display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 20px; padding: 3px 9px; font-size: 10.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
+        .gc-selo.atraso { background: var(--red-bg); color: var(--red); }
+        .gc-selo.perto { background: var(--amber-bg); color: var(--amber); }
+        .gc-detalhe td { background: var(--panel); padding: 8px 12px; }
+        .gc-prazo { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 11.5px; }
+        .gc-prazo-nome { font-weight: 600; color: var(--ink); width: 190px; }
+        .gc-prazo-quando { flex: 1; color: var(--ink-2); }
+        .gc-prazo.atraso .gc-prazo-quando { color: var(--red); }
+        .gc-prazo-val { color: var(--ink); font-weight: 600; }
+        .gc-nota-semdata { display: flex; align-items: flex-start; gap: 8px; background: var(--amber-bg); color: #7A4E00; border-radius: 8px; padding: 10px 13px; font-size: 12px; margin-bottom: 22px; }
+
+        @media (max-width: 900px) { .gc-totais { grid-template-columns: 1fr; } }
       `}</style>
 
       <TopBar />
@@ -10662,9 +11047,10 @@ export default function App() {
           ) : modulo === "a_contratar" ? (
           <>
           <div className="eyebrow">OBRAS ATIVAS · {obrasAtivas.length}</div>
-          <div className="title-row"><span className="title-accent">A Contratar</span></div>
-          <div className="obra-meta">Planejamento do que precisa ser contratado (mão de obra) e comprado (produtos), por verba da EAP</div>
-          <AContratarView obras={obrasAtivas} />
+          <div className="title-row"><span className="title-accent">Gestão de compras e contratações</span></div>
+          <div className="obra-meta">Todas as obras lado a lado: o que falta comprar, o que falta contratar, e quais prazos já venceram</div>
+          <GestaoComprasView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro}
+            onAbrir={(id) => { setSelectedId(id); setModulo("comparativo"); }} />
           </>
           ) : !obra ? (
             <div className="empty-note">
