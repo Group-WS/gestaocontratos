@@ -8099,8 +8099,29 @@ function GcLinhaObra({ L, onAbrir }) {
 
 function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   const [horizonte, setHorizonte] = useState(null);
-  const r = useMemo(() => resumoGeral(obras, { horizonteDias: horizonte }), [obras, horizonte]);
+  /* Vazio quer dizer TODAS. Guardar o conjunto das escolhidas, e nao um
+     "todas: sim/nao" separado, evita o estado impossivel de estar em
+     "todas" com obra marcada. */
+  const [escolhidas, setEscolhidas] = useState(() => new Set());
+
+  /* A lista de chips sai do resumo SEM filtro: ela precisa continuar
+     inteira depois de filtrar, senao quem escolhe uma obra perde o
+     caminho de volta pras outras. */
+  const comDados = useMemo(
+    () => resumoGeral(obras, {}).linhas.map((L) => ({ codigo: L.codigo, nome: L.nome })),
+    [obras]);
+
+  const visiveis = useMemo(
+    () => (escolhidas.size ? obras.filter((o) => escolhidas.has(String(o.codigo))) : obras),
+    [obras, escolhidas]);
+  const r = useMemo(() => resumoGeral(visiveis, { horizonteDias: horizonte }), [visiveis, horizonte]);
   const t = r.totais;
+
+  const alternar = (cod) => setEscolhidas((g) => {
+    const n = new Set(g);
+    n.has(cod) ? n.delete(cod) : n.add(cod);
+    return n;
+  });
 
   if (carregando) return <div className="empty-note">Carregando as obras…</div>;
 
@@ -8117,10 +8138,25 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
           ))}
         </div>
         <span className="gc-topo-info">
-          {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"} com planilha
+          {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"}
+          {escolhidas.size > 0 ? " no filtro" : " com planilha"}
           {t.obrasAtrasadas > 0 && <b className="gc-topo-alerta"> · {t.obrasAtrasadas} com compra atrasada</b>}
         </span>
       </div>
+
+      {comDados.length > 1 && (
+        <div className="gc-obras-filtro">
+          <span className="gc-horizonte-rot">Obras</span>
+          <button className={`gc-chip ${escolhidas.size === 0 ? "on" : ""}`}
+            onClick={() => setEscolhidas(new Set())}>Todas</button>
+          {comDados.map((o) => (
+            <button key={o.codigo} className={`gc-chip ${escolhidas.has(o.codigo) ? "on" : ""}`}
+              onClick={() => alternar(o.codigo)} title={o.nome}>
+              <span className="mono">#{o.codigo}</span> {o.nome}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="gc-totais">
         <GcTotal rot="A COMPRAR — MATERIAL" cor={COR_MAT} legenda="ainda não comprado"
@@ -10960,6 +10996,9 @@ export default function App() {
         .gc-topo-info { font-size: 12px; color: var(--ink-3); }
         .gc-topo-alerta { color: var(--red); }
 
+        .gc-obras-filtro { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 20px; }
+        .gc-obras-filtro .gc-chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .gc-obras-filtro .gc-chip .mono { opacity: .6; margin-right: 3px; }
         .gc-totais { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
         .gc-total { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: #fff; }
         .gc-total-rot { font-size: 10px; font-weight: 800; letter-spacing: .07em; }
