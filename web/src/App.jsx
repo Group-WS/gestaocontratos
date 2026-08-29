@@ -5853,10 +5853,12 @@ const CHAVE_MODULOS = "tkws.modulos.abertos";
 const MODULOS = [
   { id: "novas", nome: "Novas obras", sub: "vindas do Monday", Icone: Sparkle },
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
-  { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: PackageSearch },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: Package },
+  // Por ultimo: e' o que se abre com menos frequencia — obra concluida
+  // ja saiu do dia a dia, e ela estava no meio do caminho do que nao saiu.
+  { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
 ];
 
 function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount }) {
