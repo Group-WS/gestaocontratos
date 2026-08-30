@@ -9553,6 +9553,8 @@ const faseArquivo = (id) => FASES_ARQUIVO.find((f) => f.id === id) || FASES_ARQU
    Os cadernos moram num mapa (uma chave fixa cada, porque são sempre os
    mesmos quatro); os avulsos numa lista (a mesma obra tem N do mesmo
    tipo). Quem lê a tela não quer saber disso. */
+const avulsosDaObra = (obra) => (Array.isArray(obra?.arquivos) ? obra.arquivos : []);
+
 function arquivosDaObra(obra) {
   const out = [];
 
@@ -9571,7 +9573,10 @@ function arquivosDaObra(obra) {
     });
   }
 
-  (obra.arquivos || []).forEach((a) => out.push({ ...a, fase: a.fase || "outros" }));
+  /* Array.isArray, e nao `|| []`: a coluna do banco ja existia guardando
+     `{}`, e `{} || []` devolve o objeto. Foi assim que esta tela derrubou
+     o app inteiro na primeira subida. */
+  avulsosDaObra(obra).forEach((a) => out.push({ ...a, fase: a.fase || "outros" }));
 
   return out;
 }
@@ -9657,7 +9662,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
     setEnviando(true);
     try {
       const info = await subirArquivo({ obraCodigo: obra.codigo, chave: "avulso", file, por: usuario });
-      onArquivos([...(obra.arquivos || []), {
+      onArquivos([...avulsosDaObra(obra), {
         ...info,
         id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         titulo: titulo.trim() || file.name,
@@ -9676,7 +9681,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
     setErro(null);
     try {
       if (a.caminho) await apagarArquivo(a.caminho);
-      onArquivos((obra.arquivos || []).filter((x) => x.id !== a.id));
+      onArquivos(avulsosDaObra(obra).filter((x) => x.id !== a.id));
     } catch (err) {
       setErro(err.message || String(err));
     }

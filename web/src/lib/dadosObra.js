@@ -1,5 +1,14 @@
 import { supabase, supabaseConfigurado } from "./supabase";
 
+/* A coluna `arquivos` ja existia em obra_dados guardando `{}` — objeto,
+   nao lista. `{} || []` devolve o objeto, e `.forEach` num objeto derruba
+   a tela inteira. Nao adianta so trocar o default no banco: as linhas
+   antigas continuam com `{}` gravado.
+
+   Entao a leitura decide a forma, sempre. Coluna compartilhada com uma
+   versao anterior nunca chega no formato que a versao nova espera. */
+const listaDeArquivos = (v) => (Array.isArray(v) ? v : []);
+
 /**
  * O conteúdo de uma obra: o que os uploads produziram, as aprovações do
  * depara e o estado das liberações.
@@ -39,7 +48,7 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     obra_codigo: String(codigo),
     categorias: conteudo.categorias || [],
     cadernos: conteudo.cadernos || {},
-    arquivos: conteudo.arquivos || [],
+    arquivos: listaDeArquivos(conteudo.arquivos),
     aprovacoes: Array.from(conteudo.aprovacoes || []),
     depara_aprovado: !!conteudo.deparaAprovado,
     compras_liberadas: !!conteudo.comprasLiberadas,
@@ -180,7 +189,7 @@ function paraApp(linha) {
   return {
     categorias: linha.categorias || [],
     cadernos: linha.cadernos || {},
-    arquivos: linha.arquivos || [],
+    arquivos: listaDeArquivos(linha.arquivos),
     aprovacoes: new Set(linha.aprovacoes || []),
     deparaAprovado: !!linha.depara_aprovado,
     comprasLiberadas: !!linha.compras_liberadas,
