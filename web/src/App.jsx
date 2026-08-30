@@ -385,7 +385,68 @@ function exportExecutivoCSV(obra) {
 
    A ultima faixa fica VERDE E CURTA quando nao ha nada — painel que
    sempre mostra as mesmas seis caixas ensina a nao olhar pra ele. */
-function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos }) {
+/* Quem responde pela obra. Guarda o e-mail; mostra o nome.
+
+   Sem GC a obra aparece pra todo mundo — de proposito enquanto os
+   vinculos nao estao feitos, porque esconder o que nao tem dono deixaria
+   obra viva fora da tela de todos. Mas fica DITO, senao vira silencio. */
+function GcDaObra({ obra, podeEditar, gcsConhecidos, onDefinir }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(obra.gc || "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
+  useEffect(() => { setValor(obra.gc || ""); setEditando(false); }, [obra.gc, obra.id]);
+
+  async function salvar() {
+    setSalvando(true); setErro(null);
+    try {
+      await onDefinir(obra.codigo, valor.trim() || null);
+      setEditando(false);
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (!editando) {
+    return (
+      <>
+        {obra.gc ? (
+          <>
+            <div className="dash-gc-nome">{nomeDoEmail(obra.gc)}</div>
+            <div className="dash-gc-email mono">{obra.gc}</div>
+          </>
+        ) : (
+          <div className="dash-gc-vazio">sem GC — esta obra aparece para todo mundo</div>
+        )}
+        {podeEditar && (
+          <button className="btn-atalho dash-atalho" onClick={() => setEditando(true)}>
+            {obra.gc ? "Trocar o GC" : "Definir o GC"}
+          </button>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <input className="form-input" type="email" value={valor} list="gcs-da-obra" autoFocus
+        placeholder="email@groupws.com.br" onChange={(e) => setValor(e.target.value)} />
+      <datalist id="gcs-da-obra">
+        {(gcsConhecidos || []).map((e) => <option key={e} value={e} />)}
+      </datalist>
+      {valor.trim() && <div className="dash-gc-nome" style={{ marginTop: 6 }}>{nomeDoEmail(valor)}</div>}
+      {erro && <div className="dash-gc-vazio" style={{ color: "var(--red)" }}>{erro}</div>}
+      <div className="dash-gc-acoes">
+        <button className="btn-atalho" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button>
+        <button className="btn-atalho" onClick={() => { setValor(obra.gc || ""); setEditando(false); }}>cancelar</button>
+      </div>
+    </>
+  );
+}
+
+function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos, onDefinirGC, gcsConhecidos }) {
   // A data digitada so vale quando ela manda salvar. Campo de data que
   // grava sozinho a cada tecla dispara gravacao com ano pela metade —
   // "0002-11-20" chega no banco antes de "2026-11-20".
@@ -541,6 +602,11 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
         <button className="btn-atalho dash-atalho" onClick={onIrParaCompras}>
           <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
         </button>
+      </section>
+
+      <section className="dash-card">
+        <div className="dash-rot">GC RESPONSÁVEL</div>
+        <GcDaObra obra={obra} podeEditar={podeEditar} gcsConhecidos={gcsConhecidos} onDefinir={onDefinirGC} />
       </section>
 
       {(adit.aprovados.length > 0 || adit.pendentes.length > 0) && (
@@ -1854,6 +1920,18 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
           <div className="grp-tot">
             <div className="grp-tot-rot">MO</div>
             <div className={`grp-tot-val mono ${mo > 0 ? "" : "dim"}`}>{mo > 0 ? fmtBRL(mo) : "—"}</div>
+          </div>
+          {/* COMPROMETIDO SIENGE — a coluna existe, o numero ainda nao.
+
+              Ela fica aqui vazia de proposito, e nao escondida ate ficar
+              pronta: quem confere precisa saber que este numero VAI
+              existir, senao planeja em cima da coluna que tem e refaz
+              depois. O tracejado e o rotulo dizem que e' obra em
+              andamento, nao um zero de verdade. */}
+          <div className="grp-tot grp-tot-wip" title="Quanto desta verba já está comprometido em pedidos no Sienge. Ainda em desenvolvimento — o número virá da integração com o Sienge.">
+            <div className="grp-tot-rot">COMPROMETIDO SIENGE</div>
+            <div className="grp-tot-val mono dim">—</div>
+            <div className="grp-wip-nota">em desenvolvimento</div>
           </div>
         </div>
       </div>
@@ -10742,6 +10820,12 @@ export default function App() {
   /* Obra que nao veio do Monday. Ela nasce com o mesmo formato das
      outras — inclusive a EAP vazia — pra que nenhuma tela precise saber
      de onde ela veio. `boardId` fica nulo, e e' so isso que a distingue. */
+  async function definirGCdaObra(codigo, email) {
+    const linha = await definirGC(codigo, email);
+    setObras((prev) => prev.map((o) => (String(o.codigo) === String(codigo) ? { ...o, gc: email } : o)));
+    setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
+  }
+
   async function criarObraManual({ nome, codigo, squad, gc }) {
     setSalvandoObra("manual");
     setErroBanco(null);
@@ -11843,6 +11927,9 @@ export default function App() {
         /* ---- ADITIVOS ---- */
         .row-aditivo { background: #FBF9FF; }
         .tag-aditivo { display: inline-flex; align-items: center; gap: 4px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; margin-top: 3px; }
+        .grp-tot-wip { border-left: 1px dashed var(--border); padding-left: 12px; }
+        .grp-tot-wip .grp-tot-rot { color: var(--ink-3); }
+        .grp-wip-nota { font-size: 8.5px; font-style: italic; color: var(--ink-3); letter-spacing: 0; text-transform: none; margin-top: 1px; }
         .grp-aditivo { display: inline-flex; align-items: center; gap: 4px; background: #EFEAFB; color: var(--purple); border-radius: 20px; padding: 2px 9px; font-size: 10px; font-weight: 700; white-space: nowrap; }
         .item-aditivo { background: #FBF9FF; }
         .chip-aditivo { display: inline-flex; align-items: center; gap: 3px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-left: 6px; }
@@ -13383,7 +13470,9 @@ export default function App() {
           <DashboardObra obra={obra} totals={totals} podeEditar={edicao.minha}
             onDataEntrega={definirDataEntrega}
             onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }}
-            onIrParaAditivos={() => setModulo("aditivos")} />
+            onIrParaAditivos={() => setModulo("aditivos")}
+            onDefinirGC={definirGCdaObra}
+            gcsConhecidos={[...new Set(obras.map((o) => o.gc).filter(Boolean))].sort()} />
           </>}
 
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
