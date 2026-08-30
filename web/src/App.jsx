@@ -9,6 +9,7 @@ import {
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
+import { listarPessoas, salvarPessoa, excluirPessoa, nomeDoEmail, CARGOS } from "./lib/pessoas";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
   rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
@@ -385,12 +386,20 @@ function exportExecutivoCSV(obra) {
 
    A ultima faixa fica VERDE E CURTA quando nao ha nada — painel que
    sempre mostra as mesmas seis caixas ensina a nao olhar pra ele. */
+/* O nome cadastrado, com o e-mail como plano B. Alguem pode ter virado
+   GC de uma obra antes de estar na Equipe — melhor "Priscila Wayhs"
+   deduzido do e-mail que um e-mail cru no meio da tela. */
+function nomeNaEquipe(equipe, email) {
+  const p = (equipe || []).find((x) => x.email === String(email || "").toLowerCase());
+  return p?.nome || nomeDoEmail(email);
+}
+
 /* Quem responde pela obra. Guarda o e-mail; mostra o nome.
 
    Sem GC a obra aparece pra todo mundo — de proposito enquanto os
    vinculos nao estao feitos, porque esconder o que nao tem dono deixaria
    obra viva fora da tela de todos. Mas fica DITO, senao vira silencio. */
-function GcDaObra({ obra, podeEditar, gcsConhecidos, onDefinir }) {
+function GcDaObra({ obra, podeEditar, equipe, onDefinir }) {
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState(obra.gc || "");
   const [salvando, setSalvando] = useState(false);
@@ -414,7 +423,7 @@ function GcDaObra({ obra, podeEditar, gcsConhecidos, onDefinir }) {
       <>
         {obra.gc ? (
           <>
-            <div className="dash-gc-nome">{nomeDoEmail(obra.gc)}</div>
+            <div className="dash-gc-nome">{nomeNaEquipe(equipe, obra.gc)}</div>
             <div className="dash-gc-email mono">{obra.gc}</div>
           </>
         ) : (
@@ -429,14 +438,32 @@ function GcDaObra({ obra, podeEditar, gcsConhecidos, onDefinir }) {
     );
   }
 
+  /* ESCOLHER, e nao digitar. E-mail digitado erra, e um caractere trocado
+     deixa a obra sem dono sem ninguem perceber. Quem tem cargo de GC vem
+     primeiro; o resto continua na lista porque cargo nao e' cerca. */
+  const daLista = [...(equipe || [])].filter((p) => p.ativo || p.email === obra.gc);
+  daLista.sort((a, b) => {
+    const gcA = /gc/i.test(a.cargo || ""), gcB = /gc/i.test(b.cargo || "");
+    if (gcA !== gcB) return gcA ? -1 : 1;
+    return a.nome.localeCompare(b.nome, "pt-BR");
+  });
+
   return (
     <>
-      <input className="form-input" type="email" value={valor} list="gcs-da-obra" autoFocus
-        placeholder="email@groupws.com.br" onChange={(e) => setValor(e.target.value)} />
-      <datalist id="gcs-da-obra">
-        {(gcsConhecidos || []).map((e) => <option key={e} value={e} />)}
-      </datalist>
-      {valor.trim() && <div className="dash-gc-nome" style={{ marginTop: 6 }}>{nomeDoEmail(valor)}</div>}
+      {daLista.length === 0 ? (
+        <div className="dash-gc-vazio">
+          Ninguém cadastrado na Equipe ainda — cadastre lá e o nome aparece aqui para escolher.
+        </div>
+      ) : (
+        <select className="form-input" value={valor} autoFocus onChange={(e) => setValor(e.target.value)}>
+          <option value="">— sem GC —</option>
+          {daLista.map((p) => (
+            <option key={p.email} value={p.email}>
+              {p.nome}{p.cargo ? ` · ${p.cargo}` : ""}{p.ativo ? "" : " (inativo)"}
+            </option>
+          ))}
+        </select>
+      )}
       {erro && <div className="dash-gc-vazio" style={{ color: "var(--red)" }}>{erro}</div>}
       <div className="dash-gc-acoes">
         <button className="btn-atalho" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button>
@@ -446,7 +473,7 @@ function GcDaObra({ obra, podeEditar, gcsConhecidos, onDefinir }) {
   );
 }
 
-function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos, onDefinirGC, gcsConhecidos }) {
+function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos, onDefinirGC, equipe }) {
   // A data digitada so vale quando ela manda salvar. Campo de data que
   // grava sozinho a cada tecla dispara gravacao com ano pela metade —
   // "0002-11-20" chega no banco antes de "2026-11-20".
@@ -606,7 +633,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
 
       <section className="dash-card">
         <div className="dash-rot">GC RESPONSÁVEL</div>
-        <GcDaObra obra={obra} podeEditar={podeEditar} gcsConhecidos={gcsConhecidos} onDefinir={onDefinirGC} />
+        <GcDaObra obra={obra} podeEditar={podeEditar} equipe={equipe} onDefinir={onDefinirGC} />
       </section>
 
       {(adit.aprovados.length > 0 || adit.pendentes.length > 0) && (
@@ -1079,19 +1106,6 @@ const canalPorId = (id) => CANAIS_COMPRA.find((c) => c.id === id) || null;
    modelo, porque o painel geral depende dele — e o painel geral tem
    teste, que so alcanca o que esta acima do marcador de fim do modelo. */
 const contratoEtapa = (it) => it.statusContrato || "nao_solicitado";
-
-/* O nome que se le, a partir do e-mail que se guarda.
-
-   "priscila.wayhs@groupws.com.br" vira "Priscila Wayhs". Guardar o e-mail
-   e' o que faz "as minhas obras" funcionar sem ninguem manter uma tabela
-   de nomes; mostrar o e-mail cru numa lista de obras seria ruido. */
-function nomeDoEmail(email) {
-  const antes = String(email || "").split("@")[0];
-  if (!antes) return "";
-  return antes.split(/[._-]+/).filter(Boolean)
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(" ");
-}
 
 /* A obra e' minha quando o GC dela sou eu. Sem GC ela nao e' de ninguem —
    e aparece pra todo mundo, que e' melhor do que sumir pra todo mundo. */
@@ -6095,6 +6109,7 @@ const MODULOS = [
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: ShoppingCart },
+  { id: "equipe", nome: "Equipe", sub: "quem é quem, e o cargo", Icone: ShieldCheck },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: PackageSearch },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: Package },
   // Por ultimo: e' o que se abre com menos frequencia — obra concluida
@@ -9678,6 +9693,151 @@ function AditivosView({ obras, usuario }) {
 }
 
 /* ============================================================
+   EQUIPE
+   Quem é quem, e o que cada um faz. Existe pra que atribuir o GC
+   de uma obra seja ESCOLHER de uma lista — e-mail digitado erra,
+   e um caractere trocado deixa a obra sem dono sem ninguém ver.
+   ============================================================ */
+
+function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExcluir }) {
+  const [email, setEmail] = useState("");
+  const [nome, setNome] = useState("");
+  const [cargo, setCargo] = useState("GC");
+  const [salvando, setSalvando] = useState(false);
+  const [aviso, setAviso] = useState(null);
+  const [editando, setEditando] = useState(null);
+
+  const obrasDe = (e) => obras.filter((o) => String(o.gc || "").toLowerCase() === e).length;
+  const pode = email.trim().includes("@") && !salvando;
+
+  async function salvar() {
+    setSalvando(true); setAviso(null);
+    try {
+      await onSalvar({ email: email.trim().toLowerCase(), nome: nome.trim(), cargo, por: usuario });
+      setEmail(""); setNome(""); setEditando(null);
+    } catch (e) {
+      setAviso(e.message || String(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function alternarAtivo(p) {
+    try {
+      await onSalvar({ ...p, ativo: !p.ativo, por: usuario });
+    } catch (e) {
+      setAviso(e.message || String(e));
+    }
+  }
+
+  async function remover(p) {
+    const n = obrasDe(p.email);
+    if (n > 0) {
+      setAviso(`${p.nome} é GC de ${n} ${n === 1 ? "obra" : "obras"}. Troque o GC dessas obras antes de excluir, ou marque como inativo.`);
+      return;
+    }
+    if (!window.confirm(`Excluir ${p.nome} da equipe?`)) return;
+    try {
+      await onExcluir(p.email);
+    } catch (e) {
+      setAviso(e.message || String(e));
+    }
+  }
+
+  const porCargo = {};
+  pessoas.forEach((p) => { (porCargo[p.cargo || "Sem cargo"] ||= []).push(p); });
+  const cargos = Object.keys(porCargo).sort();
+
+  return (
+    <>
+      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+      {aviso && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{aviso}</span></div>}
+
+      <div className="cad-box eq-form">
+        <div className="cad-h"><span>{editando ? `Editando ${editando}` : "Adicionar pessoa"}</span></div>
+        <div className="cad-campos eq-campos">
+          {/* E-mail e' a CHAVE: e' com ele que o login se identifica, e e'
+              o que liga a pessoa as obras dela. Por isso ele nao muda em
+              edicao — mudar criaria uma segunda pessoa e a primeira
+              ficaria com as obras. */}
+          <label className="cad-largo">E-mail
+            <input className="form-input" type="email" value={email} placeholder="nome.sobrenome@groupws.com.br"
+              disabled={!!editando}
+              onChange={(e) => setEmail(e.target.value)} /></label>
+          <label>Nome
+            <input className="form-input" value={nome} placeholder={email ? nomeDoEmail(email) : "como aparece na tela"}
+              onChange={(e) => setNome(e.target.value)} /></label>
+          <label>Cargo
+            <input className="form-input" value={cargo} list="cargos-conhecidos"
+              onChange={(e) => setCargo(e.target.value)} />
+            <datalist id="cargos-conhecidos">
+              {CARGOS.map((c) => <option key={c} value={c} />)}
+            </datalist>
+          </label>
+        </div>
+        <div className="cad-acoes">
+          <button className="btn-doc btn-template" disabled={!pode} onClick={salvar}>
+            {salvando ? "Salvando…" : editando ? "Salvar" : "Adicionar"}
+          </button>
+          {editando && (
+            <button className="btn-doc" onClick={() => { setEditando(null); setEmail(""); setNome(""); setCargo("GC"); }}>
+              cancelar
+            </button>
+          )}
+          <span className="cad-nota">
+            Sem nome, o e-mail vira o nome: <b>{nomeDoEmail(email) || "priscila.wayhs@… → Priscila Wayhs"}</b>
+          </span>
+        </div>
+      </div>
+
+      {carregando ? <div className="empty-note">Carregando…</div>
+        : pessoas.length === 0 ? (
+          <div className="compras-empty">
+            <ShieldCheck size={30} className="dim" />
+            <div className="compras-empty-title">Ninguém cadastrado ainda</div>
+            <div className="compras-empty-sub">
+              Cadastre a equipe aqui e depois atribua o GC de cada obra escolhendo desta lista,
+              no Dashboard da obra.
+            </div>
+          </div>
+        ) : cargos.map((c) => (
+          <div key={c} className="arq-bloco">
+            <div className="arq-bloco-h">
+              <span className="arq-bloco-tit">{c}</span>
+              <span className="arq-bloco-n">{porCargo[c].length}</span>
+            </div>
+            {porCargo[c].map((p) => {
+              const n = obrasDe(p.email);
+              return (
+                <div key={p.email} className={`arq-linha ${p.ativo ? "" : "eq-inativo"}`}>
+                  <div className="eq-avatar">{(p.nome || p.email).slice(0, 2).toUpperCase()}</div>
+                  <div className="arq-id">
+                    <div className="arq-titulo">{p.nome}{!p.ativo && <span className="eq-tag-inativo">inativo</span>}</div>
+                    <div className="arq-sub mono">{p.email}</div>
+                  </div>
+                  <span className="eq-obras">{n > 0 ? `${n} ${n === 1 ? "obra" : "obras"}` : "nenhuma obra"}</span>
+                  <div className="arq-acoes">
+                    <button className="caderno-acao" onClick={() => {
+                      setEditando(p.email); setEmail(p.email); setNome(p.nome); setCargo(p.cargo || "");
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}>editar</button>
+                    {/* Quem sai da empresa vira INATIVO, nao sumido: as
+                        obras que ele tocou continuam apontando pra ele. */}
+                    <button className="caderno-acao" onClick={() => alternarAtivo(p)}>
+                      {p.ativo ? "desativar" : "reativar"}
+                    </button>
+                    <button className="ad-icon del" title="Excluir" onClick={() => remover(p)}><Trash2 size={13} /></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+    </>
+  );
+}
+
+/* ============================================================
    ARQUIVOS DA OBRA
    O armário: tudo que foi anexado, num lugar só, com Ver e Baixar.
 
@@ -10392,7 +10552,7 @@ function ObraCard({ o, acao, children }) {
 
    Tres campos, porque tres bastam: o resto (endereco, cliente, GC, valor
    vendido) a obra ganha quando os documentos subirem. */
-function CadastroManualObra({ onCriar, salvando, jaExistem, gcsConhecidos = [], usuario }) {
+function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario }) {
   const [aberto, setAberto] = useState(false);
   const [nome, setNome] = useState("");
   const [codigo, setCodigo] = useState("");
@@ -10449,13 +10609,13 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, gcsConhecidos = [], 
         {/* E-mail, e nao nome: e' a identidade que o login da', e e' o
             unico jeito de "minhas obras" saber quais sao as minhas. */}
         <label className="cad-largo">GC responsável
-          <input className="form-input" type="email" value={gc} placeholder="email@groupws.com.br"
-            list="gcs-conhecidos" onChange={(e) => setGc(e.target.value.trim())} />
-          {gc && <span className="cad-nota">{nomeDoEmail(gc)}</span>}
+          <select className="form-input" value={gc} onChange={(e) => setGc(e.target.value)}>
+            <option value="">— definir depois —</option>
+            {(equipe || []).filter((p) => p.ativo).map((p) => (
+              <option key={p.email} value={p.email}>{p.nome}{p.cargo ? ` · ${p.cargo}` : ""}</option>
+            ))}
+          </select>
         </label>
-        <datalist id="gcs-conhecidos">
-          {gcsConhecidos.map((e) => <option key={e} value={e} />)}
-        </datalist>
       </div>
       {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
       <div className="cad-acoes">
@@ -10470,7 +10630,7 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, gcsConhecidos = [], 
   );
 }
 
-function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, codigosUsados, gcsConhecidos, usuario }) {
+function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, codigosUsados, equipe, usuario }) {
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
   const filtradas = obras.filter((o) => !q || `${o.nome} ${o.codigo} ${o.squad}`.toLowerCase().includes(q));
@@ -10496,7 +10656,7 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
       )}
 
       <CadastroManualObra onCriar={onCriarManual} salvando={salvando === "manual"} jaExistem={codigosUsados}
-        gcsConhecidos={gcsConhecidos} usuario={usuario} />
+        equipe={equipe} usuario={usuario} />
 
       {obras.length > 0 && (
         <div className="obra-search obra-search-wide">
@@ -10765,6 +10925,35 @@ export default function App() {
      pratica, uma obra so. Aqui vem tudo de uma vez, e so quando o painel
      esta na tela: sao varios JSONB gordos, e quem nunca abre o painel
      nao tem por que pagar por eles. */
+  /* A equipe carrega com o app: o seletor de GC de cada obra precisa
+     dela, e ela e' uma lista curta. */
+  const [pessoas, setPessoas] = useState([]);
+  const [pessoasCarregando, setPessoasCarregando] = useState(true);
+  const [pessoasErro, setPessoasErro] = useState(null);
+
+  useEffect(() => {
+    let vivo = true;
+    listarPessoas()
+      .then((l) => { if (vivo) setPessoas(l); })
+      .catch((e) => { if (vivo) setPessoasErro(`Não consegui carregar a equipe: ${e.message || e}`); })
+      .finally(() => { if (vivo) setPessoasCarregando(false); });
+    return () => { vivo = false; };
+  }, []);
+
+  async function salvarPessoaNoTime(dados) {
+    const salva = await salvarPessoa(dados);
+    setPessoas((prev) => {
+      const sem = prev.filter((p) => p.email !== salva.email);
+      return [...sem, salva].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    });
+    return salva;
+  }
+
+  async function excluirPessoaDoTime(email) {
+    await excluirPessoa(email);
+    setPessoas((prev) => prev.filter((p) => p.email !== email));
+  }
+
   const [painelDados, setPainelDados] = useState(null);
   const [painelCarregando, setPainelCarregando] = useState(false);
   const [painelErro, setPainelErro] = useState(null);
@@ -13244,6 +13433,11 @@ export default function App() {
         .cad-acoes { display: flex; align-items: center; gap: 12px; margin-top: 13px; flex-wrap: wrap; }
         .cad-nota { font-size: 11px; color: var(--ink-3); }
         @media (max-width: 760px) { .cad-campos { grid-template-columns: 1fr; } }
+        .eq-form .eq-campos { grid-template-columns: 1fr 1fr 170px; }
+        .eq-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--blue-bg); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+        .eq-inativo { opacity: .55; }
+        .eq-tag-inativo { margin-left: 7px; background: var(--panel); color: var(--ink-3); border-radius: 20px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; }
+        .eq-obras { font-size: 11px; color: var(--ink-3); white-space: nowrap; flex-shrink: 0; }
         /* ---- Arquivos da obra ---- */
         .arq-topo { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 18px 0 16px; }
         .arq-topo-n { font-family: 'Space Grotesk', sans-serif; font-size: 30px; font-weight: 700; color: var(--ink); line-height: 1; }
@@ -13396,8 +13590,7 @@ export default function App() {
           <div className="obra-meta">Obras que ainda não foram iniciadas aqui</div>
           <NovasObrasView obras={obrasNovas} onStart={darStart} onCriarManual={criarObraManual}
             salvando={salvandoObra} semBanco={!supabaseConfigurado}
-            codigosUsados={new Set(obras.map((o) => String(o.codigo)))} usuario={usuario}
-            gcsConhecidos={[...new Set(obras.map((o) => o.gc).filter(Boolean))].sort()} />
+            codigosUsados={new Set(obras.map((o) => String(o.codigo)))} usuario={usuario} equipe={pessoas} />
           </>
           ) : modulo === "arquivo" ? (
           <>
@@ -13412,6 +13605,14 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Gerador de códigos Sienge</span></div>
           <div className="obra-meta">Sobe uma lista de produtos, casa com os insumos já cadastrados e gera a descrição no padrão do que não existe. Nada é guardado.</div>
           <GeradorSiengeView />
+          </>
+          ) : modulo === "equipe" ? (
+          <>
+          <div className="eyebrow">CADASTRO · {pessoas.length}</div>
+          <div className="title-row"><span className="title-accent">Equipe</span></div>
+          <div className="obra-meta">Quem é quem e o cargo de cada um — é desta lista que sai o GC de cada obra</div>
+          <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
+            usuario={usuario} onSalvar={salvarPessoaNoTime} onExcluir={excluirPessoaDoTime} />
           </>
           ) : modulo === "mehoo" ? (
           <>
@@ -13486,8 +13687,7 @@ export default function App() {
             onDataEntrega={definirDataEntrega}
             onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }}
             onIrParaAditivos={() => setModulo("aditivos")}
-            onDefinirGC={definirGCdaObra}
-            gcsConhecidos={[...new Set(obras.map((o) => o.gc).filter(Boolean))].sort()} />
+            onDefinirGC={definirGCdaObra} equipe={pessoas} />
           </>}
 
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
