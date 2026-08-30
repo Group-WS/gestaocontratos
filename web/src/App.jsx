@@ -6097,7 +6097,6 @@ function TopBar() {
 }
 
 const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
-const CHAVE_MODULOS = "tkws.modulos.abertos";
 const CHAVE_MINHAS = "tkws.so.minhas";
 const CHAVE_SQUADS = "tkws.squads.fechados";
 
@@ -6150,16 +6149,13 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_SIDEBAR, recolhida ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [recolhida]);
 
-  /* Modulos nascem recolhidos: e' a lista de obras que precisa da tela.
-     A escolha fica guardada, igual a da barra inteira. */
-  const [modulosAbertos, setModulosAbertos] = useState(() => {
-    try { return localStorage.getItem(CHAVE_MODULOS) === "1"; } catch { return false; }
-  });
-  const alternarModulos = () => setModulosAbertos((v) => {
-    const n = !v;
-    try { localStorage.setItem(CHAVE_MODULOS, n ? "1" : "0"); } catch { /* modo anonimo */ }
-    return n;
-  });
+  /* Modulos nascem SEMPRE fechados, e essa escolha nao e' guardada.
+
+     E' o contrario do resto da barra de proposito: modulo se abre pra ir
+     a um lugar e nao se volta pra ele, entao deixar aberto de ontem so
+     rouba as linhas que a lista de obras usa hoje. Abrir e' um clique. */
+  const [modulosAbertos, setModulosAbertos] = useState(false);
+  const alternarModulos = () => setModulosAbertos((v) => !v);
 
   const [search, setSearch] = useState("");
   const [onlyAlert, setOnlyAlert] = useState(false);
@@ -6186,10 +6182,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     groups[key].push(o);
   });
   const groupNames = Object.keys(groups).sort();
-
-  /* O squad da obra ABERTA continua aberto mesmo dobrado: esconder a obra
-     em que a pessoa esta faria a barra parar de dizer onde ela esta. */
-  const temAberta = (squadName) => (groups[squadName] || []).some((o) => o.id === selected);
 
   return (
     <aside className={`sidebar ${recolhida ? "recolhida" : ""}`}>
@@ -6247,13 +6239,21 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                   numa coluna. A obra ABERTA nunca fica escondida — dobrar
                   o squad dela faria a barra parar de dizer onde voce
                   esta. */}
+              {/* Fecha qualquer um, inclusive o da obra aberta. Tentei
+                  segurar o squad da obra atual aberto pra barra nunca
+                  parar de dizer onde a pessoa esta — mas isso virou um
+                  squad que nao fecha, e um botao que nao faz o que diz e'
+                  pior que a informacao que ele protegia. */}
               <button className="squad-group-label" onClick={() => alternarSquad(squadName)}
                 title={fechados.has(squadName) ? "Abrir este squad" : "Recolher este squad"}>
-                {fechados.has(squadName) && !temAberta(squadName)
-                  ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                {fechados.has(squadName) ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
                 <span>{squadName} · {groups[squadName].length}</span>
+                {/* O ponto avisa que a obra aberta esta ai dentro. */}
+                {fechados.has(squadName) && (groups[squadName] || []).some((o) => o.id === selected) && (
+                  <span className="squad-tem-aberta" title="A obra aberta está neste squad" />
+                )}
               </button>
-              {(!fechados.has(squadName) || temAberta(squadName)) && (
+              {!fechados.has(squadName) && (
               <div className="nav-list">
                 {groups[squadName].map((o) => {
                   const alertCount = obraAlertCount(o);
@@ -11996,6 +11996,8 @@ export default function App() {
         .squad-group { margin-bottom: 10px; }
         .squad-group-label { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
         .squad-group-label:hover { color: var(--ink-2); }
+        .squad-tem-aberta { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
+
         .squad-group-label span { text-align: left; }
 
         .squad-group-label { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px; }
