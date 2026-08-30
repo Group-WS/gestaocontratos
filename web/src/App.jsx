@@ -8563,7 +8563,11 @@ function GcLinhaObra({ L, onAbrir }) {
   );
 }
 
-/* O filtro de obras.
+/* O FILTRO DE OBRAS — o mesmo nos tres paineis.
+
+   Cada tela tinha inventado o seu: chips aqui, nada ali, "escolha a obra"
+   acola. Tres jeitos de fazer a mesma coisa e' tres coisas pra aprender,
+   e a que a pessoa usou ontem nao ajuda na de hoje.
 
    Comecou como uma fileira de chips, um por obra. Com as seis de hoje
    dava certo; com as quarenta e poucas que existem seria um muro de
@@ -8573,7 +8577,7 @@ function GcLinhaObra({ L, onAbrir }) {
    Entao: botao que diz quantas estao escolhidas, e uma lista com busca
    por tras. A lista rola; a busca acha por nome OU por codigo, porque
    quem trabalha nisso pensa em "2506" tanto quanto em "Salt". */
-function GcFiltroObras({ obras, escolhidas, onMudar }) {
+function FiltroObras({ obras, escolhidas, onMudar }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const caixa = useRef(null);
@@ -8609,19 +8613,19 @@ function GcFiltroObras({ obras, escolhidas, onMudar }) {
       : `${escolhidas.size} de ${obras.length} obras`;
 
   return (
-    <div className="gc-filtro-obras" ref={caixa}>
-      <button className={`gc-filtro-btn ${escolhidas.size ? "on" : ""}`} onClick={() => setAberto((x) => !x)}>
+    <div className="fo-caixa" ref={caixa}>
+      <button className={`fo-btn ${escolhidas.size ? "on" : ""}`} onClick={() => setAberto((x) => !x)}>
         <Building2 size={13} />
-        <span className="gc-filtro-rot">{rotulo}</span>
+        <span className="fo-rot">{rotulo}</span>
         <ChevronDown size={13} />
       </button>
 
       {aberto && (
-        <div className="gc-filtro-menu">
-          <input className="form-input gc-filtro-busca" autoFocus value={busca}
+        <div className="fo-menu">
+          <input className="form-input fo-busca" autoFocus value={busca}
             placeholder="nome ou código da obra…" onChange={(e) => setBusca(e.target.value)} />
 
-          <div className="gc-filtro-acoes">
+          <div className="fo-acoes">
             <button onClick={() => onMudar(new Set())} disabled={escolhidas.size === 0}>Todas</button>
             {/* "Marcar as encontradas" e' o que torna a busca util: filtrar
                 por "Salt" e marcar as tres de uma vez, em vez de tres
@@ -8632,14 +8636,14 @@ function GcFiltroObras({ obras, escolhidas, onMudar }) {
             </button>
           </div>
 
-          <div className="gc-filtro-lista">
+          <div className="fo-lista">
             {achadas.length === 0 && <div className="empty-note">Nenhuma obra com esse nome ou código.</div>}
             {achadas.map((o) => (
-              <button key={o.codigo} className={`gc-filtro-item ${escolhidas.has(o.codigo) ? "on" : ""}`}
+              <button key={o.codigo} className={`fo-item ${escolhidas.has(o.codigo) ? "on" : ""}`}
                 onClick={() => alternar(o.codigo)} title={o.nome}>
-                <span className="gc-filtro-check">{escolhidas.has(o.codigo) && <Check size={11} />}</span>
+                <span className="fo-check">{escolhidas.has(o.codigo) && <Check size={11} />}</span>
                 <span className="mono dim">#{o.codigo}</span>
-                <span className="gc-filtro-nome">{o.nome}</span>
+                <span className="fo-nome">{o.nome}</span>
               </button>
             ))}
           </div>
@@ -8649,9 +8653,9 @@ function GcFiltroObras({ obras, escolhidas, onMudar }) {
       {/* As escolhidas ficam a vista e sao removiveis com um clique. Ate
           seis; passando disso o resumo cabe melhor que a fileira. */}
       {escolhidas.size > 0 && escolhidas.size <= 6 && (
-        <div className="gc-filtro-marcadas">
+        <div className="fo-marcadas">
           {obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
-            <button key={o.codigo} className="gc-filtro-tag" onClick={() => alternar(o.codigo)}
+            <button key={o.codigo} className="fo-tag" onClick={() => alternar(o.codigo)}
               title="Tirar do filtro">
               <span className="mono">#{o.codigo}</span> <X size={10} />
             </button>
@@ -8659,7 +8663,7 @@ function GcFiltroObras({ obras, escolhidas, onMudar }) {
         </div>
       )}
       {escolhidas.size > 6 && (
-        <button className="gc-filtro-limpar" onClick={() => onMudar(new Set())}>limpar filtro</button>
+        <button className="fo-limpar" onClick={() => onMudar(new Set())}>limpar filtro</button>
       )}
     </div>
   );
@@ -8711,7 +8715,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
       {comDados.length > 1 && (
         <div className="gc-obras-filtro">
           <span className="gc-horizonte-rot">Obras</span>
-          <GcFiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
+          <FiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
         </div>
       )}
 
@@ -9321,7 +9325,7 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
    A observacao mora dentro do documento salvo (`doc.observacao`), e nao
    numa coluna nova: sem ela a tabela precisaria de mais um `alter table`,
    e migracao e' o passo que trava — este modulo ja custou tres. */
-function LinhaAditivo({ a, usuario, obraNome, onAbrir, onExcluir, onSalvo, onErro }) {
+function LinhaAditivo({ a, usuario, obraNome, mostrarObra, onAbrir, onExcluir, onSalvo, onErro }) {
   const [obs, setObs] = useState(a.doc?.observacao || "");
   const [salvando, setSalvando] = useState(false);
   const saldo = a.totalAdicao - a.totalSupressao;
@@ -9340,6 +9344,9 @@ function LinhaAditivo({ a, usuario, obraNome, onAbrir, onExcluir, onSalvo, onErr
   return (
     <tr>
       <td className="mono"><b>{a.numero}</b></td>
+      {mostrarObra && (
+        <td><div className="ad-linha-obra">{obraNome || <span className="mono dim">#{a.obraCodigo}</span>}</div></td>
+      )}
       <td>
         <button className="ad-linha-desc" onClick={onAbrir}>
           {a.descricao || <span className="dim">sem descrição — clique para abrir</span>}
@@ -9387,7 +9394,11 @@ function LinhaAditivo({ a, usuario, obraNome, onAbrir, onExcluir, onSalvo, onErr
 }
 
 function AditivosView({ obras, usuario }) {
-  const [obraCodigo, setObraCodigo] = useState(null);
+  /* Vazio quer dizer TODAS — o mesmo contrato do filtro dos outros
+     paineis. Antes esta tela abria pedindo pra escolher uma obra, e ate
+     escolher nao mostrava nada: quem so queria ver o que existe tinha
+     que adivinhar em qual obra procurar. */
+  const [escolhidas, setEscolhidas] = useState(() => new Set());
   const [lista, setLista] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
@@ -9407,19 +9418,29 @@ function AditivosView({ obras, usuario }) {
     return () => { vivo = false; };
   }, []);
 
+  /* Uma obra escolhida e' o modo de TRABALHO: da' pra criar aditivo, e o
+     executivo dela e' carregado pra busca de supressao. Nenhuma ou varias
+     e' o modo de LEITURA — ve tudo, cria nada, porque aditivo nasce
+     dentro de uma obra e o numero sai do centro de custo dela. */
+  const uma = escolhidas.size === 1 ? [...escolhidas][0] : null;
+  const obra = obras.find((o) => String(o.codigo) === String(uma)) || null;
+
   useEffect(() => {
-    if (!obraCodigo) { setDoExecutivo([]); return; }
+    if (!uma) { setDoExecutivo([]); return; }
     let vivo = true;
-    carregarDadosObra(obraCodigo)
+    carregarDadosObra(uma)
       .then((d) => { if (vivo) setDoExecutivo(itensParaSupressao(normalizarCategorias(d?.categorias || []))); })
       .catch(() => { if (vivo) setDoExecutivo([]); });   // sem executivo, digita a mao
     return () => { vivo = false; };
-  }, [obraCodigo]);
+  }, [uma]);
 
-  const obra = obras.find((o) => String(o.codigo) === String(obraCodigo)) || null;
+  const visiveis = useMemo(
+    () => (escolhidas.size ? lista.filter((a) => escolhidas.has(String(a.obraCodigo))) : lista),
+    [lista, escolhidas]);
   const daObra = useMemo(
-    () => lista.filter((a) => String(a.obraCodigo) === String(obraCodigo)),
-    [lista, obraCodigo]);
+    () => (uma ? lista.filter((a) => String(a.obraCodigo) === String(uma)) : []),
+    [lista, uma]);
+  const nomeDaObra = (cod) => obras.find((o) => String(o.codigo) === String(cod))?.nome || "";
   const aberto = lista.find((a) => a.id === abertoId) || null;
 
   const trocar = (salvo) => setLista((l) => l.map((a) => (a.id === salvo.id ? salvo : a)));
@@ -9455,53 +9476,48 @@ function AditivosView({ obras, usuario }) {
       onVoltar={() => setAbertoId(null)} onSalvo={trocar} />;
   }
 
-  const contagem = (cod) => lista.filter((a) => String(a.obraCodigo) === String(cod)).length;
-
   return (
     <>
       {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
 
-      <div className="ad-obras">
-        {obras.map((o) => {
-          const n = contagem(o.codigo);
-          return (
-            <button key={o.id} className={`ad-obra ${String(o.codigo) === String(obraCodigo) ? "on" : ""}`}
-              onClick={() => setObraCodigo(o.codigo)}>
-              <span className="mono dim">#{o.codigo}</span>
-              <span className="ad-obra-nome">{o.nome}</span>
-              {n > 0 && <span className="ad-obra-n">{n}</span>}
-            </button>
-          );
-        })}
+      <div className="gc-obras-filtro">
+        <span className="gc-horizonte-rot">Obras</span>
+        <FiltroObras obras={obras.map((o) => ({ codigo: String(o.codigo), nome: o.nome }))}
+          escolhidas={escolhidas} onMudar={setEscolhidas} />
       </div>
 
-      {!obra ? (
-        <div className="compras-empty">
-          <FileText size={30} className="dim" />
-          <div className="compras-empty-title">Escolha a obra</div>
-          <div className="compras-empty-sub">
-            Cada aditivo pertence a uma obra e é numerado a partir do centro de custo dela —
-            a obra 2405 gera <b>2405/1</b>, <b>2405/2</b>, e assim por diante.
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="ad-cab-obra">
-            <div>
-              <div className="ad-cab-nome">{obra.nome}</div>
-              <div className="ad-cab-sub">centro de custo <b className="mono">{obra.codigo}</b> · próximo será <b className="mono">{numeroAditivo(obra.codigo, proximaSeq(daObra))}</b></div>
-            </div>
-            <button className="btn-doc btn-template" onClick={novo}><Plus size={13} /> Novo aditivo</button>
-          </div>
+      <div className="ad-cab-obra">
+            {obra ? (
+              <div>
+                <div className="ad-cab-nome">{obra.nome}</div>
+                <div className="ad-cab-sub">centro de custo <b className="mono">{obra.codigo}</b> · próximo será <b className="mono">{numeroAditivo(obra.codigo, proximaSeq(daObra))}</b></div>
+              </div>
+            ) : (
+              <div>
+                <div className="ad-cab-nome">{visiveis.length} {visiveis.length === 1 ? "aditivo" : "aditivos"}</div>
+                {/* Criar exige UMA obra: o numero do aditivo sai do centro
+                    de custo dela, e nao ha centro de custo de "todas". */}
+                <div className="ad-cab-sub">escolha uma obra no filtro para criar um aditivo novo</div>
+              </div>
+            )}
+        {obra && <button className="btn-doc btn-template" onClick={novo}><Plus size={13} /> Novo aditivo</button>}
+      </div>
 
           {carregando ? <div className="empty-note">Carregando…</div>
-            : daObra.length === 0 ? <div className="empty-note">Nenhum aditivo nesta obra ainda.</div> : (
+            : visiveis.length === 0 ? (
+              <div className="empty-note">
+                {escolhidas.size ? "Nenhum aditivo nesta seleção." : "Nenhum aditivo ainda em obra nenhuma."}
+              </div>
+            ) : (
             <div className="grp-block">
               <div className="grp-itens">
                 <table>
                   <thead>
                     <tr>
                       <th style={{ width: 90 }}>Nº</th>
+                      {/* A obra so aparece quando ha mais de uma na tela:
+                          com uma so, ela ja esta escrita no cabecalho. */}
+                      {!obra && <th style={{ width: 190 }}>Obra</th>}
                       <th>Do que se trata</th>
                       <th style={{ width: 120 }} className="right">Supressão</th>
                       <th style={{ width: 120 }} className="right">Adição</th>
@@ -9511,8 +9527,9 @@ function AditivosView({ obras, usuario }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {daObra.map((a) => (
-                      <LinhaAditivo key={a.id} a={a} usuario={usuario} obraNome={obra.nome}
+                    {visiveis.map((a) => (
+                      <LinhaAditivo key={a.id} a={a} usuario={usuario}
+                        obraNome={nomeDaObra(a.obraCodigo)} mostrarObra={!obra}
                         onAbrir={() => setAbertoId(a.id)}
                         onExcluir={() => excluir(a)}
                         onSalvo={trocar}
@@ -9523,8 +9540,6 @@ function AditivosView({ obras, usuario }) {
               </div>
             </div>
           )}
-        </>
-      )}
     </>
   );
 }
@@ -9887,7 +9902,20 @@ function ObraMehoo({ L, canal }) {
 
 function MehooView({ obras, carregando, erro }) {
   const canal = canalPorId("mehoo");
-  const p = useMemo(() => painelDoCanal(obras, "mehoo"), [obras]);
+  // Vazio quer dizer TODAS, igual aos outros dois paineis.
+  const [escolhidas, setEscolhidas] = useState(() => new Set());
+
+  /* A lista de chips sai do painel SEM filtro: ela precisa continuar
+     inteira depois de filtrar, senao quem escolhe uma obra perde o
+     caminho de volta pras outras. */
+  const comItens = useMemo(
+    () => painelDoCanal(obras, "mehoo").linhas.map((L) => ({ codigo: String(L.obra.codigo), nome: L.obra.nome })),
+    [obras]);
+
+  const visiveis = useMemo(
+    () => (escolhidas.size ? obras.filter((o) => escolhidas.has(String(o.codigo))) : obras),
+    [obras, escolhidas]);
+  const p = useMemo(() => painelDoCanal(visiveis, "mehoo"), [visiveis]);
 
   if (carregando) return <div className="empty-note">Carregando as obras…</div>;
 
@@ -9895,7 +9923,14 @@ function MehooView({ obras, carregando, erro }) {
     <>
       {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
 
-      <div className="gc-totais mh-totais">
+      {comItens.length > 1 && (
+        <div className="gc-obras-filtro mh-filtro">
+          <span className="gc-horizonte-rot">Obras</span>
+          <FiltroObras obras={comItens} escolhidas={escolhidas} onMudar={setEscolhidas} />
+        </div>
+      )}
+
+      <div className="gc-totais">
         <GcTotal rot="MATERIAL DA MEHOO" cor={canal.cor} legenda="ainda não comprado"
           feito={p.comprado} total={p.total} />
         <div className="gc-total">
@@ -11788,6 +11823,7 @@ export default function App() {
         .ad-cab-obra { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
         .ad-cab-nome { font-size: 16px; font-weight: 700; color: var(--ink); }
         .ad-cab-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+        .ad-linha-obra { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ad-linha-desc { background: none; border: none; padding: 0; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
         .ad-linha-desc:hover { color: var(--blue); text-decoration: underline; }
         .ad-linha-data { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
@@ -13034,7 +13070,7 @@ export default function App() {
         .arq-acoes { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
         .arq-perdido { font-size: 11px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
         /* ---- Painel da Mehoo ---- */
-        .mh-totais { margin-top: 18px; }
+        .mh-filtro { margin: 18px 0 14px; }
         .mh-obra { border: 1px solid var(--border); border-radius: 12px; background: #fff; margin-bottom: 12px; overflow: hidden; }
         .mh-obra-head { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; background: none; border: none; font-family: inherit; padding: 13px 16px; cursor: pointer; }
         .mh-obra-head:hover { background: #FCFBF9; }
@@ -13070,27 +13106,27 @@ export default function App() {
         .gc-topo-info { font-size: 12px; color: var(--ink-3); }
         .gc-topo-alerta { color: var(--red); }
 
-        .gc-filtro-obras { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .gc-filtro-btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: #fff; color: var(--ink-2); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
-        .gc-filtro-btn:hover { border-color: var(--ink-3); }
-        .gc-filtro-btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
-        .gc-filtro-rot { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .gc-filtro-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 330px; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.13); padding: 10px; }
-        .gc-filtro-busca { margin-top: 0; width: 100%; font-size: 12.5px; }
-        .gc-filtro-acoes { display: flex; gap: 8px; margin: 8px 0 6px; }
-        .gc-filtro-acoes button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--blue); cursor: pointer; padding: 0; }
-        .gc-filtro-acoes button:disabled { color: var(--ink-3); cursor: default; }
-        .gc-filtro-lista { max-height: 260px; overflow-y: auto; margin: 0 -4px; }
-        .gc-filtro-item { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; background: none; border: none; border-radius: 6px; padding: 5px 6px; font-family: inherit; font-size: 12px; color: var(--ink); cursor: pointer; }
-        .gc-filtro-item:hover { background: var(--panel); }
-        .gc-filtro-item.on { background: var(--blue-bg); }
-        .gc-filtro-check { width: 14px; height: 14px; border: 1.5px solid var(--ink-3); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
-        .gc-filtro-item.on .gc-filtro-check { background: var(--blue); border-color: var(--blue); }
-        .gc-filtro-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .gc-filtro-marcadas { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-        .gc-filtro-tag { display: inline-flex; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 3px 8px; font-size: 11px; color: var(--ink-2); font-family: inherit; cursor: pointer; }
-        .gc-filtro-tag:hover { border-color: var(--red); color: var(--red); }
-        .gc-filtro-limpar { background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--blue); cursor: pointer; }
+        .fo-caixa { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .fo-btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: #fff; color: var(--ink-2); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+        .fo-btn:hover { border-color: var(--ink-3); }
+        .fo-btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .fo-rot { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fo-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 330px; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.13); padding: 10px; }
+        .fo-busca { margin-top: 0; width: 100%; font-size: 12.5px; }
+        .fo-acoes { display: flex; gap: 8px; margin: 8px 0 6px; }
+        .fo-acoes button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--blue); cursor: pointer; padding: 0; }
+        .fo-acoes button:disabled { color: var(--ink-3); cursor: default; }
+        .fo-lista { max-height: 260px; overflow-y: auto; margin: 0 -4px; }
+        .fo-item { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; background: none; border: none; border-radius: 6px; padding: 5px 6px; font-family: inherit; font-size: 12px; color: var(--ink); cursor: pointer; }
+        .fo-item:hover { background: var(--panel); }
+        .fo-item.on { background: var(--blue-bg); }
+        .fo-check { width: 14px; height: 14px; border: 1.5px solid var(--ink-3); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
+        .fo-item.on .fo-check { background: var(--blue); border-color: var(--blue); }
+        .fo-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fo-marcadas { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+        .fo-tag { display: inline-flex; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 3px 8px; font-size: 11px; color: var(--ink-2); font-family: inherit; cursor: pointer; }
+        .fo-tag:hover { border-color: var(--red); color: var(--red); }
+        .fo-limpar { background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--blue); cursor: pointer; }
         .gc-obras-filtro { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 20px; }
         .gc-obras-filtro .gc-chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gc-obras-filtro .gc-chip .mono { opacity: .6; margin-right: 3px; }
