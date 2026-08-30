@@ -1379,6 +1379,81 @@ function acharNoExecutivo(itens, termo) {
   }).slice(0, 6);
 }
 
+/**
+ * O que UM canal de compra tem em UMA obra.
+ *
+ * Existe pro painel da Mehoo, mas nao e' dela: o mesmo recorte serve pra
+ * qualquer canal, e amarrar a funcao a um fornecedor so faria a proxima
+ * ser copia-e-cola desta.
+ *
+ * O prazo vem junto porque e' a pergunta seguinte de quem le a lista:
+ * saber que ha oito itens da Mehoo nao ajuda sem saber ate quando.
+ */
+function itensDoCanal(obra, canalId) {
+  const out = [];
+  (obra.categorias || []).forEach((cat) => {
+    const itens = cat.itens || [];
+    itens.forEach((it) => {
+      if (it.ehTitulo || it.canalCompra !== canalId) return;
+      const { material, mo } = parcelasDoItem(it);
+      const prazo = prazoDoGrupo(cat, itens);
+      out.push({
+        it, cat,
+        catNum: cat.num, catNome: cat.nome,
+        material, mo,
+        limite: prazo ? dataLimiteCompra(obra.dataEntrega, prazo.dias) : null,
+        prazo,
+      });
+    });
+  });
+  // Mais apertado primeiro; sem prazo por ultimo, que e' o que nao cobra.
+  return out.sort((a, b) => {
+    if (!a.limite) return 1;
+    if (!b.limite) return -1;
+    return a.limite - b.limite;
+  });
+}
+
+/**
+ * O painel de um canal: uma linha por obra, so as que tem item dele.
+ *
+ * Obra sem nenhum item do canal fica de fora — uma lista com quinze obras
+ * onde treze dizem "nenhum item" nao e' uma lista, e' um estorvo.
+ */
+function painelDoCanal(obras, canalId, hoje = new Date()) {
+  const linhas = (obras || []).map((o) => {
+    const itens = itensDoCanal(o, canalId);
+    if (!itens.length) return null;
+    const total = itens.reduce((a, r) => a + r.material, 0);
+    const comprado = itens.filter((r) => r.it.comprado).reduce((a, r) => a + r.material, 0);
+    const atrasados = itens.filter((r) => !r.it.comprado && r.limite && diasAte(r.limite, hoje) < 0).length;
+    return {
+      obra: o, itens, total, comprado,
+      falta: total - comprado,
+      nComprados: itens.filter((r) => r.it.comprado).length,
+      atrasados,
+      entrega: o.dataEntrega || null,
+      faltamEntrega: o.dataEntrega ? diasAte(new Date(`${o.dataEntrega}T12:00:00`), hoje) : null,
+    };
+  }).filter(Boolean);
+
+  // Atrasada primeiro; depois quem entrega antes; sem data por ultimo.
+  linhas.sort((a, b) => {
+    if ((b.atrasados > 0) - (a.atrasados > 0)) return (b.atrasados > 0) - (a.atrasados > 0);
+    if (!a.entrega) return 1;
+    if (!b.entrega) return -1;
+    return a.entrega < b.entrega ? -1 : 1;
+  });
+
+  return {
+    linhas,
+    total: linhas.reduce((a, L) => a + L.total, 0),
+    comprado: linhas.reduce((a, L) => a + L.comprado, 0),
+    nItens: linhas.reduce((a, L) => a + L.itens.length, 0),
+    atrasados: linhas.reduce((a, L) => a + L.atrasados, 0),
+  };
+}
+
 /* O resumo que o Dashboard mostra: quantos, de que valor, e se algum
    grupo ficou sem verba. */
 function resumoAditivos(aditivos) {
@@ -5907,6 +5982,7 @@ const MODULOS = [
   { id: "novas", nome: "Novas obras", sub: "vindas do Monday", Icone: Sparkle },
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
+  { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: ShoppingCart },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: PackageSearch },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: Package },
   // Por ultimo: e' o que se abre com menos frequencia — obra concluida
@@ -9450,6 +9526,188 @@ function AditivosView({ obras, usuario }) {
 }
 
 /* ============================================================
+   PAINEL DA MEHOO
+   A obra vista pelo lado de quem fornece: quando entrega, quais
+   cadernos consultar, e o que exatamente foi mandado pra eles.
+   ============================================================ */
+
+/* Baixar, sem anexar. Este painel e' de consulta: quem sobe caderno e' a
+   equipe da obra, na aba do Executivo, e ter dois lugares que gravam o
+   mesmo arquivo e' como um deles fica desatualizado. */
+function CadernoBaixar({ titulo, arquivo }) {
+  const [baixando, setBaixando] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  async function baixar() {
+    if (arquivo?.url) { window.open(arquivo.url, "_blank"); return; }
+    setErro(null); setBaixando(true);
+    try {
+      window.open(await linkParaBaixar(arquivo.caminho), "_blank");
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setBaixando(false);
+    }
+  }
+
+  const perdido = arquivo && !anexoRecuperavel(arquivo);
+  return (
+    <div className="mh-caderno">
+      <BookOpen size={13} className={arquivo ? "" : "dim"} />
+      <span className="mh-caderno-tit">{titulo}</span>
+      {!arquivo ? <span className="mh-caderno-vazio">sem arquivo</span>
+        : perdido ? <span className="mh-caderno-vazio">arquivo não guardado — a equipe precisa anexar de novo</span>
+        : (
+          <>
+            <span className="mh-caderno-arq">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
+            <button className="caderno-acao" onClick={baixar} disabled={baixando}>
+              <Download size={12} /> {baixando ? "Abrindo…" : "Baixar"}
+            </button>
+          </>
+        )}
+      {erro && <span className="mh-caderno-vazio">{erro}</span>}
+    </div>
+  );
+}
+
+function ObraMehoo({ L, canal }) {
+  const [aberto, setAberto] = useState(false);
+  const o = L.obra;
+  const pct = L.total > 0 ? (L.comprado / L.total) * 100 : 0;
+
+  return (
+    <div className="mh-obra">
+      <button className="mh-obra-head" onClick={() => setAberto((v) => !v)}>
+        {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
+        <div className="mh-obra-id">
+          <div className="mh-obra-nome"><span className="mono dim">#{o.codigo}</span> {o.nome}</div>
+          {o.endereco && o.endereco !== "—" && <div className="mh-obra-end">{o.endereco}</div>}
+        </div>
+
+        {/* A data de entrega e' a primeira pergunta de quem fornece. */}
+        <div className="mh-entrega">
+          <div className="mh-rot">Entrega da obra</div>
+          {L.entrega ? (
+            <div className={`mh-entrega-val mono ${L.faltamEntrega < 0 ? "venceu" : ""}`}>
+              {new Date(`${L.entrega}T12:00:00`).toLocaleDateString("pt-BR")}
+              <span className="mh-dias">{L.faltamEntrega < 0
+                ? `${-L.faltamEntrega} d atrás` : `em ${L.faltamEntrega} d`}</span>
+            </div>
+          ) : <div className="mh-sem">sem data</div>}
+        </div>
+
+        <div className="mh-num">
+          <div className="mh-rot">Itens</div>
+          <div className="mh-num-val mono">{L.itens.length}</div>
+        </div>
+        <div className="mh-num mh-num-larga">
+          <div className="mh-rot">Falta comprar</div>
+          <div className="mh-num-val mono">{fmtBRL(L.falta)}</div>
+          <div className="gc-track"><div className="gc-fill" style={{ width: `${pct}%`, background: canal.cor }} /></div>
+        </div>
+        {L.atrasados > 0 && (
+          <span className="gc-selo atraso"><AlertTriangle size={11} /> {L.atrasados} fora do prazo</span>
+        )}
+      </button>
+
+      {aberto && (
+        <div className="mh-corpo">
+          <div className="mh-cadernos">
+            <div className="mh-sub">Cadernos do Executivo</div>
+            {CADERNOS_EXECUTIVO.map((c) => (
+              <CadernoBaixar key={c.chave} titulo={c.titulo} arquivo={(o.cadernos || {})[c.chave]} />
+            ))}
+          </div>
+
+          <div className="grp-itens mh-tabela">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 46 }}>Verba</th>
+                  <th>Item</th>
+                  <th style={{ width: 78 }} className="center">Qtd.</th>
+                  <th style={{ width: 110 }} className="right">Material</th>
+                  <th style={{ width: 150 }} className="center">Comprar até</th>
+                  <th style={{ width: 110 }} className="center">Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {L.itens.map((r) => {
+                  const dias = r.limite ? diasAte(r.limite) : null;
+                  return (
+                    <tr key={r.catNum + r.it.codigo} className={r.it.comprado ? "row-comprado" : "row-falta"}>
+                      <td className="mono dim">{r.catNum}</td>
+                      <td>
+                        <div className="item-desc">{r.it.desc}</div>
+                        <div className="mh-item-sub">
+                          {[r.catNome, r.it.ambiente, r.it.marca, r.it.codigoFornecedor].filter(Boolean).join(" · ")}
+                        </div>
+                      </td>
+                      <td className="center mono">{r.it.qtdExecutivo ?? r.it.qtdVendida ?? "—"} {r.it.un || ""}</td>
+                      <td className="right mono">{fmtBRL(r.material)}</td>
+                      <td className="center">
+                        {r.limite ? (
+                          <span className={dias < 0 ? "gc-venceu" : dias <= 15 ? "mh-perto" : ""}>
+                            {r.limite.toLocaleDateString("pt-BR")}
+                            <span className="gc-dias">{dias < 0 ? `passou ${-dias} d` : `faltam ${dias} d`}</span>
+                          </span>
+                        ) : <span className="dim">—</span>}
+                      </td>
+                      <td className="center">
+                        {r.it.comprado
+                          ? <span className="chip chip-green"><Check size={11} /> comprado</span>
+                          : <span className="dim">a comprar</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MehooView({ obras, carregando, erro }) {
+  const canal = canalPorId("mehoo");
+  const p = useMemo(() => painelDoCanal(obras, "mehoo"), [obras]);
+
+  if (carregando) return <div className="empty-note">Carregando as obras…</div>;
+
+  return (
+    <>
+      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+
+      <div className="gc-totais mh-totais">
+        <GcTotal rot="MATERIAL DA MEHOO" cor={canal.cor} legenda="ainda não comprado"
+          feito={p.comprado} total={p.total} />
+        <div className="gc-total">
+          <div className="gc-total-rot" style={{ color: canal.cor }}>OBRAS COM ITENS DA MEHOO</div>
+          <div className="gc-total-val mono">{p.linhas.length}</div>
+          <div className="gc-total-sub">{p.nItens} {p.nItens === 1 ? "item" : "itens"} no total</div>
+          {p.atrasados > 0 && (
+            <div className="gc-total-pe"><b className="gc-topo-alerta">{p.atrasados} {p.atrasados === 1 ? "item fora do prazo" : "itens fora do prazo"}</b></div>
+          )}
+        </div>
+      </div>
+
+      {p.linhas.length === 0 ? (
+        <div className="compras-empty">
+          <ShoppingCart size={30} className="dim" />
+          <div className="compras-empty-title">Nenhum item da Mehoo ainda</div>
+          <div className="compras-empty-sub">
+            Os itens aparecem aqui quando alguém escolhe <b>Mehoo</b> como canal em
+            <b> Compras de Produtos</b>, dentro da obra.
+          </div>
+        </div>
+      ) : p.linhas.map((L) => <ObraMehoo key={L.obra.codigo} L={L} canal={canal} />)}
+    </>
+  );
+}
+
+/* ============================================================
    BANCO DE PREÇOS POR INSUMO
    O que foi realmente pago, vindo do relatório de pedidos do Sienge.
    ============================================================ */
@@ -10034,7 +10292,7 @@ export default function App() {
   const [painelErro, setPainelErro] = useState(null);
 
   useEffect(() => {
-    if (modulo !== "a_contratar" || !obrasAtivas.length || !usuario) return;
+    if (!["a_contratar", "mehoo"].includes(modulo) || !obrasAtivas.length || !usuario) return;
     let vivo = true;
     setPainelCarregando(true);
     setPainelErro(null);
@@ -10064,6 +10322,7 @@ export default function App() {
         // obra separada aparece na verba 32 e nao no grupo dela.
         categorias: devolverMOaoGrupoDeOrigem(normalizarCategorias(salvo.categorias)),
         dataEntrega: salvo.dataEntrega,
+        cadernos: salvo.cadernos || o.cadernos,
       };
     });
   }, [obrasAtivas, painelDados, selectedId]);
@@ -12413,6 +12672,33 @@ export default function App() {
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .tab .dim { margin-left: 2px; vertical-align: -1px; }
         /* ---- Módulo A Contratar ---- */
+        /* ---- Painel da Mehoo ---- */
+        .mh-totais { margin-top: 18px; }
+        .mh-obra { border: 1px solid var(--border); border-radius: 12px; background: #fff; margin-bottom: 12px; overflow: hidden; }
+        .mh-obra-head { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; background: none; border: none; font-family: inherit; padding: 13px 16px; cursor: pointer; }
+        .mh-obra-head:hover { background: #FCFBF9; }
+        .mh-obra-id { flex: 1; min-width: 0; }
+        .mh-obra-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+        .mh-obra-end { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .mh-rot { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+        .mh-entrega, .mh-num { flex-shrink: 0; text-align: right; }
+        .mh-num-larga { width: 130px; }
+        .mh-entrega-val, .mh-num-val { font-size: 13px; font-weight: 700; color: var(--ink); margin-top: 2px; }
+        .mh-entrega-val.venceu { color: var(--red); }
+        .mh-dias { display: block; font-size: 10px; font-weight: 400; color: var(--ink-3); }
+        .mh-sem { font-size: 11px; color: var(--ink-3); font-style: italic; margin-top: 3px; }
+        .mh-num .gc-track { margin-top: 4px; }
+        .mh-corpo { border-top: 1px solid var(--border-soft); padding: 14px 16px; background: var(--panel); }
+        .mh-sub { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+        .mh-cadernos { margin-bottom: 14px; }
+        .mh-caderno { display: flex; align-items: center; gap: 9px; padding: 6px 10px; background: #fff; border: 1px solid var(--border-soft); border-radius: 8px; margin-bottom: 5px; font-size: 12px; }
+        .mh-caderno-tit { font-weight: 600; color: var(--ink); width: 210px; flex-shrink: 0; }
+        .mh-caderno-arq { flex: 1; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .mh-caderno-vazio { flex: 1; font-size: 11px; color: var(--ink-3); font-style: italic; }
+        .mh-tabela { background: #fff; border-radius: 8px; border: 1px solid var(--border-soft); }
+        .mh-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+        .mh-perto { color: var(--amber); font-weight: 600; }
+        @media (max-width: 900px) { .mh-obra-head { flex-wrap: wrap; gap: 10px; } }
         /* ---- Painel geral de compras e contratacoes ---- */
         .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }
         .gc-horizonte { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -12530,6 +12816,13 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Gerador de códigos Sienge</span></div>
           <div className="obra-meta">Sobe uma lista de produtos, casa com os insumos já cadastrados e gera a descrição no padrão do que não existe. Nada é guardado.</div>
           <GeradorSiengeView />
+          </>
+          ) : modulo === "mehoo" ? (
+          <>
+          <div className="eyebrow">CANAL DE COMPRA</div>
+          <div className="title-row"><span className="title-accent">Mehoo</span></div>
+          <div className="obra-meta">Cada obra com item da Mehoo: quando ela entrega, os cadernos do executivo pra baixar, e o que foi mandado pra eles</div>
+          <MehooView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} />
           </>
           ) : modulo === "aditivos" ? (
           <>

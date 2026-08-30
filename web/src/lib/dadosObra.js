@@ -227,13 +227,15 @@ export async function carregarResumoDeVarias(codigos, onParcial) {
     const fatia = codigos.slice(i, i + LOTE).map(String);
     const { data, error } = await supabase
       .from("obra_dados")
-      .select("obra_codigo, categorias, data_entrega, compras_liberadas")
+      .select("obra_codigo, categorias, data_entrega, compras_liberadas, cadernos")
       .in("obra_codigo", fatia);
     if (error) throw error;
     (data || []).forEach((l) => tudo.set(String(l.obra_codigo), {
       categorias: l.categorias || [],
       dataEntrega: l.data_entrega || null,
       comprasLiberadas: !!l.compras_liberadas,
+      // O painel da Mehoo entrega os cadernos do executivo pra baixar.
+      cadernos: l.cadernos || {},
     }));
     // Mapa novo a cada lote: o React so re-renderiza se a referencia mudar.
     if (onParcial) onParcial(new Map(tudo));
