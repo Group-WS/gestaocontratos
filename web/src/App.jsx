@@ -6099,6 +6099,7 @@ function TopBar() {
 const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
 const CHAVE_MODULOS = "tkws.modulos.abertos";
 const CHAVE_MINHAS = "tkws.so.minhas";
+const CHAVE_SQUADS = "tkws.squads.fechados";
 
 /* Os cinco modulos, num lugar so: a barra os desenha em duas formas —
    lista com descricao quando aberta, tira de icones quando recolhida — e
@@ -6127,6 +6128,18 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_MINHAS, soMinhas ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [soMinhas]);
   const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
+
+  /* Quais squads estao dobrados. Guardado, porque quem trabalha num squad
+     so nao quer dobrar os outros a cada F5. */
+  const [fechados, setFechados] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(CHAVE_SQUADS) || "[]")); } catch { return new Set(); }
+  });
+  const alternarSquad = (nome) => setFechados((g) => {
+    const n = new Set(g);
+    n.has(nome) ? n.delete(nome) : n.add(nome);
+    try { localStorage.setItem(CHAVE_SQUADS, JSON.stringify([...n])); } catch { /* modo anonimo */ }
+    return n;
+  });
   // Guarda a escolha: quem recolhe quer a tela larga, e ter que recolher
   // de novo a cada F5 e o tipo de atrito que faz a pessoa desistir do
   // recurso.
@@ -6173,6 +6186,10 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     groups[key].push(o);
   });
   const groupNames = Object.keys(groups).sort();
+
+  /* O squad da obra ABERTA continua aberto mesmo dobrado: esconder a obra
+     em que a pessoa esta faria a barra parar de dizer onde ela esta. */
+  const temAberta = (squadName) => (groups[squadName] || []).some((o) => o.id === selected);
 
   return (
     <aside className={`sidebar ${recolhida ? "recolhida" : ""}`}>
@@ -6225,7 +6242,18 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           {obras.length > 0 && filtered.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
           {groupNames.map((squadName) => (
             <div key={squadName} className="squad-group">
-              <div className="squad-group-label">{squadName} · {groups[squadName].length}</div>
+              {/* O rotulo do squad virou botao: dobrar o que nao se esta
+                  tocando e' o jeito mais curto de caber quarenta obras
+                  numa coluna. A obra ABERTA nunca fica escondida — dobrar
+                  o squad dela faria a barra parar de dizer onde voce
+                  esta. */}
+              <button className="squad-group-label" onClick={() => alternarSquad(squadName)}
+                title={fechados.has(squadName) ? "Abrir este squad" : "Recolher este squad"}>
+                {fechados.has(squadName) && !temAberta(squadName)
+                  ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                <span>{squadName} · {groups[squadName].length}</span>
+              </button>
+              {(!fechados.has(squadName) || temAberta(squadName)) && (
               <div className="nav-list">
                 {groups[squadName].map((o) => {
                   const alertCount = obraAlertCount(o);
@@ -6243,6 +6271,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                   );
                 })}
               </div>
+              )}
             </div>
           ))}
         </div>
@@ -11965,6 +11994,10 @@ export default function App() {
         .squad-chip:hover { border-color: var(--blue); }
         .squad-chip.active { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
         .squad-group { margin-bottom: 10px; }
+        .squad-group-label { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
+        .squad-group-label:hover { color: var(--ink-2); }
+        .squad-group-label span { text-align: left; }
+
         .squad-group-label { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px; }
         /* A lista come o espaco que sobra pra empurrar os modulos pro pe
            da barra; sem isso eles paravam onde a lista acabasse. */
