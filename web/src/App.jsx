@@ -1923,15 +1923,17 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
           </div>
           {/* COMPROMETIDO SIENGE — a coluna existe, o numero ainda nao.
 
-              Ela fica aqui vazia de proposito, e nao escondida ate ficar
-              pronta: quem confere precisa saber que este numero VAI
-              existir, senao planeja em cima da coluna que tem e refaz
-              depois. O tracejado e o rotulo dizem que e' obra em
-              andamento, nao um zero de verdade. */}
-          <div className="grp-tot grp-tot-wip" title="Quanto desta verba já está comprometido em pedidos no Sienge. Ainda em desenvolvimento — o número virá da integração com o Sienge.">
-            <div className="grp-tot-rot">COMPROMETIDO SIENGE</div>
+              Vazia a vista, e nao escondida ate ficar pronta: quem
+              confere precisa saber que este numero VAI existir, senao
+              planeja em cima do que tem hoje e refaz depois.
+
+              O aviso "em desenvolvimento" mora UMA vez, no topo da tela,
+              e nao em cada verba: repetido trinta vezes ele engrossava a
+              coluna a ponto de ela parecer o cabecalho da tabela de itens
+              logo abaixo — que tem "Destino" na mesma posicao. */}
+          <div className="grp-tot grp-tot-wip" title="Quanto desta verba já está comprometido em pedidos no Sienge. Em desenvolvimento — o número virá da integração com o Sienge.">
+            <div className="grp-tot-rot">SIENGE</div>
             <div className="grp-tot-val mono dim">—</div>
-            <div className="grp-wip-nota">em desenvolvimento</div>
           </div>
         </div>
       </div>
@@ -2361,6 +2363,16 @@ function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, 
             </span>
           </div>
           <button className="btn-atalho" onClick={onIrParaDashboard}>Definir no Dashboard</button>
+        </div>
+      )}
+
+      {/* Uma vez, aqui em cima. Ver isto antes de descer pela lista e' o
+          que evita alguem esperar um numero que ainda nao existe. */}
+      {temItens && (
+        <div className="plano-wip">
+          <Clock size={12} />
+          <span>A coluna <b>Sienge</b> no cabeçalho de cada verba vai mostrar o quanto já está
+            comprometido em pedidos — <b>está em desenvolvimento</b> e por isso aparece vazia.</span>
         </div>
       )}
 
@@ -11927,9 +11939,12 @@ export default function App() {
         /* ---- ADITIVOS ---- */
         .row-aditivo { background: #FBF9FF; }
         .tag-aditivo { display: inline-flex; align-items: center; gap: 4px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; margin-top: 3px; }
-        .grp-tot-wip { border-left: 1px dashed var(--border); padding-left: 12px; }
+        /* Coluna propria, e estreita: com o rotulo longo ela encostava na
+           tabela de itens logo abaixo e passava a ser lida como cabecalho
+           dela — "Destino" cai bem embaixo. */
+        .grp-tot-wip { width: 62px; border-left: 1px dashed var(--border); padding-left: 12px; }
         .grp-tot-wip .grp-tot-rot { color: var(--ink-3); }
-        .grp-wip-nota { font-size: 8.5px; font-style: italic; color: var(--ink-3); letter-spacing: 0; text-transform: none; margin-top: 1px; }
+        .plano-wip { display: flex; align-items: center; gap: 8px; background: var(--panel); border-radius: 8px; padding: 8px 13px; font-size: 11.5px; color: var(--ink-3); margin-bottom: 12px; }
         .grp-aditivo { display: inline-flex; align-items: center; gap: 4px; background: #EFEAFB; color: var(--purple); border-radius: 20px; padding: 2px 9px; font-size: 10px; font-weight: 700; white-space: nowrap; }
         .item-aditivo { background: #FBF9FF; }
         .chip-aditivo { display: inline-flex; align-items: center; gap: 3px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-left: 6px; }
