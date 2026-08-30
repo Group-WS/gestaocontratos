@@ -39,6 +39,7 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     obra_codigo: String(codigo),
     categorias: conteudo.categorias || [],
     cadernos: conteudo.cadernos || {},
+    arquivos: conteudo.arquivos || [],
     aprovacoes: Array.from(conteudo.aprovacoes || []),
     depara_aprovado: !!conteudo.deparaAprovado,
     compras_liberadas: !!conteudo.comprasLiberadas,
@@ -179,6 +180,7 @@ function paraApp(linha) {
   return {
     categorias: linha.categorias || [],
     cadernos: linha.cadernos || {},
+    arquivos: linha.arquivos || [],
     aprovacoes: new Set(linha.aprovacoes || []),
     deparaAprovado: !!linha.depara_aprovado,
     comprasLiberadas: !!linha.compras_liberadas,

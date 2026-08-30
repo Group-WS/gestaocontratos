@@ -25,7 +25,7 @@ import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
-import { subirArquivo, linkParaBaixar, apagarArquivo, anexoRecuperavel } from "./lib/arquivos";
+import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel } from "./lib/arquivos";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
 // em web/api/), então "/api/..." resolve sozinho — em dev pelo proxy do
@@ -5399,6 +5399,7 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
 // e a equipe baixa pra consultar — nada é lido do PDF. A planilha, essa
 // sim, é lida (vem logo abaixo, na mesma tela).
 const CADERNOS_EXECUTIVO = [
+  { chave: "criativo", titulo: "Projeto Criativo", sub: "A proposta criativa que deu origem ao executivo." },
   { chave: "especificacao", titulo: "Caderno de Especificação", sub: "Tudo que foi aprovado de produto junto ao cliente." },
   { chave: "marcenaria", titulo: "Caderno de Marcenaria", sub: "Projeto e detalhamento dos móveis sob medida." },
   { chave: "projeto", titulo: "Caderno de Projeto Executivo", sub: "Pranchas e detalhamentos do projeto executivo." },
@@ -6329,6 +6330,9 @@ const GRUPOS_OBRA = [
   { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "planejamento", label: "Planejamento", icon: ClipboardList },
   { id: "execucao", label: "Execução de Obra", icon: Building2 },
+  // Sem etapas: nao e' esteira, e' o armario da obra. Por isso ele nao
+  // mostra progresso "0/2" — nao ha nada a concluir aqui.
+  { id: "arquivos", label: "Arquivos da Obra", icon: Archive },
 ];
 
 const ETAPAS_PLANEJAMENTO = [
@@ -9526,6 +9530,212 @@ function AditivosView({ obras, usuario }) {
 }
 
 /* ============================================================
+   ARQUIVOS DA OBRA
+   O armário: tudo que foi anexado, num lugar só, com Ver e Baixar.
+
+   Antes dava pra anexar e não dava pra rever: o caderno subia na aba do
+   Executivo e sumia de vista, e quem precisava dele depois — o
+   fornecedor, o GC, a conferência de meses depois — não tinha onde
+   procurar.
+   ============================================================ */
+
+/* De onde o arquivo veio. Não é etiqueta escolhida a mão: é o lugar do
+   app que o guardou, e por isso não tem como ficar errada. */
+const FASES_ARQUIVO = [
+  { id: "executivo", nome: "Executivo", cor: "var(--blue)", bg: "var(--blue-bg)" },
+  { id: "cliente", nome: "Aprovação do Cliente", cor: "var(--green)", bg: "var(--green-bg)" },
+  { id: "outros", nome: "Outros", cor: "var(--ink-2)", bg: "var(--panel)" },
+];
+const faseArquivo = (id) => FASES_ARQUIVO.find((f) => f.id === id) || FASES_ARQUIVO[2];
+
+/* Junta tudo que a obra tem guardado, venha de onde vier.
+
+   Os cadernos moram num mapa (uma chave fixa cada, porque são sempre os
+   mesmos quatro); os avulsos numa lista (a mesma obra tem N do mesmo
+   tipo). Quem lê a tela não quer saber disso. */
+function arquivosDaObra(obra) {
+  const out = [];
+
+  CADERNOS_EXECUTIVO.forEach((c) => {
+    const a = (obra.cadernos || {})[c.chave];
+    if (a) out.push({ ...a, id: `caderno-${c.chave}`, titulo: c.titulo, fase: "executivo", fixo: c.chave });
+  });
+
+  if (obra.clienteAssinaturaArq) {
+    out.push({
+      ...obra.clienteAssinaturaArq,
+      id: "assinatura-cliente",
+      titulo: "Aprovação assinada pelo cliente",
+      fase: "cliente",
+      fixo: "assinatura",
+    });
+  }
+
+  (obra.arquivos || []).forEach((a) => out.push({ ...a, fase: a.fase || "outros" }));
+
+  return out;
+}
+
+function ArquivoLinha({ a, podeEditar, onExcluir }) {
+  const [ocupado, setOcupado] = useState(null);
+  const [erro, setErro] = useState(null);
+  const f = faseArquivo(a.fase);
+  const perdido = !anexoRecuperavel(a);
+
+  async function abrir(baixar) {
+    if (a.url) { window.open(a.url, "_blank"); return; }
+    setErro(null); setOcupado(baixar ? "baixar" : "ver");
+    try {
+      window.open(await linkParaArquivo(a.caminho, { baixar }), "_blank");
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  return (
+    <div className="arq-linha">
+      <FileText size={15} className={perdido ? "dim" : ""} />
+      <div className="arq-id">
+        <div className="arq-titulo">{a.titulo || a.nome}</div>
+        <div className="arq-sub">
+          {a.titulo && a.nome !== a.titulo ? `${a.nome} · ` : ""}
+          {a.tamanhoKB ? `${a.tamanhoKB} KB · ` : ""}
+          {a.em ? new Date(a.em).toLocaleDateString("pt-BR") : "data não registrada"}
+          {a.por ? ` · ${a.por}` : ""}
+        </div>
+        {erro && <div className="arq-erro">{erro}</div>}
+      </div>
+
+      <span className="arq-fase" style={{ color: f.cor, background: f.bg }}>{f.nome}</span>
+
+      {perdido ? (
+        /* Anexo de antes de o app guardar arquivo: só o nome ficou
+           gravado. Dizer isso é melhor que oferecer um "Baixar" que abre
+           nada e faz a pessoa achar que o sistema quebrou. */
+        <span className="arq-perdido">arquivo não guardado — anexe de novo</span>
+      ) : (
+        <div className="arq-acoes">
+          <button className="caderno-acao" onClick={() => abrir(false)} disabled={!!ocupado}>
+            <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
+          </button>
+          <button className="caderno-acao" onClick={() => abrir(true)} disabled={!!ocupado}>
+            <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
+          </button>
+          {/* Só o avulso se apaga aqui. Caderno e assinatura têm dono na
+              esteira, e sumir com eles por esta tela deixaria a etapa de
+              lá dizendo que tem anexo quando não tem mais. */}
+          {podeEditar && !a.fixo && (
+            <button className="ad-icon del" title="Excluir arquivo" onClick={() => onExcluir(a)}><Trash2 size={13} /></button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
+  const inputRef = useRef(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [titulo, setTitulo] = useState("");
+  const [fase, setFase] = useState("outros");
+
+  const todos = useMemo(() => arquivosDaObra(obra), [obra]);
+  const porFase = FASES_ARQUIVO
+    .map((f) => ({ f, itens: todos.filter((a) => a.fase === f.id) }))
+    .filter((g) => g.itens.length > 0);
+  const guardados = todos.filter((a) => anexoRecuperavel(a)).length;
+
+  async function subir(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setErro(null);
+    if (!supabaseConfigurado) { setErro("Sem banco configurado — o arquivo não teria onde ficar guardado."); return; }
+    setEnviando(true);
+    try {
+      const info = await subirArquivo({ obraCodigo: obra.codigo, chave: "avulso", file, por: usuario });
+      onArquivos([...(obra.arquivos || []), {
+        ...info,
+        id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        titulo: titulo.trim() || file.name,
+        fase,
+      }]);
+      setTitulo("");
+    } catch (err) {
+      setErro(err.message || String(err));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function excluir(a) {
+    if (!window.confirm(`Excluir "${a.titulo || a.nome}"? Isso não pode ser desfeito.`)) return;
+    setErro(null);
+    try {
+      if (a.caminho) await apagarArquivo(a.caminho);
+      onArquivos((obra.arquivos || []).filter((x) => x.id !== a.id));
+    } catch (err) {
+      setErro(err.message || String(err));
+    }
+  }
+
+  return (
+    <>
+      <div className="arq-topo">
+        <div>
+          <div className="arq-topo-n mono">{todos.length}</div>
+          <div className="arq-topo-rot">
+            {todos.length === 1 ? "arquivo nesta obra" : "arquivos nesta obra"}
+            {guardados < todos.length && ` · ${todos.length - guardados} sem o arquivo guardado`}
+          </div>
+        </div>
+        {podeEditar && (
+          <div className="arq-subir">
+            <input className="form-input" value={titulo} placeholder="nome do arquivo (opcional)"
+              onChange={(e) => setTitulo(e.target.value)} />
+            <select className="form-input" value={fase} onChange={(e) => setFase(e.target.value)}
+              title="Em que fase este arquivo entra">
+              {FASES_ARQUIVO.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </select>
+            <button className="btn-doc btn-template" disabled={enviando}
+              onClick={() => inputRef.current && inputRef.current.click()}>
+              <Upload size={13} /> {enviando ? "Enviando…" : "Anexar arquivo"}
+            </button>
+            <input ref={inputRef} type="file" style={{ display: "none" }} onChange={subir} />
+          </div>
+        )}
+      </div>
+
+      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+
+      {todos.length === 0 ? (
+        <div className="compras-empty">
+          <Archive size={30} className="dim" />
+          <div className="compras-empty-title">Nenhum arquivo ainda</div>
+          <div className="compras-empty-sub">
+            Os cadernos anexados na aba <b>Executivo</b> e a aprovação assinada do cliente
+            aparecem aqui sozinhos. Qualquer outro arquivo da obra pode ser anexado por este botão.
+          </div>
+        </div>
+      ) : porFase.map(({ f, itens }) => (
+        <div key={f.id} className="arq-bloco">
+          <div className="arq-bloco-h">
+            <span className="arq-bloco-tit">{f.nome}</span>
+            <span className="arq-bloco-n">{itens.length}</span>
+          </div>
+          {itens.map((a) => (
+            <ArquivoLinha key={a.id} a={a} podeEditar={podeEditar} onExcluir={excluir} />
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/* ============================================================
    PAINEL DA MEHOO
    A obra vista pelo lado de quem fornece: quando entrega, quais
    cadernos consultar, e o que exatamente foi mandado pra eles.
@@ -10421,6 +10631,7 @@ export default function App() {
             ? devolverMOaoGrupoDeOrigem(normalizarCategorias(dados.categorias))
             : o.categorias,
           cadernos: dados.cadernos,
+          arquivos: dados.arquivos,
           aprovacoes: dados.aprovacoes,
           deparaAprovado: dados.deparaAprovado,
           comprasLiberadas: dados.comprasLiberadas,
@@ -10883,6 +11094,10 @@ export default function App() {
   // Caderno de Especificação: só guarda o arquivo (upload/download, sem parse).
   // Os cadernos ficam guardados por chave ("especificacao", "marcenaria",
   // "projeto") — só arquivo pra consulta, nada é lido deles.
+  function trocarArquivosDaObra(lista) {
+    setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, arquivos: lista } : o)));
+  }
+
   function importCaderno(chave, info, caminhoAnterior) {
     setObras((prev) => prev.map((o) => (
       o.id === selectedId ? { ...o, cadernos: { ...(o.cadernos || {}), [chave]: info } } : o
@@ -11145,7 +11360,8 @@ export default function App() {
      segundo clique sempre. O Dashboard e a excecao: ele proprio e a tela. */
   function handleGrupoChange(g) {
     setGrupo(g);
-    if (g === "dashboard") { setTab(null); return; }
+    // Grupo sem etapa e' a propria tela — Dashboard e Arquivos da Obra.
+    if (!ETAPAS_POR_GRUPO[g]) { setTab(null); return; }
     const lista = ETAPAS_POR_GRUPO[g] || [];
     // volta pra ultima etapa cumprida (ou a primeira), que e onde a obra esta
     const pendente = lista.find((e) => !etapaConcluida(e.id, obra));
@@ -12672,6 +12888,27 @@ export default function App() {
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .tab .dim { margin-left: 2px; vertical-align: -1px; }
         /* ---- Módulo A Contratar ---- */
+        /* ---- Arquivos da obra ---- */
+        .arq-topo { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 18px 0 16px; }
+        .arq-topo-n { font-family: 'Space Grotesk', sans-serif; font-size: 30px; font-weight: 700; color: var(--ink); line-height: 1; }
+        .arq-topo-rot { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+        .arq-subir { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+        .arq-subir .form-input { margin-top: 0; font-size: 12.5px; }
+        .arq-subir input.form-input { width: 220px; }
+        .arq-subir select.form-input { width: 170px; }
+        .arq-bloco { margin-bottom: 20px; }
+        .arq-bloco-h { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
+        .arq-bloco-tit { font-size: 13px; font-weight: 700; color: var(--ink); }
+        .arq-bloco-n { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: 10.5px; font-weight: 700; }
+        .arq-linha { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+        .arq-linha:hover { background: #FCFBF9; }
+        .arq-id { flex: 1; min-width: 0; }
+        .arq-titulo { font-size: 13px; font-weight: 600; color: var(--ink); }
+        .arq-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+        .arq-erro { font-size: 11px; color: var(--red); margin-top: 3px; }
+        .arq-fase { font-size: 9.5px; font-weight: 700; border-radius: 20px; padding: 2px 9px; white-space: nowrap; flex-shrink: 0; }
+        .arq-acoes { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+        .arq-perdido { font-size: 11px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
         /* ---- Painel da Mehoo ---- */
         .mh-totais { margin-top: 18px; }
         .mh-obra { border: 1px solid var(--border); border-radius: 12px; background: #fff; margin-bottom: 12px; overflow: hidden; }
@@ -12892,7 +13129,7 @@ export default function App() {
             onIrParaAditivos={() => setModulo("aditivos")} />
           </>}
 
-          {tab === null && grupo !== "dashboard" && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
+          {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} />}
@@ -12913,6 +13150,10 @@ export default function App() {
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} usuario={usuario} />}
+          {grupo === "arquivos" && (
+            <ArquivosObraView obra={obra} usuario={usuario} podeEditar={edicao.minha}
+              onArquivos={trocarArquivosDaObra} />
+          )}
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}
           </>
           )}

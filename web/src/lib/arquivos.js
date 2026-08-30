@@ -46,14 +46,21 @@ export async function subirArquivo({ obraCodigo, chave, file, por }) {
 }
 
 /** Endereço temporário pra baixar. Some sozinho depois de uma hora. */
-export async function linkParaBaixar(caminho) {
+/* `download: true` manda o navegador SALVAR; sem ele, ele ABRE o PDF na
+   aba. Sao duas coisas diferentes e as duas sao pedidas: quem vai
+   conferir uma prancha quer ver, quem vai mandar pro fornecedor quer o
+   arquivo. Mesmo link assinado, uma opcao a mais. */
+export async function linkParaArquivo(caminho, { baixar = true } = {}) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
   const { data, error } = await supabase.storage
     .from("obra-arquivos")
-    .createSignedUrl(caminho, MINUTOS_DO_LINK * 60, { download: true });
+    .createSignedUrl(caminho, MINUTOS_DO_LINK * 60, baixar ? { download: true } : {});
   if (error) throw new Error(explicar(error));
   return data.signedUrl;
 }
+
+export const linkParaBaixar = (caminho) => linkParaArquivo(caminho, { baixar: true });
+export const linkParaVer = (caminho) => linkParaArquivo(caminho, { baixar: false });
 
 /**
  * Apaga o arquivo trocado. É faxina: se falhar, o arquivo novo já está
