@@ -6252,6 +6252,10 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             que se abre o dia inteiro; modulo e' o que se abre de vez em
             quando. Recolhido eles viram uma tira de icones: uma linha, e
             tudo continua a um clique. */}
+        {/* Os modulos moram no PE da barra, colados embaixo. Antes eles
+            vinham logo depois da lista de obras e sobrava um vazio grande
+            embaixo deles — pareciam soltos no meio da coluna. */}
+        <div className="nav-modulos">
         <button className="nav-group-toggle" onClick={alternarModulos}
           title={modulosAbertos ? "Recolher módulos" : "Abrir módulos"}>
           <span>MÓDULOS</span>
@@ -6285,6 +6289,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             ))}
           </div>
         )}
+        </div>
       </div>
 
       <div className="sidebar-footer">
@@ -11951,7 +11956,13 @@ export default function App() {
         .squad-chip.active { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
         .squad-group { margin-bottom: 10px; }
         .squad-group-label { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px; }
-        .scroll-list { max-height: 320px; overflow-y: auto; padding-right: 2px; }
+        /* A lista come o espaco que sobra pra empurrar os modulos pro pe
+           da barra; sem isso eles paravam onde a lista acabasse. */
+        .scroll-list { flex: 1; min-height: 90px; overflow-y: auto; padding-right: 2px; }
+        /* Grudado embaixo mesmo com a barra rolando: com quarenta obras a
+           lista rola, e o modulo tem que continuar a um clique. */
+        .nav-modulos { margin-top: auto; position: sticky; bottom: 0; background: #fff; padding-bottom: 2px; }
+        .nav-modulos::before { content: ""; display: block; height: 10px; margin: 0 -14px; background: linear-gradient(to bottom, rgba(255,255,255,0), #fff); }
         .no-results { font-size: 11.5px; color: var(--ink-3); padding: 10px 6px; }
         .nav-group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; cursor: pointer; }
         .nav-group-toggle:hover { color: var(--ink-2); }
