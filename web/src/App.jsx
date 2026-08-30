@@ -9804,9 +9804,12 @@ function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, on
       <div className="ini-saudacao">
         <div>
           <div className="ini-ola">{meuNome ? `Olá, ${meuNome.split(" ")[0]}` : "Olá"}</div>
-          <div className="ini-data">
-            {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
-          </div>
+          {/* So a PRIMEIRA letra. `text-transform: capitalize` no CSS
+              subia tambem os "de": "Domingo, 30 De Agosto De 2026". */}
+          <div className="ini-data">{(() => {
+            const d = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+            return d.charAt(0).toUpperCase() + d.slice(1);
+          })()}</div>
         </div>
       </div>
 
@@ -13696,7 +13699,7 @@ export default function App() {
         /* ---- Tela de inicio ---- */
         .ini-saudacao { margin: 18px 0 20px; }
         .ini-ola { font-family: 'Instrument Serif', Georgia, serif; font-size: 30px; color: var(--ink); line-height: 1.1; }
-        .ini-data { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; text-transform: capitalize; }
+        .ini-data { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
         .ini-numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
         .ini-num { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 15px 17px; text-align: left; font-family: inherit; }
         .ini-num.clicavel { cursor: pointer; }
