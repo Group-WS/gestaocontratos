@@ -11200,27 +11200,37 @@ export default function App() {
     return () => clearTimeout(t);
   }, [obra, edicao.minha, usuario]);
 
-  /* Soltar a trava ao SAIR, e nao so no botao "finalizar".
+  /* A TRAVA SO VIVE ENQUANTO A PESSOA ESTA NA OBRA.
 
-     Ela expira em 30 minutos, o que salva o caso de fechar o navegador —
-     mas trocar de obra dez vezes numa manha deixava dez obras travadas em
-     nome de quem so passou por elas. Com o time inteiro usando, isso e' a
-     pessoa do lado vendo "em edicao por..." numa obra que ninguem esta
-     editando.
+     Ela era solta so pelo botao "finalizar". Quem trocava de obra, ia
+     olhar um modulo ou fechava a aba deixava a obra travada em nome dele
+     — e a pessoa do lado via "em edicao por..." numa obra que ninguem
+     estava editando. A expiracao de 30 minutos era a unica saida, e 30
+     minutos e' meia manha de trabalho parada.
 
-     `sendBeacon` na saida da aba porque `fetch` normal e' cancelado
-     quando a pagina morre; se o navegador nao tiver, a expiracao resolve. */
+     Agora a trava e' um efeito com dono: ela existe enquanto (a edicao e'
+     minha) E (estou na tela da obra) E (e' esta obra). Qualquer uma
+     dessas tres deixar de valer, a limpeza do efeito solta. */
   const travaRef = useRef(null);
-  useEffect(() => {
-    travaRef.current = edicao.minha && obra?.codigo ? obra.codigo : null;
-  }, [edicao.minha, obra?.codigo]);
+  const naObra = modulo === "comparativo";
 
   useEffect(() => {
-    const codigo = edicao.minha ? obra?.codigo : null;
+    const codigo = edicao.minha && naObra ? obra?.codigo : null;
+    travaRef.current = codigo || null;
     if (!codigo) return;
     return () => { liberarEdicao(codigo, usuario).catch(() => {}); };
-  }, [edicao.minha, obra?.codigo, usuario]);
+  }, [edicao.minha, naObra, obra?.codigo, usuario]);
 
+  /* Sair da obra tambem volta a tela pro modo leitura. Sem isso a trava
+     era solta no banco mas a tela continuava dizendo "Editando" — e a
+     pessoa seguia digitando numa obra que ja estava livre pra outro. */
+  useEffect(() => {
+    if (!naObra && edicao.minha) setEdicao({ minha: false, por: null, desde: null });
+  }, [naObra, edicao.minha]);
+
+  /* Fechar a aba. `pagehide` e nao `beforeunload` porque este dispara em
+     celular e em navegacao de volta; a promessa nao termina, mas o pedido
+     sai — e se nao sair, a expiracao de 30 minutos ainda cobre. */
   useEffect(() => {
     const sair = () => {
       if (travaRef.current) liberarEdicao(travaRef.current, usuario).catch(() => {});
