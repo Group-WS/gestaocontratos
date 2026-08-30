@@ -6086,7 +6086,14 @@ function TopBar() {
         />
         <span className="brand-word">GESTÃO DE OBRAS TKWS</span>
       </div>
-      <div className="topbar-search"><Search size={15} className="dim" /><input placeholder="Buscar obra, item, código Sienge..." /><span className="kbd">⌘K</span></div>
+      {/* A busca do topo saiu.
+
+          Ela nunca teve handler: digitar ali nao fazia nada, e o "⌘K" ao
+          lado prometia um atalho que tambem nao existia. Campo que aceita
+          texto e ignora e' pior que campo nenhum — a pessoa tenta, nao
+          acontece nada, e passa a desconfiar do resto da tela.
+
+          Quem procura obra tem o filtro da barra lateral, que funciona. */}
       <div className="topbar-right">
         <button className="icon-btn"><Sparkles size={16} /></button>
         <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
@@ -11963,10 +11970,6 @@ export default function App() {
         .brand-logo { width: 46px; height: 38px; object-fit: cover; object-position: top center; display: block; }
         .brand-word { font-weight: 700; font-size: 13px; letter-spacing: 0.06em; color: var(--ink); white-space: nowrap; }
         .aviso-monday { background: var(--amber-bg, #FEF3E2); color: var(--amber, #B7791F); border: 1px solid var(--amber, #E8B04B); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
-        .topbar-search { flex: 1; max-width: 560px; display: flex; align-items: center; gap: 9px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; margin: 0 auto; }
-        .topbar-search input { flex: 1; border: none; outline: none; background: transparent; font-size: 13px; color: var(--ink); }
-        .topbar-search input::placeholder { color: var(--ink-3); }
-        .kbd { font-size: 10.5px; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; font-family: 'JetBrains Mono', monospace; }
         .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .icon-btn { width: 34px; height: 34px; border-radius: 8px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; color: var(--ink-2); cursor: pointer; position: relative; }
         .icon-btn:hover { background: var(--panel); }
