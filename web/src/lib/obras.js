@@ -73,3 +73,23 @@ export async function reabrirObra(codigo) {
   if (error) throw error;
   return data;
 }
+
+/**
+ * Quem responde pela obra.
+ *
+ * Guarda o E-MAIL, nao o nome: e' a identidade que o login ja da', e e'
+ * o unico jeito de "as minhas obras" saber quais sao as minhas sem
+ * alguem manter uma tabela de nomes em dia. O nome bonito sai do proprio
+ * e-mail na hora de mostrar.
+ */
+export async function definirGC(codigo, email) {
+  if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
+  const { data, error } = await supabase
+    .from("obra")
+    .update({ gc: email || null })
+    .eq("codigo", String(codigo))
+    .select("codigo, nome, squad, gc, situacao, iniciada_em, concluida_em")
+    .single();
+  if (error) throw error;
+  return data;
+}

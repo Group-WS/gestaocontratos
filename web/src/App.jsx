@@ -8,7 +8,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2
 } from "lucide-react";
-import { listarObras, iniciarObra, concluirObra, reabrirObra } from "./lib/obras";
+import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
   rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
@@ -1013,6 +1013,23 @@ const canalPorId = (id) => CANAIS_COMPRA.find((c) => c.id === id) || null;
    modelo, porque o painel geral depende dele — e o painel geral tem
    teste, que so alcanca o que esta acima do marcador de fim do modelo. */
 const contratoEtapa = (it) => it.statusContrato || "nao_solicitado";
+
+/* O nome que se le, a partir do e-mail que se guarda.
+
+   "priscila.wayhs@groupws.com.br" vira "Priscila Wayhs". Guardar o e-mail
+   e' o que faz "as minhas obras" funcionar sem ninguem manter uma tabela
+   de nomes; mostrar o e-mail cru numa lista de obras seria ruido. */
+function nomeDoEmail(email) {
+  const antes = String(email || "").split("@")[0];
+  if (!antes) return "";
+  return antes.split(/[._-]+/).filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
+}
+
+/* A obra e' minha quando o GC dela sou eu. Sem GC ela nao e' de ninguem —
+   e aparece pra todo mundo, que e' melhor do que sumir pra todo mundo. */
+const obraDoGC = (o, email) => !!email && String(o.gc || "").toLowerCase() === String(email).toLowerCase();
 
 /* ============================================================
    PAINEL GERAL DE COMPRAS E CONTRATACOES
@@ -5977,6 +5994,7 @@ function TopBar() {
 
 const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
 const CHAVE_MODULOS = "tkws.modulos.abertos";
+const CHAVE_MINHAS = "tkws.so.minhas";
 
 /* Os cinco modulos, num lugar so: a barra os desenha em duas formas —
    lista com descricao quando aberta, tira de icones quando recolhida — e
@@ -5994,7 +6012,16 @@ const MODULOS = [
   { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
 ];
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario }) {
+  /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
+     quer reativar o filtro a cada F5. */
+  const [soMinhas, setSoMinhas] = useState(() => {
+    try { return localStorage.getItem(CHAVE_MINHAS) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(CHAVE_MINHAS, soMinhas ? "1" : "0"); } catch { /* modo anonimo */ }
+  }, [soMinhas]);
+  const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
   // Guarda a escolha: quem recolhe quer a tela larga, e ter que recolher
   // de novo a cada F5 e o tipo de atrito que faz a pessoa desistir do
   // recurso.
@@ -6027,7 +6054,11 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     const matchesSearch = !q || `${o.nome} ${o.codigo} ${o.cliente}`.toLowerCase().includes(q);
     const matchesAlert = !onlyAlert || obraAlertCount(o) > 0;
     const matchesSquad = squadFilter === "todos" || (o.squad || "Sem squad") === squadFilter;
-    return matchesSearch && matchesAlert && matchesSquad;
+    /* Obra SEM GC passa no filtro de propósito: enquanto os vínculos não
+       estiverem todos feitos, esconder o que não tem dono deixaria obra
+       viva fora da tela de todo mundo. */
+    const matchesGC = !soMinhas || !usuario || !o.gc || obraDoGC(o, usuario);
+    return matchesSearch && matchesAlert && matchesSquad && matchesGC;
   });
 
   const groups = {};
@@ -6059,6 +6090,15 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
         </div>
 
+        {/* "Minhas" antes dos squads: e' o recorte do dia a dia, e o
+            squad e' o de quando se procura a obra de outra pessoa. */}
+        <div className="squad-filter">
+          <button className={`squad-chip ${soMinhas ? "active" : ""}`}
+            onClick={() => setSoMinhas((v) => !v)}
+            title={usuario ? `Obras em que ${nomeDoEmail(usuario)} é o GC` : "Entre para filtrar pelas suas obras"}>
+            <ShieldCheck size={11} /> Minhas obras{nMinhas > 0 ? ` · ${nMinhas}` : ""}
+          </button>
+        </div>
         <div className="squad-filter">
           <button className={`squad-chip ${squadFilter === "todos" ? "active" : ""}`} onClick={() => setSquadFilter("todos")}>Todos os squads</button>
           {squads.map((s) => (
@@ -10262,11 +10302,13 @@ function ObraCard({ o, acao, children }) {
 
    Tres campos, porque tres bastam: o resto (endereco, cliente, GC, valor
    vendido) a obra ganha quando os documentos subirem. */
-function CadastroManualObra({ onCriar, salvando, jaExistem }) {
+function CadastroManualObra({ onCriar, salvando, jaExistem, gcsConhecidos = [], usuario }) {
   const [aberto, setAberto] = useState(false);
   const [nome, setNome] = useState("");
   const [codigo, setCodigo] = useState("");
   const [squad, setSquad] = useState(SQUADS[0].nome);
+  // Quem cadastra costuma ser quem vai tocar; trocar e' um campo.
+  const [gc, setGc] = useState(usuario || "");
   const [erro, setErro] = useState(null);
 
   const cod = codigo.trim();
@@ -10279,7 +10321,7 @@ function CadastroManualObra({ onCriar, salvando, jaExistem }) {
   async function criar() {
     setErro(null);
     try {
-      await onCriar({ nome: nome.trim(), codigo: cod, squad });
+      await onCriar({ nome: nome.trim(), codigo: cod, squad, gc: gc.trim() || null });
       setNome(""); setCodigo(""); setAberto(false);
     } catch (e) {
       setErro(e.message || String(e));
@@ -10314,6 +10356,16 @@ function CadastroManualObra({ onCriar, salvando, jaExistem }) {
           <select className="form-input" value={squad} onChange={(e) => setSquad(e.target.value)}>
             {SQUADS.map((s) => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
           </select></label>
+        {/* E-mail, e nao nome: e' a identidade que o login da', e e' o
+            unico jeito de "minhas obras" saber quais sao as minhas. */}
+        <label className="cad-largo">GC responsável
+          <input className="form-input" type="email" value={gc} placeholder="email@groupws.com.br"
+            list="gcs-conhecidos" onChange={(e) => setGc(e.target.value.trim())} />
+          {gc && <span className="cad-nota">{nomeDoEmail(gc)}</span>}
+        </label>
+        <datalist id="gcs-conhecidos">
+          {gcsConhecidos.map((e) => <option key={e} value={e} />)}
+        </datalist>
       </div>
       {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
       <div className="cad-acoes">
@@ -10328,7 +10380,7 @@ function CadastroManualObra({ onCriar, salvando, jaExistem }) {
   );
 }
 
-function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, codigosUsados }) {
+function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, codigosUsados, gcsConhecidos, usuario }) {
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
   const filtradas = obras.filter((o) => !q || `${o.nome} ${o.codigo} ${o.squad}`.toLowerCase().includes(q));
@@ -10353,7 +10405,8 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
         </div>
       )}
 
-      <CadastroManualObra onCriar={onCriarManual} salvando={salvando === "manual"} jaExistem={codigosUsados} />
+      <CadastroManualObra onCriar={onCriarManual} salvando={salvando === "manual"} jaExistem={codigosUsados}
+        gcsConhecidos={gcsConhecidos} usuario={usuario} />
 
       {obras.length > 0 && (
         <div className="obra-search obra-search-wide">
@@ -10689,13 +10742,13 @@ export default function App() {
   /* Obra que nao veio do Monday. Ela nasce com o mesmo formato das
      outras — inclusive a EAP vazia — pra que nenhuma tela precise saber
      de onde ela veio. `boardId` fica nulo, e e' so isso que a distingue. */
-  async function criarObraManual({ nome, codigo, squad }) {
+  async function criarObraManual({ nome, codigo, squad, gc }) {
     setSalvandoObra("manual");
     setErroBanco(null);
     try {
       const nova = {
         id: codigo, codigo, nome, squad,
-        boardId: null, endereco: "—", cliente: "—", gc: null,
+        boardId: null, endereco: "—", cliente: "—", gc: gc || null,
         area: null, prazo: null, valorVendido: 0,
         categorias: buildCategorias([], null),
         semDetalhe: true, manual: true,
@@ -11803,6 +11856,10 @@ export default function App() {
         .adit-mais { color: var(--blue); }
         .adit-menos { color: #7d4038; }
         .cmv-linha-valor.credito { color: var(--green); }
+        .dash-gc-nome { font-size: 17px; font-weight: 700; color: var(--ink); }
+        .dash-gc-email { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .dash-gc-vazio { font-size: 12px; color: var(--ink-3); font-style: italic; }
+        .dash-gc-acoes { display: flex; gap: 7px; margin-top: 9px; }
         .dash-aditivos .dash-adit-saldo { font-family: 'Space Grotesk', sans-serif; font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.15; }
         .dash-aditivos .dash-adit-saldo.credito { color: var(--green); }
         .dash-adit-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; }
@@ -13214,7 +13271,7 @@ export default function App() {
 
       <TopBar />
       <div className="body-layout">
-        <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo}
+        <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
@@ -13237,7 +13294,8 @@ export default function App() {
           <div className="obra-meta">Obras que ainda não foram iniciadas aqui</div>
           <NovasObrasView obras={obrasNovas} onStart={darStart} onCriarManual={criarObraManual}
             salvando={salvandoObra} semBanco={!supabaseConfigurado}
-            codigosUsados={new Set(obras.map((o) => String(o.codigo)))} />
+            codigosUsados={new Set(obras.map((o) => String(o.codigo)))} usuario={usuario}
+            gcsConhecidos={[...new Set(obras.map((o) => o.gc).filter(Boolean))].sort()} />
           </>
           ) : modulo === "arquivo" ? (
           <>
