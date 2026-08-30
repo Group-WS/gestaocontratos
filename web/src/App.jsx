@@ -6112,6 +6112,7 @@ const CHAVE_SQUADS = "tkws.squads.fechados";
    duas copias do mesmo elenco sairiam do ar uma da outra no primeiro
    modulo novo. */
 const MODULOS = [
+  { id: "inicio", nome: "Início", sub: "o resumo de tudo", Icone: LayoutGrid },
   { id: "novas", nome: "Novas obras", sub: "vindas do Monday", Icone: Sparkle },
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
@@ -9734,6 +9735,150 @@ function AditivosView({ obras, usuario }) {
 }
 
 /* ============================================================
+   INÍCIO
+   A tela que abre. Antes o app caía direto dentro de uma obra —
+   a primeira da lista, escolhida por ordem alfabética, que quase
+   nunca é a que pede atenção hoje.
+
+   O que ela responde, nesta ordem: o tamanho do que está em jogo,
+   o que está vencendo, e o que é meu.
+   ============================================================ */
+
+function InicioNum({ rot, valor, sub, cor, onClick }) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag className={`ini-num ${onClick ? "clicavel" : ""}`} onClick={onClick}>
+      <div className="ini-num-rot" style={cor ? { color: cor } : undefined}>{rot}</div>
+      <div className="ini-num-val mono">{valor}</div>
+      <div className="ini-num-sub">{sub}</div>
+    </Tag>
+  );
+}
+
+function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, onModulo }) {
+  const r = useMemo(() => resumoGeral(obras), [obras]);
+  const t = r.totais;
+
+  const semEntrega = obras.filter((o) => !o.dataEntrega && (o.categorias || []).some((c) => (c.itens || []).length));
+  const meuNome = (equipe || []).find((p) => p.email === usuario)?.nome || nomeDoEmail(usuario);
+  const minhas = obras.filter((o) => obraDoGC(o, usuario));
+  const semGC = obras.filter((o) => !o.gc);
+
+  /* Aditivo aprovado sem o card do Pipefy: e' compromisso assumido que o
+     comercial ainda nao viu. */
+  const pipefyAberto = obras.flatMap((o) => (o.aditivos || []).filter(pipefyPendente).map((a) => ({ a, o })));
+
+  /* Uma lista so, ordenada pelo que dói primeiro. Cada linha leva ao
+     lugar de resolver — aviso que nao tem para onde ir vira paisagem. */
+  const atencao = [];
+  r.linhas.forEach((L) => {
+    L.atrasos.forEach((v) => atencao.push({
+      tom: "ruim",
+      txt: <>Em <b>#{L.codigo} {L.nome}</b>, a compra de <b>{v.nome}</b> venceu há {-v.dias} dias — {fmtBRL(v.matFalta)}</>,
+      ir: () => onAbrirObra(L.id),
+    }));
+  });
+  pipefyAberto.forEach(({ a, o }) => atencao.push({
+    tom: "aviso",
+    txt: <>O aditivo <b>{a.numero}</b> de <b>{o.nome}</b> está aprovado e ainda sem a Solicitação de contrato no Pipefy</>,
+    ir: () => onModulo("aditivos"),
+  }));
+  semEntrega.forEach((o) => atencao.push({
+    tom: "aviso",
+    txt: <><b>#{o.codigo} {o.nome}</b> não tem data de entrega — sem ela nenhum prazo de compra é calculado</>,
+    ir: () => onAbrirObra(o.id),
+  }));
+  if (semGC.length) atencao.push({
+    tom: "info",
+    txt: <><b>{semGC.length}</b> {semGC.length === 1 ? "obra está" : "obras estão"} sem GC responsável</>,
+    ir: () => onAbrirObra(semGC[0].id),
+  });
+  if (novas.length) atencao.push({
+    tom: "info",
+    txt: <><b>{novas.length}</b> obras do Monday ainda não foram iniciadas aqui</>,
+    ir: () => onModulo("novas"),
+  });
+
+  return (
+    <>
+      <div className="ini-saudacao">
+        <div>
+          <div className="ini-ola">{meuNome ? `Olá, ${meuNome.split(" ")[0]}` : "Olá"}</div>
+          <div className="ini-data">
+            {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
+          </div>
+        </div>
+      </div>
+
+      {carregando && <div className="empty-note">Carregando as obras…</div>}
+
+      <div className="ini-numeros">
+        <InicioNum rot="OBRAS ATIVAS" valor={obras.length}
+          sub={`${r.linhas.length} com planilha carregada`} />
+        <InicioNum rot="A COMPRAR" cor="var(--blue)" valor={fmtBRL(t.matTotal - t.matFeito)}
+          sub={`de ${fmtBRL(t.matTotal)} em material`} onClick={() => onModulo("a_contratar")} />
+        <InicioNum rot="A CONTRATAR" cor="var(--purple)" valor={fmtBRL(t.moTotal - t.moFeito)}
+          sub={`de ${fmtBRL(t.moTotal)} em mão de obra`} onClick={() => onModulo("a_contratar")} />
+        <InicioNum rot="MINHAS OBRAS" valor={minhas.length}
+          sub={minhas.length ? "onde você é o GC" : "nenhuma atribuída a você"} />
+      </div>
+
+      <div className="ini-colunas">
+        <div>
+          <div className="ini-titulo">
+            Pedindo atenção
+            {atencao.length > 0 && <span className="ini-conta">{atencao.length}</span>}
+          </div>
+          {atencao.length === 0 ? (
+            <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção agora.</div>
+          ) : atencao.map((a, i) => (
+            <button key={i} className={`ini-alerta ${a.tom}`} onClick={a.ir}>
+              <AlertTriangle size={13} />
+              <span>{a.txt}</span>
+              <ChevronRight size={13} className="ini-seta" />
+            </button>
+          ))}
+        </div>
+
+        <div>
+          <div className="ini-titulo">
+            {minhas.length ? "Suas obras" : "Obras ativas"}
+            <span className="ini-conta">{(minhas.length ? minhas : obras).length}</span>
+          </div>
+          {(minhas.length ? minhas : obras).map((o) => {
+            const L = r.linhas.find((x) => x.codigo === o.codigo);
+            return (
+              <button key={o.id} className="ini-obra" onClick={() => onAbrirObra(o.id)}>
+                <div className="ini-obra-id">
+                  <div className="ini-obra-nome"><span className="mono dim">#{o.codigo}</span> {o.nome}</div>
+                  <div className="ini-obra-sub">
+                    {o.squad}
+                    {o.dataEntrega
+                      ? ` · entrega ${new Date(`${o.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}`
+                      : " · sem data de entrega"}
+                  </div>
+                </div>
+                {L ? (
+                  <div className="ini-obra-barras">
+                    <div className="ini-barra" title={`Comprado: ${Math.round(L.mat.pct)}%`}>
+                      <div className="gc-track"><div className="gc-fill" style={{ width: `${L.mat.pct}%`, background: "var(--blue)" }} /></div>
+                    </div>
+                    <div className="ini-barra" title={`Contratado: ${Math.round(L.mo.pct)}%`}>
+                      <div className="gc-track"><div className="gc-fill" style={{ width: `${L.mo.pct}%`, background: "var(--purple)" }} /></div>
+                    </div>
+                  </div>
+                ) : <span className="ini-obra-vazia">sem planilha</span>}
+                {L && L.atrasos.length > 0 && <span className="gc-selo atraso">{L.atrasos.length}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ============================================================
    EQUIPE
    Quem é quem, e o que cada um faz. Existe pra que atribuir o GC
    de uma obra seja ESCOLHER de uma lista — e-mail digitado erra,
@@ -10858,7 +11003,10 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [avisoMonday, setAvisoMonday] = useState(null);
-  const [modulo, setModulo] = useState("comparativo");
+  /* Abre no INICIO, e nao dentro de uma obra. O app caia na primeira da
+     lista, escolhida por ordem alfabetica — que quase nunca e' a que pede
+     atencao hoje, e obrigava a fechar o que abriu antes de comecar. */
+  const [modulo, setModulo] = useState("inicio");
   // Registro das obras no nosso banco: código -> { situacao, ... }.
   // É isso que decide quem aparece na sidebar (ativa), quem está no
   // Arquivo (concluida) e quem ainda é só sugestão do Monday (ausente).
@@ -11000,7 +11148,7 @@ export default function App() {
   const [painelErro, setPainelErro] = useState(null);
 
   useEffect(() => {
-    if (!["a_contratar", "mehoo"].includes(modulo) || !obrasAtivas.length || !usuario) return;
+    if (!["inicio", "a_contratar", "mehoo"].includes(modulo) || !obrasAtivas.length || !usuario) return;
     let vivo = true;
     setPainelCarregando(true);
     setPainelErro(null);
@@ -13545,6 +13693,34 @@ export default function App() {
         .mh-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
         .mh-perto { color: var(--amber); font-weight: 600; }
         @media (max-width: 900px) { .mh-obra-head { flex-wrap: wrap; gap: 10px; } }
+        /* ---- Tela de inicio ---- */
+        .ini-saudacao { margin: 18px 0 20px; }
+        .ini-ola { font-family: 'Instrument Serif', Georgia, serif; font-size: 30px; color: var(--ink); line-height: 1.1; }
+        .ini-data { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; text-transform: capitalize; }
+        .ini-numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
+        .ini-num { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 15px 17px; text-align: left; font-family: inherit; }
+        .ini-num.clicavel { cursor: pointer; }
+        .ini-num.clicavel:hover { border-color: var(--ink-3); }
+        .ini-num-rot { font-size: 9.5px; font-weight: 800; letter-spacing: .07em; color: var(--ink-3); }
+        .ini-num-val { font-family: 'Space Grotesk', sans-serif; font-size: 25px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-top: 5px; }
+        .ini-num-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .ini-colunas { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
+        .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ink); padding-bottom: 8px; border-bottom: 2px solid var(--ink); margin-bottom: 8px; }
+        .ini-conta { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: 10.5px; }
+        .ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 9px; background: #fff; padding: 10px 12px; margin-bottom: 6px; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; cursor: pointer; }
+        .ini-alerta:hover { border-color: var(--ink-3); }
+        .ini-alerta span { flex: 1; }
+        .ini-alerta.ruim { background: var(--red-bg); border-color: #F0CFCB; color: #8A2E22; }
+        .ini-alerta.aviso { background: var(--amber-bg); border-color: #E8CE9A; color: #7A4E00; }
+        .ini-seta { flex-shrink: 0; opacity: .5; margin-top: 2px; }
+        .ini-obra { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit; background: #fff; border: 1px solid var(--border-soft); border-radius: 9px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; }
+        .ini-obra:hover { border-color: var(--ink-3); }
+        .ini-obra-id { flex: 1; min-width: 0; }
+        .ini-obra-nome { font-size: 12.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ini-obra-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+        .ini-obra-barras { display: flex; flex-direction: column; gap: 4px; width: 90px; flex-shrink: 0; }
+        .ini-obra-vazia { font-size: 10.5px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
+        @media (max-width: 1100px) { .ini-numeros { grid-template-columns: repeat(2, 1fr); } .ini-colunas { grid-template-columns: 1fr; } }
         /* ---- Painel geral de compras e contratacoes ---- */
         .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }
         .gc-horizonte { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -13642,7 +13818,17 @@ export default function App() {
               <button className="aviso-x" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></button>
             </div>
           )}
-          {modulo === "novas" ? (
+          {modulo === "inicio" ? (
+          <>
+          <div className="eyebrow">GESTÃO DE OBRAS TKWS</div>
+          <div className="title-row"><span className="title-accent">Início</span></div>
+          <div className="obra-meta">O que está em jogo hoje, o que está vencendo, e o que é seu</div>
+          <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={painelCarregando}
+            usuario={usuario} equipe={pessoas}
+            onAbrirObra={(id) => { setSelectedId(id); setModulo("comparativo"); setGrupo("dashboard"); setTab(null); }}
+            onModulo={setModulo} />
+          </>
+          ) : modulo === "novas" ? (
           <>
           <div className="eyebrow">DO MONDAY · {obrasNovas.length}</div>
           <div className="title-row"><span className="title-accent">Novas obras</span></div>
