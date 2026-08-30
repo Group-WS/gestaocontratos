@@ -10205,7 +10205,82 @@ function ObraCard({ o, acao, children }) {
   );
 }
 
-function NovasObrasView({ obras, onStart, salvando, semBanco }) {
+/* Cadastrar obra na mao.
+
+   O Monday e' a fonte, mas ele nao e' a unica: obra que entrou fora do
+   fluxo comercial, obra antiga que precisa ser conferida agora, obra de
+   teste. Sem esta porta, a unica saida era criar o board la so pra ela
+   aparecer aqui.
+
+   Tres campos, porque tres bastam: o resto (endereco, cliente, GC, valor
+   vendido) a obra ganha quando os documentos subirem. */
+function CadastroManualObra({ onCriar, salvando, jaExistem }) {
+  const [aberto, setAberto] = useState(false);
+  const [nome, setNome] = useState("");
+  const [codigo, setCodigo] = useState("");
+  const [squad, setSquad] = useState(SQUADS[0].nome);
+  const [erro, setErro] = useState(null);
+
+  const cod = codigo.trim();
+  /* Quatro digitos: o centro de custo E' o numero da obra, e ele vira o
+     prefixo do aditivo ("2405/1") e a chave de tudo que e' guardado. */
+  const codigoOk = /^\d{4}$/.test(cod);
+  const repetido = codigoOk && jaExistem.has(cod);
+  const pode = nome.trim() && codigoOk && !repetido && !salvando;
+
+  async function criar() {
+    setErro(null);
+    try {
+      await onCriar({ nome: nome.trim(), codigo: cod, squad });
+      setNome(""); setCodigo(""); setAberto(false);
+    } catch (e) {
+      setErro(e.message || String(e));
+    }
+  }
+
+  if (!aberto) {
+    return (
+      <button className="btn-doc cad-abrir" onClick={() => setAberto(true)}>
+        <Plus size={13} /> Cadastrar obra manualmente
+      </button>
+    );
+  }
+
+  return (
+    <div className="cad-box">
+      <div className="cad-h">
+        <span>Cadastrar obra manualmente</span>
+        <button className="ad-icon" onClick={() => setAberto(false)}><X size={13} /></button>
+      </div>
+      <div className="cad-campos">
+        <label className="cad-largo">Nome da obra
+          <input className="form-input" value={nome} placeholder="ex: Ed. Meraki, 602"
+            onChange={(e) => setNome(e.target.value)} /></label>
+        <label>Centro de custo
+          <input className="form-input mono" value={codigo} placeholder="2510" inputMode="numeric" maxLength={4}
+            onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+          {cod && !codigoOk && <span className="cad-erro">são 4 dígitos</span>}
+          {repetido && <span className="cad-erro">já existe uma obra {cod}</span>}
+        </label>
+        <label>Squad
+          <select className="form-input" value={squad} onChange={(e) => setSquad(e.target.value)}>
+            {SQUADS.map((s) => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
+          </select></label>
+      </div>
+      {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
+      <div className="cad-acoes">
+        <button className="btn-doc btn-template" disabled={!pode} onClick={criar}>
+          {salvando ? "Criando…" : "Criar e abrir"}
+        </button>
+        <span className="cad-nota">
+          Ela nasce ativa e vazia — endereço, cliente e valor vendido entram quando os documentos subirem.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, codigosUsados }) {
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
   const filtradas = obras.filter((o) => !q || `${o.nome} ${o.codigo} ${o.squad}`.toLowerCase().includes(q));
@@ -10229,6 +10304,8 @@ function NovasObrasView({ obras, onStart, salvando, semBanco }) {
           Banco de dados não configurado neste ambiente — o start não vai gravar nada.
         </div>
       )}
+
+      <CadastroManualObra onCriar={onCriarManual} salvando={salvando === "manual"} jaExistem={codigosUsados} />
 
       {obras.length > 0 && (
         <div className="obra-search obra-search-wide">
@@ -10556,6 +10633,36 @@ export default function App() {
       setSelectedId(o.id);
     } catch (err) {
       setErroBanco(`Não foi possível iniciar "${o.nome}": ${err.message || err}`);
+    } finally {
+      setSalvandoObra(null);
+    }
+  }
+
+  /* Obra que nao veio do Monday. Ela nasce com o mesmo formato das
+     outras — inclusive a EAP vazia — pra que nenhuma tela precise saber
+     de onde ela veio. `boardId` fica nulo, e e' so isso que a distingue. */
+  async function criarObraManual({ nome, codigo, squad }) {
+    setSalvandoObra("manual");
+    setErroBanco(null);
+    try {
+      const nova = {
+        id: codigo, codigo, nome, squad,
+        boardId: null, endereco: "—", cliente: "—", gc: null,
+        area: null, prazo: null, valorVendido: 0,
+        categorias: buildCategorias([], null),
+        semDetalhe: true, manual: true,
+      };
+      const linha = await iniciarObra(nova);
+      setObras((prev) => (prev.some((o) => String(o.codigo) === codigo) ? prev : [...prev, nova]));
+      setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
+      setModulo("comparativo");
+      setSelectedId(nova.id);
+    } catch (err) {
+      const msg = /duplicate key|already exists/i.test(err.message || "")
+        ? `Já existe uma obra com o centro de custo ${codigo}.`
+        : (err.message || String(err));
+      setErroBanco(`Não foi possível criar "${nome}": ${msg}`);
+      throw new Error(msg);
     } finally {
       setSalvandoObra(null);
     }
@@ -12888,6 +12995,18 @@ export default function App() {
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .tab .dim { margin-left: 2px; vertical-align: -1px; }
         /* ---- Módulo A Contratar ---- */
+        .cad-abrir { margin-bottom: 16px; }
+        .cad-box { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 14px 16px; margin-bottom: 18px; }
+        .cad-h { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 11px; }
+        .cad-campos { display: grid; grid-template-columns: 1fr 140px 170px; gap: 10px; }
+        .cad-campos label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+        .cad-campos .form-input { margin-top: 3px; width: 100%; font-size: 13px; }
+        .cad-largo { grid-column: auto; }
+        .cad-erro { display: block; font-size: 10.5px; color: var(--red); font-weight: 600; text-transform: none; letter-spacing: 0; margin-top: 3px; }
+        .cad-erro-larga { margin-top: 9px; }
+        .cad-acoes { display: flex; align-items: center; gap: 12px; margin-top: 13px; flex-wrap: wrap; }
+        .cad-nota { font-size: 11px; color: var(--ink-3); }
+        @media (max-width: 760px) { .cad-campos { grid-template-columns: 1fr; } }
         /* ---- Arquivos da obra ---- */
         .arq-topo { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 18px 0 16px; }
         .arq-topo-n { font-family: 'Space Grotesk', sans-serif; font-size: 30px; font-weight: 700; color: var(--ink); line-height: 1; }
@@ -13038,7 +13157,9 @@ export default function App() {
           <div className="eyebrow">DO MONDAY · {obrasNovas.length}</div>
           <div className="title-row"><span className="title-accent">Novas obras</span></div>
           <div className="obra-meta">Obras que ainda não foram iniciadas aqui</div>
-          <NovasObrasView obras={obrasNovas} onStart={darStart} salvando={salvandoObra} semBanco={!supabaseConfigurado} />
+          <NovasObrasView obras={obrasNovas} onStart={darStart} onCriarManual={criarObraManual}
+            salvando={salvandoObra} semBanco={!supabaseConfigurado}
+            codigosUsados={new Set(obras.map((o) => String(o.codigo)))} />
           </>
           ) : modulo === "arquivo" ? (
           <>
