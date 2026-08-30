@@ -104,7 +104,7 @@ export async function salvarDadosObra(codigo, conteudo, email) {
       "cliente_assinatura_arq", "cliente_assinatura_obs",
       "compra_sem_assinatura_por", "compra_sem_assinatura_em", "compra_sem_assinatura_just",
       "cmv_liberado", "cmv_liberado_em", "cmv_liberado_por",
-      "data_entrega", "escopos",
+      "data_entrega", "escopos", "arquivos",
     ];
     const reduzida = { ...linha };
     opcionais.forEach((c) => { delete reduzida[c]; });

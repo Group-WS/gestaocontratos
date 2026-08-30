@@ -26,6 +26,16 @@ const MINUTOS_DO_LINK = 60;
  * sobrescreve o anterior no meio de um download em andamento — quem
  * chama apaga o antigo depois, com `apagarArquivo`.
  */
+/* O que o deposito aceita. Tem que casar com `allowed_mime_types` do
+   bucket: tipo de fora e' recusado pelo Storage com uma mensagem que nao
+   diz o que fazer, e a pessoa fica sem saber se o problema e' o arquivo,
+   a internet ou o sistema. */
+export const EXTENSOES_ACEITAS = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.xlsm,.csv,.txt,.png,.jpg,.jpeg,.webp,.zip";
+
+export function tipoAceito(nome) {
+  return EXTENSOES_ACEITAS.split(",").some((e) => nome.toLowerCase().endsWith(e));
+}
+
 export async function subirArquivo({ obraCodigo, chave, file, por }) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado — o arquivo não tem onde ficar guardado.");
 

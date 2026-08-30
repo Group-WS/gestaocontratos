@@ -25,7 +25,7 @@ import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
-import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel } from "./lib/arquivos";
+import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
 // em web/api/), então "/api/..." resolve sozinho — em dev pelo proxy do
@@ -5418,7 +5418,10 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
     e.target.value = "";
     if (!file) return;
     setErro(null);
-    if (!/\.pdf$/i.test(file.name)) { setErro("Suba um arquivo PDF."); return; }
+    /* Era so PDF. O Projeto Criativo chega em Word, e caderno digitalizado
+       chega em imagem — recusar aqui empurrava a pessoa a converter o
+       arquivo pra conseguir anexar. */
+    if (!tipoAceito(file.name)) { setErro(`Tipo não aceito. Vale: ${EXTENSOES_ACEITAS.replace(/,/g, " ")}`); return; }
 
     // Sem banco (modo local) segue o `blob:` de antes: some ao fechar a
     // aba, mas anexar continua funcionando pra quem roda sem Supabase.
@@ -5478,7 +5481,7 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
           <Upload size={12} /> {enviando ? "Enviando…" : arquivo ? "Trocar" : "Anexar"}
         </button>
       )}
-      <input ref={inputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={aoEscolher} />
+      <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} style={{ display: "none" }} onChange={aoEscolher} />
       {erro && <span className="caderno-erro">{erro}</span>}
     </div>
   );
@@ -9674,6 +9677,11 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
     if (!file) return;
     setErro(null);
     if (!supabaseConfigurado) { setErro("Sem banco configurado — o arquivo não teria onde ficar guardado."); return; }
+    /* Conferir aqui, e nao deixar o Storage recusar: a mensagem de la nao
+       diz qual e' o problema, e a pessoa fica sem saber se e' o arquivo,
+       a internet ou o sistema. */
+    if (!tipoAceito(file.name)) { setErro(`Tipo não aceito. Vale: ${EXTENSOES_ACEITAS.replace(/,/g, " ")}`); return; }
+    if (file.size > 50 * 1024 * 1024) { setErro(`"${file.name}" tem ${Math.round(file.size / 1024 / 1024)} MB — o limite é 50 MB por arquivo.`); return; }
     setEnviando(true);
     try {
       const info = await subirArquivo({ obraCodigo: obra.codigo, chave: "avulso", file, por: usuario });
@@ -9724,7 +9732,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
               onClick={() => inputRef.current && inputRef.current.click()}>
               <Upload size={13} /> {enviando ? "Enviando…" : "Anexar arquivo"}
             </button>
-            <input ref={inputRef} type="file" style={{ display: "none" }} onChange={subir} />
+            <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} style={{ display: "none" }} onChange={subir} />
           </div>
         )}
       </div>
@@ -10848,6 +10856,35 @@ export default function App() {
     }, 1200);
     return () => clearTimeout(t);
   }, [obra, edicao.minha, usuario]);
+
+  /* Soltar a trava ao SAIR, e nao so no botao "finalizar".
+
+     Ela expira em 30 minutos, o que salva o caso de fechar o navegador —
+     mas trocar de obra dez vezes numa manha deixava dez obras travadas em
+     nome de quem so passou por elas. Com o time inteiro usando, isso e' a
+     pessoa do lado vendo "em edicao por..." numa obra que ninguem esta
+     editando.
+
+     `sendBeacon` na saida da aba porque `fetch` normal e' cancelado
+     quando a pagina morre; se o navegador nao tiver, a expiracao resolve. */
+  const travaRef = useRef(null);
+  useEffect(() => {
+    travaRef.current = edicao.minha && obra?.codigo ? obra.codigo : null;
+  }, [edicao.minha, obra?.codigo]);
+
+  useEffect(() => {
+    const codigo = edicao.minha ? obra?.codigo : null;
+    if (!codigo) return;
+    return () => { liberarEdicao(codigo, usuario).catch(() => {}); };
+  }, [edicao.minha, obra?.codigo, usuario]);
+
+  useEffect(() => {
+    const sair = () => {
+      if (travaRef.current) liberarEdicao(travaRef.current, usuario).catch(() => {});
+    };
+    window.addEventListener("pagehide", sair);
+    return () => window.removeEventListener("pagehide", sair);
+  }, [usuario]);
 
   async function habilitarEdicao() {
     if (!obra?.codigo) return;

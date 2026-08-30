@@ -20,10 +20,22 @@ values (
   'obra-arquivos',
   false,                      -- privado: contrato de cliente nao e publico
   52428800,                   -- 50 MB por arquivo
-  array['application/pdf','application/vnd.ms-excel',
+  -- A lista veio curta demais: so PDF, Excel e imagem. O Projeto
+  -- Criativo chega em Word, e a obra junta apresentacao, DWG e foto.
+  -- Tipo de fora da lista e' recusado pelo Storage com uma mensagem que
+  -- nao diz o que fazer — o limite tem que casar com o que o time usa.
+  array['application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'application/vnd.ms-excel.sheet.macroEnabled.12',
-        'text/csv','image/png','image/jpeg']
+        'text/csv','text/plain',
+        'image/png','image/jpeg','image/webp','image/heic',
+        'application/zip','application/x-zip-compressed',
+        'application/octet-stream']
 )
 on conflict (id) do update set
   file_size_limit = excluded.file_size_limit,
