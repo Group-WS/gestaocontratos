@@ -6113,6 +6113,34 @@ const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
 const CHAVE_MINHAS = "tkws.so.minhas";
 const CHAVE_SQUADS = "tkws.squads.fechados";
 
+/* A obra: tres volumes e a linha do chao.
+
+   Vem do desenho que ela mandou — traco fino, volumes angulares em
+   perspectiva, linha de terreno atravessando. O original tem ainda as
+   linhas tracejadas de construcao e uma diagonal longa; as duas viram
+   borrao em 16px, entao ficaram de fora. O que sobrevive da reducao sao
+   os tres blocos de alturas diferentes e o chao — e' o suficiente pra
+   ler "obra" e pra nao se confundir com o predinho generico de antes.
+
+   Traco 1.25 e nao 2: o desenho dela e' de linha fina, e engrossar aqui
+   perderia justamente o que o diferencia dos outros icones do menu. */
+function IconeObra({ size = 16, className }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}
+      stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" aria-hidden="true"
+      vectorEffect="non-scaling-stroke">
+      {/* torre alta, topo inclinado */}
+      <path d="M7.4 19V7.1l5.1-2.6V19" />
+      {/* volume do meio */}
+      <path d="M12.5 19V8.4l4 1.9V19" />
+      {/* bloco baixo, com o vinco do telhado */}
+      <path d="M16.5 19v-4.3l2.6 1.2V19" />
+      {/* a linha do terreno */}
+      <path d="M3.5 19h17" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /* O monograma da Mehoo: o duplo O.
 
    A marca e' "MEHOO" por extenso, num sans geometrico bem fino — e nome
@@ -6369,7 +6397,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                   return (
                     <button key={o.id} className={`nav-item ${active ? "active" : ""}`} onClick={() => onSelect(o.id)}
                       title={`${o.nome} — #${o.codigo}`}>
-                      <Building2 size={16} className="nav-icon" />
+                      <IconeObra size={16} className="nav-icon" />
                       <div className="nav-item-text">
                         <div className="nav-item-name">{o.nome}</div>
                         <div className="nav-item-sub mono">#{o.codigo} · {o.area}m²</div>
