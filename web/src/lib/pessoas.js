@@ -41,10 +41,30 @@ export function nomeDoEmail(email) {
     .join(" ");
 }
 
+/* Coluna que ainda nao existe no banco NAO pode trancar todo mundo.
+
+   Entre o deploy e a migracao existe uma janela em que `perfil` nao
+   existe. Se a leitura falhasse ali, ninguem teria perfil — e o portao
+   novo mandaria a empresa inteira pra sala de espera, inclusive quem
+   rodaria o SQL. O app volta a se comportar como antes ate a coluna
+   existir, e diz isso na tela.
+
+   Mesma logica que `salvarDadosObra` ja usava: o trabalho continua, e o
+   que falta e' anunciado. */
+export const MIGRACAO_PENDENTE = "migracao-pendente";
+
+function faltaColuna(error) {
+  return error && (error.code === "42703" || error.code === "PGRST204"
+    || /column .* does not exist|Could not find the/i.test(error.message || ""));
+}
+
 export async function listarPessoas() {
   if (!supabaseConfigurado) return [];
   const { data, error } = await supabase.from("pessoa").select("*").order("nome");
-  if (error) throw error;
+  if (error) {
+    if (faltaColuna(error)) { const e = new Error(MIGRACAO_PENDENTE); e.migracao = true; throw e; }
+    throw error;
+  }
   return (data || []).map(paraApp);
 }
 
@@ -205,6 +225,9 @@ export async function garantirPessoa(email) {
     email: e, nome: nomeDoEmail(e), perfil: null, ativo: true,
     entrou_em: new Date().toISOString(),
   }).select().single();
+
+  // Sem as colunas novas, nao ha fila pra entrar ainda.
+  if (faltaColuna(error)) return null;
 
   /* Corrida entre duas abas abrindo ao mesmo tempo: a segunda recebe
      violacao de chave, e o certo e' ler o que a primeira gravou. */

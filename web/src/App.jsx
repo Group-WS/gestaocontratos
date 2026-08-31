@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
-  PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita,
+  PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, MIGRACAO_PENDENTE,
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoAdmin } from "./lib/pessoas";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
@@ -11602,6 +11602,7 @@ export default function App() {
   const [pessoas, setPessoas] = useState([]);
   const [pessoasCarregando, setPessoasCarregando] = useState(true);
   const [pessoasErro, setPessoasErro] = useState(null);
+  const [migracaoPendente, setMigracaoPendente] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -11611,7 +11612,13 @@ export default function App() {
     (usuario ? garantirPessoa(usuario).catch(() => null) : Promise.resolve())
       .then(() => listarPessoas())
       .then((l) => { if (vivo) setPessoas(l); })
-      .catch((e) => { if (vivo) setPessoasErro(`Não consegui carregar a equipe: ${e.message || e}`); })
+      .catch((e) => {
+        if (!vivo) return;
+        /* A coluna `perfil` ainda nao existe: o app volta a se comportar
+           como antes da migracao em vez de trancar todo mundo. */
+        if (e.migracao) { setMigracaoPendente(true); return; }
+        setPessoasErro(`Não consegui carregar a equipe: ${e.message || e}`);
+      })
       .finally(() => { if (vivo) setPessoasCarregando(false); });
     return () => { vivo = false; };
   }, [usuario]);
@@ -12645,7 +12652,7 @@ export default function App() {
   /* Sem perfil, a tela para aqui. Antes de qualquer barra lateral,
      antes de qualquer numero — a sala de espera nao mostra NADA da
      empresa. Ver docs/SPEC-acessos.md §3. */
-  if (!pessoasCarregando && usuario && !temAcesso(eu)) {
+  if (!pessoasCarregando && !migracaoPendente && usuario && !temAcesso(eu)) {
     return <SalaDeEspera usuario={usuario} pessoa={eu}
       onSair={sairDaConta} onRecarregar={() => window.location.reload()} />;
   }
@@ -14486,7 +14493,22 @@ export default function App() {
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
         <main className={`main ${["executivo", "vendido_planilha", "vendido_contrato"].includes(tab) ? "larga" : ""}`}>
-          {avisoMonday && <div className="aviso-monday">{avisoMonday}</div>}
+          {migracaoPendente && (
+        <div className="aviso-monday">
+          <b>Falta rodar <code>supabase/perfis.sql</code>.</b> Até lá, o controle de acesso por
+          perfil está desligado e todo mundo continua vendo tudo — que é como era antes.
+        </div>
+      )}
+      {/* O portao de perfil esta DESLIGADO ate a coluna existir. Dizer
+          isso e' o que impede a janela virar um estado permanente que
+          ninguem lembra de fechar. */}
+      {migracaoPendente && (
+        <div className="aviso-monday">
+          <b>Falta rodar supabase/perfis.sql.</b> Até lá o controle de acesso por perfil
+          fica desligado e todo mundo continua vendo tudo — como era antes.
+        </div>
+      )}
+      {avisoMonday && <div className="aviso-monday">{avisoMonday}</div>}
           {erroBanco && <div className="aviso-monday">{erroBanco}</div>}
           {migracao && (
             <div className="aviso-migracao">
