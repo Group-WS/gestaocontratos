@@ -89,11 +89,58 @@ function Centro({ children }) {
   );
 }
 
+/* O Azure recusa NA VOLTA, nao na ida: o navegador sai daqui, falha la',
+   e volta com o motivo na URL — as vezes em `?query`, as vezes em
+   `#hash`. Sem ler os dois, a tela de login reaparece limpa e parece que
+   nada aconteceu, que foi exatamente o que ela viu. */
+export function erroDaVolta(href) {
+  let bruto = null;
+  try {
+    const u = new URL(href);
+    bruto = u.searchParams.get("error_description") || u.searchParams.get("error")
+      || new URLSearchParams(u.hash.replace(/^#/, "")).get("error_description")
+      || new URLSearchParams(u.hash.replace(/^#/, "")).get("error");
+  } catch { return null; }
+  if (!bruto) return null;
+  const t = decodeURIComponent(bruto);
+
+  /* Os codigos AADSTS que tem conserto conhecido viram instrucao. O resto
+     aparece cru: melhor um texto feio do que esconder o motivo. */
+  if (/AADSTS50194|multi-?tenant/i.test(t)) {
+    return "O app do Azure é de um único tenant, mas o Supabase está chamando o endereço /common. "
+      + "Conserto: no Supabase, em Authentication → Sign In / Providers → Azure, preencha o campo "
+      + "\"Azure Tenant URL\" com https://login.microsoftonline.com/SEU-TENANT-ID (o Directory (tenant) ID "
+      + "está no Azure, na visão geral do app).";
+  }
+  if (/AADSTS50011|redirect_uri/i.test(t)) {
+    return "O endereço de retorno não bate. No Azure, em Authentication → Redirect URIs, tem que estar "
+      + "exatamente a URL de callback do Supabase (…supabase.co/auth/v1/callback).";
+  }
+  if (/AADSTS7000215|invalid_client|client_secret/i.test(t)) {
+    return "O segredo do Azure não foi aceito. Gere um novo Client Secret e cole o VALUE (não o Secret ID) "
+      + "no Supabase. Segredo do Azure expira.";
+  }
+  if (/access_denied|consent/i.test(t)) {
+    return "O acesso foi negado no login da Microsoft — ou você cancelou, ou o app precisa de consentimento "
+      + "do administrador do diretório.";
+  }
+  return t;
+}
+
 function LoginScreen({ derrubada }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState(null);
+  const [erro, setErro] = useState(() => erroDaVolta(window.location.href));
   const [carregando, setCarregando] = useState(false);
+
+  /* Limpa a URL depois de ler: senao o erro gruda e reaparece a cada
+     tentativa, inclusive nas que derem certo. */
+  useEffect(() => {
+    if (!erro) return;
+    if (window.location.search || window.location.hash) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);   // so' na entrada: e' a URL de chegada que interessa
 
   /* Entrar com a conta da empresa.
 
@@ -160,6 +207,11 @@ function LoginScreen({ derrubada }) {
           </div>
         )}
 
+        {erro && (
+          <div style={{ color: "#b91c1c", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 12px", fontSize: 12, lineHeight: 1.5, marginBottom: 14 }}>
+            {erro}
+          </div>
+        )}
         {/* A conta da empresa PRIMEIRO, e a senha depois da linha: e' o
             caminho que praticamente todo mundo vai usar, e deixa-lo
             embaixo dos campos fazia a pessoa preencher e-mail e senha
@@ -188,7 +240,6 @@ function LoginScreen({ derrubada }) {
             style={inputStyle} />
         </div>
 
-        {erro && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 12 }}>{erro}</div>}
 
         <button type="submit" disabled={carregando}
           style={{ width: "100%", marginTop: 20, background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: carregando ? 0.6 : 1 }}>

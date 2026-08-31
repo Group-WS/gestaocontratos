@@ -9863,6 +9863,7 @@ function AditivosView({ obras, usuario }) {
      executivo dela e' carregado pra busca de supressao. Nenhuma ou varias
      e' o modo de LEITURA — ve tudo, cria nada, porque aditivo nasce
      dentro de uma obra e o numero sai do centro de custo dela. */
+  const [escolhendo, setEscolhendo] = useState(false);
   const uma = escolhidas.size === 1 ? [...escolhidas][0] : null;
   const obra = obras.find((o) => String(o.codigo) === String(uma)) || null;
 
@@ -9886,16 +9887,22 @@ function AditivosView({ obras, usuario }) {
 
   const trocar = (salvo) => setLista((l) => l.map((a) => (a.id === salvo.id ? salvo : a)));
 
-  async function novo() {
-    if (!obra) return;
+  async function novo(alvo) {
+    const o = alvo || obra;
+    if (!o) return;
     setErro(null);
+    setEscolhendo(false);
     try {
-      const seq = proximaSeq(daObra);
+      const seq = proximaSeq(lista.filter((a) => String(a.obraCodigo) === String(o.codigo)));
       const criado = await criarAditivo({
-        obraCodigo: obra.codigo, seq, descricao: "",
-        doc: novoDocumento(obra), usuario,
+        obraCodigo: o.codigo, seq, descricao: "",
+        doc: novoDocumento(o), usuario,
       });
       setLista((l) => [criado, ...l]);
+      /* Focar o filtro na obra escolhida nao e' cosmetico: e' o que faz o
+         executivo dela carregar, e sem executivo a busca de supressao
+         abre vazia. */
+      setEscolhidas(new Set([String(o.codigo)]));
       setAbertoId(criado.id);
     } catch (e) {
       setErro(`Não consegui criar o aditivo: ${e.message || e}`);
@@ -9936,13 +9943,33 @@ function AditivosView({ obras, usuario }) {
             ) : (
               <div>
                 <div className="ad-cab-nome">{visiveis.length} {visiveis.length === 1 ? "aditivo" : "aditivos"}</div>
-                {/* Criar exige UMA obra: o numero do aditivo sai do centro
-                    de custo dela, e nao ha centro de custo de "todas". */}
-                <div className="ad-cab-sub">escolha uma obra no filtro para criar um aditivo novo</div>
+                <div className="ad-cab-sub">em {new Set(visiveis.map((a) => String(a.obraCodigo))).size} obra(s)</div>
               </div>
             )}
-        {obra && <button className="btn-doc btn-template" onClick={novo}><Plus size={13} /> Novo aditivo</button>}
+        {/* O botao existe SEMPRE. Criar exige uma obra — o numero sai do
+            centro de custo dela — mas exigir que ela adivinhasse isso no
+            filtro escondeu a funcao inteira: ela nao achou como criar.
+            Agora o proprio botao pergunta qual obra. */}
+        <button className="btn-doc btn-template"
+          onClick={() => (obra ? novo(obra) : setEscolhendo((v) => !v))}>
+          <Plus size={13} /> Novo aditivo
+        </button>
       </div>
+
+      {escolhendo && !obra && (
+        <div className="ad-escolher">
+          <div className="ad-escolher-rot">Em qual obra?</div>
+          <div className="ad-escolher-lista">
+            {obras.map((o) => (
+              <button key={o.codigo} className="ad-escolher-obra" onClick={() => novo(o)}>
+                <span className="mono dim">#{o.codigo}</span> {o.nome}
+                <span className="ad-escolher-num mono">{numeroAditivo(o.codigo, proximaSeq(lista.filter((a) => String(a.obraCodigo) === String(o.codigo))))}</span>
+              </button>
+            ))}
+          </div>
+          <button className="ad-escolher-cancelar" onClick={() => setEscolhendo(false)}>cancelar</button>
+        </div>
+      )}
 
           {carregando ? <div className="empty-note">Carregando…</div>
             : visiveis.length === 0 ? (
@@ -13077,6 +13104,13 @@ export default function App() {
         .ad-cab-obra { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
         .ad-cab-nome { font-size: 16px; font-weight: 700; color: var(--ink); }
         .ad-cab-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+        .ad-escolher { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 12px 14px; margin-bottom: 14px; }
+        .ad-escolher-rot { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+        .ad-escolher-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; }
+        .ad-escolher-obra { display: flex; align-items: center; gap: 6px; text-align: left; font-family: inherit; font-size: 12.5px; color: var(--ink); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+        .ad-escolher-obra:hover { border-color: var(--blue); background: #FCFBF9; }
+        .ad-escolher-num { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+        .ad-escolher-cancelar { margin-top: 10px; background: none; border: none; font-family: inherit; font-size: 11.5px; color: var(--ink-3); text-decoration: underline; cursor: pointer; padding: 0; }
         .ad-linha-obra { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ad-linha-desc { background: none; border: none; padding: 0; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
         .ad-linha-desc:hover { color: var(--blue); text-decoration: underline; }
