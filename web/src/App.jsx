@@ -6075,10 +6075,13 @@ function ExecutivoView({ obra, usuario, onImportCaderno, onImportPlanilhaExecuti
    TOPO / SIDEBAR
    ============================================================ */
 
-function TopBar() {
+function TopBar({ onInicio }) {
   return (
     <header className="topbar">
-      <div className="topbar-brand">
+      {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
+          primeiro lugar onde a pessoa clica quando se perde — deixa-la
+          inerte gasta um clique de descoberta que ninguem tem. */}
+      <button className="topbar-brand" onClick={onInicio} title="Ir para o Início">
         <img
           className="brand-logo"
           src="/logo.png"
@@ -6086,7 +6089,7 @@ function TopBar() {
           onError={(e) => { e.currentTarget.style.display = "none"; }}
         />
         <span className="brand-word">GESTÃO DE OBRAS TKWS</span>
-      </div>
+      </button>
       {/* A busca do topo saiu.
 
           Ela nunca teve handler: digitar ali nao fazia nada, e o "⌘K" ao
@@ -12228,7 +12231,8 @@ export default function App() {
         .right { text-align: right; }
 
         .topbar { height: 64px; display: flex; align-items: center; gap: 24px; padding: 0 24px; background: #fff; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
-        .topbar-brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+        .topbar-brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; background: none; border: none; font-family: inherit; padding: 4px 6px; margin-left: -6px; border-radius: 9px; cursor: pointer; }
+        .topbar-brand:hover { background: var(--panel); }
         /* mostra só o monograma (recorta o texto "GROUP WS" e as margens
            do PNG oficial, sem alterar o arquivo — nada é distorcido) */
         .brand-logo { width: 46px; height: 38px; object-fit: cover; object-position: top center; display: block; }
@@ -13989,7 +13993,7 @@ export default function App() {
         @media (max-width: 900px) { .gc-totais { grid-template-columns: 1fr; } }
       `}</style>
 
-      <TopBar />
+      <TopBar onInicio={() => setModulo("inicio")} />
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           equipe={pessoas} onSair={sairDaConta}
