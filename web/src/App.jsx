@@ -6125,7 +6125,7 @@ const MODULOS = [
   { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
 ];
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair }) {
   /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
      quer reativar o filtro a cada F5. */
   const [soMinhas, setSoMinhas] = useState(() => {
@@ -6135,6 +6135,11 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_MINHAS, soMinhas ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [soMinhas]);
   const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
+
+  const [menuPerfil, setMenuPerfil] = useState(false);
+  const meuNome = (equipe || []).find((p) => p.email === usuario)?.nome || nomeDoEmail(usuario);
+  const iniciais = (meuNome || usuario || "?").split(/\s+/).slice(0, 2)
+    .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
 
   /* Quais squads estao dobrados. Guardado, porque quem trabalha num squad
      so nao quer dobrar os outros a cada F5. */
@@ -6329,12 +6334,27 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
         </div>
       </div>
 
+      {/* Era um retrato: nome e e-mail escritos no codigo, e um chevron
+          que nao abria nada. Quem entrasse com outra conta via "Priscila
+          Wayhs" ali — e nao tinha como sair. */}
       <div className="sidebar-footer">
-        <div className="profile">
-          <div className="avatar avatar-sm">PW</div>
-          <div className="profile-text"><div className="profile-name">Priscila Wayhs</div><div className="profile-email">priscila.wayhs@groupws…</div></div>
-          <ChevronRight size={14} className="dim" />
-        </div>
+        {menuPerfil && (
+          <div className="perfil-menu">
+            <div className="perfil-menu-email mono">{usuario}</div>
+            <button className="perfil-sair" onClick={onSair}>
+              <ArrowUpRight size={13} /> Sair desta conta
+            </button>
+          </div>
+        )}
+        <button className={`profile ${menuPerfil ? "aberto" : ""}`} onClick={() => setMenuPerfil((v) => !v)}
+          title={usuario || "Não identificado"}>
+          <div className="avatar avatar-sm">{iniciais}</div>
+          <div className="profile-text">
+            <div className="profile-name">{meuNome || "Não identificado"}</div>
+            <div className="profile-email">{usuario || "sem sessão"}</div>
+          </div>
+          {menuPerfil ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
+        </button>
       </div>
     </aside>
   );
@@ -11213,6 +11233,14 @@ export default function App() {
   /* Obra que nao veio do Monday. Ela nasce com o mesmo formato das
      outras — inclusive a EAP vazia — pra que nenhuma tela precise saber
      de onde ela veio. `boardId` fica nulo, e e' so isso que a distingue. */
+  /* Sair de verdade: `scope: "local"` limpa a sessao deste navegador
+     mesmo quando o token ja esta invalido e o servidor recusaria o
+     signOut normal — sem isso, token podre virava um "Sair" que nao sai. */
+  async function sairDaConta() {
+    try { await supabase.auth.signOut({ scope: "local" }); } catch { /* segue */ }
+    window.location.reload();
+  }
+
   async function definirGCdaObra(codigo, email) {
     const linha = await definirGC(codigo, email);
     setObras((prev) => prev.map((o) => (String(o.codigo) === String(codigo) ? { ...o, gc: email } : o)));
@@ -12188,6 +12216,14 @@ export default function App() {
         .soon { font-size: 9.5px; color: var(--ink-3); background: var(--panel); padding: 2px 6px; border-radius: 20px; flex-shrink: 0; }
         .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 14px; flex-shrink: 0; }
         .profile { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
+        .profile { width: 100%; background: none; border: none; font-family: inherit; text-align: left; }
+        .profile.aberto { background: var(--panel); }
+        .profile-name { color: var(--ink); }
+        .perfil-menu { border: 1px solid var(--border); border-radius: 10px; background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.1); padding: 9px; margin-bottom: 7px; }
+        .perfil-menu-email { font-size: 10.5px; color: var(--ink-3); padding: 2px 6px 8px; word-break: break-all; }
+        .perfil-sair { display: flex; align-items: center; gap: 7px; width: 100%; background: none; border: none; border-radius: 7px; padding: 8px 6px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--red); cursor: pointer; }
+        .perfil-sair:hover { background: var(--red-bg); }
+
         .profile:hover { background: var(--panel); }
         .avatar-sm { width: 28px; height: 28px; font-size: 10.5px; }
         .profile-text { flex: 1; min-width: 0; }
@@ -12206,8 +12242,26 @@ export default function App() {
            hover, e é
            por isso que ele foi adicionado em todos: sem ele, quatro ícones
            iguais não dizem nada. */
+        /* RECOLHIDA.
+
+           Ela virava uma coluna de icones sem hierarquia: obra e modulo
+           com o mesmo peso, a tira de modulos deitada de lado, e o
+           perfil com um chevron apontando pro nada. Agora as obras ficam
+           numa coluna alinhada, os modulos numa faixa separada por uma
+           linha, e o perfil e' so' o avatar — que continua abrindo o
+           menu de sair. O atributo title de cada botao e' o rotulo no
+           hover. */
         .sidebar.recolhida { width: 62px; }
-        .sidebar.recolhida .sidebar-scroll { padding: 12px 8px; align-items: center; }
+        .sidebar.recolhida .sidebar-scroll { padding: 12px 6px; align-items: center; gap: 2px; }
+        .sidebar.recolhida .squad-group { margin-bottom: 4px; }
+        .sidebar.recolhida .nav-modulos { border-top: 1px solid var(--border); padding-top: 8px; margin-top: auto; width: 100%; }
+        .sidebar.recolhida .nav-modulos::before { display: none; }
+        .sidebar.recolhida .nav-tira { flex-direction: column; gap: 2px; }
+        .sidebar.recolhida .nav-tira-item { width: 44px; flex: none; }
+        .sidebar.recolhida .sidebar-toggle { justify-content: center; }
+        /* O menu de sair nao cabe em 62px: ele salta pra fora da barra. */
+        .sidebar.recolhida .perfil-menu { position: absolute; bottom: 58px; left: 8px; width: 210px; z-index: 30; }
+        .sidebar.recolhida .sidebar-footer { position: relative; }
         .sidebar.recolhida .nav-group-toggle,
         .sidebar.recolhida .nav-group-label,
         .sidebar.recolhida .obra-search,
@@ -12222,7 +12276,8 @@ export default function App() {
         .sidebar.recolhida .nav-list { align-items: center; }
         .sidebar.recolhida .squad-group { width: 100%; }
         .sidebar.recolhida .sidebar-footer { padding: 10px 8px; }
-        .sidebar.recolhida .profile { justify-content: center; gap: 0; }
+        .sidebar.recolhida .profile { justify-content: center; gap: 0; padding: 7px 0; }
+        .sidebar.recolhida .profile > .lucide-chevron-down { display: none; }
         /* badge vira ponto: o número não cabe, mas "tem alerta" precisa aparecer */
         .sidebar.recolhida .nav-badge, .sidebar.recolhida .nav-count { position: absolute; top: 4px; right: 2px; min-width: 7px; height: 7px; padding: 0; font-size: 0; border-radius: 50%; }
         .sidebar.recolhida .nav-item { position: relative; }
@@ -13806,6 +13861,7 @@ export default function App() {
       <TopBar />
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
+          equipe={pessoas} onSair={sairDaConta}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
