@@ -76,42 +76,100 @@ export async function excluirPessoa(email) {
   if (error) throw error;
 }
 
-/* ---------- Quem ve o que ----------
+/* ---------- QUEM VE O QUE ----------
  *
- * Estas duas funcoes decidem o que cada pessoa enxerga. Elas moram aqui,
- * sem React e sem supabase, porque errar nelas nao produz um numero
- * torto: produz alguem trancado fora do proprio sistema, ou vendo obra
- * que nao devia.
+ * Ver docs/SPEC-acessos.md. Estas funcoes moram aqui, sem React e sem
+ * supabase, porque errar nelas nao produz um numero torto: produz
+ * alguem trancado fora do proprio sistema, ou vendo o que nao devia.
+ * As duas falhas sao silenciosas.
  */
 
-/* NAO ACHADA = ACESSO TOTAL.
- *
- * Parece o contrario do que seguranca pede, e e' de proposito: a primeira
- * pessoa a abrir o app depois desta migracao nao esta cadastrada em
- * lugar nenhum, e negar por padrao a trancaria pra fora antes de existir
- * qualquer admin pra liberar. Fechar de verdade e' trabalho do banco
- * (RLS), e ele so' pode ser ligado depois que os cadastros existirem. */
+/* Um perfil por pessoa, e so' um. NULO e' a sala de espera.
+
+   `modulos: null` quer dizer TODOS. Lista explicita quer dizer
+   exatamente esses -- e lista VAZIA quer dizer nenhum, que e' o
+   pendente. Sao tres estados diferentes de proposito. */
+export const PERFIS = [
+  {
+    id: "admin", nome: "Administrador",
+    resumo: "Vê tudo, edita tudo e é quem libera o acesso das outras pessoas.",
+    modulos: null, obras: "todas", edita: true, gerenciaPessoas: true,
+  },
+  {
+    id: "geral", nome: "Geral",
+    resumo: "Vê e trabalha em todas as obras. Não configura usuários.",
+    modulos: null, obras: "todas", edita: true, gerenciaPessoas: false,
+  },
+  {
+    id: "gc", nome: "GC",
+    resumo: "Trabalha normalmente, só nas obras em que é o responsável.",
+    modulos: null, obras: "minhas", edita: true, gerenciaPessoas: false,
+  },
+  {
+    id: "mehoo", nome: "Mehoo",
+    resumo: "Só o painel da Mehoo, nas obras que têm item do canal. Não edita.",
+    modulos: ["mehoo"], obras: "canal-mehoo", edita: false, gerenciaPessoas: false,
+  },
+];
+
+export const perfilDe = (p) => PERFIS.find((x) => x.id === p?.perfil) || null;
+
+/* Pendente e' quem entrou e ainda nao foi liberado. Pessoa DESATIVADA
+   tambem nao entra -- mas por outro motivo, e a tela diz coisas
+   diferentes: uma esta esperando, a outra foi suspensa. */
+export const estaPendente = (p) => !!p && p.ativo !== false && !perfilDe(p);
+export const estaSuspenso = (p) => !!p && p.ativo === false;
+export const temAcesso = (p) => !!perfilDe(p) && p?.ativo !== false;
+
+/* Quem NAO tem linha em `pessoa` tambem nao entra. E' o oposto do que
+   valia antes desta versao, e e' o ponto inteiro da mudanca: acesso
+   deixou de ser concedido por omissao. */
+export const podeEntrar = (p) => temAcesso(p);
+
 export function podeVerModulo(pessoa, moduloId) {
-  if (!pessoa || pessoa.admin) return true;
-  const m = Array.isArray(pessoa.modulos) ? pessoa.modulos : [];
-  return m.length === 0 || m.includes(moduloId);
+  const perfil = perfilDe(pessoa);
+  if (!perfil || pessoa?.ativo === false) return false;
+  return perfil.modulos === null || perfil.modulos.includes(moduloId);
 }
 
-/* As obras que a pessoa enxerga.
+/* Editar e' do perfil, nao da tela: o Mehoo consulta, os outros
+   trabalham. A trava de edicao por obra continua existindo em cima
+   disto -- ela resolve duas pessoas ao mesmo tempo, nao permissao. */
+export const podeEditar = (pessoa) => !!perfilDe(pessoa)?.edita && pessoa?.ativo !== false;
+export const podeGerenciarPessoas = (pessoa) => !!perfilDe(pessoa)?.gerenciaPessoas && pessoa?.ativo !== false;
+
+/**
+ * As obras que a pessoa enxerga.
  *
- * "minhas" se atualiza sozinha quando a obra troca de GC — e' por isso
- * que ela existe em vez de a coordenacao remarcar a lista a cada troca.
- *
- * Obra SEM GC continua visivel pra todo mundo: enquanto os vinculos nao
- * estao feitos, esconder o que nao tem dono deixaria obra viva fora da
- * tela de todos. */
+ * "minhas" se atualiza sozinha quando a obra troca de GC -- e' por isso
+ * que ela existe em vez de a coordenacao remarcar uma lista a cada
+ * troca. Obra SEM GC continua visivel: enquanto os vinculos nao estao
+ * feitos, esconder o que nao tem dono deixaria obra viva fora da tela
+ * de todo mundo.
+ */
 export function obrasPermitidas(pessoa, obras) {
+  const perfil = perfilDe(pessoa);
   const todas = obras || [];
-  if (!pessoa || pessoa.admin || pessoa.obrasRegra === "todas" || !pessoa.obrasRegra) return todas;
-  if (pessoa.obrasRegra === "minhas") {
+  if (!perfil || pessoa?.ativo === false) return [];
+  if (perfil.obras === "todas") return todas;
+  if (perfil.obras === "minhas") {
     const meu = String(pessoa.email || "").toLowerCase();
     return todas.filter((o) => !o.gc || String(o.gc).toLowerCase() === meu);
   }
-  const escolhidas = new Set((pessoa.obras || []).map(String));
-  return todas.filter((o) => escolhidas.has(String(o.codigo)));
+  /* O canal da Mehoo: a obra aparece se tiver item marcado pra ela. Quem
+     decide isso e' o proprio item, nao um cadastro a parte -- assim a
+     lista acompanha a compra sem ninguem manter nada em dia. */
+  if (perfil.obras === "canal-mehoo") {
+    return todas.filter((o) => (o.categorias || [])
+      .some((c) => (c.itens || []).some((it) => it.canalCompra === "mehoo")));
+  }
+  return [];
 }
+
+/* So' o dominio da empresa entra. A sala de espera ja protegeria os
+   dados, mas sem este corte qualquer pessoa com o link viraria uma
+   linha na fila -- e a tela de quem esta esperando viraria caixa de
+   entrada de desconhecido. */
+export const DOMINIOS = ["groupws.com.br"];
+export const dominioPermitido = (email) =>
+  DOMINIOS.some((d) => String(email || "").toLowerCase().endsWith("@" + d));

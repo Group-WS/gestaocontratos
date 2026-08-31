@@ -15,10 +15,11 @@ Duas mudanças quebram essa premissa:
 
 1. O link de login passa a ser **enviado** para as pessoas. Elas entram
    antes de existir qualquer configuração para elas.
-2. A **Mehoo é fornecedor externo** e entra no mesmo sistema.
+2. A **Mehoo entra no mesmo sistema** com um recorte próprio.
 
-Com fornecedor de fora, "não cadastrado vê tudo" deixa de ser uma
-proteção contra travar alguém e vira um vazamento com hora marcada.
+Sem perfil definido, "não cadastrado vê tudo" deixa de ser uma proteção
+contra travar alguém e vira acesso concedido por omissão — a todos os
+que receberem o link, para sempre.
 
 ## Decisões
 
@@ -79,16 +80,29 @@ permissões dentro do primeiro, e não foi pedido.
 
 Valor de material por item e total por obra, como está hoje.
 
-**Por quê.** É o que permite ao fornecedor conferir o pedido contra o
-que foi mandado. O recorte já é por canal: ela vê apenas os itens
-marcados como Mehoo, nas obras que os têm.
+**Por quê.** A Mehoo é **empresa do próprio grupo**, não fornecedor de
+terceiro. O custo é informação que ela precisa para comprar, e o
+recorte por canal já garante que ela veja apenas o que foi mandado para
+ela.
 
-**Risco assumido, e é o ponto mais delicado deste documento.** Preço de
-compra da empresa fica visível para um terceiro. A decisão foi tomada
-com isso dito. Se mudar de ideia, o ajuste é pequeno — esconder as
-colunas de valor no perfil Mehoo — e não muda mais nada.
+Eu havia levantado isso como risco de expor preço de compra a um
+externo; a premissa estava errada e a decisão fica registrada com o
+motivo certo, não com a ressalva.
 
-### 6. RLS escrito agora, ligado depois
+### 6. Só o domínio da empresa entra
+
+Login recusado para quem não for `@groupws.com.br`, na própria tela de
+entrada, sem criar linha em `pessoa`.
+
+**Por quê.** A sala de espera já protegeria os dados, mas sem o corte de
+domínio qualquer pessoa com o link viraria uma linha na fila — e a tela
+que deveria mostrar quem está esperando entrar viraria caixa de entrada
+de desconhecido.
+
+**Custo aceito.** Alguém de fora que precise entrar exige mexer numa
+constante no código. Aceito: é raro, e o contrário é pior.
+
+### 7. RLS escrito agora, ligado depois
 
 As políticas de Row Level Security são escritas junto com esta entrega e
 ficam prontas, **desligadas**. São ligadas quando os perfis estiverem
@@ -113,7 +127,7 @@ lembrar depois, e é fácil esquecer).
 - uma resposta exata para "quem vê o quê", legível numa lista
 - um estado inicial seguro por padrão, em vez de aberto por padrão
 - caminho pronto para a trava real no banco
-- a Mehoo pode entrar sem que isso signifique abrir a empresa
+- a Mehoo entra com o recorte dela, sem ver o resto do sistema
 
 **Perde-se**
 - flexibilidade: caso fora dos quatro exige código
@@ -122,10 +136,8 @@ lembrar depois, e é fácil esquecer).
   remover depois da migração
 
 **Fica pendente**
-- ligar o RLS (item 6) — o único ponto que ainda deixa o acesso sendo
+- ligar o RLS (item 7) — o único ponto que ainda deixa o acesso sendo
   aparência
-- decidir se bloqueia domínio de e-mail na entrada
-- confirmar as três perguntas em aberto na SPEC, seção 8
 
 ## Referências
 

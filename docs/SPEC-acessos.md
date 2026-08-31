@@ -1,7 +1,7 @@
 # SPEC — Perfis de acesso e entrada de novos usuários
 
 Gestão de Obras TKWS · 31/08/2026
-Estado: **acordado, não implementado**
+Estado: **acordado, em implementação**
 
 ---
 
@@ -68,12 +68,11 @@ responsável.
 ### Mehoo
 Vê **só o módulo Mehoo**, e dentro dele só as obras que têm item do
 canal Mehoo. Barra lateral sem lista de obras, sem os outros módulos,
-sem Início.
+sem Início. **Não edita nada** — é painel de consulta.
 
 O painel fica **como está hoje**, com valor de material por item e
-total por obra — decisão consciente: é o que permite ao fornecedor
-conferir o pedido. O que ela vê continua sendo só o que foi mandado
-para ela.
+total por obra. A Mehoo é **empresa do próprio grupo**, não fornecedor
+de terceiro: o custo é informação que ela precisa ter para comprar.
 
 ## 3. A entrada de alguém novo
 
@@ -163,16 +162,14 @@ que faz a pessoa aparecer na fila sem ninguém digitar o e-mail dela.
 - convite por link com prazo
 - log de auditoria de mudanças de perfil
 
-## 8. A confirmar antes de eu implementar
+## 8. Respondido em 31/08
 
-1. **GC edita, ou só olha?** Você escreveu "apenas visualizando as
-   obras que eles são responsáveis". Li o "apenas" ligado a *as obras*
-   — ou seja, ele trabalha normalmente, só que nas dele. Se for
-   literalmente só leitura, o GC deixa de conseguir tocar a própria
-   obra, e a SPEC muda.
-2. **GC e Geral veem Equipe e acessos?** Assumi que não — é a tela que
-   distingue o Administrador. Se você quiser que eles *vejam* a lista
-   da equipe sem poder mudar nada, é diferente e dá trabalho a mais.
-3. **Bloquear domínio de e-mail?** Hoje qualquer e-mail pode criar
-   conta e cair na sala de espera. Com a sala de espera isso é inócuo,
-   mas dá para exigir `@groupws.com.br` mais o domínio da Mehoo.
+1. **GC edita** normalmente, restrito às obras dele.
+2. **Só o Administrador** abre Equipe e acessos.
+3. **Só `@groupws.com.br` entra.** Quem tentar com outro domínio recebe
+   a recusa na tela de login, e nenhuma linha é criada em `pessoa` — a
+   fila de espera não vira caixa de entrada de desconhecido.
+
+   A Mehoo é empresa do grupo e usa o mesmo domínio. Se algum dia
+   alguém precisar entrar com outro, a lista de domínios permitidos é
+   uma constante em `lib/pessoas.js`.
