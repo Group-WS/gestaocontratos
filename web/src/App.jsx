@@ -13885,7 +13885,7 @@ export default function App() {
         .mh-perto { color: var(--amber); font-weight: 600; }
         @media (max-width: 900px) { .mh-obra-head { flex-wrap: wrap; gap: 10px; } }
         /* ---- Tela de inicio ---- */
-        .ini-saudacao { margin: 18px 0 20px; }
+        .ini-saudacao { margin: 4px 0 22px; }
         .ini-ola { font-size: 22px; color: var(--ink); line-height: 1.35; font-weight: 400; }
         .ini-ola b { font-weight: 700; }
         .ini-recado { color: var(--ink-3); }
@@ -14014,9 +14014,11 @@ export default function App() {
           )}
           {modulo === "inicio" ? (
           <>
-          <div className="eyebrow">GESTÃO DE OBRAS TKWS</div>
-          <div className="title-row"><span className="title-accent">Início</span></div>
-          <div className="obra-meta">O que está em jogo hoje, o que está vencendo, e o que é seu</div>
+          {/* Sem titulo aqui. "GESTAO DE OBRAS TKWS" ja esta no topo da
+              pagina, "Inicio" ja esta marcado no menu, e a linha de baixo
+              descrevia o que a propria tela mostra logo abaixo. Tres
+              linhas pra dizer onde a pessoa esta quando ela ja sabe —
+              elas empurravam pra baixo o unico conteudo que importa. */}
           <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={painelCarregando}
             usuario={usuario} equipe={pessoas}
             onAbrirObra={(id) => { setSelectedId(id); setModulo("comparativo"); setGrupo("dashboard"); setTab(null); }}
