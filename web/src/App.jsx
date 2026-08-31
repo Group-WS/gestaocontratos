@@ -6236,6 +6236,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   useEffect(() => {
     try { localStorage.setItem(CHAVE_MINHAS, soMinhas ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [soMinhas]);
+
   const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
 
   const [menuPerfil, setMenuPerfil] = useState(false);
@@ -6283,6 +6284,54 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_SIDEBAR, recolhida ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [recolhida]);
 
+  /* O rotulo do hover, quando a barra esta recolhida.
+
+     Um listener so', delegado na barra inteira, em vez de handler em cada
+     um dos vinte botoes. Ele le o proprio `title` do botao — que ja
+     existe e ja esta certo em todos — e tira o atributo enquanto o mouse
+     esta em cima, pra nao aparecerem dois rotulos: o meu e o do
+     navegador, que demora um segundo e fica por cima. */
+  const [dica, setDica] = useState(null);
+  const barraRef = useRef(null);
+
+  useEffect(() => {
+    const el = barraRef.current;
+    if (!el || !recolhida) { setDica(null); return; }
+    let alvo = null;
+
+    const entrar = (e) => {
+      const b = e.target.closest("[title]");
+      if (!b || !el.contains(b) || b === alvo) return;
+      sair();
+      const t = b.getAttribute("title");
+      if (!t) return;
+      alvo = b;
+      b.dataset.tituloGuardado = t;
+      b.removeAttribute("title");
+      const r = b.getBoundingClientRect();
+      setDica({ texto: t, x: r.right + 10, y: r.top + r.height / 2 });
+    };
+    const sair = () => {
+      if (alvo?.dataset.tituloGuardado) {
+        alvo.setAttribute("title", alvo.dataset.tituloGuardado);
+        delete alvo.dataset.tituloGuardado;
+      }
+      alvo = null;
+      setDica(null);
+    };
+
+    el.addEventListener("mouseover", entrar);
+    el.addEventListener("mouseleave", sair);
+    window.addEventListener("scroll", sair, true);
+    return () => {
+      el.removeEventListener("mouseover", entrar);
+      el.removeEventListener("mouseleave", sair);
+      window.removeEventListener("scroll", sair, true);
+      sair();
+    };
+  });
+
+
   /* Modulos nascem SEMPRE fechados, e essa escolha nao e' guardada.
 
      E' o contrario do resto da barra de proposito: modulo se abre pra ir
@@ -6318,7 +6367,12 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   const groupNames = Object.keys(groups).sort();
 
   return (
-    <aside className={`sidebar ${recolhida ? "recolhida" : ""}`}>
+    <aside className={`sidebar ${recolhida ? "recolhida" : ""}`} ref={barraRef}>
+      {dica && (
+        <div className="dica-lateral" style={{ left: dica.x, top: dica.y, transform: "translateY(-50%)" }}>
+          {dica.texto}
+        </div>
+      )}
       {/* No TOPO, não no rodapé: recolher é uma decisão que se toma ao
           chegar, e no pé da lista o botão ficava abaixo da dobra em tela
           pequena — existia e ninguém achava. */}
@@ -12514,32 +12568,17 @@ export default function App() {
         .squad-group-label { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
         .squad-group-label:hover { color: var(--ink-2); }
         /* ---- Rotulo no hover, na barra recolhida ----
-           O atributo title do navegador demora quase um segundo pra
-           aparecer e some sozinho. Com nove icones iguais na coluna, essa
-           espera e' a diferenca entre usar a barra recolhida e desistir
-           dela. Este aparece na hora, ao lado, e nao rouba o clique. */
-        .sidebar.recolhida .nav-item,
-        .sidebar.recolhida .nav-tira-item,
-        .sidebar.recolhida .profile,
-        .sidebar.recolhida .squad-group-label { position: relative; }
-        .sidebar.recolhida .nav-item::after,
-        .sidebar.recolhida .nav-tira-item::after,
-        .sidebar.recolhida .profile::after,
-        .sidebar.recolhida .squad-group-label::after {
-          content: attr(title);
-          position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
-          background: var(--ink); color: #fff; border-radius: 7px; padding: 6px 10px;
-          font-size: 11.5px; font-weight: 600; white-space: nowrap; letter-spacing: 0;
-          text-transform: none; pointer-events: none; opacity: 0; z-index: 60;
-          transition: opacity .09s ease; box-shadow: 0 4px 14px rgba(0,0,0,.18);
-        }
-        .sidebar.recolhida .nav-item:hover::after,
-        .sidebar.recolhida .nav-tira-item:hover::after,
-        .sidebar.recolhida .profile:hover::after,
-        .sidebar.recolhida .squad-group-label:hover::after { opacity: 1; }
-        .sidebar.recolhida .sidebar-scroll,
-        .sidebar.recolhida .scroll-list { overflow: visible; }
-        .sidebar.recolhida .scroll-list { overflow-y: auto; }
+
+           Primeiro tentei ::after com content: attr(title). Nao funciona:
+           ele nasce DENTRO da lista de obras, que rola, e tudo que passa
+           da borda da caixa e' recortado — o rotulo existia e ficava
+           invisivel do lado de fora.
+
+           Este e' um elemento so', em position: fixed, posicionado pelo
+           retangulo do botao sob o mouse. Fixed nao e' recortado por
+           ancestral nenhum, que e' exatamente o problema a resolver. */
+        .dica-lateral { position: fixed; z-index: 200; background: var(--ink); color: #fff; border-radius: 7px; padding: 7px 11px; font-size: 11.5px; font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.22); }
+        .dica-lateral::before { content: ""; position: absolute; left: -4px; top: 50%; margin-top: -4px; width: 8px; height: 8px; background: var(--ink); transform: rotate(45deg); }
 
         /* O simbolo do squad so' existe recolhida: aberta, o nome basta. */
         .squad-simbolo { display: none; }
