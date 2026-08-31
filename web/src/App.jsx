@@ -10781,7 +10781,15 @@ function ObraMehoo({ L, canal }) {
         {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
         <div className="mh-obra-id">
           <div className="mh-obra-nome"><span className="mono dim">#{o.codigo}</span> {o.nome}</div>
-          {o.endereco && o.endereco !== "—" && <div className="mh-obra-end">{o.endereco}</div>}
+          {/* Squad na mesma linha do endereco: quem atende a Mehoo precisa
+              saber com qual equipe falar, e isso nao custa uma linha nova. */}
+          <div className="mh-obra-sub">
+            <span className="mh-squad">
+              <IconeSquad nome={o.squad} size={11} />
+              {o.squad || "sem squad"}
+            </span>
+            {o.endereco && o.endereco !== "—" && <span className="mh-obra-end">· {o.endereco}</span>}
+          </div>
         </div>
 
         {/* A data de entrega e' a primeira pergunta de quem fornece. */}
@@ -14356,7 +14364,9 @@ export default function App() {
         .mh-obra-head:hover { background: #FCFBF9; }
         .mh-obra-id { flex: 1; min-width: 0; }
         .mh-obra-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
-        .mh-obra-end { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .mh-obra-sub { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+        .mh-squad { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--ink-2); }
+        .mh-obra-end { font-size: 11px; color: var(--ink-3); }
         .mh-rot { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
         .mh-entrega, .mh-num { flex-shrink: 0; text-align: right; }
         .mh-num-larga { width: 130px; }
