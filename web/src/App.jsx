@@ -9,7 +9,7 @@ import {
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
-import { listarPessoas, salvarPessoa, excluirPessoa, nomeDoEmail, CARGOS } from "./lib/pessoas";
+import { listarPessoas, salvarPessoa, excluirPessoa, nomeDoEmail, CARGOS, podeVerModulo, obrasPermitidas } from "./lib/pessoas";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
@@ -6227,7 +6227,7 @@ function IconeSquad({ nome, size = 13 }) {
   return <Building2 size={size} />;
 }
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS }) {
   /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
      quer reativar o filtro a cada F5. */
   const [soMinhas, setSoMinhas] = useState(() => {
@@ -6295,13 +6295,13 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   const [onlyAlert, setOnlyAlert] = useState(false);
   const [squadFilter, setSquadFilter] = useState("todos");
 
-  const squads = Array.from(new Set(obras.map((o) => o.squad || "Sem squad"))).sort();
+  const squads = Array.from(new Set(obras.map((o) => o.squad || "Outras obras"))).sort();
 
   const filtered = obras.filter((o) => {
     const q = search.trim().toLowerCase();
     const matchesSearch = !q || `${o.nome} ${o.codigo} ${o.cliente}`.toLowerCase().includes(q);
     const matchesAlert = !onlyAlert || obraAlertCount(o) > 0;
-    const matchesSquad = squadFilter === "todos" || (o.squad || "Sem squad") === squadFilter;
+    const matchesSquad = squadFilter === "todos" || (o.squad || "Outras obras") === squadFilter;
     /* Obra SEM GC passa no filtro de propósito: enquanto os vínculos não
        estiverem todos feitos, esconder o que não tem dono deixaria obra
        viva fora da tela de todo mundo. */
@@ -6311,7 +6311,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
   const groups = {};
   filtered.forEach((o) => {
-    const key = o.squad || "Sem squad";
+    const key = o.squad || "Outras obras";
     if (!groups[key]) groups[key] = [];
     groups[key].push(o);
   });
@@ -6433,7 +6433,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
         {modulosAbertos ? (
           <div className="nav-list">
-            {MODULOS.map((m) => (
+            {modulos.map((m) => (
               <button key={m.id} className={`nav-item ${modulo === m.id ? "active" : ""}`}
                 onClick={() => onModulo(m.id)} title={m.nome}>
                 <m.Icone size={16} className="nav-icon" />
@@ -6448,7 +6448,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           </div>
         ) : (
           <div className="nav-tira">
-            {MODULOS.map((m) => (
+            {modulos.map((m) => (
               <button key={m.id} className={`nav-tira-item ${modulo === m.id ? "active" : ""}`}
                 onClick={() => onModulo(m.id)} title={m.nome}>
                 <m.Icone size={16} />
@@ -11150,7 +11150,7 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
   const filtradas = obras.filter((o) => !q || `${o.nome} ${o.codigo} ${o.squad}`.toLowerCase().includes(q));
 
   const grupos = {};
-  filtradas.forEach((o) => { (grupos[o.squad || "Sem squad"] ||= []).push(o); });
+  filtradas.forEach((o) => { (grupos[o.squad || "Outras obras"] ||= []).push(o); });
   const nomes = Object.keys(grupos).sort();
 
   return (
@@ -11435,7 +11435,28 @@ export default function App() {
   }, []);
 
   const situacaoDe = (o) => registro.get(String(o.codigo))?.situacao;
-  const obrasAtivas = useMemo(() => obras.filter((o) => situacaoDe(o) === "ativa"), [obras, registro]);
+  /* O ACESSO, aplicado.
+
+     `eu` e' a linha da pessoa logada na Equipe. Nao achada = acesso
+     total, de proposito: quem abre o app antes de existir cadastro nao
+     pode ficar trancado pra fora antes de existir admin pra liberar. */
+  const eu = useMemo(
+    () => pessoas.find((p) => p.email === String(usuario || "").toLowerCase()) || null,
+    [pessoas, usuario]);
+
+  const obrasAtivas = useMemo(
+    () => obrasPermitidas(eu, obras.filter((o) => situacaoDe(o) === "ativa")),
+    [obras, registro, eu]);
+
+  const modulosVisiveis = useMemo(() => MODULOS.filter((m) => podeVerModulo(eu, m.id)), [eu]);
+
+  /* Modulo que a pessoa nao pode ver nao pode ficar aberto: ela pode ter
+     chegado nele antes de o acesso mudar, ou por um atalho de dentro de
+     outra tela. Volta pro primeiro que ela pode. */
+  useEffect(() => {
+    if (pessoasCarregando || podeVerModulo(eu, modulo)) return;
+    setModulo(modulosVisiveis[0]?.id || "inicio");
+  }, [eu, modulo, modulosVisiveis, pessoasCarregando]);
 
   /* O painel geral compara obras entre si, e os dados de uma obra so
      chegam quando alguem ABRE aquela obra — entao ele somava, na
@@ -14243,7 +14264,7 @@ export default function App() {
       <TopBar onInicio={() => setModulo("inicio")} />
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
-          equipe={pessoas} onSair={sairDaConta}
+          equipe={pessoas} onSair={sairDaConta} modulos={modulosVisiveis}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
