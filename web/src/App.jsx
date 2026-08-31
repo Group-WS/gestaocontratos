@@ -6329,7 +6329,13 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
       window.removeEventListener("scroll", sair, true);
       sair();
     };
-  });
+    /* `[recolhida]`, e nao sem lista.
+
+       Sem lista, o efeito se reinstala a cada render — e mostrar a dica
+       E' um render. A limpeza rodava logo em seguida e apagava a dica que
+       tinha acabado de aparecer: o listener funcionava (chegava a tirar o
+       title do botao) e nada aparecia na tela. */
+  }, [recolhida]);
 
 
   /* Modulos nascem SEMPRE fechados, e essa escolha nao e' guardada.
