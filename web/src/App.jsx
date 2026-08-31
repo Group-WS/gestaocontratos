@@ -9018,6 +9018,69 @@ function GcLinhaObra({ L, onAbrir }) {
    Entao: botao que diz quantas estao escolhidas, e uma lista com busca
    por tras. A lista rola; a busca acha por nome OU por codigo, porque
    quem trabalha nisso pensa em "2506" tanto quanto em "Salt". */
+/* Escolher UMA obra.
+ *
+ * Espelha o FiltroObras de proposito. Ele ja resolve "achar uma obra
+ * entre quarenta" — busca, Escape, clique fora, lista rolavel — e esta
+ * na MESMA tela, quarenta pixels acima. Um grid de cartoes ao lado dele
+ * seria uma segunda gramatica pro mesmo gesto, e a que nao escala.
+ *
+ * Agrupa por squad porque e' assim que ela procura obra: primeiro a
+ * equipe, depois o nome. */
+function EscolherObra({ obras, numeroDe, onEscolher, onFechar }) {
+  const [busca, setBusca] = useState("");
+  const caixa = useRef(null);
+
+  useEffect(() => {
+    const fora = (e) => { if (caixa.current && !caixa.current.contains(e.target)) onFechar(); };
+    const esc = (e) => { if (e.key === "Escape") onFechar(); };
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", fora);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [onFechar]);
+
+  const grupos = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    const achadas = t
+      ? obras.filter((o) => `${o.codigo} ${o.nome} ${o.squad || ""}`.toLowerCase().includes(t))
+      : obras;
+    const por = {};
+    achadas.forEach((o) => { (por[o.squad || "Outras obras"] ||= []).push(o); });
+    Object.values(por).forEach((l) => l.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")));
+    return Object.keys(por).sort((a, b) => a.localeCompare(b, "pt-BR")).map((k) => [k, por[k]]);
+  }, [obras, busca]);
+
+  const quantas = grupos.reduce((n, [, l]) => n + l.length, 0);
+
+  return (
+    <div className="fo-menu fo-menu-dir" ref={caixa}>
+      <input className="form-input fo-busca" autoFocus value={busca}
+        placeholder="nome, código ou squad…" onChange={(e) => setBusca(e.target.value)} />
+
+      <div className="fo-lista eo-lista">
+        {quantas === 0 && <div className="empty-note">Nenhuma obra com esse nome ou código.</div>}
+        {grupos.map(([squad, lista]) => (
+          <div key={squad}>
+            <div className="eo-squad"><IconeSquad nome={squad} size={11} /> {squad}</div>
+            {lista.map((o) => (
+              <button key={o.codigo} className="fo-item eo-item" onClick={() => onEscolher(o)}>
+                <span className="mono dim">#{o.codigo}</span>
+                <span className="fo-nome">{o.nome}</span>
+                {/* O numero e' confirmacao, nao criterio de escolha:
+                    fica na coluna da direita, apagado. */}
+                <span className="eo-num mono">{numeroDe(o)}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FiltroObras({ obras, escolhidas, onMudar }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
@@ -9948,28 +10011,20 @@ function AditivosView({ obras, usuario }) {
             )}
         {/* O botao existe SEMPRE. Criar exige uma obra — o numero sai do
             centro de custo dela — mas exigir que ela adivinhasse isso no
-            filtro escondeu a funcao inteira: ela nao achou como criar.
-            Agora o proprio botao pergunta qual obra. */}
-        <button className="btn-doc btn-template"
-          onClick={() => (obra ? novo(obra) : setEscolhendo((v) => !v))}>
-          <Plus size={13} /> Novo aditivo
-        </button>
-      </div>
-
-      {escolhendo && !obra && (
-        <div className="ad-escolher">
-          <div className="ad-escolher-rot">Em qual obra?</div>
-          <div className="ad-escolher-lista">
-            {obras.map((o) => (
-              <button key={o.codigo} className="ad-escolher-obra" onClick={() => novo(o)}>
-                <span className="mono dim">#{o.codigo}</span> {o.nome}
-                <span className="ad-escolher-num mono">{numeroAditivo(o.codigo, proximaSeq(lista.filter((a) => String(a.obraCodigo) === String(o.codigo))))}</span>
-              </button>
-            ))}
-          </div>
-          <button className="ad-escolher-cancelar" onClick={() => setEscolhendo(false)}>cancelar</button>
+            filtro escondeu a funcao inteira. Agora o proprio botao
+            pergunta, e pergunta do jeito que o resto do app pergunta. */}
+        <div className="fo-caixa">
+          <button className="btn-doc btn-template"
+            onClick={() => (obra ? novo(obra) : setEscolhendo((v) => !v))}>
+            <Plus size={13} /> Novo aditivo
+          </button>
+          {escolhendo && !obra && (
+            <EscolherObra obras={obras}
+              numeroDe={(o) => numeroAditivo(o.codigo, proximaSeq(lista.filter((a) => String(a.obraCodigo) === String(o.codigo))))}
+              onEscolher={novo} onFechar={() => setEscolhendo(false)} />
+          )}
         </div>
-      )}
+      </div>
 
           {carregando ? <div className="empty-note">Carregando…</div>
             : visiveis.length === 0 ? (
@@ -13141,13 +13196,12 @@ export default function App() {
         .ad-cab-obra { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
         .ad-cab-nome { font-size: 16px; font-weight: 700; color: var(--ink); }
         .ad-cab-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
-        .ad-escolher { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 12px 14px; margin-bottom: 14px; }
-        .ad-escolher-rot { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
-        .ad-escolher-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; }
-        .ad-escolher-obra { display: flex; align-items: center; gap: 6px; text-align: left; font-family: inherit; font-size: 12.5px; color: var(--ink); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
-        .ad-escolher-obra:hover { border-color: var(--blue); background: #FCFBF9; }
-        .ad-escolher-num { margin-left: auto; font-size: 11px; color: var(--ink-3); }
-        .ad-escolher-cancelar { margin-top: 10px; background: none; border: none; font-family: inherit; font-size: 11.5px; color: var(--ink-3); text-decoration: underline; cursor: pointer; padding: 0; }
+        .fo-menu-dir { left: auto; right: 0; width: 360px; }
+        .eo-lista { max-height: 320px; }
+        .eo-squad { display: flex; align-items: center; gap: 5px; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 9px 6px 4px; }
+        .eo-item { gap: 8px; padding: 7px 6px; }
+        .eo-num { margin-left: auto; flex-shrink: 0; font-size: 10.5px; color: var(--ink-3); }
+        .eo-item:hover .eo-num { color: var(--ink-2); }
         .ad-linha-obra { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ad-linha-desc { background: none; border: none; padding: 0; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
         .ad-linha-desc:hover { color: var(--blue); text-decoration: underline; }
