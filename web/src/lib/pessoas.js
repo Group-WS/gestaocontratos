@@ -107,6 +107,13 @@ export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, pe
   if (obras !== undefined) campos.obras = lista(obras).map(String);
 
   const { data, error } = await supabase.from("pessoa").upsert(campos, { onConflict: "email" }).select().single();
+  /* Erro do Postgres na cara de quem so' queria dar um perfil nao ajuda
+     ninguem: diz o que quebrou, nao o que fazer. Aqui vira instrucao. */
+  if (faltaColuna(error)) {
+    const e2 = new Error("Falta rodar supabase/perfis.sql no Supabase — as colunas de perfil ainda não existem no banco. Até lá dá pra cadastrar nome e cargo, mas não atribuir perfil.");
+    e2.migracao = true;
+    throw e2;
+  }
   if (error) throw error;
   return paraApp(data);
 }

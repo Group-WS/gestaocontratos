@@ -10364,7 +10364,7 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
   );
 }
 
-function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onSalvarAcesso, onExcluir }) {
+function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendente, onSalvar, onSalvarAcesso, onExcluir }) {
   const [email, setEmail] = useState("");
   const [nome, setNome] = useState("");
   const [cargo, setCargo] = useState("GC");
@@ -10425,6 +10425,22 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onSal
     <>
       {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
       {aviso && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{aviso}</span></div>}
+
+      {/* A tela nao pode so' esconder o botao de acesso: sem dizer por
+          que, some uma funcao e parece defeito. */}
+      {migracaoPendente && (
+        <div className="eq-migracao">
+          <ShieldCheck size={15} />
+          <div>
+            <b>A parte de perfis ainda não está ligada.</b>
+            <div>
+              Falta rodar <code>supabase/perfis.sql</code> no Supabase (SQL Editor). Enquanto isso,
+              dá pra cadastrar, editar e desativar pessoas normalmente — só não dá pra atribuir
+              perfil, porque as colunas não existem no banco ainda.
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="cad-box eq-form">
         <div className="cad-h"><span>{editando ? `Editando ${editando}` : "Adicionar pessoa"}</span></div>
@@ -10498,9 +10514,14 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onSal
                   </div>
                   <span className="eq-obras">{resumoAcesso(p, obras)}</span>
                   <div className="arq-acoes">
-                    <button className="caderno-acao" onClick={() => setAcessoDe(acessoDe === p.email ? null : p.email)}>
-                      <ShieldCheck size={12} /> acesso
-                    </button>
+                    {/* Sem as colunas no banco esse botao so' sabe
+                        falhar. Oferecer e' pior do que nao ter: ela
+                        clicou e levou um erro do Postgres na cara. */}
+                    {!migracaoPendente && (
+                      <button className="caderno-acao" onClick={() => setAcessoDe(acessoDe === p.email ? null : p.email)}>
+                        <ShieldCheck size={12} /> acesso
+                      </button>
+                    )}
                     <button className="caderno-acao" onClick={() => {
                       setEditando(p.email); setEmail(p.email); setNome(p.nome); setCargo(p.cargo || "");
                       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -14368,6 +14389,8 @@ export default function App() {
         .eq-form .eq-campos { grid-template-columns: 1fr 1fr 170px; }
         .eq-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--blue-bg); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
         .eq-inativo { opacity: .55; }
+        .eq-migracao { display: flex; gap: 10px; align-items: flex-start; background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; margin-bottom: 14px; }
+        .eq-migracao code { background: #FEF3C7; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
         .eq-tag-inativo { margin-left: 7px; background: var(--panel); color: var(--ink-3); border-radius: 20px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; }
         .eq-obras { font-size: 11px; color: var(--ink-3); white-space: nowrap; flex-shrink: 0; }
         /* ---- Arquivos da obra ---- */
@@ -14607,7 +14630,8 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Equipe</span></div>
           <div className="obra-meta">Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra</div>
           <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
-            usuario={usuario} onSalvar={salvarPessoaNoTime} onSalvarAcesso={salvarAcessoDaPessoa}
+            usuario={usuario} migracaoPendente={migracaoPendente}
+            onSalvar={salvarPessoaNoTime} onSalvarAcesso={salvarAcessoDaPessoa}
             onExcluir={excluirPessoaDoTime} />
           </>
           ) : modulo === "mehoo" ? (
