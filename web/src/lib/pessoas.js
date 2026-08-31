@@ -18,6 +18,8 @@ const lista = (v) => (Array.isArray(v) ? v : []);
 
 const paraApp = (l) => ({
   email: l.email, nome: l.nome, cargo: l.cargo || "", ativo: l.ativo !== false,
+  perfil: l.perfil || null,
+  entrouEm: l.entrou_em || null, liberadoEm: l.liberado_em || null, liberadoPor: l.liberado_por || null,
   admin: !!l.admin,
   /* Lista VAZIA quer dizer TODOS, e nao "nenhum". Quem foi cadastrado
      antes destas colunas existirem perderia o app inteiro no instante em
@@ -46,7 +48,7 @@ export async function listarPessoas() {
   return (data || []).map(paraApp);
 }
 
-export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, modulos, obrasRegra, obras, por }) {
+export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, perfil, modulos, obrasRegra, obras, por }) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado.");
   const e = String(email || "").trim().toLowerCase();
   if (!e) throw new Error("O e-mail é obrigatório.");
@@ -61,6 +63,13 @@ export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, mo
      apagaria o admin de alguem so' porque quem editou o nome nao mexeu
      nessa parte da tela. */
   if (admin !== undefined) campos.admin = !!admin;
+  if (perfil !== undefined) {
+    campos.perfil = perfil || null;
+    /* Quem liberou e quando. So' na hora de DAR o perfil — reescrever
+       isso a cada edicao de nome apagaria o registro de quem deu o
+       acesso, que e' a unica coisa que responde "quem deixou entrar". */
+    if (perfil) { campos.liberado_em = new Date().toISOString(); campos.liberado_por = por || null; }
+  }
   if (modulos !== undefined) campos.modulos = lista(modulos);
   if (obrasRegra !== undefined) campos.obras_regra = obrasRegra;
   if (obras !== undefined) campos.obras = lista(obras).map(String);
@@ -173,3 +182,44 @@ export function obrasPermitidas(pessoa, obras) {
 export const DOMINIOS = ["groupws.com.br"];
 export const dominioPermitido = (email) =>
   DOMINIOS.some((d) => String(email || "").toLowerCase().endsWith("@" + d));
+
+/**
+ * A linha que nasce no primeiro login.
+ *
+ * E' isto que faz a pessoa aparecer na fila sem ninguem digitar o e-mail
+ * dela: ela entra pelo link, o app garante a linha com perfil NULO, e o
+ * administrador ve um pendente.
+ *
+ * `ignoreDuplicates` e nao upsert comum: quem ja tem perfil nao pode ser
+ * reescrito por um login: seria zerar o acesso de alguem toda vez que
+ * ele entrasse.
+ */
+export async function garantirPessoa(email) {
+  if (!supabaseConfigurado || !email) return null;
+  const e = String(email).toLowerCase();
+
+  const { data: existe } = await supabase.from("pessoa").select("*").eq("email", e).maybeSingle();
+  if (existe) return paraApp(existe);
+
+  const { data, error } = await supabase.from("pessoa").insert({
+    email: e, nome: nomeDoEmail(e), perfil: null, ativo: true,
+    entrou_em: new Date().toISOString(),
+  }).select().single();
+
+  /* Corrida entre duas abas abrindo ao mesmo tempo: a segunda recebe
+     violacao de chave, e o certo e' ler o que a primeira gravou. */
+  if (error) {
+    const { data: agora } = await supabase.from("pessoa").select("*").eq("email", e).maybeSingle();
+    return agora ? paraApp(agora) : null;
+  }
+  return paraApp(data);
+}
+
+/* Nunca pode haver zero administradores: sem admin ninguem mais entra, e
+   a saida seria mexer no banco a mao. */
+export const ehOUltimoAdmin = (pessoas, email) => {
+  const admins = (pessoas || []).filter((p) => p.perfil === "admin" && p.ativo !== false);
+  return admins.length === 1 && admins[0].email === String(email || "").toLowerCase();
+};
+
+export const pendentes = (pessoas) => (pessoas || []).filter(estaPendente);

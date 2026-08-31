@@ -9,7 +9,9 @@ import {
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
-import { listarPessoas, salvarPessoa, excluirPessoa, nomeDoEmail, CARGOS, podeVerModulo, obrasPermitidas } from "./lib/pessoas";
+import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
+  PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita,
+  podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoAdmin } from "./lib/pessoas";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
@@ -6227,7 +6229,7 @@ function IconeSquad({ nome, size = 13 }) {
   return <Building2 size={size} />;
 }
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS, pendentesCount = 0 }) {
   /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
      quer reativar o filtro a cada F5. */
   const [soMinhas, setSoMinhas] = useState(() => {
@@ -6536,6 +6538,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                   <div className="nav-item-sub">{m.sub}</div>
                 </div>
                 {m.id === "novas" && novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
+                {m.id === "equipe" && pendentesCount > 0 && <span className="nav-badge nav-badge-espera">{pendentesCount}</span>}
                 {m.id === "arquivo" && arquivoCount > 0 && <span className="nav-count">{arquivoCount}</span>}
               </button>
             ))}
@@ -6547,6 +6550,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                 onClick={() => onModulo(m.id)} title={m.nome}>
                 <m.Icone size={16} />
                 {m.id === "novas" && novasCount > 0 && <span className="nav-tira-badge">{novasCount}</span>}
+                {m.id === "equipe" && pendentesCount > 0 && <span className="nav-tira-badge espera">{pendentesCount}</span>}
               </button>
             ))}
           </div>
@@ -9982,6 +9986,59 @@ function AditivosView({ obras, usuario }) {
 }
 
 /* ============================================================
+   SALA DE ESPERA
+   Quem entrou pelo link e ainda não tem perfil. Não mostra NADA
+   da empresa — nem contagem, nem nome de obra, nem valor.
+
+   Ver docs/SPEC-acessos.md §3.
+   ============================================================ */
+function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
+  /* Estilo proprio, e nao as classes do app: esta tela aparece ANTES do
+     app existir na arvore, e depender da folha dele seria depender de
+     algo que a pessoa nesta tela nao tem direito de carregar. */
+  const caixa = {
+    width: "100%", maxWidth: 400, background: "#fff", border: "1px solid #e5e2dd",
+    borderRadius: 16, padding: "34px 30px", boxSizing: "border-box", textAlign: "center",
+  };
+  const botao = {
+    border: "1px solid #e5e2dd", background: "#fff", borderRadius: 10, padding: "10px 16px",
+    fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", color: "#1a1a1a",
+  };
+  const suspenso = pessoa?.ativo === false;
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "#F4F3F1", fontFamily: "Inter, system-ui, sans-serif", padding: 20 }}>
+      <div style={caixa}>
+        <img src="/logo.png" alt="Group WS" style={{ width: 54, height: 46, objectFit: "cover", objectPosition: "top center" }}
+          onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        <div style={{ fontWeight: 700, letterSpacing: "0.05em", fontSize: 13, color: "#1a1a1a", margin: "6px 0 22px" }}>
+          GESTÃO DE OBRAS TKWS
+        </div>
+
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#1a1a1a", marginBottom: 8 }}>
+          {suspenso ? "Seu acesso está suspenso" : "Seu acesso está em análise"}
+        </div>
+        <div style={{ fontSize: 13, color: "#666", lineHeight: 1.55 }}>
+          {suspenso
+            ? "Sua conta existe, mas foi desativada. Fale com a coordenação para reativar."
+            : <>Você entrou com <b style={{ color: "#1a1a1a" }}>{usuario}</b>. Um administrador precisa
+               definir o que você vai acessar — já avisamos. Assim que liberarem, é só recarregar.</>}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 24 }}>
+          {!suspenso && (
+            <button style={{ ...botao, background: "#1a1a1a", color: "#fff", borderColor: "#1a1a1a" }}
+              onClick={onRecarregar}>Já liberaram, recarregar</button>
+          )}
+          <button style={botao} onClick={onSair}>Sair</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    INÍCIO
    A tela que abre. Antes o app caía direto dentro de uma obra —
    a primeira da lista, escolhida por ordem alfabética, que quase
@@ -10005,7 +10062,7 @@ function InicioNum({ rot, valor, sub, cor, onClick }) {
   );
 }
 
-function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, onModulo }) {
+function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const t = r.totais;
 
@@ -10047,6 +10104,15 @@ function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, on
     tom: "info",
     txt: <><b>{novas.length}</b> obras do Monday ainda não foram iniciadas aqui</>,
     ir: () => onModulo("novas"),
+  });
+  /* A fila vem PRIMEIRO na lista: e' gente parada esperando pra
+     trabalhar, e o custo de demorar e' de outra pessoa, nao de quem le.
+     So' o administrador ve — pra quem nao pode liberar, isso seria um
+     aviso sem para onde ir. */
+  if (nPendentes > 0) atencao.unshift({
+    tom: "aviso",
+    txt: <><b>{nPendentes}</b> {nPendentes === 1 ? "pessoa está aguardando" : "pessoas estão aguardando"} liberação de acesso</>,
+    ir: () => onModulo("equipe"),
   });
 
   return (
@@ -10156,30 +10222,31 @@ function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, on
    enxerga. A segunda tem o caso do GC embutido — "só as minhas" se
    atualiza sozinha quando a obra troca de responsável, e é por isso que
    ela existe em vez de a coordenação remarcar a lista a cada troca. */
-function AcessoDaPessoa({ p, obras, onSalvar, onFechar }) {
-  const [admin, setAdmin] = useState(!!p.admin);
-  const [modulos, setModulos] = useState(() => new Set(p.modulos || []));
-  const [regra, setRegra] = useState(p.obrasRegra || "todas");
-  const [escolhidas, setEscolhidas] = useState(() => new Set((p.obras || []).map(String)));
+function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
+  const [perfil, setPerfil] = useState(p.perfil || "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
   const [busca, setBusca] = useState("");
+
+  /* As obras do GC saem do campo `gc` da propria obra — o mesmo que o
+     Dashboard grava. Um vinculo, dois caminhos pra chegar nele; dois
+     campos seriam duas verdades. */
+  const [minhas, setMinhas] = useState(
+    () => new Set(obras.filter((o) => String(o.gc || "").toLowerCase() === p.email).map((o) => String(o.codigo))));
 
   const achadas = obras.filter((o) => {
     const t = busca.trim().toLowerCase();
     return !t || `${o.codigo} ${o.nome} ${o.squad}`.toLowerCase().includes(t);
   });
-  const dele = obras.filter((o) => String(o.gc || "").toLowerCase() === p.email).length;
+
+  /* Nunca pode haver zero administradores: sem admin ninguem mais entra,
+     e a saida seria mexer no banco a mao. */
+  const tirandoOUltimoAdmin = ehOUltimoAdmin(pessoas, p.email) && perfil !== "admin";
 
   async function salvar() {
     setSalvando(true); setErro(null);
     try {
-      await onSalvar({
-        ...p, admin,
-        modulos: [...modulos],
-        obrasRegra: regra,
-        obras: regra === "lista" ? [...escolhidas] : [],
-      });
+      await onSalvar({ ...p, perfil: perfil || null }, perfil === "gc" ? [...minhas] : null);
       onFechar();
     } catch (e) {
       setErro(e.message || String(e));
@@ -10192,90 +10259,76 @@ function AcessoDaPessoa({ p, obras, onSalvar, onFechar }) {
     <div className="ac-painel">
       <div className="ac-bloco-t">Acesso de {p.nome}</div>
 
-      {/* Admin primeiro, porque ele apaga as duas escolhas de baixo — e
-          mostrar controle que não vale nada é pior que escondê-lo. */}
-      <label className="ac-admin">
-        <input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} />
-        <div>
-          <b>Administrador</b>
-          <div className="ac-nota">Vê todos os módulos e todas as obras, e pode configurar o acesso das outras pessoas.</div>
-        </div>
-      </label>
+      <div className="ac-regras">
+        <label className={`ac-regra ${!perfil ? "on" : ""}`}>
+          <input type="radio" name={`perfil-${p.email}`} checked={!perfil} onChange={() => setPerfil("")} />
+          <div>
+            <b>Sem acesso</b>
+            <div className="ac-nota">Entra e vê só a sala de espera. É o estado de quem acabou de chegar pelo link.</div>
+          </div>
+        </label>
+        {PERFIS.map((x) => (
+          <label key={x.id} className={`ac-regra ${perfil === x.id ? "on" : ""}`}>
+            <input type="radio" name={`perfil-${p.email}`} checked={perfil === x.id}
+              onChange={() => setPerfil(x.id)} />
+            <div>
+              <b>{x.nome}</b>
+              <div className="ac-nota">{x.resumo}</div>
+            </div>
+          </label>
+        ))}
+      </div>
 
-      <div className={admin ? "ac-desligado" : ""}>
-        <div className="ac-sub">
-          Módulos
-          <button className="ac-link" onClick={() => setModulos(new Set())}>todos</button>
-          <button className="ac-link" onClick={() => setModulos(new Set(MODULOS.map((m) => m.id)))}>marcar um a um</button>
-        </div>
-        {modulos.size === 0 && <div className="ac-nota ac-nota-forte">Nenhum marcado quer dizer TODOS — é o padrão de quem nunca foi configurado.</div>}
-        <div className="ac-modulos">
-          {MODULOS.map((m) => (
-            <label key={m.id} className={`ac-chip ${modulos.size === 0 || modulos.has(m.id) ? "on" : ""}`}>
-              <input type="checkbox" checked={modulos.size === 0 || modulos.has(m.id)}
-                onChange={(e) => setModulos((g) => {
-                  /* Vazio significa "todos"; desmarcar um a partir daí tem
-                     que começar da lista cheia, senão o primeiro clique
-                     tiraria tudo menos aquele. */
-                  const base = g.size === 0 ? new Set(MODULOS.map((x) => x.id)) : new Set(g);
-                  e.target.checked ? base.add(m.id) : base.delete(m.id);
-                  return base;
-                })} />
-              <m.Icone size={13} /> {m.nome}
-            </label>
-          ))}
-        </div>
-
-        <div className="ac-sub">Obras</div>
-        <div className="ac-regras">
-          {[
-            { id: "todas", t: "Todas as obras", s: "coordenação, compras, quem precisa da visão inteira" },
-            { id: "minhas", t: "Só as obras em que é o GC", s: dele ? `hoje são ${dele}` : "hoje nenhuma — a lista se atualiza sozinha" },
-            { id: "lista", t: "Escolher obra por obra", s: "para quem toca um recorte fixo" },
-          ].map((r) => (
-            <label key={r.id} className={`ac-regra ${regra === r.id ? "on" : ""}`}>
-              <input type="radio" name={`regra-${p.email}`} checked={regra === r.id}
-                onChange={() => setRegra(r.id)} />
-              <div>
-                <b>{r.t}</b>
-                <div className="ac-nota">{r.s}</div>
-              </div>
-            </label>
-          ))}
-        </div>
-
-        {regra === "lista" && (
+      {/* Só o GC precisa da lista: os outros perfis não têm obra a
+          escolher, e mostrá-la neles sugeriria que têm. */}
+      {perfil === "gc" && (
+        <>
+          <div className="ac-sub">
+            Obras em que {p.nome.split(" ")[0]} é o GC
+            <button className="ac-link" onClick={() => setMinhas(new Set())}>limpar</button>
+          </div>
+          <div className="ac-nota ac-nota-forte">
+            Isto grava o <b>GC responsável</b> de cada obra — o mesmo campo do Dashboard.
+            Marcar aqui tira a obra de quem era o responsável antes.
+          </div>
           <div className="ac-lista">
             <div className="ac-lista-topo">
               <input className="form-input" value={busca} placeholder="filtrar obra…"
                 onChange={(e) => setBusca(e.target.value)} />
-              <button className="ac-link" onClick={() => setEscolhidas(new Set(obras.map((o) => String(o.codigo))))}>marcar todas</button>
-              <button className="ac-link" onClick={() => setEscolhidas(new Set())}>limpar</button>
             </div>
             <div className="ac-lista-itens">
-              {achadas.map((o) => (
-                <label key={o.codigo} className={`ac-obra ${escolhidas.has(String(o.codigo)) ? "on" : ""}`}>
-                  <input type="checkbox" checked={escolhidas.has(String(o.codigo))}
-                    onChange={(e) => setEscolhidas((g) => {
-                      const n = new Set(g);
-                      e.target.checked ? n.add(String(o.codigo)) : n.delete(String(o.codigo));
-                      return n;
-                    })} />
-                  <span className="mono dim">#{o.codigo}</span>
-                  <span className="ac-obra-nome">{o.nome}</span>
-                  <span className="ac-obra-squad">{o.squad}</span>
-                </label>
-              ))}
+              {achadas.map((o) => {
+                const outro = o.gc && String(o.gc).toLowerCase() !== p.email ? o.gc : null;
+                return (
+                  <label key={o.codigo} className={`ac-obra ${minhas.has(String(o.codigo)) ? "on" : ""}`}>
+                    <input type="checkbox" checked={minhas.has(String(o.codigo))}
+                      onChange={(e) => setMinhas((g) => {
+                        const n = new Set(g);
+                        e.target.checked ? n.add(String(o.codigo)) : n.delete(String(o.codigo));
+                        return n;
+                      })} />
+                    <span className="mono dim">#{o.codigo}</span>
+                    <span className="ac-obra-nome">{o.nome}</span>
+                    {outro && <span className="ac-obra-squad">hoje é de {nomeDoEmail(outro)}</span>}
+                  </label>
+                );
+              })}
               {achadas.length === 0 && <div className="empty-note">Nenhuma obra com esse nome.</div>}
             </div>
-            <div className="ac-nota">{escolhidas.size} de {obras.length} marcadas</div>
+            <div className="ac-nota">{minhas.size} de {obras.length} marcadas</div>
           </div>
-        )}
-      </div>
+        </>
+      )}
 
+      {tirandoOUltimoAdmin && (
+        <div className="ac-nota ac-nota-forte">
+          <b>{p.nome} é o último administrador.</b> Promova outra pessoa antes de tirar este perfil —
+          sem administrador, ninguém mais consegue liberar acesso.
+        </div>
+      )}
       {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
       <div className="cad-acoes">
-        <button className="btn-doc btn-template" disabled={salvando} onClick={salvar}>
+        <button className="btn-doc btn-template" disabled={salvando || tirandoOUltimoAdmin} onClick={salvar}>
           {salvando ? "Salvando…" : "Salvar acesso"}
         </button>
         <button className="btn-doc" onClick={onFechar}>cancelar</button>
@@ -10284,7 +10337,7 @@ function AcessoDaPessoa({ p, obras, onSalvar, onFechar }) {
   );
 }
 
-function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExcluir }) {
+function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onSalvarAcesso, onExcluir }) {
   const [email, setEmail] = useState("");
   const [nome, setNome] = useState("");
   const [cargo, setCargo] = useState("GC");
@@ -10330,9 +10383,16 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExc
     }
   }
 
+  /* Quem esta esperando vem PRIMEIRO, num grupo proprio. Misturado por
+     cargo, o pendente sumiria no meio de quem ja tem acesso — e o
+     trabalho do administrador e' exatamente esvaziar essa fila. */
   const porCargo = {};
-  pessoas.forEach((p) => { (porCargo[p.cargo || "Sem cargo"] ||= []).push(p); });
+  const fila = pessoas.filter(estaPendente);
+  pessoas.filter((p) => !estaPendente(p))
+    .forEach((p) => { (porCargo[p.cargo || "Sem cargo"] ||= []).push(p); });
   const cargos = Object.keys(porCargo).sort();
+  if (fila.length) porCargo["Aguardando liberação"] = fila;
+  const ordem = fila.length ? ["Aguardando liberação", ...cargos] : cargos;
 
   return (
     <>
@@ -10394,8 +10454,8 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExc
               alguém de ficar trancado do lado de fora antes de existir um administrador.
             </div>
           </div>
-        ) : cargos.map((c) => (
-          <div key={c} className="arq-bloco">
+        ) : ordem.map((c) => (
+          <div key={c} className={`arq-bloco ${c === "Aguardando liberação" ? "eq-fila" : ""}`}>
             <div className="arq-bloco-h">
               <span className="arq-bloco-tit">{c}</span>
               <span className="arq-bloco-n">{porCargo[c].length}</span>
@@ -10430,7 +10490,7 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExc
             })}
             {porCargo[c].some((p) => p.email === acessoDe) && (
               <AcessoDaPessoa p={porCargo[c].find((p) => p.email === acessoDe)} obras={obras}
-                onSalvar={onSalvar} onFechar={() => setAcessoDe(null)} />
+                pessoas={pessoas} onSalvar={onSalvarAcesso} onFechar={() => setAcessoDe(null)} />
             )}
           </div>
         ))}
@@ -10438,21 +10498,15 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExc
   );
 }
 
-/* O que a linha da pessoa diz sobre o acesso dela, em uma frase. Sem
-   isso, saber quem ve o que exige abrir uma a uma. */
+/* O que a linha diz sobre o acesso, em uma frase. Sem isso, saber quem
+   ve o que exige abrir uma a uma — e a tela deixa de responder a
+   pergunta que ela existe pra responder. */
 function resumoAcesso(p, obras) {
-  if (p.admin) return "administrador";
-  const nMod = (p.modulos || []).length;
-  const mod = nMod === 0 ? "todos os módulos" : `${nMod} ${nMod === 1 ? "módulo" : "módulos"}`;
-  if (p.obrasRegra === "minhas") {
-    const n = (obras || []).filter((o) => String(o.gc || "").toLowerCase() === p.email).length;
-    return `${mod} · ${n} ${n === 1 ? "obra sua" : "obras suas"}`;
-  }
-  if (p.obrasRegra === "lista") {
-    const n = (p.obras || []).length;
-    return `${mod} · ${n} ${n === 1 ? "obra" : "obras"}`;
-  }
-  return `${mod} · todas as obras`;
+  const perfil = perfilDe(p);
+  if (!perfil) return "aguardando liberação";
+  if (perfil.id !== "gc") return perfil.nome;
+  const n = (obras || []).filter((o) => String(o.gc || "").toLowerCase() === p.email).length;
+  return `GC · ${n} ${n === 1 ? "obra" : "obras"}`;
 }
 
 /* ============================================================
@@ -11551,22 +11605,29 @@ export default function App() {
 
   useEffect(() => {
     let vivo = true;
-    listarPessoas()
+    /* Garante a linha ANTES de listar: quem entrou agora precisa
+       aparecer na fila do administrador sem ninguem digitar o e-mail
+       dela. Ver docs/SPEC-acessos.md §3. */
+    (usuario ? garantirPessoa(usuario).catch(() => null) : Promise.resolve())
+      .then(() => listarPessoas())
       .then((l) => { if (vivo) setPessoas(l); })
       .catch((e) => { if (vivo) setPessoasErro(`Não consegui carregar a equipe: ${e.message || e}`); })
       .finally(() => { if (vivo) setPessoasCarregando(false); });
     return () => { vivo = false; };
-  }, []);
+  }, [usuario]);
 
-  /* O ACESSO, aplicado.
+  /* O ACESSO, aplicado. Ver docs/SPEC-acessos.md.
 
-     `eu` e' a linha da pessoa logada na Equipe. Nao achada = acesso
-     total, de proposito: quem abre o app antes de existir cadastro nao
-     pode ficar trancado pra fora antes de existir admin pra liberar. */
+     `eu` e' a linha da pessoa logada. SEM PERFIL NAO ENTRA — o oposto do
+     que valia antes: acesso deixou de ser concedido por omissao. O
+     primeiro administrador e' semeado no SQL, sem o que a sala de espera
+     trancaria inclusive quem deveria liberar. */
   const eu = useMemo(
     () => pessoas.find((p) => p.email === String(usuario || "").toLowerCase()) || null,
     [pessoas, usuario]);
 
+  const souAdmin = podeGerenciarPessoas(eu);
+  const nPendentes = useMemo(() => (souAdmin ? pendentes(pessoas).length : 0), [pessoas, souAdmin]);
   const modulosVisiveis = useMemo(() => MODULOS.filter((m) => podeVerModulo(eu, m.id)), [eu]);
 
   /* Modulo que a pessoa nao pode ver nao pode ficar aberto: ela pode ter
@@ -11593,6 +11654,24 @@ export default function App() {
       const sem = prev.filter((p) => p.email !== salva.email);
       return [...sem, salva].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
     });
+    return salva;
+  }
+
+  /* Salva o perfil e, no caso do GC, o vinculo das obras. As duas
+     coisas vao juntas de proposito: escolher "GC" sem dizer quais obras
+     deixaria a pessoa com um perfil que nao mostra nada. */
+  async function salvarAcessoDaPessoa(dados, obrasDoGC) {
+    const salva = await salvarPessoaNoTime({ ...dados, por: usuario });
+    if (obrasDoGC) {
+      const querem = new Set(obrasDoGC.map(String));
+      const mudar = obras.filter((o) => {
+        const eraDele = String(o.gc || "").toLowerCase() === salva.email;
+        return querem.has(String(o.codigo)) !== eraDele;
+      });
+      for (const o of mudar) {
+        await definirGCdaObra(o.codigo, querem.has(String(o.codigo)) ? salva.email : null);
+      }
+    }
     return salva;
   }
 
@@ -11808,7 +11887,10 @@ export default function App() {
         } : o)));
         const deOutro = dados.editandoPor && dados.editandoPor !== usuario;
         setEdicao({
-          minha: dados.editandoPor === usuario,
+          /* `perfilEdita` tambem aqui: a trava do banco pode dizer que a
+             obra e' minha de uma sessao anterior, mas quem nao edita por
+             perfil nao passa a editar por causa disso. */
+          minha: dados.editandoPor === usuario && perfilEdita(eu),
           por: deOutro ? dados.editandoPor : null,
           desde: deOutro ? dados.editandoDesde : null,
         });
@@ -11889,7 +11971,12 @@ export default function App() {
     return () => window.removeEventListener("pagehide", sair);
   }, [usuario]);
 
+  /* O perfil manda na edicao antes da trava: o Mehoo consulta, e nem
+     chega a disputar a obra com ninguem. */
+  const perfilPermiteEditar = perfilEdita(eu);
+
   async function habilitarEdicao() {
+    if (!perfilPermiteEditar) return;
     if (!obra?.codigo) return;
     setErroBanco(null);
     try {
@@ -12553,6 +12640,14 @@ export default function App() {
     // volta pra ultima etapa cumprida (ou a primeira), que e onde a obra esta
     const pendente = lista.find((e) => !etapaConcluida(e.id, obra));
     handleTabChange((pendente || lista[0] || {}).id || null);
+  }
+
+  /* Sem perfil, a tela para aqui. Antes de qualquer barra lateral,
+     antes de qualquer numero — a sala de espera nao mostra NADA da
+     empresa. Ver docs/SPEC-acessos.md §3. */
+  if (!pessoasCarregando && usuario && !temAcesso(eu)) {
+    return <SalaDeEspera usuario={usuario} pessoa={eu}
+      onSair={sairDaConta} onRecarregar={() => window.location.reload()} />;
   }
 
   return (
@@ -14205,6 +14300,11 @@ export default function App() {
         .ac-obra.on { background: var(--blue-bg); }
         .ac-obra-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ac-obra-squad { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+        .eq-fila .arq-bloco-h { border-bottom-color: var(--amber); }
+        .eq-fila .arq-bloco-tit { color: #7A4E00; }
+        .eq-fila .arq-linha { background: var(--amber-bg); }
+        .nav-badge-espera { background: var(--amber); }
+        .nav-tira-badge.espera { background: var(--amber); }
         .eq-form .eq-campos { grid-template-columns: 1fr 1fr 170px; }
         .eq-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--blue-bg); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
         .eq-inativo { opacity: .55; }
@@ -14379,7 +14479,7 @@ export default function App() {
       <TopBar onInicio={() => setModulo("inicio")} />
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
-          equipe={pessoas} onSair={sairDaConta} modulos={modulosVisiveis}
+          equipe={pessoas} onSair={sairDaConta} modulos={modulosVisiveis} pendentesCount={nPendentes}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
@@ -14403,7 +14503,7 @@ export default function App() {
               linhas pra dizer onde a pessoa esta quando ela ja sabe —
               elas empurravam pra baixo o unico conteudo que importa. */}
           <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={painelCarregando}
-            usuario={usuario} equipe={pessoas}
+            usuario={usuario} equipe={pessoas} nPendentes={nPendentes}
             onAbrirObra={(id) => { setSelectedId(id); setModulo("comparativo"); setGrupo("dashboard"); setTab(null); }}
             onModulo={setModulo} />
           </>
@@ -14436,7 +14536,8 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Equipe</span></div>
           <div className="obra-meta">Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra</div>
           <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
-            usuario={usuario} onSalvar={salvarPessoaNoTime} onExcluir={excluirPessoaDoTime} />
+            usuario={usuario} onSalvar={salvarPessoaNoTime} onSalvarAcesso={salvarAcessoDaPessoa}
+            onExcluir={excluirPessoaDoTime} />
           </>
           ) : modulo === "mehoo" ? (
           <>

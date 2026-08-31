@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
+import { dominioPermitido, DOMINIOS } from "./lib/pessoas";
 
 /**
  * Envolve o app com o login do Supabase. Enquanto o Supabase não
@@ -128,6 +129,14 @@ function LoginScreen({ derrubada }) {
        do HTML e o navegador reclamava de campos vazios antes de qualquer
        coisa acontecer. A checagem vive aqui agora. */
     if (!email.trim() || !senha) { setErro("Preencha e-mail e senha, ou entre com a conta Microsoft."); return; }
+    /* Corta o dominio ANTES de tentar entrar. A sala de espera ja
+       protegeria os dados, mas sem este corte qualquer pessoa com o link
+       viraria uma linha na fila — e a tela de quem esta esperando entrar
+       viraria caixa de entrada de desconhecido. */
+    if (!dominioPermitido(email)) {
+      setErro(`Este sistema é do time da Group WS. Entre com um e-mail @${DOMINIOS[0]}.`);
+      return;
+    }
     setCarregando(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
     setCarregando(false);
