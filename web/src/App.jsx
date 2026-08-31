@@ -11637,21 +11637,28 @@ export default function App() {
     () => pessoas.find((p) => p.email === String(usuario || "").toLowerCase()) || null,
     [pessoas, usuario]);
 
-  const souAdmin = podeGerenciarPessoas(eu);
+  /* Enquanto a coluna nao existe, TODO o controle fica desligado — nao
+     so' o portao. Desligar o portao e manter o filtro deixava a pessoa
+     entrar e ver zero obra, que e' o mesmo estar trancado com outra
+     cara. */
+  const souAdmin = migracaoPendente || podeGerenciarPessoas(eu);
   const nPendentes = useMemo(() => (souAdmin ? pendentes(pessoas).length : 0), [pessoas, souAdmin]);
-  const modulosVisiveis = useMemo(() => MODULOS.filter((m) => podeVerModulo(eu, m.id)), [eu]);
+  const modulosVisiveis = useMemo(
+    () => (migracaoPendente ? MODULOS : MODULOS.filter((m) => podeVerModulo(eu, m.id))),
+    [eu, migracaoPendente]);
 
   /* Modulo que a pessoa nao pode ver nao pode ficar aberto: ela pode ter
      chegado nele antes de o acesso mudar, ou por um atalho de dentro de
      outra tela. Volta pro primeiro que ela pode. */
   useEffect(() => {
-    if (pessoasCarregando || podeVerModulo(eu, modulo)) return;
+    if (pessoasCarregando || migracaoPendente || podeVerModulo(eu, modulo)) return;
     setModulo(modulosVisiveis[0]?.id || "inicio");
   }, [eu, modulo, modulosVisiveis, pessoasCarregando]);
 
-  const obrasAtivas = useMemo(
-    () => obrasPermitidas(eu, obras.filter((o) => situacaoDe(o) === "ativa")),
-    [obras, registro, eu]);
+  const obrasAtivas = useMemo(() => {
+    const ativas = obras.filter((o) => situacaoDe(o) === "ativa");
+    return migracaoPendente ? ativas : obrasPermitidas(eu, ativas);
+  }, [obras, registro, eu, migracaoPendente]);
 
   /* O painel geral compara obras entre si, e os dados de uma obra so
      chegam quando alguem ABRE aquela obra — entao ele somava, na
@@ -11901,7 +11908,7 @@ export default function App() {
           /* `perfilEdita` tambem aqui: a trava do banco pode dizer que a
              obra e' minha de uma sessao anterior, mas quem nao edita por
              perfil nao passa a editar por causa disso. */
-          minha: dados.editandoPor === usuario && perfilEdita(eu),
+          minha: dados.editandoPor === usuario && (migracaoPendente || perfilEdita(eu)),
           por: deOutro ? dados.editandoPor : null,
           desde: deOutro ? dados.editandoDesde : null,
         });
@@ -11984,7 +11991,7 @@ export default function App() {
 
   /* O perfil manda na edicao antes da trava: o Mehoo consulta, e nem
      chega a disputar a obra com ninguem. */
-  const perfilPermiteEditar = perfilEdita(eu);
+  const perfilPermiteEditar = migracaoPendente || perfilEdita(eu);
 
   async function habilitarEdicao() {
     if (!perfilPermiteEditar) return;
@@ -14497,13 +14504,7 @@ export default function App() {
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
         <main className={`main ${["executivo", "vendido_planilha", "vendido_contrato"].includes(tab) ? "larga" : ""}`}>
-          {migracaoPendente && (
-        <div className="aviso-monday">
-          <b>Falta rodar <code>supabase/perfis.sql</code>.</b> Até lá, o controle de acesso por
-          perfil está desligado e todo mundo continua vendo tudo — que é como era antes.
-        </div>
-      )}
-      {/* O portao de perfil esta DESLIGADO ate a coluna existir. Dizer
+          {/* O portao de perfil esta DESLIGADO ate a coluna existir. Dizer
           isso e' o que impede a janela virar um estado permanente que
           ninguem lembra de fechar. */}
       {migracaoPendente && (
