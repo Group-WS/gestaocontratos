@@ -6113,6 +6113,26 @@ const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
 const CHAVE_MINHAS = "tkws.so.minhas";
 const CHAVE_SQUADS = "tkws.squads.fechados";
 
+/* O monograma da Mehoo: o duplo O.
+
+   A marca e' "MEHOO" por extenso, num sans geometrico bem fino — e nome
+   por extenso nao cabe em 16px. O que sobrevive da reducao e' o par de
+   Os: e' o unico traco da marca que ainda se reconhece pequeno, e as
+   letras finas viram um borrao nesse tamanho.
+
+   Em currentColor, e nao no preto da marca: a Mehoo e' um canal do menu
+   como os outros, e o icone tem que acender junto quando o item esta
+   ativo. O Sienge e' o contrario — la o vermelho E' o reconhecimento. */
+function IconeMehoo({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      stroke="currentColor" strokeWidth="1.6">
+      <ellipse cx="8.4" cy="12" rx="5.6" ry="6.2" />
+      <ellipse cx="15.6" cy="12" rx="5.6" ry="6.2" />
+    </svg>
+  );
+}
+
 /* O "S" do Sienge, aproximado.
 
    Desenhado aqui, e nao baixado: o logo oficial nao esta no projeto, e um
@@ -6142,7 +6162,7 @@ const MODULOS = [
   { id: "novas", nome: "Novas obras", sub: "vindas do Monday", Icone: Sparkle },
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
-  { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: ShoppingCart },
+  { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
   { id: "equipe", nome: "Equipe", sub: "quem é quem, e o cargo", Icone: ShieldCheck },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: Package },
