@@ -6,10 +6,11 @@ import {
   ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
-  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2
+  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, nomeDoEmail, CARGOS } from "./lib/pessoas";
+import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
   rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
@@ -6109,6 +6110,26 @@ const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
 const CHAVE_MINHAS = "tkws.so.minhas";
 const CHAVE_SQUADS = "tkws.squads.fechados";
 
+/* O "S" do Sienge, aproximado.
+
+   Desenhado aqui, e nao baixado: o logo oficial nao esta no projeto, e um
+   <img> de URL externa numa barra lateral quebra quando o site de la sai
+   do ar. E' uma aproximacao — duas meias-luas encaixadas com o quadrado
+   vago no meio, no vermelho da marca. Tendo o SVG oficial, e' so trocar
+   o miolo desta funcao.
+
+   Ela recebe `size` porque a barra usa 16px e a tira recolhida tambem —
+   um <img> de tamanho fixo destoaria dos outros icones, que sao todos
+   traço de 16. */
+function IconeSienge({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.5 3.5H12a5.2 5.2 0 0 0 0 10.4h-.9V10h4.1a5.2 5.2 0 0 0 5.2-5.2v-1a.3.3 0 0 0-.3-.3z" fill="#E30613" />
+      <path d="M3.5 20.5H12a5.2 5.2 0 0 0 0-10.4h.9V14H8.8a5.2 5.2 0 0 0-5.2 5.2v1a.3.3 0 0 0 .3.3z" fill="#B3000F" />
+    </svg>
+  );
+}
+
 /* Os cinco modulos, num lugar so: a barra os desenha em duas formas —
    lista com descricao quando aberta, tira de icones quando recolhida — e
    duas copias do mesmo elenco sairiam do ar uma da outra no primeiro
@@ -6120,12 +6141,40 @@ const MODULOS = [
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: ShoppingCart },
   { id: "equipe", nome: "Equipe", sub: "quem é quem, e o cargo", Icone: ShieldCheck },
-  { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: PackageSearch },
+  { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: Package },
   // Por ultimo: e' o que se abre com menos frequencia — obra concluida
   // ja saiu do dia a dia, e ela estava no meio do caminho do que nao saiu.
   { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
 ];
+
+/* Um simbolo por squad, pra barra recolhida.
+
+   Com 62px de largura nao cabe "SQUAD COMET", e sem nada as obras de
+   tres squads viram uma coluna unica de predinhos iguais. O simbolo e' a
+   unica coisa que separa os grupos ali. */
+function IconeSquad({ nome, size = 13 }) {
+  const t = String(nome || "").toLowerCase();
+  if (t.includes("moon")) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M20.5 15.6A8.6 8.6 0 0 1 9 4.1a1 1 0 0 0-1.4-1.2 10.5 10.5 0 1 0 14 14 1 1 0 0 0-1.1-1.3z" />
+    </svg>;
+  }
+  if (t.includes("sun")) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.4" />
+      <path d="M12 1.4v3M12 19.6v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1.4 12h3M19.6 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"
+        stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" fill="none" />
+    </svg>;
+  }
+  if (t.includes("comet")) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="16.5" cy="7.5" r="4" />
+      <path d="M12.6 10.8 2.9 20.5a1 1 0 0 0 1.1 1.6l7.5-3a1 1 0 0 0 .5-.4l2.2-3.6z" opacity=".75" />
+    </svg>;
+  }
+  return <Building2 size={size} />;
+}
 
 function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair }) {
   /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
@@ -6139,6 +6188,25 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
 
   const [menuPerfil, setMenuPerfil] = useState(false);
+  /* Fecha clicando em QUALQUER lugar, e com Esc. Antes so' fechava
+     clicando de novo no proprio perfil — ninguem procura o botao que
+     abriu pra fechar, procura o vazio ao lado. */
+  const menuRef = useRef(null);
+  const perfilRef = useRef(null);
+  useEffect(() => {
+    if (!menuPerfil) return;
+    const fora = (e) => {
+      if (menuRef.current?.contains(e.target) || perfilRef.current?.contains(e.target)) return;
+      setMenuPerfil(false);
+    };
+    const esc = (e) => { if (e.key === "Escape") setMenuPerfil(false); };
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", fora);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [menuPerfil]);
   const meuNome = (equipe || []).find((p) => p.email === usuario)?.nome || nomeDoEmail(usuario);
   const iniciais = (meuNome || usuario || "?").split(/\s+/).slice(0, 2)
     .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
@@ -6260,8 +6328,10 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                   squad que nao fecha, e um botao que nao faz o que diz e'
                   pior que a informacao que ele protegia. */}
               <button className="squad-group-label" onClick={() => alternarSquad(squadName)}
-                title={fechados.has(squadName) ? "Abrir este squad" : "Recolher este squad"}>
+                title={fechados.has(squadName) ? `Abrir ${squadName}` : `Recolher ${squadName}`}>
                 {fechados.has(squadName) ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                {/* Só aparece na barra recolhida, onde o nome não cabe. */}
+                <span className="squad-simbolo"><IconeSquad nome={squadName} /></span>
                 <span>{squadName} · {groups[squadName].length}</span>
                 {/* O ponto avisa que a obra aberta esta ai dentro. */}
                 {fechados.has(squadName) && (groups[squadName] || []).some((o) => o.id === selected) && (
@@ -6341,14 +6411,21 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           Wayhs" ali — e nao tinha como sair. */}
       <div className="sidebar-footer">
         {menuPerfil && (
-          <div className="perfil-menu">
-            <div className="perfil-menu-email mono">{usuario}</div>
+          <div className="perfil-menu" ref={menuRef}>
+            <div className="perfil-cab">
+              <div className="avatar avatar-sm">{iniciais}</div>
+              <div className="perfil-cab-txt">
+                <div className="perfil-cab-nome">{meuNome || "Não identificado"}</div>
+                <div className="perfil-cab-email">{usuario || "sem sessão"}</div>
+              </div>
+            </div>
+            <div className="perfil-sep" />
             <button className="perfil-sair" onClick={onSair}>
-              <ArrowUpRight size={13} /> Sair desta conta
+              <LogOut size={14} /> Sair
             </button>
           </div>
         )}
-        <button className={`profile ${menuPerfil ? "aberto" : ""}`} onClick={() => setMenuPerfil((v) => !v)}
+        <button ref={perfilRef} className={`profile ${menuPerfil ? "aberto" : ""}`} onClick={() => setMenuPerfil((v) => !v)}
           title={usuario || "Não identificado"}>
           <div className="avatar avatar-sm">{iniciais}</div>
           <div className="profile-text">
@@ -9825,7 +9902,13 @@ function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, on
     <>
       <div className="ini-saudacao">
         <div>
-          <div className="ini-ola">{meuNome ? `Olá, ${meuNome.split(" ")[0]}` : "Olá"}</div>
+          {/* Nome em cheio, recado em cinza — o nome e' o que ancora, e a
+              frase muda todo dia. Uma frase nova a cada F5 deixaria de ser
+              recado e viraria ruido, entao o indice sai da DATA: o time
+              todo ve a mesma, e ela troca a cada dia. */}
+          <div className="ini-ola">
+            <b>{meuNome || "Olá"}</b>, <span className="ini-recado">{mensagemDoDia()}</span>
+          </div>
           {/* So a PRIMEIRA letra. `text-transform: capitalize` no CSS
               subia tambem os "de": "Domingo, 30 De Agosto De 2026". */}
           <div className="ini-data">{(() => {
@@ -12183,6 +12266,39 @@ export default function App() {
         .squad-group { margin-bottom: 10px; }
         .squad-group-label { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
         .squad-group-label:hover { color: var(--ink-2); }
+        /* ---- Rotulo no hover, na barra recolhida ----
+           O atributo title do navegador demora quase um segundo pra
+           aparecer e some sozinho. Com nove icones iguais na coluna, essa
+           espera e' a diferenca entre usar a barra recolhida e desistir
+           dela. Este aparece na hora, ao lado, e nao rouba o clique. */
+        .sidebar.recolhida .nav-item,
+        .sidebar.recolhida .nav-tira-item,
+        .sidebar.recolhida .profile,
+        .sidebar.recolhida .squad-group-label { position: relative; }
+        .sidebar.recolhida .nav-item::after,
+        .sidebar.recolhida .nav-tira-item::after,
+        .sidebar.recolhida .profile::after,
+        .sidebar.recolhida .squad-group-label::after {
+          content: attr(title);
+          position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+          background: var(--ink); color: #fff; border-radius: 7px; padding: 6px 10px;
+          font-size: 11.5px; font-weight: 600; white-space: nowrap; letter-spacing: 0;
+          text-transform: none; pointer-events: none; opacity: 0; z-index: 60;
+          transition: opacity .09s ease; box-shadow: 0 4px 14px rgba(0,0,0,.18);
+        }
+        .sidebar.recolhida .nav-item:hover::after,
+        .sidebar.recolhida .nav-tira-item:hover::after,
+        .sidebar.recolhida .profile:hover::after,
+        .sidebar.recolhida .squad-group-label:hover::after { opacity: 1; }
+        .sidebar.recolhida .sidebar-scroll,
+        .sidebar.recolhida .scroll-list { overflow: visible; }
+        .sidebar.recolhida .scroll-list { overflow-y: auto; }
+
+        /* O simbolo do squad so' existe recolhida: aberta, o nome basta. */
+        .squad-simbolo { display: none; }
+        .sidebar.recolhida .squad-group-label { display: flex; justify-content: center; padding: 6px 0 4px; color: var(--ink-3); }
+        .sidebar.recolhida .squad-group-label > .lucide { display: none; }
+        .sidebar.recolhida .squad-simbolo { display: block; }
         .squad-tem-aberta { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
 
         .squad-group-label span { text-align: left; }
@@ -12224,10 +12340,19 @@ export default function App() {
         .profile { width: 100%; background: none; border: none; font-family: inherit; text-align: left; }
         .profile.aberto { background: var(--panel); }
         .profile-name { color: var(--ink); }
-        .perfil-menu { border: 1px solid var(--border); border-radius: 10px; background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.1); padding: 9px; margin-bottom: 7px; }
-        .perfil-menu-email { font-size: 10.5px; color: var(--ink-3); padding: 2px 6px 8px; word-break: break-all; }
-        .perfil-sair { display: flex; align-items: center; gap: 7px; width: 100%; background: none; border: none; border-radius: 7px; padding: 8px 6px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--red); cursor: pointer; }
-        .perfil-sair:hover { background: var(--red-bg); }
+        /* O menu era um e-mail quebrando em duas linhas e um "Sair desta
+           conta" vermelho gritando. Agora ele se parece com o cartao de
+           conta de qualquer ferramenta: quem esta logado em cima, uma
+           linha, e a saida discreta embaixo. Vermelho so' no hover — sair
+           nao e' perigoso, e' so' sair. */
+        .perfil-menu { border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.12); padding: 6px; margin-bottom: 8px; }
+        .perfil-cab { display: flex; align-items: center; gap: 10px; padding: 9px 9px 10px; }
+        .perfil-cab-txt { min-width: 0; }
+        .perfil-cab-nome { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+        .perfil-cab-email { font-size: 10.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+        .perfil-sep { height: 1px; background: var(--border-soft); margin: 0 4px 5px; }
+        .perfil-sair { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+        .perfil-sair:hover { background: var(--red-bg); color: var(--red); }
 
         .profile:hover { background: var(--panel); }
         .avatar-sm { width: 28px; height: 28px; font-size: 10.5px; }
@@ -12272,7 +12397,6 @@ export default function App() {
         .sidebar.recolhida .obra-search,
         .sidebar.recolhida .squad-filter,
         .sidebar.recolhida .alert-toggle,
-        .sidebar.recolhida .squad-group-label,
         .sidebar.recolhida .nav-item-text,
         .sidebar.recolhida .no-results,
         .sidebar.recolhida .profile-text,
@@ -13758,7 +13882,9 @@ export default function App() {
         @media (max-width: 900px) { .mh-obra-head { flex-wrap: wrap; gap: 10px; } }
         /* ---- Tela de inicio ---- */
         .ini-saudacao { margin: 18px 0 20px; }
-        .ini-ola { font-family: 'Instrument Serif', Georgia, serif; font-size: 30px; color: var(--ink); line-height: 1.1; }
+        .ini-ola { font-size: 22px; color: var(--ink); line-height: 1.35; font-weight: 400; }
+        .ini-ola b { font-weight: 700; }
+        .ini-recado { color: var(--ink-3); }
         .ini-data { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
         .ini-numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
         .ini-num { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 15px 17px; text-align: left; font-family: inherit; }
