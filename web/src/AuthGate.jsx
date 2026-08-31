@@ -94,9 +94,40 @@ function LoginScreen({ derrubada }) {
   const [erro, setErro] = useState(null);
   const [carregando, setCarregando] = useState(false);
 
+  /* Entrar com a conta da empresa.
+
+     O ID e o segredo do Azure NAO passam por aqui: eles vivem no painel
+     do Supabase, e o navegador so' e' mandado pro fluxo. Chave de OAuth
+     em codigo de frontend e' chave publicada — o bundle e' baixavel por
+     qualquer um que abra o site.
+
+     `redirectTo` volta pra origem atual, e nao pra uma URL fixa: assim o
+     mesmo codigo funciona em producao e no `localhost` de quem
+     desenvolve, sem alguem lembrar de trocar. */
+  async function entrarComMicrosoft() {
+    setErro(null);
+    setCarregando(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: { scopes: "email openid profile", redirectTo: window.location.origin },
+    });
+    if (error) {
+      setCarregando(false);
+      setErro(/provider is not enabled/i.test(error.message)
+        ? "O login da Microsoft ainda não foi ligado no Supabase."
+        : `Não consegui abrir o login da Microsoft: ${error.message}`);
+    }
+    // Deu certo: o navegador sai desta pagina, entao nao ha o que limpar.
+  }
+
   async function entrar(e) {
     e.preventDefault();
     setErro(null);
+    /* `required` saiu dos campos porque o botao da Microsoft mora dentro
+       do mesmo <form>: com ele, clicar na Microsoft disparava a validacao
+       do HTML e o navegador reclamava de campos vazios antes de qualquer
+       coisa acontecer. A checagem vive aqui agora. */
+    if (!email.trim() || !senha) { setErro("Preencha e-mail e senha, ou entre com a conta Microsoft."); return; }
     setCarregando(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
     setCarregando(false);
@@ -120,15 +151,31 @@ function LoginScreen({ derrubada }) {
           </div>
         )}
 
-        <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>E-mail</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@groupws.com"
-          style={inputStyle} />
+        <div id="campos-senha">
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>E-mail</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@groupws.com"
+            style={inputStyle} />
 
-        <label style={{ fontSize: 12, fontWeight: 600, color: "#555", marginTop: 14, display: "block" }}>Senha</label>
-        <input type="password" required value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••"
-          style={inputStyle} />
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#555", marginTop: 14, display: "block" }}>Senha</label>
+          <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••"
+            style={inputStyle} />
+        </div>
 
         {erro && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 12 }}>{erro}</div>}
+
+        <button type="button" onClick={entrarComMicrosoft} disabled={carregando}
+          style={{ width: "100%", marginTop: 20, background: "#fff", color: "#1a1a1a", border: "1px solid #e5e2dd", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, opacity: carregando ? 0.6 : 1 }}>
+          <LogoMicrosoft /> Entrar com a conta Microsoft
+        </button>
+
+        {/* A senha continua existindo como plano B: se o Azure cair ou a
+            conta de alguem ainda nao estiver no diretorio, ninguem fica
+            de fora do proprio sistema. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 14px" }}>
+          <div style={{ flex: 1, height: 1, background: "#e5e2dd" }} />
+          <span style={{ fontSize: 11, color: "#aaa" }}>ou com e-mail e senha</span>
+          <div style={{ flex: 1, height: 1, background: "#e5e2dd" }} />
+        </div>
 
         <button type="submit" disabled={carregando}
           style={{ width: "100%", marginTop: 20, background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: carregando ? 0.6 : 1 }}>
@@ -150,3 +197,18 @@ const inputStyle = {
   boxSizing: "border-box",
   outline: "none",
 };
+
+/* O quadriculado da Microsoft, desenhado aqui: quatro retangulos nao
+   valem uma dependencia nova, e um <img> de CDN nao carregaria — a
+   pagina de login e' a primeira coisa que abre, e ela nao pode depender
+   de terceiro pra ficar de pe. */
+function LogoMicrosoft() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 23 23" aria-hidden="true">
+      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+      <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
+      <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
+      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
+    </svg>
+  );
+}
