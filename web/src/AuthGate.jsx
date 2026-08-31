@@ -151,20 +151,12 @@ function LoginScreen({ derrubada }) {
           </div>
         )}
 
-        <div id="campos-senha">
-          <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>E-mail</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@groupws.com"
-            style={inputStyle} />
-
-          <label style={{ fontSize: 12, fontWeight: 600, color: "#555", marginTop: 14, display: "block" }}>Senha</label>
-          <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••"
-            style={inputStyle} />
-        </div>
-
-        {erro && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 12 }}>{erro}</div>}
-
+        {/* A conta da empresa PRIMEIRO, e a senha depois da linha: e' o
+            caminho que praticamente todo mundo vai usar, e deixa-lo
+            embaixo dos campos fazia a pessoa preencher e-mail e senha
+            antes de descobrir que nao precisava. */}
         <button type="button" onClick={entrarComMicrosoft} disabled={carregando}
-          style={{ width: "100%", marginTop: 20, background: "#fff", color: "#1a1a1a", border: "1px solid #e5e2dd", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, opacity: carregando ? 0.6 : 1 }}>
+          style={{ width: "100%", background: "#fff", color: "#1a1a1a", border: "1px solid #e5e2dd", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, opacity: carregando ? 0.6 : 1 }}>
           <LogoMicrosoft /> Entrar com a conta Microsoft
         </button>
 
@@ -176,6 +168,18 @@ function LoginScreen({ derrubada }) {
           <span style={{ fontSize: 11, color: "#aaa" }}>ou com e-mail e senha</span>
           <div style={{ flex: 1, height: 1, background: "#e5e2dd" }} />
         </div>
+
+        <div id="campos-senha">
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>E-mail</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@groupws.com"
+            style={inputStyle} />
+
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#555", marginTop: 14, display: "block" }}>Senha</label>
+          <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••"
+            style={inputStyle} />
+        </div>
+
+        {erro && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 12 }}>{erro}</div>}
 
         <button type="submit" disabled={carregando}
           style={{ width: "100%", marginTop: 20, background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: carregando ? 0.6 : 1 }}>
