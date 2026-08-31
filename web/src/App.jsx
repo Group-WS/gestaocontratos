@@ -6095,7 +6095,9 @@ function TopBar() {
 
           Quem procura obra tem o filtro da barra lateral, que funciona. */}
       <div className="topbar-right">
-        <button className="icon-btn"><Sparkles size={16} /></button>
+        {/* A estrelinha saiu: era um botao sem onClick nenhum. Botao que
+            nao faz nada nao e' neutro — a pessoa clica, nada acontece, e
+            passa a duvidar do resto dos botoes da tela. */}
         <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
         <div className="avatar">PW</div>
       </div>
