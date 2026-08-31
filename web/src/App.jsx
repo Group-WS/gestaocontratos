@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
-  PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, MIGRACAO_PENDENTE,
+  PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoAdmin } from "./lib/pessoas";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
@@ -11606,10 +11606,14 @@ export default function App() {
 
   useEffect(() => {
     let vivo = true;
-    /* Garante a linha ANTES de listar: quem entrou agora precisa
-       aparecer na fila do administrador sem ninguem digitar o e-mail
-       dela. Ver docs/SPEC-acessos.md §3. */
-    (usuario ? garantirPessoa(usuario).catch(() => null) : Promise.resolve())
+    /* A coluna vem primeiro: sem ela, o portao fica desligado e o app
+       se comporta como antes. Depois a linha, que faz a pessoa aparecer
+       na fila sem ninguem digitar o e-mail dela. §3 da SPEC. */
+    migracaoDePerfilFeita()
+      .then((feita) => {
+        if (vivo && !feita) setMigracaoPendente(true);
+        return feita && usuario ? garantirPessoa(usuario).catch(() => null) : null;
+      })
       .then(() => listarPessoas())
       .then((l) => { if (vivo) setPessoas(l); })
       .catch((e) => {

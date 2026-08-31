@@ -58,6 +58,18 @@ function faltaColuna(error) {
     || /column .* does not exist|Could not find the/i.test(error.message || ""));
 }
 
+/* Pergunta pela coluna, nao pela linha.
+
+   `select("*")` NAO da erro quando `perfil` nao existe — ele devolve as
+   colunas que ha. Foi assim que a deteccao anterior falhou: sem erro,
+   ninguem tinha perfil, e o portao mandou todo mundo pra sala de espera.
+   Perguntar pela coluna especifica e' o unico jeito de saber. */
+export async function migracaoDePerfilFeita() {
+  if (!supabaseConfigurado) return true;
+  const { error } = await supabase.from("pessoa").select("perfil").limit(1);
+  return !faltaColuna(error);
+}
+
 export async function listarPessoas() {
   if (!supabaseConfigurado) return [];
   const { data, error } = await supabase.from("pessoa").select("*").order("nome");
