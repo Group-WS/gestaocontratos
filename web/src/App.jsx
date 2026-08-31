@@ -10373,6 +10373,13 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
   const [editando, setEditando] = useState(null);
   const [acessoDe, setAcessoDe] = useState(null);
 
+  /* Cargo digitado uma vez vira sugestao pra proxima pessoa: a lista se
+     configura pelo uso, sem tela de cadastro de cargo. */
+  const cargosConhecidos = useMemo(() => {
+    const usados = (pessoas || []).map((p) => (p.cargo || "").trim()).filter(Boolean);
+    return [...new Set([...CARGOS, ...usados])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [pessoas]);
+
   const obrasDe = (e) => obras.filter((o) => String(o.gc || "").toLowerCase() === e).length;
   const pode = email.trim().includes("@") && !salvando;
 
@@ -10456,12 +10463,21 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
           <label>Nome
             <input className="form-input" value={nome} placeholder={email ? nomeDoEmail(email) : "como aparece na tela"}
               onChange={(e) => setNome(e.target.value)} /></label>
-          <label>Cargo
-            <input className="form-input" value={cargo} list="cargos-conhecidos"
+          {/* As sugestoes eram um `datalist`, que o navegador desenha
+              como caixa de texto comum: sete opcoes existiam e nenhuma
+              aparecia. Agora sao botoes -- e o campo continua aceitando
+              qualquer texto, porque cargo de empresa muda e ninguem quer
+              abrir codigo pra criar um. */}
+          <label className="cad-largo">Cargo
+            <input className="form-input" value={cargo} placeholder="clique numa sugestão ou escreva o seu"
               onChange={(e) => setCargo(e.target.value)} />
-            <datalist id="cargos-conhecidos">
-              {CARGOS.map((c) => <option key={c} value={c} />)}
-            </datalist>
+            <div className="cargo-chips">
+              {cargosConhecidos.map((c) => (
+                <button key={c} type="button"
+                  className={`cargo-chip ${cargo === c ? "on" : ""}`}
+                  onClick={() => setCargo(cargo === c ? "" : c)}>{c}</button>
+              ))}
+            </div>
           </label>
         </div>
         <div className="cad-acoes">
@@ -14389,6 +14405,10 @@ export default function App() {
         .eq-form .eq-campos { grid-template-columns: 1fr 1fr 170px; }
         .eq-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--blue-bg); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
         .eq-inativo { opacity: .55; }
+        .cargo-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+        .cargo-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; font-family: inherit; font-size: 11px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+        .cargo-chip:hover { border-color: var(--blue); color: var(--ink); }
+        .cargo-chip.on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
         .eq-migracao { display: flex; gap: 10px; align-items: flex-start; background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; margin-bottom: 14px; }
         .eq-migracao code { background: #FEF3C7; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
         .eq-tag-inativo { margin-left: 7px; background: var(--panel); color: var(--ink-3); border-radius: 20px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; }
