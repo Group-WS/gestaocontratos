@@ -15,6 +15,8 @@ const casos = [
    /Azure Tenant URL/, "50194 vira instrucao de conserto"],
   ["https://x.app/#error_description=AADSTS50194%3A+multi-tenant",
    /Azure Tenant URL/, "le tambem do hash, nao so' da query"],
+  ["https://x.app/?error_description=AADSTS90002%3A+Tenant+%27986a40c7%27+not+found.",
+   /Directory \(tenant\) ID/, "90002 explica a troca dos dois GUIDs"],
   ["https://x.app/?error_description=AADSTS50011%3A+redirect_uri+mismatch",
    /Redirect URIs/, "50011 fala de endereco de retorno"],
   ["https://x.app/?error_description=AADSTS7000215%3A+Invalid+client+secret",

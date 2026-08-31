@@ -112,6 +112,14 @@ export function erroDaVolta(href) {
       + "\"Azure Tenant URL\" com https://login.microsoftonline.com/SEU-TENANT-ID (o Directory (tenant) ID "
       + "está no Azure, na visão geral do app).";
   }
+  /* Os dois GUIDs ficam um embaixo do outro na mesma tela do Azure, e o
+     de cima e' o errado. Trocar um pelo outro e' o tropeco padrao. */
+  if (/AADSTS90002|Tenant .* not found/i.test(t)) {
+    return "O Tenant URL no Supabase está com o GUID errado — provavelmente o Application (client) ID "
+      + "no lugar do Directory (tenant) ID. São dois GUIDs diferentes, um embaixo do outro no Azure, "
+      + "em App registrations → o app → Overview. O Tenant URL leva o SEGUNDO "
+      + "(Directory (tenant) ID); o primeiro fica no campo Azure Client ID.";
+  }
   if (/AADSTS50011|redirect_uri/i.test(t)) {
     return "O endereço de retorno não bate. No Azure, em Authentication → Redirect URIs, tem que estar "
       + "exatamente a URL de callback do Supabase (…supabase.co/auth/v1/callback).";

@@ -12,7 +12,13 @@ O código só manda o navegador pro fluxo (`web/src/AuthGate.jsx`).
 
 ### 1. No Azure — App registrations → o app
 
-- **Overview** → anote o **Application (client) ID** e o **Directory (tenant) ID**
+- **Overview** → anote os **dois** GUIDs. Eles ficam um embaixo do outro
+  e são fáceis de trocar:
+
+  | O que aparece | Onde vai no Supabase |
+  |---|---|
+  | Application (client) ID | campo **Azure Client ID** |
+  | Directory (tenant) ID | dentro do **Azure Tenant URL** |
 - **Authentication → Redirect URIs** → adicionar, como *Web*:
   `https://SEU-PROJETO.supabase.co/auth/v1/callback`
 - **Certificates & secrets** → *New client secret* → copiar o **Value**
@@ -45,6 +51,7 @@ instrução em português (`erroDaVolta`, testada em
 | Código | O que é | Conserto |
 |---|---|---|
 | **AADSTS50194** | O app é de um tenant só, mas o Supabase chamou `/common` | Preencher o **Azure Tenant URL** no Supabase (passo 2) |
+| **AADSTS90002** | Tenant não existe — quase sempre o **Client ID** colado no lugar do **Tenant ID** | Usar o *Directory (tenant) ID*, o segundo GUID do Overview |
 | **AADSTS50011** | O endereço de retorno não bate | Conferir o Redirect URI no Azure (passo 1) |
 | **AADSTS7000215** | Segredo recusado | Gerar outro secret e colar o **Value** |
 | **access_denied** | Recusa no login | Cancelamento, ou falta consentimento do admin do diretório |
