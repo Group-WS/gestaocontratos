@@ -12151,8 +12151,8 @@ export default function App() {
         .brand-logo { width: 46px; height: 38px; object-fit: cover; object-position: top center; display: block; }
         .brand-word { font-weight: 700; font-size: 13px; letter-spacing: 0.06em; color: var(--ink); white-space: nowrap; }
         .aviso-monday { background: var(--amber-bg, #FEF3E2); color: var(--amber, #B7791F); border: 1px solid var(--amber, #E8B04B); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
-        /* `margin-left: auto` porque quem empurrava esse bloco pra
-           direita era a busca do meio, com `flex: 1`. Tirando a busca,
+        /* O margin-left auto porque quem empurrava esse bloco pra
+           direita era a busca do meio, que tinha flex 1. Tirando a busca,
            ele foi junto encostar na marca. */
         .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
         .icon-btn { width: 34px; height: 34px; border-radius: 8px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; color: var(--ink-2); cursor: pointer; position: relative; }
