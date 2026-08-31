@@ -6191,7 +6191,7 @@ const MODULOS = [
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
-  { id: "equipe", nome: "Equipe", sub: "quem é quem, e o cargo", Icone: ShieldCheck },
+  { id: "equipe", nome: "Equipe e acessos", sub: "quem é quem, e o que cada um vê", Icone: ShieldCheck },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: DollarSign },
   // Por ultimo: e' o que se abre com menos frequencia — obra concluida
@@ -10345,9 +10345,17 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExc
           <div className="compras-empty">
             <ShieldCheck size={30} className="dim" />
             <div className="compras-empty-title">Ninguém cadastrado ainda</div>
+            {/* O painel de acesso vive DENTRO da linha de cada pessoa, e
+                sem ninguem cadastrado ele nao existe em lugar nenhum da
+                tela. Dizer o caminho aqui e' o que evita procurar uma
+                tela de permissoes que nunca vai aparecer sozinha. */}
             <div className="compras-empty-sub">
-              Cadastre a equipe aqui e depois atribua o GC de cada obra escolhendo desta lista,
-              no Dashboard da obra.
+              Comece por você: cadastre seu e-mail acima, depois clique em <b>acesso</b> na sua
+              linha e marque <b>Administrador</b>. É lá, na linha de cada pessoa, que se define
+              quais <b>módulos</b> ela abre e quais <b>obras</b> ela enxerga.
+              <br /><br />
+              Enquanto ninguém estiver cadastrado, <b>todo mundo vê tudo</b> — é o que impede
+              alguém de ficar trancado do lado de fora antes de existir um administrador.
             </div>
           </div>
         ) : cargos.map((c) => (
@@ -14369,7 +14377,7 @@ export default function App() {
           <>
           <div className="eyebrow">CADASTRO · {pessoas.length}</div>
           <div className="title-row"><span className="title-accent">Equipe</span></div>
-          <div className="obra-meta">Quem é quem e o cargo de cada um — é desta lista que sai o GC de cada obra</div>
+          <div className="obra-meta">Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra</div>
           <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
             usuario={usuario} onSalvar={salvarPessoaNoTime} onExcluir={excluirPessoaDoTime} />
           </>
