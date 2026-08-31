@@ -6284,6 +6284,14 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_SIDEBAR, recolhida ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [recolhida]);
 
+  /* Modulos nascem SEMPRE fechados, e essa escolha nao e' guardada.
+
+     E' o contrario do resto da barra de proposito: modulo se abre pra ir
+     a um lugar e nao se volta pra ele, entao deixar aberto de ontem so
+     rouba as linhas que a lista de obras usa hoje. Abrir e' um clique. */
+  const [modulosAbertos, setModulosAbertos] = useState(false);
+  const alternarModulos = () => setModulosAbertos((v) => !v);
+
   /* O rotulo do hover, quando a barra esta recolhida.
 
      Um listener so', delegado na barra inteira, em vez de handler em cada
@@ -6296,12 +6304,19 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
   useEffect(() => {
     const el = barraRef.current;
-    if (!el || !recolhida) { setDica(null); return; }
+    if (!el) { setDica(null); return; }
     let alvo = null;
 
+    /* A dica valia SO' com a barra recolhida. Mas a tira de modulos e'
+       de icones tambem com a barra aberta — nove escudos, caixas e
+       cifroes sem rotulo — e ali a pessoa ficava com o `title` do
+       navegador, que demora quase um segundo. Foi assim que a Equipe
+       ficou impossivel de achar: ela existia, no sexto icone, sem nome
+       em lugar nenhum ate alguem abrir o grupo. */
     const entrar = (e) => {
       const b = e.target.closest("[title]");
       if (!b || !el.contains(b) || b === alvo) return;
+      if (!recolhida && !b.closest(".nav-tira")) return;
       sair();
       const t = b.getAttribute("title");
       if (!t) return;
@@ -6334,17 +6349,14 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
        Sem lista, o efeito se reinstala a cada render — e mostrar a dica
        E' um render. A limpeza rodava logo em seguida e apagava a dica que
        tinha acabado de aparecer: o listener funcionava (chegava a tirar o
-       title do botao) e nada aparecia na tela. */
-  }, [recolhida]);
+       title do botao) e nada aparecia na tela.
+
+       `modulosAbertos` entra junto porque abrir o grupo troca a tira de
+       icones por lista com nome: os botoes sao outros, e o listener
+       precisa reinstalar pra alcancar os novos. */
+  }, [recolhida, modulosAbertos]);
 
 
-  /* Modulos nascem SEMPRE fechados, e essa escolha nao e' guardada.
-
-     E' o contrario do resto da barra de proposito: modulo se abre pra ir
-     a um lugar e nao se volta pra ele, entao deixar aberto de ontem so
-     rouba as linhas que a lista de obras usa hoje. Abrir e' um clique. */
-  const [modulosAbertos, setModulosAbertos] = useState(false);
-  const alternarModulos = () => setModulosAbertos((v) => !v);
 
   const [search, setSearch] = useState("");
   const [onlyAlert, setOnlyAlert] = useState(false);
