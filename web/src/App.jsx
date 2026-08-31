@@ -9957,20 +9957,21 @@ function AditivosView({ obras, usuario }) {
    o que está vencendo, e o que é meu.
    ============================================================ */
 
+/* Uma celula da regua. Nao e' cartao: cartao aqui em cima competia com
+   os cartoes de "Pedindo atencao" logo abaixo, e quatro caixas brancas
+   iguais nao dizem qual delas pede acao. */
 function InicioNum({ rot, valor, sub, cor, onClick }) {
   const Tag = onClick ? "button" : "div";
   return (
-    <Tag className={`ini-num ${onClick ? "clicavel" : ""}`} onClick={onClick}>
-      <div className="ini-num-rot" style={cor ? { color: cor } : undefined}>{rot}</div>
-      <div className="ini-num-val mono">{valor}</div>
-      <div className="ini-num-sub">{sub}</div>
+    <Tag className={`ini-cel ${onClick ? "clicavel" : ""}`} onClick={onClick}>
+      <div className="ini-cel-rot" style={cor ? { color: cor } : undefined}>{rot}</div>
+      <div className="ini-cel-val">{valor}</div>
+      <div className="ini-cel-sub">{sub}</div>
     </Tag>
   );
 }
 
 function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, onModulo }) {
-  const iniciais = String(usuario || "?").split("@")[0].split(/[._-]+/).slice(0, 2)
-    .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const t = r.totais;
 
@@ -10024,24 +10025,25 @@ function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, on
           Nome em cheio, recado em cinza: o nome ancora, a frase muda todo
           dia. Uma frase nova a cada F5 deixaria de ser recado e viraria
           ruido, entao o indice sai da DATA — o time todo ve a mesma. */}
-      <div className="ini-saudacao">
-        <div className="ini-avatar">{iniciais}</div>
-        <div className="ini-texto">
-          <div className="ini-ola">
-            <b>{meuNome || "Olá"}</b>, <span className="ini-recado">{mensagemDoDia()}</span>
-          </div>
+      {/* O nome ancora, a data acompanha, o recado vem embaixo em corpo
+          menor. Sem avatar: num app onde so' existe uma pessoa logada, as
+          iniciais nao dizem nada que o nome ao lado ja nao diga. */}
+      <div className="ini-topo">
+        <div className="ini-nome-linha">
+          <span className="ini-nome">{meuNome || "Olá"}</span>
           {/* So a PRIMEIRA letra: capitalize no CSS subia tambem os "de",
               virando "Domingo, 30 De Agosto De 2026". */}
-          <div className="ini-data">{(() => {
+          <span className="ini-data">{(() => {
             const d = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
             return d.charAt(0).toUpperCase() + d.slice(1);
-          })()}</div>
+          })()}</span>
         </div>
+        <div className="ini-recado">{mensagemDoDia()}</div>
       </div>
 
       {carregando && <div className="empty-note">Carregando as obras…</div>}
 
-      <div className="ini-numeros">
+      <div className="ini-regua">
         <InicioNum rot="OBRAS ATIVAS" valor={obras.length}
           sub={`${r.linhas.length} com planilha carregada`} />
         <InicioNum rot="A COMPRAR" cor="var(--blue)" valor={fmtBRL(t.matTotal - t.matFeito)}
@@ -14208,21 +14210,27 @@ export default function App() {
         .mh-perto { color: var(--amber); font-weight: 600; }
         @media (max-width: 900px) { .mh-obra-head { flex-wrap: wrap; gap: 10px; } }
         /* ---- Tela de inicio ---- */
-        .ini-saudacao { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 26px auto 34px; max-width: 720px; }
-        .ini-avatar { width: 46px; height: 46px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; flex-shrink: 0; letter-spacing: .02em; }
-        .ini-texto { min-width: 0; }
-        .ini-ola { font-size: 19px; color: var(--ink); line-height: 1.4; font-weight: 400; }
-        .ini-ola b { font-weight: 700; }
-        .ini-recado { color: var(--ink-3); }
-        .ini-data { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; }
-        @media (max-width: 700px) { .ini-saudacao { flex-direction: column; text-align: center; gap: 10px; } }
-        .ini-numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
-        .ini-num { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 15px 17px; text-align: left; font-family: inherit; }
-        .ini-num.clicavel { cursor: pointer; }
-        .ini-num.clicavel:hover { border-color: var(--ink-3); }
-        .ini-num-rot { font-size: 9.5px; font-weight: 800; letter-spacing: .07em; color: var(--ink-3); }
-        .ini-num-val { font-family: 'Space Grotesk', sans-serif; font-size: 25px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-top: 5px; }
-        .ini-num-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        /* ---- Cabecalho do Inicio: a regua ----
+           Os numeros nao sao cartao. Cartao aqui em cima competia com os
+           cartoes de "Pedindo atencao" logo abaixo, e quatro caixas
+           brancas iguais nao dizem qual delas pede acao. Entre duas
+           linhas e separados por filete, eles viram referencia — que e'
+           o que sao. */
+        .ini-topo { margin: 6px 0 18px; }
+        .ini-nome-linha { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+        .ini-nome { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+        .ini-data { font-size: 11px; color: var(--ink-3); }
+        .ini-recado { font-size: 16px; color: var(--ink-2); line-height: 1.45; max-width: 720px; margin-top: 5px; }
+        .ini-regua { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--border); margin-bottom: 26px; }
+        .ini-cel { padding: 14px 22px; border-left: 1px solid var(--border); text-align: left; font-family: inherit; background: none; }
+        .ini-cel:first-child { padding-left: 0; border-left: none; }
+        .ini-cel:last-child { padding-right: 0; }
+        .ini-cel.clicavel { cursor: pointer; }
+        .ini-cel.clicavel:hover .ini-cel-val { color: var(--blue); }
+        .ini-cel-rot { font-size: 9.5px; font-weight: 800; letter-spacing: .08em; color: var(--ink-3); }
+        .ini-cel-val { font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: var(--ink); line-height: 1.1; margin-top: 6px; }
+        .ini-cel-sub { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+        @media (max-width: 900px) { .ini-regua { grid-template-columns: repeat(2, 1fr); } .ini-cel { padding: 14px 16px; } .ini-cel:nth-child(3) { padding-left: 0; border-left: none; } }
         .ini-colunas { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
         .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ink); padding-bottom: 8px; border-bottom: 2px solid var(--ink); margin-bottom: 8px; }
         .ini-conta { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: 10.5px; }
