@@ -9878,6 +9878,8 @@ function InicioNum({ rot, valor, sub, cor, onClick }) {
 }
 
 function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, onModulo }) {
+  const iniciais = String(usuario || "?").split("@")[0].split(/[._-]+/).slice(0, 2)
+    .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const t = r.totais;
 
@@ -9923,19 +9925,24 @@ function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, on
 
   return (
     <>
+      {/* Centralizada, com o avatar ao lado — o formato do portal da
+          empresa. Encostada a esquerda e em duas linhas ela competia com
+          os numeros logo abaixo; centralizada ela vira o cumprimento que
+          e', e o olho desce direto pro que importa.
+
+          Nome em cheio, recado em cinza: o nome ancora, a frase muda todo
+          dia. Uma frase nova a cada F5 deixaria de ser recado e viraria
+          ruido, entao o indice sai da DATA — o time todo ve a mesma. */}
       <div className="ini-saudacao">
-        <div>
-          {/* Nome em cheio, recado em cinza — o nome e' o que ancora, e a
-              frase muda todo dia. Uma frase nova a cada F5 deixaria de ser
-              recado e viraria ruido, entao o indice sai da DATA: o time
-              todo ve a mesma, e ela troca a cada dia. */}
+        <div className="ini-avatar">{iniciais}</div>
+        <div className="ini-texto">
           <div className="ini-ola">
             <b>{meuNome || "Olá"}</b>, <span className="ini-recado">{mensagemDoDia()}</span>
           </div>
-          {/* So a PRIMEIRA letra. `text-transform: capitalize` no CSS
-              subia tambem os "de": "Domingo, 30 De Agosto De 2026". */}
+          {/* So a PRIMEIRA letra: capitalize no CSS subia tambem os "de",
+              virando "Domingo, 30 De Agosto De 2026". */}
           <div className="ini-data">{(() => {
-            const d = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+            const d = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
             return d.charAt(0).toUpperCase() + d.slice(1);
           })()}</div>
         </div>
@@ -13905,11 +13912,14 @@ export default function App() {
         .mh-perto { color: var(--amber); font-weight: 600; }
         @media (max-width: 900px) { .mh-obra-head { flex-wrap: wrap; gap: 10px; } }
         /* ---- Tela de inicio ---- */
-        .ini-saudacao { margin: 4px 0 22px; }
-        .ini-ola { font-size: 22px; color: var(--ink); line-height: 1.35; font-weight: 400; }
+        .ini-saudacao { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 26px auto 34px; max-width: 720px; }
+        .ini-avatar { width: 46px; height: 46px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; flex-shrink: 0; letter-spacing: .02em; }
+        .ini-texto { min-width: 0; }
+        .ini-ola { font-size: 19px; color: var(--ink); line-height: 1.4; font-weight: 400; }
         .ini-ola b { font-weight: 700; }
         .ini-recado { color: var(--ink-3); }
-        .ini-data { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
+        .ini-data { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; }
+        @media (max-width: 700px) { .ini-saudacao { flex-direction: column; text-align: center; gap: 10px; } }
         .ini-numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
         .ini-num { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 15px 17px; text-align: left; font-family: inherit; }
         .ini-num.clicavel { cursor: pointer; }
