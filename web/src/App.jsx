@@ -11435,34 +11435,10 @@ export default function App() {
   }, []);
 
   const situacaoDe = (o) => registro.get(String(o.codigo))?.situacao;
-  /* O ACESSO, aplicado.
-
-     `eu` e' a linha da pessoa logada na Equipe. Nao achada = acesso
-     total, de proposito: quem abre o app antes de existir cadastro nao
-     pode ficar trancado pra fora antes de existir admin pra liberar. */
-  const eu = useMemo(
-    () => pessoas.find((p) => p.email === String(usuario || "").toLowerCase()) || null,
-    [pessoas, usuario]);
-
-  const obrasAtivas = useMemo(
-    () => obrasPermitidas(eu, obras.filter((o) => situacaoDe(o) === "ativa")),
-    [obras, registro, eu]);
-
-  const modulosVisiveis = useMemo(() => MODULOS.filter((m) => podeVerModulo(eu, m.id)), [eu]);
-
-  /* Modulo que a pessoa nao pode ver nao pode ficar aberto: ela pode ter
-     chegado nele antes de o acesso mudar, ou por um atalho de dentro de
-     outra tela. Volta pro primeiro que ela pode. */
-  useEffect(() => {
-    if (pessoasCarregando || podeVerModulo(eu, modulo)) return;
-    setModulo(modulosVisiveis[0]?.id || "inicio");
-  }, [eu, modulo, modulosVisiveis, pessoasCarregando]);
-
-  /* O painel geral compara obras entre si, e os dados de uma obra so
-     chegam quando alguem ABRE aquela obra — entao ele somava, na
-     pratica, uma obra so. Aqui vem tudo de uma vez, e so quando o painel
-     esta na tela: sao varios JSONB gordos, e quem nunca abre o painel
-     nao tem por que pagar por eles. */
+  /* A equipe vem ANTES da lista de obras porque a lista depende dela:
+     e' `eu` que decide quais obras aparecem. Declarada depois, o
+     JavaScript morre no primeiro render — "Cannot access before
+     initialization" — e a tela inteira fica em branco. */
   /* A equipe carrega com o app: o seletor de GC de cada obra precisa
      dela, e ela e' uma lista curta. */
   const [pessoas, setPessoas] = useState([]);
@@ -11477,6 +11453,35 @@ export default function App() {
       .finally(() => { if (vivo) setPessoasCarregando(false); });
     return () => { vivo = false; };
   }, []);
+
+  /* O ACESSO, aplicado.
+
+     `eu` e' a linha da pessoa logada na Equipe. Nao achada = acesso
+     total, de proposito: quem abre o app antes de existir cadastro nao
+     pode ficar trancado pra fora antes de existir admin pra liberar. */
+  const eu = useMemo(
+    () => pessoas.find((p) => p.email === String(usuario || "").toLowerCase()) || null,
+    [pessoas, usuario]);
+
+  const modulosVisiveis = useMemo(() => MODULOS.filter((m) => podeVerModulo(eu, m.id)), [eu]);
+
+  /* Modulo que a pessoa nao pode ver nao pode ficar aberto: ela pode ter
+     chegado nele antes de o acesso mudar, ou por um atalho de dentro de
+     outra tela. Volta pro primeiro que ela pode. */
+  useEffect(() => {
+    if (pessoasCarregando || podeVerModulo(eu, modulo)) return;
+    setModulo(modulosVisiveis[0]?.id || "inicio");
+  }, [eu, modulo, modulosVisiveis, pessoasCarregando]);
+
+  const obrasAtivas = useMemo(
+    () => obrasPermitidas(eu, obras.filter((o) => situacaoDe(o) === "ativa")),
+    [obras, registro, eu]);
+
+  /* O painel geral compara obras entre si, e os dados de uma obra so
+     chegam quando alguem ABRE aquela obra — entao ele somava, na
+     pratica, uma obra so. Aqui vem tudo de uma vez, e so quando o painel
+     esta na tela: sao varios JSONB gordos, e quem nunca abre o painel
+     nao tem por que pagar por eles. */
 
   async function salvarPessoaNoTime(dados) {
     const salva = await salvarPessoa(dados);
