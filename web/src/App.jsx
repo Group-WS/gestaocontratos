@@ -6398,23 +6398,35 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
         </div>
 
-        {/* "Minhas" antes dos squads: e' o recorte do dia a dia, e o
-            squad e' o de quando se procura a obra de outra pessoa. */}
+        {/* OS TRES FILTROS NUMA LINHA SO.
+
+            Eram tres formas diferentes pra mesma funcao — chip solto,
+            linha de chips, botao de largura inteira com borda — e juntos
+            comiam 260px antes da primeira obra aparecer. Numa lista de
+            quarenta obras, isso e' a lista inteira empurrada pra fora da
+            tela por controles que quase sempre estao no padrao. */}
         <div className="squad-filter">
           <button className={`squad-chip ${soMinhas ? "active" : ""}`}
             onClick={() => setSoMinhas((v) => !v)}
             title={usuario ? `Obras em que ${nomeDoEmail(usuario)} é o GC` : "Entre para filtrar pelas suas obras"}>
-            <ShieldCheck size={11} /> Minhas obras{nMinhas > 0 ? ` · ${nMinhas}` : ""}
+            <ShieldCheck size={11} /> Minhas{nMinhas > 0 ? ` · ${nMinhas}` : ""}
           </button>
-        </div>
-        <div className="squad-filter">
-          <button className={`squad-chip ${squadFilter === "todos" ? "active" : ""}`} onClick={() => setSquadFilter("todos")}>Todos os squads</button>
+          <button className={`squad-chip ${onlyAlert ? "active alerta" : ""}`} onClick={() => setOnlyAlert((v) => !v)}
+            title="Só as obras com alerta">
+            <AlertTriangle size={11} /> Alertas
+          </button>
+          <span className="chip-sep" />
+          {/* "Todos" e' o estado PADRAO — ele deixou de ser o elemento
+              mais escuro da barra. Preto so' quando alguem escolheu
+              alguma coisa; senao o que grita e' "nada esta filtrado". */}
+          <button className={`squad-chip neutro ${squadFilter === "todos" ? "on" : ""}`} onClick={() => setSquadFilter("todos")}>Todos</button>
           {squads.map((s) => (
-            <button key={s} className={`squad-chip ${squadFilter === s ? "active" : ""}`} onClick={() => setSquadFilter(s)}>{s}</button>
+            <button key={s} className={`squad-chip ${squadFilter === s ? "active" : ""}`} onClick={() => setSquadFilter(s)}
+              title={s}>{s.replace(/^Squad\s+/i, "")}</button>
           ))}
         </div>
 
-        <button className={`alert-toggle ${onlyAlert ? "active" : ""}`} onClick={() => setOnlyAlert((v) => !v)}>
+        <button className={`alert-toggle escondido ${onlyAlert ? "active" : ""}`} onClick={() => setOnlyAlert((v) => !v)}>
           <AlertTriangle size={12} /> Somente com alertas
         </button>
 
@@ -6461,9 +6473,19 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                          pessoa esta procurando quando passa o mouse. */
                       title={`#${o.codigo} · ${o.nome}`}>
                       <IconeObra size={16} className="nav-icon" />
+                      {/* Recolhida, o predio nao informa nada: num app de
+                          obra tudo e' predio, e seis linhas viravam seis
+                          icones iguais. O CENTRO DE CUSTO e' como a obra
+                          e' chamada em pedido, contrato, Sienge e aditivo
+                          — quatro digitos cabem nos 62px e dispensam o
+                          hover. */}
+                      <span className="nav-cod mono">{o.codigo}</span>
                       <div className="nav-item-text">
                         <div className="nav-item-name">{o.nome}</div>
-                        <div className="nav-item-sub mono">#{o.codigo} · {o.area}m²</div>
+                        {/* A area nunca vem preenchida do Monday, e o "m²"
+                            sozinho parecia dado faltando. O squad existe
+                            sempre. */}
+                        <div className="nav-item-sub mono">#{o.codigo} · {o.squad || "sem squad"}</div>
                       </div>
                       {alertCount > 0 && <span className="nav-badge">{alertCount}</span>}
                     </button>
@@ -12529,7 +12551,12 @@ export default function App() {
         :root {
           --page: #FAFAF8; --panel: #F3F2EE; --card: #FFFFFF;
           --border: #E8E5DD; --border-soft: #F0EEE7;
-          --ink: #191D21; --ink-2: #565B60; --ink-3: #9A9C9C;
+          --ink: #191D21; --ink-2: #565B60;
+          /* #9A9C9C dava 2,76:1 sobre branco — reprova em AA, que pede
+             4,5:1 pra texto miudo, e ele e' justamente a cor do que se le
+             o dia inteiro (codigo da obra, data, subtitulo). #737373 da
+             4,7:1 e continua sendo terciario. */
+          --ink-3: #737373;
           --blue: #2E6FA3; --blue-bg: #E3EEF7;
           --green: #2E8F58; --green-bg: #E4F3E9;
           --amber: #B87A1E; --amber-bg: #FAEFDC;
@@ -12576,6 +12603,16 @@ export default function App() {
         .clear-btn { border: none; background: transparent; color: var(--ink-3); cursor: pointer; display: flex; }
         .alert-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 11px; color: var(--ink-2); cursor: pointer; margin-bottom: 10px; }
         .alert-toggle.active { background: var(--red-bg); border-color: var(--red); color: var(--red); font-weight: 600; }
+        /* Nos 62px o codigo E' o icone. */
+        .nav-cod { display: none; font-size: 11px; font-weight: 700; color: var(--ink-2); letter-spacing: -.02em; }
+        .sidebar.recolhida .nav-cod { display: block; }
+        .sidebar.recolhida .nav-item > .nav-icon { display: none; }
+        .sidebar.recolhida .nav-item.active .nav-cod { color: var(--blue); }
+        .chip-sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 3px; }
+        .squad-chip.neutro { background: none; border-color: var(--border); color: var(--ink-3); }
+        .squad-chip.neutro.on { color: var(--ink); border-color: var(--ink-3); font-weight: 600; }
+        .squad-chip.active.alerta { background: var(--red); border-color: var(--red); }
+        .alert-toggle.escondido { display: none; }
         .squad-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
         .squad-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; font-size: 10.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .squad-chip:hover { border-color: var(--blue); }
