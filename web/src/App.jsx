@@ -6,7 +6,7 @@ import {
   ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
-  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut
+  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, nomeDoEmail, CARGOS } from "./lib/pessoas";
@@ -6193,7 +6193,7 @@ const MODULOS = [
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
   { id: "equipe", nome: "Equipe", sub: "quem é quem, e o cargo", Icone: ShieldCheck },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
-  { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: Package },
+  { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: DollarSign },
   // Por ultimo: e' o que se abre com menos frequencia — obra concluida
   // ja saiu do dia a dia, e ela estava no meio do caminho do que nao saiu.
   { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
@@ -6396,7 +6396,10 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                   const active = selected === o.id;
                   return (
                     <button key={o.id} className={`nav-item ${active ? "active" : ""}`} onClick={() => onSelect(o.id)}
-                      title={`${o.nome} — #${o.codigo}`}>
+                      /* O numero na frente: e' por ele que a obra e'
+                         chamada em pedido, contrato e Sienge, e e' o que a
+                         pessoa esta procurando quando passa o mouse. */
+                      title={`#${o.codigo} · ${o.nome}`}>
                       <IconeObra size={16} className="nav-icon" />
                       <div className="nav-item-text">
                         <div className="nav-item-name">{o.nome}</div>
@@ -10051,6 +10054,140 @@ function InicioView({ obras, novas, carregando, usuario, equipe, onAbrirObra, on
    e um caractere trocado deixa a obra sem dono sem ninguém ver.
    ============================================================ */
 
+/* O painel de acesso de UMA pessoa.
+
+   Duas perguntas, nessa ordem: o que ela abre (módulos) e quais obras ela
+   enxerga. A segunda tem o caso do GC embutido — "só as minhas" se
+   atualiza sozinha quando a obra troca de responsável, e é por isso que
+   ela existe em vez de a coordenação remarcar a lista a cada troca. */
+function AcessoDaPessoa({ p, obras, onSalvar, onFechar }) {
+  const [admin, setAdmin] = useState(!!p.admin);
+  const [modulos, setModulos] = useState(() => new Set(p.modulos || []));
+  const [regra, setRegra] = useState(p.obrasRegra || "todas");
+  const [escolhidas, setEscolhidas] = useState(() => new Set((p.obras || []).map(String)));
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [busca, setBusca] = useState("");
+
+  const achadas = obras.filter((o) => {
+    const t = busca.trim().toLowerCase();
+    return !t || `${o.codigo} ${o.nome} ${o.squad}`.toLowerCase().includes(t);
+  });
+  const dele = obras.filter((o) => String(o.gc || "").toLowerCase() === p.email).length;
+
+  async function salvar() {
+    setSalvando(true); setErro(null);
+    try {
+      await onSalvar({
+        ...p, admin,
+        modulos: [...modulos],
+        obrasRegra: regra,
+        obras: regra === "lista" ? [...escolhidas] : [],
+      });
+      onFechar();
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="ac-painel">
+      <div className="ac-bloco-t">Acesso de {p.nome}</div>
+
+      {/* Admin primeiro, porque ele apaga as duas escolhas de baixo — e
+          mostrar controle que não vale nada é pior que escondê-lo. */}
+      <label className="ac-admin">
+        <input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} />
+        <div>
+          <b>Administrador</b>
+          <div className="ac-nota">Vê todos os módulos e todas as obras, e pode configurar o acesso das outras pessoas.</div>
+        </div>
+      </label>
+
+      <div className={admin ? "ac-desligado" : ""}>
+        <div className="ac-sub">
+          Módulos
+          <button className="ac-link" onClick={() => setModulos(new Set())}>todos</button>
+          <button className="ac-link" onClick={() => setModulos(new Set(MODULOS.map((m) => m.id)))}>marcar um a um</button>
+        </div>
+        {modulos.size === 0 && <div className="ac-nota ac-nota-forte">Nenhum marcado quer dizer TODOS — é o padrão de quem nunca foi configurado.</div>}
+        <div className="ac-modulos">
+          {MODULOS.map((m) => (
+            <label key={m.id} className={`ac-chip ${modulos.size === 0 || modulos.has(m.id) ? "on" : ""}`}>
+              <input type="checkbox" checked={modulos.size === 0 || modulos.has(m.id)}
+                onChange={(e) => setModulos((g) => {
+                  /* Vazio significa "todos"; desmarcar um a partir daí tem
+                     que começar da lista cheia, senão o primeiro clique
+                     tiraria tudo menos aquele. */
+                  const base = g.size === 0 ? new Set(MODULOS.map((x) => x.id)) : new Set(g);
+                  e.target.checked ? base.add(m.id) : base.delete(m.id);
+                  return base;
+                })} />
+              <m.Icone size={13} /> {m.nome}
+            </label>
+          ))}
+        </div>
+
+        <div className="ac-sub">Obras</div>
+        <div className="ac-regras">
+          {[
+            { id: "todas", t: "Todas as obras", s: "coordenação, compras, quem precisa da visão inteira" },
+            { id: "minhas", t: "Só as obras em que é o GC", s: dele ? `hoje são ${dele}` : "hoje nenhuma — a lista se atualiza sozinha" },
+            { id: "lista", t: "Escolher obra por obra", s: "para quem toca um recorte fixo" },
+          ].map((r) => (
+            <label key={r.id} className={`ac-regra ${regra === r.id ? "on" : ""}`}>
+              <input type="radio" name={`regra-${p.email}`} checked={regra === r.id}
+                onChange={() => setRegra(r.id)} />
+              <div>
+                <b>{r.t}</b>
+                <div className="ac-nota">{r.s}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        {regra === "lista" && (
+          <div className="ac-lista">
+            <div className="ac-lista-topo">
+              <input className="form-input" value={busca} placeholder="filtrar obra…"
+                onChange={(e) => setBusca(e.target.value)} />
+              <button className="ac-link" onClick={() => setEscolhidas(new Set(obras.map((o) => String(o.codigo))))}>marcar todas</button>
+              <button className="ac-link" onClick={() => setEscolhidas(new Set())}>limpar</button>
+            </div>
+            <div className="ac-lista-itens">
+              {achadas.map((o) => (
+                <label key={o.codigo} className={`ac-obra ${escolhidas.has(String(o.codigo)) ? "on" : ""}`}>
+                  <input type="checkbox" checked={escolhidas.has(String(o.codigo))}
+                    onChange={(e) => setEscolhidas((g) => {
+                      const n = new Set(g);
+                      e.target.checked ? n.add(String(o.codigo)) : n.delete(String(o.codigo));
+                      return n;
+                    })} />
+                  <span className="mono dim">#{o.codigo}</span>
+                  <span className="ac-obra-nome">{o.nome}</span>
+                  <span className="ac-obra-squad">{o.squad}</span>
+                </label>
+              ))}
+              {achadas.length === 0 && <div className="empty-note">Nenhuma obra com esse nome.</div>}
+            </div>
+            <div className="ac-nota">{escolhidas.size} de {obras.length} marcadas</div>
+          </div>
+        )}
+      </div>
+
+      {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
+      <div className="cad-acoes">
+        <button className="btn-doc btn-template" disabled={salvando} onClick={salvar}>
+          {salvando ? "Salvando…" : "Salvar acesso"}
+        </button>
+        <button className="btn-doc" onClick={onFechar}>cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExcluir }) {
   const [email, setEmail] = useState("");
   const [nome, setNome] = useState("");
@@ -10058,6 +10195,7 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExc
   const [salvando, setSalvando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [editando, setEditando] = useState(null);
+  const [acessoDe, setAcessoDe] = useState(null);
 
   const obrasDe = (e) => obras.filter((o) => String(o.gc || "").toLowerCase() === e).length;
   const pode = email.trim().includes("@") && !salvando;
@@ -10167,8 +10305,11 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExc
                     <div className="arq-titulo">{p.nome}{!p.ativo && <span className="eq-tag-inativo">inativo</span>}</div>
                     <div className="arq-sub mono">{p.email}</div>
                   </div>
-                  <span className="eq-obras">{n > 0 ? `${n} ${n === 1 ? "obra" : "obras"}` : "nenhuma obra"}</span>
+                  <span className="eq-obras">{resumoAcesso(p, obras)}</span>
                   <div className="arq-acoes">
+                    <button className="caderno-acao" onClick={() => setAcessoDe(acessoDe === p.email ? null : p.email)}>
+                      <ShieldCheck size={12} /> acesso
+                    </button>
                     <button className="caderno-acao" onClick={() => {
                       setEditando(p.email); setEmail(p.email); setNome(p.nome); setCargo(p.cargo || "");
                       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -10183,10 +10324,31 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, onSalvar, onExc
                 </div>
               );
             })}
+            {porCargo[c].some((p) => p.email === acessoDe) && (
+              <AcessoDaPessoa p={porCargo[c].find((p) => p.email === acessoDe)} obras={obras}
+                onSalvar={onSalvar} onFechar={() => setAcessoDe(null)} />
+            )}
           </div>
         ))}
     </>
   );
+}
+
+/* O que a linha da pessoa diz sobre o acesso dela, em uma frase. Sem
+   isso, saber quem ve o que exige abrir uma a uma. */
+function resumoAcesso(p, obras) {
+  if (p.admin) return "administrador";
+  const nMod = (p.modulos || []).length;
+  const mod = nMod === 0 ? "todos os módulos" : `${nMod} ${nMod === 1 ? "módulo" : "módulos"}`;
+  if (p.obrasRegra === "minhas") {
+    const n = (obras || []).filter((o) => String(o.gc || "").toLowerCase() === p.email).length;
+    return `${mod} · ${n} ${n === 1 ? "obra sua" : "obras suas"}`;
+  }
+  if (p.obrasRegra === "lista") {
+    const n = (p.obras || []).length;
+    return `${mod} · ${n} ${n === 1 ? "obra" : "obras"}`;
+  }
+  return `${mod} · todas as obras`;
 }
 
 /* ============================================================
@@ -12356,7 +12518,10 @@ export default function App() {
         /* O simbolo do squad so' existe recolhida: aberta, o nome basta. */
         .squad-simbolo { display: none; }
         .sidebar.recolhida .squad-group-label { display: flex; justify-content: center; padding: 6px 0 4px; color: var(--ink-3); }
-        .sidebar.recolhida .squad-group-label > .lucide { display: none; }
+        /* So' o simbolo. O nome quebrava em tres linhas dentro dos 62px e
+           encavalava com as obras logo abaixo. */
+        .sidebar.recolhida .squad-group-label > .lucide,
+        .sidebar.recolhida .squad-group-label > span:not(.squad-simbolo) { display: none; }
         .sidebar.recolhida .squad-simbolo { display: block; }
         .squad-tem-aberta { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
 
@@ -13886,6 +14051,30 @@ export default function App() {
         .cad-acoes { display: flex; align-items: center; gap: 12px; margin-top: 13px; flex-wrap: wrap; }
         .cad-nota { font-size: 11px; color: var(--ink-3); }
         @media (max-width: 760px) { .cad-campos { grid-template-columns: 1fr; } }
+        .ac-painel { border: 1px solid var(--blue); border-radius: 12px; background: var(--blue-bg); padding: 15px 17px; margin: 4px 0 12px; }
+        .ac-bloco-t { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 12px; }
+        .ac-sub { display: flex; align-items: center; gap: 10px; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin: 16px 0 7px; }
+        .ac-link { background: none; border: none; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--blue); cursor: pointer; text-transform: none; letter-spacing: 0; padding: 0; }
+        .ac-nota { font-size: 10.5px; color: var(--ink-3); line-height: 1.45; margin-top: 2px; }
+        .ac-nota-forte { color: #7A4E00; background: var(--amber-bg); border-radius: 6px; padding: 5px 8px; margin-bottom: 7px; }
+        .ac-admin { display: flex; align-items: flex-start; gap: 9px; background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; cursor: pointer; font-size: 12.5px; }
+        .ac-desligado { opacity: .4; pointer-events: none; }
+        .ac-modulos { display: flex; flex-wrap: wrap; gap: 6px; }
+        .ac-chip { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
+        .ac-chip.on { border-color: var(--blue); color: var(--blue); font-weight: 600; }
+        .ac-chip input { margin: 0; }
+        .ac-regras { display: flex; flex-direction: column; gap: 6px; }
+        .ac-regra { display: flex; align-items: flex-start; gap: 9px; background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; cursor: pointer; font-size: 12.5px; }
+        .ac-regra.on { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+        .ac-lista { background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 10px; margin-top: 9px; }
+        .ac-lista-topo { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+        .ac-lista-topo .form-input { margin-top: 0; flex: 1; font-size: 12px; }
+        .ac-lista-itens { max-height: 220px; overflow-y: auto; }
+        .ac-obra { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+        .ac-obra:hover { background: var(--panel); }
+        .ac-obra.on { background: var(--blue-bg); }
+        .ac-obra-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ac-obra-squad { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
         .eq-form .eq-campos { grid-template-columns: 1fr 1fr 170px; }
         .eq-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--blue-bg); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
         .eq-inativo { opacity: .55; }
