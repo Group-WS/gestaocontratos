@@ -7129,14 +7129,20 @@ function GeradorSiengeView() {
       {!linhas && (
         <div className="sg-formatos">
           <dl>
-            <dt>Excel ou CSV</dt>
-            <dd>com uma coluna de descrição — ela pode se chamar Descrição, Insumo, Produto ou
-              Item; marca, modelo, cor e código entram na descrição gerada, se existirem.</dd>
-            <dt>Sem cabeçalho também serve</dt>
-            <dd>eu acho sozinho a coluna das descrições e, junto dela, o modelo do fabricante, a
-              quantidade e a unidade. Título de grupo não vira produto.</dd>
-            <dt>PDF</dt>
-            <dd>do relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
+            <div>
+              <dt>Excel ou CSV</dt>
+              <dd>uma coluna de descrição basta. Marca, modelo, cor e código entram na descrição
+                gerada, se existirem.</dd>
+            </div>
+            <div>
+              <dt>Sem cabeçalho serve</dt>
+              <dd>acho sozinho a coluna das descrições e, junto dela, modelo, quantidade e unidade.
+                Título de grupo não vira produto.</dd>
+            </div>
+            <div>
+              <dt>PDF</dt>
+              <dd>o relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
+            </div>
           </dl>
           <p className="sg-formatos-nota">Nada é guardado: o arquivo é lido aqui e some quando você sair.</p>
         </div>
@@ -13048,24 +13054,23 @@ export default function App() {
         .title-accent { font-family: 'Newsreader', serif; font-style: italic; font-weight: 500; color: var(--ink); }
         .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
         .sg-sub { font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--ink-2); margin: -2px 0 14px; }
-        /* UMA coluna, UMA largura. O texto tinha 68ch e o cartao ia ate'
-           a borda da tela: duas reguas diferentes na mesma pagina, que e'
-           o que se le como "sem alinhamento". */
-        .sg-col { max-width: 760px; }
+        /* Uma regua so' pra tudo. Larga: o texto se espalha em colunas
+           em vez de empilhar, entao a largura vira leitura mais curta, e
+           nao linha mais comprida. */
+        .sg-col { max-width: 1180px; }
         /* --ink-3 e' o cinza mais claro que ainda passa no contraste
            (4.74:1 sobre o fundo). Mais claro que isto vira texto que a
            pessoa nao le -- foi o defeito que ja corrigimos no rotulo da
            barra lateral. */
-        .sg-escopo { font-size: 12.5px; line-height: 1.65; color: var(--ink-3); margin-bottom: 18px; }
-        .sg-escopo p { margin: 0 0 7px; }
+        .sg-escopo { max-width: 1180px; font-size: 12.5px; line-height: 1.6; color: var(--ink-3); margin-bottom: 16px; }
+        .sg-escopo p { margin: 0 0 10px; }
         .sg-escopo b { font-weight: 600; color: var(--ink-2); }
-        .sg-escopo ul { margin: 0 0 7px; padding-left: 17px; }
-        .sg-escopo li { margin-bottom: 3px; }
-        .sg-escopo-nota { padding-top: 8px; border-top: 1px solid var(--border); margin-top: 10px !important; font-size: 11.5px; }
+        .sg-passos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 26px; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+        .sg-escopo-nota { margin: 10px 0 0 !important; font-size: 11.5px; }
         /* Rodape do cartao de subir: mesma borda, mesmo recuo, sem vao. */
         .sg-formatos { margin-bottom: 12px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; background: var(--card); padding: 2px 16px 14px; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
-        .sg-formatos dl { margin: 0; display: grid; grid-template-columns: 196px 1fr; gap: 9px 16px; align-items: baseline; }
-        .sg-formatos dt { font-weight: 600; color: var(--ink-2); }
+        .sg-formatos dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 26px; }
+        .sg-formatos dt { font-weight: 600; color: var(--ink-2); margin-bottom: 1px; }
         .sg-formatos dd { margin: 0; }
         .sg-formatos-nota { margin: 11px 0 0; padding-top: 9px; border-top: 1px solid var(--border); font-size: 11.5px; }
 
@@ -14721,27 +14726,21 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Gerador de códigos Sienge</span></div>
           <div className="sg-sub">Detalhes de Insumos</div>
 
-          {/* Texto de escopo: le-se uma vez e nunca mais. Por isso o
-              cinza mais claro que o corpo — e' presenca, nao chamada.
-              Alinhado a esquerda e com largura limitada porque paragrafo
-              longo centralizado obriga o olho a procurar o comeco de
-              cada linha. */}
-          <div className="sg-escopo sg-col">
+          {/* Tres colunas, nao tres paragrafos empilhados: o texto e'
+              curto e a tela e' larga: empilhar desperdiça a largura e
+              faz parecer mais texto do que e'. */}
+          <div className="sg-escopo">
             <p>
-              Esta tela é destinada exclusivamente à <b>geração e associação de detalhes</b> de
-              insumos no Sienge. Ela não cria novos insumos diretamente no sistema.
+              Gera e associa <b>detalhes</b> de insumos no Sienge. Não cria insumos novos.
             </p>
-            <p>Ao processar a lista, a ferramenta:</p>
-            <ul>
-              <li>identifica e associa o produto a um insumo já existente no Sienge;</li>
-              <li>busca similaridade com detalhes já cadastrados para evitar duplicidades;</li>
-              <li>quando não encontra um detalhe compatível, gera uma nova sugestão de código e descrição de detalhe.</li>
-            </ul>
+            <div className="sg-passos">
+              <div><b>Associa</b> cada produto a um insumo que já existe no Sienge.</div>
+              <div><b>Compara</b> com os detalhes já cadastrados, pra não duplicar.</div>
+              <div><b>Sugere</b> código e descrição quando não acha nenhum compatível.</div>
+            </div>
             <p className="sg-escopo-nota">
-              A efetiva importação/cadastro no Sienge permanece restrita aos usuários que possuem
-              permissão de importação no próprio sistema. A ferramenta apoia a padronização e a
-              geração dos detalhes, mas não concede nem substitui as permissões de
-              cadastro/importação do Sienge.
+              A importação/cadastro no Sienge continua restrita a quem tem permissão lá dentro:
+              esta ferramenta padroniza e gera os detalhes, não concede nem substitui esse acesso.
             </p>
           </div>
           <div className="sg-col"><GeradorSiengeView /></div>
