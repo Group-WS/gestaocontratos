@@ -7130,16 +7130,20 @@ function GeradorSiengeView() {
         <div className="compras-empty">
           <PackageSearch size={30} className="dim" />
           <div className="compras-empty-title">Suba uma lista de produtos</div>
-          <div className="compras-empty-sub">
-            <b>Excel ou CSV</b> com uma coluna de descrição — ela pode se chamar Descrição, Insumo,
-            Produto ou Item; marca, modelo, cor e código entram na descrição gerada, se existirem.
-            <br />
-            <b>Sem cabeçalho também serve</b>: eu acho sozinho a coluna das descrições e, junto
-            dela, o modelo do fabricante, a quantidade e a unidade. Título de grupo não vira produto.
-            <br />
-            <b>PDF</b> do relatório "Insumos Orçados" do Sienge, ou cotação de fornecedor.
-            <br />
-            Nada é guardado: o arquivo é lido aqui e some quando você sair.
+          {/* Eram tres formatos escritos como prosa centralizada, com
+              <br> no lugar de lista. Sao tres itens: viram tres itens. */}
+          <div className="compras-empty-sub sg-formatos">
+            <dl>
+              <dt>Excel ou CSV</dt>
+              <dd>com uma coluna de descrição — ela pode se chamar Descrição, Insumo, Produto ou
+                Item; marca, modelo, cor e código entram na descrição gerada, se existirem.</dd>
+              <dt>Sem cabeçalho também serve</dt>
+              <dd>eu acho sozinho a coluna das descrições e, junto dela, o modelo do fabricante, a
+                quantidade e a unidade. Título de grupo não vira produto.</dd>
+              <dt>PDF</dt>
+              <dd>do relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
+            </dl>
+            <p className="sg-formatos-nota">Nada é guardado: o arquivo é lido aqui e some quando você sair.</p>
           </div>
         </div>
       ) : (
@@ -13045,6 +13049,23 @@ export default function App() {
         .vazio-sub { font-size: 12px; color: var(--ink-3); }
         .title-accent { font-family: 'Newsreader', serif; font-style: italic; font-weight: 500; color: var(--ink); }
         .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
+        .sg-sub { font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--ink-2); margin: -2px 0 14px; }
+        /* --ink-3 e' o cinza mais claro que ainda passa no contraste
+           (4.74:1 sobre o fundo). Mais claro que isto vira texto que a
+           pessoa nao le -- foi o defeito que ja corrigimos no rotulo da
+           barra lateral. */
+        .sg-escopo { max-width: 68ch; font-size: 12.5px; line-height: 1.65; color: var(--ink-3); margin-bottom: 24px; }
+        .sg-escopo p { margin: 0 0 7px; }
+        .sg-escopo b { font-weight: 600; color: var(--ink-2); }
+        .sg-escopo ul { margin: 0 0 7px; padding-left: 17px; }
+        .sg-escopo li { margin-bottom: 3px; }
+        .sg-escopo-nota { padding-top: 8px; border-top: 1px solid var(--border); margin-top: 10px !important; font-size: 11.5px; }
+        .sg-formatos { text-align: left; max-width: 520px; }
+        .sg-formatos dl { margin: 0; }
+        .sg-formatos dt { font-weight: 700; color: var(--ink-2); margin-top: 9px; }
+        .sg-formatos dt:first-child { margin-top: 0; }
+        .sg-formatos dd { margin: 1px 0 0; }
+        .sg-formatos-nota { margin: 12px 0 0; padding-top: 9px; border-top: 1px solid var(--border); font-size: 11.5px; }
 
         /* DASHBOARD DA OBRA
            Tres perguntas na ordem em que se faz: o executivo cabe no
@@ -14695,7 +14716,31 @@ export default function App() {
           <>
           <div className="eyebrow">FERRAMENTA AVULSA</div>
           <div className="title-row"><span className="title-accent">Gerador de códigos Sienge</span></div>
-          <div className="obra-meta">Sobe uma lista de produtos, casa com os insumos já cadastrados e gera a descrição no padrão do que não existe. Nada é guardado.</div>
+          <div className="sg-sub">Detalhes de Insumos</div>
+
+          {/* Texto de escopo: le-se uma vez e nunca mais. Por isso o
+              cinza mais claro que o corpo — e' presenca, nao chamada.
+              Alinhado a esquerda e com largura limitada porque paragrafo
+              longo centralizado obriga o olho a procurar o comeco de
+              cada linha. */}
+          <div className="sg-escopo">
+            <p>
+              Esta tela é destinada exclusivamente à <b>geração e associação de detalhes</b> de
+              insumos no Sienge. Ela não cria novos insumos diretamente no sistema.
+            </p>
+            <p>Ao processar a lista, a ferramenta:</p>
+            <ul>
+              <li>identifica e associa o produto a um insumo já existente no Sienge;</li>
+              <li>busca similaridade com detalhes já cadastrados para evitar duplicidades;</li>
+              <li>quando não encontra um detalhe compatível, gera uma nova sugestão de código e descrição de detalhe.</li>
+            </ul>
+            <p className="sg-escopo-nota">
+              A efetiva importação/cadastro no Sienge permanece restrita aos usuários que possuem
+              permissão de importação no próprio sistema. A ferramenta apoia a padronização e a
+              geração dos detalhes, mas não concede nem substitui as permissões de
+              cadastro/importação do Sienge.
+            </p>
+          </div>
           <GeradorSiengeView />
           </>
           ) : modulo === "equipe" ? (
