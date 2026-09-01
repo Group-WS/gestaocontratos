@@ -7124,29 +7124,27 @@ function GeradorSiengeView() {
         )}
       </div>
 
+      {/* Colado no cartao de propósito: nada pode entrar no meio dos
+          dois, nem um aviso de erro, senao a emenda abre. */}
+      {!linhas && (
+        <div className="sg-formatos">
+          <dl>
+            <dt>Excel ou CSV</dt>
+            <dd>com uma coluna de descrição — ela pode se chamar Descrição, Insumo, Produto ou
+              Item; marca, modelo, cor e código entram na descrição gerada, se existirem.</dd>
+            <dt>Sem cabeçalho também serve</dt>
+            <dd>eu acho sozinho a coluna das descrições e, junto dela, o modelo do fabricante, a
+              quantidade e a unidade. Título de grupo não vira produto.</dd>
+            <dt>PDF</dt>
+            <dd>do relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
+          </dl>
+          <p className="sg-formatos-nota">Nada é guardado: o arquivo é lido aqui e some quando você sair.</p>
+        </div>
+      )}
+
       {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
 
-      {!linhas ? (
-        <div className="compras-empty">
-          <PackageSearch size={30} className="dim" />
-          <div className="compras-empty-title">Suba uma lista de produtos</div>
-          {/* Eram tres formatos escritos como prosa centralizada, com
-              <br> no lugar de lista. Sao tres itens: viram tres itens. */}
-          <div className="compras-empty-sub sg-formatos">
-            <dl>
-              <dt>Excel ou CSV</dt>
-              <dd>com uma coluna de descrição — ela pode se chamar Descrição, Insumo, Produto ou
-                Item; marca, modelo, cor e código entram na descrição gerada, se existirem.</dd>
-              <dt>Sem cabeçalho também serve</dt>
-              <dd>eu acho sozinho a coluna das descrições e, junto dela, o modelo do fabricante, a
-                quantidade e a unidade. Título de grupo não vira produto.</dd>
-              <dt>PDF</dt>
-              <dd>do relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
-            </dl>
-            <p className="sg-formatos-nota">Nada é guardado: o arquivo é lido aqui e some quando você sair.</p>
-          </div>
-        </div>
-      ) : (
+      {linhas && (
         <>
           <div className="ger-placar">
             <div className="cf-bloco ok"><div className="cf-n">{achados}</div><div className="cf-rot">já existem no Sienge</div></div>
@@ -13050,22 +13048,26 @@ export default function App() {
         .title-accent { font-family: 'Newsreader', serif; font-style: italic; font-weight: 500; color: var(--ink); }
         .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
         .sg-sub { font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--ink-2); margin: -2px 0 14px; }
+        /* UMA coluna, UMA largura. O texto tinha 68ch e o cartao ia ate'
+           a borda da tela: duas reguas diferentes na mesma pagina, que e'
+           o que se le como "sem alinhamento". */
+        .sg-col { max-width: 760px; }
         /* --ink-3 e' o cinza mais claro que ainda passa no contraste
            (4.74:1 sobre o fundo). Mais claro que isto vira texto que a
            pessoa nao le -- foi o defeito que ja corrigimos no rotulo da
            barra lateral. */
-        .sg-escopo { max-width: 68ch; font-size: 12.5px; line-height: 1.65; color: var(--ink-3); margin-bottom: 24px; }
+        .sg-escopo { font-size: 12.5px; line-height: 1.65; color: var(--ink-3); margin-bottom: 18px; }
         .sg-escopo p { margin: 0 0 7px; }
         .sg-escopo b { font-weight: 600; color: var(--ink-2); }
         .sg-escopo ul { margin: 0 0 7px; padding-left: 17px; }
         .sg-escopo li { margin-bottom: 3px; }
         .sg-escopo-nota { padding-top: 8px; border-top: 1px solid var(--border); margin-top: 10px !important; font-size: 11.5px; }
-        .sg-formatos { text-align: left; max-width: 520px; }
-        .sg-formatos dl { margin: 0; }
-        .sg-formatos dt { font-weight: 700; color: var(--ink-2); margin-top: 9px; }
-        .sg-formatos dt:first-child { margin-top: 0; }
-        .sg-formatos dd { margin: 1px 0 0; }
-        .sg-formatos-nota { margin: 12px 0 0; padding-top: 9px; border-top: 1px solid var(--border); font-size: 11.5px; }
+        /* Rodape do cartao de subir: mesma borda, mesmo recuo, sem vao. */
+        .sg-formatos { margin-bottom: 12px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; background: var(--card); padding: 2px 16px 14px; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
+        .sg-formatos dl { margin: 0; display: grid; grid-template-columns: 196px 1fr; gap: 9px 16px; align-items: baseline; }
+        .sg-formatos dt { font-weight: 600; color: var(--ink-2); }
+        .sg-formatos dd { margin: 0; }
+        .sg-formatos-nota { margin: 11px 0 0; padding-top: 9px; border-top: 1px solid var(--border); font-size: 11.5px; }
 
         /* DASHBOARD DA OBRA
            Tres perguntas na ordem em que se faz: o executivo cabe no
@@ -13456,6 +13458,7 @@ export default function App() {
         .ger-busca { display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--panel); border-radius: 8px; }
         .ger-busca .form-input { margin-top: 0; font-size: 12px; padding: 5px 8px; }
         .ger-topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 13px 16px; margin-bottom: 12px; }
+        .ger-topo:has(+ .sg-formatos) { border-radius: 12px 12px 0 0; margin-bottom: 0; }
         .ger-info { flex: 1; font-size: 12px; color: var(--ink-3); }
         .ger-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
         /* O pedido: mesma folha do escopo, com o cabecalho do pedido. */
@@ -14723,7 +14726,7 @@ export default function App() {
               Alinhado a esquerda e com largura limitada porque paragrafo
               longo centralizado obriga o olho a procurar o comeco de
               cada linha. */}
-          <div className="sg-escopo">
+          <div className="sg-escopo sg-col">
             <p>
               Esta tela é destinada exclusivamente à <b>geração e associação de detalhes</b> de
               insumos no Sienge. Ela não cria novos insumos diretamente no sistema.
@@ -14741,7 +14744,7 @@ export default function App() {
               cadastro/importação do Sienge.
             </p>
           </div>
-          <GeradorSiengeView />
+          <div className="sg-col"><GeradorSiengeView /></div>
           </>
           ) : modulo === "equipe" ? (
           <>
