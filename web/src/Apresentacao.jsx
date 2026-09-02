@@ -6,11 +6,12 @@ import {
 import {
   novaApresentacao, novoSlide, acrescentar, dentro, renderDentro,
   conferir, nomeDoArquivo, quantasCabem, alturaDoBloco, proximaRev, duplicarComoRev,
+  CAMPOS_CAPA, quebrar,
   LARGURA, ALTURA, RODAPE, BLOCO,
   listarApresentacoes, salvarApresentacao, marcarGerada,
   subirAmbiente, urlDaImagem, bytesDaImagem,
 } from "./lib/apresentacao";
-import { IDIOMAS, ambienteEm, textoDoBloco, faltamEmIngles } from "./lib/apresentacaoIdioma";
+import { IDIOMAS, TEXTOS, ambienteEm, textoDoBloco, faltamEmIngles } from "./lib/apresentacaoIdioma";
 import { gerarPdf } from "./lib/apresentacaoPdf";
 import { urlDaImagem as urlProduto, filtrarProdutos } from "./lib/catalogo";
 import { subirArquivo } from "./lib/arquivos";
@@ -43,7 +44,12 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
   const [doc, setDoc] = useState(null);
   const [obraCod, setObraCod] = useState("");
   const [idioma, setIdioma] = useState("pt");
-  const [atual, setAtual] = useState(0);
+  /* A página aberta. As três fixas da casa (abertura, dados, fechamento)
+     entram na navegação junto com os ambientes: elas fazem parte do
+     documento, e não vê-las no editor foi exatamente o que ela apontou —
+     editava-se a capa às cegas. */
+  const [pagina, setPagina] = useState("dados");   // "abertura" | "dados" | nº | "fechamento"
+  const atual = typeof pagina === "number" ? pagina : 0;
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -65,13 +71,14 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
         if (!vivo) return;
         setRevisoes(l);
         setDoc(l.length ? { ...l[0] } : { ...novaApresentacao(obra), slides: [novoSlide("")] });
-        setAtual(0);
+        setPagina("dados");
       })
       .catch((e) => vivo && setErro(mensagem(e)));
     return () => { vivo = false; };
   }, [obraCod]);   // `obra` sai de `obraCod`; incluí-la relançaria à toa
 
-  const slide = doc?.slides?.[atual] || null;
+  const ehSlide = typeof pagina === "number";
+  const slide = ehSlide ? (doc?.slides?.[pagina] || null) : null;
   const conf = useMemo(() => conferir(doc), [doc]);
   const semIngles = useMemo(() => faltamEmIngles(doc), [doc]);
 
@@ -160,7 +167,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
       await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);   // fecha a atual
       const nova = await salvarApresentacao(duplicarComoRev({ ...doc, obraCodigo: obraCod }, rev), usuario);
       setRevisoes(await listarApresentacoes(obraCod));
-      setDoc(nova); setAtual(0);
+      setDoc(nova); setPagina("dados");
       setAviso(`Revisão ${rev} criada. A ${doc.capa?.rev} continua guardada.`);
     } catch (e) { setErro(mensagem(e)); }
     finally { setSalvando(false); }
@@ -208,17 +215,20 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
         <div className="ap-vazio">Escolha a obra para começar.</div>
       ) : (
         <div className="ap-corpo">
-          <ListaDeSlides doc={doc} atual={atual} idioma={idioma}
-            onIr={setAtual}
-            onNovo={() => { setDoc((d) => ({ ...d, slides: [...d.slides, novoSlide("")] })); setAtual(doc.slides.length); }}
+          <ListaDeSlides doc={doc} pagina={pagina} idioma={idioma}
+            onIr={setPagina}
+            onNovo={() => { setDoc((d) => ({ ...d, slides: [...d.slides, novoSlide("")] })); setPagina(doc.slides.length); }}
             onExcluir={(i) => {
               if (!window.confirm("Excluir este ambiente da apresentação?")) return;
               setDoc((d) => ({ ...d, slides: d.slides.filter((_, k) => k !== i) }));
-              setAtual((a) => Math.max(0, a - (i <= a ? 1 : 0)));
+              setPagina("dados");
             }} />
 
           <div className="ap-meio">
-            {slide ? (
+            {!ehSlide ? (
+              <PaginaFixa qual={pagina} doc={doc} idioma={idioma}
+                onEditarCapa={() => setAbaLateral("capa")} />
+            ) : slide ? (
               <>
                 <div className="ap-cab-slide">
                   <input className="ap-amb" value={slide.ambiente}
@@ -263,7 +273,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
 
             {abaLateral === "revisoes" ? (
               <Revisoes lista={revisoes} atualId={doc.id} rev={doc.capa?.rev}
-                onAbrir={(r) => { setDoc({ ...r }); setAtual(0); setIdioma(r.idioma || "pt"); }}
+                onAbrir={(r) => { setDoc({ ...r }); setPagina("dados"); setIdioma(r.idioma || "pt"); }}
                 onNova={novaRevisao} ocupado={salvando} />
             ) : abaLateral === "capa" ? (
               <Capa doc={doc} onMudar={(capa) => setDoc((d) => ({ ...d, capa }))} idioma={idioma} />
@@ -414,13 +424,29 @@ function Palco({ slide, idioma, onMudar }) {
   );
 }
 
-function ListaDeSlides({ doc, atual, idioma, onIr, onNovo, onExcluir }) {
+/* A lista é o documento inteiro, na ordem em que ele sai — as três
+   páginas fixas da casa incluídas. Mostrar só os ambientes escondia
+   metade do que vai pro cliente, e editava-se a capa às cegas. */
+function ListaDeSlides({ doc, pagina, idioma, onIr, onNovo, onExcluir }) {
+  const n = doc.slides.length;
   return (
     <div className="ap-slides">
+      <div className="ap-slides-rot">Páginas</div>
+
+      <div className={`ap-slide-item ${pagina === "abertura" ? "on" : ""}`} onClick={() => onIr("abertura")}>
+        <span className="ap-slide-n ap-fixa">1</span>
+        <span className="ap-slide-nome">Abertura<small>TKWS · arte fixa</small></span>
+      </div>
+
+      <div className={`ap-slide-item ${pagina === "dados" ? "on" : ""}`} onClick={() => onIr("dados")}>
+        <span className="ap-slide-n ap-fixa">2</span>
+        <span className="ap-slide-nome">Dados do projeto<small>cliente, nº, data, local</small></span>
+      </div>
+
       <div className="ap-slides-rot">Ambientes</div>
       {doc.slides.map((s, i) => (
-        <div key={s.id} className={`ap-slide-item ${i === atual ? "on" : ""}`} onClick={() => onIr(i)}>
-          <span className="ap-slide-n">{i + 1}</span>
+        <div key={s.id} className={`ap-slide-item ${pagina === i ? "on" : ""}`} onClick={() => onIr(i)}>
+          <span className="ap-slide-n">{i + 3}</span>
           <span className="ap-slide-nome">
             {s.ambiente ? ambienteEm(s.ambiente, idioma) : <em>sem nome</em>}
             <small>{(s.blocos || []).length} produtos{s.render?.imagem ? "" : " · sem imagem"}</small>
@@ -429,7 +455,94 @@ function ListaDeSlides({ doc, atual, idioma, onIr, onNovo, onExcluir }) {
         </div>
       ))}
       <button className="ap-novo" onClick={onNovo}><Plus size={13} /> Novo ambiente</button>
+
+      <div className="ap-slides-rot">Fechamento</div>
+      <div className={`ap-slide-item ${pagina === "fechamento" ? "on" : ""}`} onClick={() => onIr("fechamento")}>
+        <span className="ap-slide-n ap-fixa">{n + 3}</span>
+        <span className="ap-slide-nome">Contracapa<small>símbolo WS · arte fixa</small></span>
+      </div>
     </div>
+  );
+}
+
+/* As páginas que não se montam: a arte é fixa e o que muda é só o que a
+   casa preenche. Elas aparecem no palco em tamanho real, na mesma
+   proporção do PDF, porque ver é o ponto — quem edita a capa precisa ver
+   a capa. */
+function PaginaFixa({ qual, doc, idioma, onEditarCapa }) {
+  const caixa = useRef(null);
+  const [escala, setEscala] = useState(0.6);
+
+  useEffect(() => {
+    const medir = () => caixa.current && setEscala(caixa.current.clientWidth / LARGURA);
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, []);
+
+  const T = TEXTOS[idioma] || TEXTOS.pt;
+  const pt = (v) => `${v * escala}px`;
+  const arte = qual === "abertura" ? arteAbertura : qual === "dados" ? arteDados : arteFechamento;
+
+  return (
+    <>
+      <div className="ap-cab-slide">
+        <b className="ap-fixa-nome">
+          {qual === "abertura" ? "Abertura" : qual === "dados" ? "Dados do projeto" : "Contracapa"}
+        </b>
+        {qual === "dados"
+          ? <button className="ap-btn" onClick={onEditarCapa}>Editar os campos</button>
+          : <span className="ap-traduz">arte fixa da casa — nada a preencher</span>}
+      </div>
+
+      <div className="ap-palco" ref={caixa} style={{ height: ALTURA * escala }}>
+        <img className="ap-arte" src={arte} alt="" draggable={false} />
+
+        {/* O ano é parte do PNG; no PDF ele é coberto e reescrito com o
+            vigente. Aqui a prévia faz o mesmo, senão ela mostraria um ano
+            que o documento não vai ter. */}
+        {qual === "abertura" && (
+          <span className="ap-ano" style={{
+            left: pt(938), top: pt(38), fontSize: Math.max(4, 7 * escala),
+          }}>{new Date().getFullYear()}</span>
+        )}
+
+        {qual === "dados" && (
+          <>
+            {CAMPOS_CAPA.map((c) => {
+              const v = doc.capa?.[c.id] || "";
+              if (!v) return null;
+              const linhas = c.linhas > 1 ? quebrar(v, 42).slice(0, c.linhas) : [v];
+              return (
+                <span key={c.id} className="ap-campo" style={{
+                  left: pt(c.x), top: pt(c.y - c.tamanho),
+                  fontSize: Math.max(5, c.tamanho * escala),
+                  lineHeight: `${14 * escala}px`,
+                }}>{linhas.map((l, i) => <div key={i}>{l}</div>)}</span>
+              );
+            })}
+            {/* Em inglês, os rótulos da arte são cobertos e reescritos. */}
+            {idioma !== "pt" && CAMPOS_CAPA.map((c) => (
+              <span key={`r${c.id}`} className="ap-campo ap-rot-en" style={{
+                left: pt(c.rotuloX), top: pt(c.y - c.tamanho),
+                width: pt(c.rotuloL), fontSize: Math.max(5, c.tamanho * escala),
+              }}>{T[c.id]}</span>
+            ))}
+            <span className="ap-campo ap-titulo" style={{
+              left: pt(64), top: pt(164), fontSize: Math.max(7, 20 * escala),
+            }}>
+              {doc.capa?.titulo && doc.capa.titulo !== TEXTOS.pt.titulo ? doc.capa.titulo : T.titulo}
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="ap-dica">
+        {qual === "dados"
+          ? "Os campos vêm da obra e são editáveis na aba Capa, ao lado. O que você vê aqui é o que sai no PDF."
+          : "Esta página sai sempre assim — é a marca da casa."}
+      </div>
+    </>
   );
 }
 
@@ -652,6 +765,13 @@ function EstiloApresentacao() {
     .ap-capa input { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12.5px; font-weight: 400; color: var(--ink); padding: 7px 9px; }
     .ap-nota { font-size: 11px; color: var(--ink-3); line-height: 1.5; margin: 0 0 12px; }
 
+    .ap-arte { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+    .ap-fixa { background: var(--ink-2) !important; color: #fff !important; }
+    .ap-fixa-nome { flex: 1; font-size: 13px; color: var(--ink); }
+    .ap-ano { position: absolute; color: #8C9296; writing-mode: vertical-rl; letter-spacing: .04em; }
+    .ap-campo { position: absolute; color: #191D21; white-space: pre; }
+    .ap-titulo { font-weight: 700; letter-spacing: .01em; }
+    .ap-rot-en { background: #fff; font-weight: 700; }
     .ap-rev { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: none; border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; margin-bottom: 6px; font-family: inherit; cursor: pointer; }
     .ap-rev:hover { border-color: var(--blue); }
     .ap-rev.on { background: var(--blue-bg); border-color: var(--blue); cursor: default; }
