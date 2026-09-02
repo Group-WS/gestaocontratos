@@ -179,3 +179,5 @@ import { CAMPOS_CAPA } from "../lib/apresentacaoModelo.js";
   });
   console.log("ok   as tarjas de rotulo da capa nao se invadem");
 }
+
+console.log("\nOK — todas passaram");
