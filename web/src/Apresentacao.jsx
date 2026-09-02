@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import {
   X, Plus, Trash2, Upload, Save, FileDown, Image as ImageIcon,
   AlertTriangle, Check, Search, GripVertical, History, FileCheck,
+  Minus, Maximize2,
 } from "lucide-react";
 import {
   novaApresentacao, novoSlide, acrescentar, dentro, renderDentro,
@@ -56,6 +57,10 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
   const [gerando, setGerando] = useState(null);
   const [abaLateral, setAbaLateral] = useState("produtos");   // produtos | capa | revisoes
   const [revisoes, setRevisoes] = useState([]);
+  /* `null` = ajustar à largura. Qualquer número é o zoom escolhido à mão,
+     como no PowerPoint: a tela inteira nem sempre é o que se quer ver, e
+     num monitor grande o slide fica maior que o olho alcança. */
+  const [zoom, setZoom] = useState(null);
 
   const obra = useMemo(
     () => obras.find((o) => String(o.codigo) === String(obraCod)) || null, [obras, obraCod]);
@@ -227,6 +232,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
           <div className="ap-meio">
             {!ehSlide ? (
               <PaginaFixa qual={pagina} doc={doc} idioma={idioma}
+                zoom={zoom} onZoom={setZoom}
                 onEditarCapa={() => setAbaLateral("capa")} />
             ) : slide ? (
               <>
@@ -251,7 +257,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
                   </label>
                 </div>
 
-                <Palco slide={slide} idioma={idioma} onMudar={mudarSlide} />
+                <Palco slide={slide} idioma={idioma} zoom={zoom} onZoom={setZoom} onMudar={mudarSlide} />
 
                 <div className="ap-dica">
                   Arraste a imagem e os produtos. O canto de baixo à direita de cada um redimensiona.
@@ -323,14 +329,15 @@ function mensagem(e) {
  * aqui é o que sai. A escala é a única conta — tudo o mais é guardado em
  * pontos, iguais aos do documento.
  */
-function Palco({ slide, idioma, onMudar }) {
+function Palco({ slide, idioma, zoom, onZoom, onMudar }) {
   const caixa = useRef(null);
-  const [escala, setEscala] = useState(0.6);
+  const [cabe, setCabe] = useState(0.6);
   const [pegando, setPegando] = useState(null);
+  const escala = zoom ?? cabe;
 
   useEffect(() => {
     const medir = () => {
-      if (caixa.current) setEscala(caixa.current.clientWidth / LARGURA);
+      if (caixa.current) setCabe(caixa.current.clientWidth / LARGURA);
     };
     medir();
     window.addEventListener("resize", medir);
@@ -378,7 +385,14 @@ function Palco({ slide, idioma, onMudar }) {
   const pt = (v) => `${v * escala}px`;
 
   return (
-    <div className="ap-palco" ref={caixa} style={{ height: ALTURA * escala }}
+    <>
+    {/* A caixa que mede fica por fora e ocupa a largura toda; o palco
+        dentro dela tem o tamanho do zoom. Sem separar as duas, medir a
+        largura devolveria o tamanho já ampliado e o zoom se
+        realimentaria. */}
+    <div className="ap-medida" ref={caixa}>
+    <div className="ap-rolagem">
+    <div className="ap-palco" style={{ width: LARGURA * escala, height: ALTURA * escala }}
       onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
 
       {slide.render?.imagem ? (
@@ -420,6 +434,33 @@ function Palco({ slide, idioma, onMudar }) {
           TKWS &nbsp;|&nbsp; {ambienteEm(slide.ambiente, idioma).toUpperCase() || "AMBIENTE"}
         </span>
       </div>
+    </div>
+    </div>
+    </div>
+    <Zoom zoom={zoom} escala={cabe} onMudar={onZoom} />
+    </>
+  );
+}
+
+/* O controle de zoom, igual ao canto do PowerPoint: menos, mais, e um
+   botão que volta pra "cabe na largura". */
+const PASSOS = [0.25, 0.35, 0.5, 0.65, 0.8, 1, 1.25, 1.5, 2];
+
+function Zoom({ zoom, escala, onMudar }) {
+  const atual = zoom ?? escala;
+  const vizinho = (dir) => {
+    const i = PASSOS.findIndex((p) => p > atual + 0.001);
+    const acima = i === -1 ? PASSOS.length - 1 : i;
+    const abaixo = acima - 1 >= 0 ? (PASSOS[acima - 1] < atual - 0.001 ? acima - 1 : Math.max(0, acima - 2)) : 0;
+    onMudar(PASSOS[Math.max(0, Math.min(PASSOS.length - 1, dir > 0 ? acima : abaixo))]);
+  };
+  return (
+    <div className="ap-zoom">
+      <button onClick={() => vizinho(-1)} title="Diminuir"><Minus size={12} /></button>
+      <span className="ap-zoom-n">{Math.round(atual * 100)}%</span>
+      <button onClick={() => vizinho(1)} title="Aumentar"><Plus size={12} /></button>
+      <button className={zoom === null ? "on" : ""} onClick={() => onMudar(null)}
+        title="Ajustar à largura"><Maximize2 size={12} /></button>
     </div>
   );
 }
@@ -469,12 +510,13 @@ function ListaDeSlides({ doc, pagina, idioma, onIr, onNovo, onExcluir }) {
    casa preenche. Elas aparecem no palco em tamanho real, na mesma
    proporção do PDF, porque ver é o ponto — quem edita a capa precisa ver
    a capa. */
-function PaginaFixa({ qual, doc, idioma, onEditarCapa }) {
+function PaginaFixa({ qual, doc, idioma, zoom, onZoom, onEditarCapa }) {
   const caixa = useRef(null);
-  const [escala, setEscala] = useState(0.6);
+  const [cabe, setCabe] = useState(0.6);
+  const escala = zoom ?? cabe;
 
   useEffect(() => {
-    const medir = () => caixa.current && setEscala(caixa.current.clientWidth / LARGURA);
+    const medir = () => caixa.current && setCabe(caixa.current.clientWidth / LARGURA);
     medir();
     window.addEventListener("resize", medir);
     return () => window.removeEventListener("resize", medir);
@@ -495,7 +537,9 @@ function PaginaFixa({ qual, doc, idioma, onEditarCapa }) {
           : <span className="ap-traduz">arte fixa da casa — nada a preencher</span>}
       </div>
 
-      <div className="ap-palco" ref={caixa} style={{ height: ALTURA * escala }}>
+      <div className="ap-medida" ref={caixa}>
+      <div className="ap-rolagem">
+      <div className="ap-palco" style={{ width: LARGURA * escala, height: ALTURA * escala }}>
         <img className="ap-arte" src={arte} alt="" draggable={false} />
 
         {/* O ano é parte do PNG; no PDF ele é coberto e reescrito com o
@@ -536,6 +580,9 @@ function PaginaFixa({ qual, doc, idioma, onEditarCapa }) {
           </>
         )}
       </div>
+      </div>
+      </div>
+      <Zoom zoom={zoom} escala={cabe} onMudar={onZoom} />
 
       <div className="ap-dica">
         {qual === "dados"
@@ -729,7 +776,14 @@ function EstiloApresentacao() {
     .ap-traduz { font-size: 11px; color: var(--ink-3); }
     .ap-dica { font-size: 11px; color: var(--ink-3); margin-top: 10px; }
 
-    .ap-palco { position: relative; width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; touch-action: none; user-select: none; }
+    .ap-medida { width: 100%; }
+    .ap-rolagem { overflow: auto; max-width: 100%; }
+    .ap-zoom { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 2px; margin-top: 10px; }
+    .ap-zoom button { background: none; border: none; color: var(--ink-3); cursor: pointer; display: flex; padding: 5px 7px; border-radius: 6px; }
+    .ap-zoom button:hover { background: var(--panel); color: var(--ink); }
+    .ap-zoom button.on { background: var(--ink); color: #fff; }
+    .ap-zoom-n { font-size: 11px; font-weight: 600; color: var(--ink-2); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
+    .ap-palco { position: relative; background: #fff; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; touch-action: none; user-select: none; }
     .ap-render { position: absolute; cursor: grab; overflow: hidden; }
     .ap-render img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .ap-render.ativo, .ap-bloco.ativo { outline: 2px solid var(--blue); }

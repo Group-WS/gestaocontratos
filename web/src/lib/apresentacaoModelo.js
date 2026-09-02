@@ -135,15 +135,20 @@ function varrer(render, quantos, largura = BLOCO.largura) {
   const margem = 12;
   const ocupado = render ? { x: render.x, y: render.y, w: render.w + 14, h: render.h + 14 } : null;
 
+  /* Varre TUDO antes de escolher, e só então ordena: a ordem é da
+     ESQUERDA pra direita, coluna por coluna.
+     Antes era linha por linha, e como o render ocupa o canto de cima à
+     esquerda, os primeiros produtos caíam lá na direita — longe de onde
+     a pessoa está olhando, e num slide grande isso obriga a caçar. */
   const livres = [];
   for (let y = margem; y + alturaBloco <= ALTURA - RODAPE - 4; y += passoY) {
     for (let x = margem; x + largura <= LARGURA - margem; x += passoX) {
       if (ocupado && cruza({ x, y, w: largura, h: alturaBloco }, ocupado)) continue;
       livres.push({ x, y });
-      if (livres.length >= quantos) return livres;
     }
   }
-  return livres;
+  livres.sort((a, b) => (a.x - b.x) || (a.y - b.y));
+  return livres.slice(0, quantos);
 }
 
 /** Produto do catálogo vira bloco. O texto continua editável depois. */

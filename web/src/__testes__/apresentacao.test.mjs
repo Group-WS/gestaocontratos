@@ -53,6 +53,20 @@ t("nenhum bloco nasce fora da pagina", () =>
     assert.ok(v.y >= 0, `y=${v.y}`);
   }));
 
+t("o primeiro bloco nasce PERTO DA ESQUERDA", () => {
+  /* Antes a varredura era linha por linha e, como o render ocupa o canto
+     de cima a esquerda, os primeiros produtos caiam la' na direita --
+     longe de onde a pessoa esta' olhando. */
+  const [primeiro] = vagas(R, 6);
+  assert.ok(primeiro.x < 60, `nasceu em x=${primeiro.x}, longe da esquerda`);
+});
+
+t("os blocos avancam da esquerda pra direita", () => {
+  const v = vagas(R, 5);
+  for (let i = 1; i < v.length; i++)
+    assert.ok(v[i].x >= v[i - 1].x, `o bloco ${i + 1} voltou pra tras (x=${v[i].x} depois de ${v[i-1].x})`);
+});
+
 t("dois blocos nao nascem no mesmo ponto", () => {
   const v = vagas(R, 10);
   assert.strictEqual(new Set(v.map((p) => `${Math.round(p.x)}:${Math.round(p.y)}`)).size, 10);
