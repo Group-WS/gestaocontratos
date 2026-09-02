@@ -124,3 +124,46 @@ t("o que falta classificar fica por ULTIMO, e nao some", () => {
 });
 
 console.log(`\nOK — ${ok} casos`);
+
+/* ---------- AS DUAS DESCRICOES ---------- */
+import { descricaoDoExecutivo, descricaoDoCriativo, descricaoDoCriativoEn } from "../lib/catalogoModelo.js";
+{
+  let ok2 = 0;
+  const t2 = (nome, f) => { f(); console.log("ok  ", nome); ok2++; };
+  const cheio = {
+    descricao: "SPOT EMBUTIDO POWERUS 3 LEDS BRANCO 6W 3000K",
+    descricaoCriativo: "Spot embutido branco",
+    descricaoEn: "Recessed white spotlight",
+  };
+
+  t2("o executivo leva a descricao tecnica", () =>
+    assert.strictEqual(descricaoDoExecutivo(cheio), "SPOT EMBUTIDO POWERUS 3 LEDS BRANCO 6W 3000K"));
+
+  t2("o criativo leva a curta", () =>
+    assert.strictEqual(descricaoDoCriativo(cheio), "Spot embutido branco"));
+
+  t2("sem a curta, o criativo usa a tecnica — nao fica vazio", () =>
+    assert.strictEqual(descricaoDoCriativo({ descricao: "SPOT X" }), "SPOT X"));
+
+  t2("curta em branco conta como ausente", () =>
+    assert.strictEqual(descricaoDoCriativo({ descricao: "SPOT X", descricaoCriativo: "   " }), "SPOT X"));
+
+  t2("em ingles: a inglesa, senao a curta, senao a tecnica", () => {
+    assert.strictEqual(descricaoDoCriativoEn(cheio), "Recessed white spotlight");
+    assert.strictEqual(descricaoDoCriativoEn({ descricao: "A", descricaoCriativo: "B" }), "B");
+    assert.strictEqual(descricaoDoCriativoEn({ descricao: "A" }), "A");
+  });
+
+  t2("o item da obra continua saindo com a tecnica", () => {
+    const it = produtoParaItem({ ...cheio, id: "x", precoRef: 100 });
+    assert.strictEqual(it.desc, "SPOT EMBUTIDO POWERUS 3 LEDS BRANCO 6W 3000K");
+  });
+
+  t2("a busca acha pelos DOIS textos", () => {
+    const l = [{ id: 1, verba: "05", descricao: "SPOT EMBUTIDO POWERUS", descricaoCriativo: "Luminária discreta", ativo: true }];
+    assert.strictEqual(filtrarProdutos(l, { termo: "discreta" }).length, 1);
+    assert.strictEqual(filtrarProdutos(l, { termo: "POWERUS" }).length, 1);
+  });
+
+  console.log(`OK — mais ${ok2} casos`);
+}

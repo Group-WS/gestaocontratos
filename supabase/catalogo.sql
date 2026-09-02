@@ -32,7 +32,12 @@ create table if not exists catalogo_produto (
   verba       text not null references eap_grupo(num),
   subgrupo    text,
 
-  descricao   text not null,
+  -- O mesmo produto e' dito de dois jeitos: a tecnica, que precisa
+  -- bastar pra comprar e cadastrar no Sienge, e a curta, que o cliente
+  -- le na apresentacao. So' a primeira e' obrigatoria.
+  descricao          text not null,
+  descricao_criativo text,
+  descricao_en       text,
   codigo      text,
   fornecedor  text,
   observacoes text,
@@ -111,6 +116,10 @@ create policy "catalogo troca" on storage.objects
 drop policy if exists "catalogo apaga" on storage.objects;
 create policy "catalogo apaga" on storage.objects
   for delete to authenticated using (bucket_id = 'catalogo');
+
+-- Reaplicavel em banco que ja' tem a tabela:
+alter table catalogo_produto add column if not exists descricao_criativo text;
+alter table catalogo_produto add column if not exists descricao_en       text;
 
 -- Confere o que entrou:
 --   select verba, subgrupo, count(*) from catalogo_produto group by 1,2 order by 1,2;

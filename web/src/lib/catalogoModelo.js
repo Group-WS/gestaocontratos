@@ -90,6 +90,33 @@ export function subgrupoDe(descricao, verba) {
 export const subgruposDaVerba = (verba) =>
   (SUBGRUPOS[String(verba || "")] || []).map((r) => r.nome);
 
+/* ---------- DUAS DESCRIÇÕES ----------
+ *
+ * O mesmo produto é dito de dois jeitos, e não por capricho:
+ *
+ *   EXECUTIVO — a descrição técnica inteira, que precisa bastar pra
+ *   comprar e pra cadastrar no Sienge: "SPOT EMBUTIDO POWERUS 3 LEDS
+ *   BRANCO 6W 3000K".
+ *
+ *   CRIATIVO — o que o cliente lê na apresentação, mais curto: "Spot
+ *   embutido branco".
+ *
+ * Só a do executivo é obrigatória. Sem a do criativo, a apresentação usa
+ * a técnica — feia, mas presente. O contrário (obrigar as duas) faria o
+ * cadastro travar por causa de um campo que nem sempre difere.
+ */
+export const descricaoDoExecutivo = (p) => p?.descricao || "";
+
+export const descricaoDoCriativo = (p) =>
+  String(p?.descricaoCriativo || "").trim() || p?.descricao || "";
+
+/* Em inglês, na apresentação: a versão em inglês, senão a do criativo,
+   senão a técnica. A apresentação sempre sai — nunca com campo vazio. */
+export const descricaoDoCriativoEn = (p) =>
+  String(p?.descricaoEn || "").trim()
+  || String(p?.descricaoCriativo || "").trim()
+  || p?.descricao || "";
+
 /* ---------- DINHEIRO ----------
  *
  * O banco guarda CENTAVOS inteiros: float de dinheiro soma errado, e
@@ -132,7 +159,8 @@ export function produtoParaItem(p, qtd = 1) {
   const unit = reais(p.precoRef);
   return {
     codigo: p.codigo || null,
-    desc: p.descricao,
+    // Vai pro EXECUTIVO: a descrição técnica, que precisa bastar pra comprar.
+    desc: descricaoDoExecutivo(p),
     marca: p.fornecedor || null,
     especificacao: p.observacoes || null,
     ambiente: null,
@@ -166,7 +194,7 @@ export function filtrarProdutos(produtos, { termo, verba, subgrupo, fornecedor }
     if (subgrupo && (p.subgrupo || "") !== subgrupo) return false;
     if (fornecedor && (p.fornecedor || "") !== fornecedor) return false;
     if (!t) return true;
-    return semAcento(`${p.descricao} ${p.codigo || ""} ${p.fornecedor || ""} ${p.observacoes || ""}`).includes(t);
+    return semAcento(`${p.descricao} ${p.descricaoCriativo || ""} ${p.codigo || ""} ${p.fornecedor || ""} ${p.observacoes || ""}`).includes(t);
   });
 }
 

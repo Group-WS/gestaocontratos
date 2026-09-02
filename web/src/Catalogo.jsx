@@ -343,10 +343,33 @@ function FormProduto({ p, fornecedores, verbas, onFechar, onSalvar, onErro }) {
         </div>
 
         <div className="cat-campos">
-          <label className="cat-largo">Descrição
+          {/* Duas descrições porque são dois leitores. A técnica precisa
+              bastar pra comprar; a do criativo é o que o cliente lê na
+              apresentação, e ali a ficha técnica atrapalha. Só a
+              primeira é obrigatória: sem a segunda, a apresentação usa a
+              primeira — feia, mas presente. */}
+          <label className="cat-largo">Descrição — Executivo
             <textarea rows={2} value={f.descricao || ""}
               onChange={(e) => set("descricao", e.target.value)}
               placeholder="SPOT EMBUTIDO POWERUS 3 LEDS BRANCO 6W 3000K" />
+            <small>a técnica, que vai pro Executivo da obra e pro Sienge</small>
+          </label>
+
+          <label className="cat-largo">Descrição — Criativo
+            <input value={f.descricaoCriativo || ""}
+              onChange={(e) => set("descricaoCriativo", e.target.value)}
+              placeholder={f.descricao ? f.descricao.slice(0, 40) : "Spot embutido branco"} />
+            <small>
+              a curta, que o cliente lê na apresentação.
+              {!String(f.descricaoCriativo || "").trim() && " Em branco, sai a de cima."}
+            </small>
+          </label>
+
+          <label className="cat-largo">Descrição — inglês
+            <input value={f.descricaoEn || ""}
+              onChange={(e) => set("descricaoEn", e.target.value)}
+              placeholder="Recessed white spotlight" />
+            <small>só para apresentação emitida em inglês. Em branco, sai em português.</small>
           </label>
 
           <label>Grupo
