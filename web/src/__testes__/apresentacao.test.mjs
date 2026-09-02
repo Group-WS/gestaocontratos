@@ -13,6 +13,7 @@ import {
   quebrar, vagas, produtoParaBloco, acrescentar, dentro, renderDentro,
   conferir, nomeDoArquivo, novaApresentacao, novoSlide, alturaDoBloco, quantasCabem,
   LARGURA, ALTURA, RODAPE, BLOCO, CAMPOS_CAPA, RENDER_PADRAO,
+  proximaRev, duplicarComoRev,
 } from "../lib/apresentacaoModelo.js";
 import { ambienteEm, textoDoBloco, faltamEmIngles, TEXTOS } from "../lib/apresentacaoIdioma.js";
 
@@ -185,6 +186,39 @@ t("a tela consegue dizer quantos faltam traduzir", () =>
 t("o titulo tem versao nos dois idiomas", () => {
   assert.match(TEXTOS.pt.titulo, /ESPECIFICAÇÕES/);
   assert.match(TEXTOS.en.titulo, /SPECIFICATIONS/);
+});
+
+/* ---------- controle de revisoes ---------- */
+t("a proxima revisao e' a maior + 1, com dois digitos", () => {
+  assert.strictEqual(proximaRev([]), "00");
+  assert.strictEqual(proximaRev(["00"]), "01");
+  assert.strictEqual(proximaRev(["00", "01", "02"]), "03");
+  assert.strictEqual(proximaRev(["09"]), "10");
+});
+
+t("a ordem em que vieram nao importa — vale a MAIOR", () =>
+  assert.strictEqual(proximaRev(["02", "00", "01"]), "03"));
+
+t("rev com texto no meio nao quebra a conta", () =>
+  assert.strictEqual(proximaRev(["REV 03", "01"]), "04"));
+
+t("a revisao nova nasce SEM id — o banco grava linha nova, nao por cima", () => {
+  const antiga = { id: "uuid-antigo", obraCodigo: "2307", capa: { rev: "00", cliente: "X" },
+    slides: [{ id: "s1", blocos: [{ id: "b1", texto: "A" }] }] };
+  const nova = duplicarComoRev(antiga, "01");
+  assert.strictEqual(nova.id, undefined);
+  assert.strictEqual(nova.capa.rev, "01");
+  assert.strictEqual(nova.capa.cliente, "X");
+});
+
+t("a copia e' PROFUNDA — mexer na nova nao mexe na que foi ao cliente", () => {
+  const antiga = { obraCodigo: "1", capa: { rev: "00" },
+    slides: [{ id: "s1", blocos: [{ id: "b1", texto: "ORIGINAL" }] }] };
+  const nova = duplicarComoRev(antiga, "01");
+  nova.slides[0].blocos[0].texto = "MUDADO";
+  nova.slides[0].blocos.push({ id: "b2", texto: "NOVO" });
+  assert.strictEqual(antiga.slides[0].blocos[0].texto, "ORIGINAL");
+  assert.strictEqual(antiga.slides[0].blocos.length, 1);
 });
 
 console.log(`\nOK — ${ok} casos`);

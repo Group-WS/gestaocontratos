@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import {
   LARGURA, ALTURA, RODAPE, CAMPOS_CAPA, BLOCO, quebrar, alturaDoBloco,
 } from "./apresentacaoModelo.js";
@@ -20,6 +20,16 @@ const paraPdfY = (y, altura = 0) => ALTURA - y - altura;
 const BRANCO = rgb(1, 1, 1);
 const PRETO = rgb(0.09, 0.11, 0.13);
 const CINZA = rgb(0.42, 0.44, 0.46);
+/* O azul do fundo da capa, medido no pixel do arquivo dela: #092737.
+   Chutado, a tarja que cobre o ano apareceria como um retângulo. */
+const AZUL_CAPA = rgb(9 / 255, 39 / 255, 55 / 255);
+const CINZA_CAPA = rgb(0.55, 0.60, 0.63);
+
+/* Onde está o "2025" impresso na arte da abertura, em pontos. Ele é
+   parte da imagem, não texto — então pra mostrar o ano vigente a tarja
+   cobre e reescreve. Mesmo remendo dos rótulos em inglês, e pelo mesmo
+   motivo: a arte é um PNG. */
+const ANO = { x: 941, y: 40, altura: 30, tamanho: 7 };
 
 /* pdf-lib usa WinAnsi nas fontes padrão, e ela não tem tudo que o
    português escreve — travessão, aspas curvas e reticências derrubam a
@@ -69,12 +79,12 @@ function caber(pag, img, caixa) {
 }
 
 /**
- * @param doc        capa + slides
- * @param capaBytes  a arte da capa (PNG)
- * @param imagemDe   (caminho) => Promise<Uint8Array|null>
- * @param idioma     "pt" | "en"
+ * @param doc      capa + slides
+ * @param artes    { abertura, dados, fechamento } — bytes dos PNGs
+ * @param imagemDe (caminho) => Promise<Uint8Array|null>
+ * @param idioma   "pt" | "en"
  */
-export async function gerarPdf(doc, capaBytes, imagemDe, idioma = "pt") {
+export async function gerarPdf(doc, artes, imagemDe, idioma = "pt") {
   const T = TEXTOS[idioma] || TEXTOS.pt;
   const pdf = await PDFDocument.create();
   pdf.setTitle(seguro(`${(doc && doc.capa && doc.capa.projeto) || ""} ${T.titulo}`.trim()));
@@ -98,12 +108,33 @@ export async function gerarPdf(doc, capaBytes, imagemDe, idioma = "pt") {
     return img;
   };
 
-  // ---------- CAPA ----------
-  const capa = pdf.addPage([LARGURA, ALTURA]);
-  if (capaBytes) {
-    const img = await embutir(pdf, capaBytes);
-    capa.drawImage(img, { x: 0, y: 0, width: LARGURA, height: ALTURA });
+  const arte = async (bytes) => {
+    if (!bytes) return null;
+    const pag = pdf.addPage([LARGURA, ALTURA]);
+    const img = await embutir(pdf, bytes);
+    pag.drawImage(img, { x: 0, y: 0, width: LARGURA, height: ALTURA });
+    return pag;
+  };
+
+  // ---------- 1. ABERTURA: TKWS | Years Ahead. ----------
+  const abertura = await arte(artes && artes.abertura);
+  if (abertura) {
+    /* O ano na lateral é o VIGENTE, e não o que estava impresso quando a
+       arte foi feita. Uma apresentação de 2026 com "2025" no canto é o
+       tipo de detalhe que o cliente nota e ninguém revisa. */
+    abertura.drawRectangle({
+      x: ANO.x - 3, y: paraPdfY(ANO.y + ANO.altura), width: 14, height: ANO.altura,
+      color: AZUL_CAPA,
+    });
+    abertura.drawText(String(new Date().getFullYear()), {
+      x: ANO.x + 6, y: paraPdfY(ANO.y), size: ANO.tamanho, font: regular,
+      color: CINZA_CAPA, rotate: degrees(-90),
+    });
   }
+
+  // ---------- 2. DADOS DO PROJETO ----------
+  const capa = await arte(artes && artes.dados);
+  if (!capa) return pdf.save();
 
   /* Os rótulos da capa (Squad, Cliente, Nº do projeto...) estão DENTRO da
      arte, não são texto. Pra sair em inglês, cada um é coberto por uma
@@ -141,6 +172,7 @@ export async function gerarPdf(doc, capaBytes, imagemDe, idioma = "pt") {
   }
 
   // ---------- UM SLIDE POR AMBIENTE ----------
+  /* eslint-disable no-unused-vars */
   for (const s of (doc && doc.slides) || []) {
     const pag = pdf.addPage([LARGURA, ALTURA]);
     pag.drawRectangle({ x: 0, y: 0, width: LARGURA, height: ALTURA, color: BRANCO });
@@ -178,6 +210,9 @@ export async function gerarPdf(doc, capaBytes, imagemDe, idioma = "pt") {
       x: 20, y: paraPdfY(ALTURA - RODAPE + 9, 12), size: 12, font: forte, color: PRETO,
     });
   }
+
+  // ---------- FECHAMENTO ----------
+  await arte(artes && artes.fechamento);
 
   return pdf.save();
 }

@@ -203,6 +203,33 @@ export function conferir(doc) {
   };
 }
 
+/* A PRÓXIMA REVISÃO.
+ *
+ * "00" -> "01" -> "02". Dois dígitos porque é assim que a casa escreve, e
+ * porque "9" seguido de "10" ordena errado em qualquer lista.
+ *
+ * Revisão não é rascunho: a 00 já foi ao cliente. Por isso a nova NASCE
+ * como cópia — o trabalho todo continua, e o que muda é o que a pessoa
+ * mudar. */
+export function proximaRev(revs) {
+  const maior = (revs || []).reduce((a, r) => {
+    const n = parseInt(String(r).replace(/\D/g, ""), 10);
+    return Number.isFinite(n) && n > a ? n : a;
+  }, -1);
+  return String(maior + 1).padStart(2, "0");
+}
+
+/* Copia uma revisão pra virar a próxima. Sem `id`, o banco grava uma
+   linha nova em vez de escrever por cima da que já foi apresentada. */
+export function duplicarComoRev(doc, rev) {
+  return {
+    obraCodigo: doc.obraCodigo,
+    capa: { ...doc.capa, rev },
+    slides: JSON.parse(JSON.stringify(doc.slides || [])),
+    idioma: doc.idioma || "pt",
+  };
+}
+
 /* O nome do arquivo é o que aparece em Arquivos da obra, no padrão do
    documento dela: 2307_PE_ESPECIFICACOES. */
 export function nomeDoArquivo(doc, idioma = "pt") {

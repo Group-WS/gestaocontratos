@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   X, Plus, Trash2, Upload, Save, FileDown, Image as ImageIcon,
-  AlertTriangle, Check, Search, GripVertical,
+  AlertTriangle, Check, Search, GripVertical, History, FileCheck,
 } from "lucide-react";
 import {
   novaApresentacao, novoSlide, acrescentar, dentro, renderDentro,
-  conferir, nomeDoArquivo, quantasCabem, alturaDoBloco,
+  conferir, nomeDoArquivo, quantasCabem, alturaDoBloco, proximaRev, duplicarComoRev,
   LARGURA, ALTURA, RODAPE, BLOCO,
   listarApresentacoes, salvarApresentacao, marcarGerada,
   subirAmbiente, urlDaImagem, bytesDaImagem,
@@ -15,7 +15,13 @@ import { gerarPdf } from "./lib/apresentacaoPdf";
 import { urlDaImagem as urlProduto, filtrarProdutos } from "./lib/catalogo";
 import { subirArquivo } from "./lib/arquivos";
 import { carregarDadosObra, salvarDadosObra } from "./lib/dadosObra";
-import capaTkws from "./assets/capa-tkws.png";
+/* As três páginas fixas do documento: a abertura da marca, a folha de
+   dados do projeto e o fechamento. Vieram do PPTX dela, não de
+   reconstituição — reconstituir marca é errar de leve e ninguém saber
+   dizer onde. */
+import arteAbertura from "./assets/capa-abertura.png";
+import arteDados from "./assets/capa-dados.png";
+import arteFechamento from "./assets/capa-fechamento.png";
 
 /**
  * O EDITOR DA APRESENTAÇÃO.
@@ -42,7 +48,8 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
   const [aviso, setAviso] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [gerando, setGerando] = useState(null);
-  const [abaLateral, setAbaLateral] = useState("produtos");   // produtos | capa
+  const [abaLateral, setAbaLateral] = useState("produtos");   // produtos | capa | revisoes
+  const [revisoes, setRevisoes] = useState([]);
 
   const obra = useMemo(
     () => obras.find((o) => String(o.codigo) === String(obraCod)) || null, [obras, obraCod]);
@@ -56,6 +63,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
     listarApresentacoes(obraCod)
       .then((l) => {
         if (!vivo) return;
+        setRevisoes(l);
         setDoc(l.length ? { ...l[0] } : { ...novaApresentacao(obra), slides: [novoSlide("")] });
         setAtual(0);
       })
@@ -80,6 +88,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
     try {
       const salvo = await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);
       setDoc((d) => ({ ...d, id: salvo.id, atualizadoEm: salvo.atualizadoEm }));
+      setRevisoes(await listarApresentacoes(obraCod));
       setAviso("Salvo.");
       setTimeout(() => setAviso(null), 2500);
     } catch (e) { setErro(mensagem(e)); }
@@ -94,8 +103,13 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
       const salvo = await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);
       setDoc((d) => ({ ...d, id: salvo.id }));
 
-      const capa = new Uint8Array(await (await fetch(capaTkws)).arrayBuffer());
-      const bytes = await gerarPdf(doc, capa, bytesDaImagem, idioma);
+      const baixar = async (u) => new Uint8Array(await (await fetch(u)).arrayBuffer());
+      const artes = {
+        abertura: await baixar(arteAbertura),
+        dados: await baixar(arteDados),
+        fechamento: await baixar(arteFechamento),
+      };
+      const bytes = await gerarPdf(doc, artes, bytesDaImagem, idioma);
 
       setGerando("Guardando em Arquivos da obra…");
       const nome = nomeDoArquivo({ ...doc, obraCodigo: obraCod }, idioma);
@@ -134,6 +148,22 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
       setAviso(`${nome} gerado e guardado em Arquivos da obra.`);
     } catch (e) { setErro(mensagem(e)); }
     finally { setGerando(null); }
+  }
+
+  /* A REVISÃO NOVA NASCE COMO CÓPIA e não apaga a anterior: a 00 já foi
+     ao cliente, e alguém vai querer conferir o que mudou. */
+  async function novaRevisao() {
+    const rev = proximaRev(revisoes.map((r) => r.rev));
+    if (!window.confirm(`Criar a revisão ${rev} como cópia da ${doc.capa?.rev || "atual"}? A anterior continua guardada.`)) return;
+    setSalvando(true); setErro(null);
+    try {
+      await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);   // fecha a atual
+      const nova = await salvarApresentacao(duplicarComoRev({ ...doc, obraCodigo: obraCod }, rev), usuario);
+      setRevisoes(await listarApresentacoes(obraCod));
+      setDoc(nova); setAtual(0);
+      setAviso(`Revisão ${rev} criada. A ${doc.capa?.rev} continua guardada.`);
+    } catch (e) { setErro(mensagem(e)); }
+    finally { setSalvando(false); }
   }
 
   return (
@@ -227,9 +257,15 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
                 onClick={() => setAbaLateral("produtos")}>Produtos</button>
               <button className={abaLateral === "capa" ? "on" : ""}
                 onClick={() => setAbaLateral("capa")}>Capa</button>
+              <button className={abaLateral === "revisoes" ? "on" : ""}
+                onClick={() => setAbaLateral("revisoes")}>Rev {doc.capa?.rev || "00"}</button>
             </div>
 
-            {abaLateral === "capa" ? (
+            {abaLateral === "revisoes" ? (
+              <Revisoes lista={revisoes} atualId={doc.id} rev={doc.capa?.rev}
+                onAbrir={(r) => { setDoc({ ...r }); setAtual(0); setIdioma(r.idioma || "pt"); }}
+                onNova={novaRevisao} ocupado={salvando} />
+            ) : abaLateral === "capa" ? (
               <Capa doc={doc} onMudar={(capa) => setDoc((d) => ({ ...d, capa }))} idioma={idioma} />
             ) : slide ? (
               <Produtos produtos={produtos} slide={slide} idioma={idioma}
@@ -429,6 +465,47 @@ function Capa({ doc, onMudar, idioma }) {
   );
 }
 
+/* O histórico de revisões.
+ *
+ * Cada uma é um documento inteiro guardado, não um "desfazer": a REV 00
+ * é o que o cliente viu, e ela precisa continuar existindo do jeito que
+ * foi apresentada mesmo depois da 01 mudar tudo. */
+function Revisoes({ lista, atualId, rev, onAbrir, onNova, ocupado }) {
+  return (
+    <div className="ap-revs">
+      <p className="ap-nota">
+        Cada revisão é o documento inteiro, guardado. A que foi ao cliente
+        continua como foi — nada é reescrito por cima.
+      </p>
+
+      {lista.length === 0 && <div className="ap-vazio-min">Nada salvo ainda. Salve para criar a Rev 00.</div>}
+
+      {lista.map((r) => (
+        <button key={r.id} className={`ap-rev ${r.id === atualId ? "on" : ""}`}
+          onClick={() => (r.id === atualId ? null : onAbrir(r))}>
+          <span className="ap-rev-n">{r.rev}</span>
+          <span className="ap-rev-id">
+            <b>Revisão {r.rev}{r.id === atualId ? " — aberta" : ""}</b>
+            <small>
+              {(r.slides || []).length} ambientes · salvo {fmtData(r.atualizadoEm)}
+            </small>
+          </span>
+          {/* PDF gerado é o marco: dali em diante, mexer significa nova
+              revisão, porque essa versão saiu da casa. */}
+          {r.geradoEm && <span className="ap-rev-pdf" title={`PDF gerado em ${fmtData(r.geradoEm)}`}>
+            <FileCheck size={13} />
+          </span>}
+        </button>
+      ))}
+
+      <button className="ap-novo" disabled={ocupado || !atualId} onClick={onNova}>
+        <History size={13} /> Nova revisão (cópia da {rev})
+      </button>
+      {!atualId && <p className="ap-nota">Salve esta antes de criar uma revisão nova.</p>}
+    </div>
+  );
+}
+
 function Produtos({ produtos, slide, idioma, onAdicionar, onMudarBloco, onRemover }) {
   const [termo, setTermo] = useState("");
   const [marcados, setMarcados] = useState(() => new Set());
@@ -575,6 +652,15 @@ function EstiloApresentacao() {
     .ap-capa input { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12.5px; font-weight: 400; color: var(--ink); padding: 7px 9px; }
     .ap-nota { font-size: 11px; color: var(--ink-3); line-height: 1.5; margin: 0 0 12px; }
 
+    .ap-rev { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: none; border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; margin-bottom: 6px; font-family: inherit; cursor: pointer; }
+    .ap-rev:hover { border-color: var(--blue); }
+    .ap-rev.on { background: var(--blue-bg); border-color: var(--blue); cursor: default; }
+    .ap-rev-n { width: 26px; height: 26px; border-radius: 7px; background: var(--panel); color: var(--ink-2); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ap-rev.on .ap-rev-n { background: var(--blue); color: #fff; }
+    .ap-rev-id { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .ap-rev-id b { font-size: 12px; color: var(--ink); font-weight: 600; }
+    .ap-rev-id small { font-size: 10.5px; color: var(--ink-3); }
+    .ap-rev-pdf { color: var(--green); display: flex; }
     .ap-rodape { display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-top: 1px solid var(--border); background: #fff; font-size: 11.5px; color: var(--ink-3); }
     .ap-falta { display: inline-flex; align-items: center; gap: 5px; color: #B45309; }
   `}</style>;
