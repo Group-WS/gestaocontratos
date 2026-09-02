@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Search, Plus, Image as ImageIcon, Trash2, Pencil, X, Store,
-  AlertTriangle, Check, ArrowRight, Upload,
+  AlertTriangle, Check, ArrowRight, Upload, Presentation,
 } from "lucide-react";
 import {
   listarProdutos, salvarProduto, excluirProduto,
@@ -13,6 +13,7 @@ import {
 } from "./lib/catalogo";
 import { eapAtual } from "./lib/eap";
 import { lerProdutos, ancorasDeImagem, juntar, resumoDaImportacao } from "./lib/catalogoImport";
+import Apresentacao from "./Apresentacao";
 import { carregarDadosObra, salvarDadosObra } from "./lib/dadosObra";
 
 /**
@@ -55,6 +56,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
   const [aba, setAba] = useState("produtos");          // produtos | fornecedores
   const [enviando, setEnviando] = useState(false);
   const [importando, setImportando] = useState(null);
+  const [apresentando, setApresentando] = useState(false);
 
   const eap = eapAtual()?.grupos || [];
   const nomeVerba = useCallback(
@@ -114,9 +116,16 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
         <button className={aba === "fornecedores" ? "on" : ""} onClick={() => setAba("fornecedores")}>
           Fornecedores <span className="cat-cont">{fornecedores.length}</span>
         </button>
+        {/* A apresentação vive aqui porque é daqui que ela se alimenta:
+            é o catálogo que tem foto e descrição de cada peça. */}
+        <button className="cat-apresentar" style={{ marginLeft: "auto" }}
+          onClick={() => setApresentando(true)}>
+          <Presentation size={13} /> Apresentação de especificações
+        </button>
+
         {podeEditar && aba === "produtos" && (
           <>
-            <label className="cat-importar" style={{ marginLeft: "auto" }}>
+            <label className="cat-importar">
               <Upload size={13} /> Importar planilha
               <input type="file" accept=".xlsx,.xlsm" style={{ display: "none" }}
                 onChange={(e) => {
@@ -219,6 +228,11 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
       {editando && (
         <FormProduto p={editando} fornecedores={fornecedores} verbas={verbas}
           onFechar={() => setEditando(null)} onSalvar={salvar} onErro={setErro} />
+      )}
+
+      {apresentando && (
+        <Apresentacao usuario={usuario} obras={obras} produtos={produtos}
+          onFechar={() => setApresentando(false)} />
       )}
 
       {escolhidos.size > 0 && aba === "produtos" && (
@@ -902,6 +916,8 @@ function EstiloCatalogo() {
     .cat-envio-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
     .cat-qtd { width: 62px; border: 1px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 12px; padding: 4px 7px; text-align: right; }
     .cat-envio-un { font-size: 11px; color: var(--ink-3); width: 26px; }
+    .cat-apresentar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
+    .cat-apresentar:hover { border-color: var(--blue); color: var(--ink); }
     .cat-importar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
     .cat-importar:hover { border-color: var(--blue); color: var(--ink); }
     .cat-imp-placar { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; margin-bottom: 14px; }

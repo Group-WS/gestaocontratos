@@ -1,32 +1,35 @@
 /**
  * APRESENTAÇÃO DE ESPECIFICAÇÕES.
  *
- * É o documento que a casa mostra ao cliente: uma capa com os dados do
- * projeto e, depois, um slide por ambiente — o render grande, e por cima
- * dele as etiquetas dizendo o que é cada peça.
+ * O documento que a casa mostra ao cliente: uma capa com os dados do
+ * projeto e, depois, um slide por ambiente.
  *
- * As medidas saíram do PDF que ela mandou (2307): a página é 960×540 pt,
- * 16:9, e a capa tem os rótulos desenhados na própria arte, com os
- * valores escritos ao lado de cada um.
+ * A GEOMETRIA SAIU DO PPTX DELA, não de suposição. O slide é 1280×720 px
+ * (960×540 pt) e o slide do Living está montado assim:
  *
- * O QUE UM PROGRAMA NÃO SABE FAZER: onde vai cada etiqueta. Elas ficam
- * sobre o render, apontando pra peça — e nenhuma conta descobre onde
- * está o sofá. Então as etiquetas nascem distribuídas na borda e são
- * arrastadas. Automático até onde dá, manual só no que exige olho.
+ *   render do ambiente   x=0  y=0  692×355 px   -> um CANTO, não sangria
+ *   foto do produto      ~120–290 px
+ *   descrição            logo ABAIXO da foto, 180×42 px
+ *
+ * Ou seja: não é uma foto grande com etiquetas por cima — é uma COLAGEM.
+ * Foi exatamente aí que eu errei na primeira versão.
+ *
+ * Tudo aqui é em PONTOS (960×540), com a origem no ALTO à esquerda, que é
+ * como se pensa numa tela. A conversão para o sistema do PDF (origem
+ * embaixo) acontece num lugar só, na hora de desenhar.
  */
 
 export const LARGURA = 960;
 export const ALTURA = 540;
 
-/* Onde cada valor entra na capa. Medido no PDF dela, em pontos, com a
-   origem no ALTO à esquerda — que é como se pensa numa tela; a conversão
-   pro sistema do PDF (origem embaixo) fica num lugar só, na hora de
-   desenhar. */
-/* `x` e' onde entra o VALOR; `rotuloX`/`rotuloL`, onde esta' o rotulo
-   desenhado na arte — usados so' na emissao em ingles, pra cobrir a
-   palavra em portugues e reescrever por cima. Data e Rev dividem a mesma
-   linha, entao cada um cobre so' o seu pedaco: usar a mesma posicao pros
-   dois fez a tarja do Rev apagar o "Date" recem-escrito. */
+/* A tarja "TKWS | AMBIENTE" no rodapé. Nada pode nascer em cima dela. */
+export const RODAPE = 30;
+
+/* Onde cada valor entra na capa — medido no PPTX, em pontos.
+   `rotuloX`/`rotuloL` marcam onde está o rótulo desenhado NA ARTE, e
+   servem só na emissão em inglês, pra cobrir a palavra em português.
+   Data e Rev dividem a linha; usar a mesma posição pros dois fez a tarja
+   do Rev apagar o "Date" recém-escrito. */
 export const CAMPOS_CAPA = [
   { id: "squad",   x: 200, y: 72,  tamanho: 12, rotuloX: 74,  rotuloL: 120 },
   { id: "cliente", x: 200, y: 308, tamanho: 12, rotuloX: 74,  rotuloL: 120 },
@@ -38,48 +41,52 @@ export const CAMPOS_CAPA = [
 
 export const TITULO_PADRAO = "APRESENTAÇÃO DE ESPECIFICAÇÕES";
 
-/* A etiqueta é branca sobre o render. Fundo escuro atrás dela não é
-   enfeite: render claro engole texto branco, e a apresentação é vista em
-   projetor, onde contraste some. */
-export const ETIQUETA = {
-  tamanho: 10,
+/* O render nasce no canto de cima à esquerda, no tamanho do PPTX
+   (692×355 px = 519×266 pt). Move e redimensiona. */
+export const RENDER_PADRAO = { x: 0, y: 0, w: 519, h: 266 };
+
+/* O bloco de produto: foto em cima, descrição embaixo. A largura manda —
+   a foto é quadrada e a legenda tem a mesma largura dela. */
+export const BLOCO = {
+  largura: 110,
+  legenda: 10,
   entrelinha: 12,
-  recuo: 5,
-  larguraMax: 190,
   maxLinhas: 3,
+  respiro: 6,
 };
 
-/* A tarja "TKWS | AMBIENTE" ocupa o rodapé. Etiqueta que nasce em cima
-   dela fica ilegível — e nasceu, na primeira geração de teste. */
-export const RODAPE = 30;
+export const alturaDoBloco = (b) => {
+  const w = (b && b.w) || BLOCO.largura;
+  return w + BLOCO.respiro + BLOCO.maxLinhas * BLOCO.entrelinha;
+};
 
 export const novaApresentacao = (obra) => ({
-  obraCodigo: obra?.codigo ? String(obra.codigo) : null,
+  obraCodigo: obra && obra.codigo ? String(obra.codigo) : null,
   capa: {
-    squad: obra?.squad || "",
-    cliente: obra?.cliente && obra.cliente !== "—" ? obra.cliente : "",
-    projeto: obra?.codigo ? String(obra.codigo) : "",
-    data: new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" }).replace("/", "/"),
+    squad: (obra && obra.squad) || "",
+    cliente: obra && obra.cliente && obra.cliente !== "—" ? obra.cliente : "",
+    projeto: obra && obra.codigo ? String(obra.codigo) : "",
+    data: new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" }),
     rev: "00",
-    local: obra?.endereco && obra.endereco !== "—" ? obra.endereco : "",
+    local: obra && obra.endereco && obra.endereco !== "—" ? obra.endereco : "",
     titulo: TITULO_PADRAO,
   },
   slides: [],
 });
 
+const id = (p) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
 export const novoSlide = (ambiente = "") => ({
-  id: `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+  id: id("s"),
   ambiente,
-  imagem: null,          // caminho no bucket
-  etiquetas: [],
+  render: { imagem: null, ...RENDER_PADRAO },
+  blocos: [],
 });
 
-/* Quebra o texto da etiqueta em linhas curtas.
- *
- * Sem isto, "SOFÁ ELYSIUM NOA MODULO 220CM + 90CM + MODULO CHAISE 140CM"
- * vira uma faixa de 400pt atravessando o render. No documento dela essas
- * descrições vêm quebradas em duas ou três linhas — é assim que cabem. */
-export function quebrar(texto, porLinha = 26) {
+/* Quebra o texto da legenda em linhas curtas. Sem isto, "SOFÁ ELYSIUM NOA
+   MODULO 220CM + 90CM + MODULO CHAISE 140CM" vira uma faixa atravessando
+   o slide. */
+export function quebrar(texto, porLinha = 24) {
   const palavras = String(texto || "").split(/\s+/).filter(Boolean);
   const linhas = [];
   let atual = "";
@@ -92,63 +99,115 @@ export function quebrar(texto, porLinha = 26) {
   return linhas.length ? linhas : [""];
 }
 
+const cruza = (a, b) =>
+  a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
 /**
- * Onde as etiquetas nascem.
+ * Onde os blocos nascem.
  *
- * Distribuídas pela borda, em sentido horário, começando pelo alto à
- * esquerda: nunca em cima umas das outras, nunca fora da página, e nunca
- * no meio — o meio é onde está o render que elas descrevem.
- *
- * É um ponto de partida pra arrastar, não uma tentativa de acertar.
+ * Varre o slide em grade e pula toda célula que encostaria no render ou
+ * na tarja do rodapé. É ponto de partida pra arrastar — não tentativa de
+ * adivinhar a composição, que é trabalho de quem tem olho.
  */
-export function posicaoInicial(i, total) {
-  const margem = 24;
-  const faixa = 210;                       // largura reservada de cada lado
-  /* O primeiro y possível e o último: embaixo, a etiqueta inteira
-     (até 3 linhas) tem que caber ACIMA da tarja do rodapé. */
-  const topo = margem + 8;
-  const base = ALTURA - RODAPE - ETIQUETA.maxLinhas * ETIQUETA.entrelinha - margem;
-
-  const doLado = Math.ceil(total / 2);
-  const esquerda = i < doLado;
-  const k = esquerda ? i : i - doLado;
-  const quantos = esquerda ? doLado : total - doLado;
-  const passo = quantos > 1 ? (base - topo) / (quantos - 1) : 0;
-  return {
-    x: esquerda ? margem : LARGURA - margem - faixa,
-    y: quantos > 1 ? topo + k * passo : (topo + base) / 2,
-  };
+/* Quantos blocos cabem sem amontoar. A tela usa pra avisar antes, e o
+   teste usa pra provar que redimensionar o render muda a conta. */
+export function quantasCabem(render, largura = BLOCO.largura) {
+  return varrer(render, Infinity, largura).length;
 }
 
-/** Produto do catálogo vira etiqueta. O texto continua editável depois. */
-export function produtoParaEtiqueta(p, i, total) {
-  const { x, y } = posicaoInicial(i, total);
+export function vagas(render, quantos, largura = BLOCO.largura) {
+  const livres = varrer(render, quantos, largura);
+  const alturaBloco = largura + BLOCO.respiro + BLOCO.maxLinhas * BLOCO.entrelinha;
+  /* Mais produtos do que cabem: o excedente amontoa, visivelmente, no
+     canto de baixo. Some seria pior — ninguém procura o que não sabe que
+     sumiu. */
+  while (livres.length < quantos) {
+    const k = livres.length;
+    livres.push({ x: 12 + (k % 5) * 8, y: ALTURA - RODAPE - alturaBloco - 4 });
+  }
+  return livres;
+}
+
+function varrer(render, quantos, largura = BLOCO.largura) {
+  const passoX = largura + 20;
+  const alturaBloco = largura + BLOCO.respiro + BLOCO.maxLinhas * BLOCO.entrelinha;
+  const passoY = alturaBloco + 14;
+  const margem = 12;
+  const ocupado = render ? { x: render.x, y: render.y, w: render.w + 14, h: render.h + 14 } : null;
+
+  const livres = [];
+  for (let y = margem; y + alturaBloco <= ALTURA - RODAPE - 4; y += passoY) {
+    for (let x = margem; x + largura <= LARGURA - margem; x += passoX) {
+      if (ocupado && cruza({ x, y, w: largura, h: alturaBloco }, ocupado)) continue;
+      livres.push({ x, y });
+      if (livres.length >= quantos) return livres;
+    }
+  }
+  return livres;
+}
+
+/** Produto do catálogo vira bloco. O texto continua editável depois. */
+export function produtoParaBloco(p, pos) {
   return {
-    id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    id: id("b"),
     produtoId: p.id || null,
-    texto: p.descricao || "",
-    x, y,
+    imagem: p.imagem || null,
+    texto: String(p.descricaoCriativo || "").trim() || p.descricao || "",
+    textoEn: p.descricaoEn || "",
+    x: pos.x, y: pos.y, w: BLOCO.largura,
   };
 }
 
-/* Quantos slides, quantas etiquetas, e o que falta — a tela precisa
-   dizer isso antes de gerar, porque gerar um PDF de 40 páginas pra
-   descobrir que um ambiente ficou sem imagem é caro. */
+/** Acrescenta produtos a um slide, cada um numa vaga livre. */
+export function acrescentar(slide, produtos) {
+  const jaTem = (slide.blocos || []).length;
+  const livres = vagas(slide.render, jaTem + produtos.length);
+  return {
+    ...slide,
+    blocos: [...(slide.blocos || []), ...produtos.map((p, i) => produtoParaBloco(p, livres[jaTem + i]))],
+  };
+}
+
+/* Mantém o que se arrasta dentro da página. Sem isto um puxão leva o
+   bloco pra fora e ele some do PDF sem erro nenhum. */
+export function dentro(b) {
+  const h = alturaDoBloco(b);
+  return {
+    ...b,
+    x: Math.max(0, Math.min(LARGURA - b.w, b.x)),
+    y: Math.max(0, Math.min(ALTURA - RODAPE - h, b.y)),
+  };
+}
+
+export function renderDentro(r) {
+  const w = Math.max(80, Math.min(LARGURA, r.w));
+  const h = Math.max(60, Math.min(ALTURA, r.h));
+  return {
+    ...r, w, h,
+    x: Math.max(0, Math.min(LARGURA - w, r.x)),
+    y: Math.max(0, Math.min(ALTURA - h, r.y)),
+  };
+}
+
+/* O que falta antes de gerar. Descobrir que um ambiente ficou sem imagem
+   depois de gerar 40 páginas é caro. */
 export function conferir(doc) {
-  const slides = doc?.slides || [];
+  const slides = (doc && doc.slides) || [];
   return {
     slides: slides.length,
-    etiquetas: slides.reduce((a, s) => a + (s.etiquetas || []).length, 0),
-    semImagem: slides.filter((s) => !s.imagem).map((s) => s.ambiente || "sem nome"),
+    blocos: slides.reduce((a, s) => a + (s.blocos || []).length, 0),
+    semImagem: slides.filter((s) => !(s.render && s.render.imagem)).map((s) => s.ambiente || "sem nome"),
     semAmbiente: slides.filter((s) => !String(s.ambiente || "").trim()).length,
-    pronto: slides.length > 0 && slides.every((s) => s.imagem && String(s.ambiente || "").trim()),
+    pronto: slides.length > 0
+      && slides.every((s) => s.render && s.render.imagem && String(s.ambiente || "").trim()),
   };
 }
 
-/* O nome do arquivo é o que vai aparecer em Arquivos da obra. Segue o
-   padrão do documento dela: 2307_PE_ESPECIFICACOES. */
-export function nomeDoArquivo(doc) {
-  const cod = doc?.capa?.projeto || doc?.obraCodigo || "obra";
-  const rev = doc?.capa?.rev ? `_REV${doc.capa.rev}` : "";
-  return `${cod}_PE_ESPECIFICACOES${rev}.pdf`;
+/* O nome do arquivo é o que aparece em Arquivos da obra, no padrão do
+   documento dela: 2307_PE_ESPECIFICACOES. */
+export function nomeDoArquivo(doc, idioma = "pt") {
+  const cod = (doc && doc.capa && doc.capa.projeto) || (doc && doc.obraCodigo) || "obra";
+  const rev = doc && doc.capa && doc.capa.rev ? `_REV${doc.capa.rev}` : "";
+  const lng = idioma === "en" ? "_EN" : "";
+  return `${cod}_PE_ESPECIFICACOES${rev}${lng}.pdf`;
 }

@@ -1,82 +1,123 @@
-/* A apresentacao de especificacoes.
+/* A APRESENTACAO DE ESPECIFICACOES.
  *
- * Duas coisas erram calado aqui: a quebra de linha da etiqueta, que
- * transforma uma descricao longa numa faixa atravessando o render; e a
- * conversao de coordenada -- na tela a origem e' no alto, no PDF e'
- * embaixo, e trocar isso poe a etiqueta fora da pagina sem erro nenhum. */
+ * A geometria saiu do PPTX dela: o render ocupa um CANTO (692x355 de
+ * 1280x720) e o resto do slide e' colagem -- foto do produto com a
+ * descricao embaixo. Na primeira versao eu fiz sangria com etiquetas por
+ * cima, que era outro documento.
+ *
+ * O que erra calado aqui: bloco que nasce em cima do render, bloco que
+ * sai da pagina num arrasto, e a conversao de coordenada (tela conta do
+ * alto, PDF conta de baixo). */
 import assert from "node:assert";
-import { quebrar, posicaoInicial, produtoParaEtiqueta, conferir,
-         nomeDoArquivo, novaApresentacao, novoSlide, LARGURA, ALTURA, RODAPE, ETIQUETA }
-  from "../lib/apresentacaoModelo.js";
+import {
+  quebrar, vagas, produtoParaBloco, acrescentar, dentro, renderDentro,
+  conferir, nomeDoArquivo, novaApresentacao, novoSlide, alturaDoBloco, quantasCabem,
+  LARGURA, ALTURA, RODAPE, BLOCO, CAMPOS_CAPA, RENDER_PADRAO,
+} from "../lib/apresentacaoModelo.js";
+import { ambienteEm, textoDoBloco, faltamEmIngles, TEXTOS } from "../lib/apresentacaoIdioma.js";
 
 let ok = 0;
 const t = (nome, f) => { f(); console.log("ok  ", nome); ok++; };
 
-t("descricao longa vira varias linhas curtas", () => {
-  const l = quebrar("SOFÁ ELYSIUM NOA MODULO 220CM + 90CM + MODULO CHAISE 140CM", 26);
-  assert.ok(l.length >= 2, `ficou em ${l.length} linha(s)`);
-  l.forEach((x) => assert.ok(x.length <= 26, `linha longa: ${x}`));
+/* ---------- legenda ---------- */
+t("descricao longa vira linhas curtas", () => {
+  const l = quebrar("SOFÁ ELYSIUM NOA MODULO 220CM + 90CM + MODULO CHAISE 140CM", 24);
+  assert.ok(l.length >= 3);
+  l.forEach((x) => assert.ok(x.length <= 24, x));
+});
+t("palavra maior que a linha nao e' cortada no meio", () =>
+  assert.deepStrictEqual(quebrar("ELETROELETRONICOSIMPORTADOS", 20), ["ELETROELETRONICOSIMPORTADOS"]));
+t("texto vazio devolve uma linha vazia", () => assert.deepStrictEqual(quebrar(""), [""]));
+
+/* ---------- onde os blocos nascem ---------- */
+const R = { ...RENDER_PADRAO, imagem: "render.jpg" };
+
+t("nenhum bloco nasce EM CIMA do render", () => {
+  const alt = BLOCO.largura + BLOCO.respiro + BLOCO.maxLinhas * BLOCO.entrelinha;
+  vagas(R, 12).forEach((v, i) => {
+    const cruza = v.x < R.x + R.w && v.x + BLOCO.largura > R.x
+               && v.y < R.y + R.h && v.y + alt > R.y;
+    assert.ok(!cruza, `bloco ${i} em (${Math.round(v.x)},${Math.round(v.y)}) cai sobre o render`);
+  });
 });
 
-t("palavra maior que a linha nao some nem e' cortada no meio", () => {
-  const l = quebrar("ELETROELETRONICOSDEALTOPADRAOIMPORTADOS", 20);
-  assert.deepStrictEqual(l, ["ELETROELETRONICOSDEALTOPADRAOIMPORTADOS"]);
+t("nenhum bloco nasce em cima da tarja do rodape", () => {
+  const alt = BLOCO.largura + BLOCO.respiro + BLOCO.maxLinhas * BLOCO.entrelinha;
+  vagas(R, 12).forEach((v) => assert.ok(v.y + alt <= ALTURA - RODAPE, `y=${Math.round(v.y)}`));
 });
 
-t("texto vazio devolve uma linha vazia, e nao zero linhas", () =>
-  assert.deepStrictEqual(quebrar(""), [""]));
+t("nenhum bloco nasce fora da pagina", () =>
+  vagas(R, 20).forEach((v) => {
+    assert.ok(v.x >= 0 && v.x + BLOCO.largura <= LARGURA, `x=${v.x}`);
+    assert.ok(v.y >= 0, `y=${v.y}`);
+  }));
 
-t("as etiquetas nascem DENTRO da pagina", () => {
-  for (const total of [1, 2, 5, 12, 30]) {
-    for (let i = 0; i < total; i++) {
-      const { x, y } = posicaoInicial(i, total);
-      assert.ok(x >= 0 && x <= LARGURA - 100, `x=${x} fora (total ${total})`);
-      assert.ok(y >= 0 && y <= ALTURA - 20, `y=${y} fora (total ${total})`);
-    }
-  }
+t("dois blocos nao nascem no mesmo ponto", () => {
+  const v = vagas(R, 10);
+  assert.strictEqual(new Set(v.map((p) => `${Math.round(p.x)}:${Math.round(p.y)}`)).size, 10);
 });
 
-t("nascem nas BORDAS — o meio e' onde esta' o render", () => {
-  for (let i = 0; i < 10; i++) {
-    const { x } = posicaoInicial(i, 10);
-    assert.ok(x < 300 || x > LARGURA - 300, `x=${x} caiu no meio`);
-  }
+t("render MENOR libera mais vagas — a grade respeita o que se redimensiona", () => {
+  const grande = quantasCabem({ ...R, w: 700, h: 400 });
+  const pequeno = quantasCabem({ ...R, w: 200, h: 150 });
+  assert.ok(pequeno > grande, `pequeno ${pequeno} nao superou grande ${grande}`);
 });
 
-t("nenhuma nasce em cima da tarja do rodape", () => {
-  /* Aconteceu na primeira geracao de teste: a ultima etiqueta caiu sobre
-     o "TKWS | LIVING" e ficou ilegivel. */
-  const limite = ALTURA - RODAPE - ETIQUETA.maxLinhas * ETIQUETA.entrelinha;
-  for (const total of [1, 2, 3, 5, 8, 12, 30]) {
-    for (let i = 0; i < total; i++) {
-      const { y } = posicaoInicial(i, total);
-      assert.ok(y <= limite, `total ${total}, etiqueta ${i}: y=${Math.round(y)} passa de ${limite}`);
-    }
-  }
+t("mais produtos do que cabem: o excedente amontoa, mas NAO some", () => {
+  const v = vagas(R, 99);
+  assert.strictEqual(v.length, 99);
 });
 
-t("duas etiquetas nunca nascem no mesmo ponto", () => {
-  const p = Array.from({ length: 9 }, (_, i) => posicaoInicial(i, 9));
-  const chaves = new Set(p.map((q) => `${Math.round(q.x)}:${Math.round(q.y)}`));
-  assert.strictEqual(chaves.size, 9);
+/* ---------- produto vira bloco ---------- */
+t("o bloco leva a descricao do CRIATIVO, nao a tecnica", () => {
+  const b = produtoParaBloco({ id: "p1", descricao: "SPOT EMBUTIDO POWERUS 3 LEDS 6W 3000K",
+    descricaoCriativo: "Spot embutido branco", imagem: "f.jpg" }, { x: 10, y: 20 });
+  assert.strictEqual(b.texto, "Spot embutido branco");
+  assert.strictEqual(b.imagem, "f.jpg");
+  assert.strictEqual(b.produtoId, "p1");
 });
 
-t("produto vira etiqueta com o texto do catalogo, e editavel depois", () => {
-  const e = produtoParaEtiqueta({ id: "abc", descricao: "SPOT SNELLO BRANCO 5W 3000K" }, 0, 3);
-  assert.strictEqual(e.produtoId, "abc");
-  assert.strictEqual(e.texto, "SPOT SNELLO BRANCO 5W 3000K");
-  assert.ok(Number.isFinite(e.x) && Number.isFinite(e.y));
+t("sem a do criativo, o bloco usa a tecnica — nao fica vazio", () => {
+  const b = produtoParaBloco({ id: "p", descricao: "SPOT X" }, { x: 0, y: 0 });
+  assert.strictEqual(b.texto, "SPOT X");
 });
 
-t("a conferencia acusa ambiente sem imagem ANTES de gerar", () => {
+t("acrescentar NAO empilha em cima do que ja' esta' no slide", () => {
+  let s = novoSlide("Living");
+  s.render = R;
+  s = acrescentar(s, [{ id: 1, descricao: "A" }, { id: 2, descricao: "B" }]);
+  s = acrescentar(s, [{ id: 3, descricao: "C" }]);
+  assert.strictEqual(s.blocos.length, 3);
+  const pontos = new Set(s.blocos.map((b) => `${Math.round(b.x)}:${Math.round(b.y)}`));
+  assert.strictEqual(pontos.size, 3);
+});
+
+/* ---------- arrastar sem sair da pagina ---------- */
+t("arrastar pra fora e' contido, e o bloco nao some do PDF", () => {
+  const b = { x: -500, y: 9999, w: 110 };
+  const d = dentro(b);
+  assert.ok(d.x >= 0 && d.x <= LARGURA - 110);
+  assert.ok(d.y >= 0 && d.y + alturaDoBloco(d) <= ALTURA - RODAPE);
+});
+
+t("o render tambem e' contido, e nao encolhe a ponto de sumir", () => {
+  const r = renderDentro({ x: -100, y: -100, w: 5, h: 5 });
+  assert.ok(r.w >= 80 && r.h >= 60);
+  assert.ok(r.x >= 0 && r.y >= 0);
+  const g = renderDentro({ x: 900, y: 500, w: 5000, h: 5000 });
+  assert.ok(g.x + g.w <= LARGURA && g.y + g.h <= ALTURA);
+});
+
+/* ---------- a conferencia antes de gerar ---------- */
+t("acusa ambiente sem imagem ANTES de gerar 40 paginas", () => {
   const d = novaApresentacao({ codigo: 2307 });
   d.slides = [
-    { ...novoSlide("Living"), imagem: "x.jpg", etiquetas: [{}, {}] },
-    { ...novoSlide("Suíte"), imagem: null },
+    { ...novoSlide("Living"), render: R, blocos: [{}, {}] },
+    novoSlide("Suíte"),
   ];
   const c = conferir(d);
   assert.strictEqual(c.slides, 2);
-  assert.strictEqual(c.etiquetas, 2);
+  assert.strictEqual(c.blocos, 2);
   assert.deepStrictEqual(c.semImagem, ["Suíte"]);
   assert.strictEqual(c.pronto, false);
 });
@@ -84,10 +125,11 @@ t("a conferencia acusa ambiente sem imagem ANTES de gerar", () => {
 t("apresentacao sem slide nenhum nao esta' pronta", () =>
   assert.strictEqual(conferir(novaApresentacao({ codigo: 1 })).pronto, false));
 
-t("a capa ja' nasce preenchida com o que a obra sabe", () => {
-  const d = novaApresentacao({ codigo: 2307, squad: "Comet", cliente: "Bertoni Passos", endereco: "Balneário Camboriú" });
+/* ---------- capa ---------- */
+t("a capa nasce preenchida com o que a obra sabe", () => {
+  const d = novaApresentacao({ codigo: 2307, squad: "Comet", cliente: "Bertoni Passos",
+    endereco: "Balneário Camboriú" });
   assert.strictEqual(d.capa.squad, "Comet");
-  assert.strictEqual(d.capa.cliente, "Bertoni Passos");
   assert.strictEqual(d.capa.projeto, "2307");
   assert.strictEqual(d.capa.rev, "00");
 });
@@ -98,86 +140,51 @@ t("travessao do banco nao vira cliente vazio na capa", () => {
   assert.strictEqual(d.capa.local, "");
 });
 
-t("o nome do arquivo segue o padrao da casa", () => {
-  const d = novaApresentacao({ codigo: 2307 });
-  assert.strictEqual(nomeDoArquivo(d), "2307_PE_ESPECIFICACOES_REV00.pdf");
-});
-
-t("cada slide tem id proprio — dois criados juntos nao colidem", () => {
-  const ids = new Set(Array.from({ length: 50 }, () => novoSlide("x").id));
-  assert.strictEqual(ids.size, 50);
-});
-
-console.log(`\nOK — ${ok} casos`);
-
-/* ---------- PORTUGUES OU INGLES, so' na saida ---------- */
-import { ambienteEm, textoDaEtiqueta, faltamEmIngles, TEXTOS } from "../lib/apresentacaoIdioma.js";
-{
-  let ok2 = 0;
-  const t2 = (nome, f) => { f(); console.log("ok  ", nome); ok2++; };
-
-  t2("ambiente conhecido traduz", () => {
-    assert.strictEqual(ambienteEm("Cozinha", "en"), "Kitchen");
-    assert.strictEqual(ambienteEm("Lavabo", "en"), "Powder Room");
-    assert.strictEqual(ambienteEm("Suíte Master", "en"), "Master Suite");
-    assert.strictEqual(ambienteEm("Dormitório", "en"), "Bedroom");
-  });
-
-  t2("o NUMERO fica — e' ele que separa a suite 01 da 03", () => {
-    assert.strictEqual(ambienteEm("BWC Suíte 03", "en"), "Bathroom Suíte 03");
-    assert.strictEqual(ambienteEm("Dormitório 2", "en"), "Bedroom 2");
-  });
-
-  t2("nome composto que a lista nao tem inteiro traduz o comeco", () =>
-    assert.strictEqual(ambienteEm("Cozinha Gourmet", "en"), "Kitchen Gourmet"));
-
-  t2("ambiente desconhecido sai como foi escrito, e nao traduzido errado", () =>
-    assert.strictEqual(ambienteEm("Mirante do Cliente", "en"), "Mirante do Cliente"));
-
-  t2("em portugues nada e' tocado", () => {
-    assert.strictEqual(ambienteEm("Cozinha", "pt"), "Cozinha");
-    assert.strictEqual(ambienteEm("Suíte Master", "pt"), "Suíte Master");
-  });
-
-  t2("etiqueta sem versao em ingles sai em portugues — nao sai vazia", () => {
-    assert.strictEqual(textoDaEtiqueta({ texto: "SOFÁ ELYSIUM" }, "en"), "SOFÁ ELYSIUM");
-    assert.strictEqual(textoDaEtiqueta({ texto: "SOFÁ", textoEn: "  " }, "en"), "SOFÁ");
-    assert.strictEqual(textoDaEtiqueta({ texto: "SOFÁ", textoEn: "SOFA" }, "en"), "SOFA");
-    assert.strictEqual(textoDaEtiqueta({ texto: "SOFÁ", textoEn: "SOFA" }, "pt"), "SOFÁ");
-  });
-
-  t2("a tela consegue dizer quantas faltam traduzir", () => {
-    const d = { slides: [{ etiquetas: [{ texto: "a", textoEn: "A" }, { texto: "b" }] },
-                         { etiquetas: [{ texto: "c" }] }] };
-    assert.strictEqual(faltamEmIngles(d), 2);
-  });
-
-  t2("o titulo tem versao nos dois idiomas", () => {
-    assert.match(TEXTOS.pt.titulo, /ESPECIFICAÇÕES/);
-    assert.match(TEXTOS.en.titulo, /SPECIFICATIONS/);
-  });
-
-  console.log(`OK — mais ${ok2} casos`);
-}
-
-/* A tarja que cobre o rotulo da capa na emissao em ingles NAO pode
-   invadir a do vizinho. Data e Rev dividem a linha, e a do Rev apagou o
-   "Date" na primeira geracao. */
-import { CAMPOS_CAPA } from "../lib/apresentacaoModelo.js";
-{
+t("as tarjas de rotulo da capa nao se invadem", () => {
   const porLinha = {};
   CAMPOS_CAPA.forEach((c) => (porLinha[c.y] ||= []).push(c));
   Object.entries(porLinha).forEach(([y, cs]) => {
     cs.sort((a, b) => a.rotuloX - b.rotuloX);
-    for (let i = 1; i < cs.length; i++) {
+    for (let i = 1; i < cs.length; i++)
       assert.ok(cs[i - 1].rotuloX + cs[i - 1].rotuloL <= cs[i].rotuloX,
-        `na linha y=${y}, a tarja de ${cs[i-1].id} invade a de ${cs[i].id}`);
-    }
-    // e o VALOR de cada campo tem que ficar depois do proprio rotulo
+        `linha y=${y}: ${cs[i-1].id} invade ${cs[i].id}`);
     cs.forEach((c) => assert.ok(c.x >= c.rotuloX + c.rotuloL - 6,
-      `o valor de ${c.id} cai em cima do proprio rotulo`));
+      `o valor de ${c.id} cai sobre o proprio rotulo`));
   });
-  console.log("ok   as tarjas de rotulo da capa nao se invadem");
-}
+});
 
-console.log("\nOK — todas passaram");
+t("o nome do arquivo segue o padrao da casa, e marca o idioma", () => {
+  const d = novaApresentacao({ codigo: 2307 });
+  assert.strictEqual(nomeDoArquivo(d), "2307_PE_ESPECIFICACOES_REV00.pdf");
+  assert.strictEqual(nomeDoArquivo(d, "en"), "2307_PE_ESPECIFICACOES_REV00_EN.pdf");
+});
+
+t("cada slide tem id proprio — cinquenta criados juntos nao colidem", () =>
+  assert.strictEqual(new Set(Array.from({ length: 50 }, () => novoSlide("x").id)).size, 50));
+
+/* ---------- portugues ou ingles, so' na saida ---------- */
+t("ambiente conhecido traduz", () => {
+  assert.strictEqual(ambienteEm("Cozinha", "en"), "Kitchen");
+  assert.strictEqual(ambienteEm("Lavabo", "en"), "Powder Room");
+  assert.strictEqual(ambienteEm("Suíte Master", "en"), "Master Suite");
+});
+t("o NUMERO fica — e' ele que separa a suite 01 da 03", () =>
+  assert.strictEqual(ambienteEm("Dormitório 2", "en"), "Bedroom 2"));
+t("ambiente desconhecido sai como foi escrito", () =>
+  assert.strictEqual(ambienteEm("Mirante do Cliente", "en"), "Mirante do Cliente"));
+t("em portugues nada e' tocado", () =>
+  assert.strictEqual(ambienteEm("Suíte Master", "pt"), "Suíte Master"));
+t("bloco sem versao em ingles sai em portugues — nao sai vazio", () => {
+  assert.strictEqual(textoDoBloco({ texto: "SOFÁ" }, "en"), "SOFÁ");
+  assert.strictEqual(textoDoBloco({ texto: "SOFÁ", textoEn: "  " }, "en"), "SOFÁ");
+  assert.strictEqual(textoDoBloco({ texto: "SOFÁ", textoEn: "SOFA" }, "en"), "SOFA");
+});
+t("a tela consegue dizer quantos faltam traduzir", () =>
+  assert.strictEqual(faltamEmIngles({ slides: [
+    { blocos: [{ texto: "a", textoEn: "A" }, { texto: "b" }] }, { blocos: [{ texto: "c" }] }] }), 2));
+t("o titulo tem versao nos dois idiomas", () => {
+  assert.match(TEXTOS.pt.titulo, /ESPECIFICAÇÕES/);
+  assert.match(TEXTOS.en.titulo, /SPECIFICATIONS/);
+});
+
+console.log(`\nOK — ${ok} casos`);

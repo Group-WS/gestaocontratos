@@ -1,6 +1,8 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { LARGURA, ALTURA, CAMPOS_CAPA, ETIQUETA, quebrar } from "./apresentacaoModelo.js";
-import { TEXTOS, ambienteEm, textoDaEtiqueta } from "./apresentacaoIdioma.js";
+import {
+  LARGURA, ALTURA, RODAPE, CAMPOS_CAPA, BLOCO, quebrar, alturaDoBloco,
+} from "./apresentacaoModelo.js";
+import { TEXTOS, ambienteEm, textoDoBloco } from "./apresentacaoIdioma.js";
 
 /**
  * Monta o PDF da apresentação.
@@ -11,19 +13,20 @@ import { TEXTOS, ambienteEm, textoDaEtiqueta } from "./apresentacaoIdioma.js";
  *
  * O sistema de coordenadas muda aqui, uma vez só: na tela a origem é no
  * ALTO à esquerda, no PDF é EMBAIXO. Espalhar essa conversão pelo código
- * é receita de etiqueta fora da página.
+ * é receita de bloco fora da página.
  */
-const paraPdfY = (y, alturaDoTexto = 0) => ALTURA - y - alturaDoTexto;
+const paraPdfY = (y, altura = 0) => ALTURA - y - altura;
 
 const BRANCO = rgb(1, 1, 1);
 const PRETO = rgb(0.09, 0.11, 0.13);
+const CINZA = rgb(0.42, 0.44, 0.46);
 
 /* pdf-lib usa WinAnsi nas fontes padrão, e ela não tem tudo que o
    português escreve — travessão, aspas curvas e reticências derrubam a
    geração com "cannot encode". Trocar por equivalentes é melhor do que
    perder o documento inteiro por causa de um travessão. */
 function seguro(t) {
-  return String(t ?? "")
+  return String(t == null ? "" : t)
     .replace(/[–—]/g, "-")
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
@@ -33,26 +36,67 @@ function seguro(t) {
 }
 
 async function embutir(pdf, bytes) {
-  /* PNG e JPEG são reconhecidos pela assinatura, e não pela extensão do
-     arquivo: nome mente, cabeçalho não. */
+  /* PNG e JPEG pela assinatura, não pela extensão: nome mente, cabeçalho
+     não. */
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const ehPng = b[0] === 0x89 && b[1] === 0x50;
   return ehPng ? pdf.embedPng(b) : pdf.embedJpg(b);
 }
 
+/* Desenha a imagem COBRINDO a caixa, sem distorcer: a proporção de um
+   render nunca é a da caixa, e esticar deforma o ambiente — que é
+   justamente o que o cliente está avaliando. O que sobra é cortado. */
+function cobrir(pag, img, caixa) {
+  const escala = Math.max(caixa.w / img.width, caixa.h / img.height);
+  const w = img.width * escala, h = img.height * escala;
+  pag.drawImage(img, {
+    x: caixa.x + (caixa.w - w) / 2,
+    y: paraPdfY(caixa.y + caixa.h) + (caixa.h - h) / 2,
+    width: w, height: h,
+  });
+}
+
+/* A foto do produto CABE inteira na caixa, e não é cortada: aqui o corte
+   tiraria justamente a peça. Sobra fica branca. */
+function caber(pag, img, caixa) {
+  const escala = Math.min(caixa.w / img.width, caixa.h / img.height);
+  const w = img.width * escala, h = img.height * escala;
+  pag.drawImage(img, {
+    x: caixa.x + (caixa.w - w) / 2,
+    y: paraPdfY(caixa.y + caixa.h) + (caixa.h - h) / 2,
+    width: w, height: h,
+  });
+}
+
 /**
- * @param doc        o documento (capa + slides)
+ * @param doc        capa + slides
  * @param capaBytes  a arte da capa (PNG)
- * @param imagemDe   (slide) => Promise<Uint8Array|null> — busca o render
+ * @param imagemDe   (caminho) => Promise<Uint8Array|null>
+ * @param idioma     "pt" | "en"
  */
 export async function gerarPdf(doc, capaBytes, imagemDe, idioma = "pt") {
   const T = TEXTOS[idioma] || TEXTOS.pt;
   const pdf = await PDFDocument.create();
-  pdf.setTitle(seguro(`${doc?.capa?.projeto || ""} ${doc?.capa?.titulo || ""}`.trim()));
-  pdf.setProducer("Gestão de Obras TKWS");
+  pdf.setTitle(seguro(`${(doc && doc.capa && doc.capa.projeto) || ""} ${T.titulo}`.trim()));
+  pdf.setProducer("Gestao de Obras TKWS");
 
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const forte = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+  /* Uma imagem usada em dez slides é embutida UMA vez. Sem isto o PDF
+     duplica cada foto e um documento de 40 páginas passa de 100 MB. */
+  const cache = new Map();
+  const buscar = async (caminho) => {
+    if (!caminho) return null;
+    if (cache.has(caminho)) return cache.get(caminho);
+    let img = null;
+    try {
+      const bytes = await imagemDe(caminho);
+      img = bytes ? await embutir(pdf, bytes) : null;
+    } catch { img = null; }   // foto que falha não derruba o documento
+    cache.set(caminho, img);
+    return img;
+  };
 
   // ---------- CAPA ----------
   const capa = pdf.addPage([LARGURA, ALTURA]);
@@ -61,28 +105,24 @@ export async function gerarPdf(doc, capaBytes, imagemDe, idioma = "pt") {
     capa.drawImage(img, { x: 0, y: 0, width: LARGURA, height: ALTURA });
   }
 
-  /* Os rótulos da capa (Squad, Cliente, Nº do projeto...) estão DENTRO
-     da arte, não são texto. Pra sair em inglês, cada um é coberto por
-     uma tarja da cor do fundo e reescrito. É remendo, e está anotado
-     como remendo: com uma capa em inglês de verdade, some daqui. */
+  /* Os rótulos da capa (Squad, Cliente, Nº do projeto...) estão DENTRO da
+     arte, não são texto. Pra sair em inglês, cada um é coberto por uma
+     tarja da cor do fundo e reescrito. É remendo, e está anotado como
+     remendo: com uma capa em inglês de verdade, some daqui. */
   if (idioma !== "pt") {
     CAMPOS_CAPA.forEach((c) => {
       capa.drawRectangle({
-        x: c.rotuloX, y: paraPdfY(c.y + 2, 13), width: c.rotuloL, height: 15,
-        color: BRANCO,
+        x: c.rotuloX, y: paraPdfY(c.y + 2, 13), width: c.rotuloL, height: 15, color: BRANCO,
       });
       capa.drawText(seguro(T[c.id] || ""), {
-        x: c.rotuloX, y: paraPdfY(c.y, c.tamanho),
-        size: c.tamanho, font: forte, color: PRETO,
+        x: c.rotuloX, y: paraPdfY(c.y, c.tamanho), size: c.tamanho, font: forte, color: PRETO,
       });
     });
   }
 
   CAMPOS_CAPA.forEach((c) => {
-    const valor = seguro(doc?.capa?.[c.id] || "");
+    const valor = seguro((doc && doc.capa && doc.capa[c.id]) || "");
     if (!valor) return;
-    /* Localização costuma ter duas linhas ("Balneário Camboriú,
-       Condomínio bela vista, Quadra F, lote 12 e lote 10"). */
     const linhas = c.linhas > 1 ? quebrar(valor, 42).slice(0, c.linhas) : [valor];
     linhas.forEach((l, i) => {
       capa.drawText(l, {
@@ -92,64 +132,50 @@ export async function gerarPdf(doc, capaBytes, imagemDe, idioma = "pt") {
     });
   });
 
-  /* O título sai no idioma da emissão, a menos que alguém tenha
-     escrito um título próprio — aí o dele manda. */
-  const titulo = doc?.capa?.titulo && doc.capa.titulo !== TEXTOS.pt.titulo
-    ? doc.capa.titulo : T.titulo;
+  /* O título sai no idioma da emissão, a menos que alguém tenha escrito
+     um título próprio — aí o dele manda. */
+  const escrito = doc && doc.capa && doc.capa.titulo;
+  const titulo = escrito && escrito !== TEXTOS.pt.titulo ? escrito : T.titulo;
   if (titulo) {
-    capa.drawText(seguro(titulo), {
-      x: 71, y: paraPdfY(196, 20), size: 20, font: forte, color: PRETO,
-    });
+    capa.drawText(seguro(titulo), { x: 64, y: paraPdfY(184, 20), size: 20, font: forte, color: PRETO });
   }
 
   // ---------- UM SLIDE POR AMBIENTE ----------
-  for (const s of doc?.slides || []) {
+  for (const s of (doc && doc.slides) || []) {
     const pag = pdf.addPage([LARGURA, ALTURA]);
     pag.drawRectangle({ x: 0, y: 0, width: LARGURA, height: ALTURA, color: BRANCO });
 
-    const bytes = await imagemDe(s);
-    if (bytes) {
-      const img = await embutir(pdf, bytes);
-      /* COBRIR a página inteira sem distorcer: a proporção do render
-         nunca é exatamente 16:9, e esticar a imagem pra caber deforma o
-         ambiente — que é justamente o que o cliente está avaliando. */
-      const escala = Math.max(LARGURA / img.width, ALTURA / img.height);
-      const w = img.width * escala, h = img.height * escala;
-      pag.drawImage(img, { x: (LARGURA - w) / 2, y: (ALTURA - h) / 2, width: w, height: h });
+    // O render, no canto e no tamanho em que foi deixado
+    const r = s.render || {};
+    const imgR = await buscar(r.imagem);
+    if (imgR) cobrir(pag, imgR, { x: r.x || 0, y: r.y || 0, w: r.w || 519, h: r.h || 266 });
+
+    // Cada produto: foto em cima, descrição embaixo
+    for (const b of s.blocos || []) {
+      const w = b.w || BLOCO.largura;
+      const img = await buscar(b.imagem);
+      if (img) caber(pag, img, { x: b.x, y: b.y, w, h: w });
+      else {
+        pag.drawRectangle({
+          x: b.x, y: paraPdfY(b.y + w), width: w, height: w,
+          color: rgb(0.95, 0.95, 0.94),
+        });
+      }
+
+      const linhas = quebrar(seguro(textoDoBloco(b, idioma)), 24).slice(0, BLOCO.maxLinhas);
+      linhas.forEach((l, i) => {
+        pag.drawText(l, {
+          x: b.x,
+          y: paraPdfY(b.y + w + BLOCO.respiro + 8 + i * BLOCO.entrelinha, 0),
+          size: BLOCO.legenda, font: regular, color: CINZA,
+          maxWidth: w,
+        });
+      });
     }
 
     // "TKWS | LIVING", no rodapé à esquerda, como no documento dela
-    const rotulo = seguro(`TKWS | ${ambienteEm(s.ambiente, idioma).toUpperCase()}`);
-    pag.drawRectangle({
-      x: 0, y: 0, width: LARGURA, height: 30,
-      color: rgb(0, 0, 0), opacity: 0.45,
-    });
-    pag.drawText(rotulo, { x: 20, y: 10, size: 12, font: forte, color: BRANCO });
-
-    (s.etiquetas || []).forEach((e) => {
-      const linhas = quebrar(seguro(textoDaEtiqueta(e, idioma)), 26);
-      const alturaBloco = linhas.length * ETIQUETA.entrelinha;
-      const largura = Math.min(
-        ETIQUETA.larguraMax,
-        Math.max(...linhas.map((l) => regular.widthOfTextAtSize(l, ETIQUETA.tamanho))) + ETIQUETA.recuo * 2);
-
-      /* Tarja atrás do texto: sem ela a etiqueta some sobre a parte
-         clara do render, e é exatamente sobre parede clara que a maioria
-         cai. */
-      pag.drawRectangle({
-        x: e.x - ETIQUETA.recuo,
-        y: paraPdfY(e.y + alturaBloco, 0) - ETIQUETA.recuo,
-        width: largura,
-        height: alturaBloco + ETIQUETA.recuo * 2,
-        color: rgb(0, 0, 0), opacity: 0.42,
-      });
-
-      linhas.forEach((l, i) => {
-        pag.drawText(l, {
-          x: e.x, y: paraPdfY(e.y + i * ETIQUETA.entrelinha, ETIQUETA.tamanho),
-          size: ETIQUETA.tamanho, font: regular, color: BRANCO,
-        });
-      });
+    pag.drawText(seguro(`TKWS  |  ${ambienteEm(s.ambiente, idioma).toUpperCase()}`), {
+      x: 20, y: paraPdfY(ALTURA - RODAPE + 9, 12), size: 12, font: forte, color: PRETO,
     });
   }
 

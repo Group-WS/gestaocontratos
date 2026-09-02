@@ -121,11 +121,11 @@ export function ambienteEm(nome, idioma) {
   return t;
 }
 
-/** O texto da etiqueta no idioma pedido, com volta pro português. */
-export const textoDaEtiqueta = (e, idioma) =>
-  (idioma === "en" && String(e?.textoEn || "").trim()) ? e.textoEn : (e?.texto || "");
+/** O texto do bloco no idioma pedido, com volta pro português. */
+export const textoDoBloco = (b, idioma) =>
+  (idioma === "en" && String((b && b.textoEn) || "").trim()) ? b.textoEn : ((b && b.texto) || "");
 
-/** Quantas etiquetas ainda não têm versão em inglês. */
+/** Quantos blocos ainda não têm versão em inglês. */
 export const faltamEmIngles = (doc) =>
-  (doc?.slides || []).reduce((a, s) =>
-    a + (s.etiquetas || []).filter((e) => !String(e.textoEn || "").trim()).length, 0);
+  ((doc && doc.slides) || []).reduce((a, s) =>
+    a + (s.blocos || []).filter((b) => !String(b.textoEn || "").trim()).length, 0);
