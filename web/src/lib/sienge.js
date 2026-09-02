@@ -209,7 +209,17 @@ export function descricaoSienge({ fornecedor, marca, desc, modelo, cor, especifi
      Marca igual ao fornecedor nao repete: "MACROSUL / MACROSUL / MESA"
      seria ruido dentro do cadastro, e ninguem apaga isso depois. */
   const mesmo = (a, b2) => norm(a) && norm(a) === norm(b2);
-  const cabeca = fornecedor && !mesmo(marca, fornecedor) ? [fornecedor, marca] : [fornecedor || marca];
+  /* A descricao as vezes JA COMECA com o fornecedor -- e' o formato da
+     planilha de detalhes da obra ("DELUCCI / BANQUETA KOYOTO / ..."). Ali
+     ele nao entra de novo, senao sai "DELUCCI / DELUCCI / BANQUETA". */
+  const jaAbre = (d, f) => {
+    const p = norm(f);
+    if (!p) return false;
+    const inicio = norm(d).slice(0, p.length + 1);
+    return inicio === p || inicio === p + " ";
+  };
+  const abrir = fornecedor && !jaAbre(desc, fornecedor) ? fornecedor : null;
+  const cabeca = abrir && !mesmo(marca, fornecedor) ? [abrir, marca] : [abrir || (mesmo(marca, fornecedor) ? null : marca)];
   /* A ordem e' a da casa, e ela termina no CODIGO:
        FORNECEDOR / DESCRICAO / COR / ESPECIFICACAO / CODIGO
      A especificacao entra antes do codigo porque e' o que distingue duas
@@ -269,18 +279,66 @@ function pareceModelo(v) {
 
 const pareceUnidade = (v) => /^(un|und|unid|unidade|p[cç]|pe[cç]a|cj|conj|kit|m|m2|m²|ml|kg)$/i.test(soTexto(v));
 
+/* Rotulo: texto curto que NOMEIA em vez de descrever. E' a forma de
+   fornecedor ("Casa Cristallo") e de ambiente ("Suite Master") — as duas
+   colunas laterais que a planilha de detalhes traz e que o leitor
+   jogava fora. */
+function pareceRotulo(v) {
+  const t = soTexto(v);
+  if (!t || t.length < 3 || t.length > 40) return false;
+  if (/^https?:/i.test(t)) return false;
+  if (/^[\d.,/-]+$/.test(t)) return false;          // "16.3", "0", datas
+  if (t.split(/\s+/).length > 4) return false;       // frase, nao rotulo
+  return (t.match(/[a-zà-ÿ]/gi) || []).length >= 3;
+}
+
+/* Vocabulario de ambiente. Serve pra separar as DUAS colunas de rotulo
+   uma da outra: fornecedor e ambiente tem exatamente o mesmo formato, e
+   sem isto a escolha seria cara ou coroa. Nao e' lista fechada — e' voto:
+   ganha a coluna que casar mais. */
+const AMBIENTES = /\b(living|sala|estar|jantar|cozinha|copa|su[ií]te|dormit[óo]rio|quarto|banh[oa]|banheiro|lavabo|varanda|sacada|home|closet|hall|corredor|escrit[óo]rio|lavanderia|[áa]rea|churrasqueira|piscina|garagem|terra[çc]o|gourmet|despensa|circula[çc][ãa]o|entrada|recep[çc][ãa]o|social)\b/i;
+
+/* Todas as colunas que parecem rotulo, da esquerda pra direita. Uma
+   planilha de detalhes costuma trazer duas: fornecedor e ambiente. */
+function colunasDeRotulo(L, exceto = []) {
+  const largura = Math.max(...L.map((r) => r.length), 0);
+  const achadas = [];
+  for (let c = 0; c < largura; c++) {
+    if (exceto.includes(c)) continue;
+    const n = L.reduce((a, r) => a + (pareceRotulo(r[c]) ? 1 : 0), 0);
+    // metade das linhas preenchidas ja e' coluna, nao coincidencia
+    if (n >= Math.max(2, Math.ceil(L.length * 0.4))) {
+      const votos = L.reduce((a, r) => a + (AMBIENTES.test(soTexto(r[c])) ? 1 : 0), 0);
+      achadas.push({ i: c, n, ambiente: votos });
+    }
+  }
+  return achadas;
+}
+
 /* Coluna vencedora e' a que mais vezes parece o que se procura. Empate
    fica com a mais a esquerda, que numa planilha de compra e' a que a
    pessoa preencheu primeiro. */
-function colunaQueMais(L, pred) {
+function colunaQueMais(L, pred, exceto = []) {
   const largura = Math.max(...L.map((r) => r.length), 0);
   let melhor = -1, placar = 0;
   for (let c = 0; c < largura; c++) {
+    if (exceto.includes(c)) continue;
     const n = L.reduce((a, r) => a + (pred(r[c]) ? 1 : 0), 0);
     if (n > placar) { placar = n; melhor = c; }
   }
   return placar ? melhor : -1;
 }
+
+/* Zero nao e' informacao: e' o que a planilha escreve onde nao ha nada.
+   Link tambem nao: a coluna de especificacao as vezes traz a pagina do
+   produto, e URL dentro do descritivo do Sienge e' lixo. */
+const semZero = (v) => {
+  const t = v == null ? "" : String(v).trim();
+  if (!t || /^0+([.,]0+)?$/.test(t) || /^https?:/i.test(t)) return null;
+  return v;
+};
+
+const mesmaCoisa = (a, b) => !!a && !!b && norm(a) === norm(b);
 
 export function lerListaSemCabecalho(L) {
   if (!L || !L.length) return [];
@@ -290,6 +348,20 @@ export function lerListaSemCabecalho(L) {
   const iModelo = colunaQueMais(L, (v) => pareceModelo(v));
   const iUn = colunaQueMais(L, pareceUnidade);
   const iQtd = colunaQueMais(L, (v) => typeof v === "number" && v > 0 && Number.isFinite(v));
+
+  /* Especificacao e' a SEGUNDA coluna de frase: a descricao ganha, e o
+     que sobra descreve. Sem isto, a planilha de detalhes chegava aqui
+     com o nome do movel e nada mais — "Sofa Portillo", sem o tecido,
+     sem a medida, sem o lado do braco. */
+  const iEspec = colunaQueMais(L, (v, ) => pareceFrase(v), [iDesc]);
+
+  /* Fornecedor e ambiente tem o mesmo formato. Quem casa mais com o
+     vocabulario de ambiente e' o ambiente; a outra e' o fornecedor. Com
+     uma coluna so', ela e' fornecedor se nao parecer ambiente. */
+  const rotulos = colunasDeRotulo(L, [iDesc, iEspec, iModelo, iUn].filter((x) => x >= 0));
+  const porAmbiente = [...rotulos].sort((a, b) => b.ambiente - a.ambiente);
+  const oAmbiente = porAmbiente[0] && porAmbiente[0].ambiente > 0 ? porAmbiente[0] : null;
+  const oFornecedor = rotulos.find((c) => c !== oAmbiente) || null;
 
   const pega = (r, i) => (i >= 0 && i !== iDesc ? soTexto(r[i]) || null : null);
 
@@ -308,6 +380,14 @@ export function lerListaSemCabecalho(L) {
     codigo: null,
     qtd: iQtd >= 0 && typeof r[iQtd] === "number" ? r[iQtd] : null,
     un: pega(r, iUn),
+    /* "0" e' celula vazia disfarcada: a planilha da casa preenche com
+       zero o que nao tem. Zero nao e' fornecedor nem especificacao. */
+    fornecedor: semZero(pega(r, oFornecedor ? oFornecedor.i : -1)),
+    ambiente: semZero(pega(r, oAmbiente ? oAmbiente.i : -1)),
+    /* Especificacao igual a descricao nao acrescenta nada: repetiria a
+       mesma frase duas vezes dentro do descritivo do Sienge. Acontece
+       quando a planilha traz o descritivo completo nas duas colunas. */
+    especificacao: mesmaCoisa(pega(r, iEspec), soTexto(r[iDesc])) ? null : semZero(pega(r, iEspec)),
   }));
 }
 
@@ -332,7 +412,13 @@ export function lerListaDeProdutos(brutas) {
     return -1;
   };
   const iDesc = acha(/descri/, /^insumo/, /^produto/, /^item$/);
-  const iMarca = acha(/marca/, /fabricante/, /fornecedor/);
+  /* Fornecedor tem coluna PROPRIA, e nao e' sinonimo de marca: numa
+     planilha de detalhes as duas coexistem, e enfiar fornecedor em
+     `marca` fazia a informacao de quem vende sumir. */
+  const iForn = acha(/fornecedor/, /^loja$/, /revenda/);
+  const iMarca = acha(/marca/, /fabricante/);
+  const iAmb = acha(/ambiente/, /^local$/, /^c[ôo]modo$/);
+  const iEspecCab = acha(/especifica/, /^detalhe/, /^observa/);
   const iModelo = acha(/modelo/, /^ref\b/, /referencia/);
   const iCor = acha(/^cor$/, /acabamento/);
   const iCodigo = acha(/^cod/, /^c[oó]d/, /^sku$/);
@@ -344,12 +430,16 @@ export function lerListaDeProdutos(brutas) {
     const desc = pega(r, iDesc);
     if (!desc) return;
     if (/^(descri|insumo|produto|item)/.test(limpo(desc))) return;   // cabecalho repetido
+    const espec = pega(r, iEspecCab);
     saida.push({
       desc,
       marca: pega(r, iMarca),
       modelo: pega(r, iModelo),
       cor: pega(r, iCor),
       codigo: pega(r, iCodigo),
+      fornecedor: semZero(pega(r, iForn)),
+      ambiente: semZero(pega(r, iAmb)),
+      especificacao: mesmaCoisa(espec, desc) ? null : semZero(espec),
     });
   });
   return saida;

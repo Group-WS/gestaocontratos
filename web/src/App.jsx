@@ -6931,6 +6931,14 @@ function GeradorSiengeView() {
      digitar o mesmo nome em cada linha seria repetir a mesma informacao
      dezenas de vezes. Ele abre o detalhe gerado. */
   const [fornecedor, setFornecedor] = useState("");
+  /* ...mas nem toda planilha e' de uma casa so'. A planilha de detalhes
+     da obra traz UM fornecedor POR LINHA, numa coluna lateral. Sao dois
+     mundos diferentes: cotacao (um fornecedor) e planilha de detalhes
+     (varios). O modo diz de qual estamos falando. */
+  const [modoForn, setModoForn] = useState("mesmo");
+  // Fornecedor e ambiente tem o mesmo formato; se o palpite trocou os
+  // dois, um clique desfaz — mais rapido que arrumar a planilha.
+  const [trocado, setTrocado] = useState(false);
   /* O descritivo gerado e' um bom palpite, nao uma sentenca: o Sienge tem
      manias que o arquivo nao conta (abreviacao da casa, ordem de cor e
      modelo). Editado a mao, o texto manda — mas so ate a pessoa desfazer,
@@ -7003,6 +7011,13 @@ function GeradorSiengeView() {
       setAuxSorteado(new Set(sorteados.keys()));
       setCodDet(new Map());
       setDescritos(new Map());
+      /* O modo se escolhe pelo ARQUIVO. Quem sobe uma planilha com dois
+         ou mais fornecedores na coluna quer os dois ou mais; deixar o
+         padrao em "mesmo fornecedor" faria ela subir o arquivo, nao ver
+         diferenca nenhuma, e concluir que a funcao nao existe. */
+      const fornsLidos = new Set(lidas.map((l) => l.fornecedor).filter(Boolean));
+      setModoForn(fornsLidos.size > 1 ? "planilha" : "mesmo");
+      setTrocado(false);
     } catch (e) {
       setErro(`Não consegui ler o arquivo: ${e.message || e}`);
       setLinhas(null);
@@ -7020,10 +7035,26 @@ function GeradorSiengeView() {
 
   const comMae = (c) => maesEscolhidas.has(c.i) || c.maes.length > 0;
 
+  /* Os campos laterais, ja' considerando a troca. */
+  const lateraisDe = useCallback((c) => (trocado
+    ? { fornecedor: c.ambiente, ambiente: c.fornecedor }
+    : { fornecedor: c.fornecedor, ambiente: c.ambiente }), [trocado]);
+
   const geradoDe = useCallback((c) => descricaoSienge({
-    fornecedor, marca: c.marca, desc: c.desc, modelo: c.modelo,
+    fornecedor: modoForn === "planilha" ? lateraisDe(c).fornecedor : fornecedor,
+    marca: c.marca, desc: c.desc, modelo: c.modelo,
     cor: c.cor, especificacao: c.especificacao, codigo: c.codigo,
-  }), [fornecedor]);
+  }), [fornecedor, modoForn, lateraisDe]);
+
+  /* Quais fornecedores a planilha trouxe. Serve de prova: se aqui
+     aparecer "Living, Dormitório", o palpite pegou a coluna errada e o
+     botao de trocar esta' logo do lado. */
+  const fornsDaPlanilha = useMemo(() => {
+    const v = (linhas || []).map((l) => lateraisDe(l).fornecedor).filter(Boolean);
+    return [...new Set(v)];
+  }, [linhas, lateraisDe]);
+  const temLaterais = useMemo(
+    () => (linhas || []).some((l) => l.ambiente || l.fornecedor), [linhas]);
   const descritoDe = useCallback((c) => {
     const meu = descritos.get(c.i);
     return meu != null ? meu : geradoDe(c);
@@ -7101,13 +7132,36 @@ function GeradorSiengeView() {
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
         </label>
         {linhas && (
-          <label className="ger-forn">
-            Fornecedor
-            <input className="form-input" type="text" value={fornecedor}
-              onChange={(e) => setFornecedor(e.target.value)}
-              placeholder="ex: Macrosul"
-              title="Abre o descritivo de todas as linhas — a cotação costuma ser de um fornecedor só" />
-          </label>
+          <div className="ger-forn">
+            <div className="ger-modo">
+              <button className={modoForn === "mesmo" ? "on" : ""}
+                onClick={() => setModoForn("mesmo")}>Mesmo fornecedor</button>
+              <button className={modoForn === "planilha" ? "on" : ""}
+                onClick={() => setModoForn("planilha")}
+                disabled={!temLaterais}
+                title={temLaterais ? "Cada linha usa o fornecedor da própria coluna"
+                  : "Esta planilha não trouxe uma coluna de fornecedor"}>
+                Vários fornecedores
+              </button>
+            </div>
+            {modoForn === "mesmo" ? (
+              <input className="form-input" type="text" value={fornecedor}
+                onChange={(e) => setFornecedor(e.target.value)}
+                placeholder="ex: Macrosul"
+                title="Abre o descritivo de todas as linhas" />
+            ) : (
+              <span className="ger-forn-lidos">
+                {fornsDaPlanilha.length
+                  ? <>{fornsDaPlanilha.length} da planilha: <b>{fornsDaPlanilha.slice(0, 3).join(", ")}</b>
+                      {fornsDaPlanilha.length > 3 && `, +${fornsDaPlanilha.length - 3}`}</>
+                  : "nenhum fornecedor lido"}
+                <button className="ger-trocar-col" onClick={() => setTrocado((v) => !v)}
+                  title="Fornecedor e ambiente têm o mesmo formato — se vieram trocados, isto desfaz">
+                  trocar com ambiente
+                </button>
+              </span>
+            )}
+          </div>
         )}
         <span className="ger-info">
           {carregando ? "Carregando a base do Sienge…"
@@ -7247,11 +7301,19 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
       <td className="mono dim">{linha.i + 1}</td>
       <td>
         <div className="item-desc">{linha.desc}</div>
-        {(linha.marca || linha.codigo || linha.qtd != null || linha.especificacao) && (
+        {/* Tudo que a planilha trouxe sobre o item, logo abaixo do nome:
+            fornecedor e ambiente na frente, porque sao o que situa a
+            linha, e a especificacao depois, que e' o texto longo. */}
+        {(linha.fornecedor || linha.ambiente || linha.marca || linha.codigo
+          || linha.qtd != null || linha.especificacao) && (
           <div className="det-espec">
-            {[linha.qtd != null ? `${linha.qtd} ${linha.un || ""}`.trim() : null,
-              linha.marca, linha.modelo, linha.cor, linha.codigo,
-              linha.especificacao].filter(Boolean).join(" · ")}
+            {linha.fornecedor && <span className="det-forn">{linha.fornecedor}</span>}
+            {linha.ambiente && <span className="det-amb">{linha.ambiente}</span>}
+            <span>
+              {[linha.qtd != null ? `${linha.qtd} ${linha.un || ""}`.trim() : null,
+                linha.marca, linha.modelo, linha.cor, linha.codigo,
+                linha.especificacao].filter(Boolean).join(" · ")}
+            </span>
           </div>
         )}
       </td>
@@ -13456,8 +13518,20 @@ export default function App() {
         .padrao-edit:focus { outline: none; border-color: var(--blue); background: var(--panel-2); }
         .padrao-acoes { display: flex; flex-direction: column; gap: 3px; }
         .padrao-nota { font-size: 10px; color: var(--amber); font-weight: 600; margin-left: 2px; }
-        .ger-forn { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
+        .ger-forn { display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
         .ger-forn .form-input { margin-top: 0; width: 160px; font-size: 12px; padding: 6px 9px; }
+        .ger-modo { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .ger-modo button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--ink-3); padding: 6px 11px; cursor: pointer; }
+        .ger-modo button + button { border-left: 1px solid var(--border); }
+        .ger-modo button:hover:not(:disabled) { color: var(--ink); background: var(--panel); }
+        .ger-modo button.on { background: var(--ink); color: #fff; }
+        .ger-modo button:disabled { color: #C4C4C4; cursor: default; }
+        .ger-forn-lidos { display: inline-flex; align-items: center; gap: 8px; font-weight: 400; color: var(--ink-3); }
+        .ger-forn-lidos b { font-weight: 600; color: var(--ink-2); }
+        .ger-trocar-col { background: none; border: none; font-family: inherit; font-size: 10.5px; color: var(--blue); text-decoration: underline; cursor: pointer; padding: 0; }
+        .det-forn, .det-amb { display: inline-block; border-radius: 4px; padding: 1px 6px; margin-right: 6px; font-weight: 600; font-size: 10.5px; }
+        .det-forn { background: var(--blue-bg); color: var(--blue); }
+        .det-amb { background: var(--panel); color: var(--ink-2); }
         .ger-trocar { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; background: transparent; border: none; color: var(--ink-3); text-decoration: underline; font-size: 10px; cursor: pointer; font-family: inherit; padding: 2px 0; }
         .ger-trocar:hover { color: var(--ink); }
         .ger-busca { display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--panel); border-radius: 8px; }
