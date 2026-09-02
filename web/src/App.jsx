@@ -19,6 +19,7 @@ import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
 import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
+import Catalogo from "./Catalogo";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
@@ -6194,6 +6195,7 @@ const MODULOS = [
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
   { id: "equipe", nome: "Equipe e acessos", sub: "quem é quem, e o que cada um vê", Icone: ShieldCheck },
+  { id: "catalogo", nome: "Catálogo TKWS", sub: "o que a casa especifica", Icone: BookOpen },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: DollarSign },
   // Por ultimo: e' o que se abre com menos frequencia — obra concluida
@@ -14818,6 +14820,13 @@ export default function App() {
             </p>
           </div>
           <div className="sg-col"><GeradorSiengeView /></div>
+          </>
+          ) : modulo === "catalogo" ? (
+          <>
+          <div className="eyebrow">PADRÃO DA CASA</div>
+          <div className="title-row"><span className="title-accent">Catálogo TKWS</span></div>
+          <div className="obra-meta">O que a gente especifica, por grupo e subgrupo — escolha os produtos e eles vão direto para o Executivo da obra</div>
+          <Catalogo usuario={usuario} obras={obrasAtivas} podeEditar={perfilPermiteEditar} />
           </>
           ) : modulo === "equipe" ? (
           <>
