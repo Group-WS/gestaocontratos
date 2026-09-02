@@ -61,6 +61,20 @@ create index if not exists catalogo_produto_forn_idx  on catalogo_produto (forne
 create unique index if not exists catalogo_produto_codigo_idx
   on catalogo_produto (fornecedor, codigo) where codigo is not null;
 
+-- Trava de acesso, igual ao resto do app: quem esta' logado usa, quem
+-- nao esta' nao ve nada. Sem isto a tabela fica gravavel por qualquer um
+-- que leia a chave publica dentro do site -- e ela e' publica por
+-- definicao, vai no arquivo que o navegador baixa.
+alter table catalogo_fornecedor enable row level security;
+drop policy if exists "acesso time (autenticados)" on catalogo_fornecedor;
+create policy "acesso time (autenticados)" on catalogo_fornecedor
+  for all to authenticated using (true) with check (true);
+
+alter table catalogo_produto enable row level security;
+drop policy if exists "acesso time (autenticados)" on catalogo_produto;
+create policy "acesso time (autenticados)" on catalogo_produto
+  for all to authenticated using (true) with check (true);
+
 create or replace function catalogo_toca() returns trigger as $$
 begin new.atualizado_em = now(); return new; end;
 $$ language plpgsql;
