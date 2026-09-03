@@ -34,9 +34,9 @@ t("grupo desconhecido nao vira verba errada — vira nenhuma", () =>
 /* --- recorte fixo, com as armadilhas da planilha dela --- */
 const PLAN = [
   ["ILUMINAÇÃO"],
-  ["IMAGEM", "DESCRIÇÃO", "CÓDIGO", "FORNECEDOR ", "OBSERVAÇÕES"],
-  ["", "SPOT EMBUTIDO POWERUS 3 LEDS BRANCO 6W 3000K", "6730", "NORDECOR", ""],
-  ["", "FITA LED NOR 2835 12V 8W 3000K", "7117", "NORDECOR", "DECORATIVO"],
+  ["IMAGEM", "DESCRIÇÃO", "CÓDIGO", "FORNECEDOR ", "OBSERVAÇÕES", "PREÇO"],
+  ["", "SPOT EMBUTIDO POWERUS 3 LEDS BRANCO 6W 3000K", "6730", "NORDECOR", "", "1.213,11"],
+  ["", "FITA LED NOR 2835 12V 8W 3000K", "7117", "NORDECOR", "DECORATIVO", ""],
   [],
   ["MÓVEIS SOLTOS", "0", "0", "0", "0"],
   ["IMAGEM", "DESCRIÇÃO", "CÓDIGO", "FORNECEDOR ", "OBSERVAÇÕES"],
@@ -62,6 +62,14 @@ t("o subgrupo ja' vem classificado", () =>
 
 t("a linha e' preservada — e' por ela que a foto acha o produto", () =>
   assert.deepStrictEqual(P.map((p) => p.linha), [2, 3, 7]));
+
+t("preco em texto brasileiro vira centavos inteiros", () =>
+  assert.strictEqual(P[0].precoRef, 121311));
+
+t("coluna de preco vazia, ou ausente na linha, nao vira zero", () => {
+  assert.strictEqual(P[1].precoRef, null);
+  assert.strictEqual(P[2].precoRef, null);
+});
 
 /* --- as ancoras de imagem --- */
 const DRAW = `<xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:row>2</xdr:row></xdr:from>
@@ -100,6 +108,7 @@ t("o resumo diz o que NAO vai entrar", () => {
 t("o resumo conta fotos, fornecedores e o que falta classificar", () => {
   const r = resumoDaImportacao(juntar(P, A));
   assert.strictEqual(r.comFoto, 2);
+  assert.strictEqual(r.comPreco, 1);
   assert.deepStrictEqual(r.fornecedores, ["NORDECOR", "Herval"]);
   assert.strictEqual(r.semSubgrupo, 0);
 });

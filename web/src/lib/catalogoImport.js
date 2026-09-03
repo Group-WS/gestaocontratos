@@ -24,6 +24,16 @@ const norm = (s) => String(s ?? "")
 
 const texto = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
 
+/* Preço em texto brasileiro ("1.213,11", "R$ 45,00") vira centavos
+   inteiros — o mesmo formato que o resto do catálogo usa. Coluna vazia
+   ou sem número não é erro, é produto sem preço ainda. */
+const precoDeTexto = (v) => {
+  const t = texto(v).replace(/[^\d,.-]/g, "");
+  if (!t) return null;
+  const n = Number(t.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+};
+
 /* Um título de grupo está SOZINHO na linha — ou acompanhado só de zeros,
    que é como a planilha preenche o que não tem. */
 const ehTituloDeGrupo = (r) => {
@@ -81,6 +91,7 @@ export function lerProdutos(linhas, apelidos) {
          duplicado que ninguém consegue juntar depois. */
       fornecedor: texto(r[3]) || null,
       observacoes: texto(r[4]) || null,
+      precoRef: precoDeTexto(r[5]),
       subgrupo: subgrupoDe(descricao, verba),
     });
   });
@@ -137,6 +148,7 @@ export function resumoDaImportacao(produtos) {
     total: produtos.length,
     validos: produtos.length - semVerba.length,
     comFoto: produtos.filter((p) => p.arquivoImagem).length,
+    comPreco: produtos.filter((p) => p.precoRef != null).length,
     fornecedores: [...new Set(produtos.map((p) => p.fornecedor).filter(Boolean))],
     semSubgrupo: produtos.filter((p) => p.verba && !p.subgrupo).length,
     gruposSemVerba,

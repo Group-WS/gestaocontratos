@@ -852,6 +852,7 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
           tipoItem: p.tipoItem || "produto",
           codigo: p.codigo, observacoes: p.observacoes,
           fornecedor: p.fornecedor || fornPadrao.trim() || null,
+          precoRef: p.precoRef ?? null, precoEm: p.precoRef != null ? hoje() : null,
           imagem, unidade: "un",
         }, usuario);
         salvos.push(salvo);
@@ -899,6 +900,7 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
                 {dePptx && <div><b>{r.produtos}</b><span>produtos</span></div>}
                 {dePptx && <div><b>{r.acabamentos}</b><span>acabamentos</span></div>}
                 <div><b>{r.comFoto}</b><span>com foto</span></div>
+                {!dePptx && <div><b>{r.comPreco}</b><span>com preço</span></div>}
                 <div><b>{r.fornecedores.length}</b><span>fornecedores</span></div>
                 {r.semSubgrupo > 0 && <div><b>{r.semSubgrupo}</b><span>sem subgrupo</span></div>}
               </div>
