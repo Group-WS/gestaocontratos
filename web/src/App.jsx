@@ -8,7 +8,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign
 } from "lucide-react";
-import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC } from "./lib/obras";
+import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, faltandoNaTela } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
   PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoAdmin } from "./lib/pessoas";
@@ -11786,6 +11786,37 @@ export default function App() {
       .then((linhas) => {
         if (!vivo) return;
         setRegistro(new Map(linhas.map((l) => [String(l.codigo), l])));
+
+        /* A OBRA QUE SÓ EXISTE AQUI.
+         *
+         * A lista da barra lateral vem do Monday. Obra cadastrada à mão
+         * não está lá — então ela aparecia no instante em que era criada
+         * e sumia ao recarregar, viva no banco e invisível na tela.
+         *
+         * Quem está no banco e não veio do Monday é remontado a partir
+         * da própria linha. Casa por CÓDIGO, que é a chave de verdade da
+         * obra nos dois mundos. */
+        setObras((prev) => {
+          const faltando = faltandoNaTela(linhas, prev)
+            .map((l) => ({
+              id: String(l.codigo),
+              codigo: String(l.codigo),
+              nome: l.nome,
+              squad: l.squad || null,
+              boardId: l.board_id || null,
+              endereco: l.endereco || "—",
+              cliente: l.cliente || "—",
+              gc: l.gc || null,
+              area: null, prazo: null,
+              valorVendido: l.valor_vendido || 0,
+              categorias: buildCategorias([], null),
+              semDetalhe: true,
+              /* Marca de origem: sem Monday, ela não recebe atualização
+                 de lá, e a tela precisa poder dizer isso. */
+              manual: !l.board_id,
+            }));
+          return faltando.length ? [...prev, ...faltando] : prev;
+        });
       })
       .catch((err) => { if (vivo) setErroBanco(err.message || String(err)); });
     return () => { vivo = false; };

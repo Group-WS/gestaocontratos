@@ -12,11 +12,31 @@ import { supabase, supabaseConfigurado } from "./supabase";
  * abrindo, só não persiste — que é o comportamento antigo.
  */
 
+/* A obra que só existe no NOSSO banco.
+ *
+ * A barra lateral se alimenta do Monday. Obra cadastrada à mão não está
+ * lá — e sem esta conta ela aparece no instante em que é criada e some
+ * ao recarregar: viva no banco, invisível na tela. Aconteceu com a 2517.
+ *
+ * Casa por CÓDIGO, que é a chave de verdade da obra nos dois mundos. O
+ * `id` não serve: no Monday ele cai pro boardId quando a obra não tem
+ * código, e aí duas coisas iguais teriam nomes diferentes.
+ */
+export function faltandoNaTela(linhas, obras) {
+  const naTela = new Set((obras || []).map((o) => String(o.codigo)));
+  return (linhas || []).filter((l) => l && l.codigo && !naTela.has(String(l.codigo)));
+}
+
 export async function listarObras() {
   if (!supabaseConfigurado) return [];
   const { data, error } = await supabase
     .from("obra")
-    .select("codigo, nome, squad, situacao, iniciada_em, concluida_em");
+    /* Traz TUDO que descreve a obra, e não só a situação.
+       Obra cadastrada à mão não existe no Monday: se a leitura do banco
+       devolvesse só `situacao`, não haveria como remontá-la, e ela
+       sumiria a cada recarregada — que foi exatamente o que aconteceu
+       com a 2517. */
+    .select("codigo, nome, squad, situacao, iniciada_em, concluida_em, cliente, endereco, gc, board_id, valor_vendido");
   if (error) throw error;
   return data || [];
 }
