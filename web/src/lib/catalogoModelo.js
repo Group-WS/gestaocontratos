@@ -101,8 +101,15 @@ export const SUBGRUPOS = {
     { nome: "Exaustores", casa: /exaust|ventila/i },
   ],
   "28": [
-    { nome: "Cocção", casa: /cooktop|forno|coifa|depurador|fog[ãa]o/i },
-    { nome: "Refrigeração", casa: /geladeira|refrigerador|frigobar|freezer/i },
+    /* Catálogo Elettromec: cooktop/forno/coifa já cobriam a maioria, mas
+       "Rangetop", "Churrasqueira", "Micro-ondas" e "Dominó" (o nome de
+       marca pros módulos de queimador) são a mesma família — cozinhar —
+       só sem usar essas quatro palavras. */
+    { nome: "Cocção", casa: /cooktop|forno|coifa|depurador|fog[ãa]o|domin[oó]|rangetop|churrasqueira|micro-?ondas|gaveta\s+aquecida/i },
+    /* "refrigerador" não pegava "Gaveta REFRIGERADA" — mesma raiz, sufixo
+       diferente. Beer Center e Dispenser de Água são geladeira com outro
+       nome: guardam bebida ou água gelada, mesma família de aparelho. */
+    { nome: "Refrigeração", casa: /geladeira|refrigerad|frigobar|freezer|adega|ice\s*maker|beer\s*center|dispenser/i },
     { nome: "Lavanderia", casa: /lava\s*e\s*seca|lavadora|secadora|lava[- ]?lou/i },
     { nome: "Áudio e vídeo", casa: /\btv\b|televis|som|soundbar|projetor/i },
   ],
