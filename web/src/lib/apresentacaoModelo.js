@@ -352,9 +352,9 @@ export function duplicarComoRev(doc, rev) {
 
 /* O nome do arquivo é o que aparece em Arquivos da obra, no padrão do
    documento dela: 2307_PE_ESPECIFICACOES. */
-export function nomeDoArquivo(doc, idioma = "pt") {
+export function nomeDoArquivo(doc, idioma = "pt", ext = "pdf") {
   const cod = (doc && doc.capa && doc.capa.projeto) || (doc && doc.obraCodigo) || "obra";
   const rev = doc && doc.capa && doc.capa.rev ? `_REV${doc.capa.rev}` : "";
   const lng = idioma === "en" ? "_EN" : "";
-  return `${cod}_PE_ESPECIFICACOES${rev}${lng}.pdf`;
+  return `${cod}_PE_ESPECIFICACOES${rev}${lng}.${ext}`;
 }

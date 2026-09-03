@@ -15,6 +15,7 @@ import {
 } from "./lib/apresentacao";
 import { IDIOMAS, TEXTOS, ambienteEm, textoDoBloco, faltamEmIngles } from "./lib/apresentacaoIdioma";
 import { gerarPdf } from "./lib/apresentacaoPdf";
+import { gerarPptx } from "./lib/apresentacaoPptx";
 import { urlDaImagem as urlProduto, filtrarProdutos } from "./lib/catalogo";
 import { subirArquivo } from "./lib/arquivos";
 import { carregarDadosObra, salvarDadosObra } from "./lib/dadosObra";
@@ -56,6 +57,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
   const [aviso, setAviso] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [gerando, setGerando] = useState(null);
+  const [gerandoPptx, setGerandoPptx] = useState(null);
   const [abaLateral, setAbaLateral] = useState("produtos");   // produtos | capa | revisoes
   const [revisoes, setRevisoes] = useState([]);
   /* `null` = ajustar à largura. Qualquer número é o zoom escolhido à mão,
@@ -163,6 +165,67 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
     finally { setGerando(null); }
   }
 
+  /* O .pptx EDITÁVEL. Ela pediu especificamente pra poder abrir no
+     PowerPoint e mexer depois — texto e imagem soltos, arrastáveis, não
+     o PDF fechado. Ele TAMBÉM vai pra Arquivos da obra, mas como
+     "outros": não é o documento que saiu pro cliente, é uma cópia de
+     trabalho, e por isso não marca a apresentação como "já gerada" —
+     mexer nela depois de baixar o pptx continua sendo a MESMA revisão. */
+  async function gerarPowerPoint() {
+    setGerandoPptx("Montando o PowerPoint…"); setErro(null);
+    try {
+      const salvo = await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);
+      setDoc((d) => ({ ...d, id: salvo.id }));
+
+      const baixar = async (u) => new Uint8Array(await (await fetch(u)).arrayBuffer());
+      const artes = {
+        abertura: await baixar(arteAbertura),
+        dados: await baixar(arteDados),
+        fechamento: await baixar(arteFechamento),
+      };
+      const bytes = await gerarPptx(doc, artes, bytesDaImagem, idioma);
+
+      setGerandoPptx("Guardando em Arquivos da obra…");
+      const nome = nomeDoArquivo({ ...doc, obraCodigo: obraCod }, idioma, "pptx");
+      const file = new File([bytes], nome, {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      });
+      const info = await subirArquivo({ obraCodigo: obraCod, chave: "apresentacao", file, por: usuario });
+
+      const dados = await carregarDadosObra(obraCod);
+      if (dados) {
+        const outro = dados.editandoPor && dados.editandoPor !== usuario;
+        if (outro) {
+          throw new Error(`O PowerPoint foi gerado e baixado, mas ${dados.editandoPor} está editando esta obra agora — não guardei em Arquivos da obra pra não gravar por cima.`);
+        }
+        const avulsos = Array.isArray(dados.arquivos) ? dados.arquivos : [];
+        await salvarDadosObra(obraCod, {
+          ...dados,
+          arquivos: [...avulsos, {
+            ...info,
+            id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            titulo: nome,
+            /* "outros", não "cliente": esta cópia não saiu pra aprovação
+               de ninguém, é material de edição. */
+            fase: "outros",
+          }],
+        }, usuario);
+      }
+
+      const url = URL.createObjectURL(new Blob([bytes], {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }));
+      const a = document.createElement("a");
+      a.href = url; a.download = nome; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+      setAviso(dados
+        ? `${nome} gerado e guardado em Arquivos da obra.`
+        : `${nome} gerado e baixado. Esta obra ainda não tem dados salvos, então não deu pra guardar em Arquivos da obra.`);
+    } catch (e) { setErro(mensagem(e)); }
+    finally { setGerandoPptx(null); }
+  }
+
   /* A REVISÃO NOVA NASCE COMO CÓPIA e não apaga a anterior: a 00 já foi
      ao cliente, e alguém vai querer conferir o que mudou. */
   async function novaRevisao() {
@@ -210,6 +273,11 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
           <button className="ap-btn ap-primario" disabled={!conf.pronto || !!gerando} onClick={gerar}
             title={conf.pronto ? "" : "Todo ambiente precisa de nome e de imagem"}>
             <FileDown size={13} /> {gerando || "Gerar PDF"}
+          </button>
+          <button className="ap-btn" disabled={!conf.pronto || !!gerandoPptx} onClick={gerarPowerPoint}
+            title={conf.pronto ? "Baixa um .pptx editável — texto e imagem soltos, pra mexer no PowerPoint"
+              : "Todo ambiente precisa de nome e de imagem"}>
+            <FileDown size={13} /> {gerandoPptx || "Baixar .pptx"}
           </button>
         </div>
       </div>
