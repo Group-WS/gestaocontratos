@@ -25,19 +25,63 @@ export const ALTURA = 540;
 /* A tarja "TKWS | AMBIENTE" no rodapé. Nada pode nascer em cima dela. */
 export const RODAPE = 30;
 
-/* Onde cada valor entra na capa — medido no PPTX, em pontos.
-   `rotuloX`/`rotuloL` marcam onde está o rótulo desenhado NA ARTE, e
-   servem só na emissão em inglês, pra cobrir a palavra em português.
-   Data e Rev dividem a linha; usar a mesma posição pros dois fez a tarja
-   do Rev apagar o "Date" recém-escrito. */
+/* AS CAIXAS DE TEXTO DA FOLHA DE DADOS.
+ *
+ * Medidas tiradas do PPTX dela, convertidas de px (96dpi) pra pontos.
+ * Três coisas vieram do arquivo, e não de suposição:
+ *
+ *   - `algn="r"` em TODOS os valores: eles são alinhados à DIREITA, e é
+ *     por isso que terminam junto com o fim da linha impressa na arte.
+ *     Alinhados à esquerda, "00" e "2307" paravam no meio do nada.
+ *   - a cor: #7F7F7F nos valores e #A6A6A6 no título. Não é preto — foi
+ *     o que ela viu e o PDF original confirma.
+ *   - Data e Rev dividem a mesma linha, com fins diferentes.
+ *
+ * `x`,`y` são o canto de cima à esquerda da CAIXA, e `w` a largura dela.
+ * A caixa é o que se arrasta; o texto se alinha dentro. Guardar o ponto
+ * do texto em vez da caixa faria o alinhamento à direita perder a
+ * referência assim que alguém movesse o campo. */
 export const CAMPOS_CAPA = [
-  { id: "squad",   x: 200, y: 72,  tamanho: 12, rotuloX: 74,  rotuloL: 120 },
-  { id: "cliente", x: 200, y: 308, tamanho: 12, rotuloX: 74,  rotuloL: 120 },
-  { id: "projeto", x: 200, y: 362, tamanho: 12, rotuloX: 74,  rotuloL: 120 },
-  { id: "data",    x: 112, y: 414, tamanho: 12, rotuloX: 74,  rotuloL: 34 },
-  { id: "rev",     x: 339, y: 414, tamanho: 12, rotuloX: 256, rotuloL: 34 },
-  { id: "local",   x: 200, y: 466, tamanho: 12, rotuloX: 74,  rotuloL: 120, linhas: 2 },
+  { id: "squad",   x: 150, y: 58,  w: 200, tamanho: 12, rotuloX: 74,  rotuloL: 120 },
+  { id: "cliente", x: 120, y: 295, w: 230, tamanho: 12, rotuloX: 74,  rotuloL: 120 },
+  { id: "projeto", x: 150, y: 349, w: 200, tamanho: 12, rotuloX: 74,  rotuloL: 120 },
+  { id: "data",    x: 74,  y: 401, w: 80,  tamanho: 12, rotuloX: 74,  rotuloL: 34 },
+  { id: "rev",     x: 250, y: 401, w: 100, tamanho: 12, rotuloX: 256, rotuloL: 34 },
+  { id: "local",   x: 120, y: 452, w: 230, tamanho: 12, rotuloX: 74,  rotuloL: 120, linhas: 2 },
+  /* O título é o único alinhado à esquerda — ele não pertence a nenhuma
+     das linhas impressas. */
+  { id: "titulo",  x: 64,  y: 176, w: 540, tamanho: 20, esquerda: true, forte: true },
 ];
+
+/* As cores, medidas no PDF original. */
+export const COR_VALOR = "#7F7F7F";
+export const COR_TITULO = "#A6A6A6";
+
+/* A caixa efetiva de um campo: a que a pessoa moveu, ou a de fábrica. */
+export function caixaDoCampo(doc, campo) {
+  const salva = doc && doc.capa && doc.capa.caixas && doc.capa.caixas[campo.id];
+  return {
+    x: salva && Number.isFinite(salva.x) ? salva.x : campo.x,
+    y: salva && Number.isFinite(salva.y) ? salva.y : campo.y,
+    w: salva && Number.isFinite(salva.w) ? salva.w : campo.w,
+  };
+}
+
+/* Mantém a caixa dentro da página. */
+export function caixaDentro(c) {
+  const w = Math.max(40, Math.min(LARGURA, c.w));
+  return {
+    x: Math.max(0, Math.min(LARGURA - w, c.x)),
+    y: Math.max(0, Math.min(ALTURA - 20, c.y)),
+    w,
+  };
+}
+
+/* Onde está o "2025" impresso na arte da abertura, em pontos — MEDIDO no
+   pixel do arquivo, varrendo o canto superior direito atrás do que não é
+   fundo. Estimado, a tarja caía ao lado e o documento saía com dois anos
+   escritos, que foi o que aconteceu. */
+export const ANO_NA_ARTE = { x: 930, y: 39, w: 12, h: 26, tamanho: 7 };
 
 export const TITULO_PADRAO = "APRESENTAÇÃO DE ESPECIFICAÇÕES";
 

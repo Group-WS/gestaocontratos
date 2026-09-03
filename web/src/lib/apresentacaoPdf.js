@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import {
-  LARGURA, ALTURA, RODAPE, CAMPOS_CAPA, BLOCO, quebrar, alturaDoBloco,
+  LARGURA, ALTURA, RODAPE, CAMPOS_CAPA, BLOCO, quebrar,
+  caixaDoCampo, ANO_NA_ARTE, COR_VALOR, COR_TITULO,
 } from "./apresentacaoModelo.js";
 import { TEXTOS, ambienteEm, textoDoBloco } from "./apresentacaoIdioma.js";
 
@@ -25,11 +26,10 @@ const CINZA = rgb(0.42, 0.44, 0.46);
 const AZUL_CAPA = rgb(9 / 255, 39 / 255, 55 / 255);
 const CINZA_CAPA = rgb(0.55, 0.60, 0.63);
 
-/* Onde está o "2025" impresso na arte da abertura, em pontos. Ele é
-   parte da imagem, não texto — então pra mostrar o ano vigente a tarja
-   cobre e reescreve. Mesmo remendo dos rótulos em inglês, e pelo mesmo
-   motivo: a arte é um PNG. */
-const ANO = { x: 941, y: 40, altura: 30, tamanho: 7 };
+const hex = (h) => rgb(
+  parseInt(h.slice(1, 3), 16) / 255,
+  parseInt(h.slice(3, 5), 16) / 255,
+  parseInt(h.slice(5, 7), 16) / 255);
 
 /* pdf-lib usa WinAnsi nas fontes padrão, e ela não tem tudo que o
    português escreve — travessão, aspas curvas e reticências derrubam a
@@ -122,12 +122,12 @@ export async function gerarPdf(doc, artes, imagemDe, idioma = "pt") {
     /* O ano na lateral é o VIGENTE, e não o que estava impresso quando a
        arte foi feita. Uma apresentação de 2026 com "2025" no canto é o
        tipo de detalhe que o cliente nota e ninguém revisa. */
+    const A = ANO_NA_ARTE;
     abertura.drawRectangle({
-      x: ANO.x - 3, y: paraPdfY(ANO.y + ANO.altura), width: 14, height: ANO.altura,
-      color: AZUL_CAPA,
+      x: A.x, y: paraPdfY(A.y + A.h), width: A.w, height: A.h, color: AZUL_CAPA,
     });
     abertura.drawText(String(new Date().getFullYear()), {
-      x: ANO.x + 6, y: paraPdfY(ANO.y), size: ANO.tamanho, font: regular,
+      x: A.x + 2, y: paraPdfY(A.y + 2), size: A.tamanho, font: regular,
       color: CINZA_CAPA, rotate: degrees(-90),
     });
   }
@@ -152,24 +152,29 @@ export async function gerarPdf(doc, artes, imagemDe, idioma = "pt") {
   }
 
   CAMPOS_CAPA.forEach((c) => {
-    const valor = seguro((doc && doc.capa && doc.capa[c.id]) || "");
+    let bruto = ((doc && doc.capa && doc.capa[c.id]) || "").trim();
+    /* O título sai no idioma da emissão — a menos que alguém tenha
+       escrito um próprio, e aí o dele manda. */
+    if (c.id === "titulo" && (!bruto || bruto === TEXTOS.pt.titulo)) bruto = T.titulo;
+    const valor = seguro(bruto);
     if (!valor) return;
+    const cx = caixaDoCampo(doc, c);
+    const fonte = c.forte ? forte : regular;
+    const cor = hex(c.id === "titulo" ? COR_TITULO : COR_VALOR);
     const linhas = c.linhas > 1 ? quebrar(valor, 42).slice(0, c.linhas) : [valor];
     linhas.forEach((l, i) => {
+      /* ALINHADO À DIREITA, dentro da caixa. É como o PPTX faz (algn="r")
+         e é o que faz o valor terminar junto com o fim da linha impressa
+         na arte. Alinhado à esquerda, "00" e "2307" paravam no vazio. */
+      const larg = fonte.widthOfTextAtSize(l, c.tamanho);
+      const x = c.esquerda ? cx.x : cx.x + cx.w - larg;
       capa.drawText(l, {
-        x: c.x, y: paraPdfY(c.y + i * 14, c.tamanho),
-        size: c.tamanho, font: regular, color: PRETO,
+        x, y: paraPdfY(cx.y + i * 14, c.tamanho),
+        size: c.tamanho, font: fonte, color: cor,
       });
     });
   });
 
-  /* O título sai no idioma da emissão, a menos que alguém tenha escrito
-     um título próprio — aí o dele manda. */
-  const escrito = doc && doc.capa && doc.capa.titulo;
-  const titulo = escrito && escrito !== TEXTOS.pt.titulo ? escrito : T.titulo;
-  if (titulo) {
-    capa.drawText(seguro(titulo), { x: 64, y: paraPdfY(184, 20), size: 20, font: forte, color: PRETO });
-  }
 
   // ---------- UM SLIDE POR AMBIENTE ----------
   /* eslint-disable no-unused-vars */

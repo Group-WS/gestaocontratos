@@ -13,7 +13,7 @@ import {
   quebrar, vagas, produtoParaBloco, acrescentar, dentro, renderDentro,
   conferir, nomeDoArquivo, novaApresentacao, novoSlide, alturaDoBloco, quantasCabem,
   LARGURA, ALTURA, RODAPE, BLOCO, CAMPOS_CAPA, RENDER_PADRAO,
-  proximaRev, duplicarComoRev,
+  proximaRev, duplicarComoRev, caixaDoCampo, caixaDentro,
 } from "../lib/apresentacaoModelo.js";
 import { ambienteEm, textoDoBloco, faltamEmIngles, TEXTOS } from "../lib/apresentacaoIdioma.js";
 
@@ -156,16 +156,57 @@ t("travessao do banco nao vira cliente vazio na capa", () => {
 });
 
 t("as tarjas de rotulo da capa nao se invadem", () => {
+  const comRotulo = CAMPOS_CAPA.filter((c) => c.rotuloX != null);
   const porLinha = {};
-  CAMPOS_CAPA.forEach((c) => (porLinha[c.y] ||= []).push(c));
+  comRotulo.forEach((c) => (porLinha[c.y] ||= []).push(c));
   Object.entries(porLinha).forEach(([y, cs]) => {
     cs.sort((a, b) => a.rotuloX - b.rotuloX);
     for (let i = 1; i < cs.length; i++)
       assert.ok(cs[i - 1].rotuloX + cs[i - 1].rotuloL <= cs[i].rotuloX,
         `linha y=${y}: ${cs[i-1].id} invade ${cs[i].id}`);
-    cs.forEach((c) => assert.ok(c.x >= c.rotuloX + c.rotuloL - 6,
-      `o valor de ${c.id} cai sobre o proprio rotulo`));
   });
+});
+
+t("o valor TERMINA depois do rotulo — ele e' alinhado a direita", () => {
+  /* `x` e' a caixa, e nao o texto: o texto se alinha no fim dela. Antes
+     `x` era o ponto do texto, e o teste checava o comeco -- agora quem
+     tem que passar do rotulo e' o FIM da caixa. */
+  CAMPOS_CAPA.filter((c) => c.rotuloX != null).forEach((c) =>
+    assert.ok(c.x + c.w > c.rotuloX + c.rotuloL,
+      `a caixa de ${c.id} termina antes do proprio rotulo`));
+});
+
+t("na mesma linha, uma caixa nao invade a outra", () => {
+  const porLinha = {};
+  CAMPOS_CAPA.forEach((c) => (porLinha[c.y] ||= []).push(c));
+  Object.values(porLinha).forEach((cs) => {
+    cs.sort((a, b) => a.x - b.x);
+    for (let i = 1; i < cs.length; i++)
+      assert.ok(cs[i - 1].x + cs[i - 1].w <= cs[i].x,
+        `a caixa de ${cs[i-1].id} invade a de ${cs[i].id}`);
+  });
+});
+
+t("todos os valores terminam no MESMO ponto — o fim da linha da arte", () => {
+  const fins = CAMPOS_CAPA
+    .filter((c) => !c.esquerda && c.id !== "data")
+    .map((c) => c.x + c.w);
+  assert.strictEqual(new Set(fins).size, 1, `fins diferentes: ${fins.join(", ")}`);
+});
+
+t("a caixa movida vale mais que a de fabrica, e a de fabrica volta sozinha", () => {
+  const campo = CAMPOS_CAPA[0];
+  const semMexer = caixaDoCampo({ capa: {} }, campo);
+  assert.deepStrictEqual(semMexer, { x: campo.x, y: campo.y, w: campo.w });
+  const movida = caixaDoCampo({ capa: { caixas: { [campo.id]: { x: 10, y: 20, w: 30 } } } }, campo);
+  assert.deepStrictEqual(movida, { x: 10, y: 20, w: 30 });
+});
+
+t("arrastar a caixa pra fora e' contido", () => {
+  const c = caixaDentro({ x: -900, y: 9999, w: 5 });
+  assert.ok(c.x >= 0 && c.y >= 0 && c.w >= 40);
+  const d = caixaDentro({ x: 5000, y: 5000, w: 5000 });
+  assert.ok(d.x + d.w <= LARGURA && d.y <= ALTURA);
 });
 
 t("o nome do arquivo segue o padrao da casa, e marca o idioma", () => {

@@ -7,7 +7,7 @@ import {
 import {
   novaApresentacao, novoSlide, acrescentar, dentro, renderDentro,
   conferir, nomeDoArquivo, quantasCabem, alturaDoBloco, proximaRev, duplicarComoRev,
-  CAMPOS_CAPA, quebrar,
+  CAMPOS_CAPA, quebrar, caixaDoCampo, caixaDentro, ANO_NA_ARTE, COR_VALOR, COR_TITULO,
   LARGURA, ALTURA, RODAPE, BLOCO,
   listarApresentacoes, salvarApresentacao, marcarGerada,
   subirAmbiente, urlDaImagem, bytesDaImagem,
@@ -233,7 +233,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
             {!ehSlide ? (
               <PaginaFixa qual={pagina} doc={doc} idioma={idioma}
                 zoom={zoom} onZoom={setZoom}
-                onEditarCapa={() => setAbaLateral("capa")} />
+                onMudarCapa={(capa) => setDoc((d) => ({ ...d, capa }))} />
             ) : slide ? (
               <>
                 <div className="ap-cab-slide">
@@ -510,9 +510,11 @@ function ListaDeSlides({ doc, pagina, idioma, onIr, onNovo, onExcluir }) {
    casa preenche. Elas aparecem no palco em tamanho real, na mesma
    proporção do PDF, porque ver é o ponto — quem edita a capa precisa ver
    a capa. */
-function PaginaFixa({ qual, doc, idioma, zoom, onZoom, onEditarCapa }) {
+function PaginaFixa({ qual, doc, idioma, zoom, onZoom, onMudarCapa }) {
   const caixa = useRef(null);
   const [cabe, setCabe] = useState(0.6);
+  const [pegando, setPegando] = useState(null);
+  const [editando, setEditando] = useState(null);
   const escala = zoom ?? cabe;
 
   useEffect(() => {
@@ -526,59 +528,95 @@ function PaginaFixa({ qual, doc, idioma, zoom, onZoom, onEditarCapa }) {
   const pt = (v) => `${v * escala}px`;
   const arte = qual === "abertura" ? arteAbertura : qual === "dados" ? arteDados : arteFechamento;
 
+  /* Arrastar a caixa; o texto continua clicável pra editar. Quem move
+     pega a alça, quem escreve clica no texto — um gesto só pras duas
+     coisas obrigaria a escolher entre mover e digitar. */
+  const iniciar = (e, id, modo) => {
+    e.preventDefault(); e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const campo = CAMPOS_CAPA.find((c) => c.id === id);
+    setPegando({ id, modo, x0: e.clientX, y0: e.clientY, orig: caixaDoCampo(doc, campo) });
+  };
+  const mover = (e) => {
+    if (!pegando) return;
+    const dx = (e.clientX - pegando.x0) / escala;
+    const dy = (e.clientY - pegando.y0) / escala;
+    const o = pegando.orig;
+    const nova = pegando.modo === "mover"
+      ? { ...o, x: o.x + dx, y: o.y + dy }
+      : { ...o, w: o.w + dx };
+    onMudarCapa({ ...doc.capa, caixas: { ...(doc.capa?.caixas || {}), [pegando.id]: caixaDentro(nova) } });
+  };
+  const soltar = () => setPegando(null);
+
+  const valorDe = (c) => {
+    const v = (doc.capa?.[c.id] || "").trim();
+    if (c.id === "titulo" && (!v || v === TEXTOS.pt.titulo)) return T.titulo;
+    return v;
+  };
+
   return (
     <>
       <div className="ap-cab-slide">
         <b className="ap-fixa-nome">
           {qual === "abertura" ? "Abertura" : qual === "dados" ? "Dados do projeto" : "Contracapa"}
         </b>
-        {qual === "dados"
-          ? <button className="ap-btn" onClick={onEditarCapa}>Editar os campos</button>
-          : <span className="ap-traduz">arte fixa da casa — nada a preencher</span>}
+        <span className="ap-traduz">
+          {qual === "dados"
+            ? "clique no texto pra escrever · arraste pela alça pra mover"
+            : "arte fixa da casa — nada a preencher"}
+        </span>
       </div>
 
       <div className="ap-medida" ref={caixa}>
       <div className="ap-rolagem">
-      <div className="ap-palco" style={{ width: LARGURA * escala, height: ALTURA * escala }}>
+      <div className="ap-palco" style={{ width: LARGURA * escala, height: ALTURA * escala }}
+        onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
         <img className="ap-arte" src={arte} alt="" draggable={false} />
 
-        {/* O ano é parte do PNG; no PDF ele é coberto e reescrito com o
-            vigente. Aqui a prévia faz o mesmo, senão ela mostraria um ano
-            que o documento não vai ter. */}
+        {/* O ano é parte do PNG. Aqui, como no PDF, ele é COBERTO e
+            reescrito — senão a prévia mostra dois anos, que foi
+            exatamente o que ela viu: o impresso e o desenhado ao lado. */}
         {qual === "abertura" && (
           <span className="ap-ano" style={{
-            left: pt(938), top: pt(38), fontSize: Math.max(4, 7 * escala),
+            left: pt(ANO_NA_ARTE.x), top: pt(ANO_NA_ARTE.y),
+            width: pt(ANO_NA_ARTE.w), height: pt(ANO_NA_ARTE.h),
+            fontSize: Math.max(4, ANO_NA_ARTE.tamanho * escala),
           }}>{new Date().getFullYear()}</span>
         )}
 
-        {qual === "dados" && (
-          <>
-            {CAMPOS_CAPA.map((c) => {
-              const v = doc.capa?.[c.id] || "";
-              if (!v) return null;
-              const linhas = c.linhas > 1 ? quebrar(v, 42).slice(0, c.linhas) : [v];
-              return (
-                <span key={c.id} className="ap-campo" style={{
-                  left: pt(c.x), top: pt(c.y - c.tamanho),
-                  fontSize: Math.max(5, c.tamanho * escala),
-                  lineHeight: `${14 * escala}px`,
-                }}>{linhas.map((l, i) => <div key={i}>{l}</div>)}</span>
-              );
-            })}
-            {/* Em inglês, os rótulos da arte são cobertos e reescritos. */}
-            {idioma !== "pt" && CAMPOS_CAPA.map((c) => (
-              <span key={`r${c.id}`} className="ap-campo ap-rot-en" style={{
-                left: pt(c.rotuloX), top: pt(c.y - c.tamanho),
-                width: pt(c.rotuloL), fontSize: Math.max(5, c.tamanho * escala),
-              }}>{T[c.id]}</span>
-            ))}
-            <span className="ap-campo ap-titulo" style={{
-              left: pt(64), top: pt(164), fontSize: Math.max(7, 20 * escala),
-            }}>
-              {doc.capa?.titulo && doc.capa.titulo !== TEXTOS.pt.titulo ? doc.capa.titulo : T.titulo}
-            </span>
-          </>
-        )}
+        {qual === "dados" && CAMPOS_CAPA.map((c) => {
+          const cx = caixaDoCampo(doc, c);
+          const v = valorDe(c);
+          const editar = editando === c.id;
+          return (
+            <div key={c.id}
+              className={`ap-caixa ${pegando?.id === c.id ? "ativo" : ""} ${editar ? "editando" : ""}`}
+              style={{
+                left: pt(cx.x), top: pt(cx.y), width: pt(cx.w),
+                fontSize: Math.max(5, c.tamanho * escala),
+                lineHeight: `${14 * escala}px`,
+                textAlign: c.esquerda ? "left" : "right",
+                color: c.id === "titulo" ? COR_TITULO : COR_VALOR,
+                fontWeight: c.forte ? 700 : 400,
+              }}>
+              <span className="ap-alca" onPointerDown={(e) => iniciar(e, c.id, "mover")}
+                title="Arraste para mover" />
+              {editar ? (
+                <textarea autoFocus value={doc.capa?.[c.id] || ""}
+                  onChange={(e) => onMudarCapa({ ...doc.capa, [c.id]: e.target.value })}
+                  onBlur={() => setEditando(null)}
+                  onKeyDown={(e) => { if (e.key === "Escape") setEditando(null); }}
+                  style={{ textAlign: c.esquerda ? "left" : "right" }} />
+              ) : (
+                <span className="ap-caixa-txt" onClick={() => setEditando(c.id)}>
+                  {v || <em className="ap-caixa-vazia">{T[c.id] || c.id}</em>}
+                </span>
+              )}
+              <span className="ap-puxador" onPointerDown={(e) => iniciar(e, c.id, "largura")} />
+            </div>
+          );
+        })}
       </div>
       </div>
       </div>
@@ -586,12 +624,13 @@ function PaginaFixa({ qual, doc, idioma, zoom, onZoom, onEditarCapa }) {
 
       <div className="ap-dica">
         {qual === "dados"
-          ? "Os campos vêm da obra e são editáveis na aba Capa, ao lado. O que você vê aqui é o que sai no PDF."
+          ? "Os valores são alinhados à direita, terminando junto com a linha da arte — é como o modelo da casa faz. Arraste a alça para reposicionar."
           : "Esta página sai sempre assim — é a marca da casa."}
       </div>
     </>
   );
 }
+
 
 function Capa({ doc, onMudar, idioma }) {
   const set = (k, v) => onMudar({ ...doc.capa, [k]: v });
@@ -822,10 +861,16 @@ function EstiloApresentacao() {
     .ap-arte { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
     .ap-fixa { background: var(--ink-2) !important; color: #fff !important; }
     .ap-fixa-nome { flex: 1; font-size: 13px; color: var(--ink); }
-    .ap-ano { position: absolute; color: #8C9296; writing-mode: vertical-rl; letter-spacing: .04em; }
-    .ap-campo { position: absolute; color: #191D21; white-space: pre; }
-    .ap-titulo { font-weight: 700; letter-spacing: .01em; }
-    .ap-rot-en { background: #fff; font-weight: 700; }
+    .ap-ano { position: absolute; background: #092737; color: #8C9296; writing-mode: vertical-rl; letter-spacing: .04em; display: flex; align-items: center; justify-content: center; }
+    .ap-caixa { position: absolute; white-space: pre-wrap; }
+    .ap-caixa:hover { outline: 1px dashed var(--blue); }
+    .ap-caixa.ativo { outline: 1px solid var(--blue); }
+    .ap-caixa.editando { outline: 1px solid var(--blue); background: rgba(255,255,255,.92); }
+    .ap-caixa-txt { display: block; cursor: text; min-height: 1em; }
+    .ap-caixa-vazia { color: #C4C4C4; font-style: italic; }
+    .ap-caixa textarea { width: 100%; border: none; outline: none; background: none; resize: none; font: inherit; color: inherit; padding: 0; overflow: hidden; min-height: 2em; }
+    .ap-alca { position: absolute; left: -9px; top: 0; width: 7px; height: 100%; min-height: 12px; border-radius: 3px; background: var(--blue); opacity: 0; cursor: grab; }
+    .ap-caixa:hover .ap-alca { opacity: .85; }
     .ap-rev { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: none; border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; margin-bottom: 6px; font-family: inherit; cursor: pointer; }
     .ap-rev:hover { border-color: var(--blue); }
     .ap-rev.on { background: var(--blue-bg); border-color: var(--blue); cursor: default; }
