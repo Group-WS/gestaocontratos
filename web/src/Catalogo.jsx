@@ -483,7 +483,13 @@ function FormProduto({ p, produtos, fornecedores, verbas, onFechar, onSalvar, on
           <label className="cat-largo">Foto
             <div className="cat-foto-campo">
               {(arquivo || f.imagem) && (
-                <img alt="" src={arquivo ? URL.createObjectURL(arquivo) : urlDaImagem(f.imagem)} />
+                <div className="cat-foto-prev">
+                  <img alt="" src={arquivo ? URL.createObjectURL(arquivo) : urlDaImagem(f.imagem)} />
+                  <button type="button" className="cat-foto-x" title="Remover foto"
+                    onClick={() => { setArquivo(null); set("imagem", null); }}>
+                    <X size={13} />
+                  </button>
+                </div>
               )}
               <label className="cat-btn-arq">
                 <Upload size={13} /> {f.imagem || arquivo ? "Trocar foto" : "Escolher foto"}
@@ -1038,7 +1044,10 @@ function EstiloCatalogo() {
     .cat-campos input, .cat-campos select, .cat-campos textarea { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12.5px; color: var(--ink); padding: 7px 9px; background: #fff; font-weight: 400; resize: vertical; }
     .cat-campos small { font-size: 10px; font-weight: 400; color: var(--ink-3); }
     .cat-foto-campo { display: flex; align-items: center; gap: 12px; }
-    .cat-foto-campo img { width: 80px; height: 62px; object-fit: contain; background: var(--panel); border-radius: 7px; }
+    .cat-foto-prev { position: relative; width: 80px; height: 62px; }
+    .cat-foto-prev img { width: 80px; height: 62px; object-fit: contain; background: var(--panel); border-radius: 7px; }
+    .cat-foto-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: #B91C1C; color: #fff; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+    .cat-foto-x:hover { background: #991B1B; }
     .cat-btn-arq { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
     .cat-duplicata { display: flex; gap: 9px; background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 9px; padding: 10px 12px; font-size: 11.5px; line-height: 1.5; }
     .cat-duplicata svg { flex-shrink: 0; margin-top: 1px; }
