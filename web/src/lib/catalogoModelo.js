@@ -18,6 +18,27 @@
  * não vira um terceiro vocabulário pra alguém manter.
  */
 
+/* ---------- PRODUTO OU ACABAMENTO ----------
+ *
+ * Não é a mesma coisa, e misturar os dois faz a busca virar palheiro.
+ *
+ *   PRODUTO     é peça: torneira, spot, coifa. Tem código, tem preço, é
+ *               comprada, e vira linha no orçamento da obra.
+ *   ACABAMENTO  é cor e material: MDF Freijó, laca off white, tecido
+ *               2796 cor 08, pintura Suvinil Nuvem de Papel. Não se
+ *               compra sozinho — ele QUALIFICA outra coisa.
+ *
+ * Só o produto vai pro Executivo. Acabamento indo pro orçamento criaria
+ * uma linha de custo pra uma cor, e alguém teria que apagar depois.
+ */
+export const TIPOS = [
+  { id: "produto", nome: "Produtos", sub: "peças que se compram" },
+  { id: "acabamento", nome: "Acabamentos", sub: "cor e material" },
+];
+
+export const ehAcabamento = (p) => p?.tipoItem === "acabamento";
+export const podeIrParaObra = (p) => !ehAcabamento(p);
+
 /* ---------- SUBGRUPOS ----------
  *
  * A planilha não tem subgrupo, mas os produtos têm: dentro de Iluminação
@@ -58,9 +79,15 @@ export const SUBGRUPOS = {
     { nome: "Estantes e racks", casa: /estante|rack|buffet|cristaleira/i },
   ],
   "30": [
-    { nome: "Persianas", casa: /persiana|rolo|romana/i },
-    { nome: "Cortinas", casa: /cortina|tecido/i },
+    /* Cortina tem PEÇA e tem ACABAMENTO, e os dois moram nesta verba: a
+       prega e o blackout são jeitos de fazer, não coisas que se compram
+       soltas. Foi ela quem apontou. */
+    { nome: "Pregas", casa: /prega/i },
+    { nome: "Blackout", casa: /black\s*out|blackout/i },
+    { nome: "Tecidos de cortina", casa: /tecido|linho|voil|vo[ií]l/i },
+    { nome: "Persianas", casa: /persiana|rolo|romana|horizontal|vertical/i },
     { nome: "Trilhos e varões", casa: /trilho|var[ãa]o|motoriza/i },
+    { nome: "Cortinas", casa: /cortina/i },
   ],
   "20": [
     { nome: "Split Hi-Wall", casa: /hi[- ]?wall|split(?!.*(cassete|duto|piso))/i },
@@ -186,10 +213,13 @@ export function produtoParaItem(p, qtd = 1) {
 
 const semAcento = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export function filtrarProdutos(produtos, { termo, verba, subgrupo, fornecedor } = {}) {
+export function filtrarProdutos(produtos, { termo, verba, subgrupo, fornecedor, tipoItem } = {}) {
   const t = semAcento(termo).trim();
   return (produtos || []).filter((p) => {
     if (p.ativo === false) return false;
+    /* Sem tipo gravado, é PRODUTO: foi assim que tudo entrou antes deste
+       campo existir, e mudar o passado calado seria pior. */
+    if (tipoItem && (p.tipoItem || "produto") !== tipoItem) return false;
     if (verba && p.verba !== verba) return false;
     if (subgrupo && (p.subgrupo || "") !== subgrupo) return false;
     if (fornecedor && (p.fornecedor || "") !== fornecedor) return false;

@@ -7,12 +7,13 @@ import {
   listarProdutos, salvarProduto, excluirProduto,
   listarFornecedores, salvarFornecedor, excluirFornecedor,
   subirImagem, urlDaImagem,
-  subgrupoDe, subgruposDaVerba, SUBGRUPOS,
+  subgrupoDe, subgruposDaVerba, SUBGRUPOS, TIPOS, ehAcabamento, podeIrParaObra,
   filtrarProdutos, porPrateleira,
   centavos, reais, precoVelho, mesesDesde, produtoParaItem,
 } from "./lib/catalogo";
 import { eapAtual } from "./lib/eap";
 import { lerProdutos, ancorasDeImagem, juntar, resumoDaImportacao } from "./lib/catalogoImport";
+import { lerPptx, resumoPptx } from "./lib/catalogoPptx";
 import Apresentacao from "./Apresentacao";
 import { carregarDadosObra, salvarDadosObra } from "./lib/dadosObra";
 
@@ -50,6 +51,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
   const [verba, setVerba] = useState("");
   const [subgrupo, setSubgrupo] = useState("");
   const [forn, setForn] = useState("");
+  const [tipoItem, setTipoItem] = useState("produto");
 
   const [escolhidos, setEscolhidos] = useState(() => new Set());
   const [editando, setEditando] = useState(null);      // produto em edição, ou {} pra novo
@@ -72,11 +74,16 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
   }, []);
 
   const achados = useMemo(
-    () => filtrarProdutos(produtos, { termo, verba, subgrupo, fornecedor: forn }),
-    [produtos, termo, verba, subgrupo, forn]);
+    () => filtrarProdutos(produtos, { termo, verba, subgrupo, fornecedor: forn, tipoItem }),
+    [produtos, termo, verba, subgrupo, forn, tipoItem]);
+  const quantos = useMemo(() => {
+    const c = { produto: 0, acabamento: 0 };
+    produtos.forEach((p) => { if (p.ativo !== false) c[p.tipoItem === "acabamento" ? "acabamento" : "produto"] += 1; });
+    return c;
+  }, [produtos]);
 
   const prateleiras = useMemo(() => porPrateleira(achados), [achados]);
-  const verbas = useMemo(() => verbasDoCatalogo(produtos, eap), [produtos, eap]);
+  const verbas = useMemo(() => verbasDoCatalogo(achados, eap), [achados, eap]);
   const semSubgrupo = useMemo(() => produtos.filter((p) => !p.subgrupo).length, [produtos]);
 
   const alternar = (id) => setEscolhidos((s) => {
@@ -127,7 +134,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
           <>
             <label className="cat-importar">
               <Upload size={13} /> Importar planilha
-              <input type="file" accept=".xlsx,.xlsm" style={{ display: "none" }}
+              <input type="file" accept=".xlsx,.xlsm,.pptx" style={{ display: "none" }}
                 onChange={(e) => {
                   const f = e.target.files?.[0]; e.target.value = "";
                   if (f) setImportando(f);
@@ -149,6 +156,18 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
       ) : (
         <>
           <div className="cat-filtros">
+            {/* Produto e acabamento no MESMO lugar viram palheiro: 216
+                amostras de MDF e tecido enterram as 74 pecas. */}
+            <div className="cat-tipos">
+              {TIPOS.map((t) => (
+                <button key={t.id} className={tipoItem === t.id ? "on" : ""}
+                  onClick={() => { setTipoItem(t.id); setVerba(""); setSubgrupo(""); }}
+                  title={t.sub}>
+                  {t.nome} <span>{quantos[t.id]}</span>
+                </button>
+              ))}
+            </div>
+
             <label className="cat-busca">
               <Search size={14} className="dim" />
               <input value={termo} onChange={(e) => setTermo(e.target.value)}
@@ -295,7 +314,8 @@ function Cartao({ p, escolhido, onEscolher, podeEditar, onEditar, onExcluir }) {
         </div>
         {p.observacoes && <div className="cat-obs">{p.observacoes}</div>}
         <div className="cat-rodape">
-          {p.precoRef != null
+          {ehAcabamento(p) ? <span className="cat-acab">acabamento</span>
+            : p.precoRef != null
             ? <span className={`cat-preco ${velho ? "velho" : ""}`}>
                 {fmt(p.precoRef)}
                 {/* Preço a mão envelhece. Dizer de quando ele é custa uma
@@ -384,6 +404,15 @@ function FormProduto({ p, fornecedores, verbas, onFechar, onSalvar, onErro }) {
               onChange={(e) => set("descricaoEn", e.target.value)}
               placeholder="Recessed white spotlight" />
             <small>só para apresentação emitida em inglês. Em branco, sai em português.</small>
+          </label>
+
+          <label>Tipo
+            <select value={f.tipoItem || "produto"} onChange={(e) => set("tipoItem", e.target.value)}>
+              {TIPOS.map((t) => <option key={t.id} value={t.id}>{t.nome.replace(/s$/, "")}</option>)}
+            </select>
+            <small>{f.tipoItem === "acabamento"
+              ? "cor e material — não vai pro orçamento da obra"
+              : "peça que se compra e vira linha no Executivo"}</small>
           </label>
 
           <label>Grupo
@@ -681,43 +710,73 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, onFechar, onPronto }) {
   const [midia, setMidia] = useState({});
   const [erro, setErro] = useState(null);
   const [gravando, setGravando] = useState(null);   // {feitos, de}
+  const [dePptx, setDePptx] = useState(false);
+  /* Muita amostra vem sem fornecedor no arquivo (o título do slide nem
+     sempre nomeia a casa). Um campo só, aplicado a todas, poupa 123
+     edições à mão. */
+  const [fornPadrao, setFornPadrao] = useState("");
 
   useEffect(() => {
     let vivo = true;
     (async () => {
       try {
-        const XLSX = await import("xlsx");
+        const ehPptx = /\.pptx$/i.test(arquivo.name);
         const buf = await arquivo.arrayBuffer();
-        /* `bookFiles` é o que dá acesso ao conteúdo bruto do .xlsx —
-           sem ele as fotos e as âncoras ficam inalcançáveis. */
-        const wb = XLSX.read(buf, { type: "array", bookFiles: true });
-        const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],
-          { header: 1, raw: false, defval: "" });
-
-        const texto = (k) => {
-          const f = wb.files?.[k];
-          if (!f) return null;
-          const c = f.content ?? f._data;
-          if (typeof c === "string") return c;
-          return new TextDecoder().decode(c instanceof Uint8Array ? c : new Uint8Array(c));
-        };
-        const anc = ancorasDeImagem(
-          texto("xl/drawings/drawing1.xml"),
-          texto("xl/drawings/_rels/drawing1.xml.rels"));
-
-        const apelidos = eapAtual()?.apelidos || {};
-        const lidos = juntar(lerProdutos(linhas, apelidos), anc);
+        const lidos = ehPptx ? await doPptx(buf) : await doXlsx(buf);
         if (!vivo) return;
-        setItens(lidos);
-        setMidia(wb.files || {});
+        setItens(lidos.itens);
+        setMidia(lidos.midia);
+        setDePptx(ehPptx);
       } catch (e) {
-        if (vivo) setErro(`Não consegui ler a planilha: ${e.message || e}`);
+        if (vivo) setErro(`Não consegui ler o arquivo: ${e.message || e}`);
       } finally { if (vivo) setLendo(false); }
     })();
     return () => { vivo = false; };
   }, [arquivo]);
 
-  const r = useMemo(() => resumoDaImportacao(itens), [itens]);
+  /* A planilha de padronização: uma linha por produto, e as fotos
+     ancoradas às linhas dentro do próprio .xlsx. */
+  async function doXlsx(buf) {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.read(buf, { type: "array", bookFiles: true });
+    const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],
+      { header: 1, raw: false, defval: "" });
+    const txt = (k) => {
+      const f = wb.files?.[k];
+      if (!f) return null;
+      const c = f.content ?? f._data;
+      if (typeof c === "string") return c;
+      return new TextDecoder().decode(c instanceof Uint8Array ? c : new Uint8Array(c));
+    };
+    const anc = ancorasDeImagem(txt("xl/drawings/drawing1.xml"),
+      txt("xl/drawings/_rels/drawing1.xml.rels"));
+    const apelidos = eapAtual()?.apelidos || {};
+    return { itens: juntar(lerProdutos(linhas, apelidos), anc), midia: wb.files || {} };
+  }
+
+  /* A biblioteca de materiais em .pptx: nela a informação está na
+     GEOMETRIA — foto em cima, legenda logo abaixo — e o nome da família
+     está no rodapé do slide. */
+  async function doPptx(buf) {
+    const { unzipSync } = await import("fflate");
+    const zip = unzipSync(new Uint8Array(buf));
+    const dec = new TextDecoder();
+    const nomes = Object.keys(zip)
+      .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+      .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+    const slides = nomes.map((n) => ({
+      xml: dec.decode(zip[n]),
+      rels: zip[`ppt/slides/_rels/${n.split("/").pop()}.rels`]
+        ? dec.decode(zip[`ppt/slides/_rels/${n.split("/").pop()}.rels`]) : "",
+    }));
+    /* O mesmo formato de `midia` do xlsx, pra gravação não precisar saber
+       de onde o arquivo veio. */
+    const midia = {};
+    Object.keys(zip).forEach((n) => { if (n.startsWith("ppt/media/")) midia[n] = { content: zip[n] }; });
+    return { itens: lerPptx(slides), midia };
+  }
+
+  const r = useMemo(() => (dePptx ? resumoPptx(itens) : resumoDaImportacao(itens)), [itens, dePptx]);
 
   async function gravar() {
     const bons = itens.filter((p) => p.verba);
@@ -739,7 +798,10 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, onFechar, onPronto }) {
         }
         const salvo = await salvarProduto({
           verba: p.verba, subgrupo: p.subgrupo, descricao: p.descricao,
-          codigo: p.codigo, fornecedor: p.fornecedor, observacoes: p.observacoes,
+          descricaoCriativo: p.descricaoCriativo || null,
+          tipoItem: p.tipoItem || "produto",
+          codigo: p.codigo, observacoes: p.observacoes,
+          fornecedor: p.fornecedor || fornPadrao.trim() || null,
           imagem, unidade: "un",
         }, usuario);
         salvos.push(salvo);
@@ -775,11 +837,24 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, onFechar, onPronto }) {
           {lendo ? <div className="cat-vazio">Lendo a planilha…</div> : (
             <>
               <div className="cat-imp-placar">
-                <div><b>{r.validos}</b><span>produtos entram</span></div>
+                <div><b>{r.validos}</b><span>itens entram</span></div>
+                {dePptx && <div><b>{r.produtos}</b><span>produtos</span></div>}
+                {dePptx && <div><b>{r.acabamentos}</b><span>acabamentos</span></div>}
                 <div><b>{r.comFoto}</b><span>com foto</span></div>
                 <div><b>{r.fornecedores.length}</b><span>fornecedores</span></div>
                 {r.semSubgrupo > 0 && <div><b>{r.semSubgrupo}</b><span>sem subgrupo</span></div>}
               </div>
+
+              {/* Amostra costuma vir sem fornecedor: o título do slide nem
+                  sempre nomeia a casa. Um campo só evita 100 edições. */}
+              {r.semFornecedor > 0 && (
+                <label className="cat-imp-forn">
+                  {r.semFornecedor} {r.semFornecedor === 1 ? "item veio" : "itens vieram"} sem fornecedor — usar
+                  <input value={fornPadrao} onChange={(e) => setFornPadrao(e.target.value)}
+                    placeholder="ex: Bess Tecidos" />
+                  <small>em branco, entram sem fornecedor e você preenche depois</small>
+                </label>
+              )}
 
               {r.gruposSemVerba.length > 0 && (
                 <div className="cat-pendente">
@@ -918,10 +993,20 @@ function EstiloCatalogo() {
     .cat-envio-un { font-size: 11px; color: var(--ink-3); width: 26px; }
     .cat-apresentar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
     .cat-apresentar:hover { border-color: var(--blue); color: var(--ink); }
+    .cat-tipos { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+    .cat-tipos button { background: none; border: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-3); padding: 7px 14px; cursor: pointer; }
+    .cat-tipos button + button { border-left: 1px solid var(--border); }
+    .cat-tipos button:hover { color: var(--ink); background: var(--panel); }
+    .cat-tipos button.on { background: var(--ink); color: #fff; }
+    .cat-tipos span { opacity: .6; margin-left: 4px; font-weight: 500; }
+    .cat-acab { font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 4px; padding: 2px 7px; }
     .cat-importar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
     .cat-importar:hover { border-color: var(--blue); color: var(--ink); }
     .cat-imp-placar { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; margin-bottom: 14px; }
     .cat-imp-placar > div { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; display: flex; flex-direction: column; }
+    .cat-imp-forn { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); background: var(--panel); border-radius: 9px; padding: 10px 12px; margin-bottom: 14px; }
+    .cat-imp-forn input { border: 1px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 12px; padding: 5px 8px; background: #fff; }
+    .cat-imp-forn small { width: 100%; font-size: 10.5px; color: var(--ink-3); }
     .cat-imp-placar b { font-size: 19px; color: var(--ink); line-height: 1.1; }
     .cat-imp-placar span { font-size: 10.5px; color: var(--ink-3); }
     .cat-nota { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; margin: 12px 0 0; }

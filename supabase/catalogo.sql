@@ -118,6 +118,16 @@ create policy "catalogo apaga" on storage.objects
   for delete to authenticated using (bucket_id = 'catalogo');
 
 -- Reaplicavel em banco que ja' tem a tabela:
+-- PRODUTO ou ACABAMENTO. Produto e' peca (torneira, spot, coifa): tem
+-- codigo, tem preco, vira linha de orcamento. Acabamento e' cor e
+-- material (MDF Freijo, laca off white, tecido 2796): nao se compra
+-- sozinho, qualifica outra coisa. So' o produto vai pro Executivo.
+alter table catalogo_produto add column if not exists tipo_item text not null default 'produto';
+alter table catalogo_produto drop constraint if exists catalogo_produto_tipo_check;
+alter table catalogo_produto add constraint catalogo_produto_tipo_check
+  check (tipo_item in ('produto','acabamento'));
+create index if not exists catalogo_produto_tipo_idx on catalogo_produto (tipo_item, verba);
+
 alter table catalogo_produto add column if not exists descricao_criativo text;
 alter table catalogo_produto add column if not exists descricao_en       text;
 
