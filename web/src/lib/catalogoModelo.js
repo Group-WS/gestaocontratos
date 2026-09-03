@@ -69,11 +69,16 @@ export const SUBGRUPOS = {
        FLEXÍVEL" cita a cuba de passagem, e caia em "Cubas e tanques". */
     { nome: "Complementos hidráulicos", casa: /sif[ãa]o|engate|v[áa]lvula de escoa|\bralo\b/i },
     { nome: "Cubas e tanques", casa: /\bcuba\b|\btanque\b/i },
+    { nome: "Banheiras", casa: /banheira/i },
     { nome: "Bacias e assentos", casa: /bacia|vaso sanit|assento sanit/i },
     { nome: "Chuveiros e duchas", casa: /chuveiro|ducha/i },
     { nome: "Acabamentos de registro", casa: /acabamento.*registro|registro/i },
     { nome: "Torneiras e monocomandos", casa: /torneira|monocomando|misturador/i },
-    { nome: "Acessórios de banho", casa: /porta[- ]?toalha|cabide|papeleira|saboneteira|lixeira/i },
+    /* "Toalheiro", "gancho" e "prateleira" saíram do catálogo BRACCI real
+       (43, 13 e 11 produtos respectivamente) sem casar em nada — a regra
+       de porta-papel também ganhou uma forma solta ("PORTA PAPEL
+       HIGIENICO" em 3 palavras), porque "papeleira" sozinha não cobre. */
+    { nome: "Acessórios de banho", casa: /porta[- ]?toalha|toalheiro|\bgancho\b|cabide|papel\s*higi[eê]nic|papeleira|saboneteira|lixeira|prateleira/i },
   ],
   "24": [
     { nome: "Colchões", casa: /colch[ãa]o/i },

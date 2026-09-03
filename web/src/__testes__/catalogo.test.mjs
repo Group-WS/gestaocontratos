@@ -25,7 +25,7 @@ t("Iluminacao: cada familia cai no seu subgrupo", () => {
 t("o mais especifico ganha: perfil de LED e' perfil, nao fita", () =>
   assert.strictEqual(subgrupoDe("PERFIL LED MINI NEON FLEX 12V 8W 3000K", "05"), "Perfis"));
 
-t("Loucas e Metais: as sete familias", () => {
+t("Loucas e Metais: as nove familias", () => {
   const e = (d, s) => assert.strictEqual(subgrupoDe(d, "27"), s, d);
   e("Cuba de embutir Tramontina Lavínia 56 BL em Aço Inox", "Cubas e tanques");
   e("Tanque de Encaixe Tramontina Hera 34 L", "Cubas e tanques");
@@ -37,6 +37,20 @@ t("Loucas e Metais: as sete familias", () => {
   e("Papeleira Trip cromado", "Acessórios de banho");
   e("Cabide de parede para lavatório Hope cromado", "Acessórios de banho");
   e("SIFÃO - 01 POR CUBA/ ENGATE FLEXÍVEL", "Complementos hidráulicos");
+});
+
+/* Vieram do catalogo real da BRACCI (343 produtos): termos que a lista
+   original nao cobria e ficaram sem subgrupo ate essa extracao mostrar
+   os numeros reais (43 toalheiros, 13 ganchos, 11 prateleiras, 7
+   banheiras). */
+t("Loucas e Metais: familias que vieram do catalogo BRACCI", () => {
+  const e = (d, s) => assert.strictEqual(subgrupoDe(d, "27"), s, d);
+  e("TOALHEIRO ROSTO CROMADO VERCCI", "Acessórios de banho");
+  e("TOALHEIRO DUPLO PRETO FOSCO VERCCI", "Acessórios de banho");
+  e("GANCHO SIMPLES DOURADO VERCCI", "Acessórios de banho");
+  e("PORTA PAPEL HIGIENICO CROMADO VERCCI", "Acessórios de banho");
+  e("PRATELEIRA VIDRO VERCCI CROMADA", "Acessórios de banho");
+  e("BANHEIRA DE HIDROMASSAGEM 1,70M", "Banheiras");
 });
 
 t("ducha COM registro e' ducha, e nao acabamento de registro", () =>
