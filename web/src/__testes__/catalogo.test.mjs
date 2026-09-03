@@ -167,3 +167,23 @@ import { descricaoDoExecutivo, descricaoDoCriativo, descricaoDoCriativoEn } from
 
   console.log(`OK — mais ${ok2} casos`);
 }
+
+/* ---------- ACABAMENTOS METALICOS (cor de torneira/puxador/ferragem) ---------- */
+{
+  let ok3 = 0;
+  const t3 = (nome, f) => { f(); console.log("ok  ", nome); ok3++; };
+
+  t3("a cor do metal cai em Acabamentos metalicos, nao em Torneiras", () => {
+    ["ACABAMENTO METAL PRETO (BP)", "ACABAMENTO METAL CROMADO (C)",
+     "ACABAMENTO METAL DOURADO ESCOVADO (BG)", "ACABAMENTO METAL BRANCO (W)"]
+      .forEach((d) => assert.strictEqual(subgrupoDe(d, "27"), "Acabamentos metálicos", d));
+  });
+
+  t3("peca de verdade continua caindo onde caia antes", () => {
+    assert.strictEqual(subgrupoDe("Torneira Lift cromada", "27"), "Torneiras e monocomandos");
+    assert.strictEqual(subgrupoDe("Acabamento para registro Lift cromado", "27"), "Acabamentos de registro");
+    assert.strictEqual(subgrupoDe("SIFÃO - 01 POR CUBA", "27"), "Complementos hidráulicos");
+  });
+
+  console.log(`OK — mais ${ok3} casos`);
+}

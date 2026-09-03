@@ -60,6 +60,11 @@ export const SUBGRUPOS = {
     { nome: "Trilhos e balizadores", casa: /trilho|balizador/i },
   ],
   "27": [
+    /* A COR do metal — preto, cromado, dourado, escovados — nao e' uma
+       peca, e' o acabamento que se escolhe pra torneira, puxador,
+       ferragem. Vem primeiro na lista: sem isso, "ACABAMENTO METAL
+       PRETO" nao casa com nenhuma regra abaixo e fica sem subgrupo. */
+    { nome: "Acabamentos metálicos", casa: /acabamento\s*(de\s*)?met[aá]l|cor\s+(de\s+)?met[aá]l/i },
     /* Sifao e engate vem ANTES de cuba: "SIFÃO - 01 POR CUBA/ ENGATE
        FLEXÍVEL" cita a cuba de passagem, e caia em "Cubas e tanques". */
     { nome: "Complementos hidráulicos", casa: /sif[ãa]o|engate|v[áa]lvula de escoa|\bralo\b/i },
