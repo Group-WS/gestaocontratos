@@ -831,8 +831,9 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
     const bons = fonte.filter((p) => p.verba);
     setGravando({ feitos: 0, de: bons.length });
     const salvos = [];
-    try {
-      for (const p of bons) {
+    const falhas = [];
+    for (const p of bons) {
+      try {
         let imagem = null;
         if (p.arquivoImagem && midia[p.arquivoImagem]) {
           const c = midia[p.arquivoImagem].content ?? midia[p.arquivoImagem]._data;
@@ -854,22 +855,30 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
           imagem, unidade: "un",
         }, usuario);
         salvos.push(salvo);
-        setGravando({ feitos: salvos.length, de: bons.length });
+      } catch (e) {
+        /* Um item com problema (ex.: código repetido pra esse fornecedor)
+           não pode travar o lote inteiro — ela vê o que ficou de fora no
+           final e decide o que fazer, o resto entra normalmente. */
+        falhas.push({ descricao: p.descricao, codigo: p.codigo, erro: mensagemDeErro(e) });
       }
-
-      /* Os fornecedores da planilha entram no cadastro junto: sem isso o
-         nome existiria dentro do produto e não haveria onde guardar o
-         contato de quem vende. */
-      for (const nome of r.fornecedores) {
-        try { await salvarFornecedor({ nome }, usuario); } catch { /* já existe */ }
-      }
-
-      onPronto(salvos, `${salvos.length} produtos entraram no catálogo.`);
-    } catch (e) {
-      setErro(`Parei em ${salvos.length} de ${bons.length}: ${mensagemDeErro(e)}`);
-      setGravando(null);
-      if (salvos.length) onPronto(salvos, `${salvos.length} produtos entraram antes do erro.`);
+      setGravando({ feitos: salvos.length + falhas.length, de: bons.length });
     }
+
+    /* Os fornecedores da planilha entram no cadastro junto: sem isso o
+       nome existiria dentro do produto e não haveria onde guardar o
+       contato de quem vende. */
+    for (const nome of r.fornecedores) {
+      try { await salvarFornecedor({ nome }, usuario); } catch { /* já existe */ }
+    }
+
+    let msg = `${salvos.length} produtos entraram no catálogo.`;
+    if (falhas.length) {
+      const rotulo = (f) => f.codigo || f.descricao;
+      const lista = falhas.slice(0, 8).map(rotulo).join(", ");
+      const resto = falhas.length > 8 ? ` e mais ${falhas.length - 8}` : "";
+      msg += ` ${falhas.length} ${falhas.length === 1 ? "ficou de fora" : "ficaram de fora"} (${falhas[0].erro}): ${lista}${resto}.`;
+    }
+    onPronto(salvos, msg);
   }
 
   return (
