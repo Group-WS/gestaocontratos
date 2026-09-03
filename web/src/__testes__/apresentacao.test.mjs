@@ -277,3 +277,81 @@ t("a copia e' PROFUNDA — mexer na nova nao mexe na que foi ao cliente", () => 
 });
 
 console.log(`\nOK — ${ok} casos`);
+
+/* ---------- A LISTAGEM ---------- */
+import {
+  blocosImagem, blocosLista, listaDoSlide, listaDentro, alturaDaLista,
+  alternarModoBloco, LISTA_PADRAO, LISTA_ITEM,
+} from "../lib/apresentacaoModelo.js";
+{
+  let ok2 = 0;
+  const t2 = (nome, f) => { f(); console.log("ok  ", nome); ok2++; };
+
+  const blocoImg = (over) => ({ id: `b${Math.random()}`, x: 0, y: 0, w: 110, texto: "X", ...over });
+
+  t2("sem modo gravado, o bloco conta como IMAGEM — era o que ja' acontecia", () => {
+    const s = { blocos: [blocoImg()] };
+    assert.strictEqual(blocosImagem(s).length, 1);
+    assert.strictEqual(blocosLista(s).length, 0);
+  });
+
+  t2("blocosImagem e blocosLista se separam pelo campo modo", () => {
+    const s = { blocos: [blocoImg({ modo: "imagem" }), blocoImg({ modo: "lista" }), blocoImg({ modo: "lista" })] };
+    assert.strictEqual(blocosImagem(s).length, 1);
+    assert.strictEqual(blocosLista(s).length, 2);
+  });
+
+  t2("a listagem sem posicao salva usa a de fabrica", () => {
+    const l = listaDoSlide({});
+    assert.deepStrictEqual(l, LISTA_PADRAO);
+  });
+
+  t2("a listagem MOVIDA vale mais que a de fabrica", () => {
+    const l = listaDoSlide({ lista: { x: 10, y: 20, w: 150 } });
+    assert.deepStrictEqual(l, { x: 10, y: 20, w: 150 });
+  });
+
+  t2("a altura da listagem cresce com a quantidade de itens", () => {
+    assert.ok(alturaDaLista(5) > alturaDaLista(2));
+    assert.strictEqual(alturaDaLista(0), alturaDaLista(1));   // nunca fica com altura zero
+  });
+
+  t2("arrastar a listagem pra fora da pagina e' contido", () => {
+    const c = listaDentro({ x: 9999, y: 9999, w: 190 }, 3);
+    assert.ok(c.x + c.w <= LARGURA);
+    assert.ok(c.y + alturaDaLista(3) <= ALTURA - RODAPE + 0.01);
+    const d = listaDentro({ x: -900, y: -900, w: 5000 }, 3);
+    assert.ok(d.x >= 0 && d.y >= 0 && d.w <= 400);
+  });
+
+  t2("alternar pra LISTA nao mexe em posicao nenhuma", () => {
+    const s = { render: { x: 0, y: 0, w: 519, h: 266 }, blocos: [blocoImg({ id: "a", x: 300, y: 300 })] };
+    const s2 = alternarModoBloco(s, "a");
+    assert.strictEqual(s2.blocos[0].modo, "lista");
+    assert.strictEqual(s2.blocos[0].x, 300);   // x,y ficam guardados, so' nao sao usados
+  });
+
+  t2("alternar DE VOLTA pra imagem acha uma vaga que nao encosta no render", () => {
+    const s = { render: { x: 0, y: 0, w: 519, h: 266 }, blocos: [blocoImg({ id: "a", modo: "lista" })] };
+    const s2 = alternarModoBloco(s, "a");
+    assert.strictEqual(s2.blocos[0].modo, "imagem");
+    const b = s2.blocos[0];
+    const cruza = b.x < 519 && b.x + b.w > 0 && b.y < 266 && b.y + 110 > 0;
+    assert.ok(!cruza, `voltou em cima do render: x=${b.x} y=${b.y}`);
+  });
+
+  t2("duas idas e voltas nao acumulam lixo no bloco", () => {
+    let s = { render: { x: 0, y: 0, w: 519, h: 266 }, blocos: [blocoImg({ id: "a" })] };
+    s = alternarModoBloco(s, "a");   // -> lista
+    s = alternarModoBloco(s, "a");   // -> imagem de novo
+    assert.strictEqual(s.blocos[0].modo, "imagem");
+    assert.strictEqual(s.blocos.length, 1);
+  });
+
+  t2("bloco que nao existe nao quebra nada", () => {
+    const s = { render: { x: 0, y: 0, w: 519, h: 266 }, blocos: [] };
+    assert.strictEqual(alternarModoBloco(s, "fantasma"), s);
+  });
+
+  console.log(`OK — mais ${ok2} casos`);
+}

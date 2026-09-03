@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import {
   X, Plus, Trash2, Upload, Save, FileDown, Image as ImageIcon,
   AlertTriangle, Check, Search, GripVertical, History, FileCheck,
-  Minus, Maximize2,
+  Minus, Maximize2, List,
 } from "lucide-react";
 import {
   novaApresentacao, novoSlide, acrescentar, dentro, renderDentro,
   conferir, nomeDoArquivo, quantasCabem, alturaDoBloco, proximaRev, duplicarComoRev,
   CAMPOS_CAPA, quebrar, caixaDoCampo, caixaDentro, ANO_NA_ARTE, COR_VALOR, COR_TITULO,
   LARGURA, ALTURA, RODAPE, BLOCO,
+  blocosImagem, blocosLista, listaDoSlide, listaDentro, LISTA_ITEM, alternarModoBloco,
   listarApresentacoes, salvarApresentacao, marcarGerada,
   subirAmbiente, urlDaImagem, bytesDaImagem,
 } from "./lib/apresentacao";
@@ -288,6 +289,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
                 onAdicionar={(ps) => mudarSlide((s) => acrescentar(s, ps))}
                 onMudarBloco={(id, f) => mudarSlide((s) => ({
                   ...s, blocos: s.blocos.map((b) => (b.id === id ? f(b) : b)) }))}
+                onAlternarModo={(id) => mudarSlide((s) => alternarModoBloco(s, id))}
                 onRemover={(id) => mudarSlide((s) => ({
                   ...s, blocos: s.blocos.filter((b) => b.id !== id) }))} />
             ) : null}
@@ -354,8 +356,8 @@ function Palco({ slide, idioma, zoom, onZoom, onMudar }) {
     setPegando({
       alvo, modo, pointerId: e.pointerId,
       x0: e.clientX, y0: e.clientY,
-      orig: alvo === "render"
-        ? { ...slide.render }
+      orig: alvo === "render" ? { ...slide.render }
+        : alvo === "lista" ? listaDoSlide(slide)
         : { ...slide.blocos.find((b) => b.id === alvo) },
     });
   };
@@ -371,6 +373,11 @@ function Palco({ slide, idioma, zoom, onZoom, onMudar }) {
         ? { ...o, x: o.x + dx, y: o.y + dy }
         : { ...o, w: o.w + dx, h: o.h + dy };
       onMudar((s) => ({ ...s, render: renderDentro(r) }));
+    } else if (pegando.alvo === "lista") {
+      const l = pegando.modo === "mover"
+        ? { ...o, x: o.x + dx, y: o.y + dy }
+        : { ...o, w: o.w + dx };                    // só a largura — a altura vem da quantidade de itens
+      onMudar((s) => ({ ...s, lista: listaDentro(l, blocosLista(s).length) }));
     } else {
       const b = pegando.modo === "mover"
         ? { ...o, x: o.x + dx, y: o.y + dy }
@@ -411,7 +418,7 @@ function Palco({ slide, idioma, zoom, onZoom, onMudar }) {
         </div>
       )}
 
-      {(slide.blocos || []).map((b) => (
+      {blocosImagem(slide).map((b) => (
         <div key={b.id} className={`ap-bloco ${pegando?.alvo === b.id ? "ativo" : ""}`}
           style={{ left: pt(b.x), top: pt(b.y), width: pt(b.w),
             height: pt(alturaDoBloco(b)) }}
@@ -426,6 +433,27 @@ function Palco({ slide, idioma, zoom, onZoom, onMudar }) {
           <span className="ap-puxador" onPointerDown={(e) => iniciar(e, b.id, "tamanho")} />
         </div>
       ))}
+
+      {/* A LISTAGEM: uma caixinha só por slide, uma linha por item, sem
+          foto — pra quem não precisa de imagem, só do nome. */}
+      {blocosLista(slide).length > 0 && (() => {
+        const itens = blocosLista(slide);
+        const lb = listaDentro(listaDoSlide(slide), itens.length);
+        return (
+          <div className={`ap-listagem ${pegando?.alvo === "lista" ? "ativo" : ""}`}
+            style={{ left: pt(lb.x), top: pt(lb.y), width: pt(lb.w) }}
+            onPointerDown={(e) => iniciar(e, "lista", "mover")}>
+            {itens.map((b) => (
+              <div key={b.id} className="ap-listagem-item"
+                style={{ fontSize: Math.max(5, LISTA_ITEM.tamanho * escala),
+                  lineHeight: `${LISTA_ITEM.entrelinha * escala}px` }}>
+                <span className="ap-listagem-marca">–</span>{textoDoBloco(b, idioma)}
+              </div>
+            ))}
+            <span className="ap-puxador" onPointerDown={(e) => iniciar(e, "lista", "tamanho")} />
+          </div>
+        );
+      })()}
 
       {/* A tarja do rodapé é desenhada aqui só pra lembrar que ela existe
           e que nada deve encostar nela. */}
@@ -705,7 +733,7 @@ function Revisoes({ lista, atualId, rev, onAbrir, onNova, ocupado }) {
   );
 }
 
-function Produtos({ produtos, slide, idioma, onAdicionar, onMudarBloco, onRemover }) {
+function Produtos({ produtos, slide, idioma, onAdicionar, onMudarBloco, onAlternarModo, onRemover }) {
   const [termo, setTermo] = useState("");
   const [marcados, setMarcados] = useState(() => new Set());
 
@@ -748,9 +776,22 @@ function Produtos({ produtos, slide, idioma, onAdicionar, onMudarBloco, onRemove
       {(slide.blocos || []).length > 0 && (
         <>
           <div className="ap-slides-rot">Neste ambiente</div>
+          <p className="ap-nota" style={{ marginTop: -4 }}>
+            <ImageIcon size={11} style={{ verticalAlign: -1 }} /> mostra a foto no slide ·{" "}
+            <List size={11} style={{ verticalAlign: -1 }} /> só o nome, na listagem do canto
+          </p>
           {slide.blocos.map((b) => (
             <div key={b.id} className="ap-bloco-linha">
               <GripVertical size={12} className="dim" />
+              {/* O botão simples: um clique alterna entre foto no slide e
+                  nome na listagem. Ela pediu que não ficasse difícil. */}
+              <button className={`ap-modo-btn ${b.modo === "lista" ? "on" : ""}`}
+                onClick={() => onAlternarModo(b.id)}
+                title={b.modo === "lista"
+                  ? "Está na listagem — clique para mostrar como imagem"
+                  : "Está com imagem — clique para pôr na listagem"}>
+                {b.modo === "lista" ? <List size={12} /> : <ImageIcon size={12} />}
+              </button>
               <input value={textoDoBloco(b, idioma)}
                 onChange={(e) => onMudarBloco(b.id,
                   (x) => (idioma === "en" ? { ...x, textoEn: e.target.value } : { ...x, texto: e.target.value }))} />
@@ -833,6 +874,17 @@ function EstiloApresentacao() {
     .ap-bloco-txt { color: #6B6E70; line-height: 1.2; padding-top: 2px; overflow: hidden; }
     .ap-puxador { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 3px; background: var(--blue); border: 1.5px solid #fff; cursor: nwse-resize; }
     .ap-tarja { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; padding-left: 20px; color: var(--ink); background: rgba(255,255,255,.5); border-top: 1px dashed var(--border); font-weight: 700; letter-spacing: .04em; }
+
+    /* A listagem: minimalista de propósito — sem moldura fechada, só um
+       fundo translúcido pra separar do render por baixo e uma linha por
+       item, cortada com reticências em vez de quebrar em duas linhas. */
+    .ap-listagem { position: absolute; cursor: grab; padding: 7px 9px; background: rgba(255,255,255,.82); border-radius: 3px; }
+    .ap-listagem.ativo { outline: 2px solid var(--blue); }
+    .ap-listagem-item { display: flex; gap: 6px; color: #6B6E70; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ap-listagem-marca { flex-shrink: 0; opacity: .55; }
+    .ap-modo-btn { background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--ink-3); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 21px; height: 21px; flex-shrink: 0; padding: 0; }
+    .ap-modo-btn:hover { border-color: var(--blue); color: var(--ink); }
+    .ap-modo-btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
 
     .ap-lado { border-left: 1px solid var(--border); background: #fff; overflow: auto; padding: 12px; }
     .ap-abas { display: flex; gap: 4px; margin-bottom: 10px; }

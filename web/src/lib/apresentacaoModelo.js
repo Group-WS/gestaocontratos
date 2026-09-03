@@ -104,6 +104,76 @@ export const alturaDoBloco = (b) => {
   return w + BLOCO.respiro + BLOCO.maxLinhas * BLOCO.entrelinha;
 };
 
+/* A LISTAGEM.
+ *
+ * Nem todo produto precisa de foto — às vezes basta o nome ("FITA LED
+ * 12V 3000K"). É um segundo jeito de mostrar o mesmo bloco: em vez de
+ * foto + legenda numa posição própria, ele vira uma linha de texto
+ * dentro de uma caixinha só, que fica num canto do slide.
+ *
+ * A caixinha é UMA por slide — não uma por item — porque é assim que
+ * uma listagem se lê: um bloco só, de cima a baixo. Ela nasce no canto
+ * de cima à direita, porque o render nasce no canto de cima à esquerda,
+ * e os dois não deveriam brigar pelo mesmo lugar de largada.
+ *
+ * Deliberadamente mínima: uma linha por item, sem moldura, sem foto. */
+export const LISTA_PADRAO = { x: LARGURA - 206, y: 14, w: 190 };
+export const LISTA_ITEM = { tamanho: 9.5, entrelinha: 15 };
+
+/* A caixa efetiva da listagem: a que a pessoa moveu, ou a de fábrica —
+   mesma lógica de `caixaDoCampo`. */
+export function listaDoSlide(slide) {
+  const l = (slide && slide.lista) || {};
+  return {
+    x: Number.isFinite(l.x) ? l.x : LISTA_PADRAO.x,
+    y: Number.isFinite(l.y) ? l.y : LISTA_PADRAO.y,
+    w: Number.isFinite(l.w) ? l.w : LISTA_PADRAO.w,
+  };
+}
+
+export function alturaDaLista(n) {
+  const PAD = 8;
+  return PAD * 2 + Math.max(n, 1) * LISTA_ITEM.entrelinha;
+}
+
+/* Mantém a listagem dentro da página, do mesmo jeito que `dentro` faz
+   pros blocos com foto. */
+export function listaDentro(l, n) {
+  const w = Math.max(120, Math.min(400, l.w));
+  const h = alturaDaLista(n);
+  return {
+    x: Math.max(0, Math.min(LARGURA - w, l.x)),
+    y: Math.max(0, Math.min(ALTURA - RODAPE - h, l.y)),
+    w,
+  };
+}
+
+/* Cada bloco vive num dos dois modos. Sem `modo` gravado (apresentação
+   feita antes deste recurso existir), ele conta como imagem — é o que
+   já estava acontecendo. */
+export const blocosImagem = (slide) => (slide?.blocos || []).filter((b) => (b.modo || "imagem") === "imagem");
+export const blocosLista = (slide) => (slide?.blocos || []).filter((b) => b.modo === "lista");
+
+/* O botão simples: alterna um bloco entre os dois modos.
+ *
+ * Indo PRA imagem, ele precisa de uma posição — a mesma conta de
+ * `acrescentar`, contando só quem já está em modo imagem, pra não cair
+ * em cima de ninguém. Indo pra listagem, não precisa de posição
+ * nenhuma: a caixinha empilha sozinha, na ordem dos blocos. */
+export function alternarModoBloco(slide, blocoId) {
+  const blocos = slide.blocos || [];
+  const alvo = blocos.find((b) => b.id === blocoId);
+  if (!alvo) return slide;
+
+  if ((alvo.modo || "imagem") === "lista") {
+    const outros = blocosImagem(slide).filter((b) => b.id !== blocoId);
+    const livres = vagas(slide.render, outros.length + 1);
+    const pos = livres[outros.length];
+    return { ...slide, blocos: blocos.map((b) => (b.id === blocoId ? { ...b, modo: "imagem", x: pos.x, y: pos.y } : b)) };
+  }
+  return { ...slide, blocos: blocos.map((b) => (b.id === blocoId ? { ...b, modo: "lista" } : b)) };
+}
+
 export const novaApresentacao = (obra) => ({
   obraCodigo: obra && obra.codigo ? String(obra.codigo) : null,
   capa: {
@@ -204,6 +274,7 @@ export function produtoParaBloco(p, pos) {
     texto: String(p.descricaoCriativo || "").trim() || p.descricao || "",
     textoEn: p.descricaoEn || "",
     x: pos.x, y: pos.y, w: BLOCO.largura,
+    modo: "imagem",
   };
 }
 

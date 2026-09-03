@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import {
   LARGURA, ALTURA, RODAPE, CAMPOS_CAPA, BLOCO, quebrar,
   caixaDoCampo, ANO_NA_ARTE, COR_VALOR, COR_TITULO,
+  blocosImagem, blocosLista, listaDoSlide, listaDentro, LISTA_ITEM,
 } from "./apresentacaoModelo.js";
 import { TEXTOS, ambienteEm, textoDoBloco } from "./apresentacaoIdioma.js";
 
@@ -43,6 +44,21 @@ function seguro(t) {
     .replace(/…/g, "...")
     .replace(/[   ]/g, " ")
     .replace(/[^\x20-\xFF]/g, "");
+}
+
+/* Corta o texto até caber numa linha só, com "..." no fim.
+ *
+ * A listagem é uma linha por item — não tem as três linhas de quebra do
+ * bloco com foto. "..." em vez de "…" pelo mesmo motivo do `seguro()`
+ * logo abaixo: a fonte padrão do pdf-lib não tem todo caractere do
+ * português, e um caractere que ela não sabe desenhar derruba a geração
+ * inteira. */
+function truncar(fonte, tamanho, texto, largura) {
+  const t = seguro(texto);
+  if (fonte.widthOfTextAtSize(t, tamanho) <= largura) return t;
+  let c = t;
+  while (c.length > 1 && fonte.widthOfTextAtSize(`${c}...`, tamanho) > largura) c = c.slice(0, -1);
+  return `${c.trimEnd()}...`;
 }
 
 async function embutir(pdf, bytes) {
@@ -187,8 +203,8 @@ export async function gerarPdf(doc, artes, imagemDe, idioma = "pt") {
     const imgR = await buscar(r.imagem);
     if (imgR) cobrir(pag, imgR, { x: r.x || 0, y: r.y || 0, w: r.w || 519, h: r.h || 266 });
 
-    // Cada produto: foto em cima, descrição embaixo
-    for (const b of s.blocos || []) {
+    // Cada produto EM MODO IMAGEM: foto em cima, descrição embaixo
+    for (const b of blocosImagem(s)) {
       const w = b.w || BLOCO.largura;
       const img = await buscar(b.imagem);
       if (img) caber(pag, img, { x: b.x, y: b.y, w, h: w });
@@ -207,6 +223,23 @@ export async function gerarPdf(doc, artes, imagemDe, idioma = "pt") {
           size: BLOCO.legenda, font: regular, color: CINZA,
           maxWidth: w,
         });
+      });
+    }
+
+    // A LISTAGEM: quem está em modo lista, uma linha cada, sem foto
+    const emLista = blocosLista(s);
+    if (emLista.length) {
+      const lb = listaDentro(listaDoSlide(s), emLista.length);
+      let y = lb.y + 3;
+      emLista.forEach((b) => {
+        const txt = truncar(regular, LISTA_ITEM.tamanho, textoDoBloco(b, idioma), lb.w - 14);
+        pag.drawText("–", {
+          x: lb.x, y: paraPdfY(y + LISTA_ITEM.tamanho, 0), size: LISTA_ITEM.tamanho, font: regular, color: CINZA,
+        });
+        pag.drawText(txt, {
+          x: lb.x + 10, y: paraPdfY(y + LISTA_ITEM.tamanho, 0), size: LISTA_ITEM.tamanho, font: regular, color: CINZA,
+        });
+        y += LISTA_ITEM.entrelinha;
       });
     }
 
