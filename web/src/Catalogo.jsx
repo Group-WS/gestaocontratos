@@ -99,6 +99,20 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
       return i >= 0 ? l.map((x) => (x.id === salvo.id ? salvo : x)) : [...l, salvo];
     });
     setEditando(null);
+
+    /* O campo fornecedor do produto é texto livre — digitar um nome novo
+       aqui não pode deixá-lo só dentro do produto, sem cadastro próprio
+       (é lá que fica o contato de quem vende). Só cria se o nome ainda
+       não existir: repetir o já cadastrado apagaria contato/telefone que
+       alguém já preencheu. */
+    const nome = String(salvo.fornecedor || "").trim();
+    const jaExiste = nome && fornecedores.some((f) => f.nome.trim().toLowerCase() === nome.toLowerCase());
+    if (nome && !jaExiste) {
+      try {
+        const novo = await salvarFornecedor({ nome }, usuario);
+        setFornecedores((l) => [...l, novo].sort((a, b) => a.nome.localeCompare(b.nome)));
+      } catch { /* corrida com outra aba cadastrando o mesmo nome — ignora */ }
+    }
   }
 
   async function remover(p) {
