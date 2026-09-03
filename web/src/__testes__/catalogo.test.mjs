@@ -187,3 +187,52 @@ import { descricaoDoExecutivo, descricaoDoCriativo, descricaoDoCriativoEn } from
 
   console.log(`OK — mais ${ok3} casos`);
 }
+
+/* ---------- DESCRICAO REPETIDA ---------- */
+import { normalizarDescricao, duplicatasDe } from "../lib/catalogoModelo.js";
+{
+  let ok4 = 0;
+  const t4 = (nome, f) => { f(); console.log("ok  ", nome); ok4++; };
+
+  t4("acento, caixa e espaco sobrando nao contam como diferenca", () => {
+    assert.strictEqual(normalizarDescricao("MDF Freijó"), "mdf freijo");
+    assert.strictEqual(normalizarDescricao("  mdf   FREIJÓ.  "), "mdf freijo");
+    assert.strictEqual(normalizarDescricao("MDF Freijó"), normalizarDescricao("  mdf   freijó.  "));
+  });
+
+  t4("pontuacao no fim, mesmo seguida de espaco, e' cortada", () => {
+    /* Bug real: cortar a pontuacao ANTES de aparar o espaco deixava
+       "freijo.  " sem cortar nada, porque o "$" ancorava no espaco. */
+    assert.strictEqual(normalizarDescricao("Torneira Lift.   "), "torneira lift");
+    assert.strictEqual(normalizarDescricao("Torneira Lift..."), "torneira lift");
+  });
+
+  t4("vazio fica vazio, nao quebra", () => {
+    assert.strictEqual(normalizarDescricao(""), "");
+    assert.strictEqual(normalizarDescricao(null), "");
+  });
+
+  const CAT = [
+    { id: 1, descricao: "MDF Freijó", ativo: true },
+    { id: 2, descricao: "  mdf   freijó.  ", ativo: true },
+    { id: 3, descricao: "MDF Freijó", ativo: false },
+    { id: 4, descricao: "MDF Carvalho", ativo: true },
+  ];
+
+  t4("acha a duplicata ignorando maiuscula/acento/espaco", () =>
+    assert.deepStrictEqual(duplicatasDe(CAT, "mdf FREIJO").map((p) => p.id).sort(), [1, 2]));
+
+  t4("o proprio item nao conta como duplicata dele mesmo", () =>
+    assert.deepStrictEqual(duplicatasDe(CAT, "MDF Freijó", { excetoId: 1 }).map((p) => p.id), [2]));
+
+  t4("desativado (ja' resolvido antes) nao acusa de novo", () =>
+    assert.ok(!duplicatasDe(CAT, "MDF Freijó", { excetoId: 1 }).some((p) => p.id === 3)));
+
+  t4("descricao diferente nao acusa nada", () =>
+    assert.deepStrictEqual(duplicatasDe(CAT, "Vidro temperado"), []));
+
+  t4("descricao vazia nao acusa o catalogo inteiro", () =>
+    assert.deepStrictEqual(duplicatasDe(CAT, ""), []));
+
+  console.log(`OK — mais ${ok4} casos`);
+}

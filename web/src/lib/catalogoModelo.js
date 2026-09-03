@@ -214,6 +214,42 @@ export function produtoParaItem(p, qtd = 1) {
   };
 }
 
+/* ---------- DESCRIÇÃO REPETIDA ----------
+ *
+ * Ela apontou: o mesmo produto entrando duas vezes no catálogo, com a
+ * mesma descrição do Executivo. Acontece sobretudo em importação —
+ * rodar a mesma planilha duas vezes, ou duas bibliotecas que trazem o
+ * mesmo item.
+ *
+ * "Mesma descrição" não é comparação exata: "MDF Freijó" e "mdf freijó "
+ * são o mesmo produto escrito duas vezes. Ignora acento, caixa e espaço
+ * sobrando — é a MESMA regra usada aqui e na limpeza que roda no banco,
+ * pra tela e SQL concordarem sobre o que é duplicado.
+ */
+export function normalizarDescricao(t) {
+  /* A ORDEM importa: cortar a pontuação do fim ANTES de aparar o espaço
+     em branco deixa "freijó.  " (ponto seguido de espaço) sem cortar
+     nada — o "$" do regex ancora no espaço, não no ponto. Aparar tudo
+     primeiro, e só então cortar a pontuação que sobrou no fim. */
+  const semEspacoSobrando = String(t || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+  return semEspacoSobrando.replace(/[.,;:!?]+$/g, "").trim();
+}
+
+/* Produtos JÁ CADASTRADOS cuja descrição bate com a que está sendo
+   digitada ou importada agora — pra avisar ANTES de criar mais um, não
+   depois de já ter duplicado. Só entre ativos: um que já foi
+   desativado por ser cópia não deveria acusar duplicidade de novo. */
+export function duplicatasDe(produtos, descricao, { excetoId } = {}) {
+  const alvo = normalizarDescricao(descricao);
+  if (!alvo) return [];
+  return (produtos || []).filter((p) =>
+    p.id !== excetoId && p.ativo !== false && normalizarDescricao(p.descricao) === alvo);
+}
+
 /* ---------- BUSCA E AGRUPAMENTO ---------- */
 
 const semAcento = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();

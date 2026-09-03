@@ -7,7 +7,7 @@ import {
   listarProdutos, salvarProduto, excluirProduto,
   listarFornecedores, salvarFornecedor, excluirFornecedor,
   subirImagem, urlDaImagem,
-  subgrupoDe, subgruposDaVerba, SUBGRUPOS, TIPOS, ehAcabamento, podeIrParaObra,
+  subgrupoDe, subgruposDaVerba, SUBGRUPOS, TIPOS, ehAcabamento, podeIrParaObra, duplicatasDe, normalizarDescricao,
   filtrarProdutos, porPrateleira,
   centavos, reais, precoVelho, mesesDesde, produtoParaItem,
 } from "./lib/catalogo";
@@ -245,7 +245,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
       )}
 
       {editando && (
-        <FormProduto p={editando} fornecedores={fornecedores} verbas={verbas}
+        <FormProduto p={editando} produtos={produtos} fornecedores={fornecedores} verbas={verbas}
           onFechar={() => setEditando(null)} onSalvar={salvar} onErro={setErro} />
       )}
 
@@ -262,7 +262,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
       )}
 
       {importando && (
-        <ImportarPlanilha arquivo={importando} usuario={usuario} nomeVerba={nomeVerba}
+        <ImportarPlanilha arquivo={importando} usuario={usuario} nomeVerba={nomeVerba} produtos={produtos}
           onFechar={() => setImportando(null)}
           onPronto={(novos, msg) => {
             setProdutos((l) => [...l, ...novos]);
@@ -335,7 +335,7 @@ function Cartao({ p, escolhido, onEscolher, podeEditar, onEditar, onExcluir }) {
   );
 }
 
-function FormProduto({ p, fornecedores, verbas, onFechar, onSalvar, onErro }) {
+function FormProduto({ p, produtos, fornecedores, verbas, onFechar, onSalvar, onErro }) {
   const [f, setF] = useState(() => ({
     ...p,
     precoTxt: p.precoRef != null ? String(p.precoRef / 100).replace(".", ",") : "",
@@ -349,6 +349,12 @@ function FormProduto({ p, fornecedores, verbas, onFechar, onSalvar, onErro }) {
      discordar troca. */
   const sugerido = useMemo(() => subgrupoDe(f.descricao, f.verba), [f.descricao, f.verba]);
   const subEfetivo = f.subgrupo ?? sugerido ?? "";
+
+  /* A descrição repetida se avisa AO DIGITAR, não só depois de salvar —
+     é o pedido dela. Não bloqueia: o produto às vezes é mesmo o mesmo em
+     dois fornecedores, e quem decide se cria mesmo assim é ela. */
+  const duplicatas = useMemo(
+    () => duplicatasDe(produtos, f.descricao, { excetoId: p.id }), [produtos, f.descricao, p.id]);
 
   async function enviar() {
     setSalvando(true);
@@ -388,6 +394,21 @@ function FormProduto({ p, fornecedores, verbas, onFechar, onSalvar, onErro }) {
               placeholder="SPOT EMBUTIDO POWERUS 3 LEDS BRANCO 6W 3000K" />
             <small>a técnica, que vai pro Executivo da obra e pro Sienge</small>
           </label>
+
+          {duplicatas.length > 0 && (
+            <div className="cat-largo cat-duplicata">
+              <AlertTriangle size={13} />
+              <div>
+                <b>Já existe {duplicatas.length === 1 ? "um produto" : `${duplicatas.length} produtos`} com essa descrição:</b>
+                <ul>
+                  {duplicatas.slice(0, 4).map((d) => (
+                    <li key={d.id}>{d.fornecedor ? `${d.fornecedor} · ` : ""}{d.descricao}{d.codigo ? ` (${d.codigo})` : ""}</li>
+                  ))}
+                </ul>
+                Salvar mesmo assim cria um segundo cadastro do mesmo item.
+              </div>
+            </div>
+          )}
 
           <label className="cat-largo">Descrição — Criativo
             <input value={f.descricaoCriativo || ""}
@@ -704,7 +725,7 @@ function EnviarParaObra({ produtos, obras, usuario, nomeVerba, onFechar, onPront
  * massa, e desfazer 56 linhas uma a uma é o tipo de trabalho que ninguém
  * faz — então a hora de descobrir um grupo órfão é agora.
  */
-function ImportarPlanilha({ arquivo, usuario, nomeVerba, onFechar, onPronto }) {
+function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onPronto }) {
   const [lendo, setLendo] = useState(true);
   const [itens, setItens] = useState([]);
   const [midia, setMidia] = useState({});
@@ -715,6 +736,10 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, onFechar, onPronto }) {
      sempre nomeia a casa). Um campo só, aplicado a todas, poupa 123
      edições à mão. */
   const [fornPadrao, setFornPadrao] = useState("");
+  /* A regra: por padrão, o que já está cadastrado NÃO entra de novo.
+     Ela decide se quer o contrário — importar mesmo repetido, pra casos
+     em que a descrição é igual por coincidência mas o item não é. */
+  const [pularRepetidos, setPularRepetidos] = useState(true);
 
   useEffect(() => {
     let vivo = true;
@@ -778,8 +803,26 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, onFechar, onPronto }) {
 
   const r = useMemo(() => (dePptx ? resumoPptx(itens) : resumoDaImportacao(itens)), [itens, dePptx]);
 
+  /* Quem, do que está sendo importado, já existe no catálogo — ou se
+     repete DENTRO do próprio arquivo (a mesma planilha às vezes traz o
+     mesmo item duas vezes). Uma passagem só, contra o catálogo de
+     verdade e contra o que já foi visto neste lote. */
+  const { unicos, repetidos } = useMemo(() => {
+    const vistos = new Set();
+    const unicos = [], repetidos = [];
+    itens.forEach((it) => {
+      const chave = normalizarDescricao(it.descricao);
+      const jaNoCatalogo = duplicatasDe(produtos, it.descricao).length > 0;
+      const jaNesteLote = chave && vistos.has(chave);
+      (jaNoCatalogo || jaNesteLote ? repetidos : unicos).push(it);
+      if (chave) vistos.add(chave);
+    });
+    return { unicos, repetidos };
+  }, [itens, produtos]);
+
   async function gravar() {
-    const bons = itens.filter((p) => p.verba);
+    const fonte = pularRepetidos ? unicos : itens;
+    const bons = fonte.filter((p) => p.verba);
     setGravando({ feitos: 0, de: bons.length });
     const salvos = [];
     try {
@@ -864,6 +907,27 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, onFechar, onPronto }) {
                 </div>
               )}
 
+              {/* A regra dela: descrição repetida se avisa, e ela decide.
+                  Repetido aqui é ou já estar no catálogo, ou aparecer
+                  duas vezes dentro do próprio arquivo. */}
+              {repetidos.length > 0 && (
+                <div className="cat-duplicata cat-largo">
+                  <AlertTriangle size={13} />
+                  <div>
+                    <b>{repetidos.length} {repetidos.length === 1 ? "já está" : "já estão"} no catálogo (ou repetido no próprio arquivo).</b>
+                    <ul>
+                      {repetidos.slice(0, 5).map((it, i) => <li key={i}>{it.descricao}</li>)}
+                      {repetidos.length > 5 && <li>e mais {repetidos.length - 5}…</li>}
+                    </ul>
+                    <label className="cat-duplicata-opcao">
+                      <input type="checkbox" checked={!pularRepetidos}
+                        onChange={(e) => setPularRepetidos(!e.target.checked)} />
+                      Importar mesmo assim (cria um segundo cadastro de cada um)
+                    </label>
+                  </div>
+                </div>
+              )}
+
               <div className="cat-envio-lista">
                 {r.porGrupo.map(([g, n]) => (
                   <div key={g} className="cat-envio-item">
@@ -883,8 +947,11 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, onFechar, onPronto }) {
         </div>
 
         <div className="cat-caixa-pe">
-          <button className="cat-primario" disabled={lendo || !r.validos || !!gravando} onClick={gravar}>
-            {gravando ? `Gravando ${gravando.feitos} de ${gravando.de}…` : `Importar ${r.validos} produtos`}
+          <button className="cat-primario"
+            disabled={lendo || !(pularRepetidos ? unicos : itens).filter((p) => p.verba).length || !!gravando}
+            onClick={gravar}>
+            {gravando ? `Gravando ${gravando.feitos} de ${gravando.de}…`
+              : `Importar ${(pularRepetidos ? unicos : itens).filter((p) => p.verba).length} produtos`}
           </button>
           <button onClick={onFechar}>cancelar</button>
         </div>
@@ -973,6 +1040,11 @@ function EstiloCatalogo() {
     .cat-foto-campo { display: flex; align-items: center; gap: 12px; }
     .cat-foto-campo img { width: 80px; height: 62px; object-fit: contain; background: var(--panel); border-radius: 7px; }
     .cat-btn-arq { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+    .cat-duplicata { display: flex; gap: 9px; background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 9px; padding: 10px 12px; font-size: 11.5px; line-height: 1.5; }
+    .cat-duplicata svg { flex-shrink: 0; margin-top: 1px; }
+    .cat-duplicata b { display: block; font-weight: 700; margin-bottom: 3px; }
+    .cat-duplicata ul { margin: 2px 0 4px; padding-left: 16px; }
+    .cat-duplicata-opcao { display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; margin-top: 4px; }
     .cat-caixa-pe { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: #fff; }
     .cat-caixa-pe button { background: none; border: none; font-family: inherit; font-size: 12px; color: var(--ink-3); cursor: pointer; }
     .cat-primario { background: var(--ink) !important; color: #fff !important; border-radius: 8px !important; font-weight: 600 !important; padding: 8px 15px !important; display: inline-flex; align-items: center; gap: 6px; }
