@@ -13,6 +13,8 @@ const APELIDOS = {
   "27": ["louca", "metaissanitario", "metais"],
   "30": ["cortina", "persian"],
   "28": ["eletroeletronic", "eletro"],
+  "33": ["sonoriza", "audio"],
+  "34": ["automacao", "automatiza", "domotic"],
 };
 
 let ok = 0;
@@ -23,6 +25,8 @@ t("o grupo da planilha vira verba da EAP", () => {
   assert.strictEqual(verbaDoGrupo("LOUÇAS E METAIS", APELIDOS), "27");
   assert.strictEqual(verbaDoGrupo("MÓVEIS SOLTOS", APELIDOS), "24");
   assert.strictEqual(verbaDoGrupo("CORTINAS E PERSIANAS", APELIDOS), "30");
+  assert.strictEqual(verbaDoGrupo("SONORIZAÇÃO", APELIDOS), "33");
+  assert.strictEqual(verbaDoGrupo("AUTOMAÇÃO", APELIDOS), "34");
 });
 
 t("o apelido MAIS LONGO ganha — eletroeletronic antes de eletro", () =>

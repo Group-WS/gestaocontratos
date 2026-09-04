@@ -118,6 +118,22 @@ export const SUBGRUPOS = {
     { nome: "Lavanderia", casa: /lava\s*e\s*seca|lavadora|secadora|lava[- ]?lou/i },
     { nome: "Áudio e vídeo", casa: /\btv\b|televis|som|soundbar|projetor/i },
   ],
+  /* Grupos novos (33 e 34): so' um ponto de partida com as familias mais
+     obvias, pra ela conseguir cadastrar o primeiro item hoje. Ajusta
+     quando o catalogo real dela mostrar o que falta, do mesmo jeito que
+     aconteceu com Loucas e Metais depois do catalogo da BRACCI. */
+  "33": [
+    { nome: "Caixas de som", casa: /caixa\s*(de\s*)?(som|ac[uú]stic)|\bspeaker\b/i },
+    { nome: "Amplificadores e receivers", casa: /amplificador|receiver/i },
+    { nome: "Soundbars e home theater", casa: /soundbar|home\s*theater/i },
+    { nome: "Subwoofers", casa: /subwoofer/i },
+  ],
+  "34": [
+    { nome: "Central e módulos de automação", casa: /central de automa|m[óo]dulo de automa|controlador/i },
+    { nome: "Sensores", casa: /\bsensor\b/i },
+    { nome: "Interruptores e dimmers inteligentes", casa: /interruptor|dimmer/i },
+    { nome: "Fechaduras e controle de acesso", casa: /fechadura|controle de acesso/i },
+  ],
 };
 
 /* Sem padrão que case, o produto fica SEM subgrupo — e não num "Outros"

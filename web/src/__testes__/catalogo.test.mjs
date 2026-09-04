@@ -56,6 +56,22 @@ t("Loucas e Metais: familias que vieram do catalogo BRACCI", () => {
 t("ducha COM registro e' ducha, e nao acabamento de registro", () =>
   assert.strictEqual(subgrupoDe("Ducha higiênica com registro e derivação Lift", "27"), "Chuveiros e duchas"));
 
+t("Sonorizacao (33): familias iniciais", () => {
+  const e = (d, s) => assert.strictEqual(subgrupoDe(d, "33"), s, d);
+  e("Caixa de som embutida no teto Sonance", "Caixas de som");
+  e("Amplificador multizona 8 canais", "Amplificadores e receivers");
+  e("Soundbar Sonos Arc", "Soundbars e home theater");
+  e("Subwoofer ativo 10 polegadas", "Subwoofers");
+});
+
+t("Automacao (34): familias iniciais", () => {
+  const e = (d, s) => assert.strictEqual(subgrupoDe(d, "34"), s, d);
+  e("Central de automação KNX", "Central e módulos de automação");
+  e("Sensor de presença embutido", "Sensores");
+  e("Dimmer touch inteligente 4 canais", "Interruptores e dimmers inteligentes");
+  e("Fechadura digital biométrica", "Fechaduras e controle de acesso");
+});
+
 t("Moveis Soltos: colchao", () => {
   ["Colchão Solteiro 88x188cm", "Colchão Queen 158x198cm", "Colchão King 193x203cm"]
     .forEach((d) => assert.strictEqual(subgrupoDe(d, "24"), "Colchões", d));

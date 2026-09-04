@@ -68,7 +68,12 @@ insert into eap_grupo (num, nome, apelidos, analisar, motivo_na, ordem) values
   ('29', 'Adega Climatizada', array['adegaclimatizada','adega']::text[], true, null, 29),
   ('30', 'Cortinas e Persianas', array['cortina','persian']::text[], true, null, 30),
   ('31', 'Itens Decorativos', array['decorativo','decoracao']::text[], true, null, 31),
-  ('32', 'Execução e Mão de Obra', array['execucao','maodeobra']::text[], false, 'Valor fictício criado na venda pra separar margem — não representa item real', 32)
+  ('32', 'Execução e Mão de Obra', array['execucao','maodeobra']::text[], false, 'Valor fictício criado na venda pra separar margem — não representa item real', 32),
+  -- '32' esta' desativado (remove-verba-32.sql) mas o numero continua
+  -- ocupado por ele; por isso os grupos novos comecam em '33', nao
+  -- reaproveitam o buraco.
+  ('33', 'Sonorização', array['sonoriza','audio']::text[], true, null, 33),
+  ('34', 'Automação', array['automacao','automatiza','domotic']::text[], true, null, 34)
 on conflict (num) do update set
   nome = excluded.nome,
   apelidos = excluded.apelidos,
