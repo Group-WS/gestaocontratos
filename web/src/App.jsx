@@ -4844,6 +4844,18 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, onAprov
     [obra]
   );
 
+  /* Vendido Contrato é OPCIONAL: uma obra pode chegar aqui só com a
+     Planilha (ex.: começou direto do Executivo e agora quer um CMV de
+     referência). Sem contrato nenhum, TODA linha da planilha vira
+     "só aparece em um" — não por divergência real, é que não existe
+     nada do outro lado pra comparar. Exigir aprovação linha a linha
+     nesse caso seria fazer ela clicar centenas de vezes numa
+     comparação que nunca teve ponto de partida. */
+  const contratoVazio = useMemo(
+    () => juntarItens(obra.categorias, "itensContrato").length === 0,
+    [obra]
+  );
+
   // linha aprovada manualmente entra de vez no bucket "OK — bate"
   // (o motivo/badge "Aprovado" continua aparecendo pra diferenciar de
   // um match automático).
@@ -4861,7 +4873,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, onAprov
     );
   }
 
-  const pendentes = linhas.filter((l) => l.status !== "ok");
+  const pendentes = linhas.filter((l) => l.status !== "ok" && !(contratoVazio && !l.a));
   const { total: cmvTotal } = calcularCMV(linhas, obra.categorias);
 
   // O que precisa estar pronto pra liberar. As duas condições são
@@ -4892,6 +4904,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, onAprov
               </span></>
             ) : pendentes.length === 0 ? (
               <><CheckCircle2 size={15} /> <span>
+                {contratoVazio && <>Sem Vendido Contrato importado — o CMV sai direto da Planilha. </>}
                 Tudo conferido. Liberar o CMV de <b>{fmtBRL(cmvTotal)}</b> abre o Executivo e as etapas seguintes.
               </span></>
             ) : (
