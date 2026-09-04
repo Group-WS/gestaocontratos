@@ -328,10 +328,34 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
           <ListaDeSlides doc={doc} pagina={pagina} idioma={idioma}
             onIr={setPagina}
             onNovo={() => { setDoc((d) => ({ ...d, slides: [...d.slides, novoSlide("")] })); setPagina(doc.slides.length); }}
+            onInserirApos={(i) => {
+              setDoc((d) => {
+                const s = [...d.slides];
+                s.splice(i + 1, 0, novoSlide(""));
+                return { ...d, slides: s };
+              });
+              setPagina(i + 1);
+            }}
             onExcluir={(i) => {
               if (!window.confirm("Excluir este ambiente da apresentação?")) return;
               setDoc((d) => ({ ...d, slides: d.slides.filter((_, k) => k !== i) }));
               setPagina("dados");
+            }}
+            onReordenar={(de, para) => {
+              if (de === para) return;
+              setDoc((d) => {
+                const s = [...d.slides];
+                const [movido] = s.splice(de, 1);
+                s.splice(para, 0, movido);
+                return { ...d, slides: s };
+              });
+              setPagina((p) => {
+                if (typeof p !== "number") return p;
+                if (p === de) return para;
+                if (de < p && para >= p) return p - 1;
+                if (de > p && para <= p) return p + 1;
+                return p;
+              });
             }} />
 
           <div className="ap-meio">
@@ -600,8 +624,15 @@ function Zoom({ zoom, escala, onMudar }) {
 /* A lista é o documento inteiro, na ordem em que ele sai — as três
    páginas fixas da casa incluídas. Mostrar só os ambientes escondia
    metade do que vai pro cliente, e editava-se a capa às cegas. */
-function ListaDeSlides({ doc, pagina, idioma, onIr, onNovo, onExcluir }) {
+function ListaDeSlides({ doc, pagina, idioma, onIr, onNovo, onInserirApos, onExcluir, onReordenar }) {
   const n = doc.slides.length;
+  /* Arrastar reordena SÓ dentro de Ambientes — Abertura, Dados e
+     Fechamento são fixos e nem entram na lista arrastável. `sobre` é só
+     pra desenhar a linha de onde o item vai cair; a troca de verdade
+     acontece no onDrop, uma vez. */
+  const [arrastando, setArrastando] = useState(null);
+  const [sobre, setSobre] = useState(null);
+
   return (
     <div className="ap-slides">
       <div className="ap-slides-rot">Páginas</div>
@@ -618,13 +649,28 @@ function ListaDeSlides({ doc, pagina, idioma, onIr, onNovo, onExcluir }) {
 
       <div className="ap-slides-rot">Ambientes</div>
       {doc.slides.map((s, i) => (
-        <div key={s.id} className={`ap-slide-item ${pagina === i ? "on" : ""}`} onClick={() => onIr(i)}>
+        <div key={s.id}
+          className={`ap-slide-item ${pagina === i ? "on" : ""} ${arrastando === i ? "arrastando" : ""} ${sobre === i && arrastando !== null && arrastando !== i ? "sobre" : ""}`}
+          draggable
+          onClick={() => onIr(i)}
+          onDragStart={(e) => { setArrastando(i); e.dataTransfer.effectAllowed = "move"; }}
+          onDragOver={(e) => { e.preventDefault(); if (sobre !== i) setSobre(i); }}
+          onDragLeave={() => setSobre((v) => (v === i ? null : v))}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (arrastando !== null && arrastando !== i) onReordenar(arrastando, i);
+            setArrastando(null); setSobre(null);
+          }}
+          onDragEnd={() => { setArrastando(null); setSobre(null); }}>
+          <span className="ap-arrasta" title="Segure e arraste para reordenar"><GripVertical size={13} /></span>
           <span className="ap-slide-n">{i + 3}</span>
           <span className="ap-slide-nome">
             {s.ambiente ? ambienteEm(s.ambiente, idioma) : <em>sem nome</em>}
             <small>{(s.blocos || []).length} produtos{s.render?.imagem ? "" : " · sem imagem"}</small>
           </span>
-          <button onClick={(e) => { e.stopPropagation(); onExcluir(i); }}><Trash2 size={12} /></button>
+          <button title="Novo ambiente logo abaixo deste"
+            onClick={(e) => { e.stopPropagation(); onInserirApos(i); }}><Plus size={12} /></button>
+          <button title="Excluir" onClick={(e) => { e.stopPropagation(); onExcluir(i); }}><Trash2 size={12} /></button>
         </div>
       ))}
       <button className="ap-novo" onClick={onNovo}><Plus size={13} /> Novo ambiente</button>
@@ -942,14 +988,18 @@ function EstiloApresentacao() {
 
     .ap-slides { border-right: 1px solid var(--border); overflow: auto; padding: 12px 10px; background: #fff; }
     .ap-slides-rot { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin: 10px 4px 7px; }
-    .ap-slide-item { display: flex; align-items: center; gap: 8px; border-radius: 8px; padding: 7px 8px; cursor: pointer; }
+    .ap-slide-item { display: flex; align-items: center; gap: 6px; border-radius: 8px; padding: 7px 8px; cursor: pointer; border-top: 2px solid transparent; }
     .ap-slide-item:hover { background: var(--panel); }
     .ap-slide-item.on { background: var(--blue-bg); }
+    .ap-slide-item.arrastando { opacity: .4; }
+    .ap-slide-item.sobre { border-top-color: var(--blue); }
+    .ap-arrasta { color: var(--ink-3); opacity: 0; cursor: grab; display: flex; flex-shrink: 0; }
+    .ap-slide-item:hover .ap-arrasta { opacity: 1; }
     .ap-slide-n { width: 18px; height: 18px; border-radius: 5px; background: var(--panel); color: var(--ink-3); font-size: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .ap-slide-item.on .ap-slide-n { background: var(--blue); color: #fff; }
     .ap-slide-nome { flex: 1; min-width: 0; display: flex; flex-direction: column; color: var(--ink); overflow: hidden; }
     .ap-slide-nome small { font-size: 10px; color: var(--ink-3); }
-    .ap-slide-item button { background: none; border: none; color: var(--ink-3); cursor: pointer; opacity: 0; display: flex; }
+    .ap-slide-item button { background: none; border: none; color: var(--ink-3); cursor: pointer; opacity: 0; display: flex; flex-shrink: 0; }
     .ap-slide-item:hover button { opacity: 1; }
     .ap-novo { width: 100%; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px dashed var(--border); border-radius: 8px; background: none; font-family: inherit; font-size: 12px; color: var(--ink-2); padding: 8px; cursor: pointer; }
     .ap-novo:hover { border-color: var(--blue); color: var(--ink); }
