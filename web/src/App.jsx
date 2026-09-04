@@ -10327,11 +10327,14 @@ function esteiraDaObra(o) {
     { chave: "especificacao", curto: "Especificação", rotulo: "Caderno de Especificação", feito: !!cad.especificacao },
     { chave: "marcenaria", curto: "Marcenaria", rotulo: "Caderno de Marcenaria", feito: !!cad.marcenaria },
     { chave: "projeto", curto: "Executivo", rotulo: "Caderno de Projeto Executivo", feito: !!cad.projeto },
+    { chave: "execucao", curto: "Em execução", rotulo: "Em execução (compras liberadas)", feito: !!o.comprasLiberadas },
   ];
   const faltando = passos.find((p) => !p.feito);
-  if (faltando) return { passos, texto: `Aguardando ${faltando.rotulo}` };
-  if (!o.comprasLiberadas) return { passos, texto: "Pronta para Compras", tom: "azul" };
-  return { passos, texto: "Em execução", tom: "roxo" };
+  if (!faltando) return { passos, texto: "Em execução", tom: "roxo" };
+  // Todos os cadernos prontos, só falta liberar as compras — não é bem
+  // "aguardando Em execução" (lê estranho), é o marco antes dela.
+  if (faltando.chave === "execucao") return { passos, texto: "Pronta para Compras", tom: "azul" };
+  return { passos, texto: `Aguardando ${faltando.rotulo}` };
 }
 
 function InicioNum({ rot, valor, sub, cor, onClick }) {
