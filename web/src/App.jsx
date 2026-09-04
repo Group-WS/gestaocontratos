@@ -10311,10 +10311,10 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
 /* A esteira da obra: os passos em ordem, cada um sabendo se já foi
    cumprido, mais a frase do que falta AGORA. As duas coisas juntas —
    não só a frase (escondia o histórico, "de onde veio" desaparecia) e
-   não só os passos (cinco selos com sigla exigiam decifrar em vez de
-   ler). O passo em si é só uma bolinha, sem letra — o nome completo
-   mora no title; ler a esteira é olhar quanto já andou, não decifrar
-   abreviação.
+   não só os passos. O NOME de cada passo fica escrito no próprio chip
+   — bolinha sem letra parecia igual pra feito e pendente; risco de
+   confundir "concluído" com "faltando" é pior que ocupar mais espaço.
+   `rotulo` é o nome completo (pro title); `curto` é o que cabe no chip.
    Caderno conta como feito quando o arquivo é anexado (mesma regra da
    aba Executivo). CMV usa `deparaAprovado`, não só `cmvLiberado > 0`:
    uma obra pode ter liberado com valor zerado numa planilha estranha,
@@ -10322,11 +10322,11 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
 function esteiraDaObra(o) {
   const cad = o.cadernos || {};
   const passos = [
-    { chave: "criativo", rotulo: "Criativo", feito: !!cad.criativo },
-    { chave: "cmv", rotulo: "CMV liberado", feito: !!o.deparaAprovado },
-    { chave: "especificacao", rotulo: "Caderno de Especificação", feito: !!cad.especificacao },
-    { chave: "marcenaria", rotulo: "Caderno de Marcenaria", feito: !!cad.marcenaria },
-    { chave: "projeto", rotulo: "Caderno de Projeto Executivo", feito: !!cad.projeto },
+    { chave: "criativo", curto: "Criativo", rotulo: "Criativo", feito: !!cad.criativo },
+    { chave: "cmv", curto: "CMV", rotulo: "CMV liberado", feito: !!o.deparaAprovado },
+    { chave: "especificacao", curto: "Especificação", rotulo: "Caderno de Especificação", feito: !!cad.especificacao },
+    { chave: "marcenaria", curto: "Marcenaria", rotulo: "Caderno de Marcenaria", feito: !!cad.marcenaria },
+    { chave: "projeto", curto: "Executivo", rotulo: "Caderno de Projeto Executivo", feito: !!cad.projeto },
   ];
   const faltando = passos.find((p) => !p.feito);
   if (faltando) return { passos, texto: `Aguardando ${faltando.rotulo}` };
@@ -10479,11 +10479,11 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                       : " · sem data de entrega"}
                   </div>
                   <div className="ini-esteira">
-                    {esteira.passos.map((p, i) => (
-                      <React.Fragment key={p.chave}>
-                        {i > 0 && <span className={`ini-passo-linha ${esteira.passos[i - 1].feito ? "on" : ""}`} />}
-                        <span className={`ini-passo ${p.feito ? "on" : ""}`} title={`${p.rotulo}: ${p.feito ? "feito" : "pendente"}`} />
-                      </React.Fragment>
+                    {esteira.passos.map((p) => (
+                      <span key={p.chave} className={`ini-passo-chip ${p.feito ? "on" : ""}`}
+                        title={`${p.rotulo}: ${p.feito ? "feito" : "pendente"}`}>
+                        {p.feito && <Check size={9} />} {p.curto}
+                      </span>
                     ))}
                   </div>
                   <span className={`ini-fase-pilula ${esteira.tom || ""}`}>{esteira.texto}</span>
@@ -14862,15 +14862,13 @@ export default function App() {
         .ini-obra-gc { font-size: 9.5px; color: var(--ink-3); }
         .ini-obra-pct { font-size: 11.5px; font-weight: 600; color: var(--ink); }
         .ini-obra-vazia { font-size: 10.5px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
-        /* A esteira: bolinha por passo, sem letra — o nome mora no
-           title. Olhar quanto andou nao devia exigir leitura nenhuma. */
-        .ini-esteira { display: flex; align-items: center; margin-top: 7px; }
-        .ini-passo { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
-        .ini-passo.on { background: #1B7A43; }
-        .ini-passo-linha { width: 9px; height: 2px; background: var(--border); flex-shrink: 0; }
-        .ini-passo-linha.on { background: #1B7A43; }
+        /* A esteira: um chip por passo, com o NOME escrito — bolinha
+           sozinha nao distinguia "feito" de "faltando" com clareza. */
+        .ini-esteira { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .ini-passo-chip { display: inline-flex; align-items: center; gap: 1px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; }
+        .ini-passo-chip.on { color: #1B7A43; background: #E7F5EC; border-color: #BFE3CC; }
         /* A frase diz o que falta AGORA — a esteira mostra o caminho
-           inteiro, a frase poupa de contar bolinha pra saber o motivo. */
+           inteiro, a frase poupa de reler os chips pra saber o motivo. */
         .ini-fase-pilula { display: inline-block; margin-top: 5px; font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 6px; padding: 2px 8px; }
         .ini-fase-pilula.azul { color: #1D5FB8; background: var(--blue-bg); }
         .ini-fase-pilula.roxo { color: var(--purple); background: #F1EBFA; }
