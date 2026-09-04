@@ -56,16 +56,16 @@ t("Loucas e Metais: familias que vieram do catalogo BRACCI", () => {
 t("ducha COM registro e' ducha, e nao acabamento de registro", () =>
   assert.strictEqual(subgrupoDe("Ducha higiênica com registro e derivação Lift", "27"), "Chuveiros e duchas"));
 
-t("Sonorizacao (33): familias iniciais", () => {
-  const e = (d, s) => assert.strictEqual(subgrupoDe(d, "33"), s, d);
+t("Sonorizacao (32): familias iniciais", () => {
+  const e = (d, s) => assert.strictEqual(subgrupoDe(d, "32"), s, d);
   e("Caixa de som embutida no teto Sonance", "Caixas de som");
   e("Amplificador multizona 8 canais", "Amplificadores e receivers");
   e("Soundbar Sonos Arc", "Soundbars e home theater");
   e("Subwoofer ativo 10 polegadas", "Subwoofers");
 });
 
-t("Automacao (34): familias iniciais", () => {
-  const e = (d, s) => assert.strictEqual(subgrupoDe(d, "34"), s, d);
+t("Automacao (33): familias iniciais", () => {
+  const e = (d, s) => assert.strictEqual(subgrupoDe(d, "33"), s, d);
   e("Central de automação KNX", "Central e módulos de automação");
   e("Sensor de presença embutido", "Sensores");
   e("Dimmer touch inteligente 4 canais", "Interruptores e dimmers inteligentes");

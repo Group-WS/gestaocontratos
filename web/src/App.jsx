@@ -2871,19 +2871,53 @@ async function lerTextoComAcento(file) {
 // VENDIDO PLANILHA — documento mais elaborado (Excel), com colunas
 // nomeadas: código/verba, descrição, marca, custo, quantidade, ambiente.
 // Lê por CABEÇALHO (não por posição fixa), pra aguentar variação de layout.
-async function lerPlanilhaExcel(file) {
-  let linhas;
+async function lerPlanilhaExcel(file, opts) {
+  const { preferirAba, evitarAba } = opts || {};
+  let abas;
   // .xlsm é Excel com macro — é o formato do "Composição de Custo" da
   // casa. Sem ele na lista, o arquivo caía no caminho de texto simples e
   // nada era lido. .xlsb entra junto pelo mesmo motivo.
   if (/\.(xlsx|xlsm|xlsb|xls)$/i.test(file.name)) {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array" });
-    linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
+    abas = wb.SheetNames.map((nome) => ({
+      nome, linhas: XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, blankrows: false }),
+    }));
   } else {
-    linhas = parseCSVLinhas(await lerTextoComAcento(file));
+    abas = [{ nome: null, linhas: parseCSVLinhas(await lerTextoComAcento(file)) }];
   }
 
+  /* Um .xlsm de "Composição de Custo" de verdade tem VÁRIAS abas — capa
+     de aprovação, planilha orçamentária, contrato (que aqui não conta:
+     Contrato é PDF, não Excel), executivo, controle de compras... Ler só
+     a primeira aba (era o que este código fazia) quebra sempre que ela
+     não é a de dados: "Aprovação CEO" na frente de "Planilha
+     Orçamentária" fez a importação inteira dizer "não encontrei
+     colunas" com a aba certa bem ao lado.
+
+     A prova real de que uma aba é a certa não é o cabeçalho bater, é
+     sair item de verdade — então roda o extrator em CADA aba e fica só
+     com as que produziram algo. Quando mais de uma aba do mesmo arquivo
+     produz itens (ex.: Orçamentária E Executivo no mesmo .xlsm),
+     `preferirAba`/`evitarAba` desempatam pelo nome — sem isso, importar
+     Vendido Planilha corre o risco de trazer a aba do Executivo. */
+  const candidatas = abas
+    .map(({ nome, linhas }) => ({ nome, ...extrairItensDaPlanilha(linhas) }))
+    .filter((c) => c.itens.length > 0);
+  if (candidatas.length === 0) return { itens: [] };
+  if (candidatas.length > 1) {
+    const bate = (nome, padrao) => !!(padrao && nome && padrao.test(nome));
+    const preferidas = preferirAba ? candidatas.filter((c) => bate(c.nome, preferirAba)) : [];
+    if (preferidas.length) return preferidas[0];
+    const semEvitar = evitarAba ? candidatas.filter((c) => !bate(c.nome, evitarAba)) : candidatas;
+    return semEvitar[0] || candidatas[0];
+  }
+  return candidatas[0];
+}
+
+// A extração de verdade, isolada por aba — lerPlanilhaExcel roda isto
+// em cada aba do arquivo e escolhe qual resultado usar.
+function extrairItensDaPlanilha(linhas) {
   // acha a linha de cabeçalho: a primeira que tem "descri" e (marca ou custo/valor)
   let headerIdx = -1;
   for (let i = 0; i < linhas.length; i++) {
@@ -2945,7 +2979,14 @@ async function lerPlanilhaExcel(file) {
   const iEspec = reservarIdent([/especifica/, /^c[oó]d/, /obs/]);
   const iMarca = reservarIdent([/fornecedor/, /marca/]);
   const iAmb = reservarIdent([/ambiente/, /local/]);
-  const iQtd = reservarIdent([/qtd/, /quant/]);
+  // "quant" solto casa com QUALQUER coluna que contenha a palavra, e
+  // "Memorial de Levantamento Quantitativo" é texto descritivo, não
+  // número — vinha antes de "Qtd." na planilha real da 2517 e roubava a
+  // coluna, então toda quantidade saía errada silenciosamente. "qtd"
+  // primeiro, sozinho: é abreviação rara demais pra aparecer por acaso
+  // em outra coisa. "quant" só entra se "qtd" não achar nada.
+  const iQtdEstrito = reservarIdent([/qtd/]);
+  const iQtd = iQtdEstrito >= 0 ? iQtdEstrito : reservarIdent([/quant/]);
   const iUn = reservarIdent([/^un\b/, /^un\.?$/, /unidade/]);
   const iVerba = reservarIdent([/verba/, /grupo/, /eap/]);
   // --- Colunas de custo ---
@@ -2967,7 +3008,12 @@ async function lerPlanilhaExcel(file) {
   const iTotalMO = reservar([/custo total m[aã]o/]);
   const iMaterial = reservar([/custo mat/, /^material$/]);
   const iMO = reservar([/custo m[aã]o/, /^m[aã]o de obra$/]);
-  const iCustoTotal = reservar([/custo total/, /^total$/, /^custo$/, /^valor$/]);
+  // "Venda" entra aqui, não em custo genérico: numa Composição de Custo
+  // real a aba tem uma coluna "CUSTOS" (o gasto da empresa) SEPARADA da
+  // "VENDA" (o que o cliente paga) — sem "venda" aqui, "CUSTOS" casava
+  // primeiro por conter a palavra "custo", e a Vendido Planilha herdava
+  // o custo interno da empresa em vez do valor vendido ao cliente.
+  const iCustoTotal = reservar([/custo total/, /^total$/, /^custo$/, /^valor$/, /venda/]);
 
   // Vendido Planilha usa outro vocabulário (unitário/preço) — segue valendo.
   const iCustoUnit = reservar([/unit[aá]rio/, /vlr\.? unit/, /pre[çc]o unit/, /^pre[çc]o$/]);
@@ -3530,7 +3576,9 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
 
   async function aoImportar(file) {
     const ehPDF = /\.pdf$/i.test(file.name);
-    const { itens } = ehPDF ? await lerPlanilhaPDF(file) : await lerPlanilhaExcel(file);
+    // Evita a aba do Executivo quando o mesmo .xlsm traz as duas — Vendido
+    // Planilha e Executivo não são o mesmo documento, mesmo vindo juntos.
+    const { itens } = ehPDF ? await lerPlanilhaPDF(file) : await lerPlanilhaExcel(file, { evitarAba: /execut/i });
     if (itens.length === 0) {
       throw new Error(ehPDF
         ? "Não encontrei itens com quantidade nesse PDF. Me manda o arquivo que eu calibro o leitor."
@@ -5693,7 +5741,10 @@ function ExecutivoView({ obra, usuario, onImportCaderno, onImportPlanilhaExecuti
 
   async function aoImportar(file) {
     const ehPDF = /\.pdf$/i.test(file.name);
-    const { itens } = ehPDF ? await lerExecutivoPDF(file) : await lerPlanilhaExcel(file);
+    // Prefere a aba do Executivo quando o mesmo .xlsm traz Orçamentária E
+    // Executivo juntas — senão a primeira que produzir itens ganha, e
+    // pode não ser a certa pra esta importação.
+    const { itens } = ehPDF ? await lerExecutivoPDF(file) : await lerPlanilhaExcel(file, { preferirAba: /execut/i });
     if (itens.length === 0) throw new Error("Não encontrei itens nesse arquivo. Me manda ele que eu calibro o leitor.");
     onImportPlanilhaExecutivo(itens);
     return `“${file.name}” importado — ${itens.length} itens.`;

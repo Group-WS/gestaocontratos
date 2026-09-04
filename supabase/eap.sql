@@ -68,12 +68,16 @@ insert into eap_grupo (num, nome, apelidos, analisar, motivo_na, ordem) values
   ('29', 'Adega Climatizada', array['adegaclimatizada','adega']::text[], true, null, 29),
   ('30', 'Cortinas e Persianas', array['cortina','persian']::text[], true, null, 30),
   ('31', 'Itens Decorativos', array['decorativo','decoracao']::text[], true, null, 31),
-  ('32', 'Execução e Mão de Obra', array['execucao','maodeobra']::text[], false, 'Valor fictício criado na venda pra separar margem — não representa item real', 32),
-  -- '32' esta' desativado (remove-verba-32.sql) mas o numero continua
-  -- ocupado por ele; por isso os grupos novos comecam em '33', nao
-  -- reaproveitam o buraco.
-  ('33', 'Sonorização', array['sonoriza','audio']::text[], true, null, 33),
-  ('34', 'Automação', array['automacao','automatiza','domotic']::text[], true, null, 34)
+  ('32', 'Sonorização', array['sonoriza','audio']::text[], true, null, 32),
+  ('33', 'Automação', array['automacao','automatiza','domotic']::text[], true, null, 33),
+  -- Ficava em '32', desativado (remove-verba-32.sql). Padronizado pra
+  -- '34' pra abrir espaço pros dois grupos novos ficarem juntos e em
+  -- ordem — se a linha ainda estiver em '32' quando este arquivo rodar,
+  -- rode ANTES o renumera-execucao-mao-de-obra.sql (faz a mudança de
+  -- forma segura, sem colidir com Sonorização/Automação no meio do
+  -- caminho e sem perder o rótulo de obra antiga que já tenha custo
+  -- lançado nesse grupo).
+  ('34', 'Execução e Mão de Obra', array['execucao','maodeobra']::text[], false, 'Valor fictício criado na venda pra separar margem — não representa item real', 34)
 on conflict (num) do update set
   nome = excluded.nome,
   apelidos = excluded.apelidos,
