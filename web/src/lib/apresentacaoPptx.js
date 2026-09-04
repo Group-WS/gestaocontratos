@@ -143,14 +143,20 @@ export async function gerarPptx(doc, artes, imagemDe, idioma = "pt") {
   /* Caixa de texto solta e editável: é o ponto do arquivo inteiro. Cada
      `<a:r>` é uma linha, e `algn`/cor/negrito viram atributos reais do
      PowerPoint — não desenho, texto de verdade que se seleciona e edita. */
-  function textoXml(id, x, y, w, h, linhas, { tamanho = 10, cor = "191D21", negrito = false, direita = false } = {}) {
+  function textoXml(id, x, y, w, h, linhas, { tamanho = 10, cor = "191D21", negrito = false, direita = false, rotacao = 0 } = {}) {
     const paras = (Array.isArray(linhas) ? linhas : [linhas]).map((l) => `<a:p>` +
       (direita ? `<a:pPr algn="r"/>` : "") +
       `<a:r><a:rPr lang="pt-BR" sz="${Math.round(tamanho * 100)}" b="${negrito ? 1 : 0}" dirty="0">` +
       `<a:solidFill><a:srgbClr val="${cor}"/></a:solidFill><a:latin typeface="Arial"/></a:rPr>` +
       `<a:t>${esc(l)}</a:t></a:r></a:p>`).join("");
+    /* `rot` gira em torno do CENTRO da caixa (60000avos de grau, positivo
+       = sentido horário) — a caixa já nasce centrada onde precisa, então
+       só girar resolve, sem precisar trocar x/y/w/h. */
+    const xfrm = rotacao
+      ? `<a:xfrm rot="${Math.round(rotacao * 60000)}">`
+      : `<a:xfrm>`;
     return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Texto ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
-<p:spPr><a:xfrm><a:off x="${px(x)}" y="${px(y)}"/><a:ext cx="${px(w)}" cy="${px(h)}"/></a:xfrm>
+<p:spPr>${xfrm}<a:off x="${px(x)}" y="${px(y)}"/><a:ext cx="${px(w)}" cy="${px(h)}"/></a:xfrm>
 <a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>
 <p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"><a:noAutofit/></a:bodyPr><a:lstStyle/>${paras}</p:txBody>
 </p:sp>`;
@@ -195,8 +201,11 @@ export async function gerarPptx(doc, artes, imagemDe, idioma = "pt") {
 <p:spPr><a:xfrm><a:off x="${px(A.x)}" y="${px(A.y)}"/><a:ext cx="${px(A.w)}" cy="${px(A.h)}"/></a:xfrm>
 <a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="092737"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr>
 <p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
+    /* Girado, igual ao PDF (`rotate: degrees(-90)` lá): a arte imprime o
+       ano na lateral, de baixo pra cima — sem a rotação o "2026" saía
+       deitado, maior que a tarja estreita que devia cobri-lo. */
     const ano = textoXml(10, A.x - 4, A.y + A.h / 2 - 8, A.w + 8, 16, String(new Date().getFullYear()),
-      { tamanho: 7, cor: "8C9296" });
+      { tamanho: 7, cor: "8C9296", rotacao: 90 });
     slides.push({ formas: abertura.formas + tarja + ano, rels: abertura.rels });
   }
 

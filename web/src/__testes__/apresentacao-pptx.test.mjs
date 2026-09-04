@@ -157,6 +157,13 @@ t("o tamanho do slide bate com 960x540pt — mesma geometria do editor e do PDF"
   assert.strictEqual(Number(m[2]) / 12700, 540);
 });
 
+t("o ano da abertura sai girado — o PDF ja fazia isso (rotate: -90), o pptx nao", () => {
+  const slide1 = arquivo("ppt/slides/slide1.xml");
+  const ano = new Date().getFullYear().toString();
+  assert.match(slide1, new RegExp(`<a:t>${ano}</a:t>`));
+  assert.match(slide1, /<a:xfrm rot="5400000">/);   // 90° em sentido horario, 60000avos de grau
+});
+
 t("os valores da capa aparecem como TEXTO, nao desenhados — e' o ponto do arquivo", () => {
   const slide2 = arquivo("ppt/slides/slide2.xml");
   assert.match(slide2, /<a:t>Comet<\/a:t>/);
