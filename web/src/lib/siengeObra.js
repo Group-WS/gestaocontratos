@@ -13,7 +13,21 @@ export async function listarSiengeObras() {
   if (!supabaseConfigurado) return [];
   const { data, error } = await supabase
     .from("sienge_obra")
-    .select("codigo, nome, cidade, estado");
+    .select("codigo, nome, cidade, estado, status_manual");
   if (error) throw error;
   return data || [];
+}
+
+/**
+ * A marcação manual — "eu sei que essa está finalizada/ativa" — manda
+ * mais que qualquer regra automática (ver `statusSienge` em App.jsx).
+ * Passar `status: null` volta a obra pro palpite automático.
+ */
+export async function marcarStatusSienge(codigo, status) {
+  if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
+  const { error } = await supabase
+    .from("sienge_obra")
+    .update({ status_manual: status })
+    .eq("codigo", String(codigo));
+  if (error) throw error;
 }

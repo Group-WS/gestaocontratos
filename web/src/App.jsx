@@ -20,7 +20,7 @@ import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
 import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
 import { subgrupoDe } from "./lib/catalogoModelo.js";
-import { listarSiengeObras } from "./lib/siengeObra.js";
+import { listarSiengeObras, marcarStatusSienge } from "./lib/siengeObra.js";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import Catalogo from "./Catalogo";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
@@ -10420,17 +10420,21 @@ const ENTREGUE_RE = /entregue/i;
 
 /* O status de uma obra do histórico do Sienge, pra colorir o painel.
  *
- * A ordem importa: o que o Confere já sabe (`registro`, a tabela que o
- * time de fato acompanha) manda mais que qualquer palpite — se ela está
- * marcada "concluida" ou "ativa" aqui dentro, é essa a resposta. Só
- * quando o Confere nunca ouviu falar dessa obra (todo o histórico
- * antigo, de antes deste app existir) é que entram os sinais indiretos:
- * o nome dizendo "Entregue", ou o código ser antigo demais (<=1500) pra
- * ainda estar em obra hoje. Sem cruzar com o Monday ao vivo por
- * enquanto — decisão dela, pra não travar o painel numa integração que
- * ainda não existe pra esse recorte.
+ * A ordem importa, do sinal mais confiável pro mais fraco:
+ *   1. Marcação MANUAL (`status_manual`) — alguém olhou e corrigiu, e
+ *      isso vale mais que qualquer regra, inclusive o que vem depois.
+ *   2. O que o Confere já sabe (`registro`, a tabela que o time de fato
+ *      acompanha) — se ela está marcada "concluida" ou "ativa" aqui
+ *      dentro, é essa a resposta.
+ *   3. Sinais indiretos, só quando nem o Confere nunca ouviu falar
+ *      dessa obra (histórico antigo, de antes deste app existir): o
+ *      nome dizendo "Entregue", ou o código ser antigo demais (<=1500)
+ *      pra ainda estar em obra hoje.
+ * Sem cruzar com o Monday ao vivo por enquanto — decisão dela, pra não
+ * travar o painel numa integração que ainda não existe pra esse recorte.
  */
 function statusSienge(row, registro) {
+  if (row.status_manual) return row.status_manual;
   const conf = registro.get(String(row.codigo));
   if (conf?.situacao) return conf.situacao === "concluida" ? "finalizada" : "ativa";
   if (ENTREGUE_RE.test(row.nome || "")) return "finalizada";
@@ -10469,7 +10473,7 @@ function agruparPorLocalizacao(siengeObras, registro) {
 /* Painel "Onde estão as obras": estado -> cidade -> obra, sem despejar
    as ~540 de uma vez — só o estado escolhido mostra cidade, só a cidade
    escolhida mostra as obras dela, coloridas por status. */
-function PainelLocalizacao({ dados, carregando }) {
+function PainelLocalizacao({ dados, carregando, onToggleStatus }) {
   const [estado, setEstado] = useState(null);
   const [cidadesAbertas, setCidadesAbertas] = useState(() => new Set());
   const grupo = dados.find((g) => g.estado === estado) || null;
@@ -10535,9 +10539,11 @@ function PainelLocalizacao({ dados, carregando }) {
                 {aberta && (
                   <div className="loc-obras">
                     {c.obras.map((o) => (
-                      <span key={o.codigo} className={`loc-obra-chip ${o.status}`} title={`#${o.codigo}`}>
-                        {o.nome}
-                      </span>
+                      <button key={o.codigo} type="button" className={`loc-obra-chip ${o.status}`}
+                        onClick={() => onToggleStatus(o.codigo, o.status)}
+                        title={`#${o.codigo} — clique pra marcar como ${o.status === "finalizada" ? "ativa" : "finalizada"}`}>
+                        {o.status === "finalizada" && <Check size={9} />} {o.nome}
+                      </button>
                     ))}
                   </div>
                 )}
@@ -10602,7 +10608,7 @@ function InicioNum({ rot, valor, sub, cor, onClick }) {
   );
 }
 
-function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0, onAbrirObra, onModulo, dadosLocalizacao = [], localizacaoCarregando = false }) {
+function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0, onAbrirObra, onModulo, dadosLocalizacao = [], localizacaoCarregando = false, onToggleLocalizacao }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const t = r.totais;
 
@@ -10796,7 +10802,7 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
         </div>
       </div>
 
-      <PainelLocalizacao dados={dadosLocalizacao} carregando={localizacaoCarregando} />
+      <PainelLocalizacao dados={dadosLocalizacao} carregando={localizacaoCarregando} onToggleStatus={onToggleLocalizacao} />
     </>
   );
 }
@@ -12424,6 +12430,17 @@ export default function App() {
   const obrasConcluidas = useMemo(() => obras.filter((o) => situacaoDe(o) === "concluida"), [obras, registro]);
   const obrasNovas = useMemo(() => obras.filter((o) => !situacaoDe(o)), [obras, registro]);
   const dadosLocalizacao = useMemo(() => agruparPorLocalizacao(siengeObras, registro), [siengeObras, registro]);
+  /* Otimista: a tela muda na hora, e desfaz sozinha se o Supabase
+     recusar — sem isso, cada clique ficaria "cru" até a resposta ir e
+     voltar, e um clique duplo enquanto isso ainda ia pro estado errado. */
+  const alternarStatusLocalizacao = (codigo, statusAtual) => {
+    const anterior = siengeObras.find((r) => r.codigo === codigo)?.status_manual ?? null;
+    const novo = statusAtual === "finalizada" ? "ativa" : "finalizada";
+    setSiengeObras((prev) => prev.map((r) => (r.codigo === codigo ? { ...r, status_manual: novo } : r)));
+    marcarStatusSienge(codigo, novo).catch(() => {
+      setSiengeObras((prev) => prev.map((r) => (r.codigo === codigo ? { ...r, status_manual: anterior } : r)));
+    });
+  };
 
   // Seleciona a primeira obra ativa assim que houver uma, e nunca deixa
   // uma obra que saiu da sidebar (concluída) presa como selecionada.
@@ -15185,7 +15202,8 @@ export default function App() {
         .loc-cidade-conta { display: flex; gap: 6px; }
         .loc-conta { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; }
         .loc-obras { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 12px 24px; }
-        .loc-obra-chip { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 10px; }
+        .loc-obra-chip { display: inline-flex; align-items: center; gap: 3px; font: inherit; font-size: 11px; font-weight: 600; border: none; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+        .loc-obra-chip:hover { filter: brightness(0.95); }
         .loc-obra-chip.finalizada { color: var(--ink-2); background: var(--panel); }
         /* A frase diz o que falta AGORA — a esteira mostra o caminho
            inteiro, a frase poupa de reler os chips pra saber o motivo. */
@@ -15328,6 +15346,7 @@ export default function App() {
           <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={painelCarregando}
             usuario={usuario} equipe={pessoas} nPendentes={nPendentes}
             dadosLocalizacao={dadosLocalizacao} localizacaoCarregando={siengeCarregando}
+            onToggleLocalizacao={alternarStatusLocalizacao}
             onAbrirObra={(id) => { setSelectedId(id); setModulo("comparativo"); setGrupo("dashboard"); setTab(null); }}
             onModulo={setModulo} />
           </>
