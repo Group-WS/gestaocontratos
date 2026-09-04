@@ -103,6 +103,22 @@ t("toda Relationship Target resolve pra um arquivo real do zip", () => {
   }
 });
 
+/* Bug real, achado só num .pptx de verdade (o validador de "toda
+   relação resolve" não pega isto, porque a relação que falta não é
+   referenciada por ninguém — ela só precisa EXISTIR). Todo slide.xml.rels
+   tem que declarar a relação com o slideLayout, MESMO quando o slide não
+   tem nenhuma imagem — sem ela o PowerPoint oferece pra reparar. Um `||`
+   que devia suprir essa relação nos slides sem foto nunca disparava,
+   porque `relXml([])` já devolve uma string não-vazia mesmo vazia de
+   itens. */
+t("todo slide declara a relacao com o slideLayout, com ou sem foto", () => {
+  for (const nome of Object.keys(zip)) {
+    if (!/^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/.test(nome)) continue;
+    assert.match(arquivo(nome), /relationships\/slideLayout/,
+      `${nome} nao declara relacao de slideLayout`);
+  }
+});
+
 t("todo r:embed num slide tem Relationship correspondente no .rels dele", () => {
   for (const nome of Object.keys(zip)) {
     if (!/^ppt\/slides\/slide\d+\.xml$/.test(nome)) continue;

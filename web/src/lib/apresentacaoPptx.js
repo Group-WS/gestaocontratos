@@ -156,6 +156,14 @@ export async function gerarPptx(doc, artes, imagemDe, idioma = "pt") {
 </p:sp>`;
   }
 
+  /* TODO slide precisa desta relação — é como o PowerPoint sabe de qual
+     layout ele herda. Faltando ela, o arquivo abre "reparado" (ou nem
+     abre): foi um bug real, achado só ao inspecionar um .pptx de
+     verdade — o `||` que devia suprir essa relação nos slides sem
+     imagem nunca disparava, porque `relXml([])` já devolve uma string
+     não-vazia mesmo sem nenhuma foto. */
+  const RELACAO_LAYOUT = { id: "rId1", tipo: "slideLayout", alvo: "../slideLayouts/slideLayout1.xml" };
+
   /* Uma página inteira de arte fixa (abertura, dados, fechamento): a
      imagem cobrindo o slide todo. Continua sendo IMAGEM, não texto —
      ela é a marca da casa, e não deveria ser editável por engano. */
@@ -163,8 +171,8 @@ export async function gerarPptx(doc, artes, imagemDe, idioma = "pt") {
     const nome = await media(bytes);
     if (!nome) return { formas: "", rels: "" };
     return {
-      formas: imagemXml(2, "rId1", 0, 0, LARGURA, ALTURA),
-      rels: relXml([{ id: "rId1", tipo: "image", alvo: `../media/${nome}` }]),
+      formas: imagemXml(2, "rId2", 0, 0, LARGURA, ALTURA),
+      rels: relXml([RELACAO_LAYOUT, { id: "rId2", tipo: "image", alvo: `../media/${nome}` }]),
     };
   }
 
@@ -234,8 +242,8 @@ export async function gerarPptx(doc, artes, imagemDe, idioma = "pt") {
        nem abre. */
     let id = 2;
     let formas = "";
-    const relItens = [];
-    let rId = 1;
+    const relItens = [RELACAO_LAYOUT];
+    let rId = 2;
     const novoRid = () => `rId${rId++}`;
 
     // fundo branco: sem isto, um slide sem render mostraria o cinza do
@@ -366,8 +374,7 @@ ${slides.map((_, i) => `<Override PartName="/ppt/slides/slide${i + 1}.xml" Conte
 ${s.formas}
 </p:spTree></p:cSld>
 </p:sld>`;
-    arquivos[`ppt/slides/_rels/slide${i + 1}.xml.rels`] =
-      s.rels || relXml([{ id: "_placeholder", tipo: "slideLayout", alvo: "../slideLayouts/slideLayout1.xml" }]);
+    arquivos[`ppt/slides/_rels/slide${i + 1}.xml.rels`] = s.rels || relXml([RELACAO_LAYOUT]);
   });
 
   midias.forEach((m) => { arquivos[`ppt/media/${m.nome}`] = m.bytes; });
