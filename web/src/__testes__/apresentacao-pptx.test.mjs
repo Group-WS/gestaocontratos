@@ -119,6 +119,15 @@ t("todo slide declara a relacao com o slideLayout, com ou sem foto", () => {
   }
 });
 
+/* Segundo bug do mesmo tipo, achado comparando com um .pptx feito de
+   verdade no PowerPoint: o slideMaster também precisa de uma relação
+   com o tema (Type=".../theme"), e essa relação nunca existiu aqui —
+   [Content_Types].xml tinha o Override pro arquivo do tema, mas nada no
+   grafo de relações ligava o master a ele. */
+t("o slideMaster declara a relacao com o tema", () => {
+  assert.match(arquivo("ppt/slideMasters/_rels/slideMaster1.xml.rels"), /relationships\/theme/);
+});
+
 t("todo r:embed num slide tem Relationship correspondente no .rels dele", () => {
   for (const nome of Object.keys(zip)) {
     if (!/^ppt\/slides\/slide\d+\.xml$/.test(nome)) continue;

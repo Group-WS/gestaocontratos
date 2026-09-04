@@ -345,8 +345,13 @@ ${slides.map((_, i) => `<Override PartName="/ppt/slides/slide${i + 1}.xml" Conte
 
   arquivos["ppt/theme/theme1.xml"] = TEMA;
   arquivos["ppt/slideMasters/slideMaster1.xml"] = SLIDE_MASTER;
+  /* O slideMaster PRECISA de uma relação com o tema — sem ela o arquivo
+     abre "reparado" no PowerPoint. Achado comparando com um .pptx de
+     verdade, feito no PowerPoint (o master dele referencia o tema por
+     aqui, não por outro lugar do pacote): faltava inteiramente. */
   arquivos["ppt/slideMasters/_rels/slideMaster1.xml.rels"] = relXml([
     { id: "rId1", tipo: "slideLayout", alvo: "../slideLayouts/slideLayout1.xml" },
+    { id: "rId2", tipo: "theme", alvo: "../theme/theme1.xml" },
   ]);
   arquivos["ppt/slideLayouts/slideLayout1.xml"] = SLIDE_LAYOUT;
   arquivos["ppt/slideLayouts/_rels/slideLayout1.xml.rels"] = relXml([
