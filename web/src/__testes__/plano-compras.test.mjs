@@ -41,6 +41,11 @@ const ate = (assinatura, terminador) => {
 
 const codigo = [
   src.match(/^const ehProduto = .*$/m)[0],
+  src.match(/^const VERBAS_MAT_MO_SEMPRE = .*$/m)[0],
+  bloco("const ehVerbaMatMoSempre = ", ";\n"),
+  bloco("function seriaMatMaisMoDaEmpresa("),
+  src.match(/^const VERBAS_MO_CONTRATADA = .*$/m)[0],
+  bloco("const separaMOautomatico = ", ";\n"),
   bloco("function parcelasDoItem("),
   bloco("function parcelasDaPlanilha("),
 ].join("\n");
@@ -48,6 +53,9 @@ const codigo = [
 const { parcelasDoItem } = eval(`(function () {
   // Sem padrao da empresa: aqui se testa o que a planilha decide.
   const padraoDaDescricao = () => null;
+  // Sem nome de verba nestes fixtures (só "num"), então esta função
+  // nunca precisa resolver apelido nenhum — ver os "cat" abaixo.
+  const verbaPorNome = () => null;
   ${src.match(/^const ALOC_MAT = .*$/m)[0]}
   ${codigo}
   return { parcelasDoItem };
@@ -60,7 +68,11 @@ const conf = (nome, obtido, esperado) => {
   console.log(`${ok ? "ok  " : "FALHOU"} ${nome.padEnd(52)} ${String(obtido).padEnd(10)} ${ok ? "" : "esperava " + esperado}`);
 };
 
-// o item do exemplo da Priscila
+// o item do exemplo da Priscila — verba real dele é Iluminação (05), que
+// separa MAT/MO sozinha; sem essa verba na mão, as duas parcelas juntas
+// virariam MO inteiro pela regra nova (ver plano-alocacao.test.mjs) e
+// este arquivo pararia de testar o que se propõe: a leitura da PARCELA.
+const iluminacao = { num: "05" };
 const spot = {
   tipo: "produto", codigo: "5.12", desc: "Spot de Sobrepor Redondo Loyo Up MR16",
   qtdExecutivo: 1, custo: 362, custoMaterial: 182, custoMO: 180,
@@ -68,13 +80,13 @@ const spot = {
 };
 
 console.log("=== AS DUAS PARCELAS ===");
-conf("material do spot", parcelasDoItem(spot).material, 182);
-conf("mão de obra do spot", parcelasDoItem(spot).mo, 180);
-conf("nada estimado quando a planilha trouxe", parcelasDoItem(spot).estimado, false);
+conf("material do spot", parcelasDoItem(spot, iluminacao).material, 182);
+conf("mão de obra do spot", parcelasDoItem(spot, iluminacao).mo, 180);
+conf("nada estimado quando a planilha trouxe", parcelasDoItem(spot, iluminacao).estimado, false);
 
 // quantidade multiplica quando só veio o unitário
 const semTotais = { ...spot, totalMaterial: null, totalMO: null, qtdExecutivo: 3 };
-conf("total sai do unitário × quantidade", parcelasDoItem(semTotais).material, 546);
+conf("total sai do unitário × quantidade", parcelasDoItem(semTotais, iluminacao).material, 546);
 
 console.log("\n=== SEM AS COLUNAS (PDF): PALPITE DECLARADO ===");
 const soTotal = { tipo: "produto", custo: 500, qtdExecutivo: 1, custoMaterial: null, custoMO: null, totalMaterial: null, totalMO: null };

@@ -283,7 +283,7 @@ function obraComprasStats(o) {
      das duas. */
   categoriasComAditivos(o.categorias, o.aditivos).forEach((c) => (c.itens || []).forEach((it) => {
     if (it.ehTitulo) return;
-    const { material } = parcelasDoItem(it);
+    const { material } = parcelasDoItem(it, c);
     if (material <= 0 && alocacaoDoItem(it, c) !== ALOC_MAT) return;
     totalProdutos += material;
     if (it.comprado) totalComprado += material;
@@ -794,6 +794,30 @@ const VERBAS_MAT_MO_SEMPRE = new Set(["22", "23", "25", "30"]);
 const ehVerbaMatMoSempre = (num, nome) =>
   VERBAS_MAT_MO_SEMPRE.has((nome ? verbaPorNome(nome) : null) || num);
 
+/* Regra da empresa: as duas parcelas preenchidas numa verba SEM split
+   proprio deixou de ser "nao separado" e passou a contar inteiro como
+   MAO DE OBRA. So isso — o pacote fechado (`ehVerbaMatMoSempre`) tem
+   regra dele, e a linha separada por essa funcao.
+
+   EXCECAO que importa: as verbas de `separaMOautomatico` (05, 20, 24,
+   27, 28) tem split proprio — a empresa compra o material e contrata a
+   mao de obra separadamente, e a importacao ja parte a linha em duas.
+   Enquanto uma linha dessas ainda nao foi partida (importacao no meio
+   do caminho, edicao manual que preencheu as duas colunas de novo), as
+   duas parcelas juntas continuam sendo o sinal de "ainda falta separar"
+   — nao "virou mao de obra". Se essa regra nova entrasse ali, o botao
+   "separar MO" nunca apareceria pra essas cinco verbas de novo, e o
+   material sumiria dentro da mao de obra antes de alguem clicar.
+
+   `cru` sao as parcelas da PLANILHA (`parcelasDaPlanilha`), nunca as
+   ja decididas — senao `parcelasDoItem` chamando isto entraria em
+   looping. */
+function seriaMatMaisMoDaEmpresa(cat, cru) {
+  if (cat && ehVerbaMatMoSempre(cat.num, cat.nome)) return true;
+  if (cru.material <= 0 || cru.mo <= 0) return false;
+  return !(cat && separaMOautomatico(cat.num, cat.nome));
+}
+
 function alocacaoDoItem(it, cat) {
   // Correcao NESTA obra ganha de tudo. O que a planilha traz e uma
   // leitura, nao um decreto: item lancado inteiro na coluna de material
@@ -811,22 +835,20 @@ function alocacaoDoItem(it, cat) {
      especifica que grupo. */
   const daEmpresa = padraoDaDescricao(it.desc);
   if (daEmpresa) return daEmpresa;
-  // Verba de pacote fechado: o fornecedor entrega os dois juntos.
-  if (cat && ehVerbaMatMoSempre(cat.num, cat.nome)) return ALOC_AMBOS;
   // Avulso nao tem valor nenhum (so o pedido), entao quem declara a
   // alocacao e quem pediu — nao ha parcela pra deduzir dela.
   if (it.avulso) return it.alocacao || ALOC_MAT;
-  const { material, mo } = parcelasDoItem(it);
-  if (material > 0 && mo > 0) return ALOC_AMBOS;
-  if (mo > 0) return ALOC_MO;
-  if (material > 0) return ALOC_MAT;
-  /* Nao deu pra classificar: vai pra MAT+MO, nunca pra vazio.
-
-     Insumo sem alocacao e insumo que nao vai pra lugar nenhum — nao entra
-     em Compras, nao vira contrato, e some das duas pontas sem aparecer em
-     erro nenhum. Mandar pra MAT+MO tem a vantagem de nao chutar um lado:
-     o item aparece no filtro MAT+MO, que e a lista do que ainda falta
-     resolver, em vez de se disfarcar de decisao tomada. */
+  const cru = parcelasDaPlanilha(it);
+  if (seriaMatMaisMoDaEmpresa(cat, cru)) return ALOC_MO;
+  // As duas parcelas preenchidas numa verba de split proprio: ainda nao
+  // foi partida, e continua precisando aparecer como "falta separar".
+  if (cru.material > 0 && cru.mo > 0) return ALOC_AMBOS;
+  if (cru.mo > 0) return ALOC_MO;
+  if (cru.material > 0) return ALOC_MAT;
+  /* Nao deu pra classificar (nenhuma parcela tem valor): fica em MAT+MO,
+     nunca vazio nem chutado — aqui nao e dinheiro que precisou de lado,
+     e' item sem dado nenhum, e isso continua precisando aparecer como
+     "falta resolver", nao se disfarcar de mao de obra decidida. */
   return ALOC_AMBOS;
 }
 
@@ -871,7 +893,7 @@ const podeSepararMO = (it, cat) =>
   !it.moSeparada && !it.separadoDe && !it.ehTitulo
   && !(cat && ehVerbaMatMoSempre(cat.num, cat.nome))
   && alocacaoDoItem(it, cat) === ALOC_AMBOS
-  && parcelasDoItem(it).mo > 0;
+  && parcelasDoItem(it, cat).mo > 0;
 
 const codigoMOlivre = (usados, prefixo) => {
   let n = 1;
@@ -895,8 +917,12 @@ const codigoMOlivre = (usados, prefixo) => {
    aprendeu a copiar. Por isso a linha nova sai de um espalhamento do
    item inteiro, e so depois os campos que NAO acompanham a mao de obra
    sao zerados. */
-function partirMaoDeObra(item, verba, codigoNovo) {
-  const { mo } = parcelasDoItem(item);
+function partirMaoDeObra(item, cat, codigoNovo) {
+  // Precisa do CATEGORIA inteira, nao so' do numero — e' o que deixa
+  // `parcelasDoItem` reconhecer que esta verba tem split proprio e nao
+  // aplicar por cima a regra nova de MAT+MO virar MO (ver `ehMatMoAutomatico`);
+  // passando so' o numero essa checagem ficaria cega.
+  const { mo } = parcelasDoItem(item, cat);
   if (mo <= 0 || item.moSeparada) return null;
   return {
     original: { ...item, moSeparada: { valor: mo, codigo: codigoNovo } },
@@ -913,7 +939,7 @@ function partirMaoDeObra(item, verba, codigoNovo) {
       sienge: null, contavel: false,
       comprado: false, valorComprado: null, qtdComprada: null,
       compraDecidida: false, liberado: false,
-      separadoDe: { codigo: item.codigo, verba, desc: item.desc },
+      separadoDe: { codigo: item.codigo, verba: cat.num, desc: item.desc },
     },
   };
 }
@@ -931,7 +957,7 @@ function separarMOnasVerbasDeContrato(categorias, soNaVerba) {
     (c.itens || []).forEach((it) => {
       if (!podeSepararMO(it, c)) { itens.push(it); return; }
       const codigoNovo = codigoMOlivre(usados, c.num);
-      const par = partirMaoDeObra(it, c.num, codigoNovo);
+      const par = partirMaoDeObra(it, c, codigoNovo);
       if (!par) { itens.push(it); return; }
       usados.add(codigoNovo);
       // A linha de mao de obra entra LOGO ABAIXO da que a gerou: o par
@@ -1165,7 +1191,7 @@ function resumoDaObra(o, hoje = new Date()) {
     const itens = cat.itens || [];
     itens.forEach((it) => {
       if (it.ehTitulo) return;
-      const { material, mo } = parcelasDoItem(it);
+      const { material, mo } = parcelasDoItem(it, cat);
       const aloc = alocacaoDoItem(it, cat);
       if (material <= 0 && mo <= 0) return;
 
@@ -1301,7 +1327,7 @@ function resumoPorInsumo(obras) {
     (o.categorias || []).forEach((cat) => {
       (cat.itens || []).forEach((it) => {
         if (it.ehTitulo) return;
-        const { material } = parcelasDoItem(it);
+        const { material } = parcelasDoItem(it, cat);
         if (material <= 0 || it.comprado) return;
         const nome = subgrupoDe(it.desc, cat.num) || "Sem categoria";
         if (!grupos.has(nome)) grupos.set(nome, { num: null, nome, total: 0, obras: new Map() });
@@ -1489,7 +1515,7 @@ function itensParaSupressao(categorias) {
   (categorias || []).forEach((cat) => {
     (cat.itens || []).forEach((it) => {
       if (it.ehTitulo) return;
-      const { material, mo } = parcelasDoItem(it);
+      const { material, mo } = parcelasDoItem(it, cat);
       const total = material + mo;
       if (total <= 0) return;
       const qtd = it.qtdExecutivo ?? it.qtdVendida ?? null;
@@ -1540,7 +1566,7 @@ function itensDoCanal(obra, canalId) {
     const itens = cat.itens || [];
     itens.forEach((it) => {
       if (it.ehTitulo || it.canalCompra !== canalId) return;
-      const { material, mo } = parcelasDoItem(it);
+      const { material, mo } = parcelasDoItem(it, cat);
       const prazo = prazoDoGrupo(cat, itens);
       out.push({
         it, cat,
@@ -1704,7 +1730,7 @@ function TagAloc({ aloc, manual, onChange }) {
 function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
-  const { material, mo, estimado, manual } = parcelasDoItem(item);
+  const { material, mo, estimado, manual } = parcelasDoItem(item, cat);
   const aloc = alocacaoDoItem(item, cat);
   const compravel = aloc !== ALOC_MO;   // so quem tem material vai pra Compras
 
@@ -1839,7 +1865,7 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
 // que perde coluna), o app cai no que sabia antes: produto era tudo
 // material, serviço era tudo mão de obra — e a linha fica marcada como
 // estimada, pra ninguém tratar palpite como número da planilha.
-function parcelasDoItem(it) {
+function parcelasDoItem(it, cat) {
   const daPlanilha = parcelasDaPlanilha(it);
   /* MO separada virou linha propria em outra verba. Continuar contando
      aqui seria contar o mesmo dinheiro nos dois lugares — e o total da
@@ -1848,9 +1874,16 @@ function parcelasDoItem(it) {
   /* Decisao de gente move o dinheiro junto — seja a desta obra ou o
      padrao da empresa. Linha nascida de separacao fica fora: as parcelas
      dela ja foram definidas na hora de partir, e aplicar o padrao por
-     cima devolveria o valor pra coluna errada. */
+     cima devolveria o valor pra coluna errada. Avulso tambem fica fora:
+     sem parcela nenhuma pra mover (`custo: null`), a regra do MAT+MO
+     nao tem o que fazer nele. */
+  const semRegraAutomatica = it.moSeparada || it.separadoDe || it.avulso;
   const decidida = it.alocacaoManual
-    || (it.moSeparada || it.separadoDe ? null : padraoDaDescricao(it.desc));
+    || (semRegraAutomatica ? null : padraoDaDescricao(it.desc))
+    // MAT+MO virou MO por regra da empresa — mesma condicao de
+    // `alocacaoDoItem`, pra dinheiro e rotulo nunca contarem coisas
+    // diferentes sobre o mesmo item.
+    || (semRegraAutomatica ? null : (seriaMatMaisMoDaEmpresa(cat, daPlanilha) ? ALOC_MO : null));
   if (!decidida) return base;
   /* Corrigiu a alocacao, o dinheiro acompanha — senao a correcao seria
      enfeite e a verba continuaria contando pro lado errado.
@@ -1936,8 +1969,8 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
 }
 
 function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega, aditivo }) {
-  const mat = itens.reduce((a, it) => a + parcelasDoItem(it).material, 0);
-  const mo = itens.reduce((a, it) => a + parcelasDoItem(it).mo, 0);
+  const mat = itens.reduce((a, it) => a + parcelasDoItem(it, cat).material, 0);
+  const mo = itens.reduce((a, it) => a + parcelasDoItem(it, cat).mo, 0);
   const nAvulsos = itens.filter((it) => it.avulso).length;
   const nAditivo = itens.filter((it) => it.aditivo).length;
   // Quantos ainda tem as duas parcelas na mesma linha. E o que o botao do
@@ -2326,7 +2359,7 @@ function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, 
     let nItens = 0, materialNoPlano = 0, moForaDoPlano = 0, comprado = 0, nComprados = 0;
     (obra.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
       if (it.ehTitulo) return;
-      const { material, mo } = parcelasDoItem(it);
+      const { material, mo } = parcelasDoItem(it, cat);
       if (material <= 0 && mo <= 0) return;
       materialNoPlano += material;
       moForaDoPlano += mo;
@@ -7042,7 +7075,7 @@ function produtosMAT(obra) {
   (obra.categorias || []).forEach((cat, catIdx) => {
     (cat.itens || []).forEach((it, itemIdx) => {
       if (it.ehTitulo) return;
-      const { material } = parcelasDoItem(it);
+      const { material } = parcelasDoItem(it, cat);
       const aloc = alocacaoDoItem(it, cat);
       if (material <= 0 && aloc !== ALOC_MAT) return;
       out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome, material, aloc,
@@ -8490,7 +8523,7 @@ function servicosMO(obra) {
   (obra.categorias || []).forEach((cat, catIdx) => {
     (cat.itens || []).forEach((it, itemIdx) => {
       if (it.ehTitulo) return;
-      const { mo } = parcelasDoItem(it);
+      const { mo } = parcelasDoItem(it, cat);
       const aloc = alocacaoDoItem(it, cat);
       if (mo <= 0 && aloc !== ALOC_MO) return;
       out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome, mo, aloc,
@@ -13210,7 +13243,7 @@ export default function App() {
       const item = (cat?.itens || []).find((it) => it.codigo === codigo);
       if (!item) return o;
       const usados = new Set(cat.itens.map((it) => it.codigo));
-      const par = partirMaoDeObra(item, catNum, codigoMOlivre(usados, catNum));
+      const par = partirMaoDeObra(item, cat, codigoMOlivre(usados, catNum));
       if (!par) return o;
       return { ...o, categorias: o.categorias.map((c) => {
         if (c.num !== catNum) return c;

@@ -69,7 +69,7 @@ const so_mo = { tipo: "servico", desc: "Instalação de cortinas", totalMaterial
 // O caso que motivou a mudança: marcado como serviço, mas com material.
 const servico_com_material = { tipo: "servico", desc: "Marcenaria com insumo", totalMaterial: 500, totalMO: 0, custo: 500 };
 
-conf("item com as duas parcelas é MAT/MO", alocacaoDoItem(spot), ALOC_AMBOS);
+conf("item com as duas parcelas vira MÃO DE OBRA (regra da empresa)", alocacaoDoItem(spot), ALOC_MO);
 conf("só material é MAT", alocacaoDoItem(so_mat), ALOC_MAT);
 conf("só mão de obra é MO", alocacaoDoItem(so_mo), ALOC_MO);
 conf("serviço COM material é MAT (não segue o tipo)", alocacaoDoItem(servico_com_material), ALOC_MAT);
@@ -95,7 +95,11 @@ conf("os chips declarados são 4", FILTROS_ALOC.length, 4);
 conf("serviço-com-material passa em 'aguardando'", matchesFilter({ ...servico_com_material }, "aguardando"), true);
 conf("serviço-com-material passa em 'liberado'", matchesFilter({ ...servico_com_material, liberado: true }, "liberado"), true);
 conf("MO puro NÃO entra no fluxo de compras", matchesFilter({ ...so_mo, liberado: true }, "liberado"), false);
-conf("MAT/MO entra no fluxo de compras", matchesFilter({ ...spot, liberado: true }, "liberado"), true);
+// Virou MO pela regra nova — some do fluxo de compras junto com o resto
+// da mão de obra, e é exatamente esse o ponto da regra.
+conf("MAT+MO também não entra mais (virou MO)", matchesFilter({ ...spot, liberado: true }, "liberado"), false);
+// Só continua indo pra Compras quem tem material de verdade.
+conf("só material continua entrando", matchesFilter({ ...so_mat, liberado: true }, "liberado"), true);
 
 /* ---- 5. avulso: declara a própria alocação e não move total nenhum ---- */
 // A Priscila decidiu que a avulsa registra só o pedido. Sem valor, ela
@@ -137,7 +141,9 @@ conf("virou MAT: mão de obra zera", parcelasDoItem(spot_pra_mat).mo, 0);
 conf("MAT/MO devolve a divisão da planilha", parcelasDoItem(spot_devolvido).material, 182);
 conf("... nos dois lados", parcelasDoItem(spot_devolvido).mo, 180);
 conf("a linha fica marcada como corrigida", parcelasDoItem(spot_pra_mo).manual, true);
-conf("sem correção, nada de manual", parcelasDoItem(spot).manual, undefined);
+// `spot` agora É decidido pela regra nova (MAT+MO -> MO), então "sem
+// decisão nenhuma" precisa de um item que a regra nova não alcança.
+conf("sem correção nem regra automática, nada de manual", parcelasDoItem(so_mat).manual, undefined);
 
 /* A garantia que importa: correção move dinheiro de coluna, NUNCA cria
    nem destrói. Se o total do grupo mudasse, uma reclassificação passaria
@@ -160,14 +166,16 @@ const semAloc = degenerados.filter((it) => !alocacaoDoItem(it));
 conf("nenhum item degenerado fica sem alocação", semAloc.length, 0);
 conf("item vazio cai em MAT+MO, não num lado chutado", alocacaoDoItem({}), ALOC_AMBOS);
 
-/* ---- 7b. verbas de pacote fechado: sempre MAT+MO, nunca separa ---- */
-// O fornecedor entrega material e mão de obra no mesmo pacote.
+/* ---- 7b. verbas de pacote fechado: viram MÃO DE OBRA, nunca separam ---- */
+// O fornecedor entrega material e mão de obra no mesmo pacote — regra da
+// empresa: isso conta inteiro como mão de obra, não fica "não separado".
 const serralheria = { num: "22", nome: "Serralheria" };
 const iluminacao = { num: "05", nome: "Instalações Elétricas e Iluminação" };
-conf("serralheria é MAT+MO mesmo só com material", alocacaoDoItem(so_mat, serralheria), ALOC_AMBOS);
-conf("vidros e espelhos idem", alocacaoDoItem(so_mat, { num: "23", nome: "Vidros e Espelhos" }), ALOC_AMBOS);
-conf("estofados idem", alocacaoDoItem(so_mat, { num: "25", nome: "Estofados" }), ALOC_AMBOS);
-conf("cortinas e persianas idem", alocacaoDoItem(so_mat, { num: "30", nome: "Cortinas e Persianas" }), ALOC_AMBOS);
+const moveisSoltos = { num: "24", nome: "Móveis Soltos" };
+conf("serralheria vira MO mesmo só com material", alocacaoDoItem(so_mat, serralheria), ALOC_MO);
+conf("vidros e espelhos idem", alocacaoDoItem(so_mat, { num: "23", nome: "Vidros e Espelhos" }), ALOC_MO);
+conf("estofados idem", alocacaoDoItem(so_mat, { num: "25", nome: "Estofados" }), ALOC_MO);
+conf("cortinas e persianas idem", alocacaoDoItem(so_mat, { num: "30", nome: "Cortinas e Persianas" }), ALOC_MO);
 conf("iluminação NÃO é pacote fechado", alocacaoDoItem(so_mat, iluminacao), ALOC_MAT);
 conf("pacote fechado não oferece separar", podeSepararMO(spot, serralheria), false);
 conf("iluminação oferece separar", podeSepararMO(spot, iluminacao), true);
@@ -176,6 +184,20 @@ conf("eletroeletrônico entrou na separação automática", separaMOautomatico("
 // Correção na mão ganha até da regra do grupo — quem conhece a obra decide.
 conf("correção na mão ganha do pacote fechado",
   alocacaoDoItem({ ...so_mat, alocacaoManual: ALOC_MAT }, serralheria), ALOC_MAT);
+
+/* ---- 7c. a mesma regra, mas nas verbas que JÁ separam sozinhas ---- */
+// Estas cinco (05, 20, 24, 27, 28) têm split próprio: a empresa compra o
+// material e contrata a mão de obra separadamente, e a importação já
+// parte a linha em duas. Enquanto uma linha ainda não foi partida — meio
+// da importação, ou edição manual que preencheu as duas colunas de novo
+// — as duas parcelas juntas continuam significando "falta separar", não
+// "virou mão de obra": senão o material desaparecia dentro da MO antes
+// de alguém clicar em "separar".
+conf("iluminação com as duas parcelas continua MAT+MO (falta separar)",
+  alocacaoDoItem(spot, iluminacao), ALOC_AMBOS);
+conf("móveis soltos idem", alocacaoDoItem(spot, moveisSoltos), ALOC_AMBOS);
+conf("o dinheiro também não muda de coluna antes de separar",
+  parcelasDoItem(spot, iluminacao).material, 182);
 
 /* ---- 8. os dois rótulos deixaram de colidir ---- */
 // "MAT E MO" (tudo) e "MAT/MO" (as duas parcelas) ficavam lado a lado na
@@ -186,7 +208,7 @@ conf("a etiqueta das duas parcelas usa +", ROTULO_ALOC.AMBOS, "MAT+MO");
 conf("nenhum rótulo de filtro se repete", new Set(FILTROS_ALOC.map((x) => x.label)).size, FILTROS_ALOC.length);
 
 /* ---- 9. separar a MO em linha própria ---- */
-const par = partirMaoDeObra({ ...spot, codigo: "5.12" }, "05", "05.mo1");
+const par = partirMaoDeObra({ ...spot, codigo: "5.12" }, iluminacao, "05.mo1");
 conf("o original fica só com o material", parcelasDoItem(par.original).material, 182);
 conf("... e sem mão de obra", parcelasDoItem(par.original).mo, 0);
 conf("a linha nova leva só a mão de obra", parcelasDoItem(par.linhaMO).mo, 180);
@@ -201,8 +223,8 @@ conf("as duas pontas do vínculo existem",
 conf("a linha de MO não herda a compra",
   [par.linhaMO.comprado, par.linhaMO.liberado, par.linhaMO.compraDecidida].filter(Boolean).length
   + [par.linhaMO.valorComprado, par.linhaMO.qtdComprada, par.linhaMO.sienge].filter((x) => x != null).length, 0);
-conf("não separa duas vezes", partirMaoDeObra(par.original, "05", "05.mo2"), null);
-conf("não separa quem não tem MO", partirMaoDeObra(so_mat, "24", "24.mo1"), null);
+conf("não separa duas vezes", partirMaoDeObra(par.original, iluminacao, "05.mo2"), null);
+conf("não separa quem não tem MO", partirMaoDeObra(so_mat, moveisSoltos, "24.mo1"), null);
 // A mão de obra da iluminação é da iluminação: sair do grupo levava o
 // valor pra longe de onde ele é conferido.
 conf("a linha nasce na MESMA verba", par.linhaMO.separadoDe.verba, "05");
