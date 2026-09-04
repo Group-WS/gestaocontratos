@@ -18,7 +18,7 @@ import { gerarPdf } from "./lib/apresentacaoPdf";
 import { gerarPptx } from "./lib/apresentacaoPptx";
 import { urlDaImagem as urlProduto, filtrarProdutos } from "./lib/catalogo";
 import { subirArquivo } from "./lib/arquivos";
-import { carregarDadosObra, salvarDadosObra } from "./lib/dadosObra";
+import { carregarDadosObra, salvarDadosObra, garantirObraDados } from "./lib/dadosObra";
 /* As três páginas fixas do documento: a abertura da marca, a folha de
    dados do projeto e o fechamento. Vieram do PPTX dela, não de
    reconstituição — reconstituir marca é errar de leve e ninguém saber
@@ -73,15 +73,22 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
      — e silencioso. */
   useEffect(() => {
     if (!obraCod) { setDoc(null); return; }
+    primeiraCargaRef.current = true;
     let vivo = true;
-    listarApresentacoes(obraCod)
-      .then((l) => {
+    (async () => {
+      try {
+        const l = await listarApresentacoes(obraCod);
         if (!vivo) return;
         setRevisoes(l);
         setDoc(l.length ? { ...l[0] } : { ...novaApresentacao(obra), slides: [novoSlide("")] });
         setPagina("dados");
-      })
-      .catch((e) => vivo && setErro(mensagem(e)));
+
+        /* Vincular a obra aqui, e não só na hora de gerar o PDF: uma obra
+           cadastrada na mão nunca passou pelo upload que cria essa linha,
+           e descobrir isso no meio da geração é tarde demais. */
+        await garantirObraDados(obraCod);
+      } catch (e) { if (vivo) setErro(mensagem(e)); }
+    })();
     return () => { vivo = false; };
   }, [obraCod]);   // `obra` sai de `obraCod`; incluí-la relançaria à toa
 
@@ -98,17 +105,46 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
     });
   }, [atual]);
 
-  async function salvar() {
+  /* SALVAMENTO AUTOMÁTICO
+   *
+   * `persistir` é o único caminho que grava no banco — o botão "Salvar" e
+   * o autosave só diferem em mostrar ou não o aviso "Salvo.". Sem essa
+   * junção, era fácil os dois divergirem depois de um ajuste.
+   *
+   * `salvandoRef` evita gravação em cima de gravação (o clique manual
+   * caindo bem no meio do debounce automático, por exemplo) — quem chega
+   * depois desiste, e a próxima edição já dispara outro autosave.
+   */
+  const salvandoRef = useRef(false);
+  const primeiraCargaRef = useRef(true);
+
+  const persistir = useCallback(async (comAviso) => {
+    if (salvandoRef.current || !doc || !obraCod) return;
+    salvandoRef.current = true;
     setSalvando(true); setErro(null);
     try {
       const salvo = await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);
-      setDoc((d) => ({ ...d, id: salvo.id, atualizadoEm: salvo.atualizadoEm }));
+      setDoc((d) => (d ? { ...d, id: salvo.id, atualizadoEm: salvo.atualizadoEm } : d));
       setRevisoes(await listarApresentacoes(obraCod));
-      setAviso("Salvo.");
-      setTimeout(() => setAviso(null), 2500);
+      if (comAviso) { setAviso("Salvo."); setTimeout(() => setAviso(null), 2500); }
     } catch (e) { setErro(mensagem(e)); }
-    finally { setSalvando(false); }
-  }
+    finally { setSalvando(false); salvandoRef.current = false; }
+  }, [doc, obraCod, idioma, usuario]);
+
+  async function salvar() { await persistir(true); }
+
+  /* O gatilho é o CONTEÚDO (capa + slides), não o objeto `doc` inteiro —
+     salvar atualiza `doc.id`/`atualizadoEm` no próprio `doc`, e se o
+     efeito olhasse pra `doc` de novo isso religaria o debounce sozinho,
+     pra sempre, mesmo sem mais nenhuma edição real. */
+  const assinaturaConteudo = doc ? JSON.stringify({ capa: doc.capa, slides: doc.slides }) : null;
+  useEffect(() => {
+    if (!doc || !obraCod) return;
+    if (primeiraCargaRef.current) { primeiraCargaRef.current = false; return; }
+    const t = setTimeout(() => { persistir(false); }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assinaturaConteudo]);
 
   async function gerar() {
     setGerando("Montando o PDF…"); setErro(null);

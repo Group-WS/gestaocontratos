@@ -128,6 +128,24 @@ export async function salvarDadosObra(codigo, conteudo, email) {
 }
 
 /**
+ * Só garante que a linha da obra existe no banco — sem mexer em nada que
+ * já esteja lá, nem trava de edição, nem conteúdo (`ignoreDuplicates`
+ * faz o upsert não tocar em nada quando a linha já existe).
+ *
+ * Uma obra cadastrada na mão (fora do fluxo normal de upload de
+ * planilha) nunca ganha essa linha sozinha, e sem ela "Arquivos da obra"
+ * não tem onde guardar nada — quem descobria isso era a geração de PDF
+ * da apresentação, no meio do processo, tarde demais.
+ */
+export async function garantirObraDados(codigo) {
+  if (!supabaseConfigurado) return;
+  await supabase.from("obra_dados").upsert(
+    { obra_codigo: String(codigo) },
+    { onConflict: "obra_codigo", ignoreDuplicates: true }
+  );
+}
+
+/**
  * Tenta pegar a obra pra editar.
  *
  * Devolve { ok: true } quando conseguiu, ou { ok: false, por, desde }
@@ -141,11 +159,7 @@ export async function pegarEdicao(codigo, email) {
   const limite = new Date(Date.now() - MINUTOS_ATE_TRAVA_EXPIRAR * 60_000).toISOString();
   const agora = new Date().toISOString();
 
-  // garante que a linha existe antes de disputar a trava
-  await supabase.from("obra_dados").upsert(
-    { obra_codigo: String(codigo) },
-    { onConflict: "obra_codigo", ignoreDuplicates: true }
-  );
+  await garantirObraDados(codigo);
 
   const { data, error } = await supabase
     .from("obra_dados")
