@@ -10308,22 +10308,25 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
 /* Uma celula da regua. Nao e' cartao: cartao aqui em cima competia com
    os cartoes de "Pedindo atencao" logo abaixo, e quatro caixas brancas
    iguais nao dizem qual delas pede acao. */
-/* As 5 marcas que dizem em que fase a obra está, sem precisar abrir
-   ela. Caderno fica "feito" quando o arquivo é anexado — é a mesma
-   regra que a aba Executivo já usa, o anexo é a própria prova; não tem
-   um "em andamento" salvo em lugar nenhum ainda, então por enquanto é
-   feito/pendente. CMV usa `deparaAprovado`, não só `cmvLiberado > 0`:
+/* Em que fase a obra está — UMA frase, não uma fileira de siglas. "Em
+   qual fase está" é pergunta com uma resposta só; cinco selos (CR, ESP,
+   MARC...) obrigavam a pessoa a decifrar abreviação em vez de ler.
+   Anda pela ordem real do processo e para na primeira coisa que falta:
+   é aí que a obra está PARADA agora, e é isso que se quer saber —
+   "falta o quê" é mais útil do que uma lista do que já foi.
+   Caderno conta como feito quando o arquivo é anexado (mesma regra da
+   aba Executivo). CMV usa `deparaAprovado`, não só `cmvLiberado > 0`:
    uma obra pode ter liberado com valor zerado numa planilha estranha,
    e o que importa pra fase é "a decisão foi tomada", não o valor. */
-function fasesDaObra(o) {
+function faseDaObra(o) {
   const cad = o.cadernos || {};
-  return [
-    { sigla: "CR", rotulo: "Criativo", feito: !!cad.criativo },
-    { sigla: "CMV", rotulo: "CMV liberado", feito: !!o.deparaAprovado, valor: o.cmvLiberado },
-    { sigla: "ESP", rotulo: "Caderno de Especificação", feito: !!cad.especificacao },
-    { sigla: "MARC", rotulo: "Caderno de Marcenaria", feito: !!cad.marcenaria },
-    { sigla: "PROJ", rotulo: "Caderno de Projeto Executivo", feito: !!cad.projeto },
-  ];
+  if (!cad.criativo) return { texto: "Aguardando Criativo" };
+  if (!o.deparaAprovado) return { texto: "Aguardando CMV" };
+  if (!cad.especificacao) return { texto: "Aguardando Caderno de Especificação" };
+  if (!cad.marcenaria) return { texto: "Aguardando Caderno de Marcenaria" };
+  if (!cad.projeto) return { texto: "Aguardando Caderno de Projeto Executivo" };
+  if (!o.comprasLiberadas) return { texto: "Pronta para Compras", tom: "azul" };
+  return { texto: "Em execução", tom: "roxo" };
 }
 
 function InicioNum({ rot, valor, sub, cor, onClick }) {
@@ -10447,13 +10450,18 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
         </div>
 
         <div>
-          <div className="ini-titulo">
-            {minhas.length ? "Suas obras" : "Obras ativas"}
-            <span className="ini-conta">{(minhas.length ? minhas : obras).length}</span>
+          <div className="ini-titulo ini-titulo-linha">
+            <span>
+              {minhas.length ? "Suas obras" : "Obras ativas"}
+              <span className="ini-conta">{(minhas.length ? minhas : obras).length}</span>
+            </span>
+            <button type="button" className="ini-link-finalizadas" onClick={() => onModulo("arquivo")}>
+              Finalizadas <ChevronRight size={12} />
+            </button>
           </div>
           {(minhas.length ? minhas : obras).map((o) => {
             const L = r.linhas.find((x) => x.codigo === o.codigo);
-            const fases = fasesDaObra(o);
+            const fase = faseDaObra(o);
             return (
               <button key={o.id} className="ini-obra" onClick={() => onAbrirObra(o.id)}>
                 <div className="ini-obra-id">
@@ -10464,17 +10472,7 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                       ? ` · entrega ${new Date(`${o.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}`
                       : " · sem data de entrega"}
                   </div>
-                  <div className="ini-obra-fases">
-                    {fases.map((f) => (
-                      <span key={f.sigla} className={`ini-fase ${f.feito ? "on" : ""}`}
-                        title={`${f.rotulo}: ${f.feito ? "feito" : "pendente"}${f.valor ? ` — ${fmtBRL(f.valor)}` : ""}`}>
-                        {f.sigla}
-                      </span>
-                    ))}
-                    <span className={`ini-fase-status ${o.comprasLiberadas ? "exec" : ""}`}>
-                      {o.comprasLiberadas ? "Em execução" : "Planejamento"}
-                    </span>
-                  </div>
+                  <span className={`ini-fase-pilula ${fase.tom || ""}`}>{fase.texto}</span>
                 </div>
                 {L ? (
                   <div className="ini-obra-barras">
@@ -14844,14 +14842,14 @@ export default function App() {
         .ini-obra-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
         .ini-obra-barras { display: flex; flex-direction: column; gap: 4px; width: 90px; flex-shrink: 0; }
         .ini-obra-vazia { font-size: 10.5px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
-        /* As marcas de fase: bolinhas com sigla, cinza-claro por padrão e
-           coloridas quando feito. Compactas de propósito — são 5 delas
-           mais o rótulo de status, tudo cabendo numa linha só. */
-        .ini-obra-fases { display: flex; align-items: center; gap: 3px; margin-top: 5px; flex-wrap: wrap; }
-        .ini-fase { font-size: 8px; font-weight: 800; letter-spacing: .02em; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 2px 5px; }
-        .ini-fase.on { color: #1B7A43; background: #E7F5EC; border-color: #BFE3CC; }
-        .ini-fase-status { font-size: 9.5px; font-weight: 600; color: var(--ink-3); margin-left: 2px; }
-        .ini-fase-status.exec { color: var(--purple); }
+        /* A fase e' UMA pilula de texto, nao uma fileira de siglas —
+           le-se direto, sem precisar decifrar abreviacao. */
+        .ini-fase-pilula { display: inline-block; margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 6px; padding: 2px 8px; }
+        .ini-fase-pilula.azul { color: #1D5FB8; background: var(--blue-bg); }
+        .ini-fase-pilula.roxo { color: var(--purple); background: #F1EBFA; }
+        .ini-titulo-linha { justify-content: space-between; }
+        .ini-link-finalizadas { display: inline-flex; align-items: center; gap: 2px; background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; padding: 2px 0; }
+        .ini-link-finalizadas:hover { color: var(--ink); }
         @media (max-width: 1100px) { .ini-numeros { grid-template-columns: repeat(2, 1fr); } .ini-colunas { grid-template-columns: 1fr; } }
         /* ---- Painel geral de compras e contratacoes ---- */
         .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }
