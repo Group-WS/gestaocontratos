@@ -75,6 +75,36 @@ t("coluna de preco vazia, ou ausente na linha, nao vira zero", () => {
   assert.strictEqual(P[2].precoRef, null);
 });
 
+/* --- planilha de fornecedor, colunas fora de ordem e cabecalho diferente
+   (formato do metais.xlsx: cadastro interno antes da IMAGEM, e a
+   descricao separada em CRIATIVO/EXECUTIVO) --- */
+const PLAN2 = [
+  ["Louças, Metais e Equipamentos Especiais"],
+  ["CADASTRO BIBLIOTECA SKETCHUP", "GRUPO EAP PADRÃO", "IMAGEM", "DESCRIÇÃO - CRIATIVO", "DESCRIÇÃO - EXECUTIVO", "CÓDIGO/ ESPECIFICAÇÃO", "FORNECEDOR ", "PREÇO DE REFERÊNCIA", "UNIDADE", "OBSERVAÇÕES"],
+  ["", "27", "", "", "Porta toalha bastão Trip", "90007620006", "Docol", "", "", ""],
+  ["", "27", "", "Torneira Monocomando Giratória de Filtro", "Torneira Monocomando Giratória de Filtro (Ibiza Cromada)", "TC33", "Bela Metais", " R$ 1,091.00 ", "", ""],
+];
+const P2 = lerProdutos(PLAN2, { "27": ["louca", "metaissanitario", "metais"] });
+
+t("cabecalho fora de ordem: acha as colunas pelo texto, nao pela posicao", () => {
+  assert.strictEqual(P2.length, 2);
+  assert.strictEqual(P2[0].descricao, "Porta toalha bastão Trip");
+  assert.strictEqual(P2[0].codigo, "90007620006");
+  assert.strictEqual(P2[0].fornecedor, "Docol");
+  assert.strictEqual(P2[0].verba, "27");
+});
+
+t("descricao vem da coluna EXECUTIVO; criativo fica em campo separado", () => {
+  assert.strictEqual(P2[1].descricao, "Torneira Monocomando Giratória de Filtro (Ibiza Cromada)");
+  assert.strictEqual(P2[1].descricaoCriativo, "Torneira Monocomando Giratória de Filtro");
+});
+
+t("planilha sem coluna criativo nao ganha o campo", () =>
+  assert.strictEqual(P[0].descricaoCriativo, null));
+
+t("preco em formato americano (virgula de milhar, ponto decimal) tambem e' lido certo", () =>
+  assert.strictEqual(P2[1].precoRef, 109100));
+
 /* --- as ancoras de imagem --- */
 const DRAW = `<xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:row>2</xdr:row></xdr:from>
   <xdr:pic><xdr:blipFill><a:blip r:embed="rId1"/></xdr:blipFill></xdr:pic></xdr:twoCellAnchor>

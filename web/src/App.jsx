@@ -10337,6 +10337,18 @@ function esteiraDaObra(o) {
   return { passos, texto: `Aguardando ${faltando.rotulo}` };
 }
 
+/* Mesma regra dos 90 dias, mas devolvendo QUAIS passos estão pendentes —
+   usado tanto pro texto do alerta (que hoje cita sempre "Criativo, CMV"
+   fixo, errado) quanto pro selo vermelho no card específico do Executivo. */
+function passosCriticosAtrasados(o) {
+  if (!o.dataEntrega || o.comprasLiberadas) return { dias: null, passos: [] };
+  const entrega = new Date(`${o.dataEntrega}T12:00:00`);
+  const dias = Math.round((entrega - new Date()) / 86400000);
+  if (dias > 90) return { dias, passos: [] };
+  const passos = esteiraDaObra(o).passos.filter((p) => p.chave !== "execucao" && !p.feito);
+  return { dias, passos };
+}
+
 function InicioNum({ rot, valor, sub, cor, onClick }) {
   const Tag = onClick ? "button" : "div";
   return (
@@ -10367,11 +10379,9 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
      de obra. Passou dessa marca sem estar "em execução" (comprasLiberadas)
      é risco real no prazo — mesmo cálculo de dias que o resto do painel
      já usa (`entrega - hoje`), só que contra 90, não contra 0. */
-  const atrasadas90 = obras.filter((o) => o.dataEntrega && !o.comprasLiberadas).map((o) => {
-    const entrega = new Date(`${o.dataEntrega}T12:00:00`);
-    const dias = Math.round((entrega - new Date()) / 86400000);
-    return { o, dias };
-  }).filter(({ dias }) => dias <= 90);
+  const atrasadas90 = obras
+    .map((o) => ({ o, ...passosCriticosAtrasados(o) }))
+    .filter(({ passos }) => passos.length > 0);
 
   /* Uma lista so, ordenada pelo que dói primeiro. Cada linha leva ao
      lugar de resolver — aviso que nao tem para onde ir vira paisagem. */
@@ -10383,13 +10393,17 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
       ir: () => onAbrirObra(L.id),
     }));
   });
-  atrasadas90.forEach(({ o, dias }) => atencao.push({
-    tom: "ruim",
-    txt: dias < 0
-      ? <><b>#{o.codigo} {o.nome}</b> já passou da data de entrega e ainda não está em execução — Criativo, CMV e os cadernos precisavam estar prontos há {90 - dias} dias</>
-      : <><b>#{o.codigo} {o.nome}</b> entrega em {dias} {dias === 1 ? "dia" : "dias"} e ainda não está em execução — Criativo, CMV e os cadernos precisam estar prontos até 90 dias antes da entrega</>,
-    ir: () => onAbrirObra(o.id),
-  }));
+  atrasadas90.forEach(({ o, dias, passos }) => {
+    const nomes = passos.map((p) => p.rotulo).join(", ");
+    const verbo = passos.length === 1 ? "precisa estar pronto" : "precisam estar prontos";
+    atencao.push({
+      tom: "ruim",
+      txt: dias < 0
+        ? <><b>#{o.codigo} {o.nome}</b> já passou da data de entrega e ainda não está em execução — {nomes} {verbo} há {90 - dias} dias</>
+        : <><b>#{o.codigo} {o.nome}</b> entrega em {dias} {dias === 1 ? "dia" : "dias"} e ainda não está em execução — {nomes} {verbo} até 90 dias antes da entrega</>,
+      ir: () => onAbrirObra(o.id),
+    });
+  });
   pipefyAberto.forEach(({ a, o }) => atencao.push({
     tom: "aviso",
     txt: <>O aditivo <b>{a.numero}</b> de <b>{o.nome}</b> está aprovado e ainda sem a Solicitação de contrato no Pipefy</>,
@@ -10489,6 +10503,7 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
           {(minhas.length ? minhas : obras).map((o) => {
             const L = r.linhas.find((x) => x.codigo === o.codigo);
             const esteira = esteiraDaObra(o);
+            const executivoAtrasado = passosCriticosAtrasados(o).passos.some((p) => p.chave === "projeto");
             const nomeGC = o.gc ? ((equipe || []).find((p) => p.email === o.gc)?.nome || nomeDoEmail(o.gc)) : null;
             return (
               <button key={o.id} className="ini-obra" onClick={() => onAbrirObra(o.id)}>
@@ -10501,12 +10516,15 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                       : " · sem data de entrega"}
                   </div>
                   <div className="ini-esteira">
-                    {esteira.passos.map((p) => (
-                      <span key={p.chave} className={`ini-passo-chip ${p.feito ? "on" : ""}`}
-                        title={`${p.rotulo}: ${p.feito ? "feito" : "pendente"}`}>
-                        {p.feito && <Check size={9} />} {p.curto}
-                      </span>
-                    ))}
+                    {esteira.passos.map((p) => {
+                      const alerta = p.chave === "projeto" && executivoAtrasado;
+                      return (
+                        <span key={p.chave} className={`ini-passo-chip ${p.feito ? "on" : ""} ${alerta ? "atrasado" : ""}`}
+                          title={`${p.rotulo}: ${p.feito ? "feito" : alerta ? "pendente — passou do prazo de 90 dias antes da entrega" : "pendente"}`}>
+                          {p.feito ? <Check size={9} /> : alerta ? <AlertTriangle size={9} /> : null} {p.curto}
+                        </span>
+                      );
+                    })}
                   </div>
                   <span className={`ini-fase-pilula ${esteira.tom || ""}`}>{esteira.texto}</span>
                 </div>
@@ -14889,6 +14907,7 @@ export default function App() {
         .ini-esteira { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
         .ini-passo-chip { display: inline-flex; align-items: center; gap: 1px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; }
         .ini-passo-chip.on { color: #1B7A43; background: #E7F5EC; border-color: #BFE3CC; }
+        .ini-passo-chip.atrasado { color: var(--red); background: var(--red-bg); border-color: #F0CFCB; }
         /* A frase diz o que falta AGORA — a esteira mostra o caminho
            inteiro, a frase poupa de reler os chips pra saber o motivo. */
         .ini-fase-pilula { display: inline-block; margin-top: 5px; font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 6px; padding: 2px 8px; }
