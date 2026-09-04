@@ -18,6 +18,7 @@ import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
 import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
+import { subgrupoDe } from "./lib/catalogoModelo.js";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import Catalogo from "./Catalogo";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
@@ -1243,12 +1244,17 @@ function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
       return;
     }
     L.verbas.forEach((v) => {
+      /* `obras` guarda o valor POR obra, não só quem participa — é o que
+         permite expandir a linha do grupo e mostrar de qual obra vem
+         cada pedaço do total, em vez de só a contagem. */
       const junta = (mapa, valor, quando) => {
         if (valor <= 0 || !dentro(quando)) return;
-        if (!mapa.has(v.num)) mapa.set(v.num, { num: v.num, nome: v.nome, total: 0, obras: new Set() });
+        if (!mapa.has(v.num)) mapa.set(v.num, { num: v.num, nome: v.nome, total: 0, obras: new Map() });
         const g = mapa.get(v.num);
         g.total += valor;
-        g.obras.add(L.codigo);
+        const atual = g.obras.get(L.codigo) || { codigo: L.codigo, nome: L.nome, id: L.id, valor: 0 };
+        atual.valor += valor;
+        g.obras.set(L.codigo, atual);
       };
       junta(mat, v.matFalta, v.quandoMat);
       junta(mo, v.moFalta, v.quandoMo);
@@ -1274,6 +1280,42 @@ function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
       obrasAtrasadas: linhas.filter((L) => L.atrasos.length > 0).length,
     },
   };
+}
+
+/**
+ * O material a comprar por INSUMO — mesmo classificador do catálogo de
+ * produtos (`subgrupoDe`), aplicado aos itens da obra, somando todas
+ * elas. É o que responde "quanto falta comprar de colchão" sem precisar
+ * abrir obra por obra.
+ *
+ * So cobre as verbas que ja tem regra de subgrupo (05, 27, 24, 30, 20,
+ * 28, 32, 33 — ver SUBGRUPOS em catalogoModelo.js). O resto cai em "Sem
+ * categoria", visivel e por ultimo — nunca escondido, pro que falta
+ * classificar virar fila de trabalho, e nao sumir calado.
+ */
+function resumoPorInsumo(obras) {
+  const grupos = new Map();
+  (obras || []).forEach((o) => {
+    (o.categorias || []).forEach((cat) => {
+      (cat.itens || []).forEach((it) => {
+        if (it.ehTitulo) return;
+        const { material } = parcelasDoItem(it);
+        if (material <= 0 || it.comprado) return;
+        const nome = subgrupoDe(it.desc, cat.num) || "Sem categoria";
+        if (!grupos.has(nome)) grupos.set(nome, { num: null, nome, total: 0, obras: new Map() });
+        const g = grupos.get(nome);
+        g.total += material;
+        const atual = g.obras.get(o.codigo) || { codigo: o.codigo, nome: o.nome, id: o.id, valor: 0 };
+        atual.valor += material;
+        g.obras.set(o.codigo, atual);
+      });
+    });
+  });
+  return [...grupos.values()].sort((a, b) => {
+    if (a.nome === "Sem categoria") return 1;
+    if (b.nome === "Sem categoria") return -1;
+    return b.total - a.total;
+  });
 }
 
 /* ============================================================
@@ -9077,7 +9119,10 @@ function GcTotal({ rot, feito, total, cor, legenda }) {
 
 /* A lista por verba somando todas as obras. É o pedido central: saber o
    volume de pintura das próximas semanas antes de precisar dele. */
-function GcPorVerba({ titulo, Icone, grupos, cor, vazio }) {
+/* `busca`/`onBusca` sao opcionais: so a lista por insumo tem filtro de
+   texto, a por verba nao pediu. `onAbrir` e' o que faz a obra da linha
+   expandida ser clicavel — sem ele a linha so mostra, nao navega. */
+function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPlaceholder, onAbrir }) {
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const max = grupos.length ? grupos[0].total : 1;
   return (
@@ -9087,16 +9132,57 @@ function GcPorVerba({ titulo, Icone, grupos, cor, vazio }) {
         <span className="gc-bloco-titulo">{titulo}</span>
         <span className="gc-bloco-total mono" style={{ color: cor }}>{fmtBRL(total)}</span>
       </div>
-      {grupos.length === 0 ? <div className="empty-note">{vazio}</div> : (
+      {onBusca && (
+        <div className="gc-busca">
+          <Search size={13} className="dim" />
+          <input value={busca} onChange={(e) => onBusca(e.target.value)}
+            placeholder={buscaPlaceholder || "Buscar…"} />
+          {busca && (
+            <button type="button" className="gc-busca-limpar" onClick={() => onBusca("")} aria-label="Limpar busca">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      )}
+      {grupos.length === 0 ? (
+        <div className="empty-note">{busca ? `Nada encontrado para "${busca}".` : vazio}</div>
+      ) : (
         <div className="gc-list">
           {grupos.map((g) => (
-            <div key={g.num} className="gc-row">
-              <span className="gc-num mono">{g.num}</span>
-              <span className="gc-nome">{g.nome}</span>
-              <span className="gc-obras">{g.obras.size} {g.obras.size === 1 ? "obra" : "obras"}</span>
-              <GcBarra pct={(g.total / max) * 100} cor={cor} />
-              <span className="gc-val mono">{fmtBRL(g.total)}</span>
-            </div>
+            <GcLinhaVerba key={g.num ?? g.nome} g={g} cor={cor} max={max} onAbrir={onAbrir} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* A linha some fechada e mostra "N obras" — abrir ela e' a resposta pra
+   "de qual obra vem esse total", sem precisar ir obra por obra. */
+function GcLinhaVerba({ g, cor, max, onAbrir }) {
+  const [aberto, setAberto] = useState(false);
+  const porObra = useMemo(
+    () => [...g.obras.values()].sort((a, b) => b.valor - a.valor),
+    [g.obras]);
+  return (
+    <div className="gc-verba">
+      <button type="button" className="gc-row gc-row-clic" onClick={() => setAberto((x) => !x)}>
+        <ChevronRight size={13} className={`gc-chevron ${aberto ? "aberto" : ""}`} />
+        {g.num != null && <span className="gc-num mono">{g.num}</span>}
+        <span className="gc-nome">{g.nome}</span>
+        <span className="gc-obras">{g.obras.size} {g.obras.size === 1 ? "obra" : "obras"}</span>
+        <GcBarra pct={(g.total / max) * 100} cor={cor} />
+        <span className="gc-val mono">{fmtBRL(g.total)}</span>
+      </button>
+      {aberto && (
+        <div className="gc-verba-obras">
+          {porObra.map((o) => (
+            <button key={o.codigo} type="button" className="gc-verba-obra"
+              onClick={() => onAbrir && onAbrir(o.id)} disabled={!onAbrir}>
+              <span className="mono dim">#{o.codigo}</span>
+              <span className="gc-verba-obra-nome">{o.nome}</span>
+              <span className="mono">{fmtBRL(o.valor)}</span>
+            </button>
           ))}
         </div>
       )}
@@ -9368,7 +9454,16 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   const r = useMemo(() => resumoGeral(visiveis, { horizonteDias: horizonte }), [visiveis, horizonte]);
   const t = r.totais;
 
-
+  const [buscaInsumo, setBuscaInsumo] = useState("");
+  /* Por insumo nao respeita o horizonte de cima (ainda) — a data de
+     necessidade e' calculada por verba, nao por item, e juntar as duas
+     coisas exigiria recalcular data item a item. Por enquanto esta
+     lista mostra tudo que falta comprar, sem recorte de prazo. */
+  const porInsumo = useMemo(() => resumoPorInsumo(visiveis), [visiveis]);
+  const porInsumoFiltrado = useMemo(() => {
+    const alvo = semAcentos(buscaInsumo).trim();
+    return alvo ? porInsumo.filter((g) => semAcentos(g.nome).includes(alvo)) : porInsumo;
+  }, [porInsumo, buscaInsumo]);
 
   if (carregando) return <div className="empty-note">Carregando as obras…</div>;
 
@@ -9409,11 +9504,20 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
           todas as obras, é o que permite chegar no fornecedor com
           previsão em vez de pedido urgente. */}
       <GcPorVerba titulo="Mão de obra a contratar, por verba" Icone={FileText}
-        grupos={r.aContratar} cor={COR_MO}
+        grupos={r.aContratar} cor={COR_MO} onAbrir={onAbrir}
         vazio={horizonte ? "Nada a contratar dentro desse prazo." : "Nada a contratar."} />
       <GcPorVerba titulo="Material a comprar, por verba" Icone={ShoppingCart}
-        grupos={r.aComprar} cor={COR_MAT}
+        grupos={r.aComprar} cor={COR_MAT} onAbrir={onAbrir}
         vazio={horizonte ? "Nada a comprar dentro desse prazo." : "Nada a comprar."} />
+      {/* Mesma pergunta, outro corte: nao "quanto falta na verba 27" e
+          sim "quanto falta comprar de colchão" — pra isso a linha precisa
+          ser o insumo, e nao o grupo da EAP. Ainda so cobre as verbas que
+          já têm regra de subgrupo; o resto cai visível em "Sem categoria",
+          em vez de sumir. */}
+      <GcPorVerba titulo="Material a comprar, por insumo" Icone={Package}
+        grupos={porInsumoFiltrado} cor={COR_MAT} onAbrir={onAbrir}
+        busca={buscaInsumo} onBusca={setBuscaInsumo} buscaPlaceholder="Buscar insumo — ex: colchão"
+        vazio="Nada a comprar." />
 
       {r.semData > 0 && (
         <div className="gc-nota-semdata">
@@ -10366,7 +10470,12 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
 
   const semEntrega = obras.filter((o) => !o.dataEntrega && (o.categorias || []).some((c) => (c.itens || []).length));
   const meuNome = (equipe || []).find((p) => p.email === usuario)?.nome || nomeDoEmail(usuario);
-  const minhas = obras.filter((o) => obraDoGC(o, usuario));
+  const meuCargo = (equipe || []).find((p) => p.email === usuario)?.cargo || "";
+  /* Coordenação enxerga o painel inteiro, mesmo que por acaso também
+     esteja marcada como GC de alguma obra — "Suas obras" é um recorte
+     pra quem acompanha só a própria carteira, não pra quem coordena
+     todo mundo. */
+  const minhas = meuCargo === "Coordenação" ? [] : obras.filter((o) => obraDoGC(o, usuario));
   const semGC = obras.filter((o) => !o.gc);
 
   /* Aditivo aprovado sem o card do Pipefy: e' compromisso assumido que o
@@ -14965,12 +15074,27 @@ export default function App() {
         .gc-bloco-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
         .gc-bloco-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
         .gc-bloco-total { margin-left: auto; font-size: 15px; font-weight: 700; }
-        .gc-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--border-soft); }
+        .gc-verba { border-bottom: 1px solid var(--border-soft); }
+        .gc-verba:last-child { border-bottom: none; }
+        .gc-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px; width: 100%; }
+        .gc-row-clic { background: none; border: none; font: inherit; text-align: left; cursor: pointer; }
+        .gc-row-clic:hover { background: var(--panel); }
+        .gc-chevron { color: var(--ink-3); flex-shrink: 0; transition: transform .12s ease; }
+        .gc-chevron.aberto { transform: rotate(90deg); }
         .gc-num { font-size: 11px; color: var(--ink-3); font-weight: 600; width: 22px; flex-shrink: 0; }
         .gc-nome { font-size: 13px; color: var(--ink); font-weight: 600; width: 230px; flex-shrink: 0; }
         .gc-obras { font-size: 11px; color: var(--ink-3); width: 68px; flex-shrink: 0; }
         .gc-row .gc-track { flex: 1; }
         .gc-val { font-size: 13px; color: var(--ink); width: 106px; text-align: right; flex-shrink: 0; }
+        .gc-verba-obras { display: flex; flex-direction: column; gap: 2px; padding: 0 4px 10px 29px; }
+        .gc-verba-obra { display: flex; align-items: center; gap: 8px; background: none; border: none; font: inherit; font-size: 12px; color: var(--ink-2); text-align: left; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+        .gc-verba-obra:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+        .gc-verba-obra:disabled { cursor: default; }
+        .gc-verba-obra-nome { flex: 1; }
+        .gc-busca { display: flex; align-items: center; gap: 7px; margin: 8px 2px 12px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+        .gc-busca input { flex: 1; border: none; background: none; font: inherit; font-size: 13px; color: var(--ink); outline: none; }
+        .gc-busca-limpar { display: flex; padding: 2px; background: none; border: none; color: var(--ink-3); cursor: pointer; }
+        .gc-busca-limpar:hover { color: var(--ink); }
 
         .gc-tabela table { table-layout: fixed; }
         .gc-tabela td { vertical-align: middle; }
