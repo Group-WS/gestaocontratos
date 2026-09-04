@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import { dominioPermitido, DOMINIOS } from "./lib/pessoas";
 
 /**
  * Envolve o app com o login do Supabase. Enquanto o Supabase não
@@ -136,8 +135,6 @@ export function erroDaVolta(href) {
 }
 
 function LoginScreen({ derrubada }) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
   const [erro, setErro] = useState(() => erroDaVolta(window.location.href));
   const [carregando, setCarregando] = useState(false);
 
@@ -176,31 +173,9 @@ function LoginScreen({ derrubada }) {
     // Deu certo: o navegador sai desta pagina, entao nao ha o que limpar.
   }
 
-  async function entrar(e) {
-    e.preventDefault();
-    setErro(null);
-    /* `required` saiu dos campos porque o botao da Microsoft mora dentro
-       do mesmo <form>: com ele, clicar na Microsoft disparava a validacao
-       do HTML e o navegador reclamava de campos vazios antes de qualquer
-       coisa acontecer. A checagem vive aqui agora. */
-    if (!email.trim() || !senha) { setErro("Preencha e-mail e senha, ou entre com a conta Microsoft."); return; }
-    /* Corta o dominio ANTES de tentar entrar. A sala de espera ja
-       protegeria os dados, mas sem este corte qualquer pessoa com o link
-       viraria uma linha na fila — e a tela de quem esta esperando entrar
-       viraria caixa de entrada de desconhecido. */
-    if (!dominioPermitido(email)) {
-      setErro(`Este sistema é do time da Group WS. Entre com um e-mail @${DOMINIOS[0]}.`);
-      return;
-    }
-    setCarregando(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-    setCarregando(false);
-    if (error) setErro("E-mail ou senha incorretos.");
-  }
-
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F4F3F1", fontFamily: "Inter, system-ui, sans-serif", padding: 20 }}>
-      <form onSubmit={entrar} style={{ width: "100%", maxWidth: 360, background: "#fff", border: "1px solid #e5e2dd", borderRadius: 16, padding: "32px 28px", boxSizing: "border-box" }}>
+      <div style={{ width: "100%", maxWidth: 360, background: "#fff", border: "1px solid #e5e2dd", borderRadius: 16, padding: "32px 28px", boxSizing: "border-box" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
           <img src="/logo.png" alt="Group WS" style={{ width: 54, height: 46, objectFit: "cover", objectPosition: "top center" }} onError={(ev) => { ev.currentTarget.style.display = "none"; }} />
         </div>
@@ -220,55 +195,14 @@ function LoginScreen({ derrubada }) {
             {erro}
           </div>
         )}
-        {/* A conta da empresa PRIMEIRO, e a senha depois da linha: e' o
-            caminho que praticamente todo mundo vai usar, e deixa-lo
-            embaixo dos campos fazia a pessoa preencher e-mail e senha
-            antes de descobrir que nao precisava. */}
         <button type="button" onClick={entrarComMicrosoft} disabled={carregando}
           style={{ width: "100%", background: "#fff", color: "#1a1a1a", border: "1px solid #e5e2dd", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, opacity: carregando ? 0.6 : 1 }}>
-          <LogoMicrosoft /> Entrar com a conta Microsoft
+          <LogoMicrosoft /> {carregando ? "Entrando…" : "Entrar com a conta Microsoft"}
         </button>
-
-        {/* A senha continua existindo como plano B: se o Azure cair ou a
-            conta de alguem ainda nao estiver no diretorio, ninguem fica
-            de fora do proprio sistema. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 14px" }}>
-          <div style={{ flex: 1, height: 1, background: "#e5e2dd" }} />
-          <span style={{ fontSize: 11, color: "#aaa" }}>ou com e-mail e senha</span>
-          <div style={{ flex: 1, height: 1, background: "#e5e2dd" }} />
-        </div>
-
-        <div id="campos-senha">
-          <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>E-mail</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@groupws.com"
-            style={inputStyle} />
-
-          <label style={{ fontSize: 12, fontWeight: 600, color: "#555", marginTop: 14, display: "block" }}>Senha</label>
-          <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••"
-            style={inputStyle} />
-        </div>
-
-
-        <button type="submit" disabled={carregando}
-          style={{ width: "100%", marginTop: 20, background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", opacity: carregando ? 0.6 : 1 }}>
-          {carregando ? "Entrando…" : "Entrar"}
-        </button>
-      </form>
+      </div>
     </div>
   );
 }
-
-const inputStyle = {
-  width: "100%",
-  marginTop: 5,
-  border: "1px solid #e5e2dd",
-  borderRadius: 10,
-  padding: "10px 12px",
-  fontSize: 13.5,
-  fontFamily: "Inter, system-ui, sans-serif",
-  boxSizing: "border-box",
-  outline: "none",
-};
 
 /* O quadriculado da Microsoft, desenhado aqui: quatro retangulos nao
    valem uma dependencia nova, e um <img> de CDN nao carregaria — a
