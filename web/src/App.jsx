@@ -10361,6 +10361,18 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
      comercial ainda nao viu. */
   const pipefyAberto = obras.flatMap((o) => (o.aditivos || []).filter(pipefyPendente).map((a) => ({ a, o })));
 
+  /* Regra da empresa: Criativo, CMV, os três cadernos (Especificação,
+     Marcenaria, Projeto Executivo) — tudo isso precisa estar pronto até
+     90 dias antes da entrega, porque é o que abre a contratação de mão
+     de obra. Passou dessa marca sem estar "em execução" (comprasLiberadas)
+     é risco real no prazo — mesmo cálculo de dias que o resto do painel
+     já usa (`entrega - hoje`), só que contra 90, não contra 0. */
+  const atrasadas90 = obras.filter((o) => o.dataEntrega && !o.comprasLiberadas).map((o) => {
+    const entrega = new Date(`${o.dataEntrega}T12:00:00`);
+    const dias = Math.round((entrega - new Date()) / 86400000);
+    return { o, dias };
+  }).filter(({ dias }) => dias <= 90);
+
   /* Uma lista so, ordenada pelo que dói primeiro. Cada linha leva ao
      lugar de resolver — aviso que nao tem para onde ir vira paisagem. */
   const atencao = [];
@@ -10371,6 +10383,13 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
       ir: () => onAbrirObra(L.id),
     }));
   });
+  atrasadas90.forEach(({ o, dias }) => atencao.push({
+    tom: "ruim",
+    txt: dias < 0
+      ? <><b>#{o.codigo} {o.nome}</b> já passou da data de entrega e ainda não está em execução — Criativo, CMV e os cadernos precisavam estar prontos há {90 - dias} dias</>
+      : <><b>#{o.codigo} {o.nome}</b> entrega em {dias} {dias === 1 ? "dia" : "dias"} e ainda não está em execução — Criativo, CMV e os cadernos precisam estar prontos até 90 dias antes da entrega</>,
+    ir: () => onAbrirObra(o.id),
+  }));
   pipefyAberto.forEach(({ a, o }) => atencao.push({
     tom: "aviso",
     txt: <>O aditivo <b>{a.numero}</b> de <b>{o.nome}</b> está aprovado e ainda sem a Solicitação de contrato no Pipefy</>,
