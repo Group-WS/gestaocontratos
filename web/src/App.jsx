@@ -3248,7 +3248,17 @@ function aplicarItensNasVerbas(categorias, itens, campo) {
       ? { ...existente, [campo]: lista }
       : { num: "—", nome, vendido: 0, executivo: 0, foraDaEapPadrao: true, foraDeEscopoCategoria: true, [campo]: lista });
   });
-  jaFora.forEach((c) => { if (!fora.has(c.nome)) extras.push(c); });
+  // Um grupo cru que ficou "fora" numa importação antiga (ex.: a EAP
+  // ainda não tinha "Sonorização") não pode sobreviver pra sempre: se o
+  // nome já casa com um padrão novo, os itens dele já foram pra `base`
+  // com o nome certo, e mantê-lo aqui duplicaria o valor no CMV — foi
+  // o que aconteceu com "AUTOMAÇÃO - CONTROL 4" somando junto de "33
+  // Automação". Só carrega adiante o que continua genuinamente fora.
+  jaFora.forEach((c) => {
+    if (fora.has(c.nome)) return;
+    if (verbaPorNome(c.nome)) return;
+    extras.push(c);
+  });
 
   return [...base, ...extras];
 }
@@ -3286,9 +3296,17 @@ function normalizarCategorias(salvas) {
   const porNum = new Map();
   const fora = [];
   lista.forEach((c) => {
-    if (c.foraDaEapPadrao) { fora.push(c); return; }
     // Só o nome decide. Sem nome reconhecido, o grupo vai pro fim — nunca
     // se assume que o número salvo significa a mesma coisa hoje.
+    //
+    // Tenta casar SEMPRE, mesmo quando a categoria já veio marcada
+    // `foraDaEapPadrao` — a EAP pode ter ganhado um grupo novo depois que
+    // essa obra foi salva (foi o caso de Sonorização/Automação: a obra
+    // guardava "AUTOMAÇÃO - CONTROL 4" fora do padrão, e mesmo depois da
+    // EAP aprender o nome, esta função continuava tratando como fora pra
+    // sempre — a categoria antiga nunca se aposentava, e um import novo
+    // que já casava certo duplicava o valor no CMV). Confiar só na flag
+    // salva trava a classificação no dia em que a obra foi salva.
     const canon = verbaPorNome(c.nome);
     if (!canon) { fora.push(c); return; }
     const ja = porNum.get(canon);
