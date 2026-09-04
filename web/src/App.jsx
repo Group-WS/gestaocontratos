@@ -6,7 +6,8 @@ import {
   ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
-  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign
+  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
+  MapPin
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, faltandoNaTela } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
@@ -19,6 +20,7 @@ import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
 import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
 import { subgrupoDe } from "./lib/catalogoModelo.js";
+import { listarSiengeObras } from "./lib/siengeObra.js";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import Catalogo from "./Catalogo";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
@@ -10412,6 +10414,142 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
 /* Uma celula da regua. Nao e' cartao: cartao aqui em cima competia com
    os cartoes de "Pedindo atencao" logo abaixo, e quatro caixas brancas
    iguais nao dizem qual delas pede acao. */
+/* Nome com "Entregue" (do Sienge, tipo "Le Magestic (Entregue 2018)")
+   é obra encerrada, ponto — não importa o código. */
+const ENTREGUE_RE = /entregue/i;
+
+/* O status de uma obra do histórico do Sienge, pra colorir o painel.
+ *
+ * A ordem importa: o que o Confere já sabe (`registro`, a tabela que o
+ * time de fato acompanha) manda mais que qualquer palpite — se ela está
+ * marcada "concluida" ou "ativa" aqui dentro, é essa a resposta. Só
+ * quando o Confere nunca ouviu falar dessa obra (todo o histórico
+ * antigo, de antes deste app existir) é que entram os sinais indiretos:
+ * o nome dizendo "Entregue", ou o código ser antigo demais (<=1500) pra
+ * ainda estar em obra hoje. Sem cruzar com o Monday ao vivo por
+ * enquanto — decisão dela, pra não travar o painel numa integração que
+ * ainda não existe pra esse recorte.
+ */
+function statusSienge(row, registro) {
+  const conf = registro.get(String(row.codigo));
+  if (conf?.situacao) return conf.situacao === "concluida" ? "finalizada" : "ativa";
+  if (ENTREGUE_RE.test(row.nome || "")) return "finalizada";
+  if (Number(row.codigo) <= 1500) return "finalizada";
+  return "ativa";
+}
+
+/* Estado -> cidade -> obras, só com quem tem os dois preenchidos —
+   sem endereço não há onde desenhar o pino. Cidade em ordem alfabética
+   (lista longa, achar é o que importa); estado pelo total, o maior
+   primeiro, pra abrir já mostrando onde tem mais obra. */
+function agruparPorLocalizacao(siengeObras, registro) {
+  const porEstado = new Map();
+  (siengeObras || []).forEach((r) => {
+    if (!r.cidade || !r.estado) return;
+    if (!porEstado.has(r.estado)) porEstado.set(r.estado, new Map());
+    const porCidade = porEstado.get(r.estado);
+    if (!porCidade.has(r.cidade)) porCidade.set(r.cidade, []);
+    porCidade.get(r.cidade).push({ codigo: r.codigo, nome: r.nome, status: statusSienge(r, registro) });
+  });
+  return [...porEstado.entries()]
+    .map(([estado, porCidade]) => {
+      const cidades = [...porCidade.entries()]
+        .map(([cidade, obras]) => ({
+          cidade,
+          obras: obras.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+          ativas: obras.filter((o) => o.status === "ativa").length,
+          finalizadas: obras.filter((o) => o.status === "finalizada").length,
+        }))
+        .sort((a, b) => a.cidade.localeCompare(b.cidade, "pt-BR"));
+      return { estado, cidades, total: cidades.reduce((a, c) => a + c.obras.length, 0) };
+    })
+    .sort((a, b) => b.total - a.total);
+}
+
+/* Painel "Onde estão as obras": estado -> cidade -> obra, sem despejar
+   as ~540 de uma vez — só o estado escolhido mostra cidade, só a cidade
+   escolhida mostra as obras dela, coloridas por status. */
+function PainelLocalizacao({ dados, carregando }) {
+  const [estado, setEstado] = useState(null);
+  const [cidadesAbertas, setCidadesAbertas] = useState(() => new Set());
+  const grupo = dados.find((g) => g.estado === estado) || null;
+
+  /* Os dados chegam depois (fetch assíncrono) — sem isto o painel
+     carrega e fica sem nenhum estado selecionado até alguém clicar. */
+  useEffect(() => {
+    if (!estado && dados.length) setEstado(dados[0].estado);
+  }, [dados, estado]);
+
+  const alternarCidade = (cidade) => setCidadesAbertas((prev) => {
+    const n = new Set(prev);
+    if (n.has(cidade)) n.delete(cidade); else n.add(cidade);
+    return n;
+  });
+
+  if (carregando || dados.length === 0) {
+    return (
+      <div className="gc-bloco loc-bloco">
+        <div className="gc-bloco-head">
+          <MapPin size={15} />
+          <span className="gc-bloco-titulo">Onde estão as obras</span>
+        </div>
+        <div className="empty-note">
+          {carregando ? "Carregando…" : "Ainda sem dados — falta rodar o SQL de importação do Sienge (supabase/sienge_obra.sql)."}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="gc-bloco loc-bloco">
+      <div className="gc-bloco-head">
+        <MapPin size={15} />
+        <span className="gc-bloco-titulo">Onde estão as obras</span>
+        <span className="loc-legenda">
+          <span className="loc-legenda-item"><i className="loc-dot ativa" />ativa</span>
+          <span className="loc-legenda-item"><i className="loc-dot finalizada" />finalizada</span>
+        </span>
+      </div>
+      <div className="loc-estados">
+        {dados.map((g) => (
+          <button key={g.estado} type="button" className={`gc-chip ${estado === g.estado ? "on" : ""}`}
+            onClick={() => setEstado(g.estado)}>
+            {g.estado} <span className="dim">· {g.total}</span>
+          </button>
+        ))}
+      </div>
+      {grupo && (
+        <div className="loc-cidades">
+          {grupo.cidades.map((c) => {
+            const aberta = cidadesAbertas.has(c.cidade);
+            return (
+              <div key={c.cidade} className="loc-cidade">
+                <button type="button" className="loc-cidade-head" onClick={() => alternarCidade(c.cidade)}>
+                  <ChevronRight size={12} className={`gc-chevron ${aberta ? "aberto" : ""}`} />
+                  <span className="loc-cidade-nome">{c.cidade}</span>
+                  <span className="loc-cidade-conta">
+                    {c.ativas > 0 && <span className="loc-conta ativa">{c.ativas}</span>}
+                    {c.finalizadas > 0 && <span className="loc-conta finalizada">{c.finalizadas}</span>}
+                  </span>
+                </button>
+                {aberta && (
+                  <div className="loc-obras">
+                    {c.obras.map((o) => (
+                      <span key={o.codigo} className={`loc-obra-chip ${o.status}`} title={`#${o.codigo}`}>
+                        {o.nome}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* A esteira da obra: os passos em ordem, cada um sabendo se já foi
    cumprido, mais a frase do que falta AGORA. As duas coisas juntas —
    não só a frase (escondia o histórico, "de onde veio" desaparecia) e
@@ -10464,7 +10602,7 @@ function InicioNum({ rot, valor, sub, cor, onClick }) {
   );
 }
 
-function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
+function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0, onAbrirObra, onModulo, dadosLocalizacao = [], localizacaoCarregando = false }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const t = r.totais;
 
@@ -10657,6 +10795,8 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
           })}
         </div>
       </div>
+
+      <PainelLocalizacao dados={dadosLocalizacao} carregando={localizacaoCarregando} />
     </>
   );
 }
@@ -11998,6 +12138,16 @@ export default function App() {
   // Arquivo (concluida) e quem ainda é só sugestão do Monday (ausente).
   const [registro, setRegistro] = useState(() => new Map());
   const [erroBanco, setErroBanco] = useState(null);
+  const [siengeObras, setSiengeObras] = useState([]);
+  const [siengeCarregando, setSiengeCarregando] = useState(true);
+  useEffect(() => {
+    let vivo = true;
+    listarSiengeObras()
+      .then((l) => { if (vivo) setSiengeObras(l); })
+      .catch(() => {})
+      .finally(() => { if (vivo) setSiengeCarregando(false); });
+    return () => { vivo = false; };
+  }, []);
   // Coluna que o banco ainda nao tem. Fica visivel ate a migracao rodar —
   // salvar pela metade em silencio e pior que nao salvar.
   const [migracao, setMigracao] = useState(null);
@@ -12273,6 +12423,7 @@ export default function App() {
   }, [obrasAtivas, painelDados, selectedId]);
   const obrasConcluidas = useMemo(() => obras.filter((o) => situacaoDe(o) === "concluida"), [obras, registro]);
   const obrasNovas = useMemo(() => obras.filter((o) => !situacaoDe(o)), [obras, registro]);
+  const dadosLocalizacao = useMemo(() => agruparPorLocalizacao(siengeObras, registro), [siengeObras, registro]);
 
   // Seleciona a primeira obra ativa assim que houver uma, e nunca deixa
   // uma obra que saiu da sidebar (concluída) presa como selecionada.
@@ -15017,6 +15168,25 @@ export default function App() {
         .ini-passo-chip { display: inline-flex; align-items: center; gap: 1px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; }
         .ini-passo-chip.on { color: #1B7A43; background: #E7F5EC; border-color: #BFE3CC; }
         .ini-passo-chip.atrasado { color: var(--red); background: var(--red-bg); border-color: #F0CFCB; }
+        .loc-bloco { margin-top: 24px; }
+        .loc-legenda { margin-left: auto; display: flex; gap: 12px; }
+        .loc-legenda-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-3); font-weight: 500; }
+        .loc-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .loc-dot.ativa, .loc-conta.ativa { background: #1B7A43; }
+        .loc-dot.finalizada, .loc-conta.finalizada { background: var(--ink-3); }
+        .loc-obra-chip.ativa { color: #1B7A43; background: #E7F5EC; }
+        .loc-estados { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+        .loc-cidades { margin-top: 6px; }
+        .loc-cidade { border-bottom: 1px solid var(--border-soft); }
+        .loc-cidade:last-child { border-bottom: none; }
+        .loc-cidade-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 4px; background: none; border: none; font: inherit; text-align: left; cursor: pointer; }
+        .loc-cidade-head:hover { background: var(--panel); }
+        .loc-cidade-nome { flex: 1; font-size: 13px; color: var(--ink); font-weight: 600; }
+        .loc-cidade-conta { display: flex; gap: 6px; }
+        .loc-conta { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; }
+        .loc-obras { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 12px 24px; }
+        .loc-obra-chip { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 10px; }
+        .loc-obra-chip.finalizada { color: var(--ink-2); background: var(--panel); }
         /* A frase diz o que falta AGORA — a esteira mostra o caminho
            inteiro, a frase poupa de reler os chips pra saber o motivo. */
         .ini-fase-pilula { display: inline-block; margin-top: 5px; font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 6px; padding: 2px 8px; }
@@ -15157,6 +15327,7 @@ export default function App() {
               elas empurravam pra baixo o unico conteudo que importa. */}
           <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={painelCarregando}
             usuario={usuario} equipe={pessoas} nPendentes={nPendentes}
+            dadosLocalizacao={dadosLocalizacao} localizacaoCarregando={siengeCarregando}
             onAbrirObra={(id) => { setSelectedId(id); setModulo("comparativo"); setGrupo("dashboard"); setTab(null); }}
             onModulo={setModulo} />
           </>
