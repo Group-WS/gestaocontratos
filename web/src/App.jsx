@@ -10308,25 +10308,30 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
 /* Uma celula da regua. Nao e' cartao: cartao aqui em cima competia com
    os cartoes de "Pedindo atencao" logo abaixo, e quatro caixas brancas
    iguais nao dizem qual delas pede acao. */
-/* Em que fase a obra está — UMA frase, não uma fileira de siglas. "Em
-   qual fase está" é pergunta com uma resposta só; cinco selos (CR, ESP,
-   MARC...) obrigavam a pessoa a decifrar abreviação em vez de ler.
-   Anda pela ordem real do processo e para na primeira coisa que falta:
-   é aí que a obra está PARADA agora, e é isso que se quer saber —
-   "falta o quê" é mais útil do que uma lista do que já foi.
+/* A esteira da obra: os passos em ordem, cada um sabendo se já foi
+   cumprido, mais a frase do que falta AGORA. As duas coisas juntas —
+   não só a frase (escondia o histórico, "de onde veio" desaparecia) e
+   não só os passos (cinco selos com sigla exigiam decifrar em vez de
+   ler). O passo em si é só uma bolinha, sem letra — o nome completo
+   mora no title; ler a esteira é olhar quanto já andou, não decifrar
+   abreviação.
    Caderno conta como feito quando o arquivo é anexado (mesma regra da
    aba Executivo). CMV usa `deparaAprovado`, não só `cmvLiberado > 0`:
    uma obra pode ter liberado com valor zerado numa planilha estranha,
    e o que importa pra fase é "a decisão foi tomada", não o valor. */
-function faseDaObra(o) {
+function esteiraDaObra(o) {
   const cad = o.cadernos || {};
-  if (!cad.criativo) return { texto: "Aguardando Criativo" };
-  if (!o.deparaAprovado) return { texto: "Aguardando CMV" };
-  if (!cad.especificacao) return { texto: "Aguardando Caderno de Especificação" };
-  if (!cad.marcenaria) return { texto: "Aguardando Caderno de Marcenaria" };
-  if (!cad.projeto) return { texto: "Aguardando Caderno de Projeto Executivo" };
-  if (!o.comprasLiberadas) return { texto: "Pronta para Compras", tom: "azul" };
-  return { texto: "Em execução", tom: "roxo" };
+  const passos = [
+    { chave: "criativo", rotulo: "Criativo", feito: !!cad.criativo },
+    { chave: "cmv", rotulo: "CMV liberado", feito: !!o.deparaAprovado },
+    { chave: "especificacao", rotulo: "Caderno de Especificação", feito: !!cad.especificacao },
+    { chave: "marcenaria", rotulo: "Caderno de Marcenaria", feito: !!cad.marcenaria },
+    { chave: "projeto", rotulo: "Caderno de Projeto Executivo", feito: !!cad.projeto },
+  ];
+  const faltando = passos.find((p) => !p.feito);
+  if (faltando) return { passos, texto: `Aguardando ${faltando.rotulo}` };
+  if (!o.comprasLiberadas) return { passos, texto: "Pronta para Compras", tom: "azul" };
+  return { passos, texto: "Em execução", tom: "roxo" };
 }
 
 function InicioNum({ rot, valor, sub, cor, onClick }) {
@@ -10461,7 +10466,8 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
           </div>
           {(minhas.length ? minhas : obras).map((o) => {
             const L = r.linhas.find((x) => x.codigo === o.codigo);
-            const fase = faseDaObra(o);
+            const esteira = esteiraDaObra(o);
+            const nomeGC = o.gc ? ((equipe || []).find((p) => p.email === o.gc)?.nome || nomeDoEmail(o.gc)) : null;
             return (
               <button key={o.id} className="ini-obra" onClick={() => onAbrirObra(o.id)}>
                 <div className="ini-obra-id">
@@ -10472,18 +10478,30 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                       ? ` · entrega ${new Date(`${o.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}`
                       : " · sem data de entrega"}
                   </div>
-                  <span className={`ini-fase-pilula ${fase.tom || ""}`}>{fase.texto}</span>
-                </div>
-                {L ? (
-                  <div className="ini-obra-barras">
-                    <div className="ini-barra" title={`Comprado: ${Math.round(L.mat.pct)}%`}>
-                      <div className="gc-track"><div className="gc-fill" style={{ width: `${L.mat.pct}%`, background: "var(--blue)" }} /></div>
-                    </div>
-                    <div className="ini-barra" title={`Contratado: ${Math.round(L.mo.pct)}%`}>
-                      <div className="gc-track"><div className="gc-fill" style={{ width: `${L.mo.pct}%`, background: "var(--purple)" }} /></div>
-                    </div>
+                  <div className="ini-esteira">
+                    {esteira.passos.map((p, i) => (
+                      <React.Fragment key={p.chave}>
+                        {i > 0 && <span className={`ini-passo-linha ${esteira.passos[i - 1].feito ? "on" : ""}`} />}
+                        <span className={`ini-passo ${p.feito ? "on" : ""}`} title={`${p.rotulo}: ${p.feito ? "feito" : "pendente"}`} />
+                      </React.Fragment>
+                    ))}
                   </div>
-                ) : <span className="ini-obra-vazia">sem planilha</span>}
+                  <span className={`ini-fase-pilula ${esteira.tom || ""}`}>{esteira.texto}</span>
+                </div>
+                {/* Duas barras sem legenda ninguém decifra de relance —
+                    o número já diz sozinho. GC bem pequeno: é contexto
+                    de apoio, não o que a linha existe pra responder. */}
+                {L ? (
+                  <div className="ini-obra-resumo">
+                    {nomeGC && <div className="ini-obra-gc">GC {nomeGC}</div>}
+                    <div className="ini-obra-pct">{Math.round(L.mat.pct)}% comprado</div>
+                  </div>
+                ) : (
+                  <div className="ini-obra-resumo">
+                    {nomeGC && <div className="ini-obra-gc">GC {nomeGC}</div>}
+                    <span className="ini-obra-vazia">sem planilha</span>
+                  </div>
+                )}
                 {L && L.atrasos.length > 0 && <span className="gc-selo atraso">{L.atrasos.length}</span>}
               </button>
             );
@@ -14840,11 +14858,20 @@ export default function App() {
         .ini-obra-id { flex: 1; min-width: 0; }
         .ini-obra-nome { font-size: 12.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ini-obra-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
-        .ini-obra-barras { display: flex; flex-direction: column; gap: 4px; width: 90px; flex-shrink: 0; }
+        .ini-obra-resumo { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; text-align: right; }
+        .ini-obra-gc { font-size: 9.5px; color: var(--ink-3); }
+        .ini-obra-pct { font-size: 11.5px; font-weight: 600; color: var(--ink); }
         .ini-obra-vazia { font-size: 10.5px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
-        /* A fase e' UMA pilula de texto, nao uma fileira de siglas —
-           le-se direto, sem precisar decifrar abreviacao. */
-        .ini-fase-pilula { display: inline-block; margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 6px; padding: 2px 8px; }
+        /* A esteira: bolinha por passo, sem letra — o nome mora no
+           title. Olhar quanto andou nao devia exigir leitura nenhuma. */
+        .ini-esteira { display: flex; align-items: center; margin-top: 7px; }
+        .ini-passo { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+        .ini-passo.on { background: #1B7A43; }
+        .ini-passo-linha { width: 9px; height: 2px; background: var(--border); flex-shrink: 0; }
+        .ini-passo-linha.on { background: #1B7A43; }
+        /* A frase diz o que falta AGORA — a esteira mostra o caminho
+           inteiro, a frase poupa de contar bolinha pra saber o motivo. */
+        .ini-fase-pilula { display: inline-block; margin-top: 5px; font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 6px; padding: 2px 8px; }
         .ini-fase-pilula.azul { color: #1D5FB8; background: var(--blue-bg); }
         .ini-fase-pilula.roxo { color: var(--purple); background: #F1EBFA; }
         .ini-titulo-linha { justify-content: space-between; }
