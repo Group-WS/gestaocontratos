@@ -5631,7 +5631,7 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
   const [enviando, setEnviando] = useState(false);
-  const [baixando, setBaixando] = useState(false);
+  const [ocupado, setOcupado] = useState(null);   // "ver" | "baixar" | null
 
   async function aoEscolher(e) {
     const file = e.target.files && e.target.files[0];
@@ -5661,16 +5661,16 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
     }
   }
 
-  async function baixar() {
+  async function abrir(baixar) {
     if (arquivo?.url) { window.open(arquivo.url, "_blank"); return; }
     setErro(null);
-    setBaixando(true);
+    setOcupado(baixar ? "baixar" : "ver");
     try {
-      window.open(await linkParaBaixar(arquivo.caminho), "_blank");
+      window.open(await linkParaArquivo(arquivo.caminho, { baixar }), "_blank");
     } catch (err) {
       setErro(err.message);
     } finally {
-      setBaixando(false);
+      setOcupado(null);
     }
   }
 
@@ -5688,9 +5688,14 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
           {perdido ? (
             <span className="caderno-slot-vazio">arquivo não guardado — anexe de novo</span>
           ) : (
-            <button className="caderno-acao" onClick={baixar} disabled={baixando}>
-              <Download size={12} /> {baixando ? "Abrindo…" : "Baixar"}
-            </button>
+            <>
+              <button className="caderno-acao" onClick={() => abrir(false)} disabled={!!ocupado}>
+                <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
+              </button>
+              <button className="caderno-acao" onClick={() => abrir(true)} disabled={!!ocupado}>
+                <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
+              </button>
+            </>
           )}
         </>
       ) : (
@@ -11024,18 +11029,18 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
    equipe da obra, na aba do Executivo, e ter dois lugares que gravam o
    mesmo arquivo e' como um deles fica desatualizado. */
 function CadernoBaixar({ titulo, arquivo }) {
-  const [baixando, setBaixando] = useState(false);
+  const [ocupado, setOcupado] = useState(null);   // "ver" | "baixar" | null
   const [erro, setErro] = useState(null);
 
-  async function baixar() {
+  async function abrir(baixar) {
     if (arquivo?.url) { window.open(arquivo.url, "_blank"); return; }
-    setErro(null); setBaixando(true);
+    setErro(null); setOcupado(baixar ? "baixar" : "ver");
     try {
-      window.open(await linkParaBaixar(arquivo.caminho), "_blank");
+      window.open(await linkParaArquivo(arquivo.caminho, { baixar }), "_blank");
     } catch (e) {
       setErro(e.message || String(e));
     } finally {
-      setBaixando(false);
+      setOcupado(null);
     }
   }
 
@@ -11049,8 +11054,11 @@ function CadernoBaixar({ titulo, arquivo }) {
         : (
           <>
             <span className="mh-caderno-arq">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
-            <button className="caderno-acao" onClick={baixar} disabled={baixando}>
-              <Download size={12} /> {baixando ? "Abrindo…" : "Baixar"}
+            <button className="caderno-acao" onClick={() => abrir(false)} disabled={!!ocupado}>
+              <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
+            </button>
+            <button className="caderno-acao" onClick={() => abrir(true)} disabled={!!ocupado}>
+              <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
             </button>
           </>
         )}
