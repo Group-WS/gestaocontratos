@@ -10308,6 +10308,24 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
 /* Uma celula da regua. Nao e' cartao: cartao aqui em cima competia com
    os cartoes de "Pedindo atencao" logo abaixo, e quatro caixas brancas
    iguais nao dizem qual delas pede acao. */
+/* As 5 marcas que dizem em que fase a obra está, sem precisar abrir
+   ela. Caderno fica "feito" quando o arquivo é anexado — é a mesma
+   regra que a aba Executivo já usa, o anexo é a própria prova; não tem
+   um "em andamento" salvo em lugar nenhum ainda, então por enquanto é
+   feito/pendente. CMV usa `deparaAprovado`, não só `cmvLiberado > 0`:
+   uma obra pode ter liberado com valor zerado numa planilha estranha,
+   e o que importa pra fase é "a decisão foi tomada", não o valor. */
+function fasesDaObra(o) {
+  const cad = o.cadernos || {};
+  return [
+    { sigla: "CR", rotulo: "Criativo", feito: !!cad.criativo },
+    { sigla: "CMV", rotulo: "CMV liberado", feito: !!o.deparaAprovado, valor: o.cmvLiberado },
+    { sigla: "ESP", rotulo: "Caderno de Especificação", feito: !!cad.especificacao },
+    { sigla: "MARC", rotulo: "Caderno de Marcenaria", feito: !!cad.marcenaria },
+    { sigla: "PROJ", rotulo: "Caderno de Projeto Executivo", feito: !!cad.projeto },
+  ];
+}
+
 function InicioNum({ rot, valor, sub, cor, onClick }) {
   const Tag = onClick ? "button" : "div";
   return (
@@ -10435,6 +10453,7 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
           </div>
           {(minhas.length ? minhas : obras).map((o) => {
             const L = r.linhas.find((x) => x.codigo === o.codigo);
+            const fases = fasesDaObra(o);
             return (
               <button key={o.id} className="ini-obra" onClick={() => onAbrirObra(o.id)}>
                 <div className="ini-obra-id">
@@ -10444,6 +10463,17 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                     {o.dataEntrega
                       ? ` · entrega ${new Date(`${o.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}`
                       : " · sem data de entrega"}
+                  </div>
+                  <div className="ini-obra-fases">
+                    {fases.map((f) => (
+                      <span key={f.sigla} className={`ini-fase ${f.feito ? "on" : ""}`}
+                        title={`${f.rotulo}: ${f.feito ? "feito" : "pendente"}${f.valor ? ` — ${fmtBRL(f.valor)}` : ""}`}>
+                        {f.sigla}
+                      </span>
+                    ))}
+                    <span className={`ini-fase-status ${o.comprasLiberadas ? "exec" : ""}`}>
+                      {o.comprasLiberadas ? "Em execução" : "Planejamento"}
+                    </span>
                   </div>
                 </div>
                 {L ? (
@@ -12070,6 +12100,9 @@ export default function App() {
         categorias: devolverMOaoGrupoDeOrigem(normalizarCategorias(salvo.categorias)),
         dataEntrega: salvo.dataEntrega,
         cadernos: salvo.cadernos || o.cadernos,
+        comprasLiberadas: salvo.comprasLiberadas,
+        deparaAprovado: salvo.deparaAprovado,
+        cmvLiberado: salvo.cmvLiberado,
       };
     });
   }, [obrasAtivas, painelDados, selectedId]);
@@ -14785,20 +14818,20 @@ export default function App() {
         .ini-nome { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.2; }
         .ini-data { font-size: 11px; color: var(--ink-3); }
         .ini-recado { font-size: 16px; color: var(--ink-2); line-height: 1.45; max-width: 720px; margin-top: 5px; }
-        .ini-regua { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--border); margin-bottom: 26px; }
-        .ini-cel { padding: 14px 22px; border-left: 1px solid var(--border); text-align: left; font-family: inherit; background: none; }
+        .ini-regua { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+        .ini-cel { padding: 9px 18px; border-left: 1px solid var(--border); text-align: left; font-family: inherit; background: none; }
         .ini-cel:first-child { padding-left: 0; border-left: none; }
         .ini-cel:last-child { padding-right: 0; }
         .ini-cel.clicavel { cursor: pointer; }
         .ini-cel.clicavel:hover .ini-cel-val { color: var(--blue); }
-        .ini-cel-rot { font-size: 9.5px; font-weight: 800; letter-spacing: .08em; color: var(--ink-3); }
-        .ini-cel-val { font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: var(--ink); line-height: 1.1; margin-top: 6px; }
-        .ini-cel-sub { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
-        @media (max-width: 900px) { .ini-regua { grid-template-columns: repeat(2, 1fr); } .ini-cel { padding: 14px 16px; } .ini-cel:nth-child(3) { padding-left: 0; border-left: none; } }
+        .ini-cel-rot { font-size: 9px; font-weight: 800; letter-spacing: .08em; color: var(--ink-3); }
+        .ini-cel-val { font-family: 'Space Grotesk', sans-serif; font-size: 21px; font-weight: 700; color: var(--ink); line-height: 1.1; margin-top: 3px; }
+        .ini-cel-sub { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+        @media (max-width: 900px) { .ini-regua { grid-template-columns: repeat(2, 1fr); } .ini-cel { padding: 9px 14px; } .ini-cel:nth-child(3) { padding-left: 0; border-left: none; } }
         .ini-colunas { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
         .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ink); padding-bottom: 8px; border-bottom: 2px solid var(--ink); margin-bottom: 8px; }
         .ini-conta { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: 10.5px; }
-        .ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 9px; background: #fff; padding: 10px 12px; margin-bottom: 6px; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; cursor: pointer; }
+        .ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 9px; background: #fff; padding: 7px 11px; margin-bottom: 5px; font-size: 12px; color: var(--ink-2); line-height: 1.4; cursor: pointer; }
         .ini-alerta:hover { border-color: var(--ink-3); }
         .ini-alerta span { flex: 1; }
         .ini-alerta.ruim { background: var(--red-bg); border-color: #F0CFCB; color: #8A2E22; }
@@ -14811,6 +14844,14 @@ export default function App() {
         .ini-obra-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
         .ini-obra-barras { display: flex; flex-direction: column; gap: 4px; width: 90px; flex-shrink: 0; }
         .ini-obra-vazia { font-size: 10.5px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
+        /* As marcas de fase: bolinhas com sigla, cinza-claro por padrão e
+           coloridas quando feito. Compactas de propósito — são 5 delas
+           mais o rótulo de status, tudo cabendo numa linha só. */
+        .ini-obra-fases { display: flex; align-items: center; gap: 3px; margin-top: 5px; flex-wrap: wrap; }
+        .ini-fase { font-size: 8px; font-weight: 800; letter-spacing: .02em; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 2px 5px; }
+        .ini-fase.on { color: #1B7A43; background: #E7F5EC; border-color: #BFE3CC; }
+        .ini-fase-status { font-size: 9.5px; font-weight: 600; color: var(--ink-3); margin-left: 2px; }
+        .ini-fase-status.exec { color: var(--purple); }
         @media (max-width: 1100px) { .ini-numeros { grid-template-columns: repeat(2, 1fr); } .ini-colunas { grid-template-columns: 1fr; } }
         /* ---- Painel geral de compras e contratacoes ---- */
         .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }

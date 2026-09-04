@@ -257,7 +257,7 @@ export async function carregarResumoDeVarias(codigos, onParcial) {
     const fatia = codigos.slice(i, i + LOTE).map(String);
     const { data, error } = await supabase
       .from("obra_dados")
-      .select("obra_codigo, categorias, data_entrega, compras_liberadas, cadernos")
+      .select("obra_codigo, categorias, data_entrega, compras_liberadas, cadernos, depara_aprovado, cmv_liberado")
       .in("obra_codigo", fatia);
     if (error) throw error;
     (data || []).forEach((l) => tudo.set(String(l.obra_codigo), {
@@ -266,6 +266,10 @@ export async function carregarResumoDeVarias(codigos, onParcial) {
       comprasLiberadas: !!l.compras_liberadas,
       // O painel da Mehoo entrega os cadernos do executivo pra baixar.
       cadernos: l.cadernos || {},
+      // Pro painel geral saber em que fase cada obra está sem abrir uma
+      // por uma — CMV liberado é um dos marcos que ele mostra.
+      deparaAprovado: !!l.depara_aprovado,
+      cmvLiberado: l.cmv_liberado ?? null,
     }));
     // Mapa novo a cada lote: o React so re-renderiza se a referencia mudar.
     if (onParcial) onParcial(new Map(tudo));
