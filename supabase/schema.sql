@@ -64,6 +64,12 @@ create table if not exists obra_dados (
   cadernos          jsonb not null default '{}'::jsonb,   -- metadados dos PDFs anexados
   aprovacoes        jsonb not null default '[]'::jsonb,   -- linhas do depara aprovadas na mao
   depara_aprovado   boolean not null default false,
+  -- Obra sem Vendido Contrato/Planilha (so' cadastro do Monday) pode
+  -- comecar direto pelo Executivo, pulando o Depara — nao ha' com o que
+  -- comparar mesmo. Fica em coluna PROPRIA, separada de depara_aprovado:
+  -- o Depara continua marcado como "nao concluido" (ele de fato nao foi
+  -- feito, so' foi pulado), so' o Executivo destrava.
+  executivo_liberado_direto boolean not null default false,
   compras_liberadas boolean not null default false,
   -- Teto de custo definido na liberacao do CMV (no depara contrato x
   -- planilha). Sem estas colunas o valor vivia so na memoria do
@@ -85,6 +91,7 @@ create table if not exists obra_dados (
 alter table obra_dados add column if not exists cmv_liberado     numeric;
 alter table obra_dados add column if not exists cmv_liberado_em  timestamptz;
 alter table obra_dados add column if not exists cmv_liberado_por text;
+alter table obra_dados add column if not exists executivo_liberado_direto boolean not null default false;
 
 alter table obra_dados enable row level security;
 

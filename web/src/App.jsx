@@ -5015,13 +5015,29 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
 
 // Bloqueio de fase: mostra enquanto o Depara Contrato×Planilha não foi
 // aprovado — o Executivo só libera depois dessa aprovação.
-function FaseBloqueada({ onIrParaDepara }) {
+//
+// `onComecarSemDepara` é o atalho pra obra sem Vendido nenhum (só
+// cadastro do Monday): não existe com o que montar o Depara, então
+// exigi-lo travaria a obra pra sempre. Só é passado pelo chamador
+// quando faz sentido (obra sem detalhe algum, e em modo de edição) —
+// aqui o componente só decide SE mostra o botão, não quando.
+function FaseBloqueada({ onIrParaDepara, onComecarSemDepara }) {
   return (
     <div className="compras-empty">
       <Lock size={30} className="dim" />
       <div className="compras-empty-title">Aguardando a liberação do CMV</div>
       <div className="compras-empty-sub">Esta etapa abre quando o CMV desta obra for liberado no Depara Contrato × Planilha — é ele que define o teto de custo com que a equipe vai trabalhar daqui pra frente.</div>
       <button className="btn-nova-solicitacao" onClick={onIrParaDepara}>Ir para o Depara</button>
+      {onComecarSemDepara && (
+        <>
+          <div className="compras-empty-sub" style={{ marginTop: 18 }}>
+            Esta obra ainda não tem Vendido Contrato nem Vendido Planilha — não há com o que montar essa comparação.
+          </div>
+          <button className="btn-cancelar" onClick={onComecarSemDepara}>
+            Começar direto pelo Executivo, sem CMV por enquanto
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -12109,6 +12125,7 @@ export default function App() {
           arquivos: dados.arquivos,
           aprovacoes: dados.aprovacoes,
           deparaAprovado: dados.deparaAprovado,
+          executivoLiberadoDireto: dados.executivoLiberadoDireto,
           comprasLiberadas: dados.comprasLiberadas,
           // Sem estas três, o CMV liberado se perdia no reload: a aba
           // Executivo continuava aberta (isso é `deparaAprovado`), mas o
@@ -12395,6 +12412,19 @@ export default function App() {
   function aprovarDepara(cmv) {
     setObras((prev) => prev.map((o) => (o.id === selectedId
       ? { ...o, deparaAprovado: true, cmvLiberado: cmv, cmvLiberadoEm: new Date().toISOString(), cmvLiberadoPor: usuario }
+      : o)));
+  }
+
+  // Abre o Executivo direto, sem passar pelo Depara — pra obra sem
+  // Vendido Contrato/Planilha (só cadastro do Monday), que não tem com o
+  // que montar a comparação. FICA À PARTE de `deparaAprovado`: o Depara
+  // continua aparecendo como "não concluído" no Planejamento (ele de
+  // fato não foi feito, só foi pulado), e o CMV fica sem teto até
+  // alguém liberar de verdade pelo Depara — se a obra um dia ganhar
+  // Vendido pra comparar.
+  function comecarExecutivoSemDepara() {
+    setObras((prev) => prev.map((o) => (o.id === selectedId
+      ? { ...o, executivoLiberadoDireto: true }
       : o)));
   }
 
@@ -14949,7 +14979,10 @@ export default function App() {
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} />}
-          {tab === "executivo" && (obra.deparaAprovado ? <ExecutivoView obra={obra} usuario={usuario} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo" && ((obra.deparaAprovado || obra.executivoLiberadoDireto)
+            ? <ExecutivoView obra={obra} usuario={usuario} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
+            : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
+                onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "assinatura_cliente" && (
             <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}

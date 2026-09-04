@@ -51,6 +51,10 @@ export async function salvarDadosObra(codigo, conteudo, email) {
     arquivos: listaDeArquivos(conteudo.arquivos),
     aprovacoes: Array.from(conteudo.aprovacoes || []),
     depara_aprovado: !!conteudo.deparaAprovado,
+    // Executivo destravado sem passar pelo Depara — obra sem Vendido pra
+    // comparar. Separado de depara_aprovado de proposito: o Depara
+    // continua "nao concluido" no Planejamento, porque nao foi feito.
+    executivo_liberado_direto: !!conteudo.executivoLiberadoDireto,
     compras_liberadas: !!conteudo.comprasLiberadas,
     // Esteira: quem concluiu cada etapa, e o portão da assinatura do
     // cliente que segura a liberação de compras.
@@ -104,7 +108,7 @@ export async function salvarDadosObra(codigo, conteudo, email) {
       "cliente_assinatura_arq", "cliente_assinatura_obs",
       "compra_sem_assinatura_por", "compra_sem_assinatura_em", "compra_sem_assinatura_just",
       "cmv_liberado", "cmv_liberado_em", "cmv_liberado_por",
-      "data_entrega", "escopos", "arquivos",
+      "data_entrega", "escopos", "arquivos", "executivo_liberado_direto",
     ];
     const reduzida = { ...linha };
     opcionais.forEach((c) => { delete reduzida[c]; });
@@ -206,6 +210,7 @@ function paraApp(linha) {
     arquivos: listaDeArquivos(linha.arquivos),
     aprovacoes: new Set(linha.aprovacoes || []),
     deparaAprovado: !!linha.depara_aprovado,
+    executivoLiberadoDireto: !!linha.executivo_liberado_direto,
     comprasLiberadas: !!linha.compras_liberadas,
     etapasConcluidas: linha.etapas_concluidas || {},
     clienteAssinouEm: linha.cliente_assinou_em || null,
