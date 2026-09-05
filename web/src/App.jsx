@@ -6344,6 +6344,7 @@ function TopBar({ onInicio }) {
 const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
 const CHAVE_MINHAS = "tkws.so.minhas";
 const CHAVE_SQUADS = "tkws.squads.fechados";
+const CHAVE_OBRAS_ABERTAS = "confere:obras-abertas";
 
 /* A obra: tres volumes e a linha do chao.
 
@@ -6461,6 +6462,11 @@ function IconeSquad({ nome, size = 13 }) {
 }
 
 function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS, pendentesCount = 0 }) {
+  /* Início sai da lista dobrável de módulos e vira botão fixo no topo —
+     o resto de `modulos` (permissão já aplicada por quem chama) segue
+     exatamente como antes, só sem o Início duplicado dentro dele. */
+  const inicioModulo = modulos.find((m) => m.id === "inicio");
+  const outrosModulos = modulos.filter((m) => m.id !== "inicio");
   /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
      quer reativar o filtro a cada F5. */
   const [soMinhas, setSoMinhas] = useState(() => {
@@ -6516,6 +6522,18 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   useEffect(() => {
     try { localStorage.setItem(CHAVE_SIDEBAR, recolhida ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [recolhida]);
+
+  /* "Obras" dobra dentro da propria barra — nasce ABERTA (o oposto dos
+     modulos, de proposito: obra e' o que se abre o dia inteiro, modulo e'
+     o que se abre de vez em quando, mesma razao de `modulosAbertos` mais
+     abaixo). Guardado, pra quem prefere a barra mais enxuta nao ter que
+     fechar de novo a cada F5. */
+  const [obrasAbertas, setObrasAbertas] = useState(() => {
+    try { return localStorage.getItem(CHAVE_OBRAS_ABERTAS) !== "0"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(CHAVE_OBRAS_ABERTAS, obrasAbertas ? "1" : "0"); } catch { /* modo anonimo */ }
+  }, [obrasAbertas]);
 
   /* Modulos nascem SEMPRE fechados, e essa escolha nao e' guardada.
 
@@ -6636,7 +6654,32 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
       </button>
 
       <div className="sidebar-scroll">
-        <div className="nav-group-label">OBRAS ATIVAS · {obras.length}</div>
+        {/* Início e Obras SEMPRE visíveis, no topo — é o que se abre o dia
+            inteiro. O resto dos módulos continua dobrado lá embaixo, sem
+            mudar em nada (ver `nav-modulos` mais abaixo). */}
+        <div className="nav-list nav-list-topo">
+          {inicioModulo && (
+            <button className={`nav-item ${modulo === "inicio" ? "active" : ""}`}
+              onClick={() => onModulo("inicio")} title={inicioModulo.nome}>
+              <inicioModulo.Icone size={16} className="nav-icon" />
+              <div className="nav-item-text">
+                <div className="nav-item-name">{inicioModulo.nome}</div>
+              </div>
+            </button>
+          )}
+          <button className="nav-item nav-item-obras" onClick={() => setObrasAbertas((v) => !v)}
+            title={obrasAbertas ? "Recolher Obras" : "Abrir Obras"}>
+            <Building2 size={16} className="nav-icon" />
+            <div className="nav-item-text">
+              <div className="nav-item-name">Obras</div>
+            </div>
+            <span className="nav-count">{obras.length}</span>
+            {obrasAbertas
+              ? <ChevronDown size={13} className="dim nav-item-chevron" />
+              : <ChevronRight size={13} className="dim nav-item-chevron" />}
+          </button>
+        </div>
+        {obrasAbertas && <>
         <div className="obra-search">
           <Search size={13} className="dim" />
           <input placeholder="Filtrar por nome, código, cliente..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -6741,6 +6784,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             </div>
           ))}
         </div>
+        </>}
 
         {/* Os modulos ocupavam dez linhas — cinco itens de duas linhas cada
             — e empurravam a lista de obras pra fora da tela. Obra e' o
@@ -6760,7 +6804,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
         {modulosAbertos ? (
           <div className="nav-list">
-            {modulos.map((m) => (
+            {outrosModulos.map((m) => (
               <button key={m.id} className={`nav-item ${modulo === m.id ? "active" : ""}`}
                 onClick={() => onModulo(m.id)} title={m.nome}>
                 <m.Icone size={16} className="nav-icon" />
@@ -6776,7 +6820,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           </div>
         ) : (
           <div className="nav-tira">
-            {modulos.map((m) => (
+            {outrosModulos.map((m) => (
               <button key={m.id} className={`nav-tira-item ${modulo === m.id ? "active" : ""}`}
                 onClick={() => onModulo(m.id)} title={m.nome}>
                 <m.Icone size={16} />
@@ -13628,6 +13672,7 @@ export default function App() {
         .nav-tira-badge { position: absolute; top: 1px; right: 1px; background: var(--blue); color: #fff; font-size: 8.5px; font-weight: 700; border-radius: 20px; padding: 0 4px; line-height: 13px; }
         .sidebar.recolhida .nav-tira { flex-direction: column; }
         .nav-list { display: flex; flex-direction: column; gap: 2px; }
+        .nav-list-topo { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-soft); }
         .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; border-radius: 8px; padding: 9px 8px; cursor: pointer; text-align: left; transition: background 0.12s ease; }
         .nav-item:hover { background: var(--panel); }
         .nav-item.active { background: var(--blue-bg); }
@@ -13704,6 +13749,7 @@ export default function App() {
         .sidebar.recolhida .squad-filter,
         .sidebar.recolhida .alert-toggle,
         .sidebar.recolhida .nav-item-text,
+        .sidebar.recolhida .nav-item-chevron,
         .sidebar.recolhida .no-results,
         .sidebar.recolhida .profile-text,
         .sidebar.recolhida .profile > .lucide-chevron-right { display: none; }
