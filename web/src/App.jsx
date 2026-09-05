@@ -649,7 +649,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
         <InicioNum rot="AVANÇO GERAL" cor="var(--blue)" Icone={ArrowUpRight} valor={`${avancoGeral}%`} sub="da obra concluída" />
         <InicioNum rot="PRAZO PREVISTO" cor="var(--ink-2)" Icone={Clock}
           valor={faltamEntrega == null ? "—" : faltamEntrega < 0 ? `${-faltamEntrega} dias atrás` : `${faltamEntrega} dias`}
-          sub={obra.dataEntrega ? `entrega em ${fmtData(obra.dataEntrega)}` : "sem data de entrega"} />
+          sub={obra.dataEntrega ? `entrega em ${fmtData(new Date(`${obra.dataEntrega}T12:00:00`))}` : "sem data de entrega"} />
         <InicioNum rot="PENDÊNCIAS" cor="var(--red)" Icone={AlertTriangle} valor={pendencias.length}
           sub={pendencias.length ? "pedindo atenção" : "nada pedindo atenção"} />
         <InicioNum rot="ORÇAMENTO CONTRATADO" cor="var(--green)" Icone={DollarSign} valor={fmtCompactBRL(vendido)}
