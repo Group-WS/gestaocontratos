@@ -10764,13 +10764,21 @@ function passosCriticosAtrasados(o) {
   return { dias, passos };
 }
 
-function InicioNum({ rot, valor, sub, cor, onClick }) {
+function InicioNum({ rot, valor, sub, cor, Icone, onClick }) {
   const Tag = onClick ? "button" : "div";
+  const tom = cor || "var(--ink-3)";
   return (
     <Tag className={`ini-cel ${onClick ? "clicavel" : ""}`} onClick={onClick}>
-      <div className="ini-cel-rot" style={cor ? { color: cor } : undefined}>{rot}</div>
-      <div className="ini-cel-val">{valor}</div>
-      <div className="ini-cel-sub">{sub}</div>
+      {Icone && (
+        <div className="ini-cel-icone" style={{ color: tom, background: `color-mix(in srgb, ${tom} 14%, white)` }}>
+          <Icone size={16} />
+        </div>
+      )}
+      <div className="ini-cel-corpo">
+        <div className="ini-cel-rot">{rot}</div>
+        <div className="ini-cel-val">{valor}</div>
+        <div className="ini-cel-sub">{sub}</div>
+      </div>
     </Tag>
   );
 }
@@ -10883,19 +10891,20 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
       {carregando && <div className="empty-note">Carregando as obras…</div>}
 
       <div className="ini-regua">
-        <InicioNum rot="OBRAS ATIVAS" valor={obras.length}
+        <InicioNum rot="OBRAS ATIVAS" Icone={Building2} valor={obras.length}
           sub={`${r.linhas.length} com planilha carregada`} />
-        <InicioNum rot="A COMPRAR" cor="var(--blue)" valor={fmtBRL(t.matTotal - t.matFeito)}
+        <InicioNum rot="A COMPRAR" cor="var(--blue)" Icone={ShoppingCart} valor={fmtBRL(t.matTotal - t.matFeito)}
           sub={`de ${fmtBRL(t.matTotal)} em material`} onClick={() => onModulo("a_contratar")} />
-        <InicioNum rot="A CONTRATAR" cor="var(--purple)" valor={fmtBRL(t.moTotal - t.moFeito)}
+        <InicioNum rot="A CONTRATAR" cor="var(--purple)" Icone={ClipboardList} valor={fmtBRL(t.moTotal - t.moFeito)}
           sub={`de ${fmtBRL(t.moTotal)} em mão de obra`} onClick={() => onModulo("a_contratar")} />
-        <InicioNum rot="MINHAS OBRAS" valor={minhas.length}
+        <InicioNum rot="MINHAS OBRAS" cor="var(--green)" Icone={ShieldCheck} valor={minhas.length}
           sub={minhas.length ? "onde você é o GC" : "nenhuma atribuída a você"} />
       </div>
 
       <div className="ini-colunas">
         <div>
           <div className="ini-titulo">
+            <AlertTriangle size={14} className="ini-titulo-icone" />
             Pedindo atenção
             {atencao.length > 0 && <span className="ini-conta">{atencao.length}</span>}
           </div>
@@ -10912,7 +10921,8 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
 
         <div>
           <div className="ini-titulo ini-titulo-linha">
-            <span>
+            <span className="ini-titulo-esq">
+              <Building2 size={14} className="ini-titulo-icone" />
               {minhas.length ? "Suas obras" : "Obras ativas"}
               <span className="ini-conta">{(minhas.length ? minhas : obras).length}</span>
             </span>
@@ -15320,27 +15330,29 @@ export default function App() {
         .ini-nome { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.2; }
         .ini-data { font-size: 11px; color: var(--ink-3); }
         .ini-recado { font-size: 16px; color: var(--ink-2); line-height: 1.45; max-width: 720px; margin-top: 5px; }
-        .ini-regua { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-        .ini-cel { padding: 9px 18px; border-left: 1px solid var(--border); text-align: left; font-family: inherit; background: none; }
-        .ini-cel:first-child { padding-left: 0; border-left: none; }
-        .ini-cel:last-child { padding-right: 0; }
+        .ini-regua { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .ini-cel { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: 12px; background: #fff; text-align: left; font-family: inherit; box-shadow: 0 1px 2px rgba(20,20,20,.04); transition: box-shadow .15s ease, border-color .15s ease; }
         .ini-cel.clicavel { cursor: pointer; }
+        .ini-cel.clicavel:hover { border-color: var(--border); box-shadow: 0 4px 10px rgba(20,20,20,.07); }
         .ini-cel.clicavel:hover .ini-cel-val { color: var(--blue); }
+        .ini-cel-icone { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; }
+        .ini-cel-corpo { min-width: 0; }
         .ini-cel-rot { font-size: 9px; font-weight: 800; letter-spacing: .08em; color: var(--ink-3); }
-        .ini-cel-val { font-family: 'Space Grotesk', sans-serif; font-size: 21px; font-weight: 700; color: var(--ink); line-height: 1.1; margin-top: 3px; }
-        .ini-cel-sub { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
-        @media (max-width: 900px) { .ini-regua { grid-template-columns: repeat(2, 1fr); } .ini-cel { padding: 9px 14px; } .ini-cel:nth-child(3) { padding-left: 0; border-left: none; } }
+        .ini-cel-val { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ini-cel-sub { font-size: 10px; color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        @media (max-width: 900px) { .ini-regua { grid-template-columns: repeat(2, 1fr); } }
         .ini-colunas { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
-        .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ink); padding-bottom: 8px; border-bottom: 2px solid var(--ink); margin-bottom: 8px; }
+        .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--ink); padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+        .ini-titulo-icone { color: var(--ink-3); flex-shrink: 0; }
         .ini-conta { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: 10.5px; }
-        .ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 9px; background: #fff; padding: 7px 11px; margin-bottom: 5px; font-size: 12px; color: var(--ink-2); line-height: 1.4; cursor: pointer; }
-        .ini-alerta:hover { border-color: var(--ink-3); }
+        .ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 10px; background: #fff; padding: 8px 12px; margin-bottom: 6px; font-size: 12px; color: var(--ink-2); line-height: 1.4; cursor: pointer; box-shadow: 0 1px 2px rgba(20,20,20,.03); transition: box-shadow .15s ease, border-color .15s ease; }
+        .ini-alerta:hover { border-color: var(--ink-3); box-shadow: 0 3px 8px rgba(20,20,20,.06); }
         .ini-alerta span { flex: 1; }
         .ini-alerta.ruim { background: var(--red-bg); border-color: #F0CFCB; color: #8A2E22; }
         .ini-alerta.aviso { background: var(--amber-bg); border-color: #E8CE9A; color: #7A4E00; }
         .ini-seta { flex-shrink: 0; opacity: .5; margin-top: 2px; }
-        .ini-obra { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit; background: #fff; border: 1px solid var(--border-soft); border-radius: 9px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; }
-        .ini-obra:hover { border-color: var(--ink-3); }
+        .ini-obra { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit; background: #fff; border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; box-shadow: 0 1px 2px rgba(20,20,20,.03); transition: box-shadow .15s ease, border-color .15s ease; }
+        .ini-obra:hover { border-color: var(--ink-3); box-shadow: 0 3px 8px rgba(20,20,20,.06); }
         .ini-obra-id { flex: 1; min-width: 0; }
         .ini-obra-nome { font-size: 12.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ini-obra-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
@@ -15380,6 +15392,7 @@ export default function App() {
         .ini-fase-pilula.azul { color: #1D5FB8; background: var(--blue-bg); }
         .ini-fase-pilula.roxo { color: var(--purple); background: #F1EBFA; }
         .ini-titulo-linha { justify-content: space-between; }
+        .ini-titulo-esq { display: inline-flex; align-items: center; gap: 8px; }
         .ini-link-finalizadas { display: inline-flex; align-items: center; gap: 2px; background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; padding: 2px 0; }
         .ini-link-finalizadas:hover { color: var(--ink); }
         @media (max-width: 1100px) { .ini-numeros { grid-template-columns: repeat(2, 1fr); } .ini-colunas { grid-template-columns: 1fr; } }
