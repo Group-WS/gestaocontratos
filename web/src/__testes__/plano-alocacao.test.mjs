@@ -176,6 +176,7 @@ conf("serralheria vira MO mesmo só com material", alocacaoDoItem(so_mat, serral
 conf("vidros e espelhos idem", alocacaoDoItem(so_mat, { num: "23", nome: "Vidros e Espelhos" }), ALOC_MO);
 conf("estofados idem", alocacaoDoItem(so_mat, { num: "25", nome: "Estofados" }), ALOC_MO);
 conf("cortinas e persianas idem", alocacaoDoItem(so_mat, { num: "30", nome: "Cortinas e Persianas" }), ALOC_MO);
+conf("pedras e marmoraria idem", alocacaoDoItem(so_mat, { num: "26", nome: "Pedras — Mármores e Granitos" }), ALOC_MO);
 conf("iluminação NÃO é pacote fechado", alocacaoDoItem(so_mat, iluminacao), ALOC_MAT);
 conf("pacote fechado não oferece separar", podeSepararMO(spot, serralheria), false);
 conf("iluminação oferece separar", podeSepararMO(spot, iluminacao), true);

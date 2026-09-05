@@ -787,10 +787,11 @@ const NOME_ALOC = { MAT: "MATERIAL (MAT)", MO: "MÃO DE OBRA (MO)", AMBOS: "MAT+
 const ehProduto = (it) => it.tipo === "produto";
 
 /* Verbas em que o fornecedor entrega material E mao de obra no mesmo
-   pacote: serralheria, vidros/espelhos, estofados e cortinas/persianas.
-   Nelas o item e MAT+MO por regra da empresa, mesmo quando a planilha
-   preencheu uma coluna so — e nao se separa. */
-const VERBAS_MAT_MO_SEMPRE = new Set(["22", "23", "25", "30"]);
+   pacote: serralheria, vidros/espelhos, estofados, cortinas/persianas e
+   pedras/marmoraria. Nelas o item e MAT+MO por regra da empresa, mesmo
+   quando a planilha preencheu uma coluna so — e nao se separa (e, pela
+   regra nova, o valor inteiro conta como mao de obra). */
+const VERBAS_MAT_MO_SEMPRE = new Set(["22", "23", "25", "30", "26"]);
 const ehVerbaMatMoSempre = (num, nome) =>
   VERBAS_MAT_MO_SEMPRE.has((nome ? verbaPorNome(nome) : null) || num);
 
