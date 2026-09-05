@@ -1346,6 +1346,39 @@ function resumoPorInsumo(obras) {
   });
 }
 
+/**
+ * O mesmo material a comprar, agora por PRODUTO — a descrição exata do
+ * item (acento/caixa à parte), em vez da categoria. Onde `resumoPorInsumo`
+ * responde "quanto falta de colchão" com uma classificação pronta, este
+ * responde "quais produtos, exatamente" — sem depender de nenhuma regra
+ * de subgrupo existir pra aquela verba. O preço de não classificar é
+ * fragmentação (a mesma peça escrita diferente em duas obras vira duas
+ * linhas) — é pra isso que a busca serve: digitar uma palavra junta tudo
+ * que bate, mesmo em linhas separadas.
+ */
+function resumoPorProduto(obras) {
+  const grupos = new Map();
+  (obras || []).forEach((o) => {
+    (o.categorias || []).forEach((cat) => {
+      (cat.itens || []).forEach((it) => {
+        if (it.ehTitulo) return;
+        const { material } = parcelasDoItem(it, cat);
+        if (material <= 0 || it.comprado) return;
+        const nome = String(it.desc || "").replace(/\s+/g, " ").trim();
+        if (!nome) return;
+        const chave = semAcentos(nome);
+        if (!grupos.has(chave)) grupos.set(chave, { num: null, nome, total: 0, obras: new Map() });
+        const g = grupos.get(chave);
+        g.total += material;
+        const atual = g.obras.get(o.codigo) || { codigo: o.codigo, nome: o.nome, id: o.id, valor: 0 };
+        atual.valor += material;
+        g.obras.set(o.codigo, atual);
+      });
+    });
+  });
+  return [...grupos.values()].sort((a, b) => b.total - a.total);
+}
+
 /* ============================================================
    O ADITIVO DENTRO DO ORCAMENTO DA OBRA
 
@@ -9156,8 +9189,11 @@ function GcTotal({ rot, feito, total, cor, legenda }) {
    volume de pintura das próximas semanas antes de precisar dele. */
 /* `busca`/`onBusca` sao opcionais: so a lista por insumo tem filtro de
    texto, a por verba nao pediu. `onAbrir` e' o que faz a obra da linha
-   expandida ser clicavel — sem ele a linha so mostra, nao navega. */
-function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPlaceholder, onAbrir }) {
+   expandida ser clicavel — sem ele a linha so mostra, nao navega. `abas`
+   e' opcional tambem: {valor, onMudar, opcoes:[{id,label}]} — quando
+   existe mais de um jeito de agrupar a MESMA lista (por categoria, por
+   produto), o alternador fica junto do titulo, "la em cima". */
+function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPlaceholder, onAbrir, abas }) {
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const max = grupos.length ? grupos[0].total : 1;
   return (
@@ -9165,6 +9201,14 @@ function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPl
       <div className="gc-bloco-head">
         <Icone size={15} style={{ color: cor }} />
         <span className="gc-bloco-titulo">{titulo}</span>
+        {abas && (
+          <div className="gc-abas">
+            {abas.opcoes.map((op) => (
+              <button key={op.id} type="button" className={`gc-aba ${abas.valor === op.id ? "on" : ""}`}
+                onClick={() => abas.onMudar(op.id)}>{op.label}</button>
+            ))}
+          </div>
+        )}
         <span className="gc-bloco-total mono" style={{ color: cor }}>{fmtBRL(total)}</span>
       </div>
       {onBusca && (
@@ -9490,15 +9534,22 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   const t = r.totais;
 
   const [buscaInsumo, setBuscaInsumo] = useState("");
-  /* Por insumo nao respeita o horizonte de cima (ainda) — a data de
+  /* Duas leituras do mesmo material: por categoria (pronta, mas só cobre
+     quem já tem regra de subgrupo) e por produto (a descrição exata,
+     sempre disponível, mais linhas). A mesma busca serve pras duas —
+     trocar a visão não deveria obrigar a digitar de novo. */
+  const [visaoInsumo, setVisaoInsumo] = useState("categoria");
+  /* Nenhuma das duas respeita o horizonte de cima (ainda) — a data de
      necessidade e' calculada por verba, nao por item, e juntar as duas
-     coisas exigiria recalcular data item a item. Por enquanto esta
-     lista mostra tudo que falta comprar, sem recorte de prazo. */
+     coisas exigiria recalcular data item a item. Por enquanto as listas
+     mostram tudo que falta comprar, sem recorte de prazo. */
   const porInsumo = useMemo(() => resumoPorInsumo(visiveis), [visiveis]);
-  const porInsumoFiltrado = useMemo(() => {
+  const porProduto = useMemo(() => resumoPorProduto(visiveis), [visiveis]);
+  const gruposInsumo = visaoInsumo === "produto" ? porProduto : porInsumo;
+  const gruposInsumoFiltrado = useMemo(() => {
     const alvo = semAcentos(buscaInsumo).trim();
-    return alvo ? porInsumo.filter((g) => semAcentos(g.nome).includes(alvo)) : porInsumo;
-  }, [porInsumo, buscaInsumo]);
+    return alvo ? gruposInsumo.filter((g) => semAcentos(g.nome).includes(alvo)) : gruposInsumo;
+  }, [gruposInsumo, buscaInsumo]);
 
   if (carregando) return <div className="empty-note">Carregando as obras…</div>;
 
@@ -9546,13 +9597,22 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
         vazio={horizonte ? "Nada a comprar dentro desse prazo." : "Nada a comprar."} />
       {/* Mesma pergunta, outro corte: nao "quanto falta na verba 27" e
           sim "quanto falta comprar de colchão" — pra isso a linha precisa
-          ser o insumo, e nao o grupo da EAP. Ainda so cobre as verbas que
-          já têm regra de subgrupo; o resto cai visível em "Sem categoria",
-          em vez de sumir. */}
-      <GcPorVerba titulo="Material a comprar, por insumo" Icone={Package}
-        grupos={porInsumoFiltrado} cor={COR_MAT} onAbrir={onAbrir}
-        busca={buscaInsumo} onBusca={setBuscaInsumo} buscaPlaceholder="Buscar insumo — ex: colchão"
-        vazio="Nada a comprar." />
+          ser o insumo, e nao o grupo da EAP. "Por categoria" ainda so
+          cobre as verbas que já têm regra de subgrupo (resto cai em "Sem
+          categoria", visível); "Por produto" usa a descrição exata do
+          item, sempre disponível, ao custo de mais linhas parecidas —
+          é pra isso que a busca serve. */}
+      <GcPorVerba
+        titulo={visaoInsumo === "produto" ? "Material a comprar, por produto" : "Material a comprar, por insumo"}
+        Icone={Package}
+        grupos={gruposInsumoFiltrado} cor={COR_MAT} onAbrir={onAbrir}
+        busca={buscaInsumo} onBusca={setBuscaInsumo}
+        buscaPlaceholder={visaoInsumo === "produto" ? "Buscar produto — ex: colchão" : "Buscar insumo — ex: colchão"}
+        vazio="Nada a comprar."
+        abas={{
+          valor: visaoInsumo, onMudar: setVisaoInsumo,
+          opcoes: [{ id: "categoria", label: "Por categoria" }, { id: "produto", label: "Por produto" }],
+        }} />
 
       {r.semData > 0 && (
         <div className="gc-nota-semdata">
@@ -15294,6 +15354,9 @@ export default function App() {
         .gc-bloco { margin-bottom: 24px; }
         .gc-bloco-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
         .gc-bloco-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .gc-abas { display: flex; gap: 3px; background: var(--panel); border-radius: 8px; padding: 2px; }
+        .gc-aba { border: none; background: none; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-3); padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+        .gc-aba.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
         .gc-bloco-total { margin-left: auto; font-size: 15px; font-weight: 700; }
         .gc-verba { border-bottom: 1px solid var(--border-soft); }
         .gc-verba:last-child { border-bottom: none; }
