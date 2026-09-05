@@ -1310,6 +1310,18 @@ function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
   };
 }
 
+/* Soma quantidade por UNIDADE, nunca tudo junto — 6 "un" + 3 "m²" somados
+   crus dariam 9 de nada. Cada insumo/produto costuma vir numa unidade só,
+   mas juntar obras diferentes as vezes mistura "un" com "cj", e a conta
+   tem que continuar dizendo a verdade em vez de virar um número sem
+   sentido. */
+function acumularQtd(mapaQtds, it) {
+  const qtd = it.qtdExecutivo ?? it.qtdVendida ?? null;
+  if (!(qtd > 0)) return;
+  const un = it.un || "un";
+  mapaQtds.set(un, (mapaQtds.get(un) || 0) + qtd);
+}
+
 /**
  * O material a comprar por INSUMO — mesmo classificador do catálogo de
  * produtos (`subgrupoDe`), aplicado aos itens da obra, somando todas
@@ -1330,11 +1342,13 @@ function resumoPorInsumo(obras) {
         const { material } = parcelasDoItem(it, cat);
         if (material <= 0 || it.comprado) return;
         const nome = subgrupoDe(it.desc, cat.num) || "Sem categoria";
-        if (!grupos.has(nome)) grupos.set(nome, { num: null, nome, total: 0, obras: new Map() });
+        if (!grupos.has(nome)) grupos.set(nome, { num: null, nome, total: 0, qtds: new Map(), obras: new Map() });
         const g = grupos.get(nome);
         g.total += material;
-        const atual = g.obras.get(o.codigo) || { codigo: o.codigo, nome: o.nome, id: o.id, valor: 0 };
+        acumularQtd(g.qtds, it);
+        const atual = g.obras.get(o.codigo) || { codigo: o.codigo, nome: o.nome, id: o.id, valor: 0, qtds: new Map() };
         atual.valor += material;
+        acumularQtd(atual.qtds, it);
         g.obras.set(o.codigo, atual);
       });
     });
@@ -1367,11 +1381,13 @@ function resumoPorProduto(obras) {
         const nome = String(it.desc || "").replace(/\s+/g, " ").trim();
         if (!nome) return;
         const chave = semAcentos(nome);
-        if (!grupos.has(chave)) grupos.set(chave, { num: null, nome, total: 0, obras: new Map() });
+        if (!grupos.has(chave)) grupos.set(chave, { num: null, nome, total: 0, qtds: new Map(), obras: new Map() });
         const g = grupos.get(chave);
         g.total += material;
-        const atual = g.obras.get(o.codigo) || { codigo: o.codigo, nome: o.nome, id: o.id, valor: 0 };
+        acumularQtd(g.qtds, it);
+        const atual = g.obras.get(o.codigo) || { codigo: o.codigo, nome: o.nome, id: o.id, valor: 0, qtds: new Map() };
         atual.valor += material;
+        acumularQtd(atual.qtds, it);
         g.obras.set(o.codigo, atual);
       });
     });
@@ -9238,11 +9254,23 @@ function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPl
 
 /* A linha some fechada e mostra "N obras" — abrir ela e' a resposta pra
    "de qual obra vem esse total", sem precisar ir obra por obra. */
+/* "6 un" quando so tem uma unidade; "6 un · 3 cj" quando mistura —
+   nunca finge que é uma coisa só. Sem quantidade nenhuma (fora do
+   subgrupo, ou planilha sem a coluna), some — não vira "0 un". */
+function fmtQtds(qtds) {
+  if (!qtds || qtds.size === 0) return "";
+  return [...qtds.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([un, q]) => `${Number.isInteger(q) ? q : q.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${un}`)
+    .join(" · ");
+}
+
 function GcLinhaVerba({ g, cor, max, onAbrir }) {
   const [aberto, setAberto] = useState(false);
   const porObra = useMemo(
     () => [...g.obras.values()].sort((a, b) => b.valor - a.valor),
     [g.obras]);
+  const qtdTxt = g.qtds && fmtQtds(g.qtds);
   return (
     <div className="gc-verba">
       <button type="button" className="gc-row gc-row-clic" onClick={() => setAberto((x) => !x)}>
@@ -9251,6 +9279,7 @@ function GcLinhaVerba({ g, cor, max, onAbrir }) {
         <span className="gc-nome">{g.nome}</span>
         <span className="gc-obras">{g.obras.size} {g.obras.size === 1 ? "obra" : "obras"}</span>
         <GcBarra pct={(g.total / max) * 100} cor={cor} />
+        {g.qtds && <span className="gc-qtd mono dim">{qtdTxt}</span>}
         <span className="gc-val mono">{fmtBRL(g.total)}</span>
       </button>
       {aberto && (
@@ -9260,6 +9289,7 @@ function GcLinhaVerba({ g, cor, max, onAbrir }) {
               onClick={() => onAbrir && onAbrir(o.id)} disabled={!onAbrir}>
               <span className="mono dim">#{o.codigo}</span>
               <span className="gc-verba-obra-nome">{o.nome}</span>
+              {o.qtds && <span className="mono dim gc-verba-obra-qtd">{fmtQtds(o.qtds)}</span>}
               <span className="mono">{fmtBRL(o.valor)}</span>
             </button>
           ))}
@@ -15369,12 +15399,14 @@ export default function App() {
         .gc-nome { font-size: 13px; color: var(--ink); font-weight: 600; width: 230px; flex-shrink: 0; }
         .gc-obras { font-size: 11px; color: var(--ink-3); width: 68px; flex-shrink: 0; }
         .gc-row .gc-track { flex: 1; }
+        .gc-qtd { font-size: 11.5px; width: 92px; text-align: right; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .gc-val { font-size: 13px; color: var(--ink); width: 106px; text-align: right; flex-shrink: 0; }
         .gc-verba-obras { display: flex; flex-direction: column; gap: 2px; padding: 0 4px 10px 29px; }
         .gc-verba-obra { display: flex; align-items: center; gap: 8px; background: none; border: none; font: inherit; font-size: 12px; color: var(--ink-2); text-align: left; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
         .gc-verba-obra:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
         .gc-verba-obra:disabled { cursor: default; }
         .gc-verba-obra-nome { flex: 1; }
+        .gc-verba-obra-qtd { font-size: 11px; width: 92px; text-align: right; flex-shrink: 0; }
         .gc-busca { display: flex; align-items: center; gap: 7px; margin: 8px 2px 12px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
         .gc-busca input { flex: 1; border: none; background: none; font: inherit; font-size: 13px; color: var(--ink); outline: none; }
         .gc-busca-limpar { display: flex; padding: 2px; background: none; border: none; color: var(--ink-3); cursor: pointer; }
