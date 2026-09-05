@@ -36,7 +36,7 @@ export async function listarObras() {
        devolvesse só `situacao`, não haveria como remontá-la, e ela
        sumiria a cada recarregada — que foi exatamente o que aconteceu
        com a 2517. */
-    .select("codigo, nome, squad, situacao, iniciada_em, concluida_em, cliente, endereco, gc, board_id, valor_vendido");
+    .select("codigo, nome, squad, situacao, iniciada_em, concluida_em, cliente, endereco, gc, board_id, valor_vendido, tailor_made, responsavel_executivo");
   if (error) throw error;
   return data || [];
 }
@@ -108,7 +108,33 @@ export async function definirGC(codigo, email) {
     .from("obra")
     .update({ gc: email || null })
     .eq("codigo", String(codigo))
-    .select("codigo, nome, squad, gc, situacao, iniciada_em, concluida_em")
+    .select("codigo, nome, squad, gc, tailor_made, responsavel_executivo, situacao, iniciada_em, concluida_em")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/* Os outros dois papéis de "Equipe da obra" — mesmo padrão do GC, cada
+   um em coluna própria porque uma obra pode ter os três ao mesmo tempo. */
+export async function definirTailorMade(codigo, email) {
+  if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
+  const { data, error } = await supabase
+    .from("obra")
+    .update({ tailor_made: email || null })
+    .eq("codigo", String(codigo))
+    .select("codigo, nome, squad, gc, tailor_made, responsavel_executivo, situacao, iniciada_em, concluida_em")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function definirResponsavelExecutivo(codigo, email) {
+  if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
+  const { data, error } = await supabase
+    .from("obra")
+    .update({ responsavel_executivo: email || null })
+    .eq("codigo", String(codigo))
+    .select("codigo, nome, squad, gc, tailor_made, responsavel_executivo, situacao, iniciada_em, concluida_em")
     .single();
   if (error) throw error;
   return data;

@@ -9,7 +9,8 @@ import {
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin
 } from "lucide-react";
-import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, faltandoNaTela } from "./lib/obras";
+import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
+  definirResponsavelExecutivo, faltandoNaTela } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
   PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoAdmin } from "./lib/pessoas";
@@ -292,6 +293,23 @@ function obraComprasStats(o) {
   return { totalProdutos, totalComprado, falta: totalProdutos - totalComprado, pct };
 }
 
+/* O mesmo calculo de `obraComprasStats`, do lado da MAO DE OBRA — pra
+   responder "quanto ja foi contratado", nao "quanto ja foi comprado".
+   Contratado usa a mesma etapa que o resto do app usa pra saber se um
+   servico ja foi solicitado (`contratoEtapa`), nao um campo novo. */
+function obraContratosStats(o) {
+  let totalServicos = 0, totalContratado = 0;
+  categoriasComAditivos(o.categorias, o.aditivos).forEach((c) => (c.itens || []).forEach((it) => {
+    if (it.ehTitulo) return;
+    const { mo } = parcelasDoItem(it, c);
+    if (mo <= 0 && alocacaoDoItem(it, c) !== ALOC_MO) return;
+    totalServicos += mo;
+    if (contratoEtapa(it) !== "nao_solicitado") totalContratado += mo;
+  }));
+  const pct = totalServicos > 0 ? (totalContratado / totalServicos) * 100 : 0;
+  return { totalServicos, totalContratado, falta: totalServicos - totalContratado, pct };
+}
+
 function matchesFilter(it, filter, cat) {
   if (filter === "todos") return true;
   if (filter === "alerta") return itemAlertas(it).length > 0;
@@ -401,22 +419,26 @@ function nomeNaEquipe(equipe, email) {
   return p?.nome || nomeDoEmail(email);
 }
 
-/* Quem responde pela obra. Guarda o e-mail; mostra o nome.
+/* Quem responde por UM papel da obra (GC, Tailor Made, Executivo...).
+   Guarda o e-mail; mostra o nome. Generalizado a partir do que era só
+   `GcDaObra` — os três papéis de "Equipe da obra" usam o mesmo
+   componente, só trocando rótulo, valor e o que salvar.
 
-   Sem GC a obra aparece pra todo mundo — de proposito enquanto os
-   vinculos nao estao feitos, porque esconder o que nao tem dono deixaria
-   obra viva fora da tela de todos. Mas fica DITO, senao vira silencio. */
-function GcDaObra({ obra, podeEditar, equipe, onDefinir }) {
+   Sem ninguém no papel a obra continua visível pra todo mundo — de
+   proposito enquanto os vinculos nao estao feitos, porque esconder o
+   que nao tem dono deixaria obra viva fora da tela de todos. Mas fica
+   DITO, senao vira silencio. */
+function PapelDaObra({ obraId, valor: valorAtual, rotulo, vazio, equipe, podeEditar, prioridade, onDefinir }) {
   const [editando, setEditando] = useState(false);
-  const [valor, setValor] = useState(obra.gc || "");
+  const [valor, setValor] = useState(valorAtual || "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
-  useEffect(() => { setValor(obra.gc || ""); setEditando(false); }, [obra.gc, obra.id]);
+  useEffect(() => { setValor(valorAtual || ""); setEditando(false); }, [valorAtual, obraId]);
 
   async function salvar() {
     setSalvando(true); setErro(null);
     try {
-      await onDefinir(obra.codigo, valor.trim() || null);
+      await onDefinir(valor.trim() || null);
       setEditando(false);
     } catch (e) {
       setErro(e.message || String(e));
@@ -428,17 +450,17 @@ function GcDaObra({ obra, podeEditar, equipe, onDefinir }) {
   if (!editando) {
     return (
       <>
-        {obra.gc ? (
+        {valorAtual ? (
           <>
-            <div className="dash-gc-nome">{nomeNaEquipe(equipe, obra.gc)}</div>
-            <div className="dash-gc-email mono">{obra.gc}</div>
+            <div className="dash-gc-nome">{nomeNaEquipe(equipe, valorAtual)}</div>
+            <div className="dash-gc-email mono">{valorAtual}</div>
           </>
         ) : (
-          <div className="dash-gc-vazio">sem GC — esta obra aparece para todo mundo</div>
+          <div className="dash-gc-vazio">{vazio}</div>
         )}
         {podeEditar && (
           <button className="btn-atalho dash-atalho" onClick={() => setEditando(true)}>
-            {obra.gc ? "Trocar o GC" : "Definir o GC"}
+            {valorAtual ? `Trocar` : `Definir`}
           </button>
         )}
       </>
@@ -446,12 +468,14 @@ function GcDaObra({ obra, podeEditar, equipe, onDefinir }) {
   }
 
   /* ESCOLHER, e nao digitar. E-mail digitado erra, e um caractere trocado
-     deixa a obra sem dono sem ninguem perceber. Quem tem cargo de GC vem
-     primeiro; o resto continua na lista porque cargo nao e' cerca. */
-  const daLista = [...(equipe || [])].filter((p) => p.ativo || p.email === obra.gc);
+     deixa a obra sem dono sem ninguem perceber. Quem tem o cargo certo
+     (quando `prioridade` existe) vem primeiro; o resto continua na
+     lista porque cargo nao e' cerca. */
+  const daLista = [...(equipe || [])].filter((p) => p.ativo || p.email === valorAtual);
   daLista.sort((a, b) => {
-    const gcA = /gc/i.test(a.cargo || ""), gcB = /gc/i.test(b.cargo || "");
-    if (gcA !== gcB) return gcA ? -1 : 1;
+    const prioA = prioridade ? prioridade.test(a.cargo || "") : false;
+    const prioB = prioridade ? prioridade.test(b.cargo || "") : false;
+    if (prioA !== prioB) return prioA ? -1 : 1;
     return a.nome.localeCompare(b.nome, "pt-BR");
   });
 
@@ -463,7 +487,7 @@ function GcDaObra({ obra, podeEditar, equipe, onDefinir }) {
         </div>
       ) : (
         <select className="form-input" value={valor} autoFocus onChange={(e) => setValor(e.target.value)}>
-          <option value="">— sem GC —</option>
+          <option value="">— {vazio || `sem ${rotulo}`} —</option>
           {daLista.map((p) => (
             <option key={p.email} value={p.email}>
               {p.nome}{p.cargo ? ` · ${p.cargo}` : ""}{p.ativo ? "" : " (inativo)"}
@@ -474,13 +498,81 @@ function GcDaObra({ obra, podeEditar, equipe, onDefinir }) {
       {erro && <div className="dash-gc-vazio" style={{ color: "var(--red)" }}>{erro}</div>}
       <div className="dash-gc-acoes">
         <button className="btn-atalho" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button>
-        <button className="btn-atalho" onClick={() => { setValor(obra.gc || ""); setEditando(false); }}>cancelar</button>
+        <button className="btn-atalho" onClick={() => { setValor(valorAtual || ""); setEditando(false); }}>cancelar</button>
       </div>
     </>
   );
 }
 
-function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos, onDefinirGC, equipe }) {
+/* A jornada de UMA obra, do contrato até a entrega — 5 marcos, mais alto
+   nível que a esteira de 6 passos do painel geral (`esteiraDaObra`, que
+   mistura CMV com cadernos). Tem dois marcos que a esteira não tem —
+   Contrato (a obra existe) e Entrega (ela acabou) — por isso é derivada
+   à parte, e não reaproveitada dali.
+
+   "Entrega" nunca aparece feita aqui: esta tela só existe pra obra
+   ATIVA, e o dia em que ela é arquivada ela sai daqui — o marco final
+   é sempre o destino, nunca o "chegamos". */
+function jornadaDaObra(obra) {
+  const cad = obra.cadernos || {};
+  const passos = [
+    { chave: "contrato", nome: "Contrato", feito: etapaConcluida("vendido_contrato", obra) },
+    { chave: "criativo", nome: "Criativo", feito: !!cad.criativo },
+    { chave: "executivo", nome: "Executivo", feito: !!cad.projeto },
+    { chave: "execucao", nome: "Execução da Obra", feito: !!obra.comprasLiberadas },
+    { chave: "entrega", nome: "Entrega", feito: false },
+  ];
+  const i = passos.findIndex((p) => !p.feito);
+  return { passos, atualIndex: i === -1 ? passos.length - 1 : i };
+}
+
+function JornadaStepper({ passos, atualIndex }) {
+  return (
+    <div className="jornada">
+      {passos.map((p, i) => (
+        <React.Fragment key={p.chave}>
+          {i > 0 && <div className={`jornada-linha ${passos[i - 1].feito ? "feita" : ""}`} />}
+          <div className="jornada-passo">
+            <div className={`jornada-bola ${p.feito ? "feita" : i === atualIndex ? "atual" : ""}`}>
+              {p.feito ? <Check size={14} /> : i === atualIndex ? <span className="jornada-ponto" /> : null}
+            </div>
+            <div className="jornada-nome">{p.nome}</div>
+            <div className="jornada-status">{p.feito ? "Concluído" : i === atualIndex ? "Em andamento" : "Aguardando"}</div>
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function BarraFrente({ nome, pct }) {
+  const p = Math.max(0, Math.min(100, pct));
+  return (
+    <div className="frente-linha">
+      <div className="frente-nome">{nome}</div>
+      <div className="frente-barra"><div className="frente-fill" style={{ width: `${p}%` }} /></div>
+      <div className="frente-pct mono">{Math.round(p)}%</div>
+    </div>
+  );
+}
+
+function LinhaEquipe({ rotulo, valor, equipe, podeEditar, prioridade, onDefinir, obraId, vazio }) {
+  const nome = valor ? nomeNaEquipe(equipe, valor) : null;
+  const iniciais = (nome || "?").split(/\s+/).slice(0, 2).map((x) => x.charAt(0).toUpperCase()).join("") || "?";
+  return (
+    <div className="equipe-linha">
+      <div className={`equipe-avatar ${valor ? "" : "vazio"}`}>{valor ? iniciais : "—"}</div>
+      <div className="equipe-corpo">
+        <div className="equipe-rotulo">{rotulo}</div>
+        <PapelDaObra obraId={obraId} valor={valor} rotulo={rotulo} vazio={vazio} equipe={equipe}
+          podeEditar={podeEditar} prioridade={prioridade} onDefinir={onDefinir} />
+      </div>
+    </div>
+  );
+}
+
+function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos,
+  onDefinirGC, onDefinirTailorMade, onDefinirExecutivo, tailorMade, responsavelExecutivo, equipe }) {
   // A data digitada so vale quando ela manda salvar. Campo de data que
   // grava sozinho a cada tecla dispara gravacao com ano pela metade —
   // "0002-11-20" chega no banco antes de "2026-11-20".
@@ -490,162 +582,141 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
 
   const vendido = obra.valorVendido || totals.totalVendido || 0;
   const exec = totals.totalExecutivo || 0;
-  const dif = exec - vendido;
-  const pctExec = vendido > 0 ? (exec / vendido) * 100 : 0;
-  const dentro = dif <= 0;
+  const acimaDoVendido = exec > vendido;
 
   const faltamEntrega = obra.dataEntrega ? diasAte(new Date(`${obra.dataEntrega}T12:00:00`)) : null;
+
+  const contratos = useMemo(() => obraContratosStats(obra), [obra]);
+  const jornada = useMemo(() => jornadaDaObra(obra), [obra]);
+
+  /* "Projetos": quantos dos marcos de projeto já foram cumpridos — os
+     MESMOS marcos que o painel geral já usa (`esteiraDaObra`), só que
+     recortados pra fora CMV (financeiro) e "em execução" (que já tem
+     barra própria, a de Execução). */
+  const cad = obra.cadernos || {};
+  const marcosProjeto = [!!cad.criativo, !!cad.especificacao, !!cad.marcenaria, !!cad.projeto];
+  const pctProjetos = (marcosProjeto.filter(Boolean).length / marcosProjeto.length) * 100;
+  const avancoGeral = Math.round((pctProjetos + (totals.pct || 0) + (contratos.pct || 0)) / 3);
 
   /* Aditivo aprovado muda o tamanho da obra, e ate agora ele so existia
      dentro do proprio modulo — quem abria o Dashboard via o orcamento
      original e nao sabia que tinha mudado. */
   const adit = useMemo(() => resumoAditivos(obra.aditivos), [obra.aditivos]);
 
-  // O prazo que vence primeiro entre todos os grupos com regra. E a unica
-  // data que muda o que a pessoa faz HOJE.
-  const proximo = useMemo(() => {
-    if (!obra.dataEntrega) return null;
-    let melhor = null;
-    (obra.categorias || []).forEach((c) => {
-      const p = prazoDoGrupo(c, c.itens);
-      if (!p) return;
-      const d = dataLimiteCompra(obra.dataEntrega, p.dias);
-      if (d && (!melhor || d < melhor.data)) melhor = { data: d, grupo: c.nome, num: c.num };
-    });
-    return melhor;
-  }, [obra.categorias, obra.dataEntrega]);
-  const faltamPrazo = proximo ? diasAte(proximo.data) : null;
-
   const avulsas = useMemo(() => (obra.categorias || [])
     .flatMap((c) => (c.itens || []).filter((it) => it.avulso)), [obra.categorias]);
   const avulsasAbertas = avulsas.filter((a) => !a.comprado).length;
 
-  const atencao = [
-    totals.criticos > 0 && { tom: "red", txt: `${totals.criticos} ${totals.criticos === 1 ? "categoria em estouro crítico" : "categorias em estouro crítico"}` },
-    totals.itensAlerta > 0 && { tom: "amber", txt: `${totals.itensAlerta} ${totals.itensAlerta === 1 ? "item com alerta" : "itens com alerta"} de escopo ou quantidade` },
-    avulsasAbertas > 0 && { tom: "purple", txt: `${avulsasAbertas} ${avulsasAbertas === 1 ? "compra avulsa pendente" : "compras avulsas pendentes"}` },
-    !obra.dataEntrega && { tom: "amber", txt: "sem data de entrega — os prazos de compra não são calculados" },
-    faltamPrazo != null && faltamPrazo < 0 && { tom: "red", txt: `prazo de compra de ${proximo.grupo} venceu` },
-  ].filter(Boolean);
+  const resumo = useMemo(() => resumoDaObra(obra), [obra]);
+  const criticosAtrasados = useMemo(() => passosCriticosAtrasados(obra).passos, [obra]);
 
-  const anel = 2 * Math.PI * 34;
-  const pctComprado = Math.max(0, Math.min(totals.pct || 0, 100));
+  /* Pendências e alertas: as MESMAS regras que o painel geral usa —
+     recortadas pra esta obra só, sem inventar regra nova nenhuma, e
+     sem dono por linha (não temos esse controle hoje). */
+  const pendencias = [];
+  resumo.atrasos.forEach((v) => pendencias.push({
+    tom: "ruim",
+    txt: <>A compra de <b>{v.nome}</b> venceu há {-v.dias} {-v.dias === 1 ? "dia" : "dias"} — {fmtBRL(v.matFalta)}</>,
+  }));
+  if (criticosAtrasados.length) {
+    const nomes = criticosAtrasados.map((p) => p.rotulo).join(", ");
+    pendencias.push({
+      tom: "ruim",
+      txt: <>Entrega próxima e ainda não está em execução — {nomes} precisa{criticosAtrasados.length === 1 ? "" : "m"} estar pronto{criticosAtrasados.length === 1 ? "" : "s"}</>,
+    });
+  }
+  if (acimaDoVendido) pendencias.push({
+    tom: "ruim", txt: <>O executivo já passou do valor vendido em contrato em {fmtBRL(exec - vendido)}</>,
+  });
+  if (totals.criticos > 0) pendencias.push({
+    tom: "ruim", txt: `${totals.criticos} ${totals.criticos === 1 ? "categoria em estouro crítico" : "categorias em estouro crítico"}`,
+  });
+  if (totals.itensAlerta > 0) pendencias.push({
+    tom: "aviso", txt: `${totals.itensAlerta} ${totals.itensAlerta === 1 ? "item com alerta" : "itens com alerta"} de escopo ou quantidade`,
+  });
+  if (avulsasAbertas > 0) pendencias.push({
+    tom: "aviso", txt: `${avulsasAbertas} ${avulsasAbertas === 1 ? "compra avulsa pendente" : "compras avulsas pendentes"}`,
+  });
+  if (!obra.dataEntrega) pendencias.push({ tom: "aviso", txt: "sem data de entrega — os prazos de compra não são calculados" });
+  (obra.aditivos || []).filter(pipefyPendente).forEach((a) => pendencias.push({
+    tom: "aviso", txt: <>O aditivo <b>{a.numero}</b> está aprovado e ainda sem a Solicitação de contrato no Pipefy</>,
+  }));
+  if (!obra.gc) pendencias.push({ tom: "aviso", txt: "esta obra está sem GC responsável" });
 
   return (
-    <div className="dash">
-      {/* 1. O executivo cabe no vendido? */}
-      <section className="dash-hero">
-        <div className="dash-hero-topo">
-          <div>
-            <div className="dash-rot">Orçamento da obra</div>
-            <div className="dash-hero-nums">
-              <div className="dash-num">
-                <div className="dash-num-val mono">{fmtCompactBRL(vendido)}</div>
-                <div className="dash-num-rot">vendido em contrato</div>
-              </div>
-              <ArrowRightIcon />
-              <div className="dash-num">
-                <div className="dash-num-val mono">{fmtCompactBRL(exec)}</div>
-                <div className="dash-num-rot">somatório do executivo</div>
-              </div>
-            </div>
-          </div>
-          <div className={`dash-delta ${dentro ? "ok" : "ruim"}`}>
-            {dif === 0 ? <Minus size={15} /> : dentro ? <ArrowDownRight size={15} /> : <ArrowUpRight size={15} />}
-            <div>
-              <div className="dash-delta-val mono">{dif > 0 ? "+" : ""}{fmtBRL(dif)}</div>
-              <div className="dash-delta-rot">{dentro ? "dentro do vendido" : "acima do vendido"}</div>
-            </div>
-          </div>
-        </div>
-        {/* A barra cheia e o vendido; o preenchido, o executivo. Passou de
-            100%, o excedente aparece hachurado depois da linha. */}
-        <div className="dash-barra">
-          <div className={`dash-barra-fill ${dentro ? "ok" : "ruim"}`} style={{ width: `${Math.min(pctExec, 100)}%` }} />
-          {pctExec > 100 && <div className="dash-barra-over" style={{ width: `${Math.min(pctExec - 100, 40)}%` }} />}
-        </div>
-        <div className="dash-barra-rot">{pctExec.toFixed(0)}% do valor vendido</div>
-      </section>
+    <div className="dobra">
+      <div className="dobra-regua">
+        <InicioNum rot="AVANÇO GERAL" cor="var(--blue)" Icone={ArrowUpRight} valor={`${avancoGeral}%`} sub="da obra concluída" />
+        <InicioNum rot="PRAZO PREVISTO" cor="var(--ink-2)" Icone={Clock}
+          valor={faltamEntrega == null ? "—" : faltamEntrega < 0 ? `${-faltamEntrega} dias atrás` : `${faltamEntrega} dias`}
+          sub={obra.dataEntrega ? `entrega em ${fmtData(obra.dataEntrega)}` : "sem data de entrega"} />
+        <InicioNum rot="PENDÊNCIAS" cor="var(--red)" Icone={AlertTriangle} valor={pendencias.length}
+          sub={pendencias.length ? "pedindo atenção" : "nada pedindo atenção"} />
+        <InicioNum rot="ORÇAMENTO CONTRATADO" cor="var(--green)" Icone={DollarSign} valor={fmtCompactBRL(vendido)}
+          sub="conforme contrato" />
+      </div>
 
-      {/* 2. Quanto ja foi comprado */}
-      <section className="dash-card">
-        <div className="dash-rot">Compras</div>
-        <div className="dash-anel-linha">
-          <svg width="84" height="84" viewBox="0 0 84 84" className="dash-anel">
-            <circle cx="42" cy="42" r="34" fill="none" stroke="var(--border)" strokeWidth="9" />
-            {/* Em 0% o arco nao e desenhado: com strokeLinecap redondo,
-                comprimento zero vira um pontinho verde no topo do anel —
-                parece "comecou alguma coisa" numa obra sem uma compra. */}
-            {pctComprado > 0 && (
-              <circle cx="42" cy="42" r="34" fill="none" stroke="var(--green)" strokeWidth="9" strokeLinecap="round"
-                strokeDasharray={`${(pctComprado / 100) * anel} ${anel}`} transform="rotate(-90 42 42)" />
-            )}
-            <text x="42" y="47" textAnchor="middle" className="dash-anel-txt">{pctComprado.toFixed(0)}%</text>
-          </svg>
-          <div>
-            <div className="dash-num-val mono">{fmtCompactBRL(totals.falta)}</div>
-            <div className="dash-num-rot">ainda falta comprar</div>
-            <div className="dash-mini dim">{fmtBRL(totals.totalComprado)} de {fmtBRL(totals.totalProdutos)}</div>
-          </div>
-        </div>
-      </section>
-
-      {/* 3. Ate quando da pra comprar */}
-      <section className="dash-card">
-        <div className="dash-rot">Entrega da obra</div>
-        <div className="dash-data-linha">
-          <input className="entrega-input" type="date" value={rascunho} disabled={!podeEditar}
-            onChange={(e) => setRascunho(e.target.value)} />
-          {podeEditar && sujo && (
-            <button className="btn-salvar-data" onClick={() => onDataEntrega(rascunho || null)}>Salvar</button>
-          )}
-        </div>
-        <div className="dash-mini">
-          {sujo ? <span className="dash-sujo">alterada — clique em salvar</span>
-            : obra.dataEntrega
-              ? (faltamEntrega < 0 ? `passou há ${Math.abs(faltamEntrega)} dias`
-                : faltamEntrega === 0 ? "é hoje" : `faltam ${faltamEntrega} dias`)
-              : <span className="dim">dela sai o prazo de compra de cada grupo</span>}
-        </div>
-        {proximo && (
-          <div className={`dash-proximo ${faltamPrazo < 0 ? "vencido" : faltamPrazo <= 15 ? "perto" : ""}`}>
-            <Clock size={12} />
-            <div>
-              <div className="dash-proximo-tit">Próximo prazo de compra</div>
-              <div className="dash-proximo-val">
-                {fmtData(proximo.data)} · {proximo.grupo}
-                <span className="dash-proximo-conta">
-                  {faltamPrazo < 0 ? ` — venceu há ${Math.abs(faltamPrazo)} dias`
-                    : faltamPrazo === 0 ? " — é hoje" : ` — faltam ${faltamPrazo} dias`}
-                </span>
-              </div>
-            </div>
-          </div>
+      {/* Data de entrega — editável aqui, é dela que sai todo prazo de
+          compra da obra. Compacta de propósito: é ajuste raro, não é o
+          motivo de alguém abrir esta tela. */}
+      <div className="dobra-entrega">
+        <Clock size={13} className="dim" />
+        <span className="dobra-entrega-rot">Entrega prevista</span>
+        <input className="entrega-input" type="date" value={rascunho} disabled={!podeEditar}
+          onChange={(e) => setRascunho(e.target.value)} />
+        {podeEditar && sujo && (
+          <button className="btn-salvar-data" onClick={() => onDataEntrega(rascunho || null)}>Salvar</button>
         )}
-      </section>
+      </div>
 
-      {/* 4. O que pede atencao — curto e verde quando nao ha nada */}
-      <section className={`dash-atencao ${atencao.length ? "" : "tudo-ok"}`}>
-        {atencao.length === 0 ? (
-          <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção nesta obra.</div>
-        ) : atencao.map((a, i) => (
-          <div key={i} className={`dash-alerta ${a.tom}`}>
-            <AlertTriangle size={13} /> {a.txt}
+      <div className="dobra-card">
+        <div className="ini-titulo"><LayoutGrid size={14} className="ini-titulo-icone" /> Jornada da obra</div>
+        <div className="dobra-sub">Acompanhe as principais fases e o status atual da obra.</div>
+        <JornadaStepper passos={jornada.passos} atualIndex={jornada.atualIndex} />
+      </div>
+
+      <div className="dobra-colunas">
+        <div className="dobra-card">
+          <div className="ini-titulo"><ArrowUpRight size={14} className="ini-titulo-icone" /> Progresso por frente</div>
+          <div className="dobra-sub">Avanço por frente de trabalho.</div>
+          <BarraFrente nome="Projetos" pct={pctProjetos} />
+          <BarraFrente nome="Suprimentos" pct={totals.pct || 0} />
+          <BarraFrente nome="Execução" pct={contratos.pct || 0} />
+        </div>
+
+        <div className="dobra-card">
+          <div className="ini-titulo"><AlertTriangle size={14} className="ini-titulo-icone" /> Pendências e alertas
+            {pendencias.length > 0 && <span className="ini-conta">{pendencias.length}</span>}
           </div>
-        ))}
-        <button className="btn-atalho dash-atalho" onClick={onIrParaCompras}>
-          <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
-        </button>
-      </section>
+          {pendencias.length === 0 ? (
+            <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção nesta obra.</div>
+          ) : pendencias.map((a, i) => (
+            <div key={i} className={`ini-alerta ${a.tom}`}>
+              <AlertTriangle size={13} />
+              <span>{a.txt}</span>
+            </div>
+          ))}
+          <button className="btn-atalho dash-atalho" onClick={onIrParaCompras}>
+            <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
+          </button>
+        </div>
 
-      <section className="dash-card">
-        <div className="dash-rot">GC RESPONSÁVEL</div>
-        <GcDaObra obra={obra} podeEditar={podeEditar} equipe={equipe} onDefinir={onDefinirGC} />
-      </section>
+        <div className="dobra-card">
+          <div className="ini-titulo"><ShieldCheck size={14} className="ini-titulo-icone" /> Equipe da obra</div>
+          <div className="dobra-sub">Principais responsáveis.</div>
+          <LinhaEquipe obraId={obra.id} rotulo="GC responsável" valor={obra.gc} equipe={equipe} podeEditar={podeEditar}
+            prioridade={/gc/i} vazio="sem GC — esta obra aparece para todo mundo"
+            onDefinir={(email) => onDefinirGC(obra.codigo, email)} />
+          <LinhaEquipe obraId={obra.id} rotulo="Tailor Made" valor={tailorMade} equipe={equipe} podeEditar={podeEditar}
+            vazio="ainda não atribuído" onDefinir={(email) => onDefinirTailorMade(obra.codigo, email)} />
+          <LinhaEquipe obraId={obra.id} rotulo="Executivo" valor={responsavelExecutivo} equipe={equipe} podeEditar={podeEditar}
+            vazio="ainda não atribuído" onDefinir={(email) => onDefinirExecutivo(obra.codigo, email)} />
+        </div>
+      </div>
 
       {(adit.aprovados.length > 0 || adit.pendentes.length > 0) && (
-        <section className="dash-card dash-aditivos">
-          <div className="dash-rot">ADITIVOS</div>
+        <div className="dobra-card dash-aditivos">
+          <div className="ini-titulo"><FileText size={14} className="ini-titulo-icone" /> Aditivos</div>
           {adit.aprovados.length > 0 ? (
             <>
               <div className={`dash-adit-saldo mono ${adit.saldo < 0 ? "credito" : ""}`}>
@@ -689,7 +760,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           <button className="btn-atalho dash-atalho" onClick={onIrParaAditivos}>
             <FileText size={12} /> Ver os aditivos
           </button>
-        </section>
+        </div>
       )}
     </div>
   );
@@ -7044,12 +7115,12 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
    ETAPAS_PLANEJAMENTO esta na ordem real do processo — e essa ordem que
    define o "anterior" de cada etapa. */
 const GRUPOS_OBRA = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
+  { id: "dashboard", label: "Visão geral", icon: LayoutGrid },
   { id: "planejamento", label: "Planejamento", icon: ClipboardList },
-  { id: "execucao", label: "Execução de Obra", icon: Building2 },
+  { id: "execucao", label: "Execução", icon: Building2 },
   // Sem etapas: nao e' esteira, e' o armario da obra. Por isso ele nao
   // mostra progresso "0/2" — nao ha nada a concluir aqui.
-  { id: "arquivos", label: "Arquivos da Obra", icon: Archive },
+  { id: "arquivos", label: "Documentos", icon: Archive },
 ];
 
 const ETAPAS_PLANEJAMENTO = [
@@ -12442,6 +12513,8 @@ export default function App() {
               endereco: l.endereco || "—",
               cliente: l.cliente || "—",
               gc: l.gc || null,
+              tailorMade: l.tailor_made || null,
+              responsavelExecutivo: l.responsavel_executivo || null,
               area: null, prazo: null,
               valorVendido: l.valor_vendido || 0,
               categorias: buildCategorias([], null),
@@ -12656,6 +12729,19 @@ export default function App() {
   async function definirGCdaObra(codigo, email) {
     const linha = await definirGC(codigo, email);
     setObras((prev) => prev.map((o) => (String(o.codigo) === String(codigo) ? { ...o, gc: email } : o)));
+    setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
+  }
+
+  // Mesmo padrão do GC, pros outros dois papéis de "Equipe da obra".
+  async function definirTailorMadeDaObra(codigo, email) {
+    const linha = await definirTailorMade(codigo, email);
+    setObras((prev) => prev.map((o) => (String(o.codigo) === String(codigo) ? { ...o, tailorMade: email } : o)));
+    setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
+  }
+
+  async function definirResponsavelExecutivoDaObra(codigo, email) {
+    const linha = await definirResponsavelExecutivo(codigo, email);
+    setObras((prev) => prev.map((o) => (String(o.codigo) === String(codigo) ? { ...o, responsavelExecutivo: email } : o)));
     setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
   }
 
@@ -14311,6 +14397,47 @@ export default function App() {
         .dash-atalho { margin-left: auto; margin-top: 0; }
         @media (max-width: 900px) { .dash { grid-template-columns: 1fr; } }
 
+        /* NOVO PAINEL DA OBRA — cartões no mesmo estilo do painel geral
+           (classes .ini-cel / .ini-titulo), só que na escala de UMA obra. */
+        .dobra-regua { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+        .dobra-entrega { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 10px 14px; background: #fff; border: 1px solid var(--border-soft); border-radius: 10px; font-size: 12.5px; color: var(--ink-2); }
+        .dobra-entrega-rot { font-weight: 600; color: var(--ink); margin-right: 4px; }
+        .dobra-entrega .entrega-input { width: auto; margin-top: 0; }
+        .dobra-card { background: #fff; border: 1px solid var(--border-soft); border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(20,20,20,.03); }
+        .dobra-sub { font-size: 11.5px; color: var(--ink-3); margin: -4px 0 14px; }
+        .dobra-colunas { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; align-items: start; }
+        .dobra-colunas .dobra-card { margin-bottom: 0; }
+        @media (max-width: 1100px) { .dobra-regua { grid-template-columns: repeat(2,1fr); } .dobra-colunas { grid-template-columns: 1fr; } }
+
+        /* Jornada da obra: passos conectados, feito / atual / aguardando. */
+        .jornada { display: flex; align-items: flex-start; }
+        .jornada-passo { display: flex; flex-direction: column; align-items: center; text-align: center; width: 132px; flex-shrink: 0; }
+        .jornada-linha { flex: 1; height: 2px; background: var(--border); margin-top: 15px; min-width: 12px; }
+        .jornada-linha.feita { background: var(--green); }
+        .jornada-bola { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--panel); border: 2px solid var(--border); color: var(--ink-3); margin-bottom: 8px; }
+        .jornada-bola.feita { background: var(--green); border-color: var(--green); color: #fff; }
+        .jornada-bola.atual { background: #fff; border-color: var(--blue); color: var(--blue); }
+        .jornada-ponto { width: 9px; height: 9px; border-radius: 50%; background: var(--blue); }
+        .jornada-nome { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+        .jornada-status { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+        @media (max-width: 900px) { .jornada { flex-wrap: wrap; } .jornada-linha { display: none; } .jornada-passo { width: auto; margin: 0 10px 10px 0; } }
+
+        /* Progresso por frente: nome, barra, percentual — nada mais. */
+        .frente-linha { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .frente-linha:last-child { margin-bottom: 0; }
+        .frente-nome { font-size: 12px; color: var(--ink-2); width: 84px; flex-shrink: 0; }
+        .frente-barra { flex: 1; height: 7px; background: var(--panel); border-radius: 20px; overflow: hidden; }
+        .frente-fill { height: 100%; background: var(--blue); border-radius: 20px; }
+        .frente-pct { font-size: 12px; color: var(--ink); width: 34px; text-align: right; flex-shrink: 0; }
+
+        /* Equipe da obra: avatar + papel + PapelDaObra (nome ou seletor). */
+        .equipe-linha { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-soft); }
+        .equipe-linha:last-child { border-bottom: none; padding-bottom: 0; }
+        .equipe-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--blue-bg); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+        .equipe-avatar.vazio { background: var(--panel); color: var(--ink-3); }
+        .equipe-corpo { flex: 1; min-width: 0; }
+        .equipe-rotulo { font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+
         .resumo-label { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px 4px; }
         /* Cinco colunas fixas espremiam tudo em tela estreita, e como as
            células esticam pra igualar a mais alta, cada card ficava com um
@@ -15669,7 +15796,15 @@ export default function App() {
             onDataEntrega={definirDataEntrega}
             onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }}
             onIrParaAditivos={() => setModulo("aditivos")}
-            onDefinirGC={definirGCdaObra} equipe={pessoas} />
+            onDefinirGC={definirGCdaObra} onDefinirTailorMade={definirTailorMadeDaObra}
+            onDefinirExecutivo={definirResponsavelExecutivoDaObra}
+            /* O Monday nao tem esses dois campos — pra obra que vem de
+               la, so' o `registro` (nosso banco) guarda o que foi
+               atribuido aqui, e sem este fallback o valor sumiria a
+               cada recarregada. */
+            tailorMade={obra.tailorMade ?? registro.get(String(obra.codigo))?.tailor_made ?? null}
+            responsavelExecutivo={obra.responsavelExecutivo ?? registro.get(String(obra.codigo))?.responsavel_executivo ?? null}
+            equipe={pessoas} />
           </>}
 
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
