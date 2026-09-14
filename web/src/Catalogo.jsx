@@ -996,30 +996,30 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
    build — e derrubou, duas vezes. */
 function EstiloCatalogo() {
   return <style>{`
-    .cat { --card: #fff; }
+    .cat { --card: var(--surface-1); }
     .cat-abas { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; }
     .cat-abas > button { background: none; border: 1px solid transparent; border-radius: 8px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-3); padding: 6px 12px; cursor: pointer; }
     .cat-abas > button:hover { color: var(--ink); }
     .cat-abas > button.on { background: var(--panel); border-color: var(--border); color: var(--ink); }
     .cat-cont { display: inline-block; margin-left: 6px; background: var(--panel); border-radius: 20px; padding: 1px 7px; font-size: 10.5px; color: var(--ink-3); }
-    .cat-abas > button.on .cat-cont { background: #fff; }
-    .cat-novo { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 13px; cursor: pointer; }
+    .cat-abas > button.on .cat-cont { background: var(--surface-1); }
+    .cat-novo { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 13px; cursor: pointer; }
     .cat-novo-solto { margin: 0 0 12px; }
 
     .cat-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
-    .cat-busca { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 9px; background: #fff; padding: 6px 10px; min-width: 260px; }
+    .cat-busca { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-1); padding: 6px 10px; min-width: 260px; }
     .cat-busca input { border: none; outline: none; font-family: inherit; font-size: 12.5px; background: none; flex: 1; color: var(--ink); }
     .cat-busca > button { background: none; border: none; color: var(--ink-3); cursor: pointer; padding: 0; display: flex; }
     .cat-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-    .cat-chips button { background: #fff; border: 1px solid var(--border); border-radius: 20px; font-family: inherit; font-size: 11px; font-weight: 500; color: var(--ink-2); padding: 4px 11px; cursor: pointer; }
+    .cat-chips button { background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; font-family: inherit; font-size: 11px; font-weight: 500; color: var(--ink-2); padding: 4px 11px; cursor: pointer; }
     .cat-chips button:hover { border-color: var(--blue); }
-    .cat-chips button.on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+    .cat-chips button.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
     .cat-chips-sub button.on { background: var(--blue); border-color: var(--blue); }
-    .cat-sel { border: 1px solid var(--border); border-radius: 8px; background: #fff; font-family: inherit; font-size: 12px; color: var(--ink-2); padding: 6px 9px; }
+    .cat-sel { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); font-family: inherit; font-size: 12px; color: var(--ink-2); padding: 6px 9px; }
 
-    .cat-pendente { background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 9px; padding: 9px 13px; font-size: 12px; margin-bottom: 14px; }
-    .cat-erro { display: flex; align-items: flex-start; gap: 8px; background: #FEF2F2; border: 1px solid #FECACA; color: #b91c1c; border-radius: 9px; padding: 10px 13px; font-size: 12.5px; margin-bottom: 12px; }
-    .cat-ok { display: flex; align-items: center; gap: 8px; background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; border-radius: 9px; padding: 10px 13px; font-size: 12.5px; margin-bottom: 12px; }
+    .cat-pendente { background: var(--warning-soft); border: 1px solid var(--warning-line); color: var(--text); border-radius: 9px; padding: 9px 13px; font-size: 12px; margin-bottom: 14px; }
+    .cat-erro { display: flex; align-items: flex-start; gap: 8px; background: var(--danger-soft); border: 1px solid var(--danger-line); color: var(--danger); border-radius: 9px; padding: 10px 13px; font-size: 12.5px; margin-bottom: 12px; }
+    .cat-ok { display: flex; align-items: center; gap: 8px; background: var(--success-soft); border: 1px solid var(--success-line); color: var(--success); border-radius: 9px; padding: 10px 13px; font-size: 12.5px; margin-bottom: 12px; }
     .cat-vazio { color: var(--ink-3); font-size: 12.5px; padding: 30px 0; }
 
     .cat-verba { margin-bottom: 22px; }
@@ -1033,7 +1033,7 @@ function EstiloCatalogo() {
     .cat-card.on { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue-bg); }
     .cat-foto { position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--panel); border: none; padding: 0; cursor: pointer; overflow: hidden; }
     .cat-foto img { width: 100%; height: 100%; object-fit: contain; display: block; }
-    .cat-sem-foto { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #C9C7C2; }
+    .cat-sem-foto { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--line-3); }
     .cat-marca { position: absolute; top: 7px; left: 7px; width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid #fff; background: rgba(255,255,255,.75); display: flex; align-items: center; justify-content: center; color: #fff; }
     .cat-card.on .cat-marca { background: var(--blue); border-color: var(--blue); }
     .cat-corpo { padding: 9px 11px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
@@ -1045,7 +1045,7 @@ function EstiloCatalogo() {
     .cat-rodape { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 6px; }
     .cat-preco { font-size: 12.5px; font-weight: 700; color: var(--ink); display: flex; flex-direction: column; line-height: 1.2; }
     .cat-preco em { font-style: normal; font-size: 9.5px; font-weight: 500; color: var(--ink-3); }
-    .cat-preco.velho em { color: #B45309; }
+    .cat-preco.velho em { color: var(--alert); }
     .cat-sem-preco { font-size: 11px; color: var(--ink-3); }
     .cat-acoes { margin-left: auto; display: flex; gap: 2px; }
     .cat-acoes button { background: none; border: none; color: var(--ink-3); cursor: pointer; padding: 3px; display: flex; border-radius: 5px; }
@@ -1058,35 +1058,35 @@ function EstiloCatalogo() {
     .cat-forn-id small { font-size: 11px; color: var(--ink-3); }
     .cat-forn-uso { font-size: 11px; color: var(--ink-3); }
 
-    .cat-modal { position: fixed; inset: 0; z-index: 200; background: rgba(20,20,20,.35); display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .cat-caixa { background: #fff; border-radius: 14px; width: 100%; max-width: 660px; max-height: 88vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.22); }
+    .cat-modal { position: fixed; inset: 0; z-index: 200; background: var(--overlay-strong); display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .cat-caixa { background: var(--surface-1); border-radius: 14px; width: 100%; max-width: 660px; max-height: 88vh; overflow: auto; box-shadow: var(--shadow-4); }
     .cat-caixa-fina { max-width: 480px; }
-    .cat-caixa-topo { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; border-bottom: 1px solid var(--border); font-size: 13.5px; color: var(--ink); position: sticky; top: 0; background: #fff; }
+    .cat-caixa-topo { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; border-bottom: 1px solid var(--border); font-size: 13.5px; color: var(--ink); position: sticky; top: 0; background: var(--surface-1); }
     .cat-caixa-topo button { background: none; border: none; color: var(--ink-3); cursor: pointer; display: flex; }
     .cat-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; padding: 16px 18px; }
     .cat-largo { grid-column: 1 / -1; }
     .cat-campos label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
-    .cat-campos input, .cat-campos select, .cat-campos textarea { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12.5px; color: var(--ink); padding: 7px 9px; background: #fff; font-weight: 400; resize: vertical; }
+    .cat-campos input, .cat-campos select, .cat-campos textarea { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12.5px; color: var(--ink); padding: 7px 9px; background: var(--surface-1); font-weight: 400; resize: vertical; }
     .cat-campos small { font-size: 10px; font-weight: 400; color: var(--ink-3); }
     .cat-foto-campo { display: flex; align-items: center; gap: 12px; }
     .cat-foto-prev { position: relative; width: 80px; height: 62px; }
     .cat-foto-prev img { width: 80px; height: 62px; object-fit: contain; background: var(--panel); border-radius: 7px; }
-    .cat-foto-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: #B91C1C; color: #fff; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
-    .cat-foto-x:hover { background: #991B1B; }
+    .cat-foto-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: var(--danger); color: var(--bg); cursor: pointer; box-shadow: var(--shadow-1); }
+    .cat-foto-x:hover { background: var(--danger); }
     .cat-btn-arq { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
-    .cat-duplicata { display: flex; gap: 9px; background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 9px; padding: 10px 12px; font-size: 11.5px; line-height: 1.5; }
+    .cat-duplicata { display: flex; gap: 9px; background: var(--warning-soft); border: 1px solid var(--warning-line); color: var(--text); border-radius: 9px; padding: 10px 12px; font-size: 11.5px; line-height: 1.5; }
     .cat-duplicata svg { flex-shrink: 0; margin-top: 1px; }
     .cat-duplicata b { display: block; font-weight: 700; margin-bottom: 3px; }
     .cat-duplicata ul { margin: 2px 0 4px; padding-left: 16px; }
     .cat-duplicata-opcao { display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; margin-top: 4px; }
-    .cat-caixa-pe { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: #fff; }
+    .cat-caixa-pe { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--surface-1); }
     .cat-caixa-pe button { background: none; border: none; font-family: inherit; font-size: 12px; color: var(--ink-3); cursor: pointer; }
-    .cat-primario { background: var(--ink) !important; color: #fff !important; border-radius: 8px !important; font-weight: 600 !important; padding: 8px 15px !important; display: inline-flex; align-items: center; gap: 6px; }
+    .cat-primario { background: var(--ink) !important; color: var(--bg) !important; border-radius: 8px !important; font-weight: 600 !important; padding: 8px 15px !important; display: inline-flex; align-items: center; gap: 6px; }
     .cat-primario:disabled { opacity: .45; cursor: default; }
 
-    .cat-barra { position: sticky; bottom: 14px; margin-top: 18px; display: flex; align-items: center; gap: 12px; background: var(--ink); color: #fff; border-radius: 11px; padding: 11px 15px; font-size: 12.5px; box-shadow: 0 10px 28px rgba(0,0,0,.2); }
-    .cat-barra .cat-primario { background: #fff !important; color: var(--ink) !important; }
-    .cat-limpar { margin-left: auto; background: none; border: none; font-family: inherit; font-size: 11.5px; color: rgba(255,255,255,.7); text-decoration: underline; cursor: pointer; }
+    .cat-barra { position: sticky; bottom: 14px; margin-top: 18px; display: flex; align-items: center; gap: 12px; background: var(--ink); color: var(--bg); border-radius: 11px; padding: 11px 15px; font-size: 12.5px; box-shadow: var(--shadow-3); }
+    .cat-barra .cat-primario { background: var(--surface-1) !important; color: var(--ink) !important; }
+    .cat-limpar { margin-left: auto; background: none; border: none; font-family: inherit; font-size: 11.5px; color: color-mix(in srgb, var(--bg) 70%, transparent); text-decoration: underline; cursor: pointer; }
 
     .cat-envio { padding: 16px 18px; }
     .cat-envio label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--ink-2); margin-bottom: 14px; }
@@ -1097,24 +1097,70 @@ function EstiloCatalogo() {
     .cat-envio-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
     .cat-qtd { width: 62px; border: 1px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 12px; padding: 4px 7px; text-align: right; }
     .cat-envio-un { font-size: 11px; color: var(--ink-3); width: 26px; }
-    .cat-apresentar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
+    .cat-apresentar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
     .cat-apresentar:hover { border-color: var(--blue); color: var(--ink); }
     .cat-tipos { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
     .cat-tipos button { background: none; border: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-3); padding: 7px 14px; cursor: pointer; }
     .cat-tipos button + button { border-left: 1px solid var(--border); }
     .cat-tipos button:hover { color: var(--ink); background: var(--panel); }
-    .cat-tipos button.on { background: var(--ink); color: #fff; }
+    .cat-tipos button.on { background: var(--ink); color: var(--bg); }
     .cat-tipos span { opacity: .6; margin-left: 4px; font-weight: 500; }
     .cat-acab { font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 4px; padding: 2px 7px; }
-    .cat-importar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
+    .cat-importar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
     .cat-importar:hover { border-color: var(--blue); color: var(--ink); }
     .cat-imp-placar { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; margin-bottom: 14px; }
     .cat-imp-placar > div { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; display: flex; flex-direction: column; }
     .cat-imp-forn { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); background: var(--panel); border-radius: 9px; padding: 10px 12px; margin-bottom: 14px; }
-    .cat-imp-forn input { border: 1px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 12px; padding: 5px 8px; background: #fff; }
+    .cat-imp-forn input { border: 1px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 12px; padding: 5px 8px; background: var(--surface-1); }
     .cat-imp-forn small { width: 100%; font-size: 10.5px; color: var(--ink-3); }
     .cat-imp-placar b { font-size: 19px; color: var(--ink); line-height: 1.1; }
     .cat-imp-placar span { font-size: 10.5px; color: var(--ink-3); }
     .cat-nota { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; margin: 12px 0 0; }
+
+    /* Group WS · Design System — componentes do catálogo, com os tokens de
+       estilos/design-system.css. Por último para vencer as regras acima. */
+    .cat-abas > button { padding: 7px 14px; border-radius: 8px; font-size: 13px; color: var(--text-mute); }
+    .cat-abas > button:hover { color: var(--text); }
+    .cat-abas > button.on { background: var(--brand); border-color: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
+    .cat-abas > button.on .cat-cont { background: var(--on-inverse-soft); color: var(--bg); }
+    .cat-cont { font-family: var(--font-mono); }
+    .cat-novo, .cat-primario { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 1px solid var(--brand); border-radius: 8px; background: var(--brand); color: var(--bg); font-family: var(--font-sans); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; }
+    .cat-novo:hover { background: var(--brand-h); border-color: var(--brand-h); }
+    .cat-primario { background: var(--brand) !important; color: var(--bg) !important; border-radius: 8px !important; padding: 0 14px !important; }
+    .cat-primario:hover:not(:disabled) { background: var(--brand-h) !important; }
+    .cat-barra .cat-primario { background: var(--surface-1) !important; color: var(--text) !important; }
+    .cat-chips button { padding: 4px 10px; border-color: var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+    .cat-chips button:hover { border-color: var(--line-3); color: var(--text); }
+    .cat-chips button.on, .cat-chips-sub button.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+    .cat-busca, .cat-sel, .cat-campos input, .cat-campos select, .cat-campos textarea, .cat-envio select, .cat-qtd, .cat-imp-forn input { border-color: var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); }
+    .cat-busca:focus-within, .cat-sel:focus, .cat-campos input:focus, .cat-campos select:focus, .cat-campos textarea:focus, .cat-envio select:focus, .cat-qtd:focus, .cat-imp-forn input:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
+    .cat-campos label, .cat-envio label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+    .cat-campos input, .cat-campos select, .cat-campos textarea { padding: 8px 11px; font-family: var(--font-sans); font-size: 13px; letter-spacing: normal; text-transform: none; }
+    .cat-tipos { gap: 2px; padding: 3px; border-color: var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
+    .cat-tipos button { border-radius: 7px; padding: 5px 11px; }
+    .cat-tipos button + button { border-left: 0; }
+    .cat-tipos button:hover { background: transparent; color: var(--text); }
+    .cat-tipos button.on { background: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
+    .cat-apresentar, .cat-importar, .cat-btn-arq { min-height: 30px; border-color: var(--line-2); border-radius: 8px; background: transparent; color: var(--text); }
+    .cat-apresentar:hover, .cat-importar:hover, .cat-btn-arq:hover { border-color: var(--line-3); background: var(--surface-2); color: var(--text); }
+    .cat-card { border-color: var(--line-2); border-radius: 12px; }
+    .cat-card.on { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
+    .cat-forn, .cat-acab { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 999px; }
+    .cat-preco, .cat-imp-placar b { font-variant-numeric: tabular-nums; }
+    .cat-imp-placar b { font-weight: 300; letter-spacing: -0.02em; font-size: 22px; }
+    .cat-sub-nome, .cat-envio-verba { font-family: var(--font-mono); letter-spacing: 1.2px; }
+    .cat-verba-nome { border-bottom-color: var(--line-2); font-size: 16px; font-weight: 400; letter-spacing: -0.01em; }
+    .cat-pendente, .cat-duplicata { border-color: var(--warning-line); border-radius: 10px; background: var(--warning-soft); color: var(--text); }
+    .cat-erro { border-color: var(--danger-line); border-radius: 10px; background: var(--danger-soft); color: var(--text); }
+    .cat-ok { border-color: var(--success-line); border-radius: 10px; background: var(--success-soft); color: var(--text); }
+    .cat-erro svg { color: var(--danger); }
+    .cat-ok svg { color: var(--success); }
+    .cat-duplicata svg { color: var(--warning); }
+    .cat-modal { background: var(--overlay-strong); backdrop-filter: var(--overlay-blur); -webkit-backdrop-filter: var(--overlay-blur); }
+    .cat-caixa { border: 1px solid var(--line-2); border-radius: 14px; box-shadow: var(--shadow-4); animation: dialog-fade-in 0.2s ease-out; }
+    .cat-caixa-topo { padding: 18px 24px 14px; border-bottom-color: var(--line-1); font-size: 16px; }
+    .cat-caixa-pe { padding: 14px 24px; border-top-color: var(--line-1); }
+    .cat-barra { border-radius: 14px; }
+    .cat-foto-x:hover { background: var(--danger); filter: brightness(1.1); }
   `}</style>;
 }

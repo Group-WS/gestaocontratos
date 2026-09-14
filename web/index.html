@@ -1,9 +1,20 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestão de Obras TKWS — Vendido × Executivo</title>
+    <!-- O tema salvo entra antes da primeira pintura: sem isto, quem usa o
+         escuro vê um clarão a cada recarga. Mesma chave de src/marca.jsx. -->
+    <script>
+      try {
+        var tema = localStorage.getItem("ws-tema");
+        if (tema === "dark" || tema === "light") document.documentElement.setAttribute("data-theme", tema);
+      } catch (e) {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:ital,wght@0,300..800;1,300..600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

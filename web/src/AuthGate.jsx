@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
+import { LogoGroupWS } from "./marca.jsx";
 
 /**
  * Envolve o app com o login do Supabase. Enquanto o Supabase não
@@ -82,7 +83,7 @@ export default function AuthGate({ children }) {
 
 function Centro({ children }) {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F4F3F1", color: "#555", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14 }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", color: "var(--text-mute)", fontFamily: "var(--font-sans)", fontSize: 14 }}>
       {children}
     </div>
   );
@@ -173,35 +174,73 @@ function LoginScreen({ derrubada }) {
     // Deu certo: o navegador sai desta pagina, entao nao ha o que limpar.
   }
 
+  /* Split-screen do padrão Auth do design system: marca à esquerda,
+     formulário à direita. No celular a marca some e o logo sobe pro topo
+     do formulário. */
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F4F3F1", fontFamily: "Inter, system-ui, sans-serif", padding: 20 }}>
-      <div style={{ width: "100%", maxWidth: 360, background: "#fff", border: "1px solid #e5e2dd", borderRadius: 16, padding: "32px 28px", boxSizing: "border-box" }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-          <img src="/logo.png" alt="Group WS" style={{ width: 54, height: 46, objectFit: "cover", objectPosition: "top center" }} onError={(ev) => { ev.currentTarget.style.display = "none"; }} />
+    <div className="auth">
+      <EstiloAuth />
+      <aside className="auth-marca">
+        <LogoGroupWS style={{ fontSize: 15 }} />
+        <div>
+          <h2 className="auth-manchete">Gestão de Obras <em>TKWS</em></h2>
+          <p className="auth-lema">Onde estratégia, execução e excelência se encontram.</p>
         </div>
-        <div style={{ textAlign: "center", fontWeight: 700, letterSpacing: "0.05em", fontSize: 14, color: "#1a1a1a", marginBottom: 4 }}>GESTÃO DE OBRAS TKWS</div>
-        <div style={{ textAlign: "center", fontSize: 12.5, color: "#888", marginBottom: 22 }}>Entre com seu acesso do time</div>
-
-        {/* Dizer o que houve evita a pessoa achar que perdeu o acesso. */}
-        {derrubada && (
-          <div style={{ background: "#FAEFDC", border: "1px solid #E8CE9A", color: "#7A4C0A", borderRadius: 10, padding: "10px 12px", fontSize: 12, lineHeight: 1.5, marginBottom: 16 }}>
-            Sua sessão anterior estava inválida e foi limpa — costuma ser relógio do
-            computador fora de hora quando ela foi criada. Entre de novo que resolve.
+      </aside>
+      <main className="auth-lado">
+        <div className="auth-form">
+          <div className="auth-logo-celular"><LogoGroupWS style={{ fontSize: 14 }} /></div>
+          <div>
+            <h1 className="auth-titulo">Entrar</h1>
+            <p className="auth-sub">Entre com seu acesso do time.</p>
           </div>
-        )}
 
-        {erro && (
-          <div style={{ color: "#b91c1c", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 12px", fontSize: 12, lineHeight: 1.5, marginBottom: 14 }}>
-            {erro}
-          </div>
-        )}
-        <button type="button" onClick={entrarComMicrosoft} disabled={carregando}
-          style={{ width: "100%", background: "#fff", color: "#1a1a1a", border: "1px solid #e5e2dd", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, opacity: carregando ? 0.6 : 1 }}>
-          <LogoMicrosoft /> {carregando ? "Entrando…" : "Entrar com a conta Microsoft"}
-        </button>
-      </div>
+          {/* Dizer o que houve evita a pessoa achar que perdeu o acesso. */}
+          {derrubada && (
+            <div className="auth-aviso">
+              Sua sessão anterior estava inválida e foi limpa — costuma ser relógio do
+              computador fora de hora quando ela foi criada. Entre de novo que resolve.
+            </div>
+          )}
+          {erro && <div className="auth-erro" role="alert">{erro}</div>}
+
+          <button type="button" className="auth-botao" onClick={entrarComMicrosoft} disabled={carregando}>
+            <LogoMicrosoft /> {carregando ? "Entrando…" : "Entrar com a conta Microsoft"}
+          </button>
+        </div>
+      </main>
     </div>
   );
+}
+
+/* O estilo do login mora aqui porque esta tela aparece ANTES do App
+   existir: a folha do App.jsx só entra depois de entrar. Os tokens vêm de
+   estilos/design-system.css, que é global. */
+function EstiloAuth() {
+  return <style>{`
+    .auth { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) 460px; background: var(--surface-1); color: var(--text); font-family: var(--font-sans); }
+    .auth-marca { display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 48px; color: var(--text); background: linear-gradient(135deg, var(--surface-3) 0%, var(--surface-4) 60%, var(--brand-soft) 100%); }
+    .auth-manchete { margin: 0; font-size: 40px; font-weight: 300; line-height: 1.05; letter-spacing: -0.02em; }
+    .auth-manchete em { font-style: italic; color: var(--brand); }
+    .auth-lema { margin: 12px 0 0; max-width: 420px; font-size: 14px; line-height: 1.55; color: var(--text-soft); }
+    .auth-lado { display: flex; align-items: center; justify-content: center; padding: 40px; background: var(--surface-1); }
+    .auth-form { display: grid; gap: 20px; width: 100%; max-width: 360px; }
+    .auth-logo-celular { display: none; color: var(--text); }
+    .auth-titulo { margin: 0; font-size: 28px; font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; }
+    .auth-sub { margin: 4px 0 0; font-size: 13.5px; color: var(--text-soft); }
+    .auth-aviso, .auth-erro { border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+    .auth-aviso { background: var(--warning-soft); border: 1px solid var(--warning-line); }
+    .auth-erro { background: var(--danger-soft); border: 1px solid var(--danger-line); }
+    .auth-botao { display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 44px; padding: 0 20px; border-radius: 10px; border: 1px solid var(--line-2); background: transparent; color: var(--text); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; }
+    .auth-botao:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-3); }
+    .auth-botao:disabled { opacity: 0.5; cursor: not-allowed; }
+    @media (max-width: 900px) {
+      .auth { grid-template-columns: 1fr; }
+      .auth-marca { display: none; }
+      .auth-lado { padding: 24px; }
+      .auth-logo-celular { display: block; }
+    }
+  `}</style>;
 }
 
 /* O quadriculado da Microsoft, desenhado aqui: quatro retangulos nao

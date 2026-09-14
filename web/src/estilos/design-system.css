@@ -1,0 +1,467 @@
+/* ============================================================================
+   Group WS · Design System — a fundação do Confere
+   ============================================================================
+
+   Tokens, base e utilitários do @group-ws/ws-ui v1.1.0 (repositório
+   Group-WS/groupws-design-system), trazidos para cá SEM instalar o pacote:
+   ele exige React 19 e Tailwind, e o Confere é React 18 com CSS próprio.
+   Veio a linguagem — os valores, um por um — e não o código. Quem mudar um
+   token aqui precisa mudar lá também, e vice-versa.
+
+   Regras que valem aqui como valem lá:
+     - Cor sempre por token. Hex cru só no que vira papel (escopo, aditivo,
+       pedido) e no slide da apresentação: papel é branco nos dois temas.
+     - Token novo entra nos DOIS temas.
+     - Tipografia: Host Grotesk para tudo, JetBrains Mono para código,
+       rótulo e número de tabela. Nada de Inter, Space Grotesk ou serifada.
+
+   O tema é o atributo data-theme do <html>. O claro (Ice frio / Carbon) é
+   o padrão do Confere; o escuro (navy + ciano) é o de referência do DS.
+   ============================================================================ */
+
+/* ---------- Tokens · escuro (referência do DS) ---------- */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #061828;
+  --canvas: #061828;
+  --surface-1: #08263f;
+  --surface-2: #0a2f4d;
+  --surface-3: #0e3a5e;
+  --surface-4: #103e66;
+  --field: var(--surface-2);
+
+  --brand: #74c7e4;
+  --brand-h: #7fd3f0;
+  --brand-p: #5ba5c2;
+  --brand-soft: rgba(116, 199, 228, 0.14);
+  --accent: #74c7e4;
+
+  --text: #f5fafc;
+  --text-strong: #ffffff;
+  --text-soft: #b6c5d4;
+  --text-mute: #7f94a8;
+
+  --overlay-strong: rgba(6, 24, 40, 0.78);
+  --overlay-med: rgba(6, 24, 40, 0.65);
+  --overlay-soft: rgba(6, 24, 40, 0.4);
+  --overlay-blur: blur(8px);
+
+  --line-1: rgba(157, 200, 222, 0.1);
+  --line-2: rgba(157, 200, 222, 0.2);
+  --line-3: rgba(157, 200, 222, 0.32);
+  --rule: rgba(157, 200, 222, 0.1);
+  --rule-strong: rgba(157, 200, 222, 0.2);
+
+  --success: #5fd9a5;
+  --warning: #f2c94c;
+  --alert: #f2994a;
+  --danger: #eb5757;
+  --purple: #bb6bd9;
+  --pink: #f178b6;
+
+  --mod-crm: #74c7e4;
+  --mod-marketing: #e0a341;
+  --mod-criativos: #e08a6f;
+  --mod-orcamentos: #5fd9a5;
+  --mod-organizacao: #8fa0e0;
+  --mod-catalogo: #bb6bd9;
+  --mod-settings: #90a4ae;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.28);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.32);
+  --shadow-4: 0 24px 64px rgba(0, 0, 0, 0.5);
+
+  --gutter-lg: 140px;
+  --gutter-md: 100px;
+  --gutter-sm: 60px;
+
+  --radius: 0.625rem;
+  --radius-pill: 999px;
+}
+
+/* ---------- Tokens · claro (Ice frio / Carbon) ---------- */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #eef1f3;
+  --canvas: #eef1f3;
+  --surface-1: #ffffff;
+  --surface-2: #f4f6f8;
+  --surface-3: #e6eaee;
+  --surface-4: #dae0e5;
+  --field: #ffffff;
+
+  --brand: #0e8194;
+  --brand-h: #11a0b8;
+  --brand-p: #0a6877;
+  --brand-soft: rgba(98, 196, 221, 0.16);
+  --accent: #0e8194;
+
+  --text: #1a1a1a;
+  --text-strong: #111111;
+  --text-soft: #5c5c5c;
+  --text-mute: #8f8f8f;
+
+  --overlay-strong: rgba(26, 26, 26, 0.5);
+  --overlay-med: rgba(26, 26, 26, 0.38);
+  --overlay-soft: rgba(26, 26, 26, 0.18);
+
+  --line-1: rgba(24, 24, 27, 0.08);
+  --line-2: rgba(24, 24, 27, 0.14);
+  --line-3: rgba(24, 24, 27, 0.22);
+  --rule: rgba(24, 24, 27, 0.08);
+  --rule-strong: rgba(24, 24, 27, 0.14);
+
+  --success: #2ba371;
+  --warning: #b98e1a;
+  --alert: #c77027;
+  --danger: #c4373a;
+  --purple: #8e4eaa;
+  --pink: #c84e8a;
+
+  --mod-crm: #0e8194;
+  --mod-marketing: #b26a1f;
+  --mod-criativos: #b05a45;
+  --mod-orcamentos: #2f7d5b;
+  --mod-organizacao: #4a5da8;
+  --mod-catalogo: #8e4eaa;
+  --mod-settings: #5c6b73;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.07);
+  --shadow-3: 0 8px 24px rgba(0, 0, 0, 0.09);
+  --shadow-4: 0 16px 48px rgba(0, 0, 0, 0.14);
+}
+
+/* ---------- Tokens neutros de tema: tipo e raio (theme.css do DS) ---------- */
+:root {
+  --font-sans: 'Host Grotesk', -apple-system, system-ui, sans-serif;
+  --font-serif: 'Host Grotesk', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+}
+
+/* ---------- Tons derivados ----------
+   O DS escreve os fundos suaves como rgba fixo tirado do tema escuro
+   (rgba(95,217,165,.14)...) e repete o mesmo valor no claro. Aqui eles
+   saem do próprio token com color-mix: mesma intensidade, e acompanham o
+   tema sozinhos.
+     soft  14% transparente — selo, fundo de aviso (Badge, Banner)
+     line  32% transparente — borda de aviso (Alert)
+     tint   7% sobre a superfície — linha de tabela, opaco de propósito:
+            transparente, a zebra aparecia por baixo */
+:root {
+  --ring: color-mix(in srgb, var(--brand) 30%, transparent);
+  --hover: color-mix(in srgb, var(--text) 5%, transparent);
+
+  --brand-line: color-mix(in srgb, var(--brand) 32%, transparent);
+  --brand-tint: color-mix(in srgb, var(--brand) 7%, var(--surface-1));
+
+  --success-soft: color-mix(in srgb, var(--success) 14%, transparent);
+  --success-line: color-mix(in srgb, var(--success) 32%, transparent);
+  --success-tint: color-mix(in srgb, var(--success) 7%, var(--surface-1));
+
+  --warning-soft: color-mix(in srgb, var(--warning) 14%, transparent);
+  --warning-line: color-mix(in srgb, var(--warning) 32%, transparent);
+  --warning-tint: color-mix(in srgb, var(--warning) 7%, var(--surface-1));
+
+  --alert-soft: color-mix(in srgb, var(--alert) 14%, transparent);
+  --alert-line: color-mix(in srgb, var(--alert) 32%, transparent);
+  --alert-tint: color-mix(in srgb, var(--alert) 7%, var(--surface-1));
+
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+  --danger-line: color-mix(in srgb, var(--danger) 32%, transparent);
+  --danger-tint: color-mix(in srgb, var(--danger) 7%, var(--surface-1));
+
+  --purple-soft: color-mix(in srgb, var(--purple) 14%, transparent);
+  --purple-line: color-mix(in srgb, var(--purple) 32%, transparent);
+  --purple-tint: color-mix(in srgb, var(--purple) 7%, var(--surface-1));
+
+  /* Par da substituição no Executivo: precisa ser outro tom que não o
+     roxo dos avulsos, e o DS já tem um índigo — a cor do módulo
+     Organização. */
+  --indigo: var(--mod-organizacao);
+  --indigo-soft: color-mix(in srgb, var(--indigo) 14%, transparent);
+  --indigo-tint: color-mix(in srgb, var(--indigo) 7%, var(--surface-1));
+
+  --row-alt: color-mix(in srgb, var(--surface-2) 55%, var(--surface-1));
+  --row-hover: color-mix(in srgb, var(--brand) 6%, var(--surface-1));
+  --row-focus: color-mix(in srgb, var(--brand) 11%, var(--surface-1));
+
+  /* Sobre superfície invertida (a barra escura de seleção): o "branco
+     translúcido" de antes, só que vira escuro translúcido no tema escuro. */
+  --on-inverse-soft: color-mix(in srgb, var(--bg) 16%, transparent);
+  --on-inverse-hover: color-mix(in srgb, var(--bg) 26%, transparent);
+}
+
+/* ---------- Nomes antigos do Confere → tokens do DS ----------
+   O CSS do app foi escrito com --ink, --panel, --blue... Cada nome antigo
+   passa a apontar para o token do DS e herda o tema sozinho. Código novo:
+   use o token do DS direto.
+   --ink-1, --panel-2, --border-strong, --line e --linha eram usados e
+   nunca tinham sido definidos — agora existem. */
+:root {
+  --page: var(--bg);
+  --panel: var(--surface-2);
+  --panel-2: var(--surface-2);
+  --card: var(--surface-1);
+  --border: var(--line-2);
+  --border-soft: var(--line-1);
+  --border-strong: var(--line-3);
+  --line: var(--line-2);
+  --linha: var(--line-2);
+  --ink: var(--text);
+  --ink-1: var(--text);
+  --ink-2: var(--text-soft);
+  --ink-3: var(--text-mute);
+  --blue: var(--brand);
+  --blue-bg: var(--brand-soft);
+  --green: var(--success);
+  --green-bg: var(--success-soft);
+  --amber: var(--warning);
+  --amber-bg: var(--warning-soft);
+  --red: var(--danger);
+  --red-bg: var(--danger-soft);
+}
+
+/* ---------- Base (base.css do DS) ----------
+   Sem o zeramento de margin/padding em * que o DS faz: o Confere foi
+   escrito em cima das margens padrão do navegador (parágrafo, lista), e
+   zerar tudo mexeria em telas inteiras. Em camada, para que qualquer
+   regra do app vença a base sem precisar de especificidade. */
+@layer ds-base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  * {
+    border-color: var(--line-1);
+  }
+
+  ::selection {
+    background: var(--brand);
+    color: var(--bg);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    transition:
+      background 0.4s ease,
+      color 0.4s ease;
+    overflow-x: hidden;
+  }
+
+  /* Grão editorial da marca. pointer-events: none é o que deixa o clique
+     passar — sem ele a camada cobre a tela inteira. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><filter id="n"><feTurbulence baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.035 0"/></filter><rect width="100%" height="100%" filter="url(%23n)"/></svg>');
+    opacity: 0.45;
+    mix-blend-mode: overlay;
+  }
+
+  /* Cor não é definida aqui: título herda do pai. Dentro do documento
+     que vira papel ele herda a tinta do papel, e não o texto do tema. */
+  :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--font-sans);
+    letter-spacing: -0.01em;
+    line-height: 1.12;
+  }
+
+  :where(a, button, summary, input, select, textarea, [role='button'], [tabindex]):focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
+  }
+
+  :where(input[type='checkbox'], input[type='radio']) {
+    accent-color: var(--brand);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-2);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--line-3);
+  }
+}
+
+/* O grão iria junto para o PDF do escopo, do aditivo e do pedido — e no
+   tema escuro a margem da folha sairia azul-marinho. Papel é branco. */
+@media print {
+  body::before {
+    display: none;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+  }
+}
+
+/* ---------- Utilitários (utilities.css do DS) ---------- */
+@layer ds-utilitarios {
+  .serif {
+    font-family: var(--font-serif);
+    letter-spacing: -0.01em;
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-feature-settings: 'liga' on;
+  }
+  .num-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .text-soft { color: var(--text-soft); }
+  .text-mute { color: var(--text-mute); }
+  .text-brand { color: var(--brand); }
+  .text-success { color: var(--success); }
+  .text-warning { color: var(--warning); }
+  .text-alert { color: var(--alert); }
+  .text-danger { color: var(--danger); }
+
+  .bg-surface-1 { background: var(--surface-1); }
+  .bg-surface-2 { background: var(--surface-2); }
+  .bg-surface-3 { background: var(--surface-3); }
+  .bg-surface-4 { background: var(--surface-4); }
+  .bg-brand-soft { background: var(--brand-soft); }
+
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.3px;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+
+  .display-1 {
+    font-family: var(--font-sans);
+    font-weight: 300;
+    letter-spacing: -0.04em;
+    line-height: 1.02;
+  }
+  .display-2 {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1.08;
+  }
+
+  .pulse-dot::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    margin-right: 6px;
+    animation: alive-breathe 2.2s ease-in-out infinite;
+  }
+}
+
+/* ---------- Movimento (animations.css do DS) ---------- */
+@keyframes alive-breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes dialog-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in { animation: fade-in 0.3s ease-out; }
+.animate-dialog-fade-in { animation: dialog-fade-in 0.2s ease-out; }
+.animate-shimmer {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Componentes compartilhados ----------
+   Usados fora do app também (login), por isso moram aqui e não no CSS
+   do App.jsx, que só existe depois de entrar. */
+
+/* ThemeToggle do DS: segmentado, mono, o ativo em brand. */
+.tema-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+}
+.tema-toggle button {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--text-mute);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.tema-toggle button:hover {
+  color: var(--text);
+}
+.tema-toggle button.on {
+  background: var(--brand);
+  color: var(--bg);
+}

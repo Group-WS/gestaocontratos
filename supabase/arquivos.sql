@@ -42,6 +42,9 @@ on conflict (id) do update set
   allowed_mime_types = excluded.allowed_mime_types;
 
 -- Mesma regra do resto do app: quem esta logado no time acessa.
+-- O CONTRATO (pasta <obra>/contrato/) tem regra propria, so' admin, em
+-- contrato-restrito.sql. Rodou este arquivo de novo? Rode aquele depois,
+-- senao as politicas abaixo reabrem o contrato pra todo mundo.
 drop policy if exists "time le arquivos da obra" on storage.objects;
 create policy "time le arquivos da obra" on storage.objects
   for select to authenticated using (bucket_id = 'obra-arquivos');

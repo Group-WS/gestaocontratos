@@ -30,8 +30,9 @@ const M = eval(`(function () {
     { chave: "criativo", titulo: "Projeto Criativo" },
     { chave: "especificacao", titulo: "Caderno de Especificação" },
     { chave: "marcenaria", titulo: "Caderno de Marcenaria" },
-    { chave: "projeto", titulo: "Caderno de Projeto Executivo" },
+    { chave: "projeto", titulo: "Caderno Completo do Projeto Executivo" },
   ])};
+  ${linha("const CADERNO_CONTRATO =")}
   ${linha("const avulsosDaObra =")}
   ${bloco("function arquivosDaObra(")}
   return { arquivosDaObra, avulsosDaObra };
@@ -52,7 +53,7 @@ conf("lista de verdade passa", M.avulsosDaObra({ arquivos: [{ id: "x" }] }).leng
 // O que importa de verdade: a tela não pode explodir com o dado velho.
 conf("a tela não quebra com o dado velho", M.arquivosDaObra({ arquivos: {} }).length, 0);
 
-/* ---- 2. Junta as três origens num lugar só ---- */
+/* ---- 2. Junta as três origens num lugar só, na fase da jornada ---- */
 const obra = {
   cadernos: {
     criativo: { nome: "criativo.pdf", caminho: "2256/criativo/1.pdf", tamanhoKB: 900 },
@@ -66,7 +67,8 @@ const obra = {
 const todos = M.arquivosDaObra(obra);
 conf("cadernos, assinatura e avulso juntos", todos.length, 5);
 conf("o Projeto Criativo vem primeiro", todos[0].titulo, "Projeto Criativo");
-conf("caderno é fase executivo", todos[0].fase, "executivo");
+conf("o Projeto Criativo é fase criativo", todos[0].fase, "criativo");
+conf("os cadernos do executivo são fase executivo", todos.find((a) => a.id === "caderno-especificacao").fase, "executivo");
 conf("assinatura é fase cliente", todos.find((a) => a.id === "assinatura-cliente").fase, "cliente");
 conf("avulso sem fase cai em outros", todos.find((a) => a.id === "a1").fase, "outros");
 // `fixo` é o que impede apagar caderno e assinatura por esta tela: eles
@@ -75,6 +77,18 @@ conf("caderno é fixo", !!todos[0].fixo, true);
 conf("avulso não é fixo", !!todos.find((a) => a.id === "a1").fixo, false);
 conf("caderno sem arquivo não vira linha", todos.some((a) => a.id === "caderno-marcenaria"), false);
 conf("obra vazia não quebra", M.arquivosDaObra({}).length, 0);
+
+/* ---- 3. O contrato só aparece pra quem é administrador ----
+   Esconder na tela não basta sozinho (o banco fecha a pasta, ver
+   supabase/contrato-restrito.sql), mas a tela não pode oferecer o que o
+   banco vai recusar. */
+const comContrato = { cadernos: { contrato: { nome: "contrato.pdf", caminho: "2256/contrato/1.pdf" } } };
+conf("sem ser admin, o contrato não aparece", M.arquivosDaObra(comContrato).length, 0);
+conf("sem dizer quem é, também não", M.arquivosDaObra(comContrato, {}).length, 0);
+const doAdmin = M.arquivosDaObra(comContrato, { souAdmin: true });
+conf("o admin vê o contrato", doAdmin.length, 1);
+conf("o contrato é fase contrato", doAdmin[0].fase, "contrato");
+conf("o contrato é fixo (não se apaga por Documentos)", !!doAdmin[0].fixo, true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

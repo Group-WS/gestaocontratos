@@ -24,6 +24,7 @@ import { subgrupoDe } from "./lib/catalogoModelo.js";
 import { listarSiengeObras, marcarStatusSienge } from "./lib/siengeObra.js";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import Catalogo from "./Catalogo";
+import { LogoGroupWS, AlternarTema } from "./marca.jsx";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
@@ -516,7 +517,10 @@ function PapelDaObra({ obraId, valor: valorAtual, rotulo, vazio, equipe, podeEdi
 function jornadaDaObra(obra) {
   const cad = obra.cadernos || {};
   const passos = [
-    { chave: "contrato", nome: "Contrato", feito: etapaConcluida("vendido_contrato", obra) },
+    // Vendido Contrato deixou de ser etapa navegável (o CMV agora sai
+    // direto da Planilha) — esse marco passa a fechar quando a Planilha
+    // fecha, senão ficaria travado pra sempre em obra nenhuma.
+    { chave: "contrato", nome: "Contrato", feito: etapaConcluida("vendido_planilha", obra) },
     { chave: "criativo", nome: "Criativo", feito: !!cad.criativo },
     { chave: "executivo", nome: "Executivo", feito: !!cad.projeto },
     { chave: "execucao", nome: "Execução da Obra", feito: !!obra.comprasLiberadas },
@@ -571,8 +575,114 @@ function LinhaEquipe({ rotulo, valor, equipe, podeEditar, prioridade, onDefinir,
   );
 }
 
+/* Os arquivos que contam a evolução do projeto, na ordem da jornada.
+   É o único lugar onde se anexam: Documentos lista os mesmos arquivos,
+   do mesmo endereço — um arquivo, um lugar só. */
+function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno, onArquivos }) {
+  const [erro, setErro] = useState(null);
+  const cad = obra.cadernos || {};
+  // Os cadernos congelam com as compras liberadas: é o que foi mandado pro
+  // fornecedor, e trocar depois apagaria a prova.
+  const congeladoProjeto = !podeEditar || obra.comprasLiberadas;
+  const slot = (c, congelado) => (
+    <CadernoSlot key={c.chave} titulo={c.titulo} chave={c.chave} arquivo={cad[c.chave]}
+      obraCodigo={obra.codigo} usuario={usuario} congelado={congelado}
+      onImportar={(info, anterior) => onImportCaderno(c.chave, info, anterior)} />
+  );
+  const outros = avulsosDaObra(obra).filter((a) => (a.fase || "outros") === "outros");
+
+  async function excluir(a) {
+    if (!window.confirm(`Excluir "${a.titulo || a.nome}"? Isso não pode ser desfeito.`)) return;
+    setErro(null);
+    try {
+      onArquivos(await excluirAvulso(obra, a));
+    } catch (err) {
+      setErro(err.message || String(err));
+    }
+  }
+
+  return (
+    <div className="jornada-anexos">
+      <div className="jornada-grupo">
+        <div className="jornada-grupo-rot">
+          Contrato <span className="jornada-grupo-nota"><Lock size={10} /> só administrador</span>
+        </div>
+        <div className="caderno-lista">
+          {souAdmin ? slot(CADERNO_CONTRATO, !podeEditar) : (
+            <div className="caderno-slot">
+              <Lock size={14} className="dim" />
+              <span className="caderno-slot-titulo">Contrato</span>
+              <span className="caderno-slot-vazio">
+                {cad.contrato ? "anexado — acesso restrito ao administrador" : "acesso restrito ao administrador"}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="jornada-grupo">
+        <div className="jornada-grupo-rot">Criativo</div>
+        <div className="caderno-lista">{slot(cadernoPorChave("criativo"), congeladoProjeto)}</div>
+      </div>
+
+      <div className="jornada-grupo">
+        <div className="jornada-grupo-rot">Executivo</div>
+        <div className="caderno-lista">
+          {["especificacao", "marcenaria", "projeto"].map((k) => slot(cadernoPorChave(k), congeladoProjeto))}
+        </div>
+      </div>
+
+      <div className="jornada-grupo">
+        <div className="jornada-grupo-rot">Outros</div>
+        {outros.length > 0 && (
+          <div className="caderno-lista">
+            {outros.map((a) => <ArquivoLinha key={a.id} a={a} semFase podeEditar={podeEditar} onExcluir={excluir} />)}
+          </div>
+        )}
+        {outros.length === 0 && !podeEditar && <div className="jornada-vazio">Nenhum outro arquivo.</div>}
+        {podeEditar && <AnexarAvulso obra={obra} usuario={usuario} fase="outros" onArquivos={onArquivos} />}
+        {erro && <div className="caderno-erro">{erro}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* Um arquivo solto: o mesmo caminho de Documentos, com a fase já decidida
+   por quem chama. */
+function AnexarAvulso({ obra, usuario, fase, onArquivos, rotulo = "Anexar arquivo" }) {
+  const inputRef = useRef(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  async function aoEscolher(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setErro(null);
+    setEnviando(true);
+    try {
+      onArquivos(await anexarAvulso({ obra, file, fase, usuario }));
+    } catch (err) {
+      setErro(err.message || String(err));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="jornada-anexar">
+      <button type="button" className="btn-add-item" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
+        <Upload size={12} /> {enviando ? "Enviando…" : rotulo}
+      </button>
+      <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} style={{ display: "none" }} onChange={aoEscolher} />
+      {erro && <span className="caderno-erro">{erro}</span>}
+    </div>
+  );
+}
+
 function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos,
-  onDefinirGC, onDefinirTailorMade, onDefinirExecutivo, tailorMade, responsavelExecutivo, equipe }) {
+  onDefinirGC, onDefinirTailorMade, onDefinirExecutivo, tailorMade, responsavelExecutivo, equipe,
+  souAdmin, usuario, onImportCaderno, onArquivos }) {
   // A data digitada so vale quando ela manda salvar. Campo de data que
   // grava sozinho a cada tecla dispara gravacao com ano pela metade —
   // "0002-11-20" chega no banco antes de "2026-11-20".
@@ -588,6 +698,9 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
 
   const contratos = useMemo(() => obraContratosStats(obra), [obra]);
   const jornada = useMemo(() => jornadaDaObra(obra), [obra]);
+  // Fechada por padrão: a jornada responde "onde a obra está"; os arquivos
+  // de cada fase são consulta, e abrem quando alguém pede.
+  const [jornadaAberta, setJornadaAberta] = useState(false);
 
   /* "Projetos": quantos dos marcos de projeto já foram cumpridos — os
      MESMOS marcos que o painel geral já usa (`esteiraDaObra`), só que
@@ -646,13 +759,13 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   return (
     <div className="dobra">
       <div className="dobra-regua">
-        <InicioNum rot="AVANÇO GERAL" cor="var(--blue)" Icone={ArrowUpRight} valor={`${avancoGeral}%`} sub="da obra concluída" />
-        <InicioNum rot="PRAZO PREVISTO" cor="var(--ink-2)" Icone={Clock}
+        <InicioNum rot="AVANÇO GERAL" cor="var(--blue)" valor={`${avancoGeral}%`} sub="da obra concluída" />
+        <InicioNum rot="PRAZO PREVISTO"
           valor={faltamEntrega == null ? "—" : faltamEntrega < 0 ? `${-faltamEntrega} dias atrás` : `${faltamEntrega} dias`}
           sub={obra.dataEntrega ? `entrega em ${fmtData(new Date(`${obra.dataEntrega}T12:00:00`))}` : "sem data de entrega"} />
-        <InicioNum rot="PENDÊNCIAS" cor="var(--red)" Icone={AlertTriangle} valor={pendencias.length}
+        <InicioNum rot="PENDÊNCIAS" cor={pendencias.length ? "var(--red)" : undefined} valor={pendencias.length}
           sub={pendencias.length ? "pedindo atenção" : "nada pedindo atenção"} />
-        <InicioNum rot="ORÇAMENTO CONTRATADO" cor="var(--green)" Icone={DollarSign} valor={fmtCompactBRL(vendido)}
+        <InicioNum rot="ORÇAMENTO CONTRATADO" valor={fmtCompactBRL(vendido)}
           sub="conforme contrato" />
       </div>
 
@@ -670,9 +783,23 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
       </div>
 
       <div className="dobra-card">
-        <div className="ini-titulo"><LayoutGrid size={14} className="ini-titulo-icone" /> Jornada da obra</div>
-        <div className="dobra-sub">Acompanhe as principais fases e o status atual da obra.</div>
+        <div className="ini-titulo ini-titulo-linha">
+          <span className="ini-titulo-esq"><LayoutGrid size={14} className="ini-titulo-icone" /> Jornada da obra</span>
+          <button type="button" className={"jornada-expandir" + (jornadaAberta ? " aberta" : "")}
+            onClick={() => setJornadaAberta((v) => !v)} aria-expanded={jornadaAberta}>
+            {jornadaAberta ? "Recolher" : "Expandir"} <ChevronDown size={13} />
+          </button>
+        </div>
+        <div className="dobra-sub">
+          {jornadaAberta
+            ? "Os arquivos de cada fase da obra — guardados também em Documentos."
+            : "Acompanhe as principais fases e o status atual da obra."}
+        </div>
         <JornadaStepper passos={jornada.passos} atualIndex={jornada.atualIndex} />
+        {jornadaAberta && (
+          <AnexosDaJornada obra={obra} usuario={usuario} podeEditar={podeEditar} souAdmin={souAdmin}
+            onImportCaderno={onImportCaderno} onArquivos={onArquivos} />
+        )}
       </div>
 
       <div className="dobra-colunas">
@@ -1199,11 +1326,13 @@ const fmtData = (d) => (d ? d.toLocaleDateString("pt-BR") : "—");
    e reconhecer o canal de relance numa lista de 200 linhas. */
 const CANAIS_COMPRA = [
   { id: "sienge",   sigla: "SG", nome: "Sienge",               cor: "var(--blue)",   bg: "var(--blue-bg)" },
-  { id: "mehoo",    sigla: "MH", nome: "Mehoo",                cor: "var(--purple)", bg: "#EFEAFB" },
+  { id: "mehoo",    sigla: "MH", nome: "Mehoo",                cor: "var(--purple)", bg: "var(--purple-soft)" },
   { id: "automacao",sigla: "AU", nome: "Automação",            cor: "var(--green)",  bg: "var(--green-bg)" },
-  { id: "cortinas", sigla: "CP", nome: "Cortinas e Persianas", cor: "#B54708",       bg: "var(--amber-bg)" },
-  { id: "gc",       sigla: "GC", nome: "GC",                    cor: "#2E7D8F",       bg: "#E2F0F3" },
-  { id: "estoque",  sigla: "ES", nome: "Estoque",               cor: "#6B5E4A",       bg: "#EFEAE1" },
+  { id: "cortinas", sigla: "CP", nome: "Cortinas e Persianas", cor: "var(--alert)",  bg: "var(--alert-soft)" },
+  // O GC era um verde-azulado que, com o ciano do DS, virava a mesma cor do
+  // Sienge. Os dois ultimos saem das cores de modulo do proprio DS.
+  { id: "gc",       sigla: "GC", nome: "GC",                    cor: "var(--indigo)", bg: "var(--indigo-soft)" },
+  { id: "estoque",  sigla: "ES", nome: "Estoque",               cor: "var(--mod-settings)", bg: "color-mix(in srgb, var(--mod-settings) 14%, transparent)" },
 ];
 const canalPorId = (id) => CANAIS_COMPRA.find((c) => c.id === id) || null;
 
@@ -4648,14 +4777,6 @@ function conferirExecutivoObra(categorias) {
   return { linhas, deslocamento };
 }
 
-// meta compartilhada pelas duas conferências: OK fica neutro (branco/sem
-// destaque), diferente em vermelho, presente só num lado em amarelo.
-const DEPARA_META = {
-  ok: { label: "OK — bate", sub: "mesmo item, qtd. e descrição", color: "var(--ink-2)", bg: "transparent", Icon: CheckCircle2 },
-  diferente: { label: "Diferente", sub: "existe nos dois, mas diverge — revisar", color: "var(--red)", bg: "var(--red-bg)", Icon: XCircle },
-  somente_um: { label: "Só aparece em um", sub: "presente em só uma das fontes", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
-};
-
 // O Executivo tem um quarto estado que o Depara não tem: a linha em que
 // número e valor batem perfeitamente e mesmo assim precisa de olhar.
 // Chamar isso de "Só aparece em um" era mentira — o item está nos dois
@@ -4668,17 +4789,17 @@ const DEPARA_META = {
 const EXEC_META = {
   ok: { label: "Conferido", sub: "item, qtd. e valor batem", color: "var(--ink-2)", bg: "transparent", Icon: CheckCircle2 },
   diferente: { label: "Divergente", sub: "está nos dois, mas o número mudou", color: "var(--red)", bg: "var(--red-bg)", Icon: XCircle },
-  somente_um: { label: "Entrou ou saiu", sub: "está em só um dos documentos", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
+  somente_um: { label: "Entrou ou saiu", sub: "o que entrou e o que saiu do vendido, por categoria", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
   conferencia_tecnica: {
     label: "Conferência técnica", sub: "número bate — falta olhar medida e compatibilidade",
-    color: "#B54708", bg: "#FFF4E5", Icon: AlertTriangle,
+    color: "var(--alert)", bg: "var(--alert-soft)", Icon: AlertTriangle,
   },
 };
 
 // componente genérico da tela de conferência — recebe as linhas já
 // cruzadas e normalizadas ({codigo, catNum, catNome, status, motivo,
-// a, b}) e desenha os 3 cards-filtro + a lista lado a lado. Reutilizado
-// por Vendido (Contrato×Planilha) e Executivo (Executivo×Planilha).
+// a, b}) e desenha os cards-filtro + a lista lado a lado. Hoje só a
+// Conf. Executivo usa — o depara Contrato × Planilha saiu com o contrato.
 // uma linha do depara: mostra A×B e, se diverge, os botões Aprovar/Editar.
 // Editar só habilita os campos da coluna B (planilha) DESSA linha — o
 // resto da tabela continua travado.
@@ -4755,7 +4876,7 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   );
 }
 
-function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo }) {
+function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null }) {
   const [filtro, setFiltro] = useState("todos");
   const [selecionados, setSelecionados] = useState(() => new Set());
   // Tudo começa recolhido: com 185 linhas, abrir sozinho enterra a visão
@@ -4777,6 +4898,8 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   const visiveis = filtro === "todos" ? linhas : linhas.filter((l) => l.status === filtro);
   const chave = (l) => `${l.catNum}:${l.codigo}`;
   const pendentesVisiveis = visiveis.filter((l) => l.status !== "ok");
+  // No cartão "Entrou ou saiu" a lista lado a lado dá lugar ao resumo por categoria.
+  const mostrarResumo = filtro === "somente_um" && !!resumoEntrouSaiu;
 
   // Agrupa por verba, na ordem em que as verbas aparecem — é assim que
   // a conferência acontece na prática: abre a verba, olha o que o
@@ -4806,7 +4929,14 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
       <div className="conf-stats">
         {Object.entries(meta).map(([st, m]) => (
           <button key={st} className={`conf-stat ${filtro === st ? "active" : ""}`} style={{ borderColor: filtro === st ? m.color : undefined }} onClick={() => setFiltro(filtro === st ? "todos" : st)}>
-            <div className="conf-stat-num" style={{ color: m.color }}>{cnt(st)}</div>
+            {st === "somente_um" && resumoEntrouSaiu ? (
+              <div className="conf-stat-num conf-stat-duplo">
+                <span className="conf-entrou">+{resumoEntrouSaiu.nEntrou}</span>
+                <span className="conf-saiu">−{resumoEntrouSaiu.nSaiu}</span>
+              </div>
+            ) : (
+              <div className="conf-stat-num" style={{ color: m.color }}>{cnt(st)}</div>
+            )}
             <div className="conf-stat-label">{m.label}</div>
             <div className="conf-stat-sub">{m.sub}</div>
           </button>
@@ -4817,93 +4947,97 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
         <button className={`cfiltro ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>Todos <span className="cbadge">{linhas.length}</span></button>
       </div>
 
-      {onAprovarLinha && pendentesVisiveis.length > 0 && (
-        <div className="selecao-massa">
-          {selecionados.size === 0 ? (
-            <button type="button" className="btn-editar-linha" onClick={selecionarTodasPendentes}>Selecionar todas as pendências visíveis ({pendentesVisiveis.length})</button>
-          ) : (
-            <>
-              <span className="selecao-massa-texto">{selecionados.size} selecionada{selecionados.size > 1 ? "s" : ""}</span>
-              <button type="button" className="btn-cancelar" onClick={limparSelecao}>Limpar</button>
-              <button type="button" className="btn-aprovar-linha" onClick={aprovarSelecionados}><CheckCircle2 size={12} /> Aprovar selecionadas</button>
-            </>
+      {mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} /> : (
+        <>
+          {onAprovarLinha && pendentesVisiveis.length > 0 && (
+            <div className="selecao-massa">
+              {selecionados.size === 0 ? (
+                <button type="button" className="btn-editar-linha" onClick={selecionarTodasPendentes}>Selecionar todas as pendências visíveis ({pendentesVisiveis.length})</button>
+              ) : (
+                <>
+                  <span className="selecao-massa-texto">{selecionados.size} selecionada{selecionados.size > 1 ? "s" : ""}</span>
+                  <button type="button" className="btn-cancelar" onClick={limparSelecao}>Limpar</button>
+                  <button type="button" className="btn-aprovar-linha" onClick={aprovarSelecionados}><CheckCircle2 size={12} /> Aprovar selecionadas</button>
+                </>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      <div className="vend-list">
-        {grupos.map((g) => {
-          const { num, nome, itens } = g;
-          const aberto = estaAberto(g);
-          const pend = itens.filter((l) => l.status !== "ok").length;
-          const alertaGrupo = alertasPorVerba ? alertasPorVerba.get(num) : null;
-          return (
-            <div key={num} className="vend-grupo">
-              <button className="vend-head" onClick={() => toggle(g)}>
-                {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
-                <span className="vend-num mono">{num}</span>
-                <span className="vend-nome">{nome}</span>
-                {/* Marca a verba com alerta técnico mesmo fechada — senão
-                    o aviso fica escondido atrás de um clique que ninguém
-                    sabe que precisa dar. */}
-                {alertaGrupo && <span className="vend-alerta-mark" title="Esta verba tem alerta de conferência técnica"><AlertTriangle size={12} /></span>}
-                <span className="vend-count">{itens.length} {itens.length === 1 ? "linha" : "linhas"}</span>
-                <span className={`vend-pend ${pend === 0 ? "ok" : ""}`}>
-                  {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
-                </span>
-              </button>
-              {aberto && alertaGrupo && (
-                <div className="grupo-alerta">
-                  <AlertTriangle size={14} />
-                  <div>
-                    <b>
-                      {alertaGrupo.length === 1
-                        ? "Alerta de conferência técnica — vale para toda a verba:"
-                        : `${alertaGrupo.length} alertas de conferência técnica nesta verba:`}
-                    </b>{" "}
-                    {alertaGrupo.length === 1 ? (
-                      <span>{alertaGrupo[0]}</span>
-                    ) : (
-                      <ul className="grupo-alerta-lista">
-                        {alertaGrupo.map((texto) => <li key={texto}>{texto}</li>)}
-                      </ul>
-                    )}
-                  </div>
+          <div className="vend-list">
+            {grupos.map((g) => {
+              const { num, nome, itens } = g;
+              const aberto = estaAberto(g);
+              const pend = itens.filter((l) => l.status !== "ok").length;
+              const alertaGrupo = alertasPorVerba ? alertasPorVerba.get(num) : null;
+              return (
+                <div key={num} className="vend-grupo">
+                  <button className="vend-head" onClick={() => toggle(g)}>
+                    {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
+                    <span className="vend-num mono">{num}</span>
+                    <span className="vend-nome">{nome}</span>
+                    {/* Marca a verba com alerta técnico mesmo fechada — senão
+                        o aviso fica escondido atrás de um clique que ninguém
+                        sabe que precisa dar. */}
+                    {alertaGrupo && <span className="vend-alerta-mark" title="Esta verba tem alerta de conferência técnica"><AlertTriangle size={12} /></span>}
+                    <span className="vend-count">{itens.length} {itens.length === 1 ? "linha" : "linhas"}</span>
+                    <span className={`vend-pend ${pend === 0 ? "ok" : ""}`}>
+                      {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
+                    </span>
+                  </button>
+                  {aberto && alertaGrupo && (
+                    <div className="grupo-alerta">
+                      <AlertTriangle size={14} />
+                      <div>
+                        <b>
+                          {alertaGrupo.length === 1
+                            ? "Alerta de conferência técnica — vale para toda a verba:"
+                            : `${alertaGrupo.length} alertas de conferência técnica nesta verba:`}
+                        </b>{" "}
+                        {alertaGrupo.length === 1 ? (
+                          <span>{alertaGrupo[0]}</span>
+                        ) : (
+                          <ul className="grupo-alerta-lista">
+                            {alertaGrupo.map((texto) => <li key={texto}>{texto}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {aberto && (
+                    <div className="compras-list">
+                      {itens.map((l, i) => {
+                        const k = chave(l);
+                        return (
+                          <ConfRow key={`${l.codigo}-${i}`} l={l} m={meta[l.status]}
+                            colALabel={colALabel} colBLabel={colBLabel} vazioALabel={vazioALabel} vazioBLabel={vazioBLabel}
+                            aprovado={aprovacoes ? aprovacoes.has(`${escopo}:${k}`) : false}
+                            onAprovar={() => onAprovarLinha && onAprovarLinha(l.catNum, l.codigo)}
+                            onEditar={(patch) => onEditarB && onEditarB(l.catNum, l.codigo, patch)}
+                            selecionavel={l.status !== "ok" && !!onAprovarLinha}
+                            selecionado={selecionados.has(k)}
+                            onToggleSelecionar={() => toggleSel(k)} />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-              {aberto && (
-                <div className="compras-list">
-                  {itens.map((l, i) => {
-                    const k = chave(l);
-                    return (
-                      <ConfRow key={`${l.codigo}-${i}`} l={l} m={meta[l.status]}
-                        colALabel={colALabel} colBLabel={colBLabel} vazioALabel={vazioALabel} vazioBLabel={vazioBLabel}
-                        aprovado={aprovacoes ? aprovacoes.has(`${escopo}:${k}`) : false}
-                        onAprovar={() => onAprovarLinha && onAprovarLinha(l.catNum, l.codigo)}
-                        onEditar={(patch) => onEditarB && onEditarB(l.catNum, l.codigo, patch)}
-                        selecionavel={l.status !== "ok" && !!onAprovarLinha}
-                        selecionado={selecionados.has(k)}
-                        onToggleSelecionar={() => toggleSel(k)} />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
 
-        {naoAnalisadas.map((c) => (
-          <div key={c.num} className="vend-grupo na">
-            <div className="vend-head na">
-              <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />
-              <span className="vend-num mono">{c.num}</span>
-              <span className="vend-nome">{c.nome}</span>
-              <span className="vend-na-motivo">{motivoVerbaNaoAnalisada(c.num, c.nome)}</span>
-              <span className="vend-pend na">N/A</span>
-            </div>
+            {naoAnalisadas.map((c) => (
+              <div key={c.num} className="vend-grupo na">
+                <div className="vend-head na">
+                  <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />
+                  <span className="vend-num mono">{c.num}</span>
+                  <span className="vend-nome">{c.nome}</span>
+                  <span className="vend-na-motivo">{motivoVerbaNaoAnalisada(c.num, c.nome)}</span>
+                  <span className="vend-pend na">N/A</span>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </>
   );
 }
@@ -4960,10 +5094,8 @@ const naoEhVerbaPadrao = (c) => !c.foraDaEapPadrao && !ehVerbaNaoAnalisada(c.num
 function calcularCMV(linhas, categorias) {
   const porVerba = new Map();
   let total = 0;
-  let pendentes = 0;
 
   (linhas || []).forEach((l) => {
-    if (l.status !== "ok") pendentes += 1;
     const v = l.b?.valor;
     if (v == null) return;
     total += v;
@@ -5008,7 +5140,7 @@ function calcularCMV(linhas, categorias) {
   });
 
   const grupos = Array.from(porVerba.values()).sort((a, b) => String(a.num).localeCompare(String(b.num)));
-  return { total, pendentes, grupos };
+  return { total, grupos };
 }
 
 /* O CMV do jeito que as telas seguintes devem enxergar.
@@ -5039,33 +5171,26 @@ function cmvDaObra(obra) {
 }
 
 function ResumoCMV({ linhas, categorias }) {
-  const { total, pendentes, grupos } = calcularCMV(linhas, categorias);
+  const { total, grupos } = calcularCMV(linhas, categorias);
 
   return (
     <div className="cmv-painel">
       <div className="cmv-topo">
         <div className="cmv-bloco">
-          <div className="cmv-rotulo">CMV liberado {pendentes > 0 && <span className="cmv-provisorio">provisório</span>}</div>
+          <div className="cmv-rotulo">CMV</div>
           <div className="cmv-valor mono">{fmtBRL(total)}</div>
-          <div className="cmv-sub">
-            {pendentes > 0
-              ? `${pendentes} ${pendentes === 1 ? "linha ainda pendente" : "linhas ainda pendentes"} — o valor pode mudar`
-              : "todas as linhas conferidas"}
-          </div>
+          <div className="cmv-sub">custo da Vendido Planilha, somado por grupo</div>
         </div>
       </div>
 
       {grupos.length > 0 && (
         <div className="cmv-grupos">
-          <div className="cmv-grupos-titulo">CMV liberado por grupo</div>
+          <div className="cmv-grupos-titulo">CMV por grupo</div>
           {grupos.map((g) => (
             <div key={g.num} className="cmv-linha">
               <span className="cmv-linha-num mono">{g.num}</span>
               <span className="cmv-linha-nome">
                 {g.nome}
-                {/* entra no valor, mas não passou por conferência item a
-                    item — quem lê o número precisa saber a diferença */}
-                {g.foraDaConferencia && <span className="cmv-tag-na">sem conferência</span>}
                 {/* Entra no CMV, mas fica dito: é grupo que a planilha
                     trouxe e a EAP da empresa não tem. */}
                 {g.foraDoPadrao && <span className="cmv-tag-fora">fora do padrão da EAP</span>}
@@ -5085,96 +5210,50 @@ function ResumoCMV({ linhas, categorias }) {
 // DEPARA CONTRATO × PLANILHA — junta as duas fontes numa versão única.
 // Branco = OK, vermelho = diferente entre as duas, amarelo = só existe
 // numa. Precisa ser aprovado (revisão explícita) pra liberar o Executivo.
-function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, onAprovarLinha, podeEditar }) {
-  // Vem da obra e é gravado no banco. Antes era useState local: as
-  // aprovações valiam só na sessão e sumiam no F5.
-  const aprovacoes = obra.aprovacoes || new Set();
-  const toggleAprovacao = (catNum, codigo) => onAprovarLinha("depara", catNum, codigo);
-
-  const { linhasBrutas, deslocamento } = useMemo(() => {
-    const { linhas, deslocamento } = conferirObra(obra.categorias);
-    return {
-      deslocamento,
-      linhasBrutas: linhas.map((item) => ({
-        codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome, status: item.status, motivo: item.motivo,
-        a: item.contrato ? { desc: item.contrato.desc, qtd: item.contrato.qtdVendida, un: item.contrato.un, extra: item.contrato.ambiente, valor: null } : null,
-        b: item.planilha ? { desc: item.planilha.desc, qtd: item.planilha.qtdVendida, un: item.planilha.un, extra: item.planilha.marca, valor: item.planilha.custo } : null,
-      })),
-    };
-  }, [obra]);
-
-  const naoAnalisadas = useMemo(
-    () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num, c.nome)),
-    [obra]
-  );
-
-  /* Vendido Contrato é OPCIONAL: uma obra pode chegar aqui só com a
-     Planilha (ex.: começou direto do Executivo e agora quer um CMV de
-     referência). Sem contrato nenhum, TODA linha da planilha vira
-     "só aparece em um" — não por divergência real, é que não existe
-     nada do outro lado pra comparar. Exigir aprovação linha a linha
-     nesse caso seria fazer ela clicar centenas de vezes numa
-     comparação que nunca teve ponto de partida. */
-  const contratoVazio = useMemo(
-    () => juntarItens(obra.categorias, "itensContrato").length === 0,
-    [obra]
-  );
-
-  // linha aprovada manualmente entra de vez no bucket "OK — bate"
-  // (o motivo/badge "Aprovado" continua aparecendo pra diferenciar de
-  // um match automático).
-  const linhas = useMemo(() => linhasBrutas.map((l) => (
-    aprovacoes.has(`depara:${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
-  )), [linhasBrutas, aprovacoes]);
+function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
+  /* O CMV sai da Vendido Planilha. A comparação linha a linha com o
+     Vendido Contrato saiu junto com a etapa do contrato: aqui só se apura
+     o valor e se libera. As linhas continuam vindo de conferirObra porque
+     é a mesma conta que o cmvDaObra refaz depois — o número não pode
+     mudar conforme a tela que calcula. */
+  const linhas = useMemo(() => conferirObra(obra.categorias).linhas.map((item) => ({
+    catNum: item.verba.num, catNome: item.verba.nome,
+    b: item.planilha ? { valor: item.planilha.custo } : null,
+  })), [obra]);
 
   if (linhas.length === 0) {
     return (
       <div className="compras-empty">
-        <GitCompare size={30} className="dim" />
-        <div className="compras-empty-title">Nada pra conferir ainda</div>
-        <div className="compras-empty-sub">Importe o Vendido Contrato e o Vendido Planilha desta obra — assim que os dois tiverem itens, o depara aparece aqui automaticamente.</div>
+        <FileText size={30} className="dim" />
+        <div className="compras-empty-title">CMV ainda sem base</div>
+        <div className="compras-empty-sub">Importe a Vendido Planilha desta obra — o CMV sai dela, somando o custo de cada grupo.</div>
       </div>
     );
   }
 
-  const pendentes = linhas.filter((l) => l.status !== "ok" && !(contratoVazio && !l.a));
   const { total: cmvTotal } = calcularCMV(linhas, obra.categorias);
-
-  // O que precisa estar pronto pra liberar. As duas condições são
-  // diferentes: sem pendência quer dizer "conferido"; CMV maior que zero
-  // quer dizer "tem valor apurado". Dá pra conferir tudo e mesmo assim o
-  // CMV vir zerado — planilha sem coluna de custo, por exemplo — e aí
-  // liberar seria abrir a obra pra comprar contra um teto inexistente.
+  // CMV zerado não é teto: planilha sem coluna de custo, por exemplo.
+  // Liberar assim abriria a obra pra comprar contra um valor inexistente.
   const cmvApurado = cmvTotal > 0;
-  const podeLiberar = pendentes.length === 0 && cmvApurado && podeEditar;
+  const podeLiberar = cmvApurado && podeEditar;
 
   return (
     <>
       <ResumoCMV linhas={linhas} categorias={obra.categorias} />
 
-      {/* A liberação fica no topo, junto do CMV: é a decisão que esta
-          tela existe pra tomar, e no rodapé de 185 linhas ela sumia.
-          O botão desabilitado com o motivo ao lado comunica o que falta
-          melhor do que um botão ativo que recusa o clique. */}
       {obra.deparaAprovado ? (
         <div className="import-ok"><ShieldCheck size={14} /> CMV liberado — Executivo e etapas seguintes abertos.</div>
       ) : (
         <div className="liberacao-barra">
           <div className="liberacao-texto">
-            {!cmvApurado ? (
-              <><Lock size={15} /> <span>
-                <b>CMV ainda não apurado.</b> O Executivo abre quando esta conferência produzir um valor —
-                confira se a <b>Planilha</b> subiu com a coluna de custo.
-              </span></>
-            ) : pendentes.length === 0 ? (
+            {cmvApurado ? (
               <><CheckCircle2 size={15} /> <span>
-                {contratoVazio && <>Sem Vendido Contrato importado — o CMV sai direto da Planilha. </>}
-                Tudo conferido. Liberar o CMV de <b>{fmtBRL(cmvTotal)}</b> abre o Executivo e as etapas seguintes.
+                Liberar o CMV de <b>{fmtBRL(cmvTotal)}</b> abre o Executivo e as etapas seguintes.
               </span></>
             ) : (
               <><Lock size={15} /> <span>
-                <b>{pendentes.length}</b> {pendentes.length === 1 ? "linha pendente" : "linhas pendentes"} de aprovação.
-                O CMV só é liberado quando não sobrar nenhuma — o valor final vira o que está na <b>Planilha</b>.
+                <b>CMV ainda não apurado.</b> O Executivo abre quando a <b>Vendido Planilha</b> trouxer
+                valor — confira se ela subiu com a coluna de custo.
               </span></>
             )}
           </div>
@@ -5188,19 +5267,126 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, onEditarPlanilha, onAprov
           </button>
         </div>
       )}
+    </>
+  );
+}
 
-      {deslocamento !== 0 && (
-        <div className="aviso-deslocamento">
-          A planilha numera as verbas <b>{deslocamento > 0 ? `${deslocamento} à frente` : `${-deslocamento} atrás`}</b> do contrato —
-          os itens que só existem na planilha foram reposicionados na verba correta da EAP.
+/* O que entrou e o que saiu do vendido, por categoria.
+
+   Não dá pra ler isso só do status do cruzamento: item excluído ou
+   trocado no Executivo continua na planilha, só marcado — e o cruzamento
+   acha o par dele no vendido e dá "conferido". Por isso a conta olha as
+   marcas que o próprio Executivo grava (excluido, manual, substitui),
+   além das sobras do cruzamento. */
+function resumoEntrouSaiu(cruzamento) {
+  const porVerba = new Map();
+  const grupo = (v) => {
+    const chave = v?.num ?? "—";
+    if (!porVerba.has(chave)) porVerba.set(chave, { num: chave, nome: v?.nome || "", entrou: [], saiu: [] });
+    return porVerba.get(chave);
+  };
+
+  (cruzamento || []).forEach((l) => {
+    const ex = l.planilhaExecutivo;
+    const ve = l.planilhaVendido;
+    if (ex?.excluido) {
+      // Criado aqui e tirado depois nunca foi vendido: não entrou nem saiu.
+      if (ex.manual && !ve) return;
+      grupo(l.verba).saiu.push({
+        desc: ex.desc, qtd: ex.vendido?.qtd ?? ve?.qtdVendida ?? ex.qtdVendida, un: ex.un,
+        valor: ex.vendido?.custo ?? ve?.custo ?? ex.custo ?? 0, trocadoPor: ex.substituidoPorDesc || null,
+      });
+    } else if (ex && (!ve || ex.manual || ex.substitui || ex.substituiDesc)) {
+      grupo(l.verba).entrou.push({
+        desc: ex.desc, qtd: ex.qtdVendida, un: ex.un, valor: ex.custo ?? 0, noLugarDe: ex.substituiDesc || null,
+      });
+    } else if (ve && !ex) {
+      grupo(l.verba).saiu.push({ desc: ve.desc, qtd: ve.qtdVendida, un: ve.un, valor: ve.custo ?? 0 });
+    }
+  });
+
+  const grupos = Array.from(porVerba.values())
+    .map((g) => ({
+      ...g,
+      totEntrou: g.entrou.reduce((a, it) => a + (it.valor || 0), 0),
+      totSaiu: g.saiu.reduce((a, it) => a + (it.valor || 0), 0),
+    }))
+    .sort((a, b) => String(a.num).localeCompare(String(b.num), "pt-BR", { numeric: true }));
+
+  return {
+    grupos,
+    nEntrou: grupos.reduce((a, g) => a + g.entrou.length, 0),
+    nSaiu: grupos.reduce((a, g) => a + g.saiu.length, 0),
+    totEntrou: grupos.reduce((a, g) => a + g.totEntrou, 0),
+    totSaiu: grupos.reduce((a, g) => a + g.totSaiu, 0),
+  };
+}
+
+const qtdComUnidade = (q, un) => (q == null ? "—" : `${String(q).replace(".", ",")}${un ? ` ${un}` : ""}`);
+
+function LinhaEntrouSaiu({ it, tipo }) {
+  return (
+    <div className={`es-linha ${tipo}`}>
+      <span className="es-sinal">{tipo === "entrou" ? "+" : "−"}</span>
+      <div className="es-desc">
+        <div>{it.desc || "—"}</div>
+        {it.noLugarDe && <div className="es-nota">no lugar de: {it.noLugarDe}</div>}
+        {it.trocadoPor && <div className="es-nota">trocado por: {it.trocadoPor}</div>}
+      </div>
+      <span className="es-qtd mono">{qtdComUnidade(it.qtd, it.un)}</span>
+      <span className="es-val mono">{it.valor ? fmtBRL(it.valor) : "—"}</span>
+    </div>
+  );
+}
+
+function ResumoEntrouSaiu({ resumo }) {
+  const { grupos, nEntrou, nSaiu, totEntrou, totSaiu } = resumo;
+  if (grupos.length === 0) {
+    return (
+      <div className="compras-empty">
+        <CheckCircle2 size={30} className="dim" />
+        <div className="compras-empty-title">Nada entrou nem saiu</div>
+        <div className="compras-empty-sub">O executivo tem os mesmos itens do vendido. O que mudou de número aparece em Divergente.</div>
+      </div>
+    );
+  }
+  const saldo = totEntrou - totSaiu;
+  const itens = (n) => `${n} ${n === 1 ? "item" : "itens"}`;
+  return (
+    <>
+      <div className="es-topo">
+        <div className="es-total entrou">
+          <div className="es-total-rot">Entrou</div>
+          <div className="es-total-val">+{fmtBRL(totEntrou)}</div>
+          <div className="es-total-sub">{itens(nEntrou)} que não estavam no vendido</div>
         </div>
-      )}
-      <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={DEPARA_META}
-        colALabel="Contrato" colBLabel="Planilha"
-        vazioALabel="não está no contrato" vazioBLabel="não está na planilha"
-        vazioTitulo="Nada pra conferir ainda" vazioSub=""
-        aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao} escopo="depara"
-        onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilha(catNum, codigo, patch))} />
+        <div className="es-total saiu">
+          <div className="es-total-rot">Saiu</div>
+          <div className="es-total-val">−{fmtBRL(totSaiu)}</div>
+          <div className="es-total-sub">{itens(nSaiu)} vendidos que não estão no executivo</div>
+        </div>
+        <div className="es-total">
+          <div className="es-total-rot">Saldo</div>
+          <div className="es-total-val">{saldo > 0 ? "+" : saldo < 0 ? "−" : ""}{fmtBRL(Math.abs(saldo))}</div>
+          <div className="es-total-sub">
+            {saldo > 0 ? "o executivo ficou acima do vendido" : saldo < 0 ? "o executivo ficou abaixo do vendido" : "o que entrou empata com o que saiu"}
+          </div>
+        </div>
+      </div>
+      <div className="vend-list">
+        {grupos.map((g) => (
+          <div key={g.num} className="es-grupo">
+            <div className="es-grupo-cab">
+              <span className="vend-num mono">{g.num}</span>
+              <span className="vend-nome">{g.nome}</span>
+              {g.totEntrou > 0 && <span className="es-grupo-val entrou mono">+{fmtBRL(g.totEntrou)}</span>}
+              {g.totSaiu > 0 && <span className="es-grupo-val saiu mono">−{fmtBRL(g.totSaiu)}</span>}
+            </div>
+            {g.entrou.map((it, i) => <LinhaEntrouSaiu key={`e${i}`} it={it} tipo="entrou" />)}
+            {g.saiu.map((it, i) => <LinhaEntrouSaiu key={`s${i}`} it={it} tipo="saiu" />)}
+          </div>
+        ))}
+      </div>
     </>
   );
 }
@@ -5212,7 +5398,10 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
   const aprovacoes = obra.aprovacoes || new Set();
   const toggleAprovacao = (catNum, codigo) => onAprovarLinha("exec", catNum, codigo);
 
-  const linhasBrutas = useMemo(() => conferirExecutivoObra(obra.categorias).linhas.map((item) => {
+  // Um cruzamento só, pra lista e pro resumo: numa obra grande ele é a conta cara desta tela.
+  const cruzamento = useMemo(() => conferirExecutivoObra(obra.categorias).linhas, [obra]);
+  const resumoES = useMemo(() => resumoEntrouSaiu(cruzamento), [cruzamento]);
+  const linhasBrutas = useMemo(() => cruzamento.map((item) => {
     const desc = item.planilhaExecutivo?.desc || item.planilhaVendido?.desc;
 
     // Acrescentado no executivo sem ter sido vendido: televisor, máquina
@@ -5242,7 +5431,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
       a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
       b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
     };
-  }), [obra]);
+  }), [cruzamento]);
 
   const naoAnalisadas = useMemo(
     () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num, c.nome)),
@@ -5285,7 +5474,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
       vazioALabel="não está na planilha vendida" vazioBLabel="não está na planilha executivo"
       vazioTitulo="Nada pra conferir ainda"
       vazioSub="Importe a Vendido Planilha e a Planilha Executivo desta obra — o depara aparece aqui automaticamente."
-      aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao} escopo="exec"
+      aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao} escopo="exec" resumoEntrouSaiu={resumoES}
       onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
   );
 }
@@ -5813,15 +6002,21 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
   );
 }
 
-// Os três cadernos do Executivo. São só arquivo: sobem, ficam guardados
-// e a equipe baixa pra consultar — nada é lido do PDF. A planilha, essa
-// sim, é lida (vem logo abaixo, na mesma tela).
+// Os cadernos do projeto — o Criativo e os três do Executivo. São só
+// arquivo: sobem pela Jornada da obra (Visão geral), ficam guardados e a
+// equipe baixa pra consultar. Nada é lido do PDF.
 const CADERNOS_EXECUTIVO = [
   { chave: "criativo", titulo: "Projeto Criativo", sub: "A proposta criativa que deu origem ao executivo." },
   { chave: "especificacao", titulo: "Caderno de Especificação", sub: "Tudo que foi aprovado de produto junto ao cliente." },
   { chave: "marcenaria", titulo: "Caderno de Marcenaria", sub: "Projeto e detalhamento dos móveis sob medida." },
-  { chave: "projeto", titulo: "Caderno de Projeto Executivo", sub: "Pranchas e detalhamentos do projeto executivo." },
+  { chave: "projeto", titulo: "Caderno Completo do Projeto Executivo", sub: "Pranchas e detalhamentos do projeto executivo." },
 ];
+
+/* O contrato assinado mora no mesmo mapa dos cadernos, mas fora de
+   CADERNOS_EXECUTIVO: aqueles também vão pro painel da Mehoo, e o
+   contrato só o administrador abre. */
+const CADERNO_CONTRATO = { chave: "contrato", titulo: "Contrato", sub: "Contrato assinado com o cliente." };
+const cadernoPorChave = (chave) => CADERNOS_EXECUTIVO.find((c) => c.chave === chave);
 
 // Uma linha por caderno, não um bloco. São três anexos de consulta que
 // quase nunca mudam — ocupavam meia tela pra dizer "nenhum arquivo".
@@ -5914,7 +6109,7 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function ExecutivoView({ obra, usuario, onImportCaderno, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar }) {
+function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
   // quando a obra foi liberada antes de o app aprender a salvar.
@@ -5924,13 +6119,6 @@ function ExecutivoView({ obra, usuario, onImportCaderno, onImportPlanilhaExecuti
   const temBase = itensBase > 0;
   const temExecutivo = obra.categorias.some((c) => (c.itensPlanilhaExecutivo || []).length > 0);
   const [abertos, toggle] = useAbertos();
-  // Os cadernos começam recolhidos: são três blocos que empurravam a
-  // planilha pra fora da tela, e na maior parte do tempo ninguém precisa
-  // deles abertos. Abrem sozinhos enquanto nenhum foi anexado, pra não
-  // esconder que a etapa existe.
-  const anexados = CADERNOS_EXECUTIVO.filter((c) => (obra.cadernos || {})[c.chave]).length;
-  // sempre fechado: sao tres anexos de consulta, nao a tarefa da tela
-  const [cadernosAbertos, setCadernosAbertos] = useState(false);
   // qual verba está com a busca de insumo aberta
   // Onde a busca de insumo está aberta: { verba, depois } — `depois` é o
   // índice da linha abaixo da qual inserir, ou null pra acrescentar no fim.
@@ -5973,30 +6161,6 @@ function ExecutivoView({ obra, usuario, onImportCaderno, onImportPlanilhaExecuti
 
   return (
     <>
-      <div className="flat-panel">
-        <button className="cadernos-head" onClick={() => setCadernosAbertos((v) => !v)}>
-          {cadernosAbertos ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
-          <div className="cadernos-head-texto">
-            <div className="flat-panel-title">Cadernos do Executivo</div>
-            <div className="flat-panel-sub">Arquivos de consulta da equipe — nada é lido do PDF.</div>
-          </div>
-          <span className="cadernos-resumo">
-            {anexados === 0 ? "nenhum anexado" : `${anexados} de ${CADERNOS_EXECUTIVO.length} anexado${anexados > 1 ? "s" : ""}`}
-          </span>
-        </button>
-        {cadernosAbertos && (
-          <div className="caderno-lista">
-            {CADERNOS_EXECUTIVO.map((c) => (
-              <CadernoSlot key={c.chave} titulo={c.titulo} chave={c.chave}
-                arquivo={(obra.cadernos || {})[c.chave]}
-                obraCodigo={obra.codigo} usuario={usuario}
-                congelado={congelado}
-                onImportar={(info, anterior) => onImportCaderno(c.chave, info, anterior)} />
-            ))}
-          </div>
-        )}
-      </div>
-
       {temBase && !congelado && (
         <div className="import-card">
           <div className="import-bar">
@@ -6386,13 +6550,8 @@ function TopBar({ onInicio }) {
           primeiro lugar onde a pessoa clica quando se perde — deixa-la
           inerte gasta um clique de descoberta que ninguem tem. */}
       <button className="topbar-brand" onClick={onInicio} title="Ir para o Início">
-        <img
-          className="brand-logo"
-          src="/logo.png"
-          alt="Group WS"
-          onError={(e) => { e.currentTarget.style.display = "none"; }}
-        />
-        <span className="brand-word">GESTÃO DE OBRAS TKWS</span>
+        <LogoGroupWS style={{ fontSize: 14 }} />
+        <span className="brand-produto">Gestão de Obras TKWS</span>
       </button>
       {/* A busca do topo saiu.
 
@@ -6406,6 +6565,7 @@ function TopBar({ onInicio }) {
         {/* A estrelinha saiu: era um botao sem onClick nenhum. Botao que
             nao faz nada nao e' neutro — a pessoa clica, nada acontece, e
             passa a duvidar do resto dos botoes da tela. */}
+        <AlternarTema />
         <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
         <div className="avatar">PW</div>
       </div>
@@ -7124,9 +7284,8 @@ const GRUPOS_OBRA = [
 ];
 
 const ETAPAS_PLANEJAMENTO = [
-  { id: "vendido_contrato", label: "Vendido Contrato", icon: FileText },
   { id: "vendido_planilha", label: "Vendido Planilha", icon: FileText },
-  { id: "vendido_conferencia", label: "Depara Contrato × Planilha", icon: GitCompare },
+  { id: "vendido_conferencia", label: "CMV", icon: GitCompare },
   { id: "executivo", label: "Executivo", icon: BookOpen },
   { id: "executivo_conferencia", label: "Conf. Executivo", icon: GitCompare },
   { id: "assinatura_cliente", label: "Aprovação do Cliente", icon: ShieldCheck },
@@ -7148,7 +7307,7 @@ const ETAPAS_POR_GRUPO = { planejamento: ETAPAS_PLANEJAMENTO, execucao: ETAPAS_E
    liberar as compras), que grava quem e quando. Um segundo botão criaria
    duas verdades sobre o mesmo fato. */
 const ETAPAS_COM_CONCLUSAO = new Set([
-  "vendido_contrato", "vendido_planilha", "executivo", "executivo_conferencia", "compras", "contratos",
+  "vendido_planilha", "executivo", "executivo_conferencia", "compras", "contratos",
 ]);
 
 /* Uma etapa esta concluida quando alguem disse que esta.
@@ -7897,6 +8056,15 @@ function baixarPedidoExcel(obra, canal, itens, usuario) {
   XLSX.writeFile(wb, `pedido-${c ? c.id : "sem-canal"}-obra-${obra.codigo}.xlsx`);
 }
 
+/* Os candidatos do Sienge pra um produto: as mães prováveis e, debaixo da
+   melhor, as variantes em ordem. Sem mãe provável não há o que escolher —
+   é caso de cadastrar. */
+function casarComSienge(desc, grupos) {
+  const maes = acharMaes(desc, grupos);
+  const melhor = maes[0] || null;
+  return { maes, detalhes: melhor ? ordenarDetalhes(desc, melhor.grupo) : [] };
+}
+
 function ComprasView({ obra, onItemChange, usuario }) {
   const [etapa, setEtapa] = useState("todos");
   const [sel, setSel] = useState(() => new Set());
@@ -7936,20 +8104,12 @@ function ComprasView({ obra, onItemChange, usuario }) {
      por linha custaria 126 x 10.507. */
   const grupos = useMemo(() => (baseSienge ? agruparPorMae(baseSienge) : null), [baseSienge]);
 
-  // Casa uma vez e guarda: refazer a cada render seria 200 x 2.700
-  // comparacoes por tecla digitada.
-  const casamentos = useMemo(() => {
-    if (!grupos) return new Map();
-    const m = new Map();
-    rows.forEach((r) => {
-      const maes = acharMaes(r.it.desc, grupos);
-      const melhor = maes[0] || null;
-      // Sem mae provavel nao ha o que escolher: e caso de cadastrar.
-      m.set(r.chave, { maes, detalhes: melhor ? ordenarDetalhes(r.it.desc, melhor.grupo) : [] });
-    });
-    return m;
-  }, [grupos, rows]);
-
+  /* Os candidatos de cada produto, guardados por linha. Estado, e não
+     conta derivada dos produtos: derivada, ela refazia a busca da obra
+     inteira a cada item alterado — e cada clique numa variante congelava
+     a tela de novo. */
+  const [casamentos, setCasamentos] = useState(() => new Map());
+  const [associando, setAssociando] = useState(null);
   const selecionados = rows.filter((r) => sel.has(r.chave));
 
   /* A conferencia so olha o canal Sienge: e o unico que passa por la. */
@@ -7992,7 +8152,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
   function associarSelecionados() {
     let certos = 0, revisar = 0;
     selecionados.forEach((r) => {
-      const c = casamentos.get(r.chave);
+      const c = casamentos.get(r.chave) || (grupos ? casarComSienge(r.it.desc, grupos) : null);
       const mae = c?.maes?.[0];
       const melhor = c?.detalhes?.[0];
       if (!mae || !podeAssociarSozinho(c.detalhes)) { revisar += 1; return; }
@@ -8006,18 +8166,12 @@ function ComprasView({ obra, onItemChange, usuario }) {
     setSel(new Set());
   }
 
-  /* A base carrega sozinha ao entrar na etapa do Sienge.
+  /* A busca do insumo roda por grupo, quando alguém pede.
 
-     Antes as colunas de comparacao so existiam depois de clicar em
-     "Associar insumos" — a pessoa chegava na etapa, via a tabela sem a
-     informacao que ela veio buscar, e tinha que descobrir que havia um
-     botao. A comparacao E a etapa; esconder ela atras de um clique era
-     pedir uma confirmacao pra fazer o obvio. */
-  useEffect(() => {
-    if (etapa !== "sienge" || baseSienge || carregando) return;
-    associar();
-  }, [etapa]);
-
+     Ela carregava sozinha ao entrar na etapa e casava todos os produtos
+     de uma vez contra os 10 mil insumos: a tela congelava ao clicar em
+     Sienge. Agora os produtos aparecem na hora, e cada grupo tem o seu
+     "Associar insumos" na própria barra. */
   /* Le o PDF do Sienge e confere contra o que esta na tela.
 
      A pergunta e uma so: faltou lancar alguma compra? O Sienge e onde a
@@ -8083,15 +8237,38 @@ function ComprasView({ obra, onItemChange, usuario }) {
     }
   }
 
-  async function associar() {
+  async function recarregarBase() {
     setCarregando(true); setErroBase(null);
     try {
       const base = await carregarTodosInsumos();
       setBaseSienge(base);
+      // As sugestões de antes eram da base velha.
+      setCasamentos(new Map());
       if (!base.length) setErroBase("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços.");
     } catch (e) {
       setErroBase(`Não consegui ler a base de insumos: ${e.message || e}`);
     } finally { setCarregando(false); }
+  }
+
+  async function associarGrupo(g) {
+    setAssociando(g.num); setErroBase(null);
+    try {
+      let base = grupos;
+      if (!base) {
+        const insumos = await carregarTodosInsumos();
+        if (!insumos.length) { setErroBase("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços."); return; }
+        setBaseSienge(insumos);
+        base = agruparPorMae(insumos);
+      }
+      // Deixa a tela mostrar o "Associando…" antes da conta, que é pesada.
+      await new Promise((ok) => setTimeout(ok, 30));
+      const novos = g.itens.map((r) => [r.chave, casarComSienge(r.it.desc, base)]);
+      setCasamentos((antes) => new Map([...antes, ...novos]));
+    } catch (e) {
+      setErroBase(`Não consegui ler a base de insumos: ${e.message || e}`);
+    } finally {
+      setAssociando(null);
+    }
   }
 
   if (rows.length === 0) {
@@ -8165,10 +8342,10 @@ function ComprasView({ obra, onItemChange, usuario }) {
         <div className="assoc-barra">
           <PackageSearch size={15} className="dim" />
           <span>
-            {carregando ? "Procurando na base do Sienge…"
+            {carregando ? "Recarregando a base do Sienge…"
               : baseSienge
-                ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Escolha a mãe e a variante em cada linha, ou selecione e associe em massa.`
-                : "Base do Sienge não carregada."}
+                ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Associe grupo a grupo; depois escolha a mãe e a variante em cada linha, ou selecione e associe em massa.`
+                : "Os produtos já estão aqui. A busca do insumo no Sienge roda por grupo, no botão “Associar insumos” da barra de cada um."}
           </span>
           {/* Subir o PDF do Sienge e' o passo que fecha a conferencia:
               ate' aqui a tela diz o que DEVERIA ser comprado; o PDF diz o
@@ -8181,9 +8358,11 @@ function ComprasView({ obra, onItemChange, usuario }) {
             <input type="file" multiple accept=".xlsx,.xlsm,.xls,.csv,.pdf" style={{ display: "none" }} disabled={lendoPdf}
               onChange={(e) => { const fs = e.target.files; e.target.value = ""; lerArquivosSienge(fs); }} />
           </label>
-          <button className="btn-doc" onClick={associar} disabled={carregando}>
-            <PackageSearch size={13} /> {carregando ? "Procurando…" : "Recarregar base"}
-          </button>
+          {baseSienge && (
+            <button className="btn-doc" onClick={recarregarBase} disabled={carregando}>
+              <PackageSearch size={13} /> {carregando ? "Recarregando…" : "Recarregar base"}
+            </button>
+          )}
         </div>
       )}
 
@@ -8281,6 +8460,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
       {porVerba.map((g) => {
         const aberto = abertos.has(g.num);
         const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
+        const grupoAssociado = g.itens.every((r) => casamentos.has(r.chave));
         return (
           <div className="grp-block" key={g.num}>
             <div className="grp-head">
@@ -8299,6 +8479,16 @@ function ComprasView({ obra, onItemChange, usuario }) {
                 </div>
               </button>
               <div className="grp-dir">
+                {/* A busca do insumo é por grupo e só quando pedida: casar a
+                    obra inteira de uma vez congelava a tela. */}
+                {etapa === "sienge" && (grupoAssociado ? (
+                  <span className="grp-assoc-ok"><Check size={12} /> insumos sugeridos</span>
+                ) : (
+                  <button type="button" className="grp-associar" disabled={associando != null}
+                    onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
+                    <PackageSearch size={13} /> {associando === g.num ? "Associando…" : "Associar insumos"}
+                  </button>
+                ))}
                 <div className="grp-tot">
                   <div className="grp-tot-rot">MATERIAL</div>
                   <div className="grp-tot-val mono">{fmtBRL(g.total)}</div>
@@ -8321,7 +8511,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
                       {/* A mae virou a primeira linha do detalhe: eram
                           duas colunas contando a mesma historia, e a
                           tabela so cabia rolando pro lado. */}
-                      {baseSienge && <th style={{ width: 300 }}>Insumo no Sienge</th>}
+                      {grupoAssociado && <th style={{ width: 300 }}>Insumo no Sienge</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -8329,7 +8519,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
                       <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)}
                         onSelecionar={() => alternar(r.chave)}
                         casamento={casamentos.get(r.chave)}
-                        mostrarSienge={!!baseSienge}
+                        mostrarSienge={grupoAssociado}
                         lancado={doSienge ? lancados.get(r.chave) || null : undefined}
                         onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
                     ))}
@@ -10597,40 +10787,42 @@ function AditivosView({ obras, usuario }) {
 function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
   /* Estilo proprio, e nao as classes do app: esta tela aparece ANTES do
      app existir na arvore, e depender da folha dele seria depender de
-     algo que a pessoa nesta tela nao tem direito de carregar. */
+     algo que a pessoa nesta tela nao tem direito de carregar. As cores
+     vem dos tokens globais (estilos/design-system.css). */
   const caixa = {
-    width: "100%", maxWidth: 400, background: "#fff", border: "1px solid #e5e2dd",
-    borderRadius: 16, padding: "34px 30px", boxSizing: "border-box", textAlign: "center",
+    width: "100%", maxWidth: 400, background: "var(--surface-1)", border: "1px solid var(--line-2)",
+    borderRadius: 14, padding: "32px 28px", boxSizing: "border-box", textAlign: "center",
   };
   const botao = {
-    border: "1px solid #e5e2dd", background: "#fff", borderRadius: 10, padding: "10px 16px",
-    fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", color: "#1a1a1a",
+    display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 38, padding: "0 16px",
+    border: "1px solid var(--line-2)", background: "transparent", borderRadius: 10,
+    fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", color: "var(--text)",
   };
   const suspenso = pessoa?.ativo === false;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      background: "#F4F3F1", fontFamily: "Inter, system-ui, sans-serif", padding: 20 }}>
+      background: "var(--bg)", color: "var(--text)", fontFamily: "var(--font-sans)", padding: 20 }}>
       <div style={caixa}>
-        <img src="/logo.png" alt="Group WS" style={{ width: 54, height: 46, objectFit: "cover", objectPosition: "top center" }}
-          onError={(e) => { e.currentTarget.style.display = "none"; }} />
-        <div style={{ fontWeight: 700, letterSpacing: "0.05em", fontSize: 13, color: "#1a1a1a", margin: "6px 0 22px" }}>
-          GESTÃO DE OBRAS TKWS
+        <LogoGroupWS style={{ fontSize: 14 }} />
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 600, letterSpacing: "1.3px",
+          textTransform: "uppercase", color: "var(--text-mute)", margin: "14px 0 22px" }}>
+          Gestão de Obras TKWS
         </div>
 
-        <div style={{ fontSize: 17, fontWeight: 700, color: "#1a1a1a", marginBottom: 8 }}>
+        <div style={{ fontSize: 20, fontWeight: 400, letterSpacing: "-0.01em", color: "var(--text)", marginBottom: 8 }}>
           {suspenso ? "Seu acesso está suspenso" : "Seu acesso está em análise"}
         </div>
-        <div style={{ fontSize: 13, color: "#666", lineHeight: 1.55 }}>
+        <div style={{ fontSize: 13.5, color: "var(--text-soft)", lineHeight: 1.55 }}>
           {suspenso
             ? "Sua conta existe, mas foi desativada. Fale com a coordenação para reativar."
-            : <>Você entrou com <b style={{ color: "#1a1a1a" }}>{usuario}</b>. Um administrador precisa
+            : <>Você entrou com <b style={{ color: "var(--text)" }}>{usuario}</b>. Um administrador precisa
                definir o que você vai acessar — já avisamos. Assim que liberarem, é só recarregar.</>}
         </div>
 
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 24 }}>
           {!suspenso && (
-            <button style={{ ...botao, background: "#1a1a1a", color: "#fff", borderColor: "#1a1a1a" }}
+            <button style={{ ...botao, background: "var(--brand)", color: "var(--bg)", borderColor: "var(--brand)" }}
               onClick={onRecarregar}>Já liberaram, recarregar</button>
           )}
           <button style={botao} onClick={onSair}>Sair</button>
@@ -10803,7 +10995,7 @@ function PainelLocalizacao({ dados, carregando, onToggleStatus }) {
    confundir "concluído" com "faltando" é pior que ocupar mais espaço.
    `rotulo` é o nome completo (pro title); `curto` é o que cabe no chip.
    Caderno conta como feito quando o arquivo é anexado (mesma regra da
-   aba Executivo). CMV usa `deparaAprovado`, não só `cmvLiberado > 0`:
+   Jornada da obra). CMV usa `deparaAprovado`, não só `cmvLiberado > 0`:
    uma obra pode ter liberado com valor zerado numa planilha estranha,
    e o que importa pra fase é "a decisão foi tomada", não o valor. */
 function esteiraDaObra(o) {
@@ -10813,11 +11005,11 @@ function esteiraDaObra(o) {
     { chave: "cmv", curto: "CMV", rotulo: "CMV liberado", feito: !!o.deparaAprovado },
     { chave: "especificacao", curto: "Especificação", rotulo: "Caderno de Especificação", feito: !!cad.especificacao },
     { chave: "marcenaria", curto: "Marcenaria", rotulo: "Caderno de Marcenaria", feito: !!cad.marcenaria },
-    { chave: "projeto", curto: "Executivo", rotulo: "Caderno de Projeto Executivo", feito: !!cad.projeto },
+    { chave: "projeto", curto: "Executivo", rotulo: "Caderno Completo do Projeto Executivo", feito: !!cad.projeto },
     { chave: "execucao", curto: "Em execução", rotulo: "Em execução (compras liberadas)", feito: !!o.comprasLiberadas },
   ];
   const faltando = passos.find((p) => !p.feito);
-  if (!faltando) return { passos, texto: "Em execução", tom: "roxo" };
+  if (!faltando) return { passos, texto: "Em execução" };
   // Todos os cadernos prontos, só falta liberar as compras — não é bem
   // "aguardando Em execução" (lê estranho), é o marco antes dela.
   if (faltando.chave === "execucao") return { passos, texto: "Pronta para Compras", tom: "azul" };
@@ -10836,21 +11028,17 @@ function passosCriticosAtrasados(o) {
   return { dias, passos };
 }
 
-function InicioNum({ rot, valor, sub, cor, Icone, onClick }) {
+/* Sem ícone, sem badge colorido — a cor mora só no rótulo, pequeno e
+   discreto. Número grande em grafite, sempre; é a mesma hierarquia que
+   um extrato bancário usa, e é o que sustenta "técnico e sóbrio" sem
+   precisar de nenhum enfeite. */
+function InicioNum({ rot, valor, sub, cor, onClick }) {
   const Tag = onClick ? "button" : "div";
-  const tom = cor || "var(--ink-3)";
   return (
     <Tag className={`ini-cel ${onClick ? "clicavel" : ""}`} onClick={onClick}>
-      {Icone && (
-        <div className="ini-cel-icone" style={{ color: tom, background: `color-mix(in srgb, ${tom} 14%, white)` }}>
-          <Icone size={16} />
-        </div>
-      )}
-      <div className="ini-cel-corpo">
-        <div className="ini-cel-rot">{rot}</div>
-        <div className="ini-cel-val">{valor}</div>
-        <div className="ini-cel-sub">{sub}</div>
-      </div>
+      <div className="ini-cel-rot" style={cor ? { color: cor } : undefined}>{rot}</div>
+      <div className="ini-cel-val">{valor}</div>
+      <div className="ini-cel-sub">{sub}</div>
     </Tag>
   );
 }
@@ -10963,13 +11151,16 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
       {carregando && <div className="empty-note">Carregando as obras…</div>}
 
       <div className="ini-regua">
-        <InicioNum rot="OBRAS ATIVAS" Icone={Building2} valor={obras.length}
+        <InicioNum rot="OBRAS ATIVAS" valor={obras.length}
           sub={`${r.linhas.length} com planilha carregada`} />
-        <InicioNum rot="A COMPRAR" cor="var(--blue)" Icone={ShoppingCart} valor={fmtBRL(t.matTotal - t.matFeito)}
+        {/* Azul só aqui — é o número que a casa mais precisa olhar. Os
+           outros três ficam em grafite: cor demais na régua toda tira
+           a força justamente do que devia se destacar. */}
+        <InicioNum rot="A COMPRAR" cor="var(--blue)" valor={fmtBRL(t.matTotal - t.matFeito)}
           sub={`de ${fmtBRL(t.matTotal)} em material`} onClick={() => onModulo("a_contratar")} />
-        <InicioNum rot="A CONTRATAR" cor="var(--purple)" Icone={ClipboardList} valor={fmtBRL(t.moTotal - t.moFeito)}
+        <InicioNum rot="A CONTRATAR" valor={fmtBRL(t.moTotal - t.moFeito)}
           sub={`de ${fmtBRL(t.moTotal)} em mão de obra`} onClick={() => onModulo("a_contratar")} />
-        <InicioNum rot="MINHAS OBRAS" cor="var(--green)" Icone={ShieldCheck} valor={minhas.length}
+        <InicioNum rot="MINHAS OBRAS" valor={minhas.length}
           sub={minhas.length ? "onde você é o GC" : "nenhuma atribuída a você"} />
       </div>
 
@@ -11406,25 +11597,55 @@ function resumoAcesso(p, obras) {
 /* De onde o arquivo veio. Não é etiqueta escolhida a mão: é o lugar do
    app que o guardou, e por isso não tem como ficar errada. */
 const FASES_ARQUIVO = [
+  { id: "contrato", nome: "Contrato", cor: "var(--purple)", bg: "var(--purple-soft)" },
+  { id: "criativo", nome: "Criativo", cor: "var(--mod-criativos)", bg: "color-mix(in srgb, var(--mod-criativos) 14%, transparent)" },
   { id: "executivo", nome: "Executivo", cor: "var(--blue)", bg: "var(--blue-bg)" },
   { id: "cliente", nome: "Aprovação do Cliente", cor: "var(--green)", bg: "var(--green-bg)" },
   { id: "outros", nome: "Outros", cor: "var(--ink-2)", bg: "var(--panel)" },
 ];
-const faseArquivo = (id) => FASES_ARQUIVO.find((f) => f.id === id) || FASES_ARQUIVO[2];
+const faseArquivo = (id) => FASES_ARQUIVO.find((f) => f.id === id) || FASES_ARQUIVO.find((f) => f.id === "outros");
 
 /* Junta tudo que a obra tem guardado, venha de onde vier.
 
    Os cadernos moram num mapa (uma chave fixa cada, porque são sempre os
-   mesmos quatro); os avulsos numa lista (a mesma obra tem N do mesmo
-   tipo). Quem lê a tela não quer saber disso. */
+   mesmos); os avulsos numa lista (a mesma obra tem N do mesmo tipo). Quem
+   lê a tela não quer saber disso. As fases seguem a Jornada da obra. */
 const avulsosDaObra = (obra) => (Array.isArray(obra?.arquivos) ? obra.arquivos : []);
 
-function arquivosDaObra(obra) {
+/* Anexar e excluir arquivo solto — os mesmos para Documentos e para a
+   Jornada da obra, pra um arquivo nunca ser guardado de dois jeitos. As
+   conferências ficam antes do Storage: a mensagem de lá não diz se o
+   problema é o arquivo, a internet ou o sistema. */
+async function anexarAvulso({ obra, file, titulo, fase, usuario }) {
+  if (!supabaseConfigurado) throw new Error("Sem banco configurado — o arquivo não teria onde ficar guardado.");
+  if (!tipoAceito(file.name)) throw new Error(`Tipo não aceito. Vale: ${EXTENSOES_ACEITAS.replace(/,/g, " ")}`);
+  if (file.size > 50 * 1024 * 1024) throw new Error(`"${file.name}" tem ${Math.round(file.size / 1024 / 1024)} MB — o limite é 50 MB por arquivo.`);
+  const info = await subirArquivo({ obraCodigo: obra.codigo, chave: "avulso", file, por: usuario });
+  return [...avulsosDaObra(obra), {
+    ...info,
+    id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    titulo: (titulo || "").trim() || file.name,
+    fase,
+  }];
+}
+
+async function excluirAvulso(obra, a) {
+  if (a.caminho) await apagarArquivo(a.caminho);
+  return avulsosDaObra(obra).filter((x) => x.id !== a.id);
+}
+
+function arquivosDaObra(obra, { souAdmin = false } = {}) {
   const out = [];
+  const cad = obra.cadernos || {};
+
+  // O contrato só entra na lista de quem pode abrir.
+  if (souAdmin && cad.contrato) {
+    out.push({ ...cad.contrato, id: "caderno-contrato", titulo: CADERNO_CONTRATO.titulo, fase: "contrato", fixo: "contrato" });
+  }
 
   CADERNOS_EXECUTIVO.forEach((c) => {
-    const a = (obra.cadernos || {})[c.chave];
-    if (a) out.push({ ...a, id: `caderno-${c.chave}`, titulo: c.titulo, fase: "executivo", fixo: c.chave });
+    const a = cad[c.chave];
+    if (a) out.push({ ...a, id: `caderno-${c.chave}`, titulo: c.titulo, fase: c.chave === "criativo" ? "criativo" : "executivo", fixo: c.chave });
   });
 
   if (obra.clienteAssinaturaArq) {
@@ -11445,7 +11666,7 @@ function arquivosDaObra(obra) {
   return out;
 }
 
-function ArquivoLinha({ a, podeEditar, onExcluir }) {
+function ArquivoLinha({ a, podeEditar, onExcluir, semFase = false }) {
   const [ocupado, setOcupado] = useState(null);
   const [erro, setErro] = useState(null);
   const f = faseArquivo(a.fase);
@@ -11477,7 +11698,7 @@ function ArquivoLinha({ a, podeEditar, onExcluir }) {
         {erro && <div className="arq-erro">{erro}</div>}
       </div>
 
-      <span className="arq-fase" style={{ color: f.cor, background: f.bg }}>{f.nome}</span>
+      {!semFase && <span className="arq-fase" style={{ color: f.cor, background: f.bg }}>{f.nome}</span>}
 
       {perdido ? (
         /* Anexo de antes de o app guardar arquivo: só o nome ficou
@@ -11504,39 +11725,29 @@ function ArquivoLinha({ a, podeEditar, onExcluir }) {
   );
 }
 
-function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
+function ArquivosObraView({ obra, usuario, podeEditar, souAdmin, onArquivos }) {
   const inputRef = useRef(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState(null);
   const [titulo, setTitulo] = useState("");
   const [fase, setFase] = useState("outros");
 
-  const todos = useMemo(() => arquivosDaObra(obra), [obra]);
+  const todos = useMemo(() => arquivosDaObra(obra, { souAdmin }), [obra, souAdmin]);
   const porFase = FASES_ARQUIVO
     .map((f) => ({ f, itens: todos.filter((a) => a.fase === f.id) }))
     .filter((g) => g.itens.length > 0);
   const guardados = todos.filter((a) => anexoRecuperavel(a)).length;
+  // O contrato tem lugar próprio na Jornada da obra; aqui essa fase não se escolhe.
+  const fasesDeAvulso = FASES_ARQUIVO.filter((f) => f.id !== "contrato");
 
   async function subir(e) {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!file) return;
     setErro(null);
-    if (!supabaseConfigurado) { setErro("Sem banco configurado — o arquivo não teria onde ficar guardado."); return; }
-    /* Conferir aqui, e nao deixar o Storage recusar: a mensagem de la nao
-       diz qual e' o problema, e a pessoa fica sem saber se e' o arquivo,
-       a internet ou o sistema. */
-    if (!tipoAceito(file.name)) { setErro(`Tipo não aceito. Vale: ${EXTENSOES_ACEITAS.replace(/,/g, " ")}`); return; }
-    if (file.size > 50 * 1024 * 1024) { setErro(`"${file.name}" tem ${Math.round(file.size / 1024 / 1024)} MB — o limite é 50 MB por arquivo.`); return; }
     setEnviando(true);
     try {
-      const info = await subirArquivo({ obraCodigo: obra.codigo, chave: "avulso", file, por: usuario });
-      onArquivos([...avulsosDaObra(obra), {
-        ...info,
-        id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        titulo: titulo.trim() || file.name,
-        fase,
-      }]);
+      onArquivos(await anexarAvulso({ obra, file, titulo, fase, usuario }));
       setTitulo("");
     } catch (err) {
       setErro(err.message || String(err));
@@ -11549,8 +11760,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
     if (!window.confirm(`Excluir "${a.titulo || a.nome}"? Isso não pode ser desfeito.`)) return;
     setErro(null);
     try {
-      if (a.caminho) await apagarArquivo(a.caminho);
-      onArquivos(avulsosDaObra(obra).filter((x) => x.id !== a.id));
+      onArquivos(await excluirAvulso(obra, a));
     } catch (err) {
       setErro(err.message || String(err));
     }
@@ -11572,7 +11782,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
               onChange={(e) => setTitulo(e.target.value)} />
             <select className="form-input" value={fase} onChange={(e) => setFase(e.target.value)}
               title="Em que fase este arquivo entra">
-              {FASES_ARQUIVO.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+              {fasesDeAvulso.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
             </select>
             <button className="btn-doc btn-template" disabled={enviando}
               onClick={() => inputRef.current && inputRef.current.click()}>
@@ -11590,8 +11800,9 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
           <Archive size={30} className="dim" />
           <div className="compras-empty-title">Nenhum arquivo ainda</div>
           <div className="compras-empty-sub">
-            Os cadernos anexados na aba <b>Executivo</b> e a aprovação assinada do cliente
-            aparecem aqui sozinhos. Qualquer outro arquivo da obra pode ser anexado por este botão.
+            O que for anexado na <b>Jornada da obra</b> (Visão geral) e a aprovação assinada do
+            cliente aparecem aqui sozinhos. Qualquer outro arquivo da obra pode ser anexado por
+            este botão.
           </div>
         </div>
       ) : porFase.map(({ f, itens }) => (
@@ -11616,7 +11827,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, onArquivos }) {
    ============================================================ */
 
 /* Baixar, sem anexar. Este painel e' de consulta: quem sobe caderno e' a
-   equipe da obra, na aba do Executivo, e ter dois lugares que gravam o
+   equipe da obra, na Jornada da obra (Visão geral), e ter dois lugares que gravam o
    mesmo arquivo e' como um deles fica desatualizado. */
 function CadernoBaixar({ titulo, arquivo }) {
   const [ocupado, setOcupado] = useState(null);   // "ver" | "baixar" | null
@@ -13360,7 +13571,6 @@ export default function App() {
       return { ...o, categorias };
     }));
   }
-  const editarItemPlanilha = (catNum, codigo, patch) => editarLinhaDepara("itensPlanilha", catNum, codigo, patch);
   const editarItemPlanilhaExecutivo = (catNum, codigo, patch) => editarLinhaDepara("itensPlanilhaExecutivo", catNum, codigo, patch);
 
   // Caderno de Especificação: só guarda o arquivo (upload/download, sem parse).
@@ -13642,8 +13852,12 @@ export default function App() {
 
   /* Sem perfil, a tela para aqui. Antes de qualquer barra lateral,
      antes de qualquer numero — a sala de espera nao mostra NADA da
-     empresa. Ver docs/SPEC-acessos.md §3. */
-  if (!pessoasCarregando && !migracaoPendente && usuario && !temAcesso(eu)) {
+     empresa. Ver docs/SPEC-acessos.md §3.
+
+     Sem Supabase (modo local, sem .env) nao existe perfil nenhum pra
+     conferir: a trava fica de fora, do mesmo jeito que o AuthGate ja
+     libera o app nesse modo. Em producao o Supabase sempre esta ligado. */
+  if (supabaseConfigurado && !pessoasCarregando && !migracaoPendente && usuario && !temAcesso(eu)) {
     return <SalaDeEspera usuario={usuario} pessoa={eu}
       onSair={sairDaConta} onRecarregar={() => window.location.reload()} />;
   }
@@ -13651,46 +13865,26 @@ export default function App() {
   return (
     <div className="app">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@1,500;1,600&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-        :root {
-          --page: #FAFAF8; --panel: #F3F2EE; --card: #FFFFFF;
-          --border: #E8E5DD; --border-soft: #F0EEE7;
-          --ink: #191D21; --ink-2: #565B60;
-          /* #9A9C9C dava 2,76:1 sobre branco — reprova em AA, que pede
-             4,5:1 pra texto miudo, e ele e' justamente a cor do que se le
-             o dia inteiro (codigo da obra, data, subtitulo). #737373 da
-             4,7:1 e continua sendo terciario. */
-          --ink-3: #737373;
-          --blue: #2E6FA3; --blue-bg: #E3EEF7;
-          --green: #2E8F58; --green-bg: #E4F3E9;
-          --amber: #B87A1E; --amber-bg: #FAEFDC;
-          --red: #C2453F; --red-bg: #FBE5E3;
-          --purple: #6E56B8;
-        }
         * { box-sizing: border-box; }
-        .app { min-height: 100vh; background: var(--page); color: var(--ink); font-family: 'Inter', sans-serif; font-size: 13.5px; }
-        .mono { font-family: 'JetBrains Mono', monospace; }
+        .app { min-height: 100vh; background: var(--page); color: var(--ink); font-family: var(--font-sans); font-size: 13.5px; }
+        .mono { font-family: var(--font-mono); }
         .dim { color: var(--ink-3); }
         .center { text-align: center; }
         .right { text-align: right; }
 
-        .topbar { height: 64px; display: flex; align-items: center; gap: 24px; padding: 0 24px; background: #fff; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+        .topbar { height: 64px; display: flex; align-items: center; gap: 24px; padding: 0 24px; background: var(--surface-1); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
         .topbar-brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; background: none; border: none; font-family: inherit; padding: 4px 6px; margin-left: -6px; border-radius: 9px; cursor: pointer; }
         .topbar-brand:hover { background: var(--panel); }
-        /* mostra só o monograma (recorta o texto "GROUP WS" e as margens
-           do PNG oficial, sem alterar o arquivo — nada é distorcido) */
-        .brand-logo { width: 46px; height: 38px; object-fit: cover; object-position: top center; display: block; }
-        .brand-word { font-weight: 700; font-size: 13px; letter-spacing: 0.06em; color: var(--ink); white-space: nowrap; }
-        .aviso-monday { background: var(--amber-bg, #FEF3E2); color: var(--amber, #B7791F); border: 1px solid var(--amber, #E8B04B); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
+        .aviso-monday { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
         /* O margin-left auto porque quem empurrava esse bloco pra
            direita era a busca do meio, que tinha flex 1. Tirando a busca,
            ele foi junto encostar na marca. */
         .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
         .icon-btn { width: 34px; height: 34px; border-radius: 8px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; color: var(--ink-2); cursor: pointer; position: relative; }
         .icon-btn:hover { background: var(--panel); }
-        .notif-dot { position: absolute; top: 3px; right: 3px; background: var(--red); color: #fff; font-size: 9px; font-weight: 700; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-        .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--purple); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; }
+        .notif-dot { position: absolute; top: 3px; right: 3px; background: var(--red); color: var(--bg); font-size: 9px; font-weight: 700; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--purple); color: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; }
 
         .body-layout { display: flex; }
         /* Sem space-between: ele funcionava com dois filhos (lista e
@@ -13698,7 +13892,7 @@ export default function App() {
            espaçamento automático empurrava a lista pro meio da tela,
            deixando um vazio enorme embaixo do botão.
            Agora quem ocupa a sobra é a lista, explicitamente. */
-        .sidebar { width: 288px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
+        .sidebar { width: 288px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
         .sidebar-scroll { flex: 1; padding: 6px 14px 16px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
         .nav-group-label { font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; }
         .nav-group-label:first-child { margin-top: 0; }
@@ -13721,7 +13915,7 @@ export default function App() {
         .squad-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
         .squad-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; font-size: 10.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .squad-chip:hover { border-color: var(--blue); }
-        .squad-chip.active { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+        .squad-chip.active { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
         .squad-group { margin-bottom: 10px; }
         .squad-group-label { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
         .squad-group-label:hover { color: var(--ink-2); }
@@ -13735,7 +13929,7 @@ export default function App() {
            Este e' um elemento so', em position: fixed, posicionado pelo
            retangulo do botao sob o mouse. Fixed nao e' recortado por
            ancestral nenhum, que e' exatamente o problema a resolver. */
-        .dica-lateral { position: fixed; z-index: 200; background: var(--ink); color: #fff; border-radius: 7px; padding: 7px 11px; font-size: 11.5px; font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.22); }
+        .dica-lateral { position: fixed; z-index: 200; background: var(--ink); color: var(--bg); border-radius: 7px; padding: 7px 11px; font-size: 11.5px; font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-2); }
         .dica-lateral::before { content: ""; position: absolute; left: -4px; top: 50%; margin-top: -4px; width: 8px; height: 8px; background: var(--ink); transform: rotate(45deg); }
 
         /* O simbolo do squad so' existe recolhida: aberta, o nome basta. */
@@ -13756,8 +13950,8 @@ export default function App() {
         .scroll-list { flex: 1; min-height: 90px; overflow-y: auto; padding-right: 2px; }
         /* Grudado embaixo mesmo com a barra rolando: com quarenta obras a
            lista rola, e o modulo tem que continuar a um clique. */
-        .nav-modulos { margin-top: auto; position: sticky; bottom: 0; background: #fff; padding-bottom: 2px; }
-        .nav-modulos::before { content: ""; display: block; height: 10px; margin: 0 -14px; background: linear-gradient(to bottom, rgba(255,255,255,0), #fff); }
+        .nav-modulos { margin-top: auto; position: sticky; bottom: 0; background: var(--surface-1); padding-bottom: 2px; }
+        .nav-modulos::before { content: ""; display: block; height: 10px; margin: 0 -14px; background: linear-gradient(to bottom, transparent, var(--surface-1)); }
         .no-results { font-size: 11.5px; color: var(--ink-3); padding: 10px 6px; }
         .nav-group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; cursor: pointer; }
         .nav-group-toggle:hover { color: var(--ink-2); }
@@ -13766,7 +13960,7 @@ export default function App() {
         .nav-tira-item { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; height: 34px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--ink-3); cursor: pointer; }
         .nav-tira-item:hover { background: var(--panel); color: var(--ink); }
         .nav-tira-item.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
-        .nav-tira-badge { position: absolute; top: 1px; right: 1px; background: var(--blue); color: #fff; font-size: 8.5px; font-weight: 700; border-radius: 20px; padding: 0 4px; line-height: 13px; }
+        .nav-tira-badge { position: absolute; top: 1px; right: 1px; background: var(--blue); color: var(--bg); font-size: 8.5px; font-weight: 700; border-radius: 20px; padding: 0 4px; line-height: 13px; }
         .sidebar.recolhida .nav-tira { flex-direction: column; }
         .nav-list { display: flex; flex-direction: column; gap: 2px; }
         .nav-list-topo { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-soft); }
@@ -13781,7 +13975,7 @@ export default function App() {
         .nav-item-text { flex: 1; min-width: 0; }
         .nav-item-name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .nav-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
-        .nav-badge { background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 1px 6px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+        .nav-badge { background: var(--red); color: var(--bg); font-size: 10px; font-weight: 700; border-radius: 20px; padding: 1px 6px; font-family: var(--font-mono); flex-shrink: 0; }
         .soon { font-size: 9.5px; color: var(--ink-3); background: var(--panel); padding: 2px 6px; border-radius: 20px; flex-shrink: 0; }
         .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 14px; flex-shrink: 0; }
         .profile { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
@@ -13793,7 +13987,7 @@ export default function App() {
            conta de qualquer ferramenta: quem esta logado em cima, uma
            linha, e a saida discreta embaixo. Vermelho so' no hover — sair
            nao e' perigoso, e' so' sair. */
-        .perfil-menu { border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.12); padding: 6px; margin-bottom: 8px; }
+        .perfil-menu { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow-3); padding: 6px; margin-bottom: 8px; }
         .perfil-cab { display: flex; align-items: center; gap: 10px; padding: 9px 9px 10px; }
         .perfil-cab-txt { min-width: 0; }
         .perfil-cab-nome { font-size: 12.5px; font-weight: 700; color: var(--ink); }
@@ -13872,33 +14066,33 @@ export default function App() {
 
         /* --- Ciclo de vida da obra: novas / concluir / arquivo --- */
         .nav-badge-novo { background: var(--blue); }
-        .nav-count { background: var(--panel); color: var(--ink-3); font-size: 10px; font-weight: 600; border-radius: 20px; padding: 1px 6px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+        .nav-count { background: var(--panel); color: var(--ink-3); font-size: 10px; font-weight: 600; border-radius: 20px; padding: 1px 6px; font-family: var(--font-mono); flex-shrink: 0; }
         .link-inline { background: none; border: none; padding: 0; font: inherit; color: var(--blue); cursor: pointer; text-decoration: underline; }
 
         .secao-intro { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; background: var(--panel); border-radius: 10px; padding: 12px 15px; margin-bottom: 18px; max-width: 720px; }
         .secao-intro p { margin: 0; }
-        .aviso-banco { background: var(--amber-bg, #FEF3E2); color: var(--amber, #B7791F); border: 1px solid var(--amber, #E8B04B); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
+        .aviso-banco { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
         .obra-search-wide { max-width: 380px; margin-bottom: 18px; }
 
         .obra-card-grupo { margin-bottom: 22px; }
-        .obra-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 13px 16px; margin-bottom: 8px; max-width: 720px; }
+        .obra-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 12px; padding: 13px 16px; margin-bottom: 8px; max-width: 720px; }
         .obra-card-info { min-width: 0; }
         .obra-card-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
         .obra-card-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
 
         .btn-start, .btn-reabrir, .btn-concluir { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 7px 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0; font-family: inherit; }
-        .btn-start { background: var(--blue); color: #fff; border: 1px solid var(--blue); }
+        .btn-start { background: var(--blue); color: var(--bg); border: 1px solid var(--blue); }
         .btn-start:hover:not(:disabled) { filter: brightness(1.08); }
-        .btn-reabrir { background: #fff; color: var(--ink-2); border: 1px solid var(--border); }
+        .btn-reabrir { background: var(--surface-1); color: var(--ink-2); border: 1px solid var(--border); }
         .btn-reabrir:hover:not(:disabled) { background: var(--panel); }
-        .btn-concluir { background: #fff; color: var(--ink-2); border: 1px solid var(--border); font-size: 11.5px; padding: 6px 11px; }
+        .btn-concluir { background: var(--surface-1); color: var(--ink-2); border: 1px solid var(--border); font-size: 11.5px; padding: 6px 11px; }
         .btn-concluir:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
         .btn-start:disabled, .btn-reabrir:disabled, .btn-concluir:disabled { opacity: 0.55; cursor: default; }
 
         .vazio-box { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; background: var(--panel); border-radius: 12px; padding: 40px 20px; max-width: 720px; }
         .vazio-titulo { font-size: 14px; font-weight: 600; color: var(--ink); margin-top: 4px; }
         .vazio-sub { font-size: 12px; color: var(--ink-3); }
-        .title-accent { font-family: 'Newsreader', serif; font-style: italic; font-weight: 500; color: var(--ink); }
+        .title-accent { font-family: var(--font-sans); font-style: italic; font-weight: 500; color: var(--ink); }
         .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
         .sg-sub { font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--ink-2); margin: -2px 0 14px; }
         /* Uma regua so' pra tudo. Larga: o texto se espalha em colunas
@@ -13927,13 +14121,13 @@ export default function App() {
            atencao. A ultima faixa fica curta e verde quando nao ha nada —
            painel que mostra sempre as mesmas caixas ensina a ignorar. */
         /* ESCOPO DE CONTRATACAO */
-        .btn-abrir-escopo { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; background: #fff; color: var(--ink); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
+        .btn-abrir-escopo { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; background: var(--surface-1); color: var(--ink); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
         .btn-abrir-escopo:hover { background: var(--green-bg); color: var(--green); }
         .mo-escopo-barra .btn-limpar-sel { margin-left: 0; }
         .form-escopo { max-width: 560px; }
         .form-dica { font-size: 10.5px; color: var(--green); margin-top: 5px; }
         .btn-lupa { flex-shrink: 0; background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 5px 7px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
-        .btn-lupa:hover { border-color: var(--ink); color: var(--ink); background: #fff; }
+        .btn-lupa:hover { border-color: var(--ink); color: var(--ink); background: var(--surface-1); }
         .btn-lupa-vazio { flex-shrink: 0; width: 30px; }
         .mo-linha.com-escopo { box-shadow: inset 2px 0 0 var(--green); }
 
@@ -13941,9 +14135,9 @@ export default function App() {
         .btn-voltar { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 12px; cursor: pointer; font-family: inherit; color: var(--ink-2); flex-shrink: 0; }
         .btn-voltar:hover { border-color: var(--ink); color: var(--ink); }
         .escopo-titulo { flex: 1; min-width: 0; }
-        .escopo-nome { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; }
+        .escopo-nome { font-family: var(--font-sans); font-size: 18px; font-weight: 700; }
         .escopo-banda { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
-        .btn-doc { display: inline-flex; align-items: center; gap: 5px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-doc { display: inline-flex; align-items: center; gap: 5px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
         .btn-doc:hover { background: var(--blue); }
         .btn-apagar-escopo { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; cursor: pointer; color: var(--ink-3); display: inline-flex; }
         .btn-apagar-escopo:hover { border-color: var(--red); color: var(--red); }
@@ -13951,24 +14145,24 @@ export default function App() {
         .escopo-conta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
         .ec-bloco { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
         .ec-rot { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
-        .ec-val { font-family: 'Space Grotesk', sans-serif; font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 5px; }
+        .ec-val { font-family: var(--font-sans); font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 5px; }
         .ec-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 3px; }
         .ec-input { width: 100%; margin-top: 5px; border: 1px solid var(--border); border-radius: 7px; padding: 4px 9px; font-size: 19px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
         .ec-input:focus { border-color: var(--ink); outline: none; }
-        .ec-dif.ok { background: var(--green-bg); border-color: #C9E5D4; color: var(--green); }
-        .ec-dif.ruim { background: var(--red-bg); border-color: #F0C9C6; color: var(--red); }
+        .ec-dif.ok { background: var(--green-bg); border-color: var(--success-line); color: var(--green); }
+        .ec-dif.ruim { background: var(--red-bg); border-color: var(--danger-line); color: var(--red); }
         .ec-dif.ok .ec-rot, .ec-dif.ruim .ec-rot, .ec-dif.ok .ec-sub, .ec-dif.ruim .ec-sub { color: inherit; opacity: 0.8; }
         .escopo-campos { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 18px; }
 
         /* A FOLHA. Largura de A4 e fundo branco de proposito: a pessoa
            enxerga o documento que vai virar contrato, nao um formulario. */
         .doc-escopo { background: #fff; border: 1px solid var(--border); border-radius: 4px; max-width: 210mm; margin: 0 auto; padding: 26mm 22mm; font-size: 12px; line-height: 1.6; color: #16181A; box-shadow: 0 2px 14px rgba(0,0,0,0.06); }
-        .doc-banda { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 18px; }
+        .doc-banda { font-family: var(--font-sans); font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 18px; }
         .doc-cab { display: grid; gap: 3px; font-size: 12px; padding-bottom: 14px; border-bottom: 1px solid #DDD; margin-bottom: 6px; }
         .doc-rot { font-weight: 700; display: inline-block; min-width: 82px; color: #55595E; }
-        .doc-h { font-family: 'Space Grotesk', sans-serif; font-size: 13.5px; font-weight: 700; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #DDD; }
+        .doc-h { font-family: var(--font-sans); font-size: 13.5px; font-weight: 700; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #DDD; }
         .doc-item { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid #F0F0EE; }
-        .doc-qtd { flex-shrink: 0; width: 52px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #6A6E72; padding-top: 2px; }
+        .doc-qtd { flex-shrink: 0; width: 52px; font-family: var(--font-mono); font-size: 10.5px; color: #6A6E72; padding-top: 2px; }
         .doc-desc { flex: 1; }
         .doc-desc:focus, .doc-cond:focus { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 3px; }
         .doc-amb { flex-shrink: 0; font-size: 10.5px; color: #85898D; }
@@ -13989,32 +14183,32 @@ export default function App() {
 
         /* PDF sai daqui: o navegador imprime so a folha. */
         /* ---- ADITIVOS ---- */
-        .row-aditivo { background: #FBF9FF; }
-        .tag-aditivo { display: inline-flex; align-items: center; gap: 4px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; margin-top: 3px; }
+        .row-aditivo { background: var(--purple-tint); }
+        .tag-aditivo { display: inline-flex; align-items: center; gap: 4px; background: var(--purple-soft); color: var(--purple); border-radius: 4px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; margin-top: 3px; }
         /* Coluna propria, e estreita: com o rotulo longo ela encostava na
            tabela de itens logo abaixo e passava a ser lida como cabecalho
            dela — "Destino" cai bem embaixo. */
         .grp-tot-wip { width: 62px; border-left: 1px dashed var(--border); padding-left: 12px; }
         .grp-tot-wip .grp-tot-rot { color: var(--ink-3); }
         .plano-wip { display: flex; align-items: center; gap: 8px; background: var(--panel); border-radius: 8px; padding: 8px 13px; font-size: 11.5px; color: var(--ink-3); margin-bottom: 12px; }
-        .grp-aditivo { display: inline-flex; align-items: center; gap: 4px; background: #EFEAFB; color: var(--purple); border-radius: 20px; padding: 2px 9px; font-size: 10px; font-weight: 700; white-space: nowrap; }
-        .item-aditivo { background: #FBF9FF; }
-        .chip-aditivo { display: inline-flex; align-items: center; gap: 3px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-left: 6px; }
+        .grp-aditivo { display: inline-flex; align-items: center; gap: 4px; background: var(--purple-soft); color: var(--purple); border-radius: 20px; padding: 2px 9px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+        .item-aditivo { background: var(--purple-tint); }
+        .chip-aditivo { display: inline-flex; align-items: center; gap: 3px; background: var(--purple-soft); color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: var(--font-mono); margin-left: 6px; }
         .cmv-aditivos { margin-top: 16px; padding-top: 4px; border-top: 1px dashed var(--border); }
         .cmv-aditivos .cmv-grupos-titulo { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         .cmv-adit-total { font-size: 14px; font-weight: 700; color: var(--ink); }
         .cmv-adit-total.credito { color: var(--green); }
         .cmv-adit-nota { font-size: 11px; color: var(--ink-3); margin: -2px 0 8px; line-height: 1.45; }
-        .cmv-tag-adit { display: inline-block; margin-left: 7px; background: #EFEAFB; color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .cmv-tag-adit { display: inline-block; margin-left: 7px; background: var(--purple-soft); color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: var(--font-mono); }
         .cmv-adit-parcelas { display: inline-flex; gap: 8px; font-size: 11px; }
         .adit-mais { color: var(--blue); }
-        .adit-menos { color: #7d4038; }
+        .adit-menos { color: var(--danger); }
         .cmv-linha-valor.credito { color: var(--green); }
         .dash-gc-nome { font-size: 17px; font-weight: 700; color: var(--ink); }
         .dash-gc-email { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .dash-gc-vazio { font-size: 12px; color: var(--ink-3); font-style: italic; }
         .dash-gc-acoes { display: flex; gap: 7px; margin-top: 9px; }
-        .dash-aditivos .dash-adit-saldo { font-family: 'Space Grotesk', sans-serif; font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.15; }
+        .dash-aditivos .dash-adit-saldo { font-family: var(--font-sans); font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.15; }
         .dash-aditivos .dash-adit-saldo.credito { color: var(--green); }
         .dash-adit-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; }
         .dash-adit-lista { margin-top: 11px; border-top: 1px solid var(--border-soft); }
@@ -14026,28 +14220,28 @@ export default function App() {
         .ad-numero { font-size: 15px; font-weight: 700; color: var(--ink); }
         .ad-titulo { margin-top: 0; flex: 1; min-width: 200px; font-size: 13px; }
         .ad-status-sel { display: flex; gap: 4px; }
-        .ad-tag { border: 1px solid var(--border); background: #fff; border-radius: 20px; padding: 4px 11px; font-size: 11px; font-weight: 700; font-family: inherit; color: var(--ink-3); cursor: pointer; }
+        .ad-tag { border: 1px solid var(--border); background: var(--surface-1); border-radius: 20px; padding: 4px 11px; font-size: 11px; font-weight: 700; font-family: inherit; color: var(--ink-3); cursor: pointer; }
         .ad-tag:hover { border-color: var(--ink-3); }
         .ad-tag.rascunho.on { background: var(--panel); border-color: var(--ink-3); color: var(--ink-2); }
         .ad-tag.aprovado.on { background: var(--green-bg); border-color: var(--green); color: var(--green); }
         .ad-tag.reprovado.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 
         .ad-interno { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-3); font-size: 10px; font-style: italic; }
-        .pf-box { border: 1px solid #E8CE9A; background: var(--amber-bg); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+        .pf-box { border: 1px solid var(--warning-line); background: var(--amber-bg); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
         .pf-box.compacto { margin: 6px 0 0; padding: 7px 9px; border-radius: 8px; }
-        .pf-topo { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #7A4E00; line-height: 1.45; }
+        .pf-topo { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text); line-height: 1.45; }
         .pf-box.compacto .pf-topo { font-size: 11px; }
         .pf-dados { display: flex; align-items: flex-start; gap: 6px; margin: 9px 0; }
-        .pf-dados pre { flex: 1; margin: 0; background: #fff; border-radius: 6px; padding: 8px 10px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; color: var(--ink-2); }
+        .pf-dados pre { flex: 1; margin: 0; background: var(--surface-1); border-radius: 6px; padding: 8px 10px; font-family: var(--font-mono); font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; color: var(--ink-2); }
         .pf-acoes { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
         .pf-box.compacto .pf-acoes { margin-top: 6px; }
         .pf-box.compacto .btn-doc { padding: 4px 9px; font-size: 10.5px; }
-        .pf-nota { font-size: 10.5px; color: #7A4E00; margin-top: 8px; line-height: 1.5; opacity: .85; }
+        .pf-nota { font-size: 10.5px; color: var(--text); margin-top: 8px; line-height: 1.5; opacity: .85; }
         .pf-ok { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--green); font-weight: 600; margin-top: 6px; }
         .pf-ok.compacto { font-size: 10.5px; }
         .pf-desfazer { background: none; border: none; color: var(--ink-3); font-family: inherit; font-size: 10px; text-decoration: underline; cursor: pointer; }
         .ad-tag.aprovado.on.cobra { border-style: dashed; }
-        .ad-busca { border: 1px solid var(--border); border-radius: 8px; margin-top: 5px; overflow: hidden; background: #fff; }
+        .ad-busca { border: 1px solid var(--border); border-radius: 8px; margin-top: 5px; overflow: hidden; background: var(--surface-1); }
         .ad-busca-rot { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); padding: 5px 8px 3px; }
         .ad-busca-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--border-soft); padding: 5px 8px; font-family: inherit; font-size: 11.5px; color: var(--ink); cursor: pointer; }
         .ad-busca-item:hover { background: var(--blue-bg); }
@@ -14058,16 +14252,16 @@ export default function App() {
         .ad-busca-val { color: var(--ink-2); font-weight: 700; white-space: nowrap; }
         .ad-obs { display: block; width: 100%; margin-top: 5px; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); background: var(--panel); resize: vertical; min-height: 24px; }
         .ad-obs:hover { border-color: var(--border); }
-        .ad-obs:focus { outline: none; border-color: var(--blue); background: #fff; }
+        .ad-obs:focus { outline: none; border-color: var(--blue); background: var(--surface-1); }
         .ad-obs::placeholder { color: var(--ink-3); font-style: italic; }
         .ad-status-lista .ad-tag { padding: 3px 8px; font-size: 10px; }
         .ad-status-lista { justify-content: center; }
         .ad-obras { display: flex; gap: 7px; flex-wrap: wrap; margin: 16px 0 18px; }
-        .ad-obra { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: #fff; border-radius: 10px; padding: 8px 13px; font-size: 12.5px; font-family: inherit; color: var(--ink-2); cursor: pointer; }
+        .ad-obra { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--surface-1); border-radius: 10px; padding: 8px 13px; font-size: 12.5px; font-family: inherit; color: var(--ink-2); cursor: pointer; }
         .ad-obra:hover { border-color: var(--ink-3); }
         .ad-obra.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); font-weight: 600; }
         .ad-obra-nome { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .ad-obra-n { background: var(--blue); color: #fff; border-radius: 20px; font-size: 10px; font-weight: 700; padding: 1px 7px; }
+        .ad-obra-n { background: var(--blue); color: var(--bg); border-radius: 20px; font-size: 10px; font-weight: 700; padding: 1px 7px; }
         .ad-cab-obra { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
         .ad-cab-nome { font-size: 16px; font-weight: 700; color: var(--ink); }
         .ad-cab-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
@@ -14085,9 +14279,9 @@ export default function App() {
 
         .ad-wrap { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(420px, 1fr); gap: 18px; align-items: start; }
         .ad-form { display: flex; flex-direction: column; gap: 14px; }
-        .ad-card { border: 1px solid var(--border); border-radius: 12px; background: #fff; overflow: hidden; }
+        .ad-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); overflow: hidden; }
         .ad-card-h { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--panel); font-size: 12.5px; font-weight: 700; color: var(--ink); border-bottom: 1px solid var(--border); }
-        .ad-card.sup .ad-card-h { background: #F7EFED; color: #7d4038; }
+        .ad-card.sup .ad-card-h { background: var(--danger-soft); color: var(--danger); }
         .ad-card-tot { font-size: 13px; }
         .ad-card-b { padding: 12px 14px; }
         .ad-cab { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -14097,11 +14291,11 @@ export default function App() {
 
         .ad-grupo { border: 1px solid var(--border-soft); border-radius: 9px; margin-bottom: 10px; }
         .ad-gh { display: flex; align-items: center; gap: 6px; padding: 7px 9px; background: var(--panel); border-bottom: 1px solid var(--border-soft); border-radius: 9px 9px 0 0; }
-        .ad-num { width: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 4px 5px; font-size: 11.5px; font-family: 'JetBrains Mono', monospace; text-align: center; }
+        .ad-num { width: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 4px 5px; font-size: 11.5px; font-family: var(--font-mono); text-align: center; }
         .ad-gnome { flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; font-family: inherit; font-weight: 600; text-transform: uppercase; }
         .ad-sub { font-size: 11.5px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
         .ad-icon { background: none; border: none; color: var(--ink-3); cursor: pointer; padding: 3px; border-radius: 5px; display: inline-flex; font-family: inherit; font-size: 12px; }
-        .ad-icon:hover { background: #fff; color: var(--ink); }
+        .ad-icon:hover { background: var(--surface-1); color: var(--ink); }
         .ad-icon.del:hover { color: var(--red); }
         .ad-itens { padding: 9px; }
         .ad-item { border-bottom: 1px dashed var(--border-soft); padding-bottom: 9px; margin-bottom: 9px; }
@@ -14193,21 +14387,21 @@ export default function App() {
         .funil-no { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; cursor: pointer; font-family: inherit; text-align: center; min-width: 96px; }
         .funil-no:hover { border-color: var(--ink-3); }
         .funil-no.ativo { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
-        .funil-n { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; }
+        .funil-n { font-family: var(--font-sans); font-size: 19px; font-weight: 700; }
         .funil-rot { font-size: 10.5px; color: var(--ink-2); margin-top: 1px; }
         .funil-v { font-size: 10px; color: var(--ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
-        .assoc-barra { display: flex; align-items: center; gap: 10px; background: var(--blue-bg); border: 1px solid #C6DDEE; border-radius: 10px; padding: 11px 15px; font-size: 12px; color: var(--ink-2); margin-bottom: 12px; }
+        .assoc-barra { display: flex; align-items: center; gap: 10px; background: var(--blue-bg); border: 1px solid var(--brand-line); border-radius: 10px; padding: 11px 15px; font-size: 12px; color: var(--ink-2); margin-bottom: 12px; }
         .assoc-barra .btn-doc { margin-left: auto; flex-shrink: 0; }
         .funil-feitos { font-size: 9px; color: var(--ink-3); margin-top: 3px; display: inline-flex; align-items: center; gap: 3px; }
         .funil-feitos.tudo { color: var(--green); font-weight: 700; }
         .mo-num-ok .mo-num-val { color: var(--green); }
         .assoc-resultado { display: flex; align-items: center; gap: 9px; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
-        .assoc-resultado.ok { background: var(--green-bg); border: 1px solid #C9E5D4; color: var(--green); }
-        .assoc-resultado.parcial { background: var(--amber-bg); border: 1px solid #E8CE9A; color: #7A4C0A; }
-        .btn-associar-sel { display: inline-flex; align-items: center; gap: 5px; background: #fff; color: var(--ink); border: none; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-right: 6px; }
+        .assoc-resultado.ok { background: var(--green-bg); border: 1px solid var(--success-line); color: var(--green); }
+        .assoc-resultado.parcial { background: var(--amber-bg); border: 1px solid var(--warning-line); color: var(--text); }
+        .btn-associar-sel { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); color: var(--ink); border: none; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-right: 6px; }
         .btn-associar-sel:hover { background: var(--blue-bg); color: var(--blue); }
         .sel-barra-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .btn-sel-tudo { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-2); }
+        .btn-sel-tudo { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-2); }
         .btn-sel-tudo:hover { border-color: var(--ink); color: var(--ink); }
         .btn-limpar-sel-claro { background: transparent; border: none; color: var(--ink-3); font-size: 11.5px; cursor: pointer; font-family: inherit; text-decoration: underline; }
         .mo-check-tab { margin-left: 0; }
@@ -14217,7 +14411,7 @@ export default function App() {
         /* O nome da mae inteiro: era um <select> nativo espremido em 170px,
            onde "LUMINÁRIA - ARANDELA" virava "LUMINÁRIA - ARAND". */
         .mae-cel { position: relative; display: flex; align-items: flex-start; gap: 6px; padding: 2px 4px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 6px; border-bottom: 1px solid var(--border-soft); }
-        .mae-cel:hover { border-color: var(--border); background: #fff; }
+        .mae-cel:hover { border-color: var(--border); background: var(--surface-1); }
         .mae-cel .casa-bola { margin-top: 5px; }
         .mae-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
         .mae-cod { font-size: 10.5px; font-weight: 700; }
@@ -14235,7 +14429,7 @@ export default function App() {
         .casa-aproximado { color: var(--amber); }
         .casa-sem .casa-bola { background: var(--red); }
         .casa-sem { color: var(--red); font-weight: 600; }
-        .casa-sel { max-width: 168px; font-size: 11px; border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-family: inherit; background: #fff; color: var(--ink); }
+        .casa-sel { max-width: 168px; font-size: 11px; border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-family: inherit; background: var(--surface-1); color: var(--ink); }
         .det-opcao { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-family: inherit; }
         .det-opcao:hover { background: var(--panel); }
         .det-opcao.escolhida { border-color: var(--green); background: var(--green-bg); }
@@ -14250,13 +14444,13 @@ export default function App() {
         .det-desc { font-size: 11px; color: var(--ink-2); line-height: 1.4; }
         .det-espec { font-size: 10.5px; color: var(--ink-3); line-height: 1.4; font-style: italic; }
         .padrao-cel { display: flex; align-items: flex-start; gap: 6px; }
-        .padrao-txt { font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.45; background: var(--panel); border-radius: 4px; padding: 4px 6px; flex: 1; word-break: break-word; }
+        .padrao-txt { font-family: var(--font-mono); font-size: 10px; line-height: 1.45; background: var(--panel); border-radius: 4px; padding: 4px 6px; flex: 1; word-break: break-word; }
         .btn-copiar { background: transparent; border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; cursor: pointer; color: var(--ink-3); display: inline-flex; flex-shrink: 0; }
         .btn-copiar:hover { border-color: var(--ink); color: var(--ink); }
         .canal-escolha { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
-        .btn-canal { background: rgba(255,255,255,0.12); border: none; border-radius: 8px; padding: 5px 7px; cursor: pointer; font-family: inherit; }
-        .btn-canal:hover { background: rgba(255,255,255,0.26); }
-        .btn-canal-limpar { color: #fff; font-size: 11px; font-weight: 600; padding: 7px 11px; opacity: 0.75; }
+        .btn-canal { background: var(--on-inverse-soft); border: none; border-radius: 8px; padding: 5px 7px; cursor: pointer; font-family: inherit; }
+        .btn-canal:hover { background: var(--on-inverse-hover); }
+        .btn-canal-limpar { color: var(--bg); font-size: 11px; font-weight: 600; padding: 7px 11px; opacity: 0.75; }
         .btn-canal-limpar:hover { opacity: 1; }
 
         /* Conferencia com o Sienge: o que a planilha diz que tem pra
@@ -14268,28 +14462,28 @@ export default function App() {
         .cf-docs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .cf-doc { display: inline-flex; align-items: center; gap: 5px; background: var(--panel); border-radius: 20px; padding: 3px 5px 3px 10px; font-size: 11px; }
         .cf-doc-x { display: inline-flex; background: transparent; border: none; color: var(--ink-3); cursor: pointer; padding: 2px; border-radius: 50%; }
-        .cf-doc-x:hover { color: var(--red); background: #fff; }
+        .cf-doc-x:hover { color: var(--red); background: var(--surface-1); }
         .confronto-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
         .cf-bloco { border-radius: 10px; padding: 10px 14px; }
         .cf-bloco.ok { background: var(--green-bg); color: var(--green); }
         .cf-bloco.ruim { background: var(--red-bg); color: var(--red); }
-        .cf-bloco.aviso { background: var(--amber-bg); color: #7A4C0A; }
-        .cf-n { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; }
+        .cf-bloco.aviso { background: var(--amber-bg); color: var(--text); }
+        .cf-n { font-family: var(--font-sans); font-size: 22px; font-weight: 700; }
         .cf-rot { font-size: 10.5px; opacity: 0.85; }
         .cf-lista { margin-top: 12px; }
         .cf-tit { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
         .cf-tit.ruim { color: var(--red); }
-        .cf-tit.aviso { color: #7A4C0A; }
+        .cf-tit.aviso { color: var(--text); }
         .cf-linha { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
         .cf-desc { flex: 1; min-width: 0; }
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
         .btn-template { background: var(--green); }
-        .btn-template:hover { background: #247346; }
+        .btn-template:hover { background: var(--success); }
         .det-sorteado { color: var(--amber); font-weight: 700; }
         .det-codigos .form-input.sorteado { border-style: dashed; border-color: var(--amber); }
         .det-codigos { display: flex; gap: 8px; margin-top: 5px; }
         .det-codigos label { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--ink-3); }
-        .det-codigos .form-input { margin-top: 0; font-size: 11px; padding: 4px 6px; font-family: 'JetBrains Mono', monospace; }
+        .det-codigos .form-input { margin-top: 0; font-size: 11px; padding: 4px 6px; font-family: var(--font-mono); }
         .det-codigos .form-input.vazio { border-color: var(--amber); background: var(--amber-bg); }
         .det-escolha { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; }
         .det-escolha-rot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; color: var(--ink-3); margin-bottom: 4px; }
@@ -14309,8 +14503,8 @@ export default function App() {
         .ger-modo button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--ink-3); padding: 6px 11px; cursor: pointer; }
         .ger-modo button + button { border-left: 1px solid var(--border); }
         .ger-modo button:hover:not(:disabled) { color: var(--ink); background: var(--panel); }
-        .ger-modo button.on { background: var(--ink); color: #fff; }
-        .ger-modo button:disabled { color: #C4C4C4; cursor: default; }
+        .ger-modo button.on { background: var(--ink); color: var(--bg); }
+        .ger-modo button:disabled { color: var(--text-mute); cursor: default; }
         .ger-forn-lidos { display: inline-flex; align-items: center; gap: 8px; font-weight: 400; color: var(--ink-3); }
         .ger-forn-lidos b { font-weight: 600; color: var(--ink-2); }
         .ger-trocar-col { background: none; border: none; font-family: inherit; font-size: 10.5px; color: var(--blue); text-decoration: underline; cursor: pointer; padding: 0; }
@@ -14331,14 +14525,14 @@ export default function App() {
         .pedido-topo .btn-voltar { margin-left: auto; }
         .ped-espec { font-size: 10.5px; color: #6A6E72; font-style: italic; margin-top: 2px; }
         .ped-sienge { font-size: 10px; color: #85898D; margin-top: 2px; }
-        .pedido-vencido { color: #C2453F; font-weight: 700; }
-        .pedido-perto { color: #B54708; font-weight: 600; }
+        .pedido-vencido { color: var(--danger); font-weight: 700; }
+        .pedido-perto { color: var(--alert); font-weight: 600; }
         /* DASHBOARD MO — a base de orcado de um escopo. */
         .mo-topo { display: flex; align-items: center; gap: 30px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
-        .mo-num-val { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .mo-num-val { font-family: var(--font-sans); font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
         .mo-num-rot { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
         .mo-topo .btn-nova-solicitacao { margin-left: auto; }
-        .mo-check { width: 19px; height: 19px; flex-shrink: 0; border-radius: 5px; border: 1.5px solid var(--border); background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #fff; padding: 0; margin-left: 16px; }
+        .mo-check { width: 19px; height: 19px; flex-shrink: 0; border-radius: 5px; border: 1.5px solid var(--border); background: var(--surface-1); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--bg); padding: 0; margin-left: 16px; }
         .mo-check:hover { border-color: var(--blue); }
         .mo-linha.sel .mo-check, .grp-head .mo-check:has(svg) { background: var(--blue); border-color: var(--blue); }
         .mo-linha { display: flex; align-items: center; gap: 10px; padding-right: 14px; }
@@ -14347,11 +14541,11 @@ export default function App() {
         .mo-valor { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 104px; text-align: right; }
         /* A soma so aparece quando ha selecao: e o unico numero da tela
            contra o qual a proposta do fornecedor vai ser comparada. */
-        .mo-escopo-barra { position: sticky; bottom: 14px; display: flex; align-items: center; gap: 18px; background: var(--ink); color: #fff; border-radius: 12px; padding: 13px 20px; margin-top: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.18); }
-        .mo-escopo-val { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .mo-escopo-barra { position: sticky; bottom: 14px; display: flex; align-items: center; gap: 18px; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 13px 20px; margin-top: 14px; box-shadow: var(--shadow-3); }
+        .mo-escopo-val { font-family: var(--font-sans); font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
         .mo-escopo-rot { font-size: 11px; opacity: 0.75; margin-top: 1px; }
-        .btn-limpar-sel { margin-left: auto; background: rgba(255,255,255,0.14); color: #fff; border: none; border-radius: 7px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
-        .btn-limpar-sel:hover { background: rgba(255,255,255,0.24); }
+        .btn-limpar-sel { margin-left: auto; background: var(--on-inverse-soft); color: var(--bg); border: none; border-radius: 7px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-limpar-sel:hover { background: var(--on-inverse-hover); }
 
         .dash { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 28px; }
         .dash-hero, .dash-atencao { grid-column: 1 / -1; }
@@ -14359,7 +14553,7 @@ export default function App() {
         .dash-rot { font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
         .dash-hero-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
         .dash-hero-nums { display: flex; align-items: center; gap: 18px; }
-        .dash-num-val { font-family: 'Space Grotesk', sans-serif; font-size: 27px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+        .dash-num-val { font-family: var(--font-sans); font-size: 27px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         .dash-num-rot { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .dash-seta { font-size: 19px; color: var(--ink-3); padding-bottom: 16px; }
         .dash-delta { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 9px 14px; }
@@ -14371,14 +14565,14 @@ export default function App() {
         .dash-barra { position: relative; display: flex; height: 8px; background: var(--panel); border-radius: 20px; overflow: hidden; margin-top: 16px; }
         .dash-barra-fill.ok { background: var(--green); }
         .dash-barra-fill.ruim { background: var(--red); }
-        .dash-barra-over { background: repeating-linear-gradient(45deg, var(--red) 0 4px, #E58B85 4px 8px); }
+        .dash-barra-over { background: repeating-linear-gradient(45deg, var(--red) 0 4px, var(--danger-line) 4px 8px); }
         .dash-barra-rot { font-size: 10.5px; color: var(--ink-3); margin-top: 6px; }
         .dash-anel-linha { display: flex; align-items: center; gap: 18px; }
-        .dash-anel-txt { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; fill: var(--ink); }
+        .dash-anel-txt { font-family: var(--font-sans); font-size: 19px; font-weight: 700; fill: var(--ink); }
         .dash-mini { font-size: 11px; color: var(--ink-2); margin-top: 4px; }
         .dash-data-linha { display: flex; align-items: center; gap: 8px; }
         .dash-data-linha .entrega-input { width: auto; flex: 1; margin-top: 0; }
-        .btn-salvar-data { background: var(--ink); color: #fff; border: none; border-radius: 7px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+        .btn-salvar-data { background: var(--ink); color: var(--bg); border: none; border-radius: 7px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
         .btn-salvar-data:hover { background: var(--blue); }
         .dash-sujo { color: var(--amber); font-weight: 600; }
         .dash-proximo { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border-soft); color: var(--ink-2); }
@@ -14388,22 +14582,21 @@ export default function App() {
         .dash-proximo.perto, .dash-proximo.perto .dash-proximo-conta { color: var(--amber); }
         .dash-proximo.vencido, .dash-proximo.vencido .dash-proximo-conta { color: var(--red); font-weight: 600; }
         .dash-atencao { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 13px 20px; }
-        .dash-atencao.tudo-ok { background: var(--green-bg); border-color: #C9E5D4; }
+        .dash-atencao.tudo-ok { background: var(--green-bg); border-color: var(--success-line); }
         .dash-alerta { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
         .dash-alerta.ok { color: var(--green); }
         .dash-alerta.red { color: var(--red); }
         .dash-alerta.amber { color: var(--amber); }
-        .dash-alerta.purple { color: var(--purple); }
         .dash-atalho { margin-left: auto; margin-top: 0; }
         @media (max-width: 900px) { .dash { grid-template-columns: 1fr; } }
 
         /* NOVO PAINEL DA OBRA — cartões no mesmo estilo do painel geral
            (classes .ini-cel / .ini-titulo), só que na escala de UMA obra. */
         .dobra-regua { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
-        .dobra-entrega { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 10px 14px; background: #fff; border: 1px solid var(--border-soft); border-radius: 10px; font-size: 12.5px; color: var(--ink-2); }
+        .dobra-entrega { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 10px 14px; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 10px; font-size: 12.5px; color: var(--ink-2); }
         .dobra-entrega-rot { font-weight: 600; color: var(--ink); margin-right: 4px; }
         .dobra-entrega .entrega-input { width: auto; margin-top: 0; }
-        .dobra-card { background: #fff; border: 1px solid var(--border-soft); border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(20,20,20,.03); }
+        .dobra-card { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; box-shadow: none; }
         .dobra-sub { font-size: 11.5px; color: var(--ink-3); margin: -4px 0 14px; }
         .dobra-colunas { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; align-items: start; }
         .dobra-colunas .dobra-card { margin-bottom: 0; }
@@ -14415,8 +14608,8 @@ export default function App() {
         .jornada-linha { flex: 1; height: 2px; background: var(--border); margin-top: 15px; min-width: 12px; }
         .jornada-linha.feita { background: var(--green); }
         .jornada-bola { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--panel); border: 2px solid var(--border); color: var(--ink-3); margin-bottom: 8px; }
-        .jornada-bola.feita { background: var(--green); border-color: var(--green); color: #fff; }
-        .jornada-bola.atual { background: #fff; border-color: var(--blue); color: var(--blue); }
+        .jornada-bola.feita { background: var(--green); border-color: var(--green); color: var(--bg); }
+        .jornada-bola.atual { background: var(--surface-1); border-color: var(--blue); color: var(--blue); }
         .jornada-ponto { width: 9px; height: 9px; border-radius: 50%; background: var(--blue); }
         .jornada-nome { font-size: 12.5px; font-weight: 700; color: var(--ink); }
         .jornada-status { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
@@ -14446,10 +14639,10 @@ export default function App() {
         .resumo-panel { background: var(--panel); border-radius: 16px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: start; gap: 12px; margin-bottom: 28px; }
         .resumo-panel .mini-stats { grid-column: span 1; min-width: 210px; }
         @media (min-width: 1500px) { .resumo-panel { grid-template-columns: repeat(4, 1fr) 250px 230px; } }
-        .big-card { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 15px 17px; }
+        .big-card { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 12px; padding: 15px 17px; }
         .big-card-label { font-size: 10px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 9px; }
         .big-card-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-        .big-card-value { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+        .big-card-value { font-family: var(--font-sans); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
         .big-card-sub { font-size: 11px; color: var(--ink-3); margin-top: 6px; }
         .delta { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; }
         .delta-good { color: var(--green); }
@@ -14458,9 +14651,9 @@ export default function App() {
         .progress-fill { height: 5px; background: var(--blue); border-radius: 4px; }
 
         .mini-stats { display: flex; flex-direction: column; gap: 8px; }
-        .mini-stat { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 9px 14px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .mini-stat { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 12px; padding: 9px 14px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
         .mini-stat-label { font-size: 9.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
-        .mini-stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700; }
+        .mini-stat-value { font-family: var(--font-sans); font-size: 16px; font-weight: 700; }
 
         /* ESTEIRA — dois niveis.
            O primeiro separa por momento (planejar / executar), o segundo
@@ -14469,7 +14662,7 @@ export default function App() {
            Minimalista: o estado é um ponto e uma palavra, as ações
            secundárias são texto. O único botão cheio é o de avançar,
            porque é a única coisa aqui que empurra a obra pra frente. */
-        .barra-etapa { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 14px; margin-bottom: 16px; background: #fff; border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; }
+        .barra-etapa { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 14px; margin-bottom: 16px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; }
         .barra-etapa.feita { background: var(--green-bg); border-color: var(--green); }
         .be-estado { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-2); min-width: 0; }
         .be-estado b { color: var(--ink-1); font-weight: 600; }
@@ -14483,7 +14676,7 @@ export default function App() {
         .be-dir { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .be-feita { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
         .be-feita svg { color: var(--green); }
-        .be-avancar { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--blue); border: none; border-radius: 8px; padding: 7px 13px; cursor: pointer; }
+        .be-avancar { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--bg); background: var(--blue); border: none; border-radius: 8px; padding: 7px 13px; cursor: pointer; }
         .be-avancar:hover:not(:disabled) { filter: brightness(1.08); }
         .be-avancar:disabled { background: var(--border); color: var(--ink-3); cursor: default; }
 
@@ -14522,7 +14715,7 @@ export default function App() {
         .assinatura-linha { font-size: 13px; color: var(--ink-2); }
         .assinatura-obs { font-size: 13px; color: var(--ink-2); margin-top: 7px; font-style: italic; }
         .assinatura-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); margin-top: 8px; }
-        .assinatura-sem-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #B54708; margin-top: 8px; }
+        .assinatura-sem-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--alert); margin-top: 8px; }
         /* Quando o aviso vem na mesma linha do nome do arquivo, o
            respiro de cima é do bloco, não dele. */
         .assinatura-arq .assinatura-sem-arq { margin-top: 0; font-size: 11.5px; }
@@ -14533,7 +14726,7 @@ export default function App() {
         .campo input { font: inherit; font-size: 13px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; }
         .assinatura-upload { display: flex; align-items: center; gap: 12px; }
         .assinatura-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 20px 18px; }
-        .assinatura-aviso { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #B54708; }
+        .assinatura-aviso { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--alert); }
 
         .tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
         .tabbar .tab { white-space: nowrap; flex-shrink: 0; }
@@ -14542,16 +14735,16 @@ export default function App() {
         .tab.active { color: var(--ink); border-bottom-color: var(--blue); }
 
         .filter-bar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
-        .filter-chip { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+        .filter-chip { background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .filter-chip:hover { border-color: var(--blue); }
-        .filter-chip.active { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+        .filter-chip.active { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
         /* Fila de cima: o que o item É. Fica acima e mais encorpada que a
            de situação, porque decide qual das duas rotinas — compra no
            Sienge ou contrato — você está tocando. */
         .tipo-bar { margin-bottom: 8px; }
         .tipo-chip { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
         .tipo-chip-conta { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: var(--panel); color: var(--ink-3); }
-        .tipo-chip.active .tipo-chip-conta { background: rgba(255,255,255,0.22); color: #fff; }
+        .tipo-chip.active .tipo-chip-conta { background: var(--on-inverse-hover); color: var(--bg); }
         .tipo-bar-destino { font-size: 11px; color: var(--ink-3); font-style: italic; margin-left: 3px; }
         .venda-bar { margin-bottom: 10px; }
         .vend-nao-vendido { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; flex-shrink: 0; }
@@ -14565,13 +14758,13 @@ export default function App() {
            dentro dele (o campo de dias do prazo). Quem abre o grupo agora
            e so a parte esquerda, que segue sendo a maior area da linha. */
         .grp-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-right: 16px; }
-        .grp-head:hover { background: #FCFBF9; }
+        .grp-head:hover { background: var(--surface-2); }
         .grp-toggle { flex: 1; min-width: 0; background: transparent; border: none; padding: 12px 16px; cursor: pointer; font-family: inherit; text-align: left; }
         .grp-esq { display: flex; align-items: center; gap: 10px; min-width: 0; }
         .grp-num { font-size: 11.5px; color: var(--ink-3); width: 20px; flex-shrink: 0; }
         .grp-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .grp-conta { font-size: 10.5px; color: var(--ink-3); background: var(--panel); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
-        .grp-avulsos { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--purple); background: #EFEAFB; border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
+        .grp-avulsos { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--purple); background: var(--purple-soft); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         /* MAT e MO em colunas de largura fixa: com valores alinhados da
            direita, os grupos viram uma coluna so de cima a baixo e da pra
            comparar verba com verba sem ler numero por numero. */
@@ -14592,19 +14785,19 @@ export default function App() {
         /* Dashboard: a data que comanda os prazos, e as avulsas. */
         .entrega-panel { display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
         .aviso-entrega { margin-bottom: 12px; align-items: center; }
-        .aviso-migracao { display: flex; align-items: center; gap: 9px; background: var(--amber-bg); color: #7A4C0A; border: 1px solid #E8CE9A; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 14px; }
+        .aviso-migracao { display: flex; align-items: center; gap: 9px; background: var(--amber-bg); color: var(--text); border: 1px solid var(--warning-line); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 14px; }
         .aviso-x { margin-left: auto; background: transparent; border: none; color: inherit; cursor: pointer; display: flex; opacity: 0.6; }
         .aviso-x:hover { opacity: 1; }
         .be-parcial { color: var(--amber); font-weight: 600; }
-        .entrega-bloco { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 14px; }
-        .entrega-input { width: 100%; margin-top: 3px; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; font-size: 13px; font-family: 'JetBrains Mono', monospace; color: var(--ink); background: #fff; }
+        .entrega-bloco { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 14px; }
+        .entrega-input { width: 100%; margin-top: 3px; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; font-size: 13px; font-family: var(--font-mono); color: var(--ink); background: var(--surface-1); }
         .entrega-input:focus { border-color: var(--ink); outline: none; }
         .entrega-input:disabled { background: var(--panel); color: var(--ink-3); }
         .entrega-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.35; }
-        .btn-atalho { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; background: var(--ink); color: #fff; border: none; border-radius: 7px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-atalho { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; background: var(--ink); color: var(--bg); border: none; border-radius: 7px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
         .btn-atalho:hover { background: var(--purple); }
 
-        .grp-itens { border-top: 1px solid var(--border); background: #FCFBF8; overflow-x: auto; }
+        .grp-itens { border-top: 1px solid var(--border); background: var(--surface-2); overflow-x: auto; }
         /* As 12 colunas somam mais que a largura util da tela. Sem um
            minimo, o navegador espremia justamente a coluna flexivel — a
            descricao — e "Anotacao de responsabilidade tecnica" saia em
@@ -14623,7 +14816,7 @@ export default function App() {
         .grp-itens th.center, .grp-itens td.center { text-align: center; }
         .grp-itens th.right, .grp-itens td.right { text-align: right; }
         .grp-itens td.mono { font-variant-numeric: tabular-nums; }
-        .grp-itens tfoot td { border-bottom: none; border-top: 1px solid var(--border); background: #F7F6F2; font-size: 12.5px; }
+        .grp-itens tfoot td { border-bottom: none; border-top: 1px solid var(--border); background: var(--surface-2); font-size: 12.5px; }
 
         /* Alocacao de recurso. MAT/MO ganha as duas cores num degrade de
            canto — a pessoa reconhece "os dois" sem ler a sigla. */
@@ -14649,37 +14842,37 @@ export default function App() {
         /* Tom pastel bem claro: com 174 linhas, cor forte vira parede e
            para de informar. O verde e um tico mais presente porque ele e
            a excecao — a maioria falta comprar. */
-        .row-falta { background: #FEFCF3; }
-        .row-comprado { background: #F2F9F4; }
+        .row-falta { background: var(--warning-tint); }
+        .row-comprado { background: var(--success-tint); }
         .grp-itens tbody tr.row-comprado td:first-child { box-shadow: inset 2px 0 0 var(--green); }
-        .grp-itens tbody tr.row-falta td:first-child { box-shadow: inset 2px 0 0 #E5C97A; }
+        .grp-itens tbody tr.row-falta td:first-child { box-shadow: inset 2px 0 0 var(--warning-line); }
         .status-pill { display: inline-flex; align-items: center; gap: 4px; }
         .legend-quadro { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-        .q-falta { background: #FEFCF3; border: 1px solid #E5C97A; }
-        .q-comprado { background: #F2F9F4; border: 1px solid var(--green); }
-        .row-avulso { background: #FBFAFE; }
+        .q-falta { background: var(--warning-tint); border: 1px solid var(--warning-line); }
+        .q-comprado { background: var(--success-tint); border: 1px solid var(--green); }
+        .row-avulso { background: var(--purple-tint); }
         .row-avulso td:first-child { box-shadow: inset 2px 0 0 var(--purple); }
-        .tag-avulso { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--purple); background: #EFEAFB; border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
+        .tag-avulso { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--purple); background: var(--purple-soft); border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
         .avulso-obs { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
 
         /* Separar a MO: acao pequena, ao lado da etiqueta que a motiva. */
         .btn-separar { display: inline-flex; align-items: center; gap: 3px; margin-top: 4px; background: transparent; border: 1px dashed var(--border); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; font-family: inherit; white-space: nowrap; }
         .btn-separar:hover { border-color: var(--purple); color: var(--purple); border-style: solid; }
         .grp-acao { display: flex; align-items: center; gap: 9px; padding: 9px 14px; background: var(--amber-bg); border-bottom: 1px solid var(--border); font-size: 11.5px; color: var(--ink-2); }
-        .btn-separar-grupo { margin-left: auto; background: var(--ink); color: #fff; border: none; border-radius: 6px; padding: 5px 11px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+        .btn-separar-grupo { margin-left: auto; background: var(--ink); color: var(--bg); border: none; border-radius: 6px; padding: 5px 11px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
         .btn-separar-grupo:hover { background: var(--purple); }
         /* As duas pontas do vinculo. Sem elas sao duas linhas parecidas em
            verbas diferentes, e a conferencia de meses depois nao sabe se e
            separacao ou duplicata. */
-        .tag-separado { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--purple); background: #EFEAFB; border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
+        .tag-separado { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--purple); background: var(--purple-soft); border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
         .btn-juntar { background: transparent; border: none; color: var(--purple); text-decoration: underline; font-size: 10px; cursor: pointer; font-family: inherit; padding: 0 0 0 3px; }
-        .btn-avulsa { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 12px; }
+        .btn-avulsa { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 12px; }
         .btn-avulsa:hover { background: var(--purple); }
         .form-avulsa { max-width: 560px; margin-bottom: 12px; }
         .form-avulsa-nota { font-size: 11.5px; color: var(--ink-2); background: var(--panel); border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; line-height: 1.45; }
         .form-avulsa-aviso { font-size: 11.5px; color: var(--ink-2); margin-top: 8px; }
         .aloc-escolha { display: flex; gap: 8px; margin-top: 6px; }
-        .aloc-op { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; cursor: pointer; font-family: inherit; flex: 1; }
+        .aloc-op { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; cursor: pointer; font-family: inherit; flex: 1; }
         .aloc-op:hover { border-color: var(--purple); }
         .aloc-op.ativo { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
         .aloc-op-sub { font-size: 10.5px; color: var(--ink-3); }
@@ -14687,7 +14880,7 @@ export default function App() {
 
         .cat-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
         .cat-header { width: 100%; background: transparent; border: none; display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; }
-        .cat-header:hover { background: #FCFBF9; }
+        .cat-header:hover { background: var(--surface-2); }
         .cat-header-left { display: flex; align-items: center; gap: 10px; }
         .cat-num { font-size: 11.5px; color: var(--ink-3); width: 20px; }
         .cat-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
@@ -14701,7 +14894,7 @@ export default function App() {
         .cat-diff { font-size: 12px; font-weight: 600; min-width: 150px; text-align: right; }
         .status-text { font-size: 11.5px; font-weight: 600; white-space: nowrap; min-width: 140px; text-align: right; }
 
-        .cat-items { border-top: 1px solid var(--border); background: #FCFBF8; }
+        .cat-items { border-top: 1px solid var(--border); background: var(--surface-2); }
         .table-note { font-size: 10.5px; color: var(--ink-3); padding: 8px 12px; font-style: italic; border-bottom: 1px solid var(--border-soft); }
         .fluxo-bloco { border-bottom: 1px solid var(--border); }
         .fluxo-bloco:last-child { border-bottom: none; }
@@ -14710,7 +14903,7 @@ export default function App() {
         .fluxo-head-servico { color: var(--ink-2); background: var(--panel); }
         .fluxo-titulo { font-weight: 700; }
         .fluxo-dest { font-weight: 600; font-size: 11px; opacity: 0.85; }
-        .fluxo-meta { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--ink-3); font-family: 'JetBrains Mono', monospace; }
+        .fluxo-meta { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--ink-3); font-family: var(--font-mono); }
         .cat-items table, .flat-table { width: 100%; border-collapse: collapse; }
         .cat-items th, .flat-table th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 9px 12px; border-bottom: 1px solid var(--border); }
         .cat-items td, .flat-table td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 12.5px; }
@@ -14748,7 +14941,7 @@ export default function App() {
         .unit { color: var(--ink-3); font-size: 11px; }
         .center-block { display: block; text-align: center; }
 
-        .btn-approve { display: inline-flex; align-items: center; gap: 4px; background: var(--ink); color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }
+        .btn-approve { display: inline-flex; align-items: center; gap: 4px; background: var(--ink); color: var(--bg); border: none; border-radius: 6px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }
         .btn-approve:hover { background: var(--blue); }
         .tag-canal { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
         .tag-canal b { font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; }
@@ -14756,7 +14949,7 @@ export default function App() {
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-contratos { background: var(--panel); color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
         .pill-wait { background: var(--panel); color: var(--ink-3); }
-        .pill-falta { background: #FDF3E3; color: #B54708; }
+        .pill-falta { background: var(--alert-soft); color: var(--alert); }
 
         /* PLANO DE COMPRAS — seleção do que vai ser comprado.
 
@@ -14778,9 +14971,9 @@ export default function App() {
         .contrato-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
         .contrato-blocked { display: inline-block; font-size: 11px; font-weight: 600; color: var(--red); background: var(--red-bg); padding: 4px 10px; border-radius: 20px; }
         .contrato-caption { display: block; font-size: 10px; color: var(--ink-3); font-style: italic; margin-top: 4px; }
-        .input-valor { width: 88px; text-align: right; border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; font-size: 12px; font-family: 'JetBrains Mono', monospace; background: #fff; color: var(--ink); }
+        .input-valor { width: 88px; text-align: right; border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; font-size: 12px; font-family: var(--font-mono); background: var(--surface-1); color: var(--ink); }
         .input-valor:focus { outline: none; border-color: var(--blue); }
-        .check { width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--border); background: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; }
+        .check { width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--border); background: var(--surface-1); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--bg); }
         .check-on { background: var(--green); border-color: var(--green); }
 
         .legend { display: flex; gap: 18px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
@@ -14791,7 +14984,7 @@ export default function App() {
         .flat-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
         .flat-panel-title { font-size: 14px; font-weight: 700; color: var(--ink); }
         .flat-panel-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; max-width: 560px; }
-        .btn-download { display: flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+        .btn-download { display: flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
         .btn-download:hover { background: var(--blue); }
         .import-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 14px; align-items: start; }
         .import-card { display: flex; flex-direction: column; gap: 8px; }
@@ -14801,7 +14994,7 @@ export default function App() {
         .btn-limpar-import:hover:not(:disabled) { background: var(--red-bg); border-color: var(--red); }
         .btn-limpar-import:disabled { opacity: 0.5; cursor: default; }
         .import-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); }
-        .btn-import { display: inline-flex; align-items: center; gap: 6px; background: var(--blue); color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+        .btn-import { display: inline-flex; align-items: center; gap: 6px; background: var(--blue); color: var(--bg); border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
         .btn-import:hover { filter: brightness(1.08); }
         .import-ok { display: flex; align-items: center; gap: 8px; background: var(--green-bg); color: var(--green); border: 1px solid var(--green); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
         .import-erro { display: flex; align-items: center; gap: 8px; background: var(--red-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
@@ -14824,14 +15017,14 @@ export default function App() {
         .vend-grupo.na { opacity: 0.72; }
         .vend-head.na { cursor: default; }
         .vend-na-motivo { font-size: 11px; color: var(--ink-3); flex: 1; text-align: right; padding-right: 10px; }
-        .aviso-pobre { display: flex; align-items: flex-start; gap: 10px; background: var(--amber-bg, #FEF3E2); border: 1px solid var(--amber, #E8B04B); color: var(--amber, #B7791F); border-radius: 10px; padding: 11px 14px; font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
+        .aviso-pobre { display: flex; align-items: flex-start; gap: 10px; background: var(--amber-bg); border: 1px solid var(--amber); color: var(--amber); border-radius: 10px; padding: 11px 14px; font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
         .aviso-pobre-sub { color: var(--ink-2); font-size: 11.5px; margin-top: 4px; }
 
         .aviso-deslocamento { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 13px; font-size: 12px; color: var(--ink-2); margin-bottom: 14px; }
         /* fixed vale pra todas: cada verba renderiza a própria tabela, e
            sem isso cada uma calcularia larguras pelo próprio conteúdo —
            as colunas deixavam de alinhar de um grupo pro outro. */
-        .vend-itens { width: 100%; border-collapse: collapse; background: #FCFBF8; border-top: 1px solid var(--border-soft); table-layout: fixed; }
+        .vend-itens { width: 100%; border-collapse: collapse; background: var(--surface-2); border-top: 1px solid var(--border-soft); table-layout: fixed; }
         /* Quebra agressiva SÓ onde o texto é longo de verdade.
            Valia pra toda célula — existia pra impedir que uma URL de 357
            caracteres esticasse a tabela — e numa coluna estreita partia
@@ -14850,7 +15043,7 @@ export default function App() {
            Como boa parte das linhas vem com a quantidade colada, a caixa
            laranja em cada célula virava uma parede — e parede não sinaliza
            nada, porque não tem contraste com o resto. */
-        .vend-itens td.qtd-palpite { background: #FFFBF4; box-shadow: inset 3px 0 0 #F79009; cursor: help; }
+        .vend-itens td.qtd-palpite { background: var(--alert-tint); box-shadow: inset 3px 0 0 var(--alert); cursor: help; }
         /* A quebra livre acima existe pela especificação gigante, que sem
            ela estica a coluna e desalinha a tabela. Mas ela também
            autoriza partir "1.10" em "1.1" e "0" — código de item não é
@@ -14874,7 +15067,7 @@ export default function App() {
         .bucket-falta { background: var(--amber-bg); border-color: var(--amber); }
         .bucket-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
         .bucket-falta .bucket-label { color: var(--amber); }
-        .bucket-num { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; margin-top: 4px; color: var(--ink); }
+        .bucket-num { font-family: var(--font-sans); font-size: 26px; font-weight: 700; margin-top: 4px; color: var(--ink); }
         .bucket-falta .bucket-num { color: var(--amber); }
         .bucket-num span { font-size: 13px; font-weight: 500; color: var(--ink-3); }
         .bucket-falta .bucket-num span { color: var(--amber); }
@@ -14884,9 +15077,9 @@ export default function App() {
         .compras-filtros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
         .cfiltro { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .cfiltro:hover { border-color: var(--blue); }
-        .cfiltro.active { background: var(--ink); border-color: var(--ink); color: #fff; }
-        .cbadge { background: rgba(0,0,0,0.08); border-radius: 10px; padding: 0 6px; font-size: 11px; font-weight: 600; }
-        .cfiltro.active .cbadge { background: rgba(255,255,255,0.22); }
+        .cfiltro.active { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+        .cbadge { background: color-mix(in srgb, var(--text) 8%, transparent); border-radius: 10px; padding: 0 6px; font-size: 11px; font-weight: 600; }
+        .cfiltro.active .cbadge { background: var(--on-inverse-hover); }
         .compras-grupo { margin-bottom: 16px; }
         .compras-grupo-head { display: flex; align-items: center; gap: 8px; padding: 6px 4px; width: 100%; background: transparent; border: none; border-radius: 8px; cursor: pointer; text-align: left; }
         .compras-grupo-head:hover { background: var(--panel); }
@@ -14905,8 +15098,8 @@ export default function App() {
         .sug-title { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); margin-bottom: 8px; }
         .sug-warn { font-weight: 500; color: var(--amber); font-size: 10.5px; }
         .sug-row { display: flex; align-items: center; gap: 10px; }
-        .sug-code { flex: 1; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--ink); overflow-x: auto; white-space: nowrap; }
-        .sug-copy { display: inline-flex; align-items: center; gap: 5px; background: var(--ink); color: #fff; border: none; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+        .sug-code { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--ink); overflow-x: auto; white-space: nowrap; }
+        .sug-copy { display: inline-flex; align-items: center; gap: 5px; background: var(--ink); color: var(--bg); border: none; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
         .sug-copy:hover { background: var(--blue); }
         .sug-fmt { font-size: 10.5px; color: var(--ink-3); margin-top: 6px; }
         .compras-row-main { flex: 1; min-width: 0; }
@@ -14923,33 +15116,33 @@ export default function App() {
         .proc-falta { background-color: var(--amber-bg); color: var(--amber); }
         .proc-lancado { background-color: var(--blue-bg); color: var(--blue); }
         .proc-comprado { background-color: var(--green-bg); color: var(--green); }
-        .btn-lancar { display: inline-flex; align-items: center; gap: 6px; background: var(--blue); color: #fff; border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-lancar { display: inline-flex; align-items: center; gap: 6px; background: var(--blue); color: var(--bg); border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
         .btn-lancar:hover { filter: brightness(1.08); }
-        .btn-cadastrar { display: inline-flex; align-items: center; gap: 6px; background: #fff; color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
-        .btn-compra { display: inline-flex; align-items: center; gap: 6px; background: #fff; color: var(--green); border: 1px solid var(--green); border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
-        .btn-avancar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-cadastrar { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-1); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-compra { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-1); color: var(--green); border: 1px solid var(--green); border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-avancar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
         .btn-avancar:hover { background: var(--blue); }
         .contrato-etapa-cell { width: 210px; flex-shrink: 0; }
         .pipeline { display: flex; align-items: stretch; gap: 3px; margin: 18px 0 12px; overflow-x: auto; padding-bottom: 4px; }
         .pipe-node { flex: 1; min-width: 92px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 6px; cursor: pointer; text-align: center; }
         .pipe-node:hover { border-color: var(--ink-3); }
         .pipe-node.active { border-width: 2px; padding: 9px 5px; }
-        .pipe-count { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; line-height: 1; }
+        .pipe-count { font-family: var(--font-sans); font-size: 22px; font-weight: 700; line-height: 1; }
         .pipe-label { font-size: 10.5px; color: var(--ink-2); margin-top: 4px; font-weight: 600; }
         .pipe-val { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
         .pipe-arrow { align-self: center; flex-shrink: 0; }
         .contratos-toolbar { margin: 4px 0 4px; }
-        .btn-nova-solicitacao { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+        .btn-nova-solicitacao { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .btn-nova-solicitacao:hover { background: var(--blue); }
         .form-solicitacao { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 4px; max-width: 480px; }
         .form-solicitacao-title { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-bottom: 12px; }
         .form-row { margin-bottom: 12px; }
         .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; }
         .form-label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
-        .form-input, .form-select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; font-family: 'Inter', sans-serif; color: var(--ink); background: #fff; }
+        .form-input, .form-select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; font-family: var(--font-sans); color: var(--ink); background: var(--surface-1); }
         .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
         .btn-cancelar { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
-        .btn-criar { background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+        .btn-criar { background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .btn-criar:hover { background: var(--blue); }
         .compras-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 60px 20px; }
         .compras-empty-title { font-size: 15px; font-weight: 700; color: var(--ink); }
@@ -14959,7 +15152,7 @@ export default function App() {
         .conf-stat { text-align: left; background: var(--card); border: 1.5px solid var(--border); border-radius: 12px; padding: 13px 15px; cursor: pointer; }
         .conf-stat:hover { border-color: var(--ink-3); }
         .conf-stat.active { border-width: 2px; padding: 12px 14px; }
-        .conf-stat-num { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; line-height: 1; }
+        .conf-stat-num { font-family: var(--font-sans); font-size: 26px; font-weight: 700; line-height: 1; }
         .conf-stat-label { font-size: 12.5px; font-weight: 700; color: var(--ink); margin-top: 6px; }
         .conf-stat-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .conf-row { padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
@@ -14973,9 +15166,9 @@ export default function App() {
         .conf-meta { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
         .conf-vazio { font-size: 12px; color: var(--ink-3); font-style: italic; }
         .conf-acoes { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
-        .btn-editar-linha { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border-strong); border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+        .btn-editar-linha { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
         .btn-editar-linha:hover { border-color: var(--blue); color: var(--blue); }
-        .btn-aprovar-linha { display: inline-flex; align-items: center; gap: 5px; background: var(--green); border: none; border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: #fff; cursor: pointer; }
+        .btn-aprovar-linha { display: inline-flex; align-items: center; gap: 5px; background: var(--green); border: none; border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: var(--bg); cursor: pointer; }
         .btn-aprovar-linha:hover { filter: brightness(1.08); }
         .conf-edit { display: flex; flex-direction: column; gap: 6px; }
         .conf-edit-row { display: flex; gap: 6px; }
@@ -14993,12 +15186,12 @@ export default function App() {
         .aprovacao-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 16px; }
         .aprovacao-resumo { font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
         .aprovacao-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); margin-bottom: 12px; cursor: pointer; }
-        .btn-aprovar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+        .btn-aprovar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 10px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
         .btn-aprovar:hover:not(:disabled) { background: var(--green); }
         .btn-aprovar:disabled { opacity: 0.4; cursor: not-allowed; }
         .caderno-card { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
         .caderno-lista { display: flex; flex-direction: column; gap: 1px; background: var(--border-soft); }
-        .caderno-slot { display: flex; align-items: center; gap: 9px; background: #fff; padding: 8px 18px; font-size: 12px; }
+        .caderno-slot { display: flex; align-items: center; gap: 9px; background: var(--surface-1); padding: 8px 18px; font-size: 12px; }
         .caderno-slot-titulo { color: var(--ink); font-weight: 500; }
         .caderno-slot-arquivo { flex: 1; min-width: 0; color: var(--ink-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .caderno-slot-vazio { flex: 1; color: var(--ink-3); font-size: 11.5px; font-style: italic; }
@@ -15012,7 +15205,7 @@ export default function App() {
 
         /* Saldo do Executivo contra o CMV congelado na liberação */
         .saldo-exec { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; }
-        .saldo-exec.estourou { border-color: var(--red); background: var(--red-bg, #FDEEEC); }
+        .saldo-exec.estourou { border-color: var(--red); background: var(--red-bg); }
         .saldo-rotulo { font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; }
         .saldo-valor { font-size: 17px; font-weight: 600; color: var(--ink); margin-top: 3px; }
         .saldo-bloco.destaque .saldo-valor { font-size: 19px; }
@@ -15022,7 +15215,7 @@ export default function App() {
         /* Item excluído: some do custo, não some da vista */
         /* Fundo cheio só fora do Executivo (Plano de Compras), onde a
            exclusão é rara. No Executivo quem marca é a barra lateral. */
-        .linha-excluida { background: var(--red-bg, #FDEEEC); }
+        .linha-excluida { background: var(--red-bg); }
         .exec-itens tr.linha-excluida { background: transparent; }
         .linha-excluida td { color: var(--ink-3); text-decoration: line-through; }
         .linha-excluida td:nth-child(2) { text-decoration: none; }
@@ -15042,7 +15235,7 @@ export default function App() {
 
            Agora a barra diz o estado e o fundo fica limpo. Sobra contraste
            pro que realmente pede ação. */
-        .exec-itens tr.linha-alterada > td:nth-child(2) { box-shadow: inset 3px 0 0 #E8B04B; }
+        .exec-itens tr.linha-alterada > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--warning); }
         .exec-itens tr.linha-excluida > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--red); }
         .exec-itens tr.linha-excluida > td { color: var(--ink-3); }
         .exec-itens tr.linha-excluida td:nth-child(2) { text-decoration: none; }
@@ -15053,10 +15246,10 @@ export default function App() {
            As duas linhas dividem a mesma barra indigo — a de cima abre o
            par, a de baixo fecha e vem recuada. É a "variação dentro" que a
            Priscila pediu: o olho junta as duas antes de ler qualquer texto. */
-        .exec-itens tr.linha-saiu-por-troca > td { background: #FBFAFF; }
-        .exec-itens tr.linha-saiu-por-troca > td:nth-child(2) { box-shadow: inset 3px 0 0 #6366F1; }
-        .exec-itens tr.linha-substituta > td { background: #F5F4FF; }
-        .exec-itens tr.linha-substituta > td:nth-child(2) { box-shadow: inset 3px 0 0 #6366F1; padding-left: 22px; }
+        .exec-itens tr.linha-saiu-por-troca > td { background: var(--indigo-tint); }
+        .exec-itens tr.linha-saiu-por-troca > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--indigo); }
+        .exec-itens tr.linha-substituta > td { background: var(--indigo-tint); }
+        .exec-itens tr.linha-substituta > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--indigo); padding-left: 22px; }
 
         /* Só uma etiqueta continua colorida: a que pede ação. */
         .so-no-hover { opacity: 0; transition: opacity .12s; }
@@ -15066,25 +15259,25 @@ export default function App() {
         /* Linha que esta saindo: fica vermelha JA, enquanto a busca esta
            aberta. Antes so mudava depois de escolher o substituto, entao
            durante a escolha nada na tela dizia qual item ia sair. */
-        .exec-itens tr.linha-saindo > td { background: var(--red-bg, #FDEEEC); }
+        .exec-itens tr.linha-saindo > td { background: var(--red-bg); }
         .exec-itens tr.linha-saindo td:nth-child(2) { text-decoration: line-through; color: var(--ink-3); }
 
         /* A busca aberta dentro da tabela, no lugar em que o item vai nascer. */
-        .exec-itens tr.linha-busca > td { background: #EEF2FF; padding: 10px 12px 12px; white-space: normal; position: static; overflow: visible; }
+        .exec-itens tr.linha-busca > td { background: var(--indigo-soft); padding: 10px 12px 12px; white-space: normal; position: static; overflow: visible; }
         /* A regra sticky das duas primeiras colunas nao vale nesta linha:
            ela tem uma celula so, que atravessa a tabela inteira. */
         .exec-itens tr.linha-busca > td:nth-child(1) { position: static; left: auto; z-index: auto; }
         .busca-na-linha { display: flex; align-items: flex-start; gap: 8px; padding-left: 22px; }
         .busca-na-linha-campo { flex: 1; min-width: 0; max-width: 640px; }
-        .busca-na-linha-titulo { font-size: 11.5px; color: #3730A3; margin-bottom: 6px; }
+        .busca-na-linha-titulo { font-size: 11.5px; color: var(--indigo); margin-bottom: 6px; }
         .busca-na-linha-titulo b { font-weight: 700; }
         .btn-linha-substituir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
-        .btn-linha-substituir:hover { color: #B54708; border-color: #F79009; background: #FFF4E5; }
+        .btn-linha-substituir:hover { color: var(--alert); border-color: var(--alert); background: var(--alert-soft); }
 
         /* O par da substituição: o que saiu aponta pra baixo, o que entrou
            aponta pra ele. Mesma cor nos dois lados, pra o olho juntar as
            duas linhas sem precisar ler. */
-        .tag-troca { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 7px; white-space: nowrap; background: #EEF2FF; color: #4338CA; }
+        .tag-troca { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 7px; white-space: nowrap; background: var(--indigo-soft); color: var(--indigo); }
         /* A linha que entrou fica levemente recuada: lê-se como filha da
            que saiu, que é a "variação dentro" que a Priscila descreveu. */
         /* Discreto até o mouse passar: 32 linhas com um + aceso viram ruído. */
@@ -15098,12 +15291,12 @@ export default function App() {
         .btn-linha-excluir.desfazer:hover { color: var(--green); border-color: var(--green); }
         .liberado-barra { display: flex; align-items: center; gap: 9px; }
         .liberado-barra span { flex: 1; }
-        .btn-reabrir-etapa { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 11px; color: var(--ink-2); cursor: pointer; font-family: inherit; flex-shrink: 0; }
+        .btn-reabrir-etapa { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 11px; color: var(--ink-2); cursor: pointer; font-family: inherit; flex-shrink: 0; }
         .btn-reabrir-etapa:hover { border-color: var(--ink-2); color: var(--ink); }
 
         /* Estouro do CMV: passa, mas com nome e motivo */
         .aprovacao-box.com-estouro { border-color: var(--red); }
-        .estouro-aviso { display: flex; align-items: flex-start; gap: 9px; background: var(--red-bg, #FDEEEC); border-radius: 9px; padding: 11px 13px; font-size: 12px; color: var(--red); line-height: 1.5; margin-bottom: 12px; }
+        .estouro-aviso { display: flex; align-items: flex-start; gap: 9px; background: var(--red-bg); border-radius: 9px; padding: 11px 13px; font-size: 12px; color: var(--red); line-height: 1.5; margin-bottom: 12px; }
         .estouro-campos { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
         .estouro-campos label { display: flex; flex-direction: column; gap: 4px; }
         .estouro-campos span { font-size: 11px; font-weight: 600; color: var(--ink-2); }
@@ -15113,7 +15306,7 @@ export default function App() {
            depara, mas continua visível na listagem, marcada. */
         .linha-titulo { background: var(--panel); }
         .linha-titulo td { color: var(--ink-3); }
-        .tag-na { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
+        .tag-na { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--ink-3); background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
         /* O Executivo tem 9 colunas — aperta a fonte e deixa rolar na
            horizontal em tela estreita, sem espremer a descrição. */
         /* O Executivo tem 11 colunas e nao cabe na tela. Rola na
@@ -15129,9 +15322,9 @@ export default function App() {
         .exec-scroll { overflow: auto; max-height: 70vh; border-top: 1px solid var(--border-soft); }
         /* Zebra e realce da linha sob o cursor: ler a linha inteira sem
            perder a coluna é metade do trabalho numa tabela de 15 colunas. */
-        .exec-itens tbody tr:nth-child(even) > td { background: #FAF9F6; }
-        .exec-itens tbody tr:hover > td { background: #F0F4FA; }
-        .exec-itens tbody tr:focus-within > td { background: #E8F0FB; }
+        .exec-itens tbody tr:nth-child(even) > td { background: var(--row-alt); }
+        .exec-itens tbody tr:hover > td { background: var(--row-hover); }
+        .exec-itens tbody tr:focus-within > td { background: var(--row-focus); }
         /* table-layout: fixed é o que mantém as colunas alinhadas entre
            os grupos. Sem ele o navegador dimensiona cada tabela pelo
            conteúdo dela, e como cada verba é uma tabela separada, cada
@@ -15169,34 +15362,34 @@ export default function App() {
         .exec-itens tbody td { height: 44px; }
         .celula-texto { display: flex; align-items: flex-start; gap: 5px; }
         .celula-corte { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; flex: 1; min-width: 0; }
-        .btn-info { flex-shrink: 0; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--border); background: #fff; color: var(--ink-3); font-size: 9.5px; font-weight: 700; font-family: Georgia, serif; font-style: italic; cursor: pointer; line-height: 1; padding: 0; }
+        .btn-info { flex-shrink: 0; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-3); font-size: 9.5px; font-weight: 700; font-family: var(--font-sans); font-style: italic; cursor: pointer; line-height: 1; padding: 0; }
         .btn-info:hover { border-color: var(--blue); color: var(--blue); }
 
-        .detalhe-fundo { position: fixed; inset: 0; background: rgba(20,18,15,0.4); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-        .detalhe-caixa { background: #fff; border-radius: 14px; padding: 18px; width: min(620px, 100%); box-shadow: 0 18px 50px rgba(0,0,0,0.2); }
+        .detalhe-fundo { position: fixed; inset: 0; background: var(--overlay-strong); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+        .detalhe-caixa { background: var(--surface-1); border-radius: 14px; padding: 18px; width: min(620px, 100%); box-shadow: var(--shadow-4); }
         .detalhe-topo { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
         .detalhe-texto { width: 100%; min-height: 140px; border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; font-size: 12.5px; line-height: 1.55; color: var(--ink); font-family: inherit; resize: vertical; outline: none; }
         .detalhe-acoes { display: flex; justify-content: flex-end; margin-top: 10px; }
-        .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #FCFBF8; }
+        .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: var(--surface-2); }
         /* O deslocamento da 2a coluna congelada TEM que ser a largura exata
            da 1a — e as duas tabelas que usam este CSS tem larguras
            diferentes: 46px na Vendido Planilha, 72px no Executivo (que
            carrega o botao de inserir). Com um valor fixo de 56px, uma sobrava
            10px e deixava o texto passar por baixo, a outra cobria 16px do
            conteudo: era o que cortava as letras de "CODIGO / ESPECIF.". */
-        .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 46px; z-index: 2; background: #FCFBF8; box-shadow: 1px 0 0 var(--border-soft); }
+        .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 46px; z-index: 2; background: var(--surface-2); box-shadow: 1px 0 0 var(--border-soft); }
         .exec-editavel th:nth-child(2), .exec-editavel td:nth-child(2) { left: 72px; }
-        .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 4; background: #F7F5F0; }
+        .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 4; background: var(--surface-2); }
         /* O cabecalho acompanha a rolagem: editando uma linha la
            embaixo, sem isso nao da pra saber que coluna e qual. */
-        .exec-itens thead th { position: sticky; top: 0; z-index: 3; background: #F7F5F0; }
+        .exec-itens thead th { position: sticky; top: 0; z-index: 3; background: var(--surface-2); }
         .celula-corte.editavel { cursor: text; border-radius: 4px; padding: 1px 3px; margin: -1px -3px; }
-        .celula-corte.editavel:hover { background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
+        .celula-corte.editavel:hover { background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--border); }
         .celula-input.texto { text-align: left; font-family: inherit; }
         /* O campo de texto em edição fica com a cara de campo: fundo branco,
            borda azul e altura de linha própria. Antes se confundia com a
            tabela e parecia um retângulo vazio atravessando a linha. */
-        .vend-itens .celula-input.texto { padding: 4px 7px; line-height: 1.4; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+        .vend-itens .celula-input.texto { padding: 4px 7px; line-height: 1.4; box-shadow: var(--shadow-1); }
         .celula-input.multi { resize: vertical; line-height: 1.35; }
         .fechamento { border-top: 2px solid var(--border); padding: 4px 18px 14px; }
         .fechamento-linha { display: flex; align-items: baseline; justify-content: space-between; padding: 7px 0; font-size: 12.5px; color: var(--ink-2); }
@@ -15206,10 +15399,10 @@ export default function App() {
         .fechamento-linha.final .fechamento-valor { font-size: 17px; }
         /* Explica o traço no lugar do número. Bloco que some sem dizer
            nada faz a pessoa achar que a funcionalidade nunca existiu. */
-        .fechamento-aviso { display: flex; align-items: center; gap: 9px; margin-top: 11px; padding: 10px 12px; background: #FFF4E5; border-radius: 9px; font-size: 12px; line-height: 1.5; color: #7A2E0E; }
-        .fechamento-aviso svg { color: #B54708; flex-shrink: 0; }
+        .fechamento-aviso { display: flex; align-items: center; gap: 9px; margin-top: 11px; padding: 10px 12px; background: var(--alert-soft); border-radius: 9px; font-size: 12px; line-height: 1.5; color: var(--text); }
+        .fechamento-aviso svg { color: var(--alert); flex-shrink: 0; }
         .fechamento-aviso span { flex: 1; }
-        .fechamento-aviso b { color: #B54708; }
+        .fechamento-aviso b { color: var(--alert); }
         .fechamento-aviso.recuperado { background: var(--panel); color: var(--ink-2); }
         .fechamento-aviso.recuperado svg, .fechamento-aviso.recuperado b { color: var(--ink-2); }
         .saldo-exec.sem-cmv { border-style: dashed; }
@@ -15217,22 +15410,22 @@ export default function App() {
 
         /* Alerta de conferência técnica: bate em custo e quantidade, mas
            pode não caber no elevador nem casar com a infraestrutura. */
-        .conf-row.com-alerta { background: #FFF4E5; box-shadow: inset 3px 0 0 #F79009; }
-        .alerta-conf b { color: #D92D20; text-transform: uppercase; font-weight: 700; letter-spacing: 0.01em; }
-        .conf-badge.nao-vendido { color: #B42318; background: #FEE4E2; }
+        .conf-row.com-alerta { background: var(--alert-soft); box-shadow: inset 3px 0 0 var(--alert); }
+        .alerta-conf b { color: var(--danger); text-transform: uppercase; font-weight: 700; letter-spacing: 0.01em; }
+        .conf-badge.nao-vendido { color: var(--danger); background: var(--danger-soft); }
 
         /* Alerta que vale pra verba inteira: aparece UMA vez, no topo do
            grupo. A infraestrutura de climatização da planta é uma só — não
            é uma por aparelho. */
-        .grupo-alerta { display: flex; align-items: flex-start; gap: 9px; background: #FFF4E5; box-shadow: inset 3px 0 0 #F79009; padding: 11px 14px; font-size: 12px; line-height: 1.5; color: #7A2E0E; border-bottom: 1px solid var(--border-soft); }
+        .grupo-alerta { display: flex; align-items: flex-start; gap: 9px; background: var(--alert-soft); box-shadow: inset 3px 0 0 var(--alert); padding: 11px 14px; font-size: 12px; line-height: 1.5; color: var(--text); border-bottom: 1px solid var(--border-soft); }
         /* Com mais de um alerta na verba, texto corrido vira parede: cada
            um é uma conferência diferente, com resposta diferente. */
         .grupo-alerta-lista { margin: 4px 0 0; padding-left: 17px; }
         .grupo-alerta-lista li { margin-bottom: 3px; }
-        .grupo-alerta svg { color: #B54708; flex-shrink: 0; margin-top: 1px; }
-        .grupo-alerta b { color: #B54708; text-transform: uppercase; font-weight: 700; font-size: 11px; letter-spacing: 0.01em; }
+        .grupo-alerta svg { color: var(--alert); flex-shrink: 0; margin-top: 1px; }
+        .grupo-alerta b { color: var(--alert); text-transform: uppercase; font-weight: 700; font-size: 11px; letter-spacing: 0.01em; }
         /* Marca a verba com alerta mesmo com o grupo fechado */
-        .vend-alerta-mark { display: inline-flex; align-items: center; color: #B54708; flex-shrink: 0; }
+        .vend-alerta-mark { display: inline-flex; align-items: center; color: var(--alert); flex-shrink: 0; }
         .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
         /* Cabecalho de duas linhas ("Codigo / especif. / Obs.") precisa de
            altura pra segunda linha caber inteira, senao ela sai cortada. */
@@ -15250,8 +15443,8 @@ export default function App() {
              Diferenca — VEREDITO. E a unica coluna da tabela que muda de
                cor, e por isso e o que o olho acha primeiro ao procurar o
                que precisa de atencao. */
-        .exec-itens .col-vendido { background: #F7F6F2; color: var(--ink-3); border-left: 2px solid var(--border); }
-        .exec-itens .col-diferenca { background: #F7F6F2; font-weight: 600; }
+        .exec-itens .col-vendido { background: var(--surface-2); color: var(--ink-3); border-left: 2px solid var(--border); }
+        .exec-itens .col-diferenca { background: var(--surface-2); font-weight: 600; }
         .dif-acima  { color: var(--red); }
         .dif-abaixo { color: var(--green); }
         /* Zero e resposta, nao ausencia: fica visivel mas neutro, pra nao
@@ -15265,7 +15458,7 @@ export default function App() {
         .vend-delta.tom-igual { color: var(--ink-3); font-weight: 500; }
         .vend-delta.tom-leve  { color: var(--ink-3); font-weight: 500; }
         .vend-delta.tom-sobra { color: var(--green); }
-        .vend-delta.tom-medio { color: #B54708; }
+        .vend-delta.tom-medio { color: var(--alert); }
         .vend-delta.tom-alto  { color: var(--red); }
 
         /* CMV liberado — o teto que sai do depara */
@@ -15273,31 +15466,27 @@ export default function App() {
         .cmv-topo { display: flex; gap: 28px; flex-wrap: wrap; }
         .cmv-bloco { min-width: 150px; }
         .cmv-rotulo { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
-        .cmv-provisorio { font-size: 9.5px; background: var(--amber-bg, #FEF3E2); color: var(--amber, #B7791F); border-radius: 20px; padding: 1px 7px; letter-spacing: 0; text-transform: none; font-weight: 600; }
+        .cmv-provisorio { font-size: 9.5px; background: var(--amber-bg); color: var(--amber); border-radius: 20px; padding: 1px 7px; letter-spacing: 0; text-transform: none; font-weight: 600; }
         .cmv-valor { font-size: 22px; font-weight: 600; color: var(--ink); margin-top: 4px; }
         .cmv-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .cmv-grupos { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
         .cmv-grupos-titulo { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
         .cmv-linha { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 11.5px; }
         .cmv-linha-num { color: var(--ink-3); width: 22px; flex-shrink: 0; }
-        .cmv-tag-na { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 1px 6px; white-space: nowrap; }
-        .cmv-tag-fora { display: inline-block; margin-left: 7px; font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 4px; background: #FFF4E5; color: #B54708; vertical-align: middle; }
+        .cmv-tag-na { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 1px 6px; white-space: nowrap; }
+        .cmv-tag-fora { display: inline-block; margin-left: 7px; font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 4px; background: var(--alert-soft); color: var(--alert); vertical-align: middle; }
         .cmv-linha-nome { color: var(--ink-2); width: 260px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .cmv-linha-barra { flex: 1; height: 6px; background: #fff; border-radius: 20px; overflow: hidden; min-width: 40px; }
+        .cmv-linha-barra { flex: 1; height: 6px; background: var(--surface-1); border-radius: 20px; overflow: hidden; min-width: 40px; }
         .cmv-linha-barra span { display: block; height: 100%; background: var(--blue); border-radius: 20px; }
         .cmv-linha-valor { width: 110px; text-align: right; color: var(--ink); flex-shrink: 0; }
 
-        /* Cadernos recolhíveis — ocupavam meia tela sempre abertos */
-        .cadernos-head { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; text-align: left; padding: 16px 18px; cursor: pointer; }
-        .cadernos-head-texto { flex: 1; min-width: 0; }
-        .cadernos-resumo { font-size: 11.5px; color: var(--ink-3); flex-shrink: 0; }
 
         /* Célula que vira campo ao clicar */
-        .celula-valor { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 2px 5px; font-size: 11.5px; color: var(--ink); cursor: text; width: 100%; text-align: right; font-family: 'JetBrains Mono', monospace; }
-        .celula-valor:hover { border-color: var(--border); background: #fff; }
+        .celula-valor { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 2px 5px; font-size: 11.5px; color: var(--ink); cursor: text; width: 100%; text-align: right; font-family: var(--font-mono); }
+        .celula-valor:hover { border-color: var(--border); background: var(--surface-1); }
         .celula-valor.travada { cursor: default; color: var(--ink-3); }
         .celula-valor.travada:hover { border-color: transparent; background: transparent; }
-        .celula-input { width: 100%; border: 1px solid var(--blue); border-radius: 5px; padding: 2px 5px; font-size: 11.5px; text-align: right; outline: none; background: #fff; font-family: 'JetBrains Mono', monospace; box-shadow: 0 0 0 2px var(--blue-bg); }
+        .celula-input { width: 100%; border: 1px solid var(--blue); border-radius: 5px; padding: 2px 5px; font-size: 11.5px; text-align: right; outline: none; background: var(--surface-1); font-family: var(--font-mono); box-shadow: 0 0 0 2px var(--blue-bg); }
         /* .celula-valor alinhava TUDO à direita, inclusive Qtd. e Un., que
            o <td className="center"> pedia centralizadas — o botão de 100% de
            largura vencia o alinhamento da célula. */
@@ -15307,7 +15496,7 @@ export default function App() {
         .btn-add-item:hover { color: var(--blue); border-color: var(--blue); }
 
         /* Escolher o insumo no banco em vez de digitar do zero */
-        .busca-insumo { margin: 6px 0 12px 34px; max-width: 720px; background: #fff; border: 1px solid var(--blue); border-radius: 10px; overflow: hidden; }
+        .busca-insumo { margin: 6px 0 12px 34px; max-width: 720px; background: var(--surface-1); border: 1px solid var(--blue); border-radius: 10px; overflow: hidden; }
         .busca-insumo-topo { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border-soft); }
         .busca-insumo-topo input { flex: 1; border: none; outline: none; background: transparent; font-size: 12px; color: var(--ink); font-family: inherit; }
         .busca-insumo-vazio { font-size: 11.5px; color: var(--ink-3); padding: 10px 12px; }
@@ -15321,13 +15510,13 @@ export default function App() {
 
         /* Mesmo amarelo que a planilha usa na mão pra marcar o que o
            executivo mexeu — só que agora o sistema marca sozinho. */
-        .tag-alterado { margin-left: 8px; font-size: 10px; font-weight: 600; color: #8A6D1F; background: #fff; border: 1px solid #E8D08B; border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
-        .tag-preco { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 10px; font-weight: 600; color: var(--red); background: #fff; border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
+        .tag-alterado { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--warning); background: var(--surface-1); border: 1px solid var(--warning-line); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
+        .tag-preco { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 10px; font-weight: 600; color: var(--red); background: var(--surface-1); border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
 
         /* Preços de referência do Sienge — evidência pra decidir, não
            preenchimento automático. */
         .btn-sugestao { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; background: none; border: none; padding: 0; font-size: 10.5px; color: var(--blue); cursor: pointer; text-decoration: underline; font-family: inherit; }
-        .sugestoes { margin-top: 8px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-width: 560px; }
+        .sugestoes { margin-top: 8px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-width: 560px; }
         .sugestoes-titulo { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
         .sugestoes-vazio { font-size: 11px; color: var(--ink-3); padding: 4px 2px; }
         .sugestao-linha { display: flex; align-items: baseline; gap: 8px; width: 100%; background: none; border: none; border-radius: 6px; padding: 5px 6px; text-align: left; cursor: pointer; font-family: inherit; }
@@ -15345,7 +15534,7 @@ export default function App() {
         .tab .dim { margin-left: 2px; vertical-align: -1px; }
         /* ---- Módulo A Contratar ---- */
         .cad-abrir { margin-bottom: 16px; }
-        .cad-box { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 14px 16px; margin-bottom: 18px; }
+        .cad-box { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); padding: 14px 16px; margin-bottom: 18px; }
         .cad-h { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 11px; }
         .cad-campos { display: grid; grid-template-columns: 1fr 140px 170px; gap: 10px; }
         .cad-campos label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
@@ -15361,17 +15550,17 @@ export default function App() {
         .ac-sub { display: flex; align-items: center; gap: 10px; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin: 16px 0 7px; }
         .ac-link { background: none; border: none; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--blue); cursor: pointer; text-transform: none; letter-spacing: 0; padding: 0; }
         .ac-nota { font-size: 10.5px; color: var(--ink-3); line-height: 1.45; margin-top: 2px; }
-        .ac-nota-forte { color: #7A4E00; background: var(--amber-bg); border-radius: 6px; padding: 5px 8px; margin-bottom: 7px; }
-        .ac-admin { display: flex; align-items: flex-start; gap: 9px; background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; cursor: pointer; font-size: 12.5px; }
+        .ac-nota-forte { color: var(--text); background: var(--amber-bg); border-radius: 6px; padding: 5px 8px; margin-bottom: 7px; }
+        .ac-admin { display: flex; align-items: flex-start; gap: 9px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; cursor: pointer; font-size: 12.5px; }
         .ac-desligado { opacity: .4; pointer-events: none; }
         .ac-modulos { display: flex; flex-wrap: wrap; gap: 6px; }
-        .ac-chip { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
+        .ac-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
         .ac-chip.on { border-color: var(--blue); color: var(--blue); font-weight: 600; }
         .ac-chip input { margin: 0; }
         .ac-regras { display: flex; flex-direction: column; gap: 6px; }
-        .ac-regra { display: flex; align-items: flex-start; gap: 9px; background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; cursor: pointer; font-size: 12.5px; }
+        .ac-regra { display: flex; align-items: flex-start; gap: 9px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; cursor: pointer; font-size: 12.5px; }
         .ac-regra.on { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
-        .ac-lista { background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 10px; margin-top: 9px; }
+        .ac-lista { background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px; padding: 10px; margin-top: 9px; }
         .ac-lista-topo { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
         .ac-lista-topo .form-input { margin-top: 0; flex: 1; font-size: 12px; }
         .ac-lista-itens { max-height: 220px; overflow-y: auto; }
@@ -15381,7 +15570,7 @@ export default function App() {
         .ac-obra-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ac-obra-squad { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
         .eq-fila .arq-bloco-h { border-bottom-color: var(--amber); }
-        .eq-fila .arq-bloco-tit { color: #7A4E00; }
+        .eq-fila .arq-bloco-tit { color: var(--text); }
         .eq-fila .arq-linha { background: var(--amber-bg); }
         .nav-badge-espera { background: var(--amber); }
         .nav-tira-badge.espera { background: var(--amber); }
@@ -15391,14 +15580,14 @@ export default function App() {
         .cargo-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
         .cargo-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; font-family: inherit; font-size: 11px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .cargo-chip:hover { border-color: var(--blue); color: var(--ink); }
-        .cargo-chip.on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
-        .eq-migracao { display: flex; gap: 10px; align-items: flex-start; background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; margin-bottom: 14px; }
-        .eq-migracao code { background: #FEF3C7; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+        .cargo-chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
+        .eq-migracao { display: flex; gap: 10px; align-items: flex-start; background: var(--warning-soft); border: 1px solid var(--warning-line); color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; margin-bottom: 14px; }
+        .eq-migracao code { background: var(--warning-soft); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
         .eq-tag-inativo { margin-left: 7px; background: var(--panel); color: var(--ink-3); border-radius: 20px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; }
         .eq-obras { font-size: 11px; color: var(--ink-3); white-space: nowrap; flex-shrink: 0; }
         /* ---- Arquivos da obra ---- */
         .arq-topo { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 18px 0 16px; }
-        .arq-topo-n { font-family: 'Space Grotesk', sans-serif; font-size: 30px; font-weight: 700; color: var(--ink); line-height: 1; }
+        .arq-topo-n { font-family: var(--font-sans); font-size: 30px; font-weight: 700; color: var(--ink); line-height: 1; }
         .arq-topo-rot { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
         .arq-subir { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
         .arq-subir .form-input { margin-top: 0; font-size: 12.5px; }
@@ -15409,7 +15598,7 @@ export default function App() {
         .arq-bloco-tit { font-size: 13px; font-weight: 700; color: var(--ink); }
         .arq-bloco-n { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: 10.5px; font-weight: 700; }
         .arq-linha { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
-        .arq-linha:hover { background: #FCFBF9; }
+        .arq-linha:hover { background: var(--surface-2); }
         .arq-id { flex: 1; min-width: 0; }
         .arq-titulo { font-size: 13px; font-weight: 600; color: var(--ink); }
         .arq-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
@@ -15419,9 +15608,9 @@ export default function App() {
         .arq-perdido { font-size: 11px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
         /* ---- Painel da Mehoo ---- */
         .mh-filtro { margin: 18px 0 14px; }
-        .mh-obra { border: 1px solid var(--border); border-radius: 12px; background: #fff; margin-bottom: 12px; overflow: hidden; }
+        .mh-obra { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); margin-bottom: 12px; overflow: hidden; }
         .mh-obra-head { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; background: none; border: none; font-family: inherit; padding: 13px 16px; cursor: pointer; }
-        .mh-obra-head:hover { background: #FCFBF9; }
+        .mh-obra-head:hover { background: var(--surface-2); }
         .mh-obra-id { flex: 1; min-width: 0; }
         .mh-obra-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
         .mh-obra-sub { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11px; color: var(--ink-3); margin-top: 3px; }
@@ -15438,11 +15627,11 @@ export default function App() {
         .mh-corpo { border-top: 1px solid var(--border-soft); padding: 14px 16px; background: var(--panel); }
         .mh-sub { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
         .mh-cadernos { margin-bottom: 14px; }
-        .mh-caderno { display: flex; align-items: center; gap: 9px; padding: 6px 10px; background: #fff; border: 1px solid var(--border-soft); border-radius: 8px; margin-bottom: 5px; font-size: 12px; }
+        .mh-caderno { display: flex; align-items: center; gap: 9px; padding: 6px 10px; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 8px; margin-bottom: 5px; font-size: 12px; }
         .mh-caderno-tit { font-weight: 600; color: var(--ink); width: 210px; flex-shrink: 0; }
         .mh-caderno-arq { flex: 1; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .mh-caderno-vazio { flex: 1; font-size: 11px; color: var(--ink-3); font-style: italic; }
-        .mh-tabela { background: #fff; border-radius: 8px; border: 1px solid var(--border-soft); }
+        .mh-tabela { background: var(--surface-1); border-radius: 8px; border: 1px solid var(--border-soft); }
         .mh-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
         .mh-perto { color: var(--amber); font-weight: 600; }
         @media (max-width: 900px) { .mh-obra-head { flex-wrap: wrap; gap: 10px; } }
@@ -15459,48 +15648,46 @@ export default function App() {
         .ini-data { font-size: 11px; color: var(--ink-3); }
         .ini-recado { font-size: 16px; color: var(--ink-2); line-height: 1.45; max-width: 720px; margin-top: 5px; }
         .ini-regua { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
-        .ini-cel { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: 12px; background: #fff; text-align: left; font-family: inherit; box-shadow: 0 1px 2px rgba(20,20,20,.04); transition: box-shadow .15s ease, border-color .15s ease; }
+        .ini-cel { display: block; padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-1); text-align: left; font-family: inherit; box-shadow: none; transition: border-color .12s ease; min-width: 0; }
         .ini-cel.clicavel { cursor: pointer; }
-        .ini-cel.clicavel:hover { border-color: var(--border); box-shadow: 0 4px 10px rgba(20,20,20,.07); }
+        .ini-cel.clicavel:hover { border-color: var(--ink-3); }
         .ini-cel.clicavel:hover .ini-cel-val { color: var(--blue); }
-        .ini-cel-icone { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; }
-        .ini-cel-corpo { min-width: 0; }
-        .ini-cel-rot { font-size: 9px; font-weight: 800; letter-spacing: .08em; color: var(--ink-3); }
-        .ini-cel-val { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ini-cel-rot { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--ink-3); }
+        .ini-cel-val { font-family: var(--font-sans); font-size: 19px; font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .ini-cel-sub { font-size: 10px; color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 900px) { .ini-regua { grid-template-columns: repeat(2, 1fr); } }
         .ini-colunas { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
         .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--ink); padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
         .ini-titulo-icone { color: var(--ink-3); flex-shrink: 0; }
         .ini-conta { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: 10.5px; }
-        .ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 10px; background: #fff; padding: 8px 12px; margin-bottom: 6px; font-size: 12px; color: var(--ink-2); line-height: 1.4; cursor: pointer; box-shadow: 0 1px 2px rgba(20,20,20,.03); transition: box-shadow .15s ease, border-color .15s ease; }
-        .ini-alerta:hover { border-color: var(--ink-3); box-shadow: 0 3px 8px rgba(20,20,20,.06); }
+        .ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-1); padding: 8px 12px; margin-bottom: 6px; font-size: 12px; color: var(--ink-2); line-height: 1.4; cursor: pointer; transition: border-color .12s ease; }
+        .ini-alerta:hover { border-color: var(--ink-3); }
         .ini-alerta span { flex: 1; }
-        .ini-alerta.ruim { background: var(--red-bg); border-color: #F0CFCB; color: #8A2E22; }
-        .ini-alerta.aviso { background: var(--amber-bg); border-color: #E8CE9A; color: #7A4E00; }
+        .ini-alerta.ruim { background: var(--red-bg); border-color: var(--danger-line); color: var(--text); }
+        .ini-alerta.aviso { background: var(--amber-bg); border-color: var(--warning-line); color: var(--text); }
         .ini-seta { flex-shrink: 0; opacity: .5; margin-top: 2px; }
-        .ini-obra { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit; background: #fff; border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; box-shadow: 0 1px 2px rgba(20,20,20,.03); transition: box-shadow .15s ease, border-color .15s ease; }
-        .ini-obra:hover { border-color: var(--ink-3); box-shadow: 0 3px 8px rgba(20,20,20,.06); }
+        .ini-obra { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: border-color .12s ease; }
+        .ini-obra:hover { border-color: var(--ink-3); }
         .ini-obra-id { flex: 1; min-width: 0; }
         .ini-obra-nome { font-size: 12.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ini-obra-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
         .ini-obra-resumo { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; text-align: right; }
         .ini-obra-gc { font-size: 9.5px; color: var(--ink-3); }
         .ini-obra-pct { font-size: 11.5px; font-weight: 600; color: var(--ink); }
-        .ini-obra-vazia { font-size: 10.5px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
+        .ini-obra-vazia { font-size: 10.5px; color: var(--ink-3); flex-shrink: 0; }
         /* A esteira: um chip por passo, com o NOME escrito — bolinha
            sozinha nao distinguia "feito" de "faltando" com clareza. */
         .ini-esteira { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
         .ini-passo-chip { display: inline-flex; align-items: center; gap: 1px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; }
-        .ini-passo-chip.on { color: #1B7A43; background: #E7F5EC; border-color: #BFE3CC; }
-        .ini-passo-chip.atrasado { color: var(--red); background: var(--red-bg); border-color: #F0CFCB; }
+        .ini-passo-chip.on { color: var(--success); background: var(--success-soft); border-color: var(--success-line); }
+        .ini-passo-chip.atrasado { color: var(--red); background: var(--red-bg); border-color: var(--danger-line); }
         .loc-bloco { margin-top: 24px; }
         .loc-legenda { margin-left: auto; display: flex; gap: 12px; }
         .loc-legenda-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-3); font-weight: 500; }
         .loc-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-        .loc-dot.ativa, .loc-conta.ativa { background: #1B7A43; }
+        .loc-dot.ativa, .loc-conta.ativa { background: var(--success); }
         .loc-dot.finalizada, .loc-conta.finalizada { background: var(--ink-3); }
-        .loc-obra-chip.ativa { color: #1B7A43; background: #E7F5EC; }
+        .loc-obra-chip.ativa { color: var(--success); background: var(--success-soft); }
         .loc-estados { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
         .loc-cidades { margin-top: 6px; }
         .loc-cidade { border-bottom: 1px solid var(--border-soft); }
@@ -15509,7 +15696,7 @@ export default function App() {
         .loc-cidade-head:hover { background: var(--panel); }
         .loc-cidade-nome { flex: 1; font-size: 13px; color: var(--ink); font-weight: 600; }
         .loc-cidade-conta { display: flex; gap: 6px; }
-        .loc-conta { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; }
+        .loc-conta { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 700; color: var(--bg); }
         .loc-obras { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 12px 24px; }
         .loc-obra-chip { display: inline-flex; align-items: center; gap: 3px; font: inherit; font-size: 11px; font-weight: 600; border: none; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
         .loc-obra-chip:hover { filter: brightness(0.95); }
@@ -15517,8 +15704,7 @@ export default function App() {
         /* A frase diz o que falta AGORA — a esteira mostra o caminho
            inteiro, a frase poupa de reler os chips pra saber o motivo. */
         .ini-fase-pilula { display: inline-block; margin-top: 5px; font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 6px; padding: 2px 8px; }
-        .ini-fase-pilula.azul { color: #1D5FB8; background: var(--blue-bg); }
-        .ini-fase-pilula.roxo { color: var(--purple); background: #F1EBFA; }
+        .ini-fase-pilula.azul { color: var(--brand); background: var(--blue-bg); }
         .ini-titulo-linha { justify-content: space-between; }
         .ini-titulo-esq { display: inline-flex; align-items: center; gap: 8px; }
         .ini-link-finalizadas { display: inline-flex; align-items: center; gap: 2px; background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; padding: 2px 0; }
@@ -15528,18 +15714,18 @@ export default function App() {
         .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }
         .gc-horizonte { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .gc-horizonte-rot { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-right: 4px; }
-        .gc-chip { border: 1px solid var(--border); background: #fff; color: var(--ink-2); border-radius: 20px; padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+        .gc-chip { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 20px; padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
         .gc-chip:hover { border-color: var(--ink-3); }
-        .gc-chip.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .gc-chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
         .gc-topo-info { font-size: 12px; color: var(--ink-3); }
         .gc-topo-alerta { color: var(--red); }
 
         .fo-caixa { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .fo-btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: #fff; color: var(--ink-2); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+        .fo-btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
         .fo-btn:hover { border-color: var(--ink-3); }
-        .fo-btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .fo-btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
         .fo-rot { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .fo-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 330px; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.13); padding: 10px; }
+        .fo-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 330px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-3); padding: 10px; }
         .fo-busca { margin-top: 0; width: 100%; font-size: 12.5px; }
         .fo-acoes { display: flex; gap: 8px; margin: 8px 0 6px; }
         .fo-acoes button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--blue); cursor: pointer; padding: 0; }
@@ -15548,7 +15734,7 @@ export default function App() {
         .fo-item { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; background: none; border: none; border-radius: 6px; padding: 5px 6px; font-family: inherit; font-size: 12px; color: var(--ink); cursor: pointer; }
         .fo-item:hover { background: var(--panel); }
         .fo-item.on { background: var(--blue-bg); }
-        .fo-check { width: 14px; height: 14px; border: 1.5px solid var(--ink-3); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
+        .fo-check { width: 14px; height: 14px; border: 1.5px solid var(--ink-3); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--bg); }
         .fo-item.on .fo-check { background: var(--blue); border-color: var(--blue); }
         .fo-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .fo-marcadas { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
@@ -15559,7 +15745,7 @@ export default function App() {
         .gc-obras-filtro .gc-chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gc-obras-filtro .gc-chip .mono { opacity: .6; margin-right: 3px; }
         .gc-totais { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
-        .gc-total { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: #fff; }
+        .gc-total { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--surface-1); }
         .gc-total-rot { font-size: 10px; font-weight: 800; letter-spacing: .07em; }
         .gc-total-val { font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-top: 6px; }
         .gc-total-sub { font-size: 11.5px; color: var(--ink-3); margin-bottom: 12px; }
@@ -15573,7 +15759,7 @@ export default function App() {
         .gc-bloco-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
         .gc-abas { display: flex; gap: 3px; background: var(--panel); border-radius: 8px; padding: 2px; }
         .gc-aba { border: none; background: none; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-3); padding: 4px 10px; border-radius: 6px; cursor: pointer; }
-        .gc-aba.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+        .gc-aba.on { background: var(--surface-1); color: var(--ink); box-shadow: var(--shadow-1); }
         .gc-bloco-total { margin-left: auto; font-size: 15px; font-weight: 700; }
         .gc-verba { border-bottom: 1px solid var(--border-soft); }
         .gc-verba:last-child { border-bottom: none; }
@@ -15618,9 +15804,330 @@ export default function App() {
         .gc-prazo-quando { flex: 1; color: var(--ink-2); }
         .gc-prazo.atraso .gc-prazo-quando { color: var(--red); }
         .gc-prazo-val { color: var(--ink); font-weight: 600; }
-        .gc-nota-semdata { display: flex; align-items: flex-start; gap: 8px; background: var(--amber-bg); color: #7A4E00; border-radius: 8px; padding: 10px 13px; font-size: 12px; margin-bottom: 22px; }
+        .gc-nota-semdata { display: flex; align-items: flex-start; gap: 8px; background: var(--amber-bg); color: var(--text); border-radius: 8px; padding: 10px 13px; font-size: 12px; margin-bottom: 22px; }
 
         @media (max-width: 900px) { .gc-totais { grid-template-columns: 1fr; } }
+
+        /* =====================================================================
+           GROUP WS · DESIGN SYSTEM — COMPONENTES
+           As regras de cima continuam valendo para layout (largura, margem,
+           grade). A aparência de componente — cor, borda, raio, tipo e
+           estados — mora aqui, por categoria, com os tokens de
+           estilos/design-system.css. Vem por último de propósito: vence as
+           regras antigas sem precisar de !important.
+           ===================================================================== */
+
+        /* ---------- Base do app ---------- */
+        .app { background: var(--bg); color: var(--text); font-size: 14px; }
+        .mono { font-family: var(--font-mono); font-feature-settings: 'liga' on; }
+        .dim { color: var(--text-mute); }
+
+        /* ---------- Topo (AppTopHeader) ---------- */
+        .topbar { height: 59px; padding: 0 20px; gap: 16px; background: var(--surface-1); border-bottom: 1px solid var(--line-1); }
+        .topbar-brand { gap: 12px; padding: 6px 8px; margin-left: -8px; border-radius: 10px; color: var(--text); }
+        .topbar-brand:hover { background: var(--hover); }
+        .brand-produto { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--text-mute); padding-left: 12px; border-left: 1px solid var(--line-2); white-space: nowrap; }
+        .topbar-right { gap: 6px; }
+        .icon-btn { width: 36px; height: 36px; border-radius: 10px; color: var(--text-soft); }
+        .icon-btn:hover { background: var(--hover); color: var(--text); }
+        .notif-dot { top: 4px; right: 4px; width: auto; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: var(--bg); font-family: var(--font-mono); font-size: 9px; font-weight: 700; }
+        .avatar { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+
+        /* ---------- Barra lateral (Sidebar) ---------- */
+        .sidebar { width: 260px; top: 59px; height: calc(100vh - 59px); background: var(--surface-1); border-right: 1px solid var(--line-1); }
+        .sidebar.recolhida { width: 68px; }
+        .sidebar-scroll { padding: 8px 12px 16px; }
+        .nav-group-label, .nav-group-toggle, .squad-group-label, .eo-squad { font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-mute); }
+        .nav-group-toggle:hover, .squad-group-label:hover { color: var(--text); }
+        .nav-item { gap: 10px; padding: 7px 10px; border-radius: 8px; }
+        .nav-item:hover { background: var(--hover); }
+        .nav-item.active { background: var(--brand-soft); }
+        .nav-icon { color: var(--text-mute); }
+        .nav-item-name { font-size: 13px; font-weight: 500; color: var(--text-soft); }
+        .nav-item-sub { font-family: var(--font-mono); font-size: 10px; color: var(--text-mute); }
+        .nav-cod { font-family: var(--font-mono); color: var(--text-soft); }
+        .nav-item.active .nav-icon, .nav-item.active .nav-item-name, .sidebar.recolhida .nav-item.active .nav-cod { color: var(--brand); }
+        .obra-search { gap: 8px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--field); transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+        .obra-search:focus-within { border-color: var(--brand); background: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
+        .obra-search input { font-family: inherit; font-size: 12.5px; color: var(--text); }
+        .obra-search input::placeholder { color: var(--text-mute); }
+        .nav-badge { background: var(--danger); color: var(--bg); font-family: var(--font-mono); font-size: 10px; font-weight: 700; border-radius: 999px; }
+        .nav-badge-novo { background: var(--brand); }
+        .nav-count { font-family: var(--font-mono); background: var(--surface-2); color: var(--text-mute); border-radius: 999px; }
+        /* Sem min-width 0 cada icone guardava 30px (o padding de botao do
+           navegador) e a faixa passava da largura da lateral. */
+        .nav-tira { gap: 2px; }
+        .nav-tira-item { min-width: 0; padding: 0; border-radius: 8px; color: var(--text-mute); }
+        .nav-tira-item:hover { background: var(--hover); color: var(--text); }
+        .nav-tira-item.active { background: var(--brand-soft); border-color: transparent; color: var(--brand); }
+        .nav-tira-badge { background: var(--brand); color: var(--bg); font-family: var(--font-mono); }
+        .nav-tira-badge.espera, .nav-badge-espera { background: var(--warning); }
+        .nav-modulos { background: var(--surface-1); }
+        .nav-modulos::before { margin: 0 -12px; background: linear-gradient(to bottom, transparent, var(--surface-1)); }
+        .squad-tem-aberta { background: var(--brand); }
+        .sidebar-toggle { border-radius: 8px; font-size: 11px; color: var(--text-mute); }
+        .sidebar-toggle:hover { background: var(--hover); color: var(--text); }
+        .sidebar-footer { padding: 12px; border-top: 1px solid var(--line-1); }
+        .profile { gap: 10px; padding: 7px 8px; border-radius: 8px; }
+        .profile:hover, .profile.aberto { background: var(--hover); }
+        .profile-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+        .profile-email, .perfil-cab-email { font-family: var(--font-mono); font-size: 10px; color: var(--text-mute); }
+        .perfil-menu { padding: 6px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-1); box-shadow: var(--shadow-3); }
+        .perfil-cab-nome { font-size: 13px; font-weight: 600; }
+        .perfil-sep { background: var(--line-1); }
+        .perfil-sair { border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-soft); }
+        .perfil-sair:hover { background: var(--danger-soft); color: var(--danger); }
+        .dica-lateral, .dica-lateral::before { background: var(--text); }
+        .dica-lateral { color: var(--bg); border-radius: 6px; padding: 6px 10px; font-size: 11.5px; font-weight: 500; box-shadow: var(--shadow-2); }
+
+        /* ---------- Página: cabeçalho e títulos (Header · PageShell) ---------- */
+        .main { padding: 28px 32px 56px; }
+        .eyebrow { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 1.3px; color: var(--text-mute); margin-bottom: 6px; }
+        .title-row { font-size: 30px; line-height: 1.1; margin-bottom: 6px; }
+        .title-plain, .title-accent { font-family: var(--font-sans); font-style: normal; font-weight: 400; letter-spacing: -0.02em; color: var(--text); }
+        .obra-meta { font-size: 13px; color: var(--text-soft); margin-bottom: 22px; }
+        .ini-nome { font-size: 30px; font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; }
+        .ini-data { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--text-mute); }
+        .ini-recado { font-size: 15px; color: var(--text-soft); }
+        .ini-titulo, .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .escopo-nome, .assinatura-titulo, .vazio-titulo, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
+        .ini-titulo, .gc-bloco-titulo { font-size: 18px; }
+        .ini-titulo { padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line-1); }
+        .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .assinatura-titulo { font-size: 16px; }
+        .escopo-nome { font-size: 22px; }
+        .gc-bloco-head, .arq-bloco-h { padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
+        .secao-intro { background: var(--surface-2); border: 1px solid var(--line-1); border-radius: 10px; color: var(--text-soft); }
+
+        /* ---------- Abas (Tabs · pill no nível 1, underline no nível 2) ---------- */
+        .nav-grupos { display: inline-flex; gap: 2px; padding: 4px; margin-bottom: 16px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface-2); }
+        .nav-grupo { gap: 8px; margin: 0; padding: 8px 14px; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease; }
+        .nav-grupo:hover { color: var(--text); }
+        .nav-grupo.active { background: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
+        .nav-grupo-progresso { font-family: var(--font-mono); font-size: 10px; background: var(--surface-3); color: var(--text-mute); border-radius: 999px; }
+        .nav-grupo.active .nav-grupo-progresso { background: var(--on-inverse-soft); color: var(--bg); }
+        .tabbar { gap: 0; border-bottom: 1px solid var(--line-2); }
+        .tab { gap: 8px; padding: 12px 16px; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--text-mute); transition: color 0.15s ease, border-color 0.15s ease; }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--text); border-bottom-color: var(--brand); }
+        .tab.feita { color: var(--text-soft); }
+        .tab.feita .tab-check { color: var(--success); }
+        .gc-abas, .ger-modo { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
+        .gc-aba, .ger-modo button { padding: 5px 11px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease; }
+        .ger-modo button + button { border-left: 0; }
+        .gc-aba:hover, .ger-modo button:hover:not(:disabled) { background: transparent; color: var(--text); }
+        .gc-aba.on, .ger-modo button.on { background: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
+        .ger-modo button:disabled { opacity: 0.5; }
+
+        /* ---------- Botões (Button) ----------
+           primário = default do DS (brand) · contorno = outline ·
+           tracejado = adicionar · fantasma = só ícone. O tamanho sm (30px)
+           é o padrão aqui; o default (38px) fica para a ação principal. */
+        :is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template) {
+          display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 8px;
+          font-family: var(--font-sans); font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap;
+          background: var(--brand); color: var(--bg); border: 1px solid var(--brand); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
+        }
+        :is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
+        :is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
+        :is(.btn-start, .btn-import, .btn-aprovar, .btn-nova-solicitacao, .btn-avulsa, .btn-download, .btn-criar) { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
+        .pf-box.compacto .btn-doc { min-height: 24px; }
+
+        :is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel) {
+          display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 8px;
+          font-family: var(--font-sans); font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap;
+          background: transparent; color: var(--text); border: 1px solid var(--line-2); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        }
+        :is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo):hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-3); color: var(--text); }
+        :is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel):disabled { opacity: 0.5; cursor: not-allowed; }
+        :is(.btn-lupa, .btn-copiar, .btn-apagar-escopo) { width: 30px; padding: 0; color: var(--text-mute); }
+        .btn-cancelar { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
+        :is(.btn-limpar-import, .btn-cadastrar) { color: var(--danger); }
+        :is(.btn-limpar-import, .btn-cadastrar, .btn-apagar-escopo):hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+        .btn-compra { color: var(--brand); border-color: var(--brand); }
+        .btn-compra:hover:not(:disabled) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+        /* Sobre a barra invertida de seleção: botão claro no escuro (e vice-versa). */
+        :is(.btn-abrir-escopo, .btn-associar-sel) { background: var(--surface-1); border-color: transparent; color: var(--text); }
+        :is(.btn-abrir-escopo, .btn-associar-sel):hover:not(:disabled) { background: var(--surface-2); border-color: transparent; color: var(--text); }
+
+        :is(.ad-addbtn, .btn-add-item, .btn-separar) { border: 1px dashed var(--line-3); border-radius: 8px; background: transparent; color: var(--text-soft); font-family: var(--font-sans); transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease; }
+        :is(.ad-addbtn, .btn-add-item, .btn-separar):hover { border-color: var(--brand); border-style: dashed; background: var(--brand-soft); color: var(--brand); }
+
+        :is(.btn-linha-excluir, .btn-linha-inserir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn, .gc-busca-limpar, .cf-doc-x) { border-radius: 6px; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+
+        /* ---------- Campos (Input · Select · Textarea) ----------
+           Padrão obrigatório do DS: fundo --field, borda --line-2, foco em
+           brand com anel suave, raio 10, 14px. Os campos pequenos de tabela
+           mantêm o tamanho e herdam só a linguagem. */
+        :is(.form-input, .form-select, .detalhe-texto) { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
+        .estouro-campos textarea, .estouro-campos input, .campo input { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
+        :is(.entrega-input, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit) { border-color: var(--line-2); border-radius: 8px; background-color: var(--field); color: var(--text); transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
+        :is(.form-input, .form-select, .detalhe-texto, .entrega-input, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit, .ad-obs):focus,
+        .estouro-campos textarea:focus, .estouro-campos input:focus, .campo input:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
+        :is(.form-input, .form-select, .detalhe-texto, .ad-obs)::placeholder { color: var(--text-mute); }
+        :is(.form-input, .form-select, .entrega-input):disabled { opacity: 0.5; cursor: not-allowed; }
+        select.form-input, .form-select, .casa-sel { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px; }
+        .casa-sel { padding-right: 22px; background-position: right 6px center; background-size: 10px; }
+
+        /* Caixa de seleção (Checkbox): 18px, raio 5, marcada em brand. */
+        :is(.mo-check, .check) { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--line-3); background: var(--surface-2); color: var(--bg); }
+        :is(.mo-check, .check):hover { border-color: var(--brand); }
+        .mo-linha.sel .mo-check, .grp-head .mo-check:has(svg), .check.check-on { background: var(--brand); border-color: var(--brand); }
+        .fo-check { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--line-3); color: var(--bg); }
+        .fo-item.on .fo-check { background: var(--brand); border-color: var(--brand); }
+        .det-radio { border-color: var(--line-3); }
+        .det-opcao.escolhida { border-color: var(--brand-line); background: var(--brand-soft); }
+        .det-opcao.escolhida .det-radio { border-color: var(--brand); background: var(--brand); box-shadow: inset 0 0 0 2px var(--surface-1); }
+
+        /* ---------- Filtros em chip (SavedViewChips) ---------- */
+        :is(.squad-chip, .filter-chip, .cfiltro, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+        .squad-chip.neutro { background: var(--surface-2); color: var(--text-soft); }
+        :is(.squad-chip, .filter-chip, .cfiltro, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag):hover { border-color: var(--line-3); color: var(--text); }
+        :is(.squad-chip.active, .squad-chip.neutro.on, .filter-chip.active, .cfiltro.active, .gc-chip.on, .fo-btn.on, .cargo-chip.on, .ac-chip.on) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); box-shadow: none; }
+        .squad-chip.active.alerta { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+        .alert-toggle { border-radius: 999px; border-color: var(--line-2); font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-soft); }
+        .alert-toggle.active { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+        .cbadge, .tipo-chip-conta { background: color-mix(in srgb, var(--text) 8%, transparent); color: inherit; font-family: var(--font-mono); }
+        .cfiltro.active .cbadge, .tipo-chip.active .tipo-chip-conta { background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand); }
+        .ad-tag.rascunho.on { background: var(--surface-3); border-color: var(--line-3); color: var(--text); }
+        .ad-tag.aprovado.on { background: var(--success-soft); border-color: var(--success); color: var(--success); }
+        .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+
+        /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
+        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .contrato-pill, .contrato-blocked, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-avulso, .tag-separado, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .vend-nao-vendido, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .ini-passo-chip, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
+        :is(.vend-nao-vendido, .soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
+        :is(.nav-count, .grp-conta, .vend-count, .ini-conta, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        .ad-obra-n { background: var(--brand); color: var(--bg); }
+        .ini-fase-pilula { padding: 2px 9px; border: 1px solid var(--line-1); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-size: 11px; font-weight: 600; }
+        .ini-fase-pilula.azul { border-color: transparent; background: var(--brand-soft); color: var(--brand); }
+
+        /* ---------- Cartões e números (Card · KPI) ---------- */
+        :is(.ini-cel, .dobra-card, .dash-hero, .dash-card, .dash-atencao, .big-card, .gc-total, .flat-panel) { border-radius: 14px; }
+        :is(.ini-cel, .dobra-card, .dash-hero, .dash-card, .big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
+        .ini-cel { padding: 16px 18px; }
+        :is(.ini-cel-rot, .ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .campo-rotulo, .conf-col-label, .dash-proximo-tit, .ad-prev-h, .sugestoes-titulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        .ad-cab label, .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        :is(.ini-cel-val, .ec-val, .dash-num-val, .big-card-value, .mini-stat-value, .bucket-num, .conf-stat-num, .funil-n, .pipe-count, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor, .plano-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+        .dash-aditivos .dash-adit-saldo { font-weight: 300; letter-spacing: -0.02em; }
+        .dash-anel-txt { font-family: var(--font-sans); font-weight: 300; }
+        /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
+           largura da tela em vez de estourar a caixa com reticencias. */
+        .ini-cel-val { font-size: clamp(18px, 1.55vw, 26px); line-height: 1.1; margin-top: 6px; }
+        .ini-passo-chip { padding: 1px 7px; font-size: 9.5px; letter-spacing: 0.02em; }
+        .ec-val, .big-card-value, .cmv-valor { font-size: 26px; }
+        .dash-num-val, .gc-total-val { font-size: 32px; }
+        .mini-stat-value, .saldo-valor, .plano-valor { font-size: 20px; }
+        .saldo-bloco.destaque .saldo-valor { font-size: 24px; }
+        .bucket-num, .conf-stat-num, .pipe-count, .cf-n { font-size: 30px; }
+        .funil-n, .mo-num-val { font-size: 22px; }
+        .mo-escopo-val { font-size: 24px; }
+        .arq-topo-n { font-size: 36px; }
+        .cf-bloco.aviso, .cf-tit.aviso { color: var(--warning); }
+        .funil-no.ativo, .aloc-op.ativo, .ad-obra.on { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+        .mo-escopo-barra { border-radius: 14px; }
+
+        /* ---------- Tabelas (Table) ---------- */
+        .grp-itens th, .cat-items th, .flat-table th, .vend-itens th, .exec-itens th { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute); background: var(--surface-2); border-bottom: 1px solid var(--line-1); }
+        .grp-itens td, .cat-items td, .flat-table td, .vend-itens td { font-variant-numeric: tabular-nums; border-bottom-color: var(--line-1); }
+        .grp-itens tbody tr:hover > td, .cat-items tbody tr:hover > td, .flat-table tbody tr:hover > td, .vend-itens tbody tr:hover > td { background-color: var(--row-hover); }
+        .grp-itens tfoot td, .flat-table tfoot td { border-top: 1px solid var(--line-2); background: var(--surface-2); font-weight: 600; }
+        .vend-total { border-top: 1px solid var(--line-2); }
+
+        /* ---------- Avisos (Alert · Banner) ----------
+           O texto fica em --text: o tom mora no fundo, na borda e no ícone.
+           Amarelo sobre amarelo claro não passa no contraste. */
+        :is(.aviso-monday, .aviso-banco, .aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-box) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
+        :is(.aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-topo) svg { color: var(--warning); }
+        :is(.compras-alerta, .import-erro, .estouro-aviso) { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
+        :is(.compras-alerta, .import-erro, .estouro-aviso) svg { color: var(--danger); }
+        :is(.import-ok, .assoc-resultado.ok) { background: var(--success-soft); border: 1px solid var(--success-line); border-radius: 10px; color: var(--text); }
+        :is(.import-ok, .assoc-resultado.ok) svg { color: var(--success); }
+        .pf-topo, .pf-nota, .aviso-pobre-sub { color: var(--text); }
+        .etapa-concluida, .assinatura-ok, .barra-etapa.feita { border-color: var(--success-line); }
+        .bucket-falta { border-color: var(--warning-line); }
+        .ac-painel, .assoc-barra { border-color: var(--brand-line); }
+        .pedido-topo { color: var(--text); }
+        .plano-wip, .aviso-deslocamento, .etapa-pendente { border: 1px solid var(--line-1); background: var(--surface-2); color: var(--text-soft); }
+
+        /* ---------- Estado vazio (EmptyState) ---------- */
+        .vazio-box, .compras-empty { gap: 12px; padding: 48px 24px; border: 1px solid var(--line-1); border-radius: 18px; background: var(--surface-1); }
+        .vazio-box > svg:first-child, .compras-empty > svg:first-child { box-sizing: content-box; padding: 12px; border-radius: 18px; background: var(--surface-2); color: var(--text-mute); }
+        .vazio-titulo, .compras-empty-title { font-size: 20px; }
+        .vazio-sub, .compras-empty-sub { max-width: 448px; font-size: 13.5px; line-height: 1.6; color: var(--text-soft); }
+        .escolha-aba, .empty-note { color: var(--text-mute); }
+
+        /* ---------- Progresso (Progress) ---------- */
+        .progress-track, .frente-barra, .gc-track, .cmv-linha-barra, .cbar-track, .dash-barra { height: 6px; border-radius: 999px; background: var(--surface-3); }
+        .progress-fill { height: 100%; border-radius: 999px; background: var(--brand); }
+        .frente-fill { background: var(--brand); }
+        .cbar-vendido, .cbar-exec { height: 6px; border-radius: 999px; }
+
+        /* ---------- Etapas (WizardSteps) ---------- */
+        .jornada-linha { height: 1px; margin-top: 14px; background: var(--line-2); }
+        .jornada-linha.feita { background: var(--brand); }
+        .jornada-bola { width: 28px; height: 28px; border: 1px solid var(--line-3); background: transparent; color: var(--text-mute); }
+        .jornada-bola.feita { border-color: var(--brand); background: var(--brand); color: var(--bg); }
+        .jornada-bola.atual { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+        .jornada-ponto { width: 8px; height: 8px; background: var(--brand); }
+        .jornada-nome { font-size: 12.5px; font-weight: 700; color: var(--text); }
+        .jornada-passo:has(.jornada-bola.feita) .jornada-nome { color: var(--text-soft); }
+        .jornada-passo:has(.jornada-bola:not(.feita):not(.atual)) .jornada-nome { color: var(--text-mute); }
+
+        /* ---------- Sobreposições (Dialog · Popover · Tooltip) ---------- */
+        .fo-menu { padding: 6px; border-color: var(--line-2); border-radius: 10px; background: var(--surface-1); box-shadow: var(--shadow-3); }
+        .ad-busca, .busca-insumo, .sugestoes { border-radius: 10px; }
+        :is(.fo-item, .sugestao-linha, .det-opcao) { border-radius: 6px; }
+        :is(.fo-item, .sugestao-linha, .busca-insumo-linha, .ad-busca-item):hover { background: var(--brand-soft); }
+        .fo-item.on { background: var(--brand-soft); color: var(--brand); }
+        .detalhe-fundo { background: var(--overlay-strong); backdrop-filter: var(--overlay-blur); -webkit-backdrop-filter: var(--overlay-blur); }
+        .detalhe-caixa { padding: 20px 24px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--surface-1); box-shadow: var(--shadow-4); animation: dialog-fade-in 0.2s ease-out; }
+        /* ---------- Jornada da obra: arquivos de cada fase ---------- */
+        .jornada-expandir { display: inline-flex; align-items: center; gap: 4px; margin-right: -8px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; font-family: var(--font-sans); font-size: 12.5px; font-weight: 600; letter-spacing: 0; color: var(--brand); cursor: pointer; transition: background 0.15s ease; }
+        .jornada-expandir:hover { background: var(--brand-soft); }
+        .jornada-expandir svg { transition: transform 0.15s ease; }
+        .jornada-expandir.aberta svg { transform: rotate(180deg); }
+        .jornada-anexos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line-1); }
+        .jornada-grupo-rot { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        .jornada-grupo-nota { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-sans); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+        .jornada-anexos .caderno-lista { border: 1px solid var(--line-1); border-radius: 10px; overflow: hidden; }
+        .jornada-anexos .caderno-slot { flex-wrap: wrap; padding: 9px 12px; }
+        .jornada-anexos .arq-linha { padding: 9px 12px; background: var(--surface-1); }
+        .jornada-anexar { margin-top: 8px; }
+        .jornada-anexar .btn-add-item { margin: 0; }
+        .jornada-vazio { font-size: 12px; color: var(--text-mute); }
+        @media (max-width: 1100px) { .jornada-anexos { grid-template-columns: 1fr; } }
+        /* ---------- Conf. Executivo: o que entrou e o que saiu ---------- */
+        .conf-stat-duplo { display: flex; align-items: baseline; gap: 14px; }
+        .conf-entrou { color: var(--success); }
+        .conf-saiu { color: var(--danger); }
+        .es-topo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+        .es-total { padding: 14px 16px; border: 1px solid var(--line-1); border-radius: 12px; background: var(--surface-1); }
+        .es-total.entrou { border-color: var(--success-line); background: var(--success-tint); }
+        .es-total.saiu { border-color: var(--danger-line); background: var(--danger-tint); }
+        .es-total-rot { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        .es-total-val { margin-top: 4px; font-size: 22px; font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+        .es-total.entrou .es-total-val { color: var(--success); }
+        .es-total.saiu .es-total-val { color: var(--danger); }
+        .es-total-sub { margin-top: 2px; font-size: 11.5px; color: var(--text-soft); }
+        .es-grupo { border-bottom: 1px solid var(--line-1); }
+        .es-grupo:last-child { border-bottom: none; }
+        .es-grupo-cab { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: var(--surface-2); }
+        .es-grupo-val { flex-shrink: 0; font-size: 12px; font-weight: 600; }
+        .es-grupo-val.entrou { color: var(--success); }
+        .es-grupo-val.saiu { color: var(--danger); }
+        .es-linha { display: grid; grid-template-columns: 16px minmax(0, 1fr) 110px 120px; align-items: start; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--line-1); font-size: 12.5px; color: var(--text); }
+        .es-linha.entrou { background: var(--success-tint); box-shadow: inset 3px 0 0 var(--success); }
+        .es-linha.saiu { background: var(--danger-tint); box-shadow: inset 3px 0 0 var(--danger); }
+        .es-sinal { font-family: var(--font-mono); font-weight: 700; }
+        .es-linha.entrou .es-sinal { color: var(--success); }
+        .es-linha.saiu .es-sinal { color: var(--danger); }
+        .es-nota { margin-top: 2px; font-size: 11px; color: var(--text-soft); }
+        .es-qtd { color: var(--text-soft); text-align: right; white-space: nowrap; }
+        .es-val { text-align: right; white-space: nowrap; font-weight: 600; }
+        @media (max-width: 900px) { .es-topo { grid-template-columns: 1fr; } .es-linha { grid-template-columns: 16px minmax(0, 1fr) auto; } .es-qtd { display: none; } }
+        /* ---------- Compras: associar insumos por grupo ---------- */
+        .grp-associar { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border: 1px solid var(--brand); border-radius: 8px; background: transparent; color: var(--brand); font-family: var(--font-sans); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 0.15s ease; }
+        .grp-associar:hover:not(:disabled) { background: var(--brand-soft); }
+        .grp-associar:disabled { opacity: 0.6; cursor: progress; }
+        .grp-assoc-ok { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--success); white-space: nowrap; }
       `}</style>
 
       <TopBar onInicio={() => setModulo("inicio")} />
@@ -15632,7 +16139,7 @@ export default function App() {
 
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
-        <main className={`main ${["executivo", "vendido_planilha", "vendido_contrato"].includes(tab) ? "larga" : ""}`}>
+        <main className={`main ${["executivo", "vendido_planilha"].includes(tab) ? "larga" : ""}`}>
           {/* O portao de perfil esta DESLIGADO ate a coluna existir. Dizer
           isso e' o que impede a janela virar um estado permanente que
           ninguem lembra de fechar. */}
@@ -15793,6 +16300,7 @@ export default function App() {
               e repetido em oito telas ele vira moldura, não informação. */}
           {grupo === "dashboard" && <>
           <DashboardObra obra={obra} totals={totals} podeEditar={edicao.minha}
+            souAdmin={souAdmin} usuario={usuario} onImportCaderno={importCaderno} onArquivos={trocarArquivosDaObra}
             onDataEntrega={definirDataEntrega}
             onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }}
             onIrParaAditivos={() => setModulo("aditivos")}
@@ -15810,9 +16318,9 @@ export default function App() {
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
-          {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} onEditarPlanilha={editarItemPlanilha} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} />}
+          {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} podeEditar={edicao.minha} />}
           {tab === "executivo" && ((obra.deparaAprovado || obra.executivoLiberadoDireto)
-            ? <ExecutivoView obra={obra} usuario={usuario} onImportCaderno={importCaderno} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
+            ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
@@ -15832,7 +16340,7 @@ export default function App() {
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} usuario={usuario} />}
           {grupo === "arquivos" && (
-            <ArquivosObraView obra={obra} usuario={usuario} podeEditar={edicao.minha}
+            <ArquivosObraView obra={obra} usuario={usuario} podeEditar={edicao.minha} souAdmin={souAdmin}
               onArquivos={trocarArquivosDaObra} />
           )}
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}

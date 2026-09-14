@@ -960,33 +960,33 @@ function Produtos({ produtos, slide, idioma, onAdicionar, onMudarBloco, onAltern
 function EstiloApresentacao() {
   return <style>{`
     .ap-tela { position: fixed; inset: 0; z-index: 300; background: var(--page); display: flex; flex-direction: column; font-size: 12.5px; }
-    .ap-topo { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: #fff; }
+    .ap-topo { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface-1); }
     .ap-topo > b { font-size: 13.5px; color: var(--ink); }
     .ap-voltar { background: none; border: none; color: var(--ink-3); cursor: pointer; display: flex; padding: 4px; }
     .ap-voltar:hover { color: var(--ink); }
-    .ap-sel { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12px; padding: 6px 9px; background: #fff; color: var(--ink); }
+    .ap-sel { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12px; padding: 6px 9px; background: var(--surface-1); color: var(--ink); }
     .ap-idioma { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
     .ap-idioma button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--ink-3); padding: 6px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
     .ap-idioma button + button { border-left: 1px solid var(--border); }
-    .ap-idioma button.on { background: var(--ink); color: #fff; }
+    .ap-idioma button.on { background: var(--ink); color: var(--bg); }
     .ap-idioma span { font-size: 13px; }
     .ap-acoes { margin-left: auto; display: flex; align-items: center; gap: 8px; }
     .ap-quando { font-size: 10.5px; color: var(--ink-3); }
-    .ap-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
+    .ap-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
     .ap-btn:hover:not(:disabled) { border-color: var(--blue); color: var(--ink); }
     .ap-btn:disabled { opacity: .45; cursor: default; }
-    .ap-primario { background: var(--ink); border-color: var(--ink); color: #fff; }
-    .ap-primario:hover:not(:disabled) { color: #fff; }
+    .ap-primario { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+    .ap-primario:hover:not(:disabled) { color: var(--bg); }
 
     .ap-erro, .ap-ok { display: flex; align-items: center; gap: 8px; padding: 9px 16px; font-size: 12.5px; }
-    .ap-erro { background: #FEF2F2; color: #b91c1c; border-bottom: 1px solid #FECACA; }
-    .ap-ok { background: #F0FDF4; color: #166534; border-bottom: 1px solid #BBF7D0; }
+    .ap-erro { background: var(--danger-soft); color: var(--danger); border-bottom: 1px solid var(--danger-line); }
+    .ap-ok { background: var(--success-soft); color: var(--success); border-bottom: 1px solid var(--success-line); }
 
     .ap-corpo { flex: 1; display: grid; grid-template-columns: 210px 1fr 300px; min-height: 0; }
     .ap-vazio { padding: 50px; color: var(--ink-3); }
     .ap-vazio-min { padding: 14px 4px; color: var(--ink-3); font-size: 11.5px; }
 
-    .ap-slides { border-right: 1px solid var(--border); overflow: auto; padding: 12px 10px; background: #fff; }
+    .ap-slides { border-right: 1px solid var(--border); overflow: auto; padding: 12px 10px; background: var(--surface-1); }
     .ap-slides-rot { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin: 10px 4px 7px; }
     .ap-slide-item { display: flex; align-items: center; gap: 6px; border-radius: 8px; padding: 7px 8px; cursor: pointer; border-top: 2px solid transparent; }
     .ap-slide-item:hover { background: var(--panel); }
@@ -996,7 +996,7 @@ function EstiloApresentacao() {
     .ap-arrasta { color: var(--ink-3); opacity: 0; cursor: grab; display: flex; flex-shrink: 0; }
     .ap-slide-item:hover .ap-arrasta { opacity: 1; }
     .ap-slide-n { width: 18px; height: 18px; border-radius: 5px; background: var(--panel); color: var(--ink-3); font-size: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .ap-slide-item.on .ap-slide-n { background: var(--blue); color: #fff; }
+    .ap-slide-item.on .ap-slide-n { background: var(--blue); color: var(--bg); }
     .ap-slide-nome { flex: 1; min-width: 0; display: flex; flex-direction: column; color: var(--ink); overflow: hidden; }
     .ap-slide-nome small { font-size: 10px; color: var(--ink-3); }
     .ap-slide-item button { background: none; border: none; color: var(--ink-3); cursor: pointer; opacity: 0; display: flex; flex-shrink: 0; }
@@ -1012,10 +1012,10 @@ function EstiloApresentacao() {
 
     .ap-medida { width: 100%; }
     .ap-rolagem { overflow: auto; max-width: 100%; }
-    .ap-zoom { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 2px; margin-top: 10px; }
+    .ap-zoom { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); padding: 2px; margin-top: 10px; }
     .ap-zoom button { background: none; border: none; color: var(--ink-3); cursor: pointer; display: flex; padding: 5px 7px; border-radius: 6px; }
     .ap-zoom button:hover { background: var(--panel); color: var(--ink); }
-    .ap-zoom button.on { background: var(--ink); color: #fff; }
+    .ap-zoom button.on { background: var(--ink); color: var(--bg); }
     .ap-zoom-n { font-size: 11px; font-weight: 600; color: var(--ink-2); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
     .ap-palco { position: relative; background: #fff; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; touch-action: none; user-select: none; }
     .ap-render { position: absolute; cursor: grab; overflow: hidden; }
@@ -1038,9 +1038,9 @@ function EstiloApresentacao() {
     .ap-listagem-marca { flex-shrink: 0; opacity: .55; }
     .ap-modo-btn { background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--ink-3); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 21px; height: 21px; flex-shrink: 0; padding: 0; }
     .ap-modo-btn:hover { border-color: var(--blue); color: var(--ink); }
-    .ap-modo-btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .ap-modo-btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 
-    .ap-lado { border-left: 1px solid var(--border); background: #fff; overflow: auto; padding: 12px; }
+    .ap-lado { border-left: 1px solid var(--border); background: var(--surface-1); overflow: auto; padding: 12px; }
     .ap-abas { display: flex; gap: 4px; margin-bottom: 10px; }
     .ap-abas button { flex: 1; background: none; border: 1px solid transparent; border-radius: 7px; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-3); padding: 6px; cursor: pointer; }
     .ap-abas button.on { background: var(--panel); border-color: var(--border); color: var(--ink); }
@@ -1051,10 +1051,10 @@ function EstiloApresentacao() {
     .ap-prod-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 7px; padding: 5px 6px; font-family: inherit; font-size: 11.5px; color: var(--ink); cursor: pointer; }
     .ap-prod-item:hover { background: var(--panel); }
     .ap-prod-item.on { background: var(--blue-bg); border-color: var(--blue); }
-    .ap-prod-foto { width: 26px; height: 26px; border-radius: 5px; background: var(--panel); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; color: #C9C7C2; }
+    .ap-prod-foto { width: 26px; height: 26px; border-radius: 5px; background: var(--panel); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; color: var(--line-3); }
     .ap-prod-foto img { width: 100%; height: 100%; object-fit: contain; }
     .ap-prod-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ap-add { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--ink); color: #fff; border: none; border-radius: 8px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer; }
+    .ap-add { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer; }
     .ap-add:disabled { opacity: .4; cursor: default; }
     .ap-bloco-linha { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
     .ap-bloco-linha input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 11.5px; padding: 5px 7px; }
@@ -1065,7 +1065,7 @@ function EstiloApresentacao() {
     .ap-nota { font-size: 11px; color: var(--ink-3); line-height: 1.5; margin: 0 0 12px; }
 
     .ap-arte { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
-    .ap-fixa { background: var(--ink-2) !important; color: #fff !important; }
+    .ap-fixa { background: var(--ink-2) !important; color: var(--bg) !important; }
     .ap-fixa-nome { flex: 1; font-size: 13px; color: var(--ink); }
     .ap-ano { position: absolute; background: #092737; color: #8C9296; writing-mode: vertical-rl; letter-spacing: .04em; display: flex; align-items: center; justify-content: center; }
     .ap-caixa { position: absolute; white-space: pre-wrap; }
@@ -1081,12 +1081,39 @@ function EstiloApresentacao() {
     .ap-rev:hover { border-color: var(--blue); }
     .ap-rev.on { background: var(--blue-bg); border-color: var(--blue); cursor: default; }
     .ap-rev-n { width: 26px; height: 26px; border-radius: 7px; background: var(--panel); color: var(--ink-2); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .ap-rev.on .ap-rev-n { background: var(--blue); color: #fff; }
+    .ap-rev.on .ap-rev-n { background: var(--blue); color: var(--bg); }
     .ap-rev-id { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     .ap-rev-id b { font-size: 12px; color: var(--ink); font-weight: 600; }
     .ap-rev-id small { font-size: 10.5px; color: var(--ink-3); }
     .ap-rev-pdf { color: var(--green); display: flex; }
-    .ap-rodape { display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-top: 1px solid var(--border); background: #fff; font-size: 11.5px; color: var(--ink-3); }
-    .ap-falta { display: inline-flex; align-items: center; gap: 5px; color: #B45309; }
+    .ap-rodape { display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface-1); font-size: 11.5px; color: var(--ink-3); }
+    .ap-falta { display: inline-flex; align-items: center; gap: 5px; color: var(--alert); }
+
+    /* Group WS · Design System — só o entorno do editor. O palco e o
+       slide (ap-palco, ap-render, ap-bloco, ap-caixa...) ficam como estão:
+       são a peça que vai para o cliente, com as cores dela. */
+    .ap-topo { border-bottom-color: var(--line-1); background: var(--surface-1); }
+    .ap-topo > b { font-size: 16px; font-weight: 400; letter-spacing: -0.01em; }
+    .ap-btn { min-height: 30px; border-color: var(--line-2); border-radius: 8px; background: transparent; color: var(--text); }
+    .ap-btn:hover:not(:disabled) { border-color: var(--line-3); background: var(--surface-2); color: var(--text); }
+    .ap-primario, .ap-add { border: 1px solid var(--brand); background: var(--brand); color: var(--bg); }
+    .ap-primario:hover:not(:disabled), .ap-add:hover:not(:disabled) { border-color: var(--brand-h); background: var(--brand-h); color: var(--bg); }
+    .ap-sel, .ap-amb, .ap-capa input, .ap-bloco-linha input { border-color: var(--line-2); border-radius: 8px; background-color: var(--field); color: var(--text); }
+    .ap-sel:focus, .ap-amb:focus, .ap-capa input:focus, .ap-bloco-linha input:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
+    .ap-busca { border-color: var(--line-2); border-radius: 8px; background: var(--field); }
+    .ap-busca:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--ring); }
+    .ap-idioma, .ap-zoom { gap: 2px; padding: 3px; border-color: var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
+    .ap-idioma button, .ap-zoom button { border-radius: 7px; }
+    .ap-idioma button + button { border-left: 0; }
+    .ap-idioma button.on, .ap-zoom button.on, .ap-abas button.on { border-color: var(--brand); background: var(--brand); color: var(--bg); }
+    .ap-slides-rot { font-family: var(--font-mono); letter-spacing: 1.2px; }
+    .ap-capa label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+    .ap-capa input { font-family: var(--font-sans); font-size: 13px; letter-spacing: normal; text-transform: none; }
+    .ap-slide-item.on, .ap-prod-item.on, .ap-rev.on { background: var(--brand-soft); }
+    .ap-slide-n, .ap-rev-n, .ap-zoom-n { font-family: var(--font-mono); }
+    .ap-erro { border-bottom-color: var(--danger-line); background: var(--danger-soft); color: var(--text); }
+    .ap-ok { border-bottom-color: var(--success-line); background: var(--success-soft); color: var(--text); }
+    .ap-erro svg { color: var(--danger); }
+    .ap-ok svg { color: var(--success); }
   `}</style>;
 }
