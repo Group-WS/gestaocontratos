@@ -20,6 +20,8 @@ const paraApp = (l) => ({
   email: l.email, nome: l.nome, cargo: l.cargo || "", ativo: l.ativo !== false,
   perfil: l.perfil || null,
   entrouEm: l.entrou_em || null, liberadoEm: l.liberado_em || null, liberadoPor: l.liberado_por || null,
+  // undefined = a coluna ainda nao existe (falta o ultimo-acesso.sql); null = nunca acessou.
+  ultimoAcesso: l.ultimo_acesso === undefined ? undefined : (l.ultimo_acesso || null),
   admin: !!l.admin,
   /* Lista VAZIA quer dizer TODOS, e nao "nenhum". Quem foi cadastrado
      antes destas colunas existirem perderia o app inteiro no instante em
@@ -141,22 +143,26 @@ export const PERFIS = [
   {
     id: "admin", nome: "Administrador",
     resumo: "Vê tudo, edita tudo e é quem libera o acesso das outras pessoas.",
-    modulos: null, obras: "todas", edita: true, gerenciaPessoas: true,
+    modulos: null, obras: "todas", edita: true, gerenciaPessoas: true, abreObras: true,
   },
   {
     id: "geral", nome: "Geral",
     resumo: "Vê e trabalha em todas as obras. Não configura usuários.",
-    modulos: null, obras: "todas", edita: true, gerenciaPessoas: false,
+    modulos: null, obras: "todas", edita: true, gerenciaPessoas: false, abreObras: true,
   },
   {
     id: "gc", nome: "GC",
     resumo: "Trabalha normalmente, só nas obras em que é o responsável.",
-    modulos: null, obras: "minhas", edita: true, gerenciaPessoas: false,
+    modulos: null, obras: "minhas", edita: true, gerenciaPessoas: false, abreObras: true,
   },
   {
     id: "mehoo", nome: "Mehoo",
-    resumo: "Só o painel da Mehoo, nas obras que têm item do canal. Não edita.",
-    modulos: ["mehoo"], obras: "canal-mehoo", edita: false, gerenciaPessoas: false,
+    resumo: "Só o painel da Mehoo, com as informações de todas as obras. Não edita.",
+    /* Todas as obras, mas so' dentro do painel: a Mehoo nao abre obra
+       (sem lista na barra) e entra direto no painel dela. Antes eram so'
+       as obras com item do canal — e como o item so' e' conhecido depois
+       que a obra carrega, o painel nascia vazio. */
+    modulos: ["mehoo"], obras: "todas", edita: false, gerenciaPessoas: false, abreObras: false,
   },
 ];
 
@@ -174,9 +180,14 @@ export const temAcesso = (p) => !!perfilDe(p) && p?.ativo !== false;
    deixou de ser concedido por omissao. */
 export const podeEntrar = (p) => temAcesso(p);
 
+/* Equipe e acessos e' de quem libera acesso: so' o Administrador ve.
+   Os outros perfis veem "todos os modulos" menos este. */
+const SO_QUEM_GERENCIA = new Set(["equipe"]);
+
 export function podeVerModulo(pessoa, moduloId) {
   const perfil = perfilDe(pessoa);
   if (!perfil || pessoa?.ativo === false) return false;
+  if (SO_QUEM_GERENCIA.has(moduloId)) return !!perfil.gerenciaPessoas;
   return perfil.modulos === null || perfil.modulos.includes(moduloId);
 }
 
@@ -185,6 +196,8 @@ export function podeVerModulo(pessoa, moduloId) {
    disto -- ela resolve duas pessoas ao mesmo tempo, nao permissao. */
 export const podeEditar = (pessoa) => !!perfilDe(pessoa)?.edita && pessoa?.ativo !== false;
 export const podeGerenciarPessoas = (pessoa) => !!perfilDe(pessoa)?.gerenciaPessoas && pessoa?.ativo !== false;
+// Abrir obra (a lista da barra lateral e a tela da obra). A Mehoo nao abre.
+export const podeAbrirObras = (pessoa) => !!perfilDe(pessoa)?.abreObras && pessoa?.ativo !== false;
 
 /**
  * As obras que a pessoa enxerga.
@@ -203,13 +216,6 @@ export function obrasPermitidas(pessoa, obras) {
   if (perfil.obras === "minhas") {
     const meu = String(pessoa.email || "").toLowerCase();
     return todas.filter((o) => !o.gc || String(o.gc).toLowerCase() === meu);
-  }
-  /* O canal da Mehoo: a obra aparece se tiver item marcado pra ela. Quem
-     decide isso e' o proprio item, nao um cadastro a parte -- assim a
-     lista acompanha a compra sem ninguem manter nada em dia. */
-  if (perfil.obras === "canal-mehoo") {
-    return todas.filter((o) => (o.categorias || [])
-      .some((c) => (c.itens || []).some((it) => it.canalCompra === "mehoo")));
   }
   return [];
 }
@@ -265,3 +271,37 @@ export const ehOUltimoAdmin = (pessoas, email) => {
 };
 
 export const pendentes = (pessoas) => (pessoas || []).filter(estaPendente);
+
+/* ---------- ULTIMO ACESSO E ONLINE ----------
+ *
+ * A pessoa marca a PROPRIA linha ao abrir o app e de tempos em tempos
+ * enquanto ele esta aberto (supabase/ultimo-acesso.sql). "Online" e' quem
+ * marcou ha pouco — nao ha outro jeito de saber sem manter uma conexao
+ * aberta com cada um.
+ */
+export const MINUTOS_ONLINE = 3;
+
+export async function registrarAcesso() {
+  if (!supabaseConfigurado) return false;
+  // Sem o SQL rodado a funcao nao existe: falha calada, o app segue igual.
+  const { error } = await supabase.rpc("registrar_acesso");
+  return !error;
+}
+
+export const estaOnline = (pessoa, agora = Date.now()) => {
+  if (!pessoa?.ultimoAcesso) return false;
+  const quando = new Date(pessoa.ultimoAcesso).getTime();
+  return Number.isFinite(quando) && agora - quando < MINUTOS_ONLINE * 60 * 1000;
+};
+
+// "hoje às 14:32", "ontem às 09:10", "10/09/2026 às 08:05".
+export function quandoFoi(iso, agora = new Date()) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const dia = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dias = Math.round((dia(agora) - dia(d)) / 86400000);
+  if (dias === 0) return `hoje às ${hora}`;
+  if (dias === 1) return `ontem às ${hora}`;
+  return `${d.toLocaleDateString("pt-BR")} às ${hora}`;
+}

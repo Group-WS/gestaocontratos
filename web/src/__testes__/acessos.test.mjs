@@ -18,7 +18,7 @@ const puras = src.slice(src.indexOf("export const PERFIS")).replace(/export /g, 
 const M = eval(`(function () { ${puras}
   return { PERFIS, perfilDe, estaPendente, estaSuspenso, temAcesso, podeEntrar,
            podeVerModulo, podeEditar, podeGerenciarPessoas, obrasPermitidas,
-           dominioPermitido, DOMINIOS }; })()`);
+           dominioPermitido, DOMINIOS, podeAbrirObras, estaOnline, quandoFoi }; })()`);
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -53,6 +53,8 @@ conf("admin gerencia pessoas", M.podeGerenciarPessoas(p("admin")), true);
 conf("geral vê os módulos de obra", M.podeVerModulo(p("geral"), "aditivos"), true);
 conf("geral edita", M.podeEditar(p("geral")), true);
 conf("geral NÃO gerencia pessoas", M.podeGerenciarPessoas(p("geral")), false);
+conf("geral NÃO vê Equipe e acessos", M.podeVerModulo(p("geral"), "equipe"), false);
+conf("geral abre obra", M.podeAbrirObras(p("geral")), true);
 
 /* ---- 4. GC: edita, só nas dele ---- */
 const obras = [
@@ -67,6 +69,8 @@ const dela = M.obrasPermitidas(ana, obras).map((o) => o.codigo);
 conf("GC edita — não é só leitura", M.podeEditar(ana), true);
 conf("GC vê os módulos de obra", M.podeVerModulo(ana, "compras"), true);
 conf("GC não gerencia pessoas", M.podeGerenciarPessoas(ana), false);
+conf("GC NÃO vê Equipe e acessos", M.podeVerModulo(ana, "equipe"), false);
+conf("GC abre obra", M.podeAbrirObras(ana), true);
 conf("GC pega as obras dele", dela.includes("2256"), true);
 conf("GC não pega a do outro", dela.includes("2506"), false);
 // O mesmo e-mail escrito em caixa diferente. Comparar cru esconderia obra.
@@ -82,18 +86,27 @@ conf("mehoo NÃO vê o Início", M.podeVerModulo(mehoo, "inicio"), false);
 conf("mehoo NÃO vê aditivos", M.podeVerModulo(mehoo, "aditivos"), false);
 conf("mehoo NÃO edita", M.podeEditar(mehoo), false);
 
-/* A obra aparece pra Mehoo se tiver item do canal. Quem decide é o
-   próprio item, não um cadastro à parte — a lista acompanha a compra
-   sem ninguém manter nada em dia. */
-const comCanal = [
-  { codigo: "1", categorias: [{ itens: [{ canalCompra: "mehoo" }, { canalCompra: "sienge" }] }] },
-  { codigo: "2", categorias: [{ itens: [{ canalCompra: "sienge" }] }] },
-  { codigo: "3", categorias: [] },
-  { codigo: "4" },
-];
-const daMehoo = M.obrasPermitidas(mehoo, comCanal).map((o) => o.codigo);
-conf("mehoo: só obra com item do canal", daMehoo.join(), "1");
-conf("mehoo: obra sem categoria não quebra", M.obrasPermitidas(mehoo, [{ codigo: "9" }]).length, 0);
+/* Todas as obras, mas só dentro do painel dela: não abre obra (a barra
+   não tem a lista) e não vê a Equipe. Antes eram só as obras com item do
+   canal — e o painel nascia vazio, porque o item só é conhecido depois
+   que a obra carrega. */
+const todasAsObras = [{ codigo: "1", categorias: [] }, { codigo: "2" }];
+conf("mehoo vê todas as obras", M.obrasPermitidas(mehoo, todasAsObras).length, 2);
+conf("mehoo NÃO abre obra", M.podeAbrirObras(mehoo), false);
+conf("mehoo NÃO vê Equipe e acessos", M.podeVerModulo(mehoo, "equipe"), false);
+conf("pendente NÃO abre obra", M.podeAbrirObras(p(null)), false);
+
+/* ---- 5b. Último acesso e online ---- */
+const agora = new Date(2026, 8, 14, 18, 0).getTime();
+const ha = (min) => new Date(agora - min * 60000).toISOString();
+conf("acessou há 1 minuto: online", M.estaOnline({ ultimoAcesso: ha(1) }, agora), true);
+conf("acessou há 5 minutos: não está online", M.estaOnline({ ultimoAcesso: ha(5) }, agora), false);
+conf("nunca acessou: não está online", M.estaOnline({ ultimoAcesso: null }, agora), false);
+conf("sem a coluna: não está online", M.estaOnline({}, agora), false);
+const hoje = new Date(2026, 8, 14, 18, 0);
+conf("hoje", M.quandoFoi(new Date(2026, 8, 14, 14, 32).toISOString(), hoje), "hoje às 14:32");
+conf("ontem", M.quandoFoi(new Date(2026, 8, 13, 9, 10).toISOString(), hoje), "ontem às 09:10");
+conf("mais antigo leva a data", M.quandoFoi(new Date(2026, 8, 10, 8, 5).toISOString(), hoje), "10/09/2026 às 08:05");
 
 /* ---- 6. O domínio ----
    Sem este corte, qualquer pessoa com o link viraria uma linha na fila,

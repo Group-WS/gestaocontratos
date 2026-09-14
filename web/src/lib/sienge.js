@@ -694,6 +694,45 @@ export function montarTemplateSienge(linhas) {
   return [CABECALHO_TEMPLATE_SIENGE, ...corpo].join("\r\n") + "\r\n";
 }
 
+/* Limpa o template antes de ele sair.
+ *
+ * Duas coisas que o Sienge aceitaria calado e que depois ninguem
+ * desfaz: o trecho repetido no fim da descricao ("LACA / LACA", quando
+ * a cor e a especificacao vem iguais) e o mesmo detalhe duas vezes — o
+ * mesmo produto em dois ambientes e' UM detalhe no cadastro. Fica a
+ * primeira linha, com o codigo auxiliar dela.
+ */
+export function limparTemplate(linhas) {
+  const vistos = new Set();
+  const saida = [];
+  (linhas || []).forEach((l) => {
+    const descricaoDetalhe = String(l.descricaoDetalhe ?? "").split(" / ")
+      .filter((p, k, a) => k === 0 || p.trim() !== a[k - 1].trim()).join(" / ");
+    const chave = `${String(l.maeCodigo ?? "").trim()}|${descricaoDetalhe.trim().toUpperCase()}`;
+    if (vistos.has(chave)) return;
+    vistos.add(chave);
+    saida.push({ ...l, descricaoDetalhe });
+  });
+  return saida;
+}
+
+/* Codigo auxiliar que nasce do proprio item, e nao de sorteio.
+ *
+ * No Gerador a lista e' de passagem; nas Compras o item fica guardado, e
+ * baixar o CSV do mesmo grupo duas vezes tem que dar os mesmos codigos —
+ * senao o mesmo detalhe entraria no Sienge duas vezes, com codigos
+ * diferentes. Cinco digitos, como o sorteio; se bater num ja usado no
+ * arquivo, anda pro proximo livre.
+ */
+export function auxiliarEstavel(semente, usados = new Set()) {
+  let h = 2166136261;
+  for (const ch of String(semente)) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619); }
+  let n = 10000 + ((h >>> 0) % 90000);
+  while (usados.has(String(n))) n = n >= 99999 ? 10000 : n + 1;
+  usados.add(String(n));
+  return String(n);
+}
+
 /* O que falta pra linha ser aceita pelo Sienge.
  *
  * Devolver a lista dos campos vazios — e nao um simples "invalida" —

@@ -106,6 +106,49 @@ export async function salvarPrecos(precos, onProgresso) {
   return gravadas;
 }
 
+// A chave de um insumo na base — a mesma do `unique` da tabela.
+export function chaveDoInsumo(p) {
+  return `${String(p.codigo)}|${p.descricao}|${p.unidade || ""}`;
+}
+
+/* Só o que ainda não está na base.
+ *
+ * É assim que o cadastro de insumos do Sienge entra: ele acrescenta o que
+ * falta e não toca no que já está lá. A base guarda o preço das compras;
+ * o cadastro traz preço de tabela, e a maioria zerado — escrever por cima
+ * trocaria o preço pago por zero.
+ */
+export function soOsNovos(precos, chavesExistentes) {
+  const existentes = new Set(chavesExistentes || []);
+  const vistos = new Set();
+  const novos = [];
+  let jaExistiam = 0;
+  (precos || []).forEach((p) => {
+    const k = chaveDoInsumo(p);
+    if (vistos.has(k)) return; // repetido no próprio arquivo
+    vistos.add(k);
+    if (existentes.has(k)) jaExistiam += 1;
+    else novos.push(p);
+  });
+  return { novos, jaExistiam };
+}
+
+// As chaves de tudo que já está na base, de mil em mil (ver carregarTodosInsumos).
+export async function chavesDaBase() {
+  if (!supabaseConfigurado) return new Set();
+  const chaves = new Set();
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await supabase
+      .from("insumo_preco")
+      .select("codigo, descricao, unidade")
+      .range(de, de + 999);
+    if (error) throw error;
+    (data || []).forEach((r) => chaves.add(chaveDoInsumo(r)));
+    if (!data || data.length < 1000) break;
+  }
+  return chaves;
+}
+
 /**
  * Procura preços de referência parecidos com a descrição de um item.
  *
@@ -132,6 +175,8 @@ export async function sugerirPrecos(descricao, limite = 6) {
     .from("insumo_preco")
     .select("codigo, descricao, unidade, custo_unitario, data_ref, fornecedor")
     .or(palavras.map((p) => `descricao.ilike.%${p}%`).join(","))
+    // Preço zero é insumo do cadastro sem preço de tabela: não é referência.
+    .gt("custo_unitario", 0)
     .order("data_ref", { ascending: false })
     .limit(limite);
   if (error) throw error;

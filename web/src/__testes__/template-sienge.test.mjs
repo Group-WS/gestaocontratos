@@ -11,7 +11,7 @@
  * este teste guarda é a FORMA: se ela sair torta, a pessoa descobre no
  * Sienge, sem pista.
  */
-import { montarTemplateSienge, faltaNoTemplate, CABECALHO_TEMPLATE_SIENGE, codigoAuxiliarDe, sortearAuxiliares } from "../lib/sienge.js";
+import { montarTemplateSienge, faltaNoTemplate, CABECALHO_TEMPLATE_SIENGE, codigoAuxiliarDe, sortearAuxiliares, limparTemplate, auxiliarEstavel } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -104,6 +104,27 @@ conf("duzentos sorteios sem colisão", new Set(muitos.values()).size, 200);
 // Codigo que ja existe no Sienge nao pode ser sorteado de novo.
 const evita = sortearAuxiliares([{ desc: "A" }], ["10000", "10001"]);
 conf("não sorteia um código já usado", ["10000", "10001"].includes([...evita.values()][0]), false);
+
+/* ---- Limpeza antes de sair (o CSV das Compras) ----
+   Casos do arquivo real da obra 2450: a cor repetida no fim e o colchão
+   que aparecia em três ambientes. */
+const sujo = [
+  { maeCodigo: "411", descricaoDetalhe: "CORBELLI / MESA LARERAL ORBITA / 6299 - LACA BRANCA + METAL AMENDOA / 6299 - LACA BRANCA + METAL AMENDOA" },
+  { maeCodigo: "4718", descricaoDetalhe: "HERVAL / COLCHÃO QUEEN", codigoAuxDetalhe: "20196" },
+  { maeCodigo: "4718", descricaoDetalhe: "HERVAL / COLCHÃO QUEEN", codigoAuxDetalhe: "82589" },
+  { maeCodigo: "9999", descricaoDetalhe: "HERVAL / COLCHÃO QUEEN" },
+];
+const limpo = limparTemplate(sujo);
+conf("trecho repetido no fim sai", limpo[0].descricaoDetalhe, "CORBELLI / MESA LARERAL ORBITA / 6299 - LACA BRANCA + METAL AMENDOA");
+conf("o mesmo detalhe entra uma vez só", limpo.filter((l) => l.maeCodigo === "4718").length, 1);
+conf("... com o primeiro código auxiliar", limpo.find((l) => l.maeCodigo === "4718").codigoAuxDetalhe, "20196");
+conf("mesma descrição em outro insumo é outro detalhe", limpo.length, 3);
+
+/* ---- Auxiliar estável (Compras) ---- */
+conf("mesma semente, mesmo código", auxiliarEstavel("2450|5.12|Spot") === auxiliarEstavel("2450|5.12|Spot"), true);
+conf("cinco dígitos", /^\d{5}$/.test(auxiliarEstavel("qualquer coisa")), true);
+const ocupado = new Set([auxiliarEstavel("2450|5.12|Spot")]);
+conf("já usado no arquivo: anda pro próximo", auxiliarEstavel("2450|5.12|Spot", ocupado) !== [...ocupado][0], true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

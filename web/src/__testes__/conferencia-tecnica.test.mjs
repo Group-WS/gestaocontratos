@@ -112,8 +112,63 @@ conf("Pecas Especiais Marcenaria [MAT / MO]", "passa");
 // cuba sem recorte nao e o caso: nao ha pedra pra furar
 conf("Cuba De Embutir Tramontina Lavinia 56 Bl Em Aco Inox 56X34 Cm", "passa");
 
+console.log("\n=== AQUECEDOR A GÁS: GN OU GLP ===");
+// O aquecedor sai de fábrica para um gás só, e o de um não serve no
+// outro. As descrições marcadas "real" saíram das planilhas das obras do
+// app (set/2026): nenhuma diz o tipo — justamente o caso de conferir.
+const gas = (descricao, esperado, vendido) => {
+  const r = alertaConferenciaTecnica(descricao, { vendido });
+  const obtido = !r ? "passa"
+    : r.escopo !== "item" ? "grupo"
+    : r.texto.startsWith("sem o tipo") ? "sem tipo"
+    : r.texto.startsWith("o vendido") ? "trocado"
+    : (r.texto.match(/^aquecedor (GN|GLP):/) || [])[1] || "outro";
+  const ok = obtido === esperado;
+  if (!ok) falhas++;
+  console.log(`${ok ? "ok  " : "FALHOU"} ${descricao.slice(0, 46).padEnd(48)} ${obtido.padEnd(11)} ${ok ? "" : "esperava " + esperado}`);
+};
+gas("Aquecedor a Gás KO 45DI Prime", "sem tipo", "Aquecedor a gás 45L Komeco Komeco Sacada"); // real
+gas("Aquecedor a gás 38DI", "sem tipo"); // real
+// com o tipo escrito continua alertando: a descrição diz o que foi
+// pedido, não qual é o gás do prédio
+gas("Aquecedor de passagem a gás 21L GN", "GN");
+gas("Aquecedor digital 15L GLP", "GLP");
+gas("Aquecedor a gás natural 20L", "GN");
+gas("Aquecedor G.L.P. 15 litros", "GLP");
+// o tipo grudado no código do modelo
+gas("Aquecedor REU15GN", "GN");
+// citar os dois é o mesmo que não definir
+gas("Aquecedor 15L GN/GLP", "sem tipo");
+// sem falar em gás: na dúvida, alerta — em apartamento quase todo
+// aquecedor de água é a gás
+gas("Aquecedor de passagem 21 litros", "sem tipo");
+// o "elétrica" da ignição não tira o aparelho do gás
+gas("Aquecedor a gás com ignição elétrica 15L GLP", "GLP");
+// vem antes da base do monocomando: aquecedor fala em chuveiro
+gas("Aquecedor a gás 21L - atende 2 chuveiros, com base de fixação", "sem tipo");
+// vendido × executivo: GN de um lado e GLP do outro é o erro que a
+// regra existe pra pegar
+gas("Aquecedor a gás 21L GLP", "trocado", "Aquecedor a gás 21L GN");
+// o executivo perdeu o tipo: vale o do vendido
+gas("Aquecedor a gás 21L", "GN", "Aquecedor a gás 21L GN");
+gas("Aquecedor a gás 21L GN", "GN", "Aquecedor a gás 21L GN");
+// não é aquecedor a gás
+gas("Aquecedor elétrico de passagem 5500W", "passa");
+gas("Aquecedor solar 200L", "passa");
+gas("Aquecedor de toalhas cromado", "passa");
+gas("Aquecedor de ambiente a óleo", "passa");
+gas("Piso aquecido banheiro", "passa");
+gas("Torneira aquecedora elétrica", "passa");
+// o aquecedor como complemento: a pergunta do gás fica no aparelho
+gas("Instalação e configuração de aquecedor a gás0,000", "passa"); // real
+gas("Ducha Deca para aquecedor a gás", "passa");
+gas("Chaminé do aquecedor", "passa");
+// cooktop a gás não é aquecedor (real, da mesma obra do aquecedor)
+gas("Cooktop 5 Bocas a Gás Electrolux Inox Experience Multi Chama e Grade Ferro Fundido (KE5XC) - Bivolt", "passa");
+
 console.log("\n=== AS OUTRAS REGRAS SEGUEM DE PÉ ===");
 conf("Banqueta alta Bella", "medida"); // ALERTA_BANQUETA cai no ramo "item"
+conf("Base Deca Monocomando Chuveiro", "medida"); // a base segue depois do aquecedor
 conf("Ar Condicionado Cassete 4 vias LG Inverter 18.000 BTU/h", "grupo");
 
 console.log("\n=== LEITURA DE MEDIDA, ISOLADA ===");

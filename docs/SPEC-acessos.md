@@ -33,7 +33,7 @@ responder, que é *quem vê o quê*.
 | **Administrador** | todos | todas | tudo, inclusive perfis de outras pessoas |
 | **Geral** | todos, menos Equipe e acessos | todas | tudo na obra; não mexe em gente |
 | **GC** | todos, menos Equipe e acessos | só onde é o responsável | tudo nas obras dele |
-| **Mehoo** | só o painel Mehoo | só as que têm item da Mehoo | nada |
+| **Mehoo** | só o painel Mehoo | todas, dentro do painel | nada |
 | *(sem perfil)* | nenhum | nenhuma | nada — sala de espera |
 
 ### Administrador
@@ -66,9 +66,11 @@ fora da tela de todo mundo. Some dessa regra quando a obra ganhar um
 responsável.
 
 ### Mehoo
-Vê **só o módulo Mehoo**, e dentro dele só as obras que têm item do
-canal Mehoo. Barra lateral sem lista de obras, sem os outros módulos,
-sem Início. **Não edita nada** — é painel de consulta.
+Vê **só o módulo Mehoo**, e dentro dele as informações de **todas as
+obras** (decisão de 14/09/2026 — antes eram só as obras com item do
+canal, e o painel nascia vazio). Barra lateral sem lista de obras, sem os
+outros módulos, sem Início; o login cai direto no painel. **Não edita
+nada** — é painel de consulta.
 
 O painel fica **como está hoje**, com valor de material por item e
 total por obra. A Mehoo é **empresa do próprio grupo**, não fornecedor

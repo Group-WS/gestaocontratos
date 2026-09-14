@@ -45,12 +45,9 @@ as $$
            when 'geral' then true
            -- o GC ve as dele, e as que ainda nao tem dono
            when 'gc'    then o.gc is null or lower(o.gc) = lower(auth.jwt() ->> 'email')
-           -- a Mehoo ve o que tem item do canal dela
-           when 'mehoo' then exists (
-             select 1 from obra_dados d,
-                  jsonb_array_elements(d.categorias) c,
-                  jsonb_array_elements(c -> 'itens') i
-              where d.obra_codigo = o.codigo and i ->> 'canalCompra' = 'mehoo')
+           -- a Mehoo ve todas, dentro do painel dela (decisao de 14/09/2026;
+           -- antes eram so' as obras com item do canal)
+           when 'mehoo' then true
            else false
          end
 $$;

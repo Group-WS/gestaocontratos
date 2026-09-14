@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
@@ -7,13 +8,14 @@ import {
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
-  MapPin
+  MapPin, Printer
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, faltandoNaTela } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
   PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
-  podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoAdmin } from "./lib/pessoas";
+  podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoAdmin,
+  podeAbrirObras, registrarAcesso, estaOnline, quandoFoi } from "./lib/pessoas";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
@@ -30,9 +32,9 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate, norm as normSienge } from "./lib/sienge";
+import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate, limparTemplate, auxiliarEstavel, norm as normSienge } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
-import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos } from "./lib/insumos";
+import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
@@ -767,6 +769,12 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           sub={pendencias.length ? "pedindo atenção" : "nada pedindo atenção"} />
         <InicioNum rot="ORÇAMENTO CONTRATADO" valor={fmtCompactBRL(vendido)}
           sub="conforme contrato" />
+        {/* Os mesmos números das barras de Suprimentos e Execução, agora
+            com o dinheiro: quanto já foi e quanto falta. */}
+        <InicioNum rot="MATERIAL COMPRADO" valor={`${Math.round(totals.pct || 0)}%`}
+          sub={<>{fmtBRL(totals.totalComprado || 0)} de {fmtBRL(totals.totalProdutos || 0)}<br />falta {fmtBRL(totals.falta || 0)}</>} />
+        <InicioNum rot="MÃO DE OBRA CONTRATADA" valor={`${Math.round(contratos.pct || 0)}%`}
+          sub={<>{fmtBRL(contratos.totalContratado || 0)} de {fmtBRL(contratos.totalServicos || 0)}<br />falta {fmtBRL(contratos.falta || 0)}</>} />
       </div>
 
       {/* Data de entrega — editável aqui, é dela que sai todo prazo de
@@ -1890,6 +1898,39 @@ function resumoAditivos(aditivos) {
   };
 }
 
+/**
+ * O relatorio de UMA verba, obra a obra: o que falta comprar (material)
+ * ou contratar (mao de obra), item a item.
+ *
+ * As regras sao as de `resumoDaObra` — material feito e' `it.comprado`;
+ * mao de obra feita e' qualquer etapa de contrato fora de
+ * "nao_solicitado" —, e `obrasDaLinha` e' o recorte que a linha da tela
+ * ja fez (prazo e filtro de obras). Assim o total do PDF e' o mesmo
+ * numero da linha em que a pessoa clicou.
+ */
+function relatorioDaVerba(obras, num, tipo, obrasDaLinha = null) {
+  const saida = [];
+  (obras || []).forEach((o) => {
+    if (obrasDaLinha && !obrasDaLinha.has(String(o.codigo))) return;
+    const cat = (o.categorias || []).find((c) => String(c.num) === String(num));
+    if (!cat) return;
+    const itens = [];
+    (cat.itens || []).forEach((it) => {
+      if (it.ehTitulo) return;
+      const { material, mo } = parcelasDoItem(it, cat);
+      if (material <= 0 && mo <= 0) return;
+      const aloc = alocacaoDoItem(it, cat);
+      if (tipo === "mat") {
+        if ((material > 0 || aloc === ALOC_MAT) && !it.comprado) itens.push({ it, valor: material });
+      } else if ((mo > 0 || aloc === ALOC_MO) && contratoEtapa(it) === "nao_solicitado") {
+        itens.push({ it, valor: mo });
+      }
+    });
+    if (itens.length) saida.push({ obra: o, itens, total: itens.reduce((a, x) => a + x.valor, 0) });
+  });
+  return saida.sort((a, b) => b.total - a.total);
+}
+
 /* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
 
    Os testes recortam o trecho ACIMA desta linha e rodam de verdade. JSX
@@ -2265,20 +2306,6 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
           <div className="grp-tot">
             <div className="grp-tot-rot">MO</div>
             <div className={`grp-tot-val mono ${mo > 0 ? "" : "dim"}`}>{mo > 0 ? fmtBRL(mo) : "—"}</div>
-          </div>
-          {/* COMPROMETIDO SIENGE — a coluna existe, o numero ainda nao.
-
-              Vazia a vista, e nao escondida ate ficar pronta: quem
-              confere precisa saber que este numero VAI existir, senao
-              planeja em cima do que tem hoje e refaz depois.
-
-              O aviso "em desenvolvimento" mora UMA vez, no topo da tela,
-              e nao em cada verba: repetido trinta vezes ele engrossava a
-              coluna a ponto de ela parecer o cabecalho da tabela de itens
-              logo abaixo — que tem "Destino" na mesma posicao. */}
-          <div className="grp-tot grp-tot-wip" title="Quanto desta verba já está comprometido em pedidos no Sienge. Em desenvolvimento — o número virá da integração com o Sienge.">
-            <div className="grp-tot-rot">SIENGE</div>
-            <div className="grp-tot-val mono dim">—</div>
           </div>
         </div>
       </div>
@@ -2708,16 +2735,6 @@ function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, 
             </span>
           </div>
           <button className="btn-atalho" onClick={onIrParaDashboard}>Definir no Dashboard</button>
-        </div>
-      )}
-
-      {/* Uma vez, aqui em cima. Ver isto antes de descer pela lista e' o
-          que evita alguem esperar um numero que ainda nao existe. */}
-      {temItens && (
-        <div className="plano-wip">
-          <Clock size={12} />
-          <span>A coluna <b>Sienge</b> no cabeçalho de cada verba vai mostrar o quanto já está
-            comprometido em pedidos — <b>está em desenvolvimento</b> e por isso aparece vazia.</span>
         </div>
       )}
 
@@ -4073,8 +4090,8 @@ function normTxt(s) {
    ------------------------------------------------------------
    Coisas que batem em custo e quantidade e ainda assim dão errado na
    obra: a mesa que não passa no elevador, a banqueta na altura errada,
-   a base de monocomando incompatível, o ar-condicionado que não
-   conversa com a infraestrutura da planta.
+   a base de monocomando incompatível, o aquecedor GN num prédio de GLP,
+   o ar-condicionado que não conversa com a infraestrutura da planta.
 
    As regras são por CATEGORIA e MEDIDA — nunca por nome de modelo,
    coleção ou fornecedor. Nome de produto muda a cada obra; "mesa maior
@@ -4239,6 +4256,57 @@ const ALERTA_CLIMATIZACAO =
 const ALERTA_CLIMATIZACAO_MAO_DE_OBRA =
   "conferir se a mao de obra contratada corresponde ao tipo de equipamento e ao ponto de infraestrutura previsto na planta.";
 
+// AQUECEDOR A GÁS — o aparelho sai de fábrica para UM gás: GN (gás
+// natural, da rede da rua) ou GLP (botijão ou central do prédio). O de
+// um não serve no outro sem conversão, e o erro só aparece na hora de
+// ligar, com o aquecedor já comprado. Por isso todo aquecedor a gás
+// passa pela conferência, mesmo com o tipo escrito: a descrição diz o
+// que foi pedido, não qual é o gás do prédio.
+const ALERTA_AQUECEDOR_SEM_TIPO =
+  "sem o tipo de gas na descricao: conferir se o predio e GN ou GLP e pedir o aquecedor na mesma versao.";
+const alertaAquecedorDoTipo = (tipo) =>
+  `aquecedor ${tipo}: conferir se o gas do predio e ${tipo} mesmo — aquecedor de um gas nao serve no outro sem conversao.`;
+const alertaAquecedorTrocado = (vendido, executivo) =>
+  `o vendido e ${vendido} e o executivo e ${executivo}: conferir o gas do predio e qual versao do aquecedor comprar.`;
+
+// Aquecedor que não é a gás. Só conta quando a descrição não fala em
+// gás: "ignição elétrica" e "solar com apoio a gás" continuam a gás.
+const AQUECEDOR_SEM_GAS = ["eletric", "solar", "bomba de calor", "toalh", "de ambiente", "oleo"];
+
+// Os gases que a descrição cita. O tipo às vezes vem grudado no código
+// do modelo ("REU15GN"), por isso letra e número são separados antes.
+function gasesCitados(t) {
+  const s = t.replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2");
+  return {
+    gas: /\bgas\b/.test(s),
+    gn: /\bgn\b/.test(s) || s.includes("gas natural"),
+    glp: /\bglp\b|\bg l p\b/.test(s) || s.includes("liquefeito"),
+  };
+}
+
+// "GN", "GLP" ou null. Citar os dois ("GN/GLP") é o mesmo que não citar
+// nenhum: o tipo continua sem definição.
+function tipoDeGas(t) {
+  const { gn, glp } = gasesCitados(t);
+  return gn === glp ? null : gn ? "GN" : "GLP";
+}
+
+function ehAquecedorAGas(t) {
+  // "Ducha para aquecedor a gás", "chaminé do aquecedor", "instalação de
+  // aquecedor": ali o aquecedor é complemento, não o item. A pergunta do
+  // gás fica no aparelho, e não em cada coisa que fala dele.
+  if (/\b(para|p|do|de|da|ao|no)\s+(o\s+)?aquec(edor|edores)?\b/.test(t)) return false;
+  const aquecedor = /\baquec(edor|edores)?\b/.test(t);
+  // "Sistema de aquecimento" sozinho pode ser piso, toalheiro, qualquer
+  // coisa: só entra quando fala em gás.
+  if (!aquecedor && !/\baquecimento\b/.test(t)) return false;
+  const { gas, gn, glp } = gasesCitados(t);
+  if (gas || gn || glp) return true;
+  // Aquecedor que não diz o gás: na dúvida, alerta — em apartamento,
+  // quase todo aquecedor de água é a gás.
+  return aquecedor && !AQUECEDOR_SEM_GAS.some((p) => t.includes(p));
+}
+
 // Devolve { escopo, texto } do primeiro alerta que casar, ou null.
 //
 // O escopo decide ONDE o alerta aparece, e sai da natureza da pergunta:
@@ -4249,7 +4317,10 @@ const ALERTA_CLIMATIZACAO_MAO_DE_OBRA =
 //             infraestrutura de climatização, não uma por aparelho.
 //             Repetir isso em cada linha ocupa cinco vezes o espaço e
 //             faz a pessoa parar de ler na segunda.
-function alertaConferenciaTecnica(descricao) {
+//
+// `vendido` é a descrição do vendido quando a linha tem os dois lados: o
+// aquecedor a gás compara o tipo de gás de um com o do outro.
+function alertaConferenciaTecnica(descricao, { vendido = null } = {}) {
   const t = normTxt(descricao);
   if (!t) return null;
   const tem = (...palavras) => palavras.some((p) => t.includes(p));
@@ -4290,7 +4361,18 @@ function alertaConferenciaTecnica(descricao) {
   // errado em granito não tem conserto, refaz a peça.
   if (temPalavra(t, ["recorte"]) && temPalavra(t, ["cuba"])) return doItem(ALERTA_RECORTE_CUBA);
 
-  // 5 — BASE DO MONOCOMANDO: só a base embutida na parede. Torneira,
+  // 5 — AQUECEDOR A GÁS: GN ou GLP. Vem antes da base do monocomando
+  // de propósito: descrição de aquecedor fala em chuveiro e ducha
+  // ("atende 2 chuveiros") e cairia na pergunta errada.
+  if (ehAquecedorAGas(t)) {
+    const tipo = tipoDeGas(t);
+    const doVendido = vendido ? tipoDeGas(normTxt(vendido)) : null;
+    if (tipo && doVendido && tipo !== doVendido) return doItem(alertaAquecedorTrocado(doVendido, tipo));
+    const qual = tipo || doVendido;
+    return doItem(qual ? alertaAquecedorDoTipo(qual) : ALERTA_AQUECEDOR_SEM_TIPO);
+  }
+
+  // 6 — BASE DO MONOCOMANDO: só a base embutida na parede. Torneira,
   // bica e monocomando de mesa não têm esse problema.
   if (tem("base") && tem("monocomando", "registro", "chuveiro", "ducha", "pressao")) {
     const ehDeMesa = tem("torneira", "bica", "de mesa", "lavatorio", "cozinha", "pia");
@@ -4298,7 +4380,7 @@ function alertaConferenciaTecnica(descricao) {
     if (!ehDeMesa || ehEmbutida) return doItem(ALERTA_BASE_MONOCOMANDO);
   }
 
-  // 6 — CLIMATIZAÇÃO. "split" solto entra de propósito: na planilha real
+  // 7 — CLIMATIZAÇÃO. "split" solto entra de propósito: na planilha real
   // aparece "Ar condicionao Split hi wall" — com o erro de digitação, é
   // só o "split" que sobra pra reconhecer o item.
   if (tem("ar condicionado", "ar-condicionado", "arcondicionado", "evaporadora", "condensadora", "split")) {
@@ -5391,6 +5473,74 @@ function ResumoEntrouSaiu({ resumo }) {
   );
 }
 
+/* Uma linha da Conf. Executivo com o status que a tela mostra.
+
+   Mora fora do componente porque a trava do "Concluir etapa" faz a
+   mesma conta. Se cada uma contasse do seu jeito, um dia o card diria
+   zero pendência com o botão ainda travado — ou o contrário. */
+function linhaConfExecutivo(item) {
+  const desc = item.planilhaExecutivo?.desc || item.planilhaVendido?.desc;
+
+  // Acrescentado no executivo sem ter sido vendido: televisor, máquina
+  // de lavar. Bate valor e quantidade porque não há com o que comparar
+  // — mas é justamente o caso de olhar, porque alguém vai pagar.
+  const soNoExecutivo = !item.planilhaVendido && !!item.planilhaExecutivo;
+  // O gás do aquecedor é conferido também contra o vendido: GN de um
+  // lado e GLP do outro é o erro que essa regra existe pra pegar.
+  const alerta = alertaConferenciaTecnica(desc, {
+    vendido: item.planilhaExecutivo && item.planilhaVendido ? item.planilhaVendido.desc : null,
+  });
+  const alertaTecnico = alerta && alerta.escopo === "item" ? alerta.texto : null;
+  const alertaGrupo = alerta && alerta.escopo === "grupo" ? alerta.texto : null;
+
+  let status = item.status;
+  let motivo = item.motivo;
+  // Alerta de item tira do verde mesmo com tudo batendo: o problema dele
+  // não é de número, é de caber e de ser compatível. Mas não vira
+  // "diferente" nem "só aparece em um" — nenhuma das duas é verdade.
+  // Divergência real é mais urgente e continua mandando no status.
+  if (alertaTecnico && status === "ok") { status = "conferencia_tecnica"; motivo = null; }
+
+  return {
+    codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome,
+    status, motivo, alertaTecnico, alertaGrupo,
+    // Guardados pra alimentar os alertas de conjunto, que precisam ver
+    // as linhas da verba juntas — não uma de cada vez.
+    desc,
+    ambiente: item.planilhaExecutivo?.ambiente || item.planilhaVendido?.ambiente || null,
+    naoVendido: soNoExecutivo,
+    a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
+    b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
+  };
+}
+
+// O cruzamento é a conta cara desta tela, e agora a lista, o resumo e a
+// trava da etapa usam o mesmo. Guardado por obra: enquanto ela não muda,
+// o resultado também não, e a conta roda uma vez só.
+const cruzamentoExecCache = new WeakMap();
+function cruzamentoExecutivo(obra) {
+  let c = cruzamentoExecCache.get(obra);
+  if (!c) {
+    c = conferirExecutivoObra(obra.categorias).linhas;
+    cruzamentoExecCache.set(obra, c);
+  }
+  return c;
+}
+
+// O que falta aprovar na Conf. Executivo, contado do mesmo jeito que os
+// cards: linha aprovada vira "ok" e sai da conta. Ver bloqueioDaEtapa.
+function pendenciasConfExecutivo(obra) {
+  const aprovacoes = obra.aprovacoes || new Set();
+  const p = { divergente: 0, tecnica: 0 };
+  cruzamentoExecutivo(obra).forEach((item) => {
+    const l = linhaConfExecutivo(item);
+    if (aprovacoes.has(`exec:${l.catNum}:${l.codigo}`)) return;
+    if (l.status === "diferente") p.divergente++;
+    else if (l.status === "conferencia_tecnica") p.tecnica++;
+  });
+  return p;
+}
+
 // CONF. EXECUTIVO — depara Vendido Planilha × Planilha Executivo.
 function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar }) {
   // Vem da obra e é gravado no banco. Antes era useState local: as
@@ -5398,40 +5548,11 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
   const aprovacoes = obra.aprovacoes || new Set();
   const toggleAprovacao = (catNum, codigo) => onAprovarLinha("exec", catNum, codigo);
 
-  // Um cruzamento só, pra lista e pro resumo: numa obra grande ele é a conta cara desta tela.
-  const cruzamento = useMemo(() => conferirExecutivoObra(obra.categorias).linhas, [obra]);
+  // Um cruzamento só, pra lista, pro resumo e pra trava da etapa: numa
+  // obra grande ele é a conta cara desta tela (ver cruzamentoExecutivo).
+  const cruzamento = useMemo(() => cruzamentoExecutivo(obra), [obra]);
   const resumoES = useMemo(() => resumoEntrouSaiu(cruzamento), [cruzamento]);
-  const linhasBrutas = useMemo(() => cruzamento.map((item) => {
-    const desc = item.planilhaExecutivo?.desc || item.planilhaVendido?.desc;
-
-    // Acrescentado no executivo sem ter sido vendido: televisor, máquina
-    // de lavar. Bate valor e quantidade porque não há com o que comparar
-    // — mas é justamente o caso de olhar, porque alguém vai pagar.
-    const soNoExecutivo = !item.planilhaVendido && !!item.planilhaExecutivo;
-    const alerta = alertaConferenciaTecnica(desc);
-    const alertaTecnico = alerta && alerta.escopo === "item" ? alerta.texto : null;
-    const alertaGrupo = alerta && alerta.escopo === "grupo" ? alerta.texto : null;
-
-    let status = item.status;
-    let motivo = item.motivo;
-    // Alerta de item tira do verde mesmo com tudo batendo: o problema dele
-    // não é de número, é de caber e de ser compatível. Mas não vira
-    // "diferente" nem "só aparece em um" — nenhuma das duas é verdade.
-    // Divergência real é mais urgente e continua mandando no status.
-    if (alertaTecnico && status === "ok") { status = "conferencia_tecnica"; motivo = null; }
-
-    return {
-      codigo: item.codigo, catNum: item.verba.num, catNome: item.verba.nome,
-      status, motivo, alertaTecnico, alertaGrupo,
-      // Guardados pra alimentar os alertas de conjunto, que precisam ver
-      // as linhas da verba juntas — não uma de cada vez.
-      desc,
-      ambiente: item.planilhaExecutivo?.ambiente || item.planilhaVendido?.ambiente || null,
-      naoVendido: soNoExecutivo,
-      a: item.planilhaVendido ? { desc: item.planilhaVendido.desc, qtd: item.planilhaVendido.qtdVendida, un: item.planilhaVendido.un, extra: item.planilhaVendido.marca, valor: item.planilhaVendido.custo } : null,
-      b: item.planilhaExecutivo ? { desc: item.planilhaExecutivo.desc, qtd: item.planilhaExecutivo.qtdVendida, un: item.planilhaExecutivo.un, extra: item.planilhaExecutivo.marca, valor: item.planilhaExecutivo.custo } : null,
-    };
-  }), [cruzamento]);
+  const linhasBrutas = useMemo(() => cruzamento.map(linhaConfExecutivo), [cruzamento]);
 
   const naoAnalisadas = useMemo(
     () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num, c.nome)),
@@ -5569,7 +5690,7 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
         <button key={i} className="busca-insumo-linha" onClick={() => onEscolher(p)}>
           <span className="mono busca-insumo-cod">{p.codigo}</span>
           <span className="busca-insumo-desc">{p.descricao}</span>
-          <span className="mono busca-insumo-preco">{fmtBRL(p.custo_unitario)}</span>
+          <span className="mono busca-insumo-preco">{p.custo_unitario > 0 ? fmtBRL(p.custo_unitario) : "sem preço"}</span>
           <span className="busca-insumo-un">/{p.unidade || "un"}</span>
         </button>
       ))}
@@ -6543,7 +6664,10 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
    TOPO / SIDEBAR
    ============================================================ */
 
-function TopBar({ onInicio }) {
+function TopBar({ onInicio, usuario, nome }) {
+  // As iniciais de quem esta logado. Eram "PW" fixo, pra qualquer pessoa.
+  const iniciais = (nome || nomeDoEmail(usuario) || "?").split(/\s+/).slice(0, 2)
+    .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
   return (
     <header className="topbar">
       {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
@@ -6567,7 +6691,7 @@ function TopBar({ onInicio }) {
             passa a duvidar do resto dos botoes da tela. */}
         <AlternarTema />
         <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
-        <div className="avatar">PW</div>
+        <div className="avatar" title={[nome, usuario].filter(Boolean).join(" · ")}>{iniciais}</div>
       </div>
     </header>
   );
@@ -6693,7 +6817,7 @@ function IconeSquad({ nome, size = 13 }) {
   return <Building2 size={size} />;
 }
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS, pendentesCount = 0 }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS, pendentesCount = 0, mostrarObras = true }) {
   /* Início sai da lista dobrável de módulos e vira botão fixo no topo —
      o resto de `modulos` (permissão já aplicada por quem chama) segue
      exatamente como antes, só sem o Início duplicado dentro dele. */
@@ -6899,7 +7023,8 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
               </div>
             </button>
           )}
-          <button className="nav-item nav-item-obras" onClick={() => setObrasAbertas((v) => !v)}
+          {/* Quem nao abre obra (Mehoo) nao tem a lista: o painel dela e' a tela inteira. */}
+          {mostrarObras && <button className="nav-item nav-item-obras" onClick={() => setObrasAbertas((v) => !v)}
             title={obrasAbertas ? "Recolher Obras" : "Abrir Obras"}>
             <Building2 size={16} className="nav-icon" />
             <div className="nav-item-text">
@@ -6909,9 +7034,9 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             {obrasAbertas
               ? <ChevronDown size={13} className="dim nav-item-chevron" />
               : <ChevronRight size={13} className="dim nav-item-chevron" />}
-          </button>
+          </button>}
         </div>
-        {obrasAbertas && <>
+        {mostrarObras && obrasAbertas && <>
         <div className="obra-search">
           <Search size={13} className="dim" />
           <input placeholder="Filtrar por nome, código, cliente..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -7329,6 +7454,22 @@ function quemConcluiu(id, obra) {
   if (id === "vendido_conferencia") return { por: obra.cmvLiberadoPor, em: obra.cmvLiberadoEm };
   if (id === "assinatura_cliente") return { por: obra.clienteAssinaturaPor, em: obra.clienteAssinouEm };
   return (obra.etapasConcluidas || {})[id] || {};
+}
+
+/* O que impede concluir a etapa agora, ou null.
+
+   Só a Conf. Executivo tem trava: Divergente e Conferência técnica
+   precisam estar 100% aprovados, zero pendência, antes de a esteira
+   andar. "Entrou ou saiu" não trava. Etapa que já estava concluída
+   continua concluída — a trava vale para o ato de concluir. */
+function bloqueioDaEtapa(id, obra) {
+  if (id !== "executivo_conferencia" || !obra) return null;
+  const { divergente, tecnica } = pendenciasConfExecutivo(obra);
+  if (divergente + tecnica === 0) return null;
+  const partes = [];
+  if (divergente) partes.push(`${divergente} ${divergente === 1 ? "divergente" : "divergentes"}`);
+  if (tecnica) partes.push(`${tecnica} em conferência técnica`);
+  return `Falta aprovar ${partes.join(" e ")}`;
 }
 
 function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
@@ -7785,22 +7926,9 @@ function GeradorSiengeView() {
    Por isso nao ha campo de texto livre aqui: ou e' uma das candidatas,
    ou e' uma achada na busca, e as duas saem da mesma base. */
 function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMae, descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxSorteado }) {
-  const [buscando, setBuscando] = useState(false);
-  const [termo, setTermo] = useState("");
-
   const candidatas = linha.maes.map((x) => x.grupo);
   const mae = (maeEscolhida ? (grupos || []).find((g) => g.codigo === maeEscolhida) : null)
     || candidatas[0] || null;
-
-  /* A busca varre a base inteira, nao so as candidatas: quando o
-     casamento automatico nao acha nada, e' aqui que a pessoa resolve. */
-  const achadas = useMemo(() => {
-    const t = normSienge(termo);
-    if (t.length < 2) return [];
-    return (grupos || [])
-      .filter((g) => normSienge(g.nome).includes(t) || String(g.codigo).includes(t))
-      .slice(0, 8);
-  }, [termo, grupos]);
 
   return (
     <tr className={mae ? (escolhida ? "row-comprado" : "") : "row-falta"}>
@@ -7824,128 +7952,172 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
         )}
       </td>
       <td>
-        <div className="detalhe-cel">
-          {/* A MAE, sempre da base. */}
-          {mae ? (
-            <div className={`mae-cel casa-${escolhida ? "exato" : "aproximado"}`}>
-              <span className="casa-bola" />
-              <div className="mae-txt">
-                <span className="mae-cod mono">{mae.codigo}</span>
-                <span className="mae-nome">{mae.nome}</span>
-              </div>
-              {candidatas.length > 1 && !buscando && (
-                <>
-                  <ChevronDown size={12} className="mae-seta" />
-                  <select className="mae-sel" value={mae.codigo}
-                    onChange={(e) => onMae(e.target.value)}
-                    aria-label="Insumo mãe no Sienge">
-                    {candidatas.map((g) => (
-                      <option key={g.codigo} value={g.codigo}>{g.codigo} · {g.nome}</option>
-                    ))}
-                  </select>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="casa casa-sem"><span className="casa-bola" /> sem insumo mãe — escolha um</div>
-          )}
-
-          {/* Procurar outra: e' o caminho quando o casamento automatico
-              erra ou nao acha, e ele nao pode faltar — sem ele a pessoa
-              fica presa com a sugestao errada. */}
-          {!buscando ? (
-            <button className="ger-trocar" onClick={() => setBuscando(true)}>
-              <Search size={10} /> {mae ? "trocar o insumo mãe" : "procurar o insumo mãe"}
-            </button>
-          ) : (
-            <div className="ger-busca">
-              <input className="form-input" autoFocus value={termo} placeholder="nome ou código do insumo…"
-                onChange={(e) => setTermo(e.target.value)} />
-              {achadas.map((g) => (
-                <button key={g.codigo} className="det-opcao"
-                  onClick={() => { onMae(g.codigo); setBuscando(false); setTermo(""); }}>
-                  <span className="mono det-falta">{g.codigo}</span>
-                  <span className="det-opcao-txt">{g.nome}</span>
-                  <span className="det-bate">{g.variantes.length}</span>
-                </button>
-              ))}
-              {termo.length >= 2 && achadas.length === 0 && (
-                <span className="dim" style={{ fontSize: 11 }}>Nenhum insumo com esse nome na base do Sienge.</span>
-              )}
-              <button className="ger-trocar" onClick={() => { setBuscando(false); setTermo(""); }}>cancelar</button>
-            </div>
-          )}
-
-          {/* A ESCOLHA. Antes ela era invisivel: quem marcava uma variante
-              tirava a linha da planilha sem nada dizer isso, e quem nao
-              marcava nada mandava a linha pra planilha tambem sem nada
-              dizer. Agora as opcoes sao um radio so — as que ja existem no
-              Sienge e a nova — e a marcada e' a que vale. */}
-          <div className="det-escolha">
-            <div className="det-escolha-rot">
-              qual descrição vai pra planilha
-              <span className={escolhida ? "det-selo-fora" : "det-selo-vai"}>
-                {escolhida ? "já cadastrada — fica de fora" : "a nova, abaixo"}
-              </span>
-            </div>
-
-            {mae && ordenarDetalhes(linha.desc, mae).slice(0, 4).map((d, k) => (
-              <button key={d.insumo.descricao + k}
-                className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
-                onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
-                <span className="det-radio" />
-                <span className="det-opcao-txt">{d.insumo.detalhe}</span>
-                {d.faltaram.length > 0
-                  ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
-                  : <span className="det-bate">bate tudo</span>}
-              </button>
-            ))}
-
-            <div className={`det-nova ${escolhida ? "fora" : "escolhida"}`}>
-              <button className={`det-opcao ${escolhida ? "" : "escolhida"}`}
-                onClick={() => onEscolher(null)}
-                title="Usar a descrição gerada — é ela que preenche o template do Sienge">
-                <span className="det-radio" />
-                <span className="det-opcao-txt">cadastrar como detalhe novo</span>
-                {editado && <span className="det-falta">editada à mão</span>}
-              </button>
-              <div className="padrao-cel">
-                {/* Textarea, e nao um <code> com botao de editar: quem confere
-                    cinquenta linhas nao quer dois cliques por linha. */}
-                <textarea className="padrao-txt padrao-edit" value={descrito} rows={2}
-                  spellCheck={false} aria-label="Descrição do detalhe no Sienge"
-                  onChange={(e) => onDescrito(e.target.value)} />
-                <div className="padrao-acoes">
-                  <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
-                    onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></button>
-                  {editado && (
-                    <button className="btn-copiar" title="Voltar ao descritivo gerado"
-                      onClick={() => onDescrito(null)}><RotateCcw size={11} /></button>
-                  )}
-                </div>
-              </div>
-              {/* Os dois codigos que o template exige e que a descricao
-                  nao carrega. Ficam aqui embaixo, e nao numa coluna
-                  propria, porque so valem pra linha que vai ser
-                  cadastrada — quem escolheu variante nao preenche nada. */}
-              <div className="det-codigos">
-                <label>
-                  cód. do detalhe
-                  <input className="form-input" value={codDet} placeholder="o Sienge numera"
-                    onChange={(e) => onCodDet(e.target.value)} />
-                </label>
-                <label>
-                  cód. auxiliar {auxSorteado && <span className="det-sorteado">sorteado</span>}
-                  <input className={`form-input ${aux ? "" : "vazio"} ${auxSorteado ? "sorteado" : ""}`}
-                    value={aux} placeholder="referência do fornecedor"
-                    onChange={(e) => onAux(e.target.value)} />
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
+        <EscolhaSienge desc={linha.desc} mae={mae} candidatas={candidatas} grupos={grupos} onMae={onMae}
+          escolhida={escolhida} onEscolher={onEscolher}
+          descrito={descrito} editado={editado} onDescrito={onDescrito}
+          aux={aux} codDet={codDet} onAux={onAux} onCodDet={onCodDet}
+          auxMarca={auxSorteado ? "sorteado" : null} />
       </td>
     </tr>
+  );
+}
+
+/* Campo que, com `aoSair`, so grava ao sair dele — e nao a cada tecla.
+   Sem `aoSair` e' um campo comum: cada tecla ja chega em quem guarda. */
+function CampoRascunho({ as: Tag = "input", valor, onSalvar, aoSair = false, ...resto }) {
+  const [rascunho, setRascunho] = useState(valor ?? "");
+  useEffect(() => { setRascunho(valor ?? ""); }, [valor]);
+  if (!aoSair) return <Tag {...resto} value={valor ?? ""} onChange={(e) => onSalvar(e.target.value)} />;
+  return (
+    <Tag {...resto} value={rascunho} onChange={(e) => setRascunho(e.target.value)}
+      onBlur={() => { if (rascunho !== (valor ?? "")) onSalvar(rascunho); }} />
+  );
+}
+
+/* A escolha do insumo no Sienge: a MAE, sempre da base, e depois qual
+   descricao vai pra planilha — uma variante que ja existe, ou a nova,
+   editavel, com os dois codigos que o template exige.
+
+   E' a mesma nas duas telas que associam, o Gerador de codigos e as
+   Compras (etapa Sienge), de proposito: quem aprende numa sabe a outra.
+   Nas Compras os campos gravam ao sair (`aoSair`), porque ali cada
+   alteracao e' gravacao da obra; no Gerador nada e' guardado. */
+function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEscolher,
+  descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false }) {
+  const [buscando, setBuscando] = useState(false);
+  const [termo, setTermo] = useState("");
+
+  /* A busca varre a base inteira, nao so as candidatas: quando o
+     casamento automatico nao acha nada, e' aqui que a pessoa resolve. */
+  const achadas = useMemo(() => {
+    const t = normSienge(termo);
+    if (t.length < 2) return [];
+    return (grupos || [])
+      .filter((g) => normSienge(g.nome).includes(t) || String(g.codigo).includes(t))
+      .slice(0, 8);
+  }, [termo, grupos]);
+
+  return (
+    <div className="detalhe-cel">
+      {/* A MAE, sempre da base. */}
+      {mae ? (
+        <div className={`mae-cel casa-${escolhida ? "exato" : "aproximado"}`}>
+          <span className="casa-bola" />
+          <div className="mae-txt">
+            <span className="mae-cod mono">{mae.codigo}</span>
+            <span className="mae-nome">{mae.nome}</span>
+          </div>
+          {candidatas.length > 1 && !buscando && (
+            <>
+              <ChevronDown size={12} className="mae-seta" />
+              <select className="mae-sel" value={mae.codigo}
+                onChange={(e) => onMae(e.target.value)}
+                aria-label="Insumo mãe no Sienge">
+                {candidatas.map((g) => (
+                  <option key={g.codigo} value={g.codigo}>{g.codigo} · {g.nome}</option>
+                ))}
+              </select>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="casa casa-sem"><span className="casa-bola" /> sem insumo mãe — escolha um</div>
+      )}
+
+      {/* Procurar outra: e' o caminho quando o casamento automatico
+          erra ou nao acha, e ele nao pode faltar — sem ele a pessoa
+          fica presa com a sugestao errada. */}
+      {!buscando ? (
+        <button className="ger-trocar" onClick={() => setBuscando(true)}>
+          <Search size={10} /> {mae ? "trocar o insumo mãe" : "procurar o insumo mãe"}
+        </button>
+      ) : (
+        <div className="ger-busca">
+          <input className="form-input" autoFocus value={termo} placeholder="nome ou código do insumo…"
+            onChange={(e) => setTermo(e.target.value)} />
+          {achadas.map((g) => (
+            <button key={g.codigo} className="det-opcao"
+              onClick={() => { onMae(g.codigo); setBuscando(false); setTermo(""); }}>
+              <span className="mono det-falta">{g.codigo}</span>
+              <span className="det-opcao-txt">{g.nome}</span>
+              <span className="det-bate">{g.variantes.length}</span>
+            </button>
+          ))}
+          {termo.length >= 2 && achadas.length === 0 && (
+            <span className="dim" style={{ fontSize: 11 }}>Nenhum insumo com esse nome na base do Sienge.</span>
+          )}
+          <button className="ger-trocar" onClick={() => { setBuscando(false); setTermo(""); }}>cancelar</button>
+        </div>
+      )}
+
+      {/* A ESCOLHA. Antes ela era invisivel: quem marcava uma variante
+          tirava a linha da planilha sem nada dizer isso, e quem nao
+          marcava nada mandava a linha pra planilha tambem sem nada
+          dizer. Agora as opcoes sao um radio so — as que ja existem no
+          Sienge e a nova — e a marcada e' a que vale. */}
+      <div className="det-escolha">
+        <div className="det-escolha-rot">
+          qual descrição vai pra planilha
+          <span className={escolhida ? "det-selo-fora" : "det-selo-vai"}>
+            {escolhida ? "já cadastrada — fica de fora" : "a nova, abaixo"}
+          </span>
+        </div>
+
+        {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
+          <button key={d.insumo.descricao + k}
+            className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
+            onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
+            <span className="det-radio" />
+            <span className="det-opcao-txt">{d.insumo.detalhe}</span>
+            {d.faltaram.length > 0
+              ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
+              : <span className="det-bate">bate tudo</span>}
+          </button>
+        ))}
+
+        <div className={`det-nova ${escolhida ? "fora" : "escolhida"}`}>
+          <button className={`det-opcao ${escolhida ? "" : "escolhida"}`}
+            onClick={() => onEscolher(null)}
+            title="Usar a descrição gerada — é ela que preenche o template do Sienge">
+            <span className="det-radio" />
+            <span className="det-opcao-txt">cadastrar como detalhe novo</span>
+            {editado && <span className="det-falta">editada à mão</span>}
+          </button>
+          <div className="padrao-cel">
+            {/* Textarea, e nao um <code> com botao de editar: quem confere
+                cinquenta linhas nao quer dois cliques por linha. */}
+            <CampoRascunho as="textarea" className="padrao-txt padrao-edit" valor={descrito} rows={2}
+              spellCheck={false} aria-label="Descrição do detalhe no Sienge"
+              onSalvar={onDescrito} aoSair={aoSair} />
+            <div className="padrao-acoes">
+              <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
+                onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></button>
+              {editado && (
+                <button className="btn-copiar" title="Voltar ao descritivo gerado"
+                  onClick={() => onDescrito(null)}><RotateCcw size={11} /></button>
+              )}
+            </div>
+          </div>
+          {/* Os dois codigos que o template exige e que a descricao
+              nao carrega. Ficam aqui embaixo, e nao numa coluna
+              propria, porque so valem pra linha que vai ser
+              cadastrada — quem escolheu variante nao preenche nada. */}
+          <div className="det-codigos">
+            <label>
+              cód. do detalhe
+              <CampoRascunho className="form-input" valor={codDet} placeholder="o Sienge numera"
+                onSalvar={onCodDet} aoSair={aoSair} />
+            </label>
+            <label>
+              cód. auxiliar {auxMarca && <span className="det-sorteado">{auxMarca}</span>}
+              <CampoRascunho className={`form-input ${aux ? "" : "vazio"} ${auxMarca ? "sorteado" : ""}`}
+                valor={aux} placeholder="referência do fornecedor"
+                onSalvar={onAux} aoSair={aoSair} />
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -8271,6 +8443,12 @@ function ComprasView({ obra, onItemChange, usuario }) {
     }
   }
 
+  // O mesmo arquivo do Gerador de códigos: CSV, ponto e vírgula, sem BOM.
+  function baixarTemplateDoGrupo(g, linhas) {
+    downloadFile(`sienge-importacao-detalhes-obra-${obra.codigo}-verba-${g.num}.csv`,
+      montarTemplateSienge(linhas), "text/csv;charset=utf-8;");
+  }
+
   if (rows.length === 0) {
     return (
       <div className="compras-empty">
@@ -8461,6 +8639,14 @@ function ComprasView({ obra, onItemChange, usuario }) {
         const aberto = abertos.has(g.num);
         const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
         const grupoAssociado = g.itens.every((r) => casamentos.has(r.chave));
+        // As colunas do Sienge só aparecem na etapa Sienge. Em Tudo, Sem
+        // canal e nos outros canais elas respondiam uma pergunta que ali
+        // ninguém fez — e "não lançado" em produto sem canal é falso.
+        const noSienge = etapa === "sienge";
+        const mostrarInsumo = noSienge && grupoAssociado;
+        const auxiliares = mostrarInsumo ? auxiliaresDoGrupo(g.itens, obra.codigo) : null;
+        const template = mostrarInsumo ? templateComprasDoGrupo(g.itens, casamentos, grupos, auxiliares) : [];
+        const semInsumo = template.filter((l) => !l.maeCodigo).length;
         return (
           <div className="grp-block" key={g.num}>
             <div className="grp-head">
@@ -8482,7 +8668,17 @@ function ComprasView({ obra, onItemChange, usuario }) {
                 {/* A busca do insumo é por grupo e só quando pedida: casar a
                     obra inteira de uma vez congelava a tela. */}
                 {etapa === "sienge" && (grupoAssociado ? (
-                  <span className="grp-assoc-ok"><Check size={12} /> insumos sugeridos</span>
+                  <>
+                    <span className="grp-assoc-ok"><Check size={12} /> insumos sugeridos</span>
+                    {/* O mesmo CSV do Gerador de códigos, só com o que
+                        precisa de cadastro neste grupo. */}
+                    {template.length > 0 && (
+                      <button type="button" className="grp-associar" onClick={() => baixarTemplateDoGrupo(g, template)}
+                        title={`CSV no padrão do Sienge (cadastro de detalhe), igual ao do Gerador de códigos.${semInsumo ? ` ${semInsumo} sem insumo mãe: o código do insumo sai em branco.` : ""} O código do detalhe sai em branco — preencha antes de subir.`}>
+                        <Download size={13} /> Template Sienge ({template.length})
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <button type="button" className="grp-associar" disabled={associando != null}
                     onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
@@ -8507,11 +8703,11 @@ function ComprasView({ obra, onItemChange, usuario }) {
                       <th style={{ width: 104 }} className="right">Material</th>
                       <th style={{ width: 112 }} className="center">Canal</th>
                       <th style={{ width: 104 }} className="center">Status</th>
-                      {doSienge && <th style={{ width: 122 }} className="center">Lançado Sienge</th>}
+                      {noSienge && doSienge && <th style={{ width: 122 }} className="center">Lançado Sienge</th>}
                       {/* A mae virou a primeira linha do detalhe: eram
                           duas colunas contando a mesma historia, e a
                           tabela so cabia rolando pro lado. */}
-                      {grupoAssociado && <th style={{ width: 300 }}>Insumo no Sienge</th>}
+                      {mostrarInsumo && <th style={{ width: 320 }}>Insumo no Sienge</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -8519,8 +8715,9 @@ function ComprasView({ obra, onItemChange, usuario }) {
                       <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)}
                         onSelecionar={() => alternar(r.chave)}
                         casamento={casamentos.get(r.chave)}
-                        mostrarSienge={grupoAssociado}
-                        lancado={doSienge ? lancados.get(r.chave) || null : undefined}
+                        grupos={grupos} aux={auxiliares ? auxiliares.get(r.chave) : null}
+                        mostrarSienge={mostrarInsumo}
+                        lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
                         onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
                     ))}
                   </tbody>
@@ -8608,25 +8805,77 @@ function ComprasView({ obra, onItemChange, usuario }) {
   );
 }
 
-function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge, lancado, onItemChange }) {
-  const { it, material } = row;
-  const padrao = descricaoSienge({
+/* A situacao do produto no Sienge — a mesma conta pra linha da tabela e
+   pro template do grupo.
+
+   Igual ao Gerador de codigos: a MAE e' a que a pessoa escolheu (na
+   lista ou na busca, que varre a base inteira), ou a primeira candidata;
+   e so' fica "ja cadastrada" o que a pessoa marcou como uma variante que
+   existe. O resto vai pro template como detalhe novo. */
+function situacaoNoSienge(it, casamento, grupos) {
+  const candidatas = (casamento?.maes || []).map((x) => x.grupo);
+  const escolhida = it.maeSienge
+    ? ((grupos || []).find((g) => g.codigo === it.maeSienge) || candidatas.find((g) => g.codigo === it.maeSienge))
+    : null;
+  const mae = escolhida || candidatas[0] || null;
+  const status = !mae ? "sem" : it.detalheSienge ? "exato" : "aproximado";
+  return { mae, candidatas, status };
+}
+
+// O descritivo do produto no padrao do Sienge: o que a pessoa editou na linha, ou o gerado.
+function descritivoDoItem(it) {
+  return it.descritivoSienge ?? descricaoSienge({
     marca: it.marca, desc: it.desc, modelo: it.modelo, cor: it.cor, codigo: it.codigoFornecedor,
   });
+}
 
-  // A mae escolhida: a que o casamento sugeriu, ou a que a pessoa trocou.
-  const maeAtual = (casamento?.maes || []).find((x) => x.grupo.codigo === it.maeSienge)
-    || (casamento?.maes || [])[0] || null;
-  const detalhes = maeAtual
-    ? (maeAtual.grupo.codigo === casamento?.maes?.[0]?.grupo.codigo
-        ? casamento.detalhes
-        : ordenarDetalhes(it.desc, maeAtual.grupo))
-    : [];
-  const escolhido = it.detalheSienge;
-  /* Verde e mae achada COM detalhe que bate; laranja e mae achada e
-     detalhe por escolher; vermelho e nem mae. Sao tres perguntas
-     diferentes e cada uma manda pra um lado: comprar, conferir, cadastrar. */
-  const status = !maeAtual ? "sem" : (escolhido || detalhes[0]?.score >= 0.95) ? "exato" : "aproximado";
+/* O codigo auxiliar de cada produto do grupo — o mesmo na tela e no CSV.
+
+   Vale o que a pessoa digitou; senao o do fornecedor (codigo ou modelo);
+   senao um gerado a partir do proprio item, que sai igual a cada
+   download e nunca repete um dos outros dentro do grupo. */
+function auxiliaresDoGrupo(itens, obraCodigo) {
+  const proprio = (it) => String(it.codigoAuxSienge || "").trim()
+    || codigoAuxiliarDe({ codigo: it.codigoFornecedor, modelo: it.modelo });
+  const usados = new Set((itens || []).map((r) => proprio(r.it)).filter(Boolean));
+  const m = new Map();
+  (itens || []).forEach((r) => {
+    const p = proprio(r.it);
+    m.set(r.chave, p
+      ? { codigo: p, gerado: false }
+      : { codigo: auxiliarEstavel(`${obraCodigo}|${r.it.codigo || ""}|${r.it.desc}`, usados), gerado: true });
+  });
+  return m;
+}
+
+/* O template do Sienge de um grupo das Compras — o mesmo CSV do Gerador
+   de codigos, com as mesmas regras de forma (lib/sienge.js).
+
+   Fica de fora so' o que a pessoa marcou como variante ja cadastrada;
+   reimportar isso criaria duplicata. O resto vai como detalhe novo — o
+   sem insumo mae com o codigo do insumo em branco, como no Gerador. */
+function templateComprasDoGrupo(itens, casamentos, grupos, auxiliares) {
+  const linhas = [];
+  (itens || []).forEach((r) => {
+    const c = casamentos.get(r.chave);
+    if (!c) return;
+    const { mae, status } = situacaoNoSienge(r.it, c, grupos);
+    if (status === "exato") return;
+    linhas.push({
+      maeCodigo: mae?.codigo || "",
+      maeNome: mae?.nome || "",
+      codigoDetalhe: String(r.it.codigoDetalheSienge || "").trim(),
+      codigoAuxDetalhe: auxiliares?.get(r.chave)?.codigo || "",
+      descricaoDetalhe: descritivoDoItem(r.it),
+      produtoFiscal: "",
+    });
+  });
+  return limparTemplate(linhas);
+}
+
+function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange }) {
+  const { it, material } = row;
+  const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
 
   return (
     <tr className={selecionado ? "linha-sel" : it.comprado ? "row-comprado" : "row-falta"}>
@@ -8681,75 +8930,24 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, mostrarSienge,
 
       {mostrarSienge && (
         <td>
-          {/* MAE em cima, variantes embaixo, na MESMA celula.
-
-              Eram duas colunas contando a mesma historia — e a tabela so
-              cabia rolando pro lado, que e o oposto de ler uma lista. A
-              mae e' o cabecalho natural das opcoes que vem logo abaixo. */}
-          {!casamento ? <span className="dim">—</span> : !maeAtual ? (
-            <div className="casa casa-sem"><span className="casa-bola" /> não existe no Sienge</div>
-          ) : (
-            <div className={`mae-cel casa-${status}`}>
-              <span className="casa-bola" />
-              <div className="mae-txt">
-                <span className="mae-cod mono">{maeAtual.grupo.codigo}</span>
-                <span className="mae-nome">{maeAtual.grupo.nome}</span>
-              </div>
-              {/* Trocar so faz sentido com mais de uma candidata; com uma
-                  so, a setinha prometeria uma escolha que nao existe. */}
-              {casamento.maes.length > 1 && (
-                <>
-                  <ChevronDown size={12} className="mae-seta" />
-                  <select className="mae-sel" value={maeAtual.grupo.codigo}
-                    onChange={(e) => onItemChange({ maeSienge: e.target.value, detalheSienge: null })}
-                    aria-label="Insumo mãe no Sienge"
-                    title="Que coisa é, antes de qual variante">
-                    {casamento.maes.map((x) => (
-                      <option key={x.grupo.codigo} value={x.grupo.codigo}>
-                        {x.grupo.codigo} · {x.grupo.nome}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              )}
-            </div>
-          )}
-          {!maeAtual ? (
-            <div className="padrao-cel">
-              <code className="padrao-txt">{padrao || "—"}</code>
-              <button className="btn-copiar" onClick={() => navigator.clipboard?.writeText(padrao)}
-                title="Copiar pra colar no cadastro do Sienge"><Copy size={11} /></button>
-            </div>
-          ) : (
-            <div className="detalhe-cel">
-              {/* As opcoes ja cadastradas debaixo desta mae, ordenadas.
-                  Mostrar o que FALTOU casar e o que permite decidir: "62%"
-                  nao ajuda ninguem a escolher entre duas condensadoras. */}
-              {detalhes.slice(0, 4).map((d, k) => (
-                <button key={d.insumo.descricao + k}
-                  className={`det-opcao ${escolhido === d.insumo.descricao ? "escolhida" : ""}`}
-                  onClick={() => onItemChange({
-                    detalheSienge: escolhido === d.insumo.descricao ? null : d.insumo.descricao,
-                    maeSienge: maeAtual.grupo.codigo,
-                  })}
-                  title={d.insumo.descricao}>
-                  <span className="det-opcao-txt">{d.insumo.detalhe}</span>
-                  {d.faltaram.length > 0
-                    ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
-                    : <span className="det-bate">bate tudo</span>}
-                </button>
-              ))}
-              {detalhes.length === 0 && <span className="dim">sem variante cadastrada</span>}
-              {/* Nenhuma serve: gera o descritivo pra cadastrar na mao. */}
-              <details className="det-gerar">
-                <summary>nenhuma serve — gerar descritivo</summary>
-                <div className="padrao-cel">
-                  <code className="padrao-txt">{padrao || "—"}</code>
-                  <button className="btn-copiar" onClick={() => navigator.clipboard?.writeText(padrao)}
-                    title="Copiar pra colar no cadastro do Sienge"><Copy size={11} /></button>
-                </div>
-              </details>
-            </div>
+          {/* A mesma escolha do Gerador de codigos (EscolhaSienge): a mae,
+              depois qual descricao vai pro template. Aqui ela fica
+              guardada no proprio item da obra. */}
+          {!casamento ? <span className="dim">—</span> : (
+            <EscolhaSienge desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
+              onMae={(cod) => onItemChange({ maeSienge: cod || null, detalheSienge: null })}
+              escolhida={it.detalheSienge || null}
+              onEscolher={(d) => onItemChange({
+                detalheSienge: d == null || d === it.detalheSienge ? null : d,
+                maeSienge: mae?.codigo ?? it.maeSienge ?? null,
+              })}
+              descrito={descritivoDoItem(it)} editado={it.descritivoSienge != null}
+              onDescrito={(txt) => onItemChange({ descritivoSienge: txt })}
+              codDet={it.codigoDetalheSienge || ""}
+              onCodDet={(v) => onItemChange({ codigoDetalheSienge: v.trim() ? v.trim() : null })}
+              aux={aux?.codigo || ""} auxMarca={aux?.gerado ? "gerado" : null}
+              onAux={(v) => onItemChange({ codigoAuxSienge: v.trim() ? v.trim() : null })}
+              aoSair />
           )}
         </td>
       )}
@@ -9515,7 +9713,7 @@ function GcTotal({ rot, feito, total, cor, legenda }) {
    e' opcional tambem: {valor, onMudar, opcoes:[{id,label}]} — quando
    existe mais de um jeito de agrupar a MESMA lista (por categoria, por
    produto), o alternador fica junto do titulo, "la em cima". */
-function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPlaceholder, onAbrir, abas }) {
+function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPlaceholder, onAbrir, abas, onImprimir }) {
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const max = grupos.length ? grupos[0].total : 1;
   return (
@@ -9550,7 +9748,7 @@ function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPl
       ) : (
         <div className="gc-list">
           {grupos.map((g) => (
-            <GcLinhaVerba key={g.num ?? g.nome} g={g} cor={cor} max={max} onAbrir={onAbrir} />
+            <GcLinhaVerba key={g.num ?? g.nome} g={g} cor={cor} max={max} onAbrir={onAbrir} onImprimir={onImprimir} />
           ))}
         </div>
       )}
@@ -9571,7 +9769,7 @@ function fmtQtds(qtds) {
     .join(" · ");
 }
 
-function GcLinhaVerba({ g, cor, max, onAbrir }) {
+function GcLinhaVerba({ g, cor, max, onAbrir, onImprimir }) {
   const [aberto, setAberto] = useState(false);
   const porObra = useMemo(
     () => [...g.obras.values()].sort((a, b) => b.valor - a.valor),
@@ -9579,6 +9777,7 @@ function GcLinhaVerba({ g, cor, max, onAbrir }) {
   const qtdTxt = g.qtds && fmtQtds(g.qtds);
   return (
     <div className="gc-verba">
+      <div className="gc-row-linha">
       <button type="button" className="gc-row gc-row-clic" onClick={() => setAberto((x) => !x)}>
         <ChevronRight size={13} className={`gc-chevron ${aberto ? "aberto" : ""}`} />
         {g.num != null && <span className="gc-num mono">{g.num}</span>}
@@ -9588,6 +9787,14 @@ function GcLinhaVerba({ g, cor, max, onAbrir }) {
         {g.qtds && <span className="gc-qtd mono dim">{qtdTxt}</span>}
         <span className="gc-val mono">{fmtBRL(g.total)}</span>
       </button>
+      {/* A impressora: o relatorio desta verba, item a item, por obra e total. */}
+      {onImprimir && (
+        <button type="button" className="gc-imprimir" onClick={() => onImprimir(g)}
+          title="Relatório em PDF desta verba — item a item, por obra e total">
+          <Printer size={14} />
+        </button>
+      )}
+      </div>
       {aberto && (
         <div className="gc-verba-obras">
           {porObra.map((o) => (
@@ -9849,6 +10056,110 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
   );
 }
 
+/* O relatorio de uma verba, no papel da empresa — o mesmo do aditivo
+   (marca no topo, faixa verde, rodape). Um bloco por obra, com os itens
+   e o total dela, e o total geral no fim. */
+function RelatorioVerba({ tipo, verba, linhas, recorte }) {
+  const total = linhas.reduce((a, l) => a + l.total, 0);
+  const nItens = linhas.reduce((a, l) => a + l.itens.length, 0);
+  const titulo = tipo === "mat" ? "Material a comprar" : "Mão de obra a contratar";
+  return (
+    <div className="ad-page rel-doc" id="doc-relatorio-verba">
+      <img className="ad-brandbar" src={LOGO_WS} alt="" />
+      <div className="ad-inner">
+        <div className="ad-dochead">
+          <div className="t">
+            {titulo}
+            <div className="rel-sub">{verba.num} · {verba.nome}</div>
+          </div>
+          <div className="meta">
+            <div><b>Data:</b> {new Date().toLocaleDateString("pt-BR")}</div>
+            <div><b>Obras:</b> {linhas.length} · <b>Itens:</b> {nItens}</div>
+            <div><b>Recorte:</b> {recorte}</div>
+          </div>
+        </div>
+
+        {linhas.length === 0 ? (
+          <div className="ad-docwarn">Nada pendente nesta verba.</div>
+        ) : linhas.map(({ obra, itens, total: totalObra }) => (
+          <div key={obra.codigo} className="rel-obra">
+            <div className="ad-sectitle">
+              #{obra.codigo} · {obra.nome}
+              {obra.dataEntrega && <span className="rel-entrega">entrega {dataBR(obra.dataEntrega)}</span>}
+            </div>
+            <table className="ad-dt">
+              <thead>
+                <tr>
+                  <th className="c-cod">Cód.</th>
+                  <th>Descrição</th>
+                  <th className="c-amb">Ambiente</th>
+                  <th className="c-qtd">Qtd.</th>
+                  <th className="c-un">Un.</th>
+                  <th className="c-vu">Valor unit.</th>
+                  <th className="c-vt">Valor total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itens.map(({ it, valor }, k) => {
+                  const qtd = it.qtdExecutivo ?? it.qtdVendida ?? it.qtd ?? null;
+                  const extra = [it.marca, it.modelo, it.cor, it.especificacao].filter(Boolean).join(" · ");
+                  return (
+                    <tr key={k}>
+                      <td className="c-cod">{it.codigo || "—"}</td>
+                      <td>
+                        <div className="ad-dt1">{it.desc}</div>
+                        {extra && <div className="rel-extra">{extra}</div>}
+                      </td>
+                      <td className="c-amb">{it.ambiente || "—"}</td>
+                      <td className="c-qtd">{qtd != null ? Number(qtd).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—"}</td>
+                      <td className="c-un">{it.un || "—"}</td>
+                      <td className="c-vu">{qtd > 0 ? fmtBRL(valor / qtd) : "—"}</td>
+                      <td className="c-vt">{fmtBRL(valor)}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="tot">
+                  <td colSpan={6}>Total da obra</td>
+                  <td className="c-vt">{fmtBRL(totalObra)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ))}
+
+        <div className="ad-saldo rel-saldo">
+          {linhas.map((l) => (
+            <div className="l" key={l.obra.codigo}><span>#{l.obra.codigo} · {l.obra.nome}</span><b>{fmtBRL(l.total)}</b></div>
+          ))}
+          <div className="l f"><span>Total {tipo === "mat" ? "a comprar" : "a contratar"}</span><b>{fmtBRL(total)}</b></div>
+        </div>
+      </div>
+      <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
+    </div>
+  );
+}
+
+/* Por cima da tela, e FORA do #root: na impressao so' o documento sai —
+   o CSS de impressao esconde o app inteiro enquanto isto existe. */
+function RelatorioSobreposto({ children, onFechar }) {
+  useEffect(() => {
+    const esc = (e) => { if (e.key === "Escape") onFechar(); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onFechar]);
+  return createPortal(
+    <div className="rel-overlay">
+      <div className="rel-barra naoimprime">
+        <span>Relatório pronto — a impressão já abriu. Escolha <b>Salvar como PDF</b>.</span>
+        <button className="btn-doc" onClick={() => window.print()}><Printer size={13} /> Imprimir de novo</button>
+        <button className="btn-voltar" onClick={onFechar}><X size={13} /> Fechar</button>
+      </div>
+      <div className="rel-folha">{children}</div>
+    </div>,
+    document.body
+  );
+}
+
 function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   const [horizonte, setHorizonte] = useState(null);
   /* Vazio quer dizer TODAS. Guardar o conjunto das escolhidas, e nao um
@@ -9875,6 +10186,19 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
      sempre disponível, mais linhas). A mesma busca serve pras duas —
      trocar a visão não deveria obrigar a digitar de novo. */
   const [visaoInsumo, setVisaoInsumo] = useState("categoria");
+
+  /* O relatorio de uma verba (a impressora na linha). Abre por cima da
+     tela e ja chama a impressao — no navegador, "Salvar como PDF". */
+  const [relatorio, setRelatorio] = useState(null);
+  const recorte = [
+    horizonte != null ? `resolver nas ${HORIZONTES.find((h) => h.dias === horizonte)?.rot || `${horizonte} dias`}` : null,
+    escolhidas.size ? `${escolhidas.size} ${escolhidas.size === 1 ? "obra escolhida" : "obras escolhidas"}` : null,
+  ].filter(Boolean).join(" · ") || "todas as obras, sem recorte de prazo";
+  const imprimir = (tipo) => (g) => {
+    const linhas = relatorioDaVerba(visiveis, g.num, tipo, new Set([...g.obras.keys()].map(String)));
+    setRelatorio({ tipo, verba: { num: g.num, nome: g.nome }, linhas, recorte });
+    setTimeout(() => window.print(), 300);
+  };
   /* Nenhuma das duas respeita o horizonte de cima (ainda) — a data de
      necessidade e' calculada por verba, nao por item, e juntar as duas
      coisas exigiria recalcular data item a item. Por enquanto as listas
@@ -9892,6 +10216,11 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   return (
     <>
       {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+      {relatorio && (
+        <RelatorioSobreposto onFechar={() => setRelatorio(null)}>
+          <RelatorioVerba {...relatorio} />
+        </RelatorioSobreposto>
+      )}
 
       <div className="gc-topo">
         <div className="gc-horizonte">
@@ -9926,10 +10255,10 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
           todas as obras, é o que permite chegar no fornecedor com
           previsão em vez de pedido urgente. */}
       <GcPorVerba titulo="Mão de obra a contratar, por verba" Icone={FileText}
-        grupos={r.aContratar} cor={COR_MO} onAbrir={onAbrir}
+        grupos={r.aContratar} cor={COR_MO} onAbrir={onAbrir} onImprimir={imprimir("mo")}
         vazio={horizonte ? "Nada a contratar dentro desse prazo." : "Nada a contratar."} />
       <GcPorVerba titulo="Material a comprar, por verba" Icone={ShoppingCart}
-        grupos={r.aComprar} cor={COR_MAT} onAbrir={onAbrir}
+        grupos={r.aComprar} cor={COR_MAT} onAbrir={onAbrir} onImprimir={imprimir("mat")}
         vazio={horizonte ? "Nada a comprar dentro desse prazo." : "Nada a comprar."} />
       {/* Mesma pergunta, outro corte: nao "quanto falta na verba 27" e
           sim "quanto falta comprar de colchão" — pra isso a linha precisa
@@ -11438,6 +11767,8 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
   const cargos = Object.keys(porCargo).sort();
   if (fila.length) porCargo["Aguardando liberação"] = fila;
   const ordem = fila.length ? ["Aguardando liberação", ...cargos] : cargos;
+  // Sem a coluna no banco (ultimo-acesso.sql), nao ha o que mostrar.
+  const acessoLigado = pessoas.some((p) => p.ultimoAcesso !== undefined);
 
   return (
     <>
@@ -11455,6 +11786,19 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
               Falta rodar <code>supabase/perfis.sql</code> no Supabase (SQL Editor). Enquanto isso,
               dá pra cadastrar, editar e desativar pessoas normalmente — só não dá pra atribuir
               perfil, porque as colunas não existem no banco ainda.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!migracaoPendente && !carregando && pessoas.length > 0 && !acessoLigado && (
+        <div className="eq-migracao">
+          <Clock size={15} />
+          <div>
+            <b>Último acesso e “online agora” ainda não estão ligados.</b>
+            <div>
+              Falta rodar <code>supabase/ultimo-acesso.sql</code> no Supabase (SQL Editor). Depois disso,
+              cada pessoa aparece com a data do último acesso, e quem estiver com o app aberto aparece como online.
             </div>
           </div>
         </div>
@@ -11534,10 +11878,16 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
               const n = obrasDe(p.email);
               return (
                 <div key={p.email} className={`arq-linha ${p.ativo ? "" : "eq-inativo"}`}>
-                  <div className="eq-avatar">{(p.nome || p.email).slice(0, 2).toUpperCase()}</div>
+                  <div className={`eq-avatar ${estaOnline(p) ? "online" : ""}`} title={estaOnline(p) ? "online agora" : undefined}>{(p.nome || p.email).slice(0, 2).toUpperCase()}</div>
                   <div className="arq-id">
                     <div className="arq-titulo">{p.nome}{!p.ativo && <span className="eq-tag-inativo">inativo</span>}</div>
                     <div className="arq-sub mono">{p.email}</div>
+                    {acessoLigado && (
+                      <div className={`eq-acesso ${estaOnline(p) ? "online" : ""}`}>
+                        {estaOnline(p) ? "● online agora"
+                          : p.ultimoAcesso ? `último acesso ${quandoFoi(p.ultimoAcesso)}` : "ainda não acessou"}
+                      </div>
+                    )}
                   </div>
                   <span className="eq-obras">{resumoAcesso(p, obras)}</span>
                   <div className="arq-acoes">
@@ -12115,6 +12465,12 @@ function parseSiengeTexto(texto) {
 
 // Versão Excel/CSV do mesmo relatório: lê por cabeçalho, igual às outras
 // planilhas, e aplica as mesmas regras (fora "vb", mais recente ganha).
+//
+// Lê também o CADASTRO de insumos do Sienge (relatório "Insumos"), que é
+// outra coisa: traz todos os insumos, a maioria sem preço de tabela. Ali
+// o que importa é o insumo existir — é a base do "Associar insumos" e do
+// Gerador de códigos —, então preço zero entra; inativo não. Quem avisa
+// que é o cadastro é a coluna Ativo, que o relatório de pedidos não tem.
 async function lerSiengeExcel(file) {
   let linhas;
   if (/\.(xlsx|xlsm|xlsb|xls)$/i.test(file.name)) {
@@ -12140,16 +12496,21 @@ async function lerSiengeExcel(file) {
   const iPreco = reservar([/pre[çc]o unit/, /custo unit/, /^pre[çc]o$/, /valor unit/, /^custo$/]);
   const iData = reservar([/data/, /dt\./, /refer/]);
   const iForn = reservar([/fornecedor/, /marca/]);
+  const iAtivo = reservar([/^ativo$/]);
+  const cadastro = iAtivo >= 0;
 
   const mapa = new Map();
+  let descartadosVb = 0, inativos = 0;
   for (let i = headerIdx + 1; i < linhas.length; i++) {
     const row = linhas[i];
     if (!row) continue;
     const descricao = String(row[iDesc] ?? "").replace(/\s+/g, " ").trim();
+    if (!descricao) continue;
     const preco = parseBRL(row[iPreco]);
-    if (!descricao || !(preco > 0)) continue;
+    if (!cadastro && !(preco > 0)) continue;
+    if (cadastro && /^n/i.test(String(row[iAtivo] ?? "").trim())) { inativos += 1; continue; }
     const unidade = String(row[iUn] ?? "").toLowerCase().trim();
-    if (unidade === "vb") continue; // valor fechado, não é preço unitário
+    if (unidade === "vb") { descartadosVb += 1; continue; } // valor fechado, não é preço unitário
 
     const dataRef = normalizarData(row[iData]);
     if (!dataRef) continue;
@@ -12157,10 +12518,10 @@ async function lerSiengeExcel(file) {
     const chave = `${codigo}|${descricao}|${unidade}`;
     const atual = mapa.get(chave);
     if (!atual || dataRef > atual.dataRef) {
-      mapa.set(chave, { codigo, descricao, unidade, custoUnitario: preco, dataRef, fornecedor: iForn >= 0 ? String(row[iForn] ?? "").trim() || null : null });
+      mapa.set(chave, { codigo, descricao, unidade, custoUnitario: preco > 0 ? preco : 0, dataRef, fornecedor: iForn >= 0 ? String(row[iForn] ?? "").trim() || null : null });
     }
   }
-  return { precos: Array.from(mapa.values()) };
+  return { precos: Array.from(mapa.values()), cadastro, descartadosVb, inativos };
 }
 
 // aceita Date (do Excel) ou texto "dd/mm/aaaa" e devolve "aaaa-mm-dd"
@@ -12204,6 +12565,38 @@ function BancoPrecosView() {
     return () => clearTimeout(t);
   }, [busca]);
 
+  /* O cadastro de insumos SOMA, não substitui.
+
+     A base guarda o preço das compras (o relatório de pedidos); o
+     cadastro traz preço de tabela, e a maioria zerado. Deixar o cadastro
+     escrever por cima trocaria o preço pago por zero. Por isso ele só
+     acrescenta o que falta — e, antes de gravar, mostra os números e pede
+     confirmação: é a base do time inteiro. */
+  async function somarCadastro(lidos, { descartadosVb, inativos }) {
+    setImportando("Conferindo o que já está na base…");
+    const { novos, jaExistiam } = soOsNovos(lidos, await chavesDaBase());
+    setImportando(null);
+    const n = (x) => x.toLocaleString("pt-BR");
+    const fora = [descartadosVb ? `${n(descartadosVb)} em "vb"` : null, inativos ? `${n(inativos)} inativos` : null]
+      .filter(Boolean).join(" e ");
+    if (novos.length === 0) {
+      alert(`Nenhum insumo novo: os ${n(lidos.length)} do cadastro já estão na base.`);
+      return;
+    }
+    const ok = window.confirm(
+      `Cadastro de insumos do Sienge — ${n(lidos.length)} insumos.\n\n` +
+      `• ${n(novos.length)} são novos e vão entrar na base.\n` +
+      `• ${n(jaExistiam)} já estão na base e ficam como estão (o preço gravado não muda).\n` +
+      (fora ? `• ${fora} ficaram de fora.\n` : "") +
+      `\nGravar os ${n(novos.length)} novos?`
+    );
+    if (!ok) return;
+    await salvarPrecos(novos, (feitas, tot) => setImportando(`Gravando ${feitas} de ${tot}…`));
+    setImportando(null);
+    await recarregar();
+    alert(`${n(novos.length)} insumos novos na base. ${n(jaExistiam)} já estavam lá e não mudaram.`);
+  }
+
   async function aoEscolher(e) {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
@@ -12212,10 +12605,11 @@ function BancoPrecosView() {
     setImportando("Lendo o arquivo…");
     try {
       const ehPDF = /\.pdf$/i.test(file.name);
-      const { precos: lidos, descartadosVb } = ehPDF
+      const { precos: lidos, descartadosVb, cadastro, inativos } = ehPDF
         ? await lerSiengePDF(file, (p, t) => setImportando(`Lendo página ${p} de ${t}…`))
         : await lerSiengeExcel(file);
       if (!lidos || lidos.length === 0) throw new Error("Não encontrei preços nesse arquivo.");
+      if (cadastro) { await somarCadastro(lidos, { descartadosVb, inativos }); return; }
       await salvarPrecos(lidos, (feitas, tot) => setImportando(`Gravando ${feitas} de ${tot}…`));
       setImportando(null);
       await recarregar();
@@ -12233,7 +12627,7 @@ function BancoPrecosView() {
         <div className="import-bar">
           <div className="import-info">
             <Upload size={14} />
-            <span>Suba o <b>Relação de Pedidos de Compra</b> do Sienge (PDF ou Excel). É o preço realmente pago; linhas em <b>vb</b> são ignoradas, porque valor fechado não serve de referência unitária.</span>
+            <span>Suba o <b>Relação de Pedidos de Compra</b> do Sienge (PDF ou Excel). É o preço realmente pago; linhas em <b>vb</b> são ignoradas, porque valor fechado não serve de referência unitária. O <b>cadastro de Insumos</b> do Sienge (Excel) também entra: ele só acrescenta os insumos que faltam, sem mexer nos preços que já estão aqui.</span>
           </div>
           <button className="btn-import" disabled={!!importando} onClick={() => inputRef.current && inputRef.current.click()}>
             <Upload size={13} /> {importando || "Importar do Sienge"}
@@ -12285,7 +12679,7 @@ function BancoPrecosView() {
                   <td className="mono dim">{p.codigo}</td>
                   <td>{p.descricao}</td>
                   <td className="mono center dim">{p.unidade || "—"}</td>
-                  <td className="mono right forte">{fmtBRL(p.custo_unitario)}</td>
+                  <td className="mono right forte">{p.custo_unitario > 0 ? fmtBRL(p.custo_unitario) : <span className="dim">sem preço</span>}</td>
                   <td className="mono center dim">{p.data_ref ? p.data_ref.split("-").reverse().join("/") : "—"}</td>
                   <td className="dim">{p.fornecedor || "—"}</td>
                 </tr>
@@ -12529,6 +12923,11 @@ function BarraEtapa({ edicao, salvando, carregando, onHabilitar, onFinalizar,
   const feita = mostraEtapa && etapaConcluida(etapaId, obra);
   const { por: porQuem, em } = mostraEtapa ? quemConcluiu(etapaId, obra) : {};
   const congelado = obra.comprasLiberadas || !edicao.minha;
+  // O que ainda impede concluir (hoje só a Conf. Executivo tem trava).
+  const bloqueio = useMemo(
+    () => (mostraEtapa && !feita ? bloqueioDaEtapa(etapaId, obra) : null),
+    [mostraEtapa, feita, etapaId, obra]
+  );
 
   let estado;
   if (carregando) {
@@ -12576,10 +12975,13 @@ function BarraEtapa({ edicao, salvando, carregando, onHabilitar, onFinalizar,
             {!congelado && <button className="be-link" onClick={() => onReabrirEtapa(etapaId)}>reabrir</button>}
           </>
         ) : (
-          <button className="be-avancar" disabled={congelado} onClick={() => onConcluir(etapaId)}
-            title="Marca esta etapa como cumprida e libera a próxima">
-            <Play size={13} /> Concluir etapa
-          </button>
+          <>
+            {bloqueio && <span className="be-bloqueio"><AlertTriangle size={13} /> {bloqueio}</span>}
+            <button className="be-avancar" disabled={congelado || !!bloqueio} onClick={() => onConcluir(etapaId)}
+              title={bloqueio ? "Aprove as pendências para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
+              <Play size={13} /> Concluir etapa
+            </button>
+          </>
         ))}
       </div>
     </div>
@@ -12782,9 +13184,18 @@ export default function App() {
      que valia antes: acesso deixou de ser concedido por omissao. O
      primeiro administrador e' semeado no SQL, sem o que a sala de espera
      trancaria inclusive quem deveria liberar. */
-  const eu = useMemo(
-    () => pessoas.find((p) => p.email === String(usuario || "").toLowerCase()) || null,
-    [pessoas, usuario]);
+  const eu = useMemo(() => {
+    const real = pessoas.find((p) => p.email === String(usuario || "").toLowerCase()) || null;
+    /* So' no computador de quem desenvolve (npm run dev): um administrador
+       ve o app como outro perfil, com ?verComo=mehoo no endereco. Serve pra
+       conferir o que cada perfil enxerga sem trocar o perfil de ninguem no
+       banco. No site oficial isto nem existe — o build tira o trecho. */
+    if (import.meta.env.DEV && real && podeGerenciarPessoas(real)) {
+      const outro = new URLSearchParams(window.location.search).get("verComo");
+      if (outro && PERFIS.some((x) => x.id === outro)) return { ...real, perfil: outro };
+    }
+    return real;
+  }, [pessoas, usuario]);
 
   /* Enquanto a coluna nao existe, TODO o controle fica desligado — nao
      so' o portao. Desligar o portao e manter o filtro deixava a pessoa
@@ -12803,6 +13214,30 @@ export default function App() {
     if (pessoasCarregando || migracaoPendente || podeVerModulo(eu, modulo)) return;
     setModulo(modulosVisiveis[0]?.id || "inicio");
   }, [eu, modulo, modulosVisiveis, pessoasCarregando]);
+
+  /* Ultimo acesso e "online agora" (Equipe e acessos): a pessoa marca a
+     propria linha ao abrir o app e de 2 em 2 minutos enquanto ele esta
+     aberto e visivel. Sem o supabase/ultimo-acesso.sql rodado, a marcacao
+     falha calada e a Equipe avisa o que falta. */
+  const euComAcesso = !!eu && temAcesso(eu);
+  useEffect(() => {
+    if (!supabaseConfigurado || !usuario || !euComAcesso) return;
+    const marcar = () => { if (document.visibilityState === "visible") registrarAcesso(); };
+    marcar();
+    const t = setInterval(marcar, 2 * 60 * 1000);
+    document.addEventListener("visibilitychange", marcar);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", marcar); };
+  }, [usuario, euComAcesso]);
+
+  /* Na Equipe a lista se atualiza ao entrar e a cada minuto: e' o que faz
+     o "online agora" acompanhar quem entra e quem sai. */
+  useEffect(() => {
+    if (modulo !== "equipe" || !supabaseConfigurado) return;
+    const recarregar = () => { listarPessoas().then(setPessoas).catch(() => {}); };
+    recarregar();
+    const t = setInterval(recarregar, 60 * 1000);
+    return () => clearInterval(t);
+  }, [modulo]);
 
   const obrasAtivas = useMemo(() => {
     const ativas = obras.filter((o) => situacaoDe(o) === "ativa");
@@ -13438,11 +13873,13 @@ export default function App() {
           desc: insumo.descricao,
           un: insumo.unidade || null,
           qtdVendida: null,
-          custoMaterial: insumo.custo_unitario, custoMO: null,
+          // Insumo do cadastro sem preço de tabela entra sem custo, e não
+          // com R$ 0,00 — zero pareceria preço de verdade.
+          custoMaterial: insumo.custo_unitario > 0 ? insumo.custo_unitario : null, custoMO: null,
           totalMaterial: null, totalMO: null, custo: null,
-          custoUnitario: insumo.custo_unitario,
+          custoUnitario: insumo.custo_unitario > 0 ? insumo.custo_unitario : null,
           insumoSienge: insumo.codigo,
-          precoRefData: insumo.data_ref,
+          precoRefData: insumo.custo_unitario > 0 ? insumo.data_ref : null,
           manual: true, tipo: "produto", contavel: false,
           alteradoExecutivo: true,
         } : {
@@ -13820,7 +14257,8 @@ export default function App() {
      Plano de Compras já têm o seu (liberar CMV, registrar assinatura,
      liberar compras) e são lidas dali. */
   function concluirEtapa(id) {
-    setObras((prev) => prev.map((o) => (o.id === selectedId ? {
+    // A mesma trava do botão, de novo aqui: o botão avisa, esta linha garante.
+    setObras((prev) => prev.map((o) => (o.id === selectedId && !bloqueioDaEtapa(id, o) ? {
       ...o,
       etapasConcluidas: { ...(o.etapasConcluidas || {}), [id]: { por: usuario, em: new Date().toISOString() } },
     } : o)));
@@ -14188,9 +14626,6 @@ export default function App() {
         /* Coluna propria, e estreita: com o rotulo longo ela encostava na
            tabela de itens logo abaixo e passava a ser lida como cabecalho
            dela — "Destino" cai bem embaixo. */
-        .grp-tot-wip { width: 62px; border-left: 1px dashed var(--border); padding-left: 12px; }
-        .grp-tot-wip .grp-tot-rot { color: var(--ink-3); }
-        .plano-wip { display: flex; align-items: center; gap: 8px; background: var(--panel); border-radius: 8px; padding: 8px 13px; font-size: 11.5px; color: var(--ink-3); margin-bottom: 12px; }
         .grp-aditivo { display: inline-flex; align-items: center; gap: 4px; background: var(--purple-soft); color: var(--purple); border-radius: 20px; padding: 2px 9px; font-size: 10px; font-weight: 700; white-space: nowrap; }
         .item-aditivo { background: var(--purple-tint); }
         .chip-aditivo { display: inline-flex; align-items: center; gap: 3px; background: var(--purple-soft); color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: var(--font-mono); margin-left: 6px; }
@@ -14592,7 +15027,7 @@ export default function App() {
 
         /* NOVO PAINEL DA OBRA — cartões no mesmo estilo do painel geral
            (classes .ini-cel / .ini-titulo), só que na escala de UMA obra. */
-        .dobra-regua { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+        .dobra-regua { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
         .dobra-entrega { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 10px 14px; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 10px; font-size: 12.5px; color: var(--ink-2); }
         .dobra-entrega-rot { font-weight: 600; color: var(--ink); margin-right: 4px; }
         .dobra-entrega .entrega-input { width: auto; margin-top: 0; }
@@ -14676,6 +15111,11 @@ export default function App() {
         .be-dir { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .be-feita { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
         .be-feita svg { color: var(--green); }
+        .be-bloqueio { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--alert); }
+        .eq-acesso { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+        .eq-acesso.online { color: var(--success); font-weight: 600; }
+        .eq-avatar.online { position: relative; }
+        .eq-avatar.online::after { content: ""; position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: 50%; background: var(--success); border: 2px solid var(--surface-1); }
         .be-avancar { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--bg); background: var(--blue); border: none; border-radius: 8px; padding: 7px 13px; cursor: pointer; }
         .be-avancar:hover:not(:disabled) { filter: brightness(1.08); }
         .be-avancar:disabled { background: var(--border); color: var(--ink-3); cursor: default; }
@@ -15775,6 +16215,23 @@ export default function App() {
         .gc-qtd { font-size: 11.5px; width: 92px; text-align: right; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .gc-val { font-size: 13px; color: var(--ink); width: 106px; text-align: right; flex-shrink: 0; }
         .gc-verba-obras { display: flex; flex-direction: column; gap: 2px; padding: 0 4px 10px 29px; }
+        .gc-row-linha { display: flex; align-items: center; gap: 4px; }
+        .gc-row-linha .gc-row { flex: 1; min-width: 0; }
+        .gc-imprimir { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ink-3); cursor: pointer; }
+        .gc-imprimir:hover { color: var(--brand); border-color: var(--line); background: var(--panel); }
+        .rel-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(20, 24, 26, 0.55); overflow: auto; padding: 16px 16px 40px; }
+        .rel-barra { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; max-width: 210mm; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px; background: var(--surface-1); color: var(--text); font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+        .rel-barra .btn-voltar { margin-left: auto; }
+        .rel-folha { display: flex; justify-content: center; }
+        .rel-doc .rel-sub { font-size: 10.5pt; font-weight: 600; color: #1c2426; margin-top: 1.5mm; letter-spacing: 0; }
+        .rel-doc .rel-extra { font-size: 7.4pt; color: #6b7b7f; margin-top: .6mm; }
+        .rel-doc .rel-entrega { font-size: 8pt; font-weight: 400; color: #6b7b7f; text-transform: none; letter-spacing: 0; }
+        .rel-doc .rel-saldo { width: 120mm; }
+        @media print {
+          body:has(.rel-overlay) #root { display: none !important; }
+          .rel-overlay { position: static !important; background: #fff !important; padding: 0 !important; overflow: visible !important; }
+          .rel-folha { display: block !important; }
+        }
         .gc-verba-obra { display: flex; align-items: center; gap: 8px; background: none; border: none; font: inherit; font-size: 12px; color: var(--ink-2); text-align: left; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
         .gc-verba-obra:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
         .gc-verba-obra:disabled { cursor: default; }
@@ -16045,7 +16502,7 @@ export default function App() {
         .bucket-falta { border-color: var(--warning-line); }
         .ac-painel, .assoc-barra { border-color: var(--brand-line); }
         .pedido-topo { color: var(--text); }
-        .plano-wip, .aviso-deslocamento, .etapa-pendente { border: 1px solid var(--line-1); background: var(--surface-2); color: var(--text-soft); }
+        .aviso-deslocamento, .etapa-pendente { border: 1px solid var(--line-1); background: var(--surface-2); color: var(--text-soft); }
 
         /* ---------- Estado vazio (EmptyState) ---------- */
         .vazio-box, .compras-empty { gap: 12px; padding: 48px 24px; border: 1px solid var(--line-1); border-radius: 18px; background: var(--surface-1); }
@@ -16130,10 +16587,14 @@ export default function App() {
         .grp-assoc-ok { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--success); white-space: nowrap; }
       `}</style>
 
-      <TopBar onInicio={() => setModulo("inicio")} />
+      {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
+          pra primeira tela que a pessoa pode ver. */}
+      <TopBar usuario={usuario} nome={eu?.nome}
+        onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} />
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           equipe={pessoas} onSair={sairDaConta} modulos={modulosVisiveis} pendentesCount={nPendentes}
+          mostrarObras={migracaoPendente || podeAbrirObras(eu)}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
@@ -16158,7 +16619,11 @@ export default function App() {
               <button className="aviso-x" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></button>
             </div>
           )}
-          {modulo === "inicio" ? (
+          {/* Enquanto nao se sabe quem entrou, nenhuma tela: sem isto a
+              Mehoo via o Inicio piscar antes de cair no painel dela. */}
+          {supabaseConfigurado && pessoasCarregando && !migracaoPendente ? (
+            <div className="empty-note">Carregando…</div>
+          ) : modulo === "inicio" ? (
           <>
           {/* Sem titulo aqui. "GESTAO DE OBRAS TKWS" ja esta no topo da
               pagina, "Inicio" ja esta marcado no menu, e a linha de baixo
