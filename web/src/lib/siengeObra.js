@@ -13,7 +13,8 @@ export async function listarSiengeObras() {
   if (!supabaseConfigurado) return [];
   const { data, error } = await supabase
     .from("sienge_obra")
-    .select("codigo, nome, cidade, estado, status_manual");
+    // O endereço completo também serve pra obra que não tem um (Monday não traz a Localização).
+    .select("codigo, nome, cidade, estado, status_manual, endereco_completo");
   if (error) throw error;
   return data || [];
 }

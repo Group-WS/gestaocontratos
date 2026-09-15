@@ -1,4 +1,4 @@
-/* Quem vê o quê — os quatro perfis.
+/* Quem vê o quê — os cinco perfis.
  *
  * Roda com: node web/src/__testes__/acessos.test.mjs
  * Ver docs/SPEC-acessos.md
@@ -18,7 +18,8 @@ const puras = src.slice(src.indexOf("export const PERFIS")).replace(/export /g, 
 const M = eval(`(function () { ${puras}
   return { PERFIS, perfilDe, estaPendente, estaSuspenso, temAcesso, podeEntrar,
            podeVerModulo, podeEditar, podeGerenciarPessoas, obrasPermitidas,
-           dominioPermitido, DOMINIOS, podeAbrirObras, estaOnline, quandoFoi }; })()`);
+           dominioPermitido, DOMINIOS, podeAbrirObras, estaOnline, quandoFoi,
+           temMaster, ehAdministrador, ehOUltimoGestor, nivelQueCuida }; })()`);
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -44,10 +45,34 @@ conf("suspenso é suspenso", M.estaSuspenso(suspenso), true);
 conf("suspenso não vê módulo", M.podeVerModulo(suspenso, "inicio"), false);
 conf("suspenso não vê obra", M.obrasPermitidas(suspenso, [{ codigo: "1" }]).length, 0);
 
-/* ---- 2. Administrador ---- */
-conf("admin vê qualquer módulo", M.podeVerModulo(p("admin"), "equipe"), true);
-conf("admin edita", M.podeEditar(p("admin")), true);
-conf("admin gerencia pessoas", M.podeGerenciarPessoas(p("admin")), true);
+/* ---- 2. Admin master e Administrador ----
+   Só o admin master vê e mexe na Equipe e nos acessos (15/09/2026). O
+   Administrador fica com o resto, contrato e compradores inclusive. */
+const master = p("master", { email: "m@groupws.com.br" });
+const admin = p("admin", { email: "d@groupws.com.br" });
+const time = [master, admin];
+conf("master vê Equipe e acessos", M.podeVerModulo(master, "equipe", time), true);
+conf("master gerencia pessoas", M.podeGerenciarPessoas(master, time), true);
+conf("master é administrador (contrato, compradores)", M.ehAdministrador(master), true);
+conf("master edita", M.podeEditar(master), true);
+conf("admin NÃO vê Equipe quando há master", M.podeVerModulo(admin, "equipe", time), false);
+conf("admin NÃO gerencia pessoas quando há master", M.podeGerenciarPessoas(admin, time), false);
+conf("admin continua administrador", M.ehAdministrador(admin), true);
+conf("admin vê os outros módulos", M.podeVerModulo(admin, "aditivos", time), true);
+conf("admin edita", M.podeEditar(admin), true);
+conf("sem a lista do time, admin não gerencia", M.podeGerenciarPessoas(admin), false);
+/* Entre publicar e alguém virar master, o Administrador segue cuidando da
+   Equipe — senão ninguém cuidaria. */
+conf("sem master no time, admin cuida da Equipe", M.podeGerenciarPessoas(admin, [admin]), true);
+conf("sem master no time, admin vê Equipe", M.podeVerModulo(admin, "equipe", [admin]), true);
+conf("master inativo não conta como master", M.temMaster([p("master", { ativo: false })]), false);
+conf("geral não é administrador", M.ehAdministrador(p("geral")), false);
+/* Nunca pode faltar quem cuide da Equipe. */
+conf("único master é o último gestor", M.ehOUltimoGestor(time, master.email), true);
+conf("com master, admin não é o último gestor", M.ehOUltimoGestor(time, admin.email), false);
+conf("dois masters: nenhum é o último", M.ehOUltimoGestor([master, p("master", { email: "n@groupws.com.br" })], master.email), false);
+conf("sem master, o único admin é o último gestor", M.ehOUltimoGestor([admin], admin.email), true);
+conf("com master, quem cuida é o master", M.nivelQueCuida(time), "master");
 
 /* ---- 3. Geral: tudo menos gente ---- */
 conf("geral vê os módulos de obra", M.podeVerModulo(p("geral"), "aditivos"), true);
@@ -119,10 +144,11 @@ conf("domínio parecido não entra", M.dominioPermitido("x@naogroupws.com.br"), 
 conf("vazio não entra", M.dominioPermitido(""), false);
 conf("indefinido não quebra", M.dominioPermitido(undefined), false);
 
-/* ---- 7. Os quatro, e só os quatro ---- */
-conf("existem quatro perfis", M.PERFIS.length, 4);
+/* ---- 7. Os cinco, e só os cinco ---- */
+conf("existem cinco perfis", M.PERFIS.length, 5);
 conf("perfil inventado não vale", M.perfilDe({ perfil: "chefe" }), null);
 conf("só um perfil gerencia pessoas", M.PERFIS.filter((x) => x.gerenciaPessoas).length, 1);
+conf("dois perfis administram", M.PERFIS.filter((x) => x.administra).map((x) => x.id).join(), "master,admin");
 conf("só um perfil não edita", M.PERFIS.filter((x) => !x.edita).map((x) => x.id).join(), "mehoo");
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);

@@ -116,6 +116,11 @@ export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, pe
     e2.migracao = true;
     throw e2;
   }
+  /* O perfil Admin master so' existe no banco depois do SQL: antes disso o
+     Postgres recusa a linha com um erro que nao diz o que fazer. */
+  if (error?.code === "23514" && /perfil/i.test(error.message || "")) {
+    throw new Error("O banco ainda não conhece o perfil Admin master: falta rodar supabase/admin-master.sql no Supabase (SQL Editor).");
+  }
   if (error) throw error;
   return paraApp(data);
 }
@@ -140,10 +145,18 @@ export async function excluirPessoa(email) {
    exatamente esses -- e lista VAZIA quer dizer nenhum, que e' o
    pendente. Sao tres estados diferentes de proposito. */
 export const PERFIS = [
+  /* Admin master (pedido de 15/09/2026): so' ele ve e mexe na Equipe e nos
+     acessos. O Administrador continua com todo o resto -- contrato da obra
+     e compradores inclusive (`administra`). */
+  {
+    id: "master", nome: "Admin master",
+    resumo: "Tudo do Administrador e, só ele, a Equipe e os acessos: libera, muda e tira o acesso das outras pessoas.",
+    modulos: null, obras: "todas", edita: true, administra: true, gerenciaPessoas: true, abreObras: true,
+  },
   {
     id: "admin", nome: "Administrador",
-    resumo: "Vê tudo, edita tudo e é quem libera o acesso das outras pessoas.",
-    modulos: null, obras: "todas", edita: true, gerenciaPessoas: true, abreObras: true,
+    resumo: "Vê tudo e edita tudo, inclusive o contrato da obra e os compradores. Não vê a Equipe nem os acessos.",
+    modulos: null, obras: "todas", edita: true, administra: true, gerenciaPessoas: false, abreObras: true,
   },
   {
     id: "geral", nome: "Geral",
@@ -180,14 +193,15 @@ export const temAcesso = (p) => !!perfilDe(p) && p?.ativo !== false;
    deixou de ser concedido por omissao. */
 export const podeEntrar = (p) => temAcesso(p);
 
-/* Equipe e acessos e' de quem libera acesso: so' o Administrador ve.
+/* Equipe e acessos e' de quem libera acesso: so' o Admin master ve (ou o
+   Administrador, enquanto ninguem e' master -- ver podeGerenciarPessoas).
    Os outros perfis veem "todos os modulos" menos este. */
 const SO_QUEM_GERENCIA = new Set(["equipe"]);
 
-export function podeVerModulo(pessoa, moduloId) {
+export function podeVerModulo(pessoa, moduloId, pessoas) {
   const perfil = perfilDe(pessoa);
   if (!perfil || pessoa?.ativo === false) return false;
-  if (SO_QUEM_GERENCIA.has(moduloId)) return !!perfil.gerenciaPessoas;
+  if (SO_QUEM_GERENCIA.has(moduloId)) return podeGerenciarPessoas(pessoa, pessoas);
   return perfil.modulos === null || perfil.modulos.includes(moduloId);
 }
 
@@ -195,7 +209,19 @@ export function podeVerModulo(pessoa, moduloId) {
    trabalham. A trava de edicao por obra continua existindo em cima
    disto -- ela resolve duas pessoas ao mesmo tempo, nao permissao. */
 export const podeEditar = (pessoa) => !!perfilDe(pessoa)?.edita && pessoa?.ativo !== false;
-export const podeGerenciarPessoas = (pessoa) => !!perfilDe(pessoa)?.gerenciaPessoas && pessoa?.ativo !== false;
+/* Quem cuida da Equipe e dos acessos: o Admin master. Enquanto ninguem tem
+   esse perfil (entre publicar e alguem virar master), o Administrador segue
+   cuidando -- senao ninguem cuidaria. Sem a lista do time nao da pra saber,
+   e vale a regra estrita. */
+export const temMaster = (pessoas) => (pessoas || []).some((p) => p.perfil === "master" && p.ativo !== false);
+export const podeGerenciarPessoas = (pessoa, pessoas) => {
+  const perfil = perfilDe(pessoa);
+  if (!perfil || pessoa?.ativo === false) return false;
+  if (perfil.gerenciaPessoas) return true;
+  return perfil.id === "admin" && Array.isArray(pessoas) && !temMaster(pessoas);
+};
+// Contrato da obra e compradores: o Administrador e o Admin master.
+export const ehAdministrador = (pessoa) => !!perfilDe(pessoa)?.administra && pessoa?.ativo !== false;
 // Abrir obra (a lista da barra lateral e a tela da obra). A Mehoo nao abre.
 export const podeAbrirObras = (pessoa) => !!perfilDe(pessoa)?.abreObras && pessoa?.ativo !== false;
 
@@ -263,11 +289,14 @@ export async function garantirPessoa(email) {
   return paraApp(data);
 }
 
-/* Nunca pode haver zero administradores: sem admin ninguem mais entra, e
-   a saida seria mexer no banco a mao. */
-export const ehOUltimoAdmin = (pessoas, email) => {
-  const admins = (pessoas || []).filter((p) => p.perfil === "admin" && p.ativo !== false);
-  return admins.length === 1 && admins[0].email === String(email || "").toLowerCase();
+/* Nunca pode faltar quem cuide da Equipe: sem essa pessoa ninguem mais
+   libera acesso, e a saida seria mexer no banco a mao. Com admin master no
+   time, quem cuida e' o master; antes do primeiro, o Administrador. */
+export const nivelQueCuida = (pessoas) => (temMaster(pessoas) ? "master" : "admin");
+export const ehOUltimoGestor = (pessoas, email) => {
+  const nivel = nivelQueCuida(pessoas);
+  const quem = (pessoas || []).filter((p) => p.perfil === nivel && p.ativo !== false);
+  return quem.length === 1 && quem[0].email === String(email || "").toLowerCase();
 };
 
 export const pendentes = (pessoas) => (pessoas || []).filter(estaPendente);

@@ -25,7 +25,7 @@ language sql stable security definer set search_path = public
 as $$
   select exists (
     select 1 from pessoa
-     where email = lower(auth.jwt() ->> 'email') and ativo and perfil = 'admin'
+     where email = lower(auth.jwt() ->> 'email') and ativo and perfil in ('admin','master')
   )
 $$;
 

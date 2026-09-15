@@ -173,3 +173,21 @@ export async function definirResponsavelExecutivo(codigo, email) {
   }
   return data;
 }
+
+/* O endereço da obra, corrigido à mão (só administrador e admin master veem
+   o botão). Vazio grava nulo, e a tela volta ao endereço do cadastro do Sienge. */
+export async function definirEndereco(codigo, endereco) {
+  if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
+  const { data, error } = await supabase
+    .from("obra")
+    .update({ endereco: String(endereco || "").trim() || null })
+    .eq("codigo", String(codigo))
+    .select(`${COLUNAS_OBRA}, tailor_made, responsavel_executivo`)
+    .single();
+  if (!error) return data;
+  // Como no GC: o UPDATE sempre funciona; só o SELECT de volta pode pedir coluna que falta.
+  if (!faltaColuna(error)) throw error;
+  const retry = await supabase.from("obra").select(COLUNAS_OBRA).eq("codigo", String(codigo)).single();
+  if (retry.error) throw retry.error;
+  return retry.data;
+}

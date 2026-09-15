@@ -4,6 +4,9 @@
 --
 -- NAO RODE ISTO AINDA.
 --
+-- E so' depois de existir um admin master (supabase/admin-master.sql e o
+-- perfil dado no app): aqui so' o master escreve na tabela pessoa.
+--
 -- Enquanto os perfis nao estiverem atribuidos e conferidos, ligar estas
 -- politicas tranca TODO MUNDO ao mesmo tempo -- inclusive quem
 -- resolveria. Ver docs/ADR-001-perfis-de-acesso.md, decisao 7.
@@ -32,7 +35,13 @@ $$;
 create or replace function public.sou_admin()
 returns boolean
 language sql stable security definer set search_path = public
-as $$ select coalesce(public.meu_perfil() = 'admin', false) $$;
+as $$ select coalesce(public.meu_perfil() in ('admin','master'), false) $$;
+
+-- Equipe e acessos: so' o admin master escreve na tabela pessoa (15/09/2026).
+create or replace function public.sou_master()
+returns boolean
+language sql stable security definer set search_path = public
+as $$ select coalesce(public.meu_perfil() = 'master', false) $$;
 
 -- As obras que EU enxergo, pelo meu perfil.
 create or replace function public.minhas_obras()
@@ -41,6 +50,7 @@ language sql stable security definer set search_path = public
 as $$
   select o.codigo from obra o
    where case public.meu_perfil()
+           when 'master' then true
            when 'admin' then true
            when 'geral' then true
            -- o GC ve as dele, e as que ainda nao tem dono
@@ -53,20 +63,22 @@ as $$
 $$;
 
 -- ---------- pessoa ----------
--- Todo mundo le a propria linha (e' o que decide se entra). Admin le e
--- escreve todas. Ninguem mais escreve nada -- inclusive a propria linha:
--- senao qualquer um se promoveria a admin.
+-- Todo mundo le a propria linha (e' o que decide se entra). Administrador
+-- e admin master leem todas; escrever, so' o admin master (a Equipe e os
+-- acessos sao dele). Ninguem mais escreve nada -- inclusive a propria
+-- linha: senao qualquer um se promoveria.
 drop policy if exists "acesso time (autenticados)" on pessoa;
 drop policy if exists "leio a minha linha"  on pessoa;
 drop policy if exists "admin le todas"      on pessoa;
 drop policy if exists "admin escreve todas" on pessoa;
+drop policy if exists "master escreve todas" on pessoa;
 
 create policy "leio a minha linha" on pessoa for select to authenticated
   using (email = lower(auth.jwt() ->> 'email'));
 create policy "admin le todas" on pessoa for select to authenticated
   using (public.sou_admin());
-create policy "admin escreve todas" on pessoa for all to authenticated
-  using (public.sou_admin()) with check (public.sou_admin());
+create policy "master escreve todas" on pessoa for all to authenticated
+  using (public.sou_master()) with check (public.sou_master());
 
 -- A linha que nasce no primeiro login: a pessoa pode se inserir, mas so'
 -- com perfil NULO. E' o que permite entrar na fila sem poder se liberar.
@@ -79,21 +91,21 @@ drop policy if exists "acesso time (autenticados)" on obra;
 drop policy if exists "vejo as minhas obras" on obra;
 create policy "vejo as minhas obras" on obra for all to authenticated
   using (codigo in (select public.minhas_obras()))
-  with check (public.meu_perfil() in ('admin','geral','gc'));
+  with check (public.meu_perfil() in ('master','admin','geral','gc'));
 
 drop policy if exists "acesso time (autenticados)" on obra_dados;
 drop policy if exists "vejo os dados das minhas obras" on obra_dados;
 create policy "vejo os dados das minhas obras" on obra_dados for all to authenticated
   using (obra_codigo in (select public.minhas_obras()))
-  with check (public.meu_perfil() in ('admin','geral','gc'));
+  with check (public.meu_perfil() in ('master','admin','geral','gc'));
 
 -- ---------- aditivo ----------
 drop policy if exists "acesso time (autenticados)" on aditivo;
 drop policy if exists "aditivo das minhas obras" on aditivo;
 create policy "aditivo das minhas obras" on aditivo for all to authenticated
   using (obra_codigo in (select public.minhas_obras())
-         and public.meu_perfil() in ('admin','geral','gc'))
-  with check (public.meu_perfil() in ('admin','geral','gc'));
+         and public.meu_perfil() in ('master','admin','geral','gc'))
+  with check (public.meu_perfil() in ('master','admin','geral','gc'));
 
 -- ---------- tabelas de referencia ----------
 -- Insumo, EAP e alocacao padrao nao sao de obra nenhuma: quem entrou, le.
@@ -106,11 +118,11 @@ begin
     execute format('drop policy if exists "leio referencia" on %I', t);
     execute format('drop policy if exists "escrevo referencia" on %I', t);
     execute format('create policy "leio referencia" on %I for select to authenticated using (public.meu_perfil() is not null)', t);
-    execute format('create policy "escrevo referencia" on %I for all to authenticated using (public.meu_perfil() in (''admin'',''geral'',''gc'')) with check (public.meu_perfil() in (''admin'',''geral'',''gc''))', t);
+    execute format('create policy "escrevo referencia" on %I for all to authenticated using (public.meu_perfil() in (''master'',''admin'',''geral'',''gc'')) with check (public.meu_perfil() in (''master'',''admin'',''geral'',''gc''))', t);
   end loop;
 end $$;
 
 -- Confere DEPOIS de rodar, com a sua propria conta:
---   select public.meu_perfil(), public.sou_admin();
+--   select public.meu_perfil(), public.sou_admin(), public.sou_master();
 --   select count(*) from obra;        -- deve bater com o que a tela mostra
 --   select count(*) from obra_dados;

@@ -17,13 +17,13 @@ import {
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
-  MapPin, Printer, Presentation, ExternalLink, Users
+  MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
-  definirResponsavelExecutivo, faltandoNaTela } from "./lib/obras";
+  definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
   PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
-  podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoAdmin,
+  podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoGestor, nivelQueCuida, ehAdministrador,
   podeAbrirObras, registrarAcesso, estaOnline, quandoFoi } from "./lib/pessoas";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
@@ -31,6 +31,9 @@ import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
 import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
+// O pdf-lib já vem no pacote principal (a Apresentação usa); o relatório é só mais um arquivo pequeno.
+import { gerarRelatorioPdf } from "./lib/relatorioPdf.js";
+import { carregarPrestadores, salvarPrestador, excluirPrestador } from "./lib/maoDeObraPropria.js";
 import { subgrupoDe } from "./lib/catalogoModelo.js";
 import { listarSiengeObras, marcarStatusSienge } from "./lib/siengeObra.js";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
@@ -225,6 +228,13 @@ async function fetchSquadObras(squad) {
    ============================================================ */
 
 function categoriaStatus(cat) {
+  /* Categoria sem valor e sem item nenhum não pede nada, nem a de fora da
+     EAP padrão. Antes ela acendia "estouro crítico" em branco: na obra 2450
+     eram quatro (Sonorização, Automação, Equipamentos de Lazer e Mobiliário
+     Corporativo), todas vazias (15/09/2026). Com item ou valor, a de fora
+     da EAP continua crítica. */
+  const temItem = ["itens", "itensContrato", "itensPlanilha", "itensPlanilhaExecutivo"].some((k) => (cat[k] || []).length);
+  if (!((cat.vendido || 0) > 0) && !((cat.executivo || 0) > 0) && !temItem) return "vazio";
   if (cat.foraDeEscopoCategoria) return "critico";
   if (cat.vendido === 0 && cat.executivo === 0) return "vazio";
   if (cat.vendido === 0 && cat.executivo > 0) return "critico";
@@ -233,6 +243,17 @@ function categoriaStatus(cat) {
   if (pct > 15) return "critico";
   if (pct > 0) return "atencao";
   return "ok";
+}
+
+/* Por que a categoria está em estouro crítico, em poucas palavras: a lista
+   que abre no alerta do Dashboard da obra. As mesmas regras de
+   categoriaStatus, logo acima. */
+function motivoDoEstouro(cat) {
+  if (cat.foraDeEscopoCategoria) return "fora do escopo vendido";
+  const vendido = cat.vendido || 0, executivo = cat.executivo || 0;
+  if (vendido === 0 && executivo > 0) return "sem valor vendido";
+  if (vendido > 0) return `+${Math.round(((executivo - vendido) / vendido) * 100)}% sobre o vendido`;
+  return "";
 }
 
 function itemAlertas(it) {
@@ -742,6 +763,17 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
 
   const resumo = useMemo(() => resumoDaObra(obra), [obra]);
   const criticosAtrasados = useMemo(() => passosCriticosAtrasados(obra).passos, [obra]);
+  // As categorias em estouro crítico, pra lista que abre no alerta: a maior diferença primeiro.
+  const categoriasCriticas = useMemo(() => (obra.categorias || [])
+    .filter((c) => categoriaStatus(c) === "critico")
+    .map((c) => ({ num: c.num, nome: c.nome, vendido: c.vendido || 0, executivo: c.executivo || 0, motivo: motivoDoEstouro(c) }))
+    .sort((a, b) => (b.executivo - b.vendido) - (a.executivo - a.vendido)), [obra.categorias]);
+  const [alertasAbertos, setAlertasAbertos] = useState(() => new Set());
+  const alternarAlerta = (chave) => setAlertasAbertos((antes) => {
+    const n = new Set(antes);
+    if (n.has(chave)) n.delete(chave); else n.add(chave);
+    return n;
+  });
 
   /* Pendências e alertas: as MESMAS regras que o painel geral usa —
      recortadas pra esta obra só, sem inventar regra nova nenhuma, e
@@ -763,6 +795,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   });
   if (totals.criticos > 0) pendencias.push({
     tom: "ruim", txt: `${totals.criticos} ${totals.criticos === 1 ? "categoria em estouro crítico" : "categorias em estouro crítico"}`,
+    chave: "criticos", detalhe: categoriasCriticas,
   });
   if (totals.itensAlerta > 0) pendencias.push({
     tom: "aviso", txt: `${totals.itensAlerta} ${totals.itensAlerta === 1 ? "item com alerta" : "itens com alerta"} de escopo ou quantidade`,
@@ -843,12 +876,36 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           </div>
           {pendencias.length === 0 ? (
             <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção nesta obra.</div>
-          ) : pendencias.map((a, i) => (
+          ) : pendencias.map((a, i) => (a.detalhe?.length ? (
+            /* O alerta que abre: mostra quais são, sem sair do Dashboard. */
+            <React.Fragment key={a.chave || i}>
+              <button type="button" className={`ini-alerta ${a.tom}`} aria-expanded={alertasAbertos.has(a.chave)}
+                onClick={() => alternarAlerta(a.chave)} title={alertasAbertos.has(a.chave) ? "Esconder a lista" : "Ver quais são"}>
+                <AlertTriangle size={13} />
+                <span>{a.txt}</span>
+                <ChevronDown size={13} className={`ini-seta ${alertasAbertos.has(a.chave) ? "aberta" : ""}`} />
+              </button>
+              {alertasAbertos.has(a.chave) && (
+                <div className="ini-detalhe">
+                  {a.detalhe.map((c) => (
+                    <div key={`${c.num}-${c.nome}`} className="ini-detalhe-linha">
+                      <span className="mono dim">{c.num}</span>
+                      <span className="ini-detalhe-nome">{c.nome}</span>
+                      <span className="ini-detalhe-val">
+                        executivo {fmtBRL(c.executivo)}{c.vendido > 0 ? ` · vendido ${fmtBRL(c.vendido)}` : ""}
+                      </span>
+                      <span className="ini-detalhe-pct">{c.motivo}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
+          ) : (
             <div key={i} className={`ini-alerta ${a.tom}`}>
               <AlertTriangle size={13} />
               <span>{a.txt}</span>
             </div>
-          ))}
+          )))}
           {/* Pedir compra avulsa é no Pipefy: o botão abre o formulário e leva
               ao Plano de Compras. Com avulsas já lançadas, o botão vira "ver
               a lista" e o Pipefy ganha um botão próprio, pra não abrir à toa. */}
@@ -1438,6 +1495,8 @@ function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
         verbas.set(cat.num, {
           num: cat.num, nome: cat.nome, obra: o.codigo, obraNome: o.nome,
           mat: 0, matFalta: 0, mo: 0, moFalta: 0,
+          // Do que falta comprar pelo Sienge, quanto já foi solicitado lá.
+          siengeFalta: 0, solicitadosFalta: 0,
           quandoMat: dataDeNecessidade(o, cat, itens, ALOC_MAT),
           quandoMo: dataDeNecessidade(o, cat, itens, ALOC_MO),
           prazo: prazoDoGrupo(cat, itens),
@@ -1447,7 +1506,11 @@ function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
 
       if (material > 0 || aloc === ALOC_MAT) {
         matTotal += material; v.mat += material;
-        if (it.comprado) matFeito += material; else v.matFalta += material;
+        if (it.comprado) matFeito += material;
+        else {
+          v.matFalta += material;
+          if (it.canalCompra === "sienge") { v.siengeFalta += 1; if (it.solicitado) v.solicitadosFalta += 1; }
+        }
       }
       if (mo > 0 || aloc === ALOC_MO) {
         moTotal += mo; v.mo += mo;
@@ -1969,6 +2032,70 @@ function relatorioDaVerba(obras, num, tipo, obrasDaLinha = null, { filtroItem = 
     if (itens.length) saida.push({ obra: o, itens, total: itens.reduce((a, x) => a + x.valor, 0) });
   });
   return saida.sort((a, b) => b.total - a.total);
+}
+
+/* O relatório de uma linha do "Material a comprar, por insumo" (o PDF da
+   linha): os itens daquela categoria, ou daquele produto, obra a obra. A
+   mesma conta de resumoPorInsumo/resumoPorProduto, pro PDF bater com a
+   linha do painel. */
+function relatorioDoInsumo(obras, nome, visao = "categoria", { filtroItem = null } = {}) {
+  const limpo = (t) => String(t || "").replace(/\s+/g, " ").trim();
+  const alvo = visao === "produto" ? semAcentos(limpo(nome)) : nome;
+  const saida = [];
+  (obras || []).forEach((o) => {
+    const itens = [];
+    (o.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
+      if (it.ehTitulo) return;
+      if (filtroItem && !filtroItem(it, cat)) return;
+      const { material } = parcelasDoItem(it, cat);
+      if (material <= 0 || it.comprado) return;
+      const chave = visao === "produto"
+        ? semAcentos(limpo(it.desc))
+        : (subgrupoDe(it.desc, cat.num) || "Sem categoria");
+      if (!chave || chave !== alvo) return;
+      itens.push({ it, valor: material, verba: { num: cat.num, nome: cat.nome } });
+    }));
+    if (itens.length) saida.push({ obra: o, itens, total: itens.reduce((a, x) => a + x.valor, 0) });
+  });
+  return saida.sort((a, b) => b.total - a.total);
+}
+
+/* A equipe interna de partida (pedido de 15/09/2026): a função e a diária
+   de cada tipo de serviço. É o que a calculadora usa enquanto o cadastro
+   (tabela prestador_interno) não existe, e é o mesmo que o SQL semeia. */
+const PRESTADORES_PADRAO = [
+  { especialidade: "Marcenaria", funcao: "Montador", diaria: 450 },
+  { especialidade: "Marcenaria", funcao: "Auxiliar", diaria: 385 },
+  { especialidade: "Pintura", funcao: "Pintor", diaria: 450 },
+  { especialidade: "Pintura", funcao: "Ajudante", diaria: 300 },
+  { especialidade: "Gesseiro", funcao: "Gesseiro", diaria: 350 },
+  { especialidade: "Pedreiro", funcao: "Pedreiro", diaria: 300 },
+];
+
+/* A conta da calculadora da mão de obra própria: diária × dias × pessoas,
+   somando as linhas escolhidas. Linha sem dias, sem diária ou sem pessoa
+   ainda não custa nada: não foi preenchida. */
+function custoEquipeInterna(linhas) {
+  return (linhas || []).reduce((a, l) => {
+    const diaria = Number(l.diaria) || 0, dias = Number(l.dias) || 0, pessoas = Number(l.pessoas ?? 1) || 0;
+    return a + (diaria > 0 && dias > 0 && pessoas > 0 ? diaria * dias * pessoas : 0);
+  }, 0);
+}
+
+// Contra o valor a contratar: diferença positiva é economia com a equipe interna.
+function comparacaoEquipe(interno, aContratar) {
+  const diferenca = (Number(aContratar) || 0) - (Number(interno) || 0);
+  return { diferenca, pct: aContratar > 0 ? (diferenca / aContratar) * 100 : null };
+}
+
+/* Qual endereço a obra mostra: o gravado na obra (corrigido por
+   administrador, ou guardado ao iniciar), senão o que ela já tem, senão o
+   do cadastro do Sienge. "—" conta como vazio. */
+function enderecoResolvido(atual, doBanco, doSienge) {
+  const tem = (v) => !!v && v !== "—";
+  if (tem(doBanco)) return doBanco;
+  if (tem(atual)) return atual;
+  return doSienge || atual;
 }
 
 /* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
@@ -7672,6 +7799,25 @@ function textoSolicitacaoPipefy(obra, linhas) {
   return [`Obra #${obra.codigo} · ${obra.nome}`, "", ...itens].join("\n");
 }
 
+/* Solicitar vem antes de comprar, nos itens do Sienge: é lá que a
+   solicitação existe. Item comprado conta como solicitado (inclusive os
+   marcados antes de existir a coluna) e não volta pra "não solicitado"
+   enquanto estiver comprado. Os outros canais não têm solicitação. */
+function estaSolicitado(it) {
+  return !!(it?.solicitado || it?.comprado);
+}
+function podeMarcarComprado(it) {
+  return !!it?.canalCompra && (it.canalCompra !== "sienge" || estaSolicitado(it));
+}
+function podeMudarSolicitado(it) {
+  return !it?.comprado;
+}
+/* Nas Compras, mudar item só vale com a edição da obra habilitada: quem
+   grava é o salvamento automático, e ele só roda pra quem está com a trava.
+   Em modo leitura os botões travam com esta dica (antes a marca aparecia
+   na tela e sumia no F5). */
+const MODO_LEITURA_DICA = "modo leitura: habilite a edição da obra para mudar";
+
 /* GERADOR DE CÓDIGOS SIENGE — avulso, sem obra e sem gravar nada.
 
    Mesma associação da tela de Compras de Produtos, mas solta: sobe uma
@@ -8105,7 +8251,7 @@ function CampoRascunho({ as: Tag = "input", valor, onSalvar, aoSair = false, ...
    Nas Compras os campos gravam ao sair (`aoSair`), porque ali cada
    alteracao e' gravacao da obra; no Gerador nada e' guardado. */
 function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEscolher,
-  descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false }) {
+  descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false, somenteLeitura = false }) {
   const [buscando, setBuscando] = useState(false);
   const [termo, setTermo] = useState("");
 
@@ -8129,7 +8275,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
             <span className="mae-cod mono">{mae.codigo}</span>
             <span className="mae-nome">{mae.nome}</span>
           </div>
-          {candidatas.length > 1 && !buscando && (
+          {candidatas.length > 1 && !buscando && !somenteLeitura && (
             <>
               <ChevronDown size={12} className="mae-seta" />
               <select className="mae-sel" value={mae.codigo}
@@ -8149,7 +8295,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
       {/* Procurar outra: e' o caminho quando o casamento automatico
           erra ou nao acha, e ele nao pode faltar — sem ele a pessoa
           fica presa com a sugestao errada. */}
-      {!buscando ? (
+      {somenteLeitura ? null : !buscando ? (
         <button className="ger-trocar" onClick={() => setBuscando(true)}>
           <Search size={10} /> {mae ? "trocar o insumo mãe" : "procurar o insumo mãe"}
         </button>
@@ -8188,7 +8334,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
         {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
           <button key={d.insumo.descricao + k}
             className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
-            onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
+            disabled={somenteLeitura} onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
             <span className="det-radio" />
             <span className="det-opcao-txt">{d.insumo.detalhe}</span>
             {d.faltaram.length > 0
@@ -8199,7 +8345,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
 
         <div className={`det-nova ${escolhida ? "fora" : "escolhida"}`}>
           <button className={`det-opcao ${escolhida ? "" : "escolhida"}`}
-            onClick={() => onEscolher(null)}
+            disabled={somenteLeitura} onClick={() => onEscolher(null)}
             title="Usar a descrição gerada — é ela que preenche o template do Sienge">
             <span className="det-radio" />
             <span className="det-opcao-txt">cadastrar como detalhe novo</span>
@@ -8209,12 +8355,12 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
             {/* Textarea, e nao um <code> com botao de editar: quem confere
                 cinquenta linhas nao quer dois cliques por linha. */}
             <CampoRascunho as="textarea" className="padrao-txt padrao-edit" valor={descrito} rows={2}
-              spellCheck={false} aria-label="Descrição do detalhe no Sienge"
+              spellCheck={false} aria-label="Descrição do detalhe no Sienge" readOnly={somenteLeitura}
               onSalvar={onDescrito} aoSair={aoSair} />
             <div className="padrao-acoes">
               <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
                 onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></button>
-              {editado && (
+              {editado && !somenteLeitura && (
                 <button className="btn-copiar" title="Voltar ao descritivo gerado"
                   onClick={() => onDescrito(null)}><RotateCcw size={11} /></button>
               )}
@@ -8227,13 +8373,13 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
           <div className="det-codigos">
             <label>
               cód. do detalhe
-              <CampoRascunho className="form-input" valor={codDet} placeholder="o Sienge numera"
+              <CampoRascunho className="form-input" valor={codDet} placeholder="o Sienge numera" readOnly={somenteLeitura}
                 onSalvar={onCodDet} aoSair={aoSair} />
             </label>
             <label>
               cód. auxiliar {auxMarca && <span className="det-sorteado">{auxMarca}</span>}
               <CampoRascunho className={`form-input ${aux ? "" : "vazio"} ${auxMarca ? "sorteado" : ""}`}
-                valor={aux} placeholder="referência do fornecedor"
+                valor={aux} placeholder="referência do fornecedor" readOnly={somenteLeitura}
                 onSalvar={onAux} aoSair={aoSair} />
             </label>
           </div>
@@ -8384,7 +8530,7 @@ function casarComSienge(desc, grupos) {
   return { maes, detalhes: melhor ? ordenarDetalhes(desc, melhor.grupo) : [] };
 }
 
-function ComprasView({ obra, onItemChange, usuario }) {
+function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, editandoPor }) {
   const [etapa, setEtapa] = useState("todos");
   const [fornecedor, setFornecedor] = useState("");   // "" = todos
   const [orcamento, setOrcamento] = useState(null);   // o pedido aberto pra imprimir
@@ -8401,6 +8547,8 @@ function ComprasView({ obra, onItemChange, usuario }) {
   const [doSienge, setDoSienge] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erroBase, setErroBase] = useState(null);
+  // Toda mudança de item passa por aqui: sem a edição da obra, nada muda.
+  const mudar = (catIdx, itemIdx, patch) => { if (podeEditar) onItemChange(catIdx, itemIdx, patch); };
 
   const rows = useMemo(() => produtosMAT(obra), [obra]);
 
@@ -8488,7 +8636,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
   const selecionarTudo = () => setSel(new Set(visiveis.map((r) => r.chave)));
 
   function definirCanal(canal) {
-    selecionados.forEach((r) => onItemChange(r.catIdx, r.itemIdx, { canalCompra: canal }));
+    selecionados.forEach((r) => mudar(r.catIdx, r.itemIdx, { canalCompra: canal }));
     setSel(new Set());
   }
 
@@ -8506,7 +8654,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
       const mae = c?.maes?.[0];
       const melhor = c?.detalhes?.[0];
       if (!mae || !podeAssociarSozinho(c.detalhes)) { revisar += 1; return; }
-      onItemChange(r.catIdx, r.itemIdx, {
+      mudar(r.catIdx, r.itemIdx, {
         maeSienge: mae.grupo.codigo,
         detalheSienge: melhor.insumo.descricao,
       });
@@ -8628,6 +8776,24 @@ function ComprasView({ obra, onItemChange, usuario }) {
           </React.Fragment>
         ))}
       </div>
+
+      {/* Em modo leitura nada daqui grava: o salvamento automático só roda
+          pra quem está com a edição da obra. */}
+      {!podeEditar && (
+        <div className="assoc-barra cmp-leitura">
+          <Lock size={15} className="dim" />
+          <span>
+            {editandoPor
+              ? <><b>{editandoPor}</b> está editando esta obra. Até terminar, solicitado, comprado, canal e insumo ficam só para consulta.</>
+              : onHabilitar
+                ? "Modo leitura: para marcar solicitado, comprado, canal ou insumo, habilite a edição da obra."
+                : "Modo leitura: o seu perfil consulta as Compras, sem marcar."}
+          </span>
+          {onHabilitar && !editandoPor && (
+            <button className="btn-doc" onClick={onHabilitar}>Habilitar edição</button>
+          )}
+        </div>
+      )}
 
       {etapa === "sienge" && (
         <div className="assoc-barra">
@@ -8767,6 +8933,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
         const aberto = abertos.has(g.num);
         const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
         const nComprados = g.itens.filter((r) => r.it.comprado).length;
+        const nSolicitados = g.itens.filter((r) => estaSolicitado(r.it)).length;
         const valorComprado = g.itens.reduce((t, r) => t + (r.it.comprado ? r.material : 0), 0);
         const grupoAssociado = g.itens.every((r) => casamentos.has(r.chave));
         // As colunas do Sienge só aparecem na etapa Sienge. Em Tudo, Sem
@@ -8791,6 +8958,13 @@ function ComprasView({ obra, onItemChange, usuario }) {
                   <span className="grp-num mono">{g.num}</span>
                   <span className="grp-nome">{g.nome}</span>
                   <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "produto" : "produtos"}</span>
+                  {/* No Sienge, solicitar vem antes de comprar: quanto do grupo já foi solicitado. */}
+                  {noSienge && (
+                    <span className={`grp-comprados ${nSolicitados === g.itens.length ? "tudo" : nSolicitados ? "parte" : ""}`}
+                      title="Solicitados no Sienge — o passo antes da compra">
+                      {nSolicitados === g.itens.length ? <><Check size={11} /> tudo solicitado</> : `${nSolicitados} de ${g.itens.length} solicitados`}
+                    </span>
+                  )}
                   {/* Quanto do grupo já foi comprado, sem precisar abrir: */}
                   <span className={`grp-comprados ${nComprados === g.itens.length ? "tudo" : nComprados ? "parte" : ""}`}
                     title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
@@ -8856,7 +9030,8 @@ function ComprasView({ obra, onItemChange, usuario }) {
                         grupos={grupos} aux={auxiliares ? auxiliares.get(r.chave) : null}
                         mostrarSienge={mostrarInsumo}
                         lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
-                        onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
+                        podeEditar={podeEditar}
+                        onItemChange={(patch) => mudar(r.catIdx, r.itemIdx, patch)} />
                     ))}
                   </tbody>
                 </table>
@@ -8929,32 +9104,42 @@ function ComprasView({ obra, onItemChange, usuario }) {
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
             {selecionados.some((r) => r.it.canalCompra) && (
-              <button className="btn-associar-sel" onClick={() => {
+              <button className="btn-associar-sel" disabled={!podeEditar} onClick={() => {
                 const comCanal = selecionados.filter((r) => r.it.canalCompra);
                 const desmarcar = comCanal.every((r) => r.it.comprado);
-                comCanal.forEach((r) => onItemChange(r.catIdx, r.itemIdx, {
+                // Marcar só mexe em quem ainda não foi comprado (a data de quem já
+                // foi fica), e item do Sienge só vira comprado depois de solicitado.
+                const aMarcar = comCanal.filter((r) => !r.it.comprado);
+                const vao = desmarcar ? comCanal : aMarcar.filter((r) => podeMarcarComprado(r.it));
+                vao.forEach((r) => mudar(r.catIdx, r.itemIdx, {
                   comprado: !desmarcar,
                   compradoEm: desmarcar ? null : new Date().toISOString(),
                 }));
+                const faltam = desmarcar ? 0 : aMarcar.length - vao.length;
+                if (faltam > 0) window.alert(`${faltam} ${faltam === 1 ? "item do Sienge ainda não foi solicitado" : "itens do Sienge ainda não foram solicitados"}: marque como solicitado (etapa Sienge) antes de comprado.`);
                 setSel(new Set());
-              }} title="Marca os selecionados que já têm canal — entra no total do Dashboard">
+              }} title={podeEditar ? "Marca os selecionados que já têm canal — entra no total do Dashboard. No Sienge, só o que já foi solicitado." : `Em ${MODO_LEITURA_DICA}`}>
                 <Check size={13} /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
                   ? "Desmarcar comprado" : "Marcar comprado"}
               </button>
             )}
             {etapa === "sienge" && (
-              <button className="btn-associar-sel" onClick={() => {
-                const desmarcar = selecionados.every((r) => r.it.solicitado);
-                selecionados.forEach((r) => onItemChange(r.catIdx, r.itemIdx, {
+              <button className="btn-associar-sel" disabled={!podeEditar} onClick={() => {
+                const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
+                // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
+                const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
+                vao.forEach((r) => mudar(r.catIdx, r.itemIdx, {
                   solicitado: !desmarcar, solicitadoEm: desmarcar ? null : new Date().toISOString(),
                 }));
-              }} title="Marca os selecionados como já solicitados no Sienge">
-                <Check size={13} /> {selecionados.every((r) => r.it.solicitado) ? "Desmarcar solicitado" : "Marcar solicitado"}
+                const presos = desmarcar ? selecionados.length - vao.length : 0;
+                if (presos > 0) window.alert(`${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`);
+              }} title={podeEditar ? "Marca os selecionados como já solicitados no Sienge" : `Em ${MODO_LEITURA_DICA}`}>
+                <Check size={13} /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
               </button>
             )}
             {etapa === "sienge" && baseSienge && (
-              <button className="btn-associar-sel" onClick={associarSelecionados}
-                title="Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão">
+              <button className="btn-associar-sel" onClick={associarSelecionados} disabled={!podeEditar}
+                title={podeEditar ? "Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão" : `Em ${MODO_LEITURA_DICA}`}>
                 <PackageSearch size={13} /> Associar {selecionados.length}
               </button>
             )}
@@ -8967,13 +9152,13 @@ function ComprasView({ obra, onItemChange, usuario }) {
               </button>
             )}
             {CANAIS_COMPRA.map((c) => (
-              <button key={c.id} className="btn-canal" onClick={() => definirCanal(c.id)}
-                title={`Marcar os selecionados como compra por ${c.nome}`}>
+              <button key={c.id} className="btn-canal" onClick={() => definirCanal(c.id)} disabled={!podeEditar}
+                title={podeEditar ? `Marcar os selecionados como compra por ${c.nome}` : `Em ${MODO_LEITURA_DICA}`}>
                 <TagCanal id={c.id} comNome />
               </button>
             ))}
-            <button className="btn-canal btn-canal-limpar" onClick={() => definirCanal(null)}
-              title="Tirar o canal dos selecionados">tirar canal</button>
+            <button className="btn-canal btn-canal-limpar" onClick={() => definirCanal(null)} disabled={!podeEditar}
+              title={podeEditar ? "Tirar o canal dos selecionados" : `Em ${MODO_LEITURA_DICA}`}>tirar canal</button>
           </div>
         </div>
       )}
@@ -9130,9 +9315,10 @@ function baixarResumoCadastroSienge(obra, { linhas, semMae }) {
   XLSX.writeFile(wb, `sienge-resumo-obra-${obra.codigo}.xlsx`);
 }
 
-function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false }) {
+function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false }) {
   const { it, material } = row;
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
+  const quando = (rot, em) => `${rot}${em ? ` em ${new Date(em).toLocaleDateString("pt-BR")}` : ""}`;
 
   return (
     <tr className={selecionado ? "linha-sel" : it.comprado ? "row-comprado" : "row-falta"}>
@@ -9163,12 +9349,14 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       )}
       {noSienge && (
         <td className="center">
-          <button className={`pill pill-btn ${it.solicitado ? "pill-ok" : "pill-wait"}`}
+          <button className={`pill pill-btn ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
+            disabled={!podeEditar || !podeMudarSolicitado(it)}
             onClick={() => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() })}
-            title={it.solicitado
-              ? `Solicitado${it.solicitadoEm ? ` em ${new Date(it.solicitadoEm).toLocaleDateString("pt-BR")}` : ""} — clique pra desfazer`
+            title={!podeEditar ? `${estaSolicitado(it) ? quando("Solicitado", it.solicitadoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
+              : it.comprado ? "Já comprado: desmarque o comprado antes de mexer na solicitação"
+              : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
               : "Marcar como solicitado no Sienge"}>
-            {it.solicitado ? <><Check size={11} /> solicitado</> : "pendente"}
+            {estaSolicitado(it) ? <><Check size={11} /> solicitado</> : "pendente"}
           </button>
         </td>
       )}
@@ -9177,10 +9365,13 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
             por onde vai comprar seria marcar comprado no escuro. */}
         {!it.canalCompra ? <span className="dim">—</span> : (
           <button className={`pill pill-btn ${it.comprado ? "pill-ok" : "pill-wait"}`}
+            disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}
             onClick={() => onItemChange({ comprado: !it.comprado, compradoEm: it.comprado ? null : new Date().toISOString() })}
-            title={it.comprado
-              ? `Comprado${it.compradoEm ? ` em ${new Date(it.compradoEm).toLocaleDateString("pt-BR")}` : ""} — clique pra desfazer`
-              : "Marcar como comprado — entra no total do Dashboard"}>
+            title={!podeEditar ? `${it.comprado ? quando("Comprado", it.compradoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
+              : it.comprado ? `${quando("Comprado", it.compradoEm)} — clique pra desfazer`
+              : podeMarcarComprado(it) ? "Marcar como comprado — entra no total do Dashboard"
+                : noSienge ? "Marque como solicitado antes de comprado"
+                  : "Item do Sienge: marque como solicitado na etapa Sienge antes de comprado"}>
             {it.comprado ? <><Check size={11} /> comprado</> : "pendente"}
           </button>
         )}
@@ -9222,7 +9413,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               onCodDet={(v) => onItemChange({ codigoDetalheSienge: v.trim() ? v.trim() : null })}
               aux={aux?.codigo || ""} auxMarca={aux?.gerado ? "gerado" : null}
               onAux={(v) => onItemChange({ codigoAuxSienge: v.trim() ? v.trim() : null })}
-              aoSair />
+              aoSair somenteLeitura={!podeEditar} />
           )}
         </td>
       )}
@@ -9988,7 +10179,7 @@ function GcTotal({ rot, feito, total, cor, legenda }) {
    e' opcional tambem: {valor, onMudar, opcoes:[{id,label}]} — quando
    existe mais de um jeito de agrupar a MESMA lista (por categoria, por
    produto), o alternador fica junto do titulo, "la em cima". */
-function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPlaceholder, onAbrir, abas, onImprimir }) {
+function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPlaceholder, onAbrir, abas, onImprimir, onSimular }) {
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const max = grupos.length ? grupos[0].total : 1;
   return (
@@ -10023,7 +10214,7 @@ function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPl
       ) : (
         <div className="gc-list">
           {grupos.map((g) => (
-            <GcLinhaVerba key={g.num ?? g.nome} g={g} cor={cor} max={max} onAbrir={onAbrir} onImprimir={onImprimir} />
+            <GcLinhaVerba key={g.num ?? g.nome} g={g} cor={cor} max={max} onAbrir={onAbrir} onImprimir={onImprimir} onSimular={onSimular} />
           ))}
         </div>
       )}
@@ -10044,7 +10235,7 @@ function fmtQtds(qtds) {
     .join(" · ");
 }
 
-function GcLinhaVerba({ g, cor, max, onAbrir, onImprimir }) {
+function GcLinhaVerba({ g, cor, max, onAbrir, onImprimir, onSimular }) {
   const [aberto, setAberto] = useState(false);
   const porObra = useMemo(
     () => [...g.obras.values()].sort((a, b) => b.valor - a.valor),
@@ -10062,11 +10253,18 @@ function GcLinhaVerba({ g, cor, max, onAbrir, onImprimir }) {
         {g.qtds && <span className="gc-qtd mono dim">{qtdTxt}</span>}
         <span className="gc-val mono">{fmtBRL(g.total)}</span>
       </button>
-      {/* A impressora: o relatorio desta verba, item a item, por obra e total. */}
+      {/* A calculadora: quanto custaria esta verba com a equipe interna. */}
+      {onSimular && (
+        <button type="button" className="gc-imprimir" onClick={() => onSimular(g)} aria-label="Simular com a mão de obra própria"
+          title="Simular com a mão de obra própria: escolha a equipe e os dias, e compare com o valor a contratar">
+          <Calculator size={14} />
+        </button>
+      )}
+      {/* O PDF desta linha: item a item, por obra e total. Abre na tela e já baixa. */}
       {onImprimir && (
-        <button type="button" className="gc-imprimir" onClick={() => onImprimir(g)}
-          title="Relatório em PDF desta verba — item a item, por obra e total">
-          <Printer size={14} />
+        <button type="button" className="gc-imprimir" onClick={() => onImprimir(g)} aria-label="Gerar PDF"
+          title={`PDF ${g.num != null ? "desta verba" : "deste insumo"} — item a item, por obra e total. Abre na tela e já baixa o arquivo.`}>
+          <FileDown size={14} />
         </button>
       )}
       </div>
@@ -10157,6 +10355,13 @@ function GcLinhaObra({ L, onAbrir }) {
                   {v.prazo?.fornecedor ? ` (${v.prazo.fornecedor}, ${v.prazo.dias} d)` : ` (${v.prazo.dias} d antes da entrega)`}
                   {v.dias < 0 ? ` — venceu há ${-v.dias} dias` : ` — faltam ${v.dias} dias`}
                 </span>
+                {/* Solicitar vem antes de comprar: do que falta pelo Sienge, quanto já foi pedido. */}
+                {v.siengeFalta > 0 && (
+                  <span className={`gc-prazo-solic ${v.solicitadosFalta === v.siengeFalta ? "tudo" : v.solicitadosFalta ? "parte" : ""}`}
+                    title="Dos itens do Sienge que faltam comprar nesta verba, quantos já foram solicitados">
+                    {v.solicitadosFalta === v.siengeFalta ? "tudo solicitado" : `${v.solicitadosFalta} de ${v.siengeFalta} solicitados`}
+                  </span>
+                )}
                 <span className="mono gc-prazo-val">{fmtBRL(v.matFalta)}</span>
               </div>
             ))}
@@ -10336,88 +10541,87 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
   );
 }
 
-/* O relatorio de uma verba, no papel da empresa — o mesmo do aditivo
-   (marca no topo, faixa verde, rodape). Um bloco por obra, com os itens
-   e o total dela, e o total geral no fim. */
-function RelatorioVerba({ tipo, verba, linhas, recorte, status = "pendente" }) {
-  const total = linhas.reduce((a, l) => a + l.total, 0);
-  const nItens = linhas.reduce((a, l) => a + l.itens.length, 0);
+/* O relatório de uma linha da Gestão de compras, em texto pronto pro PDF
+   (lib/relatorioPdf.js): título pelo tipo e pelo status, uma seção por obra
+   e o resumo no fim. As mesmas regras da linha do painel, pro PDF dizer o
+   mesmo que ela. */
+function dadosDoRelatorio({ tipo, status = "pendente", subtitulo, linhas, recorte, vazio, comVerba = false }) {
   const titulo = tipo === "mat"
     ? ({ comprado: "Material comprado", todos: "Material" }[status] || "Material a comprar")
     : ({ comprado: "Mão de obra contratada", todos: "Mão de obra" }[status] || "Mão de obra a contratar");
-  return (
-    <div className="ad-page rel-doc" id="doc-relatorio-verba">
-      <img className="ad-brandbar" src={LOGO_WS} alt="" />
-      <div className="ad-inner">
-        <div className="ad-dochead">
-          <div className="t">
-            {titulo}
-            <div className="rel-sub">{verba.num} · {verba.nome}</div>
-          </div>
-          <div className="meta">
-            <div><b>Data:</b> {new Date().toLocaleDateString("pt-BR")}</div>
-            <div><b>Obras:</b> {linhas.length} · <b>Itens:</b> {nItens}</div>
-            <div><b>Recorte:</b> {recorte}</div>
-          </div>
-        </div>
+  const total = linhas.reduce((a, l) => a + l.total, 0);
+  const nItens = linhas.reduce((a, l) => a + l.itens.length, 0);
+  const qtdBR = (q) => Number(q).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  const rotTotal = status === "comprado" ? (tipo === "mat" ? "comprado" : "contratado")
+    : status === "todos" ? "geral" : (tipo === "mat" ? "a comprar" : "a contratar");
+  return {
+    titulo, subtitulo, vazio,
+    meta: [[["Data", new Date().toLocaleDateString("pt-BR")]],
+      [["Obras", String(linhas.length)], ["Itens", String(nItens)]],
+      [["Recorte", recorte]]],
+    secoes: linhas.map(({ obra, itens, total: totalObra }) => ({
+      titulo: `#${obra.codigo} · ${obra.nome}`,
+      nota: obra.dataEntrega ? `entrega ${dataBR(obra.dataEntrega)}` : "",
+      linhas: itens.map(({ it, valor, verba }) => {
+        const qtd = it.qtdExecutivo ?? it.qtdVendida ?? it.qtd ?? null;
+        return {
+          cod: it.codigo || "—",
+          desc: it.desc || "",
+          extra: [comVerba && verba ? `verba ${verba.num} · ${verba.nome}` : null, it.marca, it.modelo, it.cor, it.especificacao]
+            .filter(Boolean).join(" · "),
+          amb: it.ambiente || "—",
+          qtd: qtd != null ? qtdBR(qtd) : "—",
+          un: it.un || "—",
+          vu: qtd > 0 ? fmtBRL(valor / qtd) : "—",
+          vt: fmtBRL(valor),
+        };
+      }),
+      total: fmtBRL(totalObra),
+    })),
+    resumo: {
+      linhas: linhas.map((l) => [`#${l.obra.codigo} · ${l.obra.nome}`, fmtBRL(l.total)]),
+      final: [`Total ${rotTotal}`, fmtBRL(total)],
+    },
+  };
+}
 
-        {linhas.length === 0 ? (
-          <div className="ad-docwarn">Nada pendente nesta verba.</div>
-        ) : linhas.map(({ obra, itens, total: totalObra }) => (
-          <div key={obra.codigo} className="rel-obra">
-            <div className="ad-sectitle">
-              #{obra.codigo} · {obra.nome}
-              {obra.dataEntrega && <span className="rel-entrega">entrega {dataBR(obra.dataEntrega)}</span>}
-            </div>
-            <table className="ad-dt">
-              <thead>
-                <tr>
-                  <th className="c-cod">Cód.</th>
-                  <th>Descrição</th>
-                  <th className="c-amb">Ambiente</th>
-                  <th className="c-qtd">Qtd.</th>
-                  <th className="c-un">Un.</th>
-                  <th className="c-vu">Valor unit.</th>
-                  <th className="c-vt">Valor total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {itens.map(({ it, valor }, k) => {
-                  const qtd = it.qtdExecutivo ?? it.qtdVendida ?? it.qtd ?? null;
-                  const extra = [it.marca, it.modelo, it.cor, it.especificacao].filter(Boolean).join(" · ");
-                  return (
-                    <tr key={k}>
-                      <td className="c-cod">{it.codigo || "—"}</td>
-                      <td>
-                        <div className="ad-dt1">{it.desc}</div>
-                        {extra && <div className="rel-extra">{extra}</div>}
-                      </td>
-                      <td className="c-amb">{it.ambiente || "—"}</td>
-                      <td className="c-qtd">{qtd != null ? Number(qtd).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—"}</td>
-                      <td className="c-un">{it.un || "—"}</td>
-                      <td className="c-vu">{qtd > 0 ? fmtBRL(valor / qtd) : "—"}</td>
-                      <td className="c-vt">{fmtBRL(valor)}</td>
-                    </tr>
-                  );
-                })}
-                <tr className="tot">
-                  <td colSpan={6}>Total da obra</td>
-                  <td className="c-vt">{fmtBRL(totalObra)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        ))}
+// Nome de arquivo sem acento nem espaço: "Cadeiras e banquetas" vira "cadeiras-e-banquetas".
+function nomeDeArquivo(t) {
+  return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "relatorio";
+}
 
-        <div className="ad-saldo rel-saldo">
-          {linhas.map((l) => (
-            <div className="l" key={l.obra.codigo}><span>#{l.obra.codigo} · {l.obra.nome}</span><b>{fmtBRL(l.total)}</b></div>
-          ))}
-          <div className="l f"><span>Total {status === "comprado" ? (tipo === "mat" ? "comprado" : "contratado") : status === "todos" ? "geral" : (tipo === "mat" ? "a comprar" : "a contratar")}</span><b>{fmtBRL(total)}</b></div>
-        </div>
+function baixarUrl(url, nome) {
+  const a = document.createElement("a");
+  a.href = url; a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* O PDF gerado, por cima da tela: ele já baixou sozinho, e aqui a pessoa
+   confere sem sair do painel. O visor é o do próprio navegador. */
+function PdfSobreposto({ pdf, onFechar }) {
+  useEffect(() => {
+    const esc = (e) => { if (e.key === "Escape") onFechar(); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onFechar]);
+  return createPortal(
+    <div className="rel-overlay">
+      <div className="rel-barra">
+        <span>
+          {pdf.erro ? <>Não consegui gerar o PDF: {pdf.erro}</>
+            : pdf.url ? <><b>{pdf.nome}</b> — já está nos seus downloads.</>
+              : <>Gerando <b>{pdf.nome}</b>…</>}
+        </span>
+        {pdf.url && (
+          <a className="btn-doc" href={pdf.url} download={pdf.nome}><Download size={13} /> Baixar de novo</a>
+        )}
+        <button className="btn-voltar" onClick={onFechar}><X size={13} /> Fechar</button>
       </div>
-      <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
-    </div>
+      {pdf.url ? <iframe className="pdf-visor" src={pdf.url} title={pdf.nome} />
+        : !pdf.erro && <div className="pdf-gerando">Montando o PDF…</div>}
+    </div>,
+    document.body
   );
 }
 
@@ -10535,6 +10739,7 @@ function GcTelas({ tela, onTela }) {
     <div className="gc-telas">
       <button className={`gc-chip ${tela === "painel" ? "on" : ""}`} onClick={() => onTela("painel")}>Painel</button>
       <button className={`gc-chip ${tela === "compradores" ? "on" : ""}`} onClick={() => onTela("compradores")}>Compradores</button>
+      <button className={`gc-chip ${tela === "mao_propria" ? "on" : ""}`} onClick={() => onTela("mao_propria")}>Mão de obra própria</button>
     </div>
   );
 }
@@ -10635,6 +10840,252 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
   );
 }
 
+/* A calculadora da mão de obra própria: escolhe quem da equipe interna
+   entra, quantos dias e quantas pessoas, e compara com o valor a contratar
+   (a linha inteira ou uma obra dela). A diária e os dias mudam à mão aqui:
+   é simulação, o cadastro não muda. */
+function SimuladorEquipe({ g, prestadores, padrao = false, onFechar }) {
+  const obrasDaLinha = useMemo(() => [...g.obras.values()].sort((a, b) => b.valor - a.valor), [g.obras]);
+  const [obra, setObra] = useState("");   // "" = todas as obras da linha
+  const [linhas, setLinhas] = useState(() => prestadores.map((p, i) => ({
+    chave: p.id || `padrao-${i}`, nome: p.nome || "", funcao: p.funcao, especialidade: p.especialidade || "Outros",
+    diaria: numBR(Number(p.diaria) || 0), dias: "", pessoas: "1", marcado: false,
+  })));
+  useEffect(() => {
+    const esc = (e) => { if (e.key === "Escape") onFechar(); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onFechar]);
+  const mudar = (chave, campo, valor) => setLinhas((ls) => ls.map((l) => (l.chave === chave ? { ...l, [campo]: valor } : l)));
+  const conta = (l) => ({
+    diaria: parseBRL(l.diaria) ?? 0,
+    dias: Number(String(l.dias).replace(",", ".")) || 0,
+    pessoas: Number(l.pessoas) || 0,
+  });
+  const interno = custoEquipeInterna(linhas.filter((l) => l.marcado).map(conta));
+  const aContratar = obra ? (obrasDaLinha.find((o) => String(o.codigo) === obra)?.valor || 0) : g.total;
+  const { diferenca, pct } = comparacaoEquipe(interno, aContratar);
+  const especialidades = [...new Set(linhas.map((l) => l.especialidade))];
+
+  return createPortal(
+    <div className="rel-overlay" onClick={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
+      <div className="sim-painel" role="dialog" aria-label="Simular com a mão de obra própria">
+        <div className="sim-topo">
+          <Calculator size={16} />
+          <div>
+            <div className="sim-tit">Simular com a mão de obra própria</div>
+            <div className="sim-sub">{g.num} · {g.nome}</div>
+          </div>
+          <button className="btn-voltar" onClick={onFechar}><X size={13} /> Fechar</button>
+        </div>
+        <label className="sim-obra">Comparar com
+          <select className="cmp-forn-sel" value={obra} onChange={(e) => setObra(e.target.value)}>
+            <option value="">todas as obras da linha ({obrasDaLinha.length}) — {fmtBRL(g.total)}</option>
+            {obrasDaLinha.map((o) => (
+              <option key={o.codigo} value={String(o.codigo)}>#{o.codigo} · {o.nome} — {fmtBRL(o.valor)}</option>
+            ))}
+          </select>
+        </label>
+        {padrao && (
+          <div className="gc-nota">
+            Valores padrão da equipe. Para mudar as diárias de vez, rode o
+            supabase/mao-de-obra-propria.sql e use a aba Mão de obra própria.
+          </div>
+        )}
+        <div className="sim-rolagem">
+          <table className="sim-tabela">
+            <thead>
+              <tr>
+                <th style={{ width: 28 }} />
+                <th>Prestador</th>
+                <th className="right">Diária (R$)</th>
+                <th className="center">Dias</th>
+                <th className="center">Pessoas</th>
+                <th className="right">Custo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {especialidades.map((esp) => (
+                <React.Fragment key={esp}>
+                  <tr className="sim-esp"><td colSpan={6}>{esp}</td></tr>
+                  {linhas.filter((l) => l.especialidade === esp).map((l) => (
+                    <tr key={l.chave} className={l.marcado ? "on" : ""}>
+                      <td>
+                        <input type="checkbox" checked={l.marcado} onChange={(e) => mudar(l.chave, "marcado", e.target.checked)}
+                          aria-label={`Escolher ${l.nome || l.funcao}`} />
+                      </td>
+                      <td>
+                        <b>{l.nome || l.funcao}</b>{l.nome && <span className="dim"> · {l.funcao}</span>}
+                      </td>
+                      <td className="right">
+                        <input className="form-input sim-num" inputMode="decimal" value={l.diaria} disabled={!l.marcado}
+                          onChange={(e) => mudar(l.chave, "diaria", e.target.value)} aria-label="Diária" />
+                      </td>
+                      <td className="center">
+                        <input className="form-input sim-num sim-curto" inputMode="decimal" value={l.dias} placeholder="0" disabled={!l.marcado}
+                          onChange={(e) => mudar(l.chave, "dias", e.target.value)} aria-label="Dias" />
+                      </td>
+                      <td className="center">
+                        <input className="form-input sim-num sim-curto" inputMode="numeric" value={l.pessoas} disabled={!l.marcado}
+                          onChange={(e) => mudar(l.chave, "pessoas", e.target.value.replace(/\D/g, ""))} aria-label="Pessoas" />
+                      </td>
+                      <td className="right mono">{l.marcado ? fmtBRL(custoEquipeInterna([conta(l)])) : "—"}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="sim-resumo">
+          <div><span>Com a equipe interna</span><b className="mono">{fmtBRL(interno)}</b></div>
+          <div><span>A contratar {obra ? "nesta obra" : "na linha"}</span><b className="mono">{fmtBRL(aContratar)}</b></div>
+          <div className={`sim-dif ${interno > 0 ? (diferenca >= 0 ? "economia" : "mais") : ""}`}>
+            <span>{interno <= 0 ? "Escolha a equipe e os dias" : diferenca >= 0 ? "Economia com a equipe interna" : "A equipe interna custa a mais"}</span>
+            <b className="mono">{interno > 0
+              ? `${fmtBRL(Math.abs(diferenca))}${pct != null ? ` · ${Math.abs(pct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : ""}`
+              : "—"}</b>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* Mão de obra própria: a equipe interna — especialidade, função e diária. É
+   daqui que a calculadora da mão de obra a contratar tira os valores.
+   Administrador cadastra e muda; o time vê. O nome da pessoa fica pra
+   depois (pedido de 15/09/2026): a coluna existe no banco, só não aparece. */
+function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
+  const lista = prestadores.lista || [];
+  const semTabela = !!prestadores.faltaTabela;
+  const trava = !podeEditar || semTabela;
+  const [novo, setNovo] = useState({ especialidade: "", funcao: "", diaria: "" });
+  const [salvando, setSalvando] = useState(null);
+  const [erro, setErro] = useState(null);
+  const especialidades = useMemo(
+    () => [...new Set([...PRESTADORES_PADRAO.map((p) => p.especialidade), ...lista.map((p) => p.especialidade)])],
+    [lista]);
+  // Sem o SQL, a equipe padrão aparece só pra ver — e é com ela que a calculadora funciona.
+  const mostrar = lista.length ? lista
+    : semTabela ? PRESTADORES_PADRAO.map((p, i) => ({ ...p, id: null, chave: `padrao-${i}`, nome: "", ativo: true })) : [];
+
+  async function gravar(p, mudanca) {
+    setSalvando(p.id || "novo"); setErro(null);
+    try {
+      const salvo = await salvarPrestador({ ...p, ...mudanca }, usuario);
+      onMudou(p.id ? lista.map((x) => (x.id === p.id ? salvo : x)) : [...lista, salvo]);
+      return true;
+    } catch (e) {
+      setErro(e.message || String(e));
+      return false;
+    } finally {
+      setSalvando(null);
+    }
+  }
+  async function tirar(p) {
+    if (!window.confirm(`Tirar ${p.nome || p.funcao} da equipe interna?`)) return;
+    setSalvando(p.id); setErro(null);
+    try {
+      await excluirPrestador(p.id);
+      onMudou(lista.filter((x) => x.id !== p.id));
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setSalvando(null);
+    }
+  }
+  async function adicionar() {
+    const diaria = parseBRL(novo.diaria);
+    if (!novo.especialidade.trim() || !novo.funcao.trim() || diaria == null) {
+      setErro("Preencha a especialidade, a função e a diária.");
+      return;
+    }
+    if (await gravar({}, { ...novo, diaria })) setNovo({ especialidade: novo.especialidade, funcao: "", diaria: "" });
+  }
+
+  return (
+    <div className="gc-bloco mop">
+      <div className="gc-bloco-head">
+        <Users size={15} />
+        <span className="gc-bloco-titulo">Mão de obra própria</span>
+      </div>
+      <div className="gc-nota">
+        A equipe interna: especialidade, função e diária. A calculadora da mão de obra a contratar usa estes valores.
+      </div>
+      {semTabela && (
+        <div className="aviso-migracao"><AlertTriangle size={14} />
+          <span>Falta rodar o <b>supabase/mao-de-obra-propria.sql</b> no Supabase. Até lá aparece a equipe padrão e a
+            calculadora já funciona com ela; cadastrar e mudar, só depois do SQL.</span>
+        </div>
+      )}
+      {prestadores.erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{prestadores.erro}</span></div>}
+      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>Não consegui salvar: {erro}</span></div>}
+      {!podeEditar && !semTabela && <div className="gc-nota">Só administrador cadastra e muda a equipe interna.</div>}
+      <div className="grp-itens gc-tabela">
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: 150 }}>Especialidade</th>
+              <th>Função</th>
+              <th style={{ width: 160 }} className="right">Diária (R$)</th>
+              <th style={{ width: 44 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {especialidades.filter((esp) => mostrar.some((p) => p.especialidade === esp)).map((esp) => (
+              mostrar.filter((p) => p.especialidade === esp).map((p, k) => (
+                <tr key={p.id || p.chave}>
+                  <td className={k ? "" : "mop-esp"}>{k ? "" : esp}</td>
+                  <td>
+                    <CampoRascunho className="form-input" valor={p.funcao} aoSair readOnly={trava || !p.id}
+                      onSalvar={(v) => { if (v.trim() && v.trim() !== p.funcao) gravar(p, { funcao: v.trim() }); }} />
+                  </td>
+                  <td className="right">
+                    <CampoRascunho className="form-input mono mop-valor" valor={numBR(Number(p.diaria) || 0)} aoSair readOnly={trava || !p.id}
+                      onSalvar={(v) => { const n = parseBRL(v); if (n != null && n !== p.diaria) gravar(p, { diaria: n }); }} />
+                  </td>
+                  <td>
+                    {!trava && p.id && (
+                      <button className="ad-icon del" title="Tirar da equipe interna" disabled={salvando === p.id} onClick={() => tirar(p)}>
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ))}
+            {mostrar.length === 0 && (
+              <tr><td colSpan={4} className="dim">Ninguém cadastrado ainda.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {!trava && (
+        <div className="mop-novo">
+          <div className="mop-novo-tit">Adicionar à equipe</div>
+          <input className="form-input" value={novo.especialidade} placeholder="Especialidade (ex: Pintura)"
+            onChange={(e) => setNovo((n) => ({ ...n, especialidade: e.target.value }))} />
+          <input className="form-input" value={novo.funcao} placeholder="Função (ex: Pintor)"
+            onChange={(e) => setNovo((n) => ({ ...n, funcao: e.target.value }))} />
+          <input className="form-input mono mop-valor" value={novo.diaria} placeholder="Diária: 450,00" inputMode="decimal"
+            onChange={(e) => setNovo((n) => ({ ...n, diaria: e.target.value }))} />
+          <button className="btn-doc btn-template" disabled={salvando === "novo"} onClick={adicionar}>
+            {salvando === "novo" ? "Salvando…" : "Adicionar"}
+          </button>
+          <div className="cargo-chips">
+            {especialidades.map((esp) => (
+              <button key={esp} type="button" className={`cargo-chip ${novo.especialidade === esp ? "on" : ""}`}
+                onClick={() => setNovo((n) => ({ ...n, especialidade: esp }))}>{esp}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], podeEditarCompradores = false, usuario }) {
   const [horizonte, setHorizonte] = useState(null);
   /* Vazio quer dizer TODAS. Guardar o conjunto das escolhidas, e nao um
@@ -10645,7 +11096,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
   const [status, setStatus] = useState("pendente");
   const [fornecedor, setFornecedor] = useState("");   // "" = todos
   const [comprador, setComprador] = useState("");     // "" = todos
-  const [tela, setTela] = useState("painel");          // "painel" | "compradores"
+  const [tela, setTela] = useState("painel");          // "painel" | "compradores" | "mao_propria"
   const [compradores, setCompradores] = useState({ mapa: new Map(), carregando: true });
   useEffect(() => {
     let vivo = true;
@@ -10654,6 +11105,16 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
       .catch((e) => { if (vivo) setCompradores({ mapa: new Map(), carregando: false, erro: e.message || String(e) }); });
     return () => { vivo = false; };
   }, []);
+  // A equipe interna: o cadastro (aba Mão de obra própria) e a calculadora usam a mesma lista.
+  const [prestadores, setPrestadores] = useState({ lista: [], carregando: true });
+  useEffect(() => {
+    let vivo = true;
+    carregarPrestadores()
+      .then((p) => { if (vivo) setPrestadores({ ...p, carregando: false }); })
+      .catch((e) => { if (vivo) setPrestadores({ lista: [], carregando: false, erro: e.message || String(e) }); });
+    return () => { vivo = false; };
+  }, []);
+  const [simulando, setSimulando] = useState(null);   // a linha de mão de obra aberta na calculadora
   const fornecedoresDoPainel = useMemo(() => fornecedoresDasObras(obras), [obras]);
   const listaCompradores = useMemo(() => {
     const m = new Map();
@@ -10692,9 +11153,10 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
      trocar a visão não deveria obrigar a digitar de novo. */
   const [visaoInsumo, setVisaoInsumo] = useState("categoria");
 
-  /* O relatorio de uma verba (a impressora na linha). Abre por cima da
-     tela e ja chama a impressao — no navegador, "Salvar como PDF". */
-  const [relatorio, setRelatorio] = useState(null);
+  /* O PDF de uma linha (o botão na ponta dela): gera o arquivo, baixa e
+     mostra por cima da tela. Antes chamava a impressão do navegador, e a
+     pessoa ainda tinha que escolher "Salvar como PDF" (pedido de 15/09/2026). */
+  const [pdf, setPdf] = useState(null);
   const recorte = [
     status === "pendente" && horizonte != null ? `resolver nas ${HORIZONTES.find((h) => h.dias === horizonte)?.rot || `${horizonte} dias`}` : null,
     status === "comprado" ? "só o que já foi comprado" : status === "todos" ? "comprado e pendente" : null,
@@ -10704,10 +11166,32 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
   ].filter(Boolean).join(" · ") || "todas as obras, sem recorte de prazo";
   const rotMat = { comprado: "Material comprado", todos: "Material (comprado e a comprar)" }[status] || "Material a comprar";
   const rotMo = { comprado: "Mão de obra contratada", todos: "Mão de obra (contratada e a contratar)" }[status] || "Mão de obra a contratar";
+  async function gerarPdf(dados, nome) {
+    setPdf({ nome });
+    try {
+      const bytes = await gerarRelatorioPdf({ ...dados, topo: LOGO_WS, rodape: RODAPE_WS });
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      baixarUrl(url, nome);
+      setPdf({ nome, url });
+    } catch (e) {
+      setPdf({ nome, erro: e.message || String(e) });
+    }
+  }
+  const fecharPdf = () => setPdf((p) => { if (p?.url) URL.revokeObjectURL(p.url); return null; });
+  const hoje = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
   const imprimir = (tipo) => (g) => {
     const linhas = relatorioDaVerba(visiveis, g.num, tipo, new Set([...g.obras.keys()].map(String)), { filtroItem, status });
-    setRelatorio({ tipo, status, verba: { num: g.num, nome: g.nome }, linhas, recorte });
-    setTimeout(() => window.print(), 300);
+    gerarPdf(dadosDoRelatorio({ tipo, status, subtitulo: `${g.num} · ${g.nome}`, linhas, recorte, vazio: "Nada nesta verba com esse recorte." }),
+      `relatorio-${tipo === "mat" ? "material" : "mao-de-obra"}-verba-${g.num}-${hoje()}.pdf`);
+  };
+  // O mesmo PDF pra uma linha do "por insumo" (categoria ou produto), com a verba de cada item.
+  const imprimirInsumo = (g) => {
+    const linhas = relatorioDoInsumo(visiveis, g.nome, visaoInsumo, { filtroItem });
+    gerarPdf(dadosDoRelatorio({ tipo: "mat", status: "pendente", subtitulo: g.nome, linhas, recorte, vazio: "Nada a comprar neste insumo.", comVerba: true }),
+      `relatorio-material-${nomeDeArquivo(g.nome)}-${hoje()}.pdf`);
   };
   /* Nenhuma das duas respeita o horizonte de cima (ainda) — a data de
      necessidade e' calculada por verba, nao por item, e juntar as duas
@@ -10723,6 +11207,16 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
 
   if (carregando) return <div className="empty-note">Carregando as obras…</div>;
 
+  if (tela === "mao_propria") {
+    return (
+      <>
+        <GcTelas tela={tela} onTela={setTela} />
+        <MaoDeObraPropriaView prestadores={prestadores} podeEditar={podeEditarCompradores} usuario={usuario}
+          onMudou={(lista) => setPrestadores((p) => ({ ...p, lista }))} />
+      </>
+    );
+  }
+
   if (tela === "compradores") {
     return (
       <>
@@ -10736,10 +11230,11 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
   return (
     <>
       {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
-      {relatorio && (
-        <RelatorioSobreposto onFechar={() => setRelatorio(null)}>
-          <RelatorioVerba {...relatorio} />
-        </RelatorioSobreposto>
+      {pdf && <PdfSobreposto pdf={pdf} onFechar={fecharPdf} />}
+      {simulando && (
+        <SimuladorEquipe g={simulando} onFechar={() => setSimulando(null)}
+          prestadores={prestadores.lista.some((p) => p.ativo) ? prestadores.lista.filter((p) => p.ativo) : PRESTADORES_PADRAO}
+          padrao={!prestadores.lista.some((p) => p.ativo)} />
       )}
 
       <GcTelas tela={tela} onTela={setTela} />
@@ -10801,6 +11296,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
           previsão em vez de pedido urgente. */}
       <GcPorVerba titulo={`${rotMo}, por verba`} Icone={FileText}
         grupos={r.aContratar} cor={COR_MO} onAbrir={onAbrir} onImprimir={imprimir("mo")}
+        onSimular={status === "pendente" ? setSimulando : undefined}
         vazio={status !== "pendente" ? "Nada nesse recorte." : horizonte ? "Nada a contratar dentro desse prazo." : "Nada a contratar."} />
       <GcPorVerba titulo={`${rotMat}, por verba`} Icone={ShoppingCart}
         grupos={r.aComprar} cor={COR_MAT} onAbrir={onAbrir} onImprimir={imprimir("mat")}
@@ -10817,7 +11313,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
         <GcPorVerba
           titulo={visaoInsumo === "produto" ? "Material a comprar, por produto" : "Material a comprar, por insumo"}
           Icone={Package}
-          grupos={gruposInsumoFiltrado} cor={COR_MAT} onAbrir={onAbrir}
+          grupos={gruposInsumoFiltrado} cor={COR_MAT} onAbrir={onAbrir} onImprimir={imprimirInsumo}
           busca={buscaInsumo} onBusca={setBuscaInsumo}
           buscaPlaceholder={visaoInsumo === "produto" ? "Buscar produto — ex: colchão" : "Buscar insumo — ex: colchão"}
           vazio="Nada a comprar."
@@ -12184,9 +12680,11 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
     return !t || `${o.codigo} ${o.nome} ${o.squad}`.toLowerCase().includes(t);
   });
 
-  /* Nunca pode haver zero administradores: sem admin ninguem mais entra,
-     e a saida seria mexer no banco a mao. */
-  const tirandoOUltimoAdmin = ehOUltimoAdmin(pessoas, p.email) && perfil !== "admin";
+  /* Nunca pode faltar quem cuide da Equipe: sem essa pessoa ninguem mais
+     libera acesso, e a saida seria mexer no banco a mao. Promover o ultimo
+     Administrador a Admin master pode: quem cuida continua cuidando. */
+  const nivel = nivelQueCuida(pessoas);
+  const tirandoOUltimoAdmin = ehOUltimoGestor(pessoas, p.email) && perfil !== nivel && perfil !== "master";
 
   async function salvar() {
     setSalvando(true); setErro(null);
@@ -12267,8 +12765,8 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
 
       {tirandoOUltimoAdmin && (
         <div className="ac-nota ac-nota-forte">
-          <b>{p.nome} é o último administrador.</b> Promova outra pessoa antes de tirar este perfil —
-          sem administrador, ninguém mais consegue liberar acesso.
+          <b>{p.nome} é {nivel === "master" ? "o único admin master" : "o último administrador"}.</b> Dê esse perfil a outra pessoa antes de tirar este —
+          sem {nivel === "master" ? "admin master" : "administrador"}, ninguém mais cuida da Equipe e dos acessos.
         </div>
       )}
       {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
@@ -12290,6 +12788,17 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
   const [aviso, setAviso] = useState(null);
   const [editando, setEditando] = useState(null);
   const [acessoDe, setAcessoDe] = useState(null);
+  /* Grupo fechado na setinha (a fila de liberação pode ter vinte pessoas).
+     Lembrado neste navegador; sem armazenamento, vale só nesta visita. */
+  const [fechados, setFechados] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("equipe-grupos-fechados") || "[]")); } catch { return new Set(); }
+  });
+  const alternarGrupo = (c) => setFechados((antes) => {
+    const n = new Set(antes);
+    if (n.has(c)) n.delete(c); else n.add(c);
+    try { localStorage.setItem("equipe-grupos-fechados", JSON.stringify([...n])); } catch { /* segue só nesta visita */ }
+    return n;
+  });
 
   /* Cargo digitado uma vez vira sugestao pra proxima pessoa: a lista se
      configura pelo uso, sem tela de cadastro de cargo. */
@@ -12313,7 +12822,14 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
     }
   }
 
+  // Desativar ou excluir quem cuida da Equipe deixaria o time sem ninguém pra liberar acesso.
+  const ultimoGestor = (p) => (ehOUltimoGestor(pessoas, p.email)
+    ? `${p.nome} é quem cuida da Equipe e dos acessos. Dê o perfil ${nivelQueCuida(pessoas) === "master" ? "Admin master" : "Administrador"} a outra pessoa antes.`
+    : null);
+
   async function alternarAtivo(p) {
+    const trava = p.ativo && ultimoGestor(p);
+    if (trava) { setAviso(trava); return; }
     try {
       await onSalvar({ ...p, ativo: !p.ativo, por: usuario });
     } catch (e) {
@@ -12322,6 +12838,8 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
   }
 
   async function remover(p) {
+    const trava = ultimoGestor(p);
+    if (trava) { setAviso(trava); return; }
     const n = obrasDe(p.email);
     if (n > 0) {
       setAviso(`${p.nome} é GC de ${n} ${n === 1 ? "obra" : "obras"}. Troque o GC dessas obras antes de excluir, ou marque como inativo.`);
@@ -12439,7 +12957,7 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
                 tela de permissoes que nunca vai aparecer sozinha. */}
             <div className="compras-empty-sub">
               Comece por você: cadastre seu e-mail acima, depois clique em <b>acesso</b> na sua
-              linha e marque <b>Administrador</b>. É lá, na linha de cada pessoa, que se define
+              linha e marque <b>Admin master</b>. É lá, na linha de cada pessoa, que se define
               quais <b>módulos</b> ela abre e quais <b>obras</b> ela enxerga.
               <br /><br />
               Enquanto ninguém estiver cadastrado, <b>todo mundo vê tudo</b> — é o que impede
@@ -12449,10 +12967,14 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
         ) : ordem.map((c) => (
           <div key={c} className={`arq-bloco ${c === "Aguardando liberação" ? "eq-fila" : ""}`}>
             <div className="arq-bloco-h">
-              <span className="arq-bloco-tit">{c}</span>
-              <span className="arq-bloco-n">{porCargo[c].length}</span>
+              <button type="button" className="eq-bloco-toggle" onClick={() => alternarGrupo(c)}
+                aria-expanded={!fechados.has(c)} title={fechados.has(c) ? "Abrir o grupo" : "Fechar o grupo"}>
+                <ChevronDown size={15} className={`eq-seta ${fechados.has(c) ? "fechada" : ""}`} />
+                <span className="arq-bloco-tit">{c}</span>
+                <span className="arq-bloco-n">{porCargo[c].length}</span>
+              </button>
             </div>
-            {porCargo[c].map((p) => {
+            {!fechados.has(c) && porCargo[c].map((p) => {
               const n = obrasDe(p.email);
               return (
                 <div key={p.email} className={`arq-linha ${p.ativo ? "" : "eq-inativo"}`}>
@@ -12491,7 +13013,7 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
                 </div>
               );
             })}
-            {porCargo[c].some((p) => p.email === acessoDe) && (
+            {!fechados.has(c) && porCargo[c].some((p) => p.email === acessoDe) && (
               <AcessoDaPessoa p={porCargo[c].find((p) => p.email === acessoDe)} obras={obras}
                 pessoas={pessoas} onSalvar={onSalvarAcesso} onFechar={() => setAcessoDe(null)} />
             )}
@@ -13276,7 +13798,61 @@ function ObraCard({ o, acao, children }) {
         </div>
         {children}
       </div>
+      {/* O endereço ao lado, numa coluna (o da obra ou o do cadastro do
+          Sienge): sem nenhum dos dois, fica em branco em vez de um traço. */}
+      <div className="obra-card-end">{o.endereco && o.endereco !== "—" ? o.endereco : ""}</div>
       {acao}
+    </div>
+  );
+}
+
+/* O endereço no topo da obra, no tom da linha "OBRA #...". Administrador e
+   admin master corrigem no lápis quando precisa (pedido de 15/09/2026); o
+   resto do time só vê. */
+function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const atual = obra.endereco && obra.endereco !== "—" ? obra.endereco : "";
+  // Trocou de obra no meio da edição: a caixa fecha, sem levar o texto pra outra.
+  useEffect(() => { setEditando(false); setErro(null); }, [obra.codigo]);
+
+  async function salvar() {
+    setSalvando(true); setErro(null);
+    try {
+      await onSalvar(valor.trim());
+      setEditando(false);
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (editando) {
+    return (
+      <div className="obra-endereco-edita">
+        <input className="form-input" autoFocus value={valor} aria-label="Endereço da obra"
+          placeholder="Rua, número - complemento - bairro - cidade - UF - CEP"
+          onChange={(e) => setValor(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") setEditando(false); }} />
+        <button className="btn-doc btn-template" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button>
+        <button className="btn-doc" disabled={salvando} onClick={() => setEditando(false)}>cancelar</button>
+        <span className="cad-nota">Em branco, volta o endereço do cadastro do Sienge.</span>
+        {erro && <span className="cad-erro">{erro}</span>}
+      </div>
+    );
+  }
+  return (
+    <div className="eyebrow obra-endereco">
+      {atual || "Endereço não informado"}
+      {podeEditar && (
+        <button type="button" className="obra-endereco-btn" onClick={() => { setValor(atual); setEditando(true); }}
+          title="Corrigir o endereço da obra" aria-label="Editar endereço">
+          <Pencil size={11} />
+        </button>
+      )}
     </div>
   );
 }
@@ -13288,8 +13864,8 @@ function ObraCard({ o, acao, children }) {
    teste. Sem esta porta, a unica saida era criar o board la so pra ela
    aparecer aqui.
 
-   Tres campos, porque tres bastam: o resto (endereco, cliente, GC, valor
-   vendido) a obra ganha quando os documentos subirem. */
+   Nome, centro de custo, squad, GC e endereço (pedido de 15/09/2026); o
+   resto (cliente, valor vendido) a obra ganha quando os documentos subirem. */
 function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario }) {
   const [aberto, setAberto] = useState(false);
   const [nome, setNome] = useState("");
@@ -13297,6 +13873,7 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
   const [squad, setSquad] = useState(SQUADS[0].nome);
   // Quem cadastra costuma ser quem vai tocar; trocar e' um campo.
   const [gc, setGc] = useState(usuario || "");
+  const [endereco, setEndereco] = useState("");
   const [erro, setErro] = useState(null);
 
   const cod = codigo.trim();
@@ -13309,8 +13886,8 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
   async function criar() {
     setErro(null);
     try {
-      await onCriar({ nome: nome.trim(), codigo: cod, squad, gc: gc.trim() || null });
-      setNome(""); setCodigo(""); setAberto(false);
+      await onCriar({ nome: nome.trim(), codigo: cod, squad, gc: gc.trim() || null, endereco: endereco.trim() });
+      setNome(""); setCodigo(""); setEndereco(""); setAberto(false);
     } catch (e) {
       setErro(e.message || String(e));
     }
@@ -13334,6 +13911,9 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
         <label className="cad-largo">Nome da obra
           <input className="form-input" value={nome} placeholder="ex: Ed. Meraki, 602"
             onChange={(e) => setNome(e.target.value)} /></label>
+        <label className="cad-largo">Endereço
+          <input className="form-input" value={endereco} placeholder="ex: Rua 3310, 31 - Centro - Balneário Camboriú - SC"
+            onChange={(e) => setEndereco(e.target.value)} /></label>
         <label>Centro de custo
           <input className="form-input mono" value={codigo} placeholder="2510" inputMode="numeric" maxLength={4}
             onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 4))} />
@@ -13361,7 +13941,7 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
           {salvando ? "Criando…" : "Criar e abrir"}
         </button>
         <span className="cad-nota">
-          Ela nasce ativa e vazia — endereço, cliente e valor vendido entram quando os documentos subirem.
+          Ela nasce ativa e vazia — cliente e valor vendido entram quando os documentos subirem.
         </span>
       </div>
     </div>
@@ -13784,7 +14364,7 @@ export default function App() {
        ve o app como outro perfil, com ?verComo=mehoo no endereco. Serve pra
        conferir o que cada perfil enxerga sem trocar o perfil de ninguem no
        banco. No site oficial isto nem existe — o build tira o trecho. */
-    if (import.meta.env.DEV && real && podeGerenciarPessoas(real)) {
+    if (import.meta.env.DEV && real && podeGerenciarPessoas(real, pessoas)) {
       const outro = VER_COMO;
       if (outro && PERFIS.some((x) => x.id === outro)) return { ...real, perfil: outro };
     }
@@ -13795,17 +14375,20 @@ export default function App() {
      so' o portao. Desligar o portao e manter o filtro deixava a pessoa
      entrar e ver zero obra, que e' o mesmo estar trancado com outra
      cara. */
-  const souAdmin = migracaoPendente || podeGerenciarPessoas(eu);
-  const nPendentes = useMemo(() => (souAdmin ? pendentes(pessoas).length : 0), [pessoas, souAdmin]);
+  // Administrador e Admin master: o contrato da obra e os compradores.
+  const souAdmin = migracaoPendente || ehAdministrador(eu);
+  // Equipe e acessos: só o Admin master (ou o Administrador, enquanto não há master).
+  const cuidaDaEquipe = migracaoPendente || podeGerenciarPessoas(eu, pessoas);
+  const nPendentes = useMemo(() => (cuidaDaEquipe ? pendentes(pessoas).length : 0), [pessoas, cuidaDaEquipe]);
   const modulosVisiveis = useMemo(
-    () => (migracaoPendente ? MODULOS : MODULOS.filter((m) => podeVerModulo(eu, m.id))),
-    [eu, migracaoPendente]);
+    () => (migracaoPendente ? MODULOS : MODULOS.filter((m) => podeVerModulo(eu, m.id, pessoas))),
+    [eu, pessoas, migracaoPendente]);
 
   /* Modulo que a pessoa nao pode ver nao pode ficar aberto: ela pode ter
      chegado nele antes de o acesso mudar, ou por um atalho de dentro de
      outra tela. Volta pro primeiro que ela pode. */
   useEffect(() => {
-    if (pessoasCarregando || migracaoPendente || podeVerModulo(eu, modulo)) return;
+    if (pessoasCarregando || migracaoPendente || podeVerModulo(eu, modulo, pessoas)) return;
     setModulo(modulosVisiveis[0]?.id || "inicio");
   }, [eu, modulo, modulosVisiveis, pessoasCarregando]);
 
@@ -13920,6 +14503,26 @@ export default function App() {
   }, [obrasAtivas, painelDados, selectedId]);
   const obrasConcluidas = useMemo(() => obras.filter((o) => situacaoDe(o) === "concluida"), [obras, registro]);
   const obrasNovas = useMemo(() => obras.filter((o) => !situacaoDe(o)), [obras, registro]);
+  /* O endereço da obra que não tem um: o do cadastro do Sienge
+     (sienge_obra.endereco_completo), pelo código. O Monday não manda a
+     Localização, e a obra iniciada assim guardou "—". Só na tela: nada é
+     gravado, e o endereço próprio da obra, quando existe, continua valendo. */
+  const enderecoSienge = useMemo(() => new Map((siengeObras || [])
+    .filter((r) => String(r.endereco_completo || "").trim())
+    .map((r) => [String(r.codigo), String(r.endereco_completo).trim()])), [siengeObras]);
+  useEffect(() => {
+    if (!enderecoSienge.size && !registro.size) return;
+    setObras((prev) => {
+      let mudou = false;
+      const prox = prev.map((o) => {
+        const alvo = enderecoResolvido(o.endereco, registro.get(String(o.codigo))?.endereco, enderecoSienge.get(String(o.codigo)));
+        if (!alvo || alvo === o.endereco) return o;
+        mudou = true;
+        return { ...o, endereco: alvo };
+      });
+      return mudou ? prox : prev;
+    });
+  }, [obras.length, enderecoSienge, registro]);
   const dadosLocalizacao = useMemo(() => agruparPorLocalizacao(siengeObras, registro), [siengeObras, registro]);
   /* Otimista: a tela muda na hora, e desfaz sozinha se o Supabase
      recusar — sem isso, cada clique ficaria "cru" até a resposta ir e
@@ -13985,13 +14588,21 @@ export default function App() {
     setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
   }
 
-  async function criarObraManual({ nome, codigo, squad, gc }) {
+  // O endereço corrigido à mão (administrador e admin master). Vazio volta ao do cadastro do Sienge.
+  async function definirEnderecoDaObra(codigo, endereco) {
+    const linha = await definirEndereco(codigo, endereco);
+    setRegistro((prev) => new Map(prev).set(String(linha.codigo), linha));
+    setObras((prev) => prev.map((o) => (String(o.codigo) === String(codigo)
+      ? { ...o, endereco: endereco || enderecoSienge.get(String(codigo)) || "—" } : o)));
+  }
+
+  async function criarObraManual({ nome, codigo, squad, gc, endereco }) {
     setSalvandoObra("manual");
     setErroBanco(null);
     try {
       const nova = {
         id: codigo, codigo, nome, squad,
-        boardId: null, endereco: "—", cliente: "—", gc: gc || null,
+        boardId: null, endereco: endereco || "—", cliente: "—", gc: gc || null,
         area: null, prazo: null, valorVendido: 0,
         categorias: buildCategorias([], null),
         semDetalhe: true, manual: true,
@@ -15122,7 +15733,43 @@ export default function App() {
 
         .obra-card-grupo { margin-bottom: 22px; }
         .obra-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 12px; padding: 13px 16px; margin-bottom: 8px; max-width: 720px; }
-        .obra-card-info { min-width: 0; }
+        .obra-card-info { min-width: 0; flex: 0 0 36%; }
+        .obra-card-end { flex: 1; min-width: 0; font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+        .eq-bloco-toggle { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+        .eq-seta { color: var(--ink-3); flex-shrink: 0; transition: transform .15s ease; }
+        .eq-seta.fechada { transform: rotate(-90deg); }
+        .sim-painel { max-width: 880px; margin: 24px auto; background: var(--surface-1); color: var(--ink); border-radius: 14px; padding: 18px 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); }
+        .sim-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: var(--purple); }
+        .sim-topo .btn-voltar { margin-left: auto; }
+        .sim-tit { font-weight: 700; color: var(--ink); font-size: 15px; }
+        .sim-sub { font-size: 12px; color: var(--ink-3); }
+        .sim-obra { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-2); margin-bottom: 10px; }
+        .sim-obra .cmp-forn-sel { max-width: none; flex: 1; }
+        .sim-rolagem { overflow-x: auto; }
+        .sim-tabela { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+        .sim-tabela th { text-align: left; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); padding: 6px 8px; border-bottom: 1px solid var(--line-2); }
+        .sim-tabela td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+        .sim-tabela .right { text-align: right; }
+        .sim-tabela .center { text-align: center; }
+        .sim-tabela tr.sim-esp td { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--purple); background: var(--surface-2); }
+        .sim-tabela tr.on td { background: color-mix(in srgb, var(--purple) 6%, transparent); }
+        .sim-num { width: 96px; text-align: right; padding: 4px 8px; margin: 0; }
+        .sim-num.sim-curto { width: 64px; text-align: center; }
+        .sim-resumo { margin: 14px 0 0 auto; width: 380px; max-width: 100%; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; }
+        .sim-resumo > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+        .sim-resumo > div:last-child { border-bottom: 0; }
+        .sim-dif { font-weight: 700; }
+        .sim-dif.economia { background: var(--green-bg); color: color-mix(in srgb, var(--green) 75%, var(--ink)); }
+        .sim-dif.mais { background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--red); }
+        .mop .gc-nota { margin: 6px 0 10px; }
+        .mop .mop-esp { font-weight: 700; color: var(--purple); }
+        .mop .form-input { margin: 0; }
+        .mop .mop-valor { text-align: right; }
+        .mop-novo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+        .mop-novo-tit { flex-basis: 100%; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+        .mop-novo .form-input { width: auto; flex: 1 1 150px; }
+        .mop-novo .cargo-chips { flex-basis: 100%; }
+        @media (max-width: 720px) { .obra-card { flex-wrap: wrap; } .obra-card-info { flex-basis: 100%; } .obra-card-end { flex-basis: 100%; order: 3; } }
         .obra-card-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
         .obra-card-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
 
@@ -15481,6 +16128,12 @@ export default function App() {
         .grp-comprados { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line-2); white-space: nowrap; }
         .grp-comprados.parte { color: var(--brand); background: var(--brand-tint); border-color: var(--brand-line); }
         .grp-comprados.tudo { color: color-mix(in srgb, var(--green) 75%, var(--ink)); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+        .pill.pill-btn:disabled { cursor: not-allowed; }
+        .pill.pill-btn.pill-wait:disabled { opacity: .45; }
+        .btn-canal:disabled { opacity: .45; cursor: not-allowed; }
+        .det-opcao:disabled { cursor: default; }
+        .det-opcao:disabled:not(.escolhida):hover { background: transparent; }
+        .cmp-leitura b { color: var(--ink); font-weight: 600; }
         .cmp-filtro-forn { margin-left: auto; display: flex; align-items: center; gap: 8px; }
         .cmp-forn-sel { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12px; padding: 6px 9px; background: var(--surface-1); color: var(--ink); max-width: 300px; }
         .cmp-forn-sel:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
@@ -16752,6 +17405,13 @@ export default function App() {
         .ini-alerta.ruim { background: var(--red-bg); border-color: var(--danger-line); color: var(--text); }
         .ini-alerta.aviso { background: var(--amber-bg); border-color: var(--warning-line); color: var(--text); }
         .ini-seta { flex-shrink: 0; opacity: .5; margin-top: 2px; }
+        .ini-seta.aberta { transform: rotate(180deg); }
+        .ini-detalhe { margin: -4px 0 8px; padding: 6px 12px 8px; border: 1px solid var(--danger-line); border-top: 0; border-radius: 0 0 8px 8px; background: var(--surface-1); }
+        .ini-detalhe-linha { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 11.5px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+        .ini-detalhe-linha:last-child { border-bottom: 0; }
+        .ini-detalhe-nome { flex: 1 1 120px; min-width: 0; font-weight: 600; color: var(--ink); }
+        .ini-detalhe-val { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+        .ini-detalhe-pct { font-weight: 700; color: var(--red); white-space: nowrap; }
         .ini-obra { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: border-color .12s ease; }
         .ini-obra:hover { border-color: var(--ink-3); }
         .ini-obra-id { flex: 1; min-width: 0; }
@@ -16876,6 +17536,17 @@ export default function App() {
         .rel-barra { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; max-width: 210mm; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px; background: var(--surface-1); color: var(--text); font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
         .rel-barra .btn-voltar { margin-left: auto; }
         .rel-folha { display: flex; justify-content: center; }
+        .pdf-visor { display: block; width: 100%; max-width: 1100px; height: calc(100vh - 120px); margin: 0 auto; border: 0; border-radius: 10px; background: #fff; }
+        .pdf-gerando { max-width: 210mm; margin: 40px auto; padding: 28px; text-align: center; color: var(--ink-2); background: var(--surface-1); border-radius: 10px; }
+        .rel-barra a.btn-doc { text-decoration: none; }
+        .gc-prazo-solic { font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line-2); }
+        .gc-prazo-solic.parte { color: var(--brand); background: var(--brand-tint); border-color: var(--brand-line); }
+        .gc-prazo-solic.tudo { color: color-mix(in srgb, var(--green) 75%, var(--ink)); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+        .eyebrow.obra-endereco { margin: 0 0 22px; line-height: 1.6; }
+        .obra-endereco-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 6px; vertical-align: -5px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer; opacity: 0.6; }
+        .obra-endereco-btn:hover { opacity: 1; background: var(--surface-2); color: var(--ink); }
+        .obra-endereco-edita { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 22px; }
+        .obra-endereco-edita .form-input { flex: 1 1 380px; margin: 0; }
         .rel-doc .rel-sub { font-size: 10.5pt; font-weight: 600; color: #1c2426; margin-top: 1.5mm; letter-spacing: 0; }
         .rel-doc .rel-extra { font-size: 7.4pt; color: #6b7b7f; margin-top: .6mm; }
         .rel-doc .rel-entrega { font-size: 8pt; font-weight: 400; color: #6b7b7f; text-transform: none; letter-spacing: 0; }
@@ -17342,7 +18013,7 @@ export default function App() {
           <div className="obra-meta">O que a gente especifica, por grupo e subgrupo — escolha os produtos e eles vão direto para o Executivo da obra</div>
           <Catalogo usuario={usuario} obras={obrasAtivas} podeEditar={perfilPermiteEditar} />
           </>
-          ) : modulo === "equipe" ? (
+          ) : modulo === "equipe" && cuidaDaEquipe ? (
           <>
           <div className="eyebrow">CADASTRO · {pessoas.length}</div>
           <div className="title-row"><span className="title-accent">Equipe</span></div>
@@ -17418,7 +18089,10 @@ export default function App() {
               obras={obrasAtivas.some((o) => String(o.codigo) === String(obra.codigo)) ? obrasAtivas : [obra, ...obrasAtivas]}
               onFechar={() => setApresAberta(false)} />
           ) : <div className="apres-abrindo">Abrindo a apresentação…</div>)}
-          <div className="obra-meta">{obra.endereco} · {obra.cliente}</div>
+          {/* O endereço completo, no mesmo tom da linha "OBRA #..." de cima: o da
+              obra ou, sem ele, o do cadastro do Sienge. Só administrador e
+              admin master corrigem. */}
+          <EnderecoDaObra obra={obra} podeEditar={souAdmin} onSalvar={(v) => definirEnderecoDaObra(obra.codigo, v)} />
 
           <BarraEtapa
             edicao={edicao} salvando={salvando} carregando={carregandoDados}
@@ -17472,7 +18146,8 @@ export default function App() {
           {tab === "comparativo" && (
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
-          {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} usuario={usuario} />}
+          {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} usuario={usuario}
+            podeEditar={edicao.minha} onHabilitar={perfilPermiteEditar ? habilitarEdicao : undefined} editandoPor={edicao.por} />}
           {grupo === "arquivos" && (
             <ArquivosObraView obra={obra} usuario={usuario} podeEditar={edicao.minha} souAdmin={souAdmin}
               onArquivos={trocarArquivosDaObra} />

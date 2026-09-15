@@ -11,7 +11,7 @@ alter table pessoa add column if not exists perfil text;
 
 alter table pessoa drop constraint if exists pessoa_perfil_check;
 alter table pessoa add constraint pessoa_perfil_check
-  check (perfil is null or perfil in ('admin','geral','gc','mehoo'));
+  check (perfil is null or perfil in ('master','admin','geral','gc','mehoo'));
 
 -- Quando entrou, quando foi liberada e por quem. A primeira e' o que
 -- ordena a fila; as outras duas sao o registro de quem deu o acesso.
@@ -33,7 +33,8 @@ update pessoa set perfil = 'geral' where perfil is null and entrou_em is null;
 -- perfil porque nao ha admin pra dar.
 insert into pessoa (email, nome, cargo, perfil, ativo)
 values ('priscila.wayhs@groupws.com.br', 'Priscila Wayhs', 'Coordenação', 'admin', true)
-on conflict (email) do update set perfil = 'admin', ativo = true;
+-- Quem ja e' admin master continua master: rodar de novo nao rebaixa.
+on conflict (email) do update set perfil = case when pessoa.perfil = 'master' then 'master' else 'admin' end, ativo = true;
 
 -- Confere o que entrou:
 --   select email, nome, perfil, ativo, entrou_em from pessoa order by perfil, nome;

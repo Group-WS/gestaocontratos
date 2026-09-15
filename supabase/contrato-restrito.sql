@@ -10,7 +10,7 @@
 -- nao e' administrador; isto aqui fecha a porta no proprio banco. Sem
 -- isto, quem descobrisse o caminho ainda conseguiria baixar.
 --
--- Administrador = pessoa com perfil 'admin' e ativa — a mesma regra da
+-- Administrador = pessoa com perfil 'admin' ou 'master' e ativa — a mesma regra da
 -- tela. `security definer` pra funcionar igual quando as politicas de
 -- perfil da tabela pessoa (rls-perfis.sql) forem ligadas.
 --
@@ -23,7 +23,7 @@ language sql stable security definer set search_path = public
 as $$
   select exists (
     select 1 from pessoa
-     where email = lower(auth.jwt() ->> 'email') and ativo and perfil = 'admin'
+     where email = lower(auth.jwt() ->> 'email') and ativo and perfil in ('admin','master')
   )
 $$;
 
