@@ -120,9 +120,9 @@ const gas = (descricao, esperado, vendido) => {
   const r = alertaConferenciaTecnica(descricao, { vendido });
   const obtido = !r ? "passa"
     : r.escopo !== "item" ? "grupo"
-    : r.texto.startsWith("sem o tipo") ? "sem tipo"
-    : r.texto.startsWith("o vendido") ? "trocado"
-    : (r.texto.match(/^aquecedor (GN|GLP):/) || [])[1] || "outro";
+    : /Atenção: o vendido é/.test(r.texto) ? "trocado"
+    : (r.texto.match(/Item informado: (GN|GLP)\./) || [])[1]
+      || (r.texto.startsWith("⚠️ CONFERÊNCIA OBRIGATÓRIA — GÁS:") ? "sem tipo" : "outro");
   const ok = obtido === esperado;
   if (!ok) falhas++;
   console.log(`${ok ? "ok  " : "FALHOU"} ${descricao.slice(0, 46).padEnd(48)} ${obtido.padEnd(11)} ${ok ? "" : "esperava " + esperado}`);

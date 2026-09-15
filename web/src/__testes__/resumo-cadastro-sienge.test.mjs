@@ -38,17 +38,17 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
 const CADEIRA = { codigo: "406", nome: "MOBILIA SOLTA - CADEIRA", variantes: [] };
 const BASE = [CADEIRA];
 const sugerida = { maes: [{ grupo: CADEIRA, score: 0.8 }], detalhes: [] };
-const linhaDe = (chave, it) => ({ chave, it: { codigo: "24.3", desc: "Cadeira Eiffel", marca: "Rivatti", un: "un", ...it } });
+const linhaDe = (chave, it, material = 0) => ({ chave, material, it: { codigo: "24.3", desc: "Cadeira Eiffel", marca: "Rivatti", un: "un", ...it } });
 const itens = [
-  linhaDe("a", { ambiente: "Sala", qtdExecutivo: 2 }),
-  linhaDe("b", { ambiente: "Varanda", qtdExecutivo: 3 }),
-  linhaDe("c", { desc: "Cadeira Tulipa", detalheSienge: "MOBILIA SOLTA - CADEIRA / TULIPA", qtdExecutivo: 4 }),
-  linhaDe("d", { desc: "Mesa lateral", qtdExecutivo: 1 }),
+  linhaDe("a", { ambiente: "Sala", qtdExecutivo: 2 }, 200),
+  linhaDe("b", { ambiente: "Varanda", qtdExecutivo: 3 }, 300.1),
+  linhaDe("c", { desc: "Cadeira Tulipa", detalheSienge: "MOBILIA SOLTA - CADEIRA / TULIPA", qtdExecutivo: 4 }, 400),
+  linhaDe("d", { desc: "Mesa lateral", qtdExecutivo: 1 }, 50),
   linhaDe("e", { desc: "Banco", maeSienge: "406", codigoDetalheSienge: " 77 ", qtdExecutivo: 1.5 }),
-  linhaDe("f", { desc: "Cadeira Tulipa", detalheSienge: "MOBILIA SOLTA - CADEIRA / TULIPA", ambiente: "Varanda", qtdExecutivo: 2 }),
+  linhaDe("f", { desc: "Cadeira Tulipa", detalheSienge: "MOBILIA SOLTA - CADEIRA / TULIPA", ambiente: "Varanda", qtdExecutivo: 2 }, 200),
   // mesma descrição do gerado pra "a" e "b", só com caixa e espaços diferentes
   linhaDe("g", { ambiente: "Quarto", qtdExecutivo: 1,
-    descritivoSienge: descricaoSienge({ marca: "Rivatti", desc: "Cadeira Eiffel" }).toLowerCase().replace(/ /g, "  ") }),
+    descritivoSienge: descricaoSienge({ marca: "Rivatti", desc: "Cadeira Eiffel" }).toLowerCase().replace(/ /g, "  ") }, 100.05),
 ];
 const casamentos = new Map([["a", sugerida], ["b", sugerida], ["c", sugerida], ["f", sugerida], ["g", sugerida]]);
 const r = M.resumoCadastroSienge(itens, casamentos, BASE, M.auxiliaresDoGrupo(itens, "2450"));
@@ -71,6 +71,10 @@ conf("... somando os iguais", tulipa?.quantidade, 6);
 conf("... sem inventar código auxiliar", tulipa?.codigoAuxDetalhe, "");
 conf("sem insumo mãe vai pra outra aba", r.semMae.some((l) => /Mesa/.test(l.item)), true);
 conf("... e não entra no resumo", r.linhas.some((l) => /MESA/i.test(l.descricaoDetalhe)), false);
+
+conf("o custo orçado soma junto com a quantidade", eiffel[0].custo, 600.15);
+conf("... também no detalhe já cadastrado", tulipa?.custo, 600);
+conf("sem insumo mãe leva o custo dele", r.semMae.find((l) => /Mesa/.test(l.item))?.custo, 50);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

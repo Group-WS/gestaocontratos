@@ -17,7 +17,7 @@ import {
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
-  MapPin, Printer, Presentation, ExternalLink
+  MapPin, Printer, Presentation, ExternalLink, Users
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, faltandoNaTela } from "./lib/obras";
@@ -37,6 +37,7 @@ import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import Catalogo from "./Catalogo";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
+import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
 import { LogoGroupWS, AlternarTema } from "./marca.jsx";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
@@ -1419,7 +1420,7 @@ function dataDeNecessidade(obra, cat, itens, aloc) {
  * Compras e de Contratos. Inventar uma terceira aqui faria o painel
  * geral discordar da tela de onde o numero veio.
  */
-function resumoDaObra(o, hoje = new Date()) {
+function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
   const verbas = new Map();
   let matTotal = 0, matFeito = 0, moTotal = 0, moFeito = 0;
 
@@ -1427,6 +1428,8 @@ function resumoDaObra(o, hoje = new Date()) {
     const itens = cat.itens || [];
     itens.forEach((it) => {
       if (it.ehTitulo) return;
+      // Recorte do painel (fornecedor, comprador): item fora dele não conta.
+      if (filtroItem && !filtroItem(it, cat)) return;
       const { material, mo } = parcelasDoItem(it, cat);
       const aloc = alocacaoDoItem(it, cat);
       if (material <= 0 && mo <= 0) return;
@@ -1489,13 +1492,18 @@ function resumoDaObra(o, hoje = new Date()) {
  * data de entrega nao tem como ser recortada: ela fica de fora do
  * recorte e e' contada a parte, em vez de sumir calada.
  */
-function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
-  const linhas = (obras || []).map((o) => resumoDaObra(o, hoje)).filter((L) => !L.semDados);
+function resumoGeral(obras, { hoje = new Date(), horizonteDias = null, filtroItem = null, status = "pendente" } = {}) {
+  const linhas = (obras || []).map((o) => resumoDaObra(o, hoje, filtroItem)).filter((L) => !L.semDados);
   const limite = horizonteDias == null ? null
     : new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + horizonteDias);
 
+  // O prazo é do que falta fazer: o que já foi comprado não tem data a cumprir.
+  const comPrazo = status === "pendente";
+  // "pendente" é o que falta; "comprado", o que já foi; "todos", os dois.
+  const parte = (total, falta) => (status === "comprado" ? total - falta : status === "todos" ? total : falta);
+
   const dentro = (quando) => {
-    if (limite == null) return true;
+    if (limite == null || !comPrazo) return true;
     if (!quando) return false;
     return quando <= limite;
   };
@@ -1503,7 +1511,7 @@ function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
   const mat = new Map(), mo = new Map();
   let semData = 0;
   linhas.forEach((L) => {
-    if (horizonteDias != null && !L.dataEntrega) {
+    if (horizonteDias != null && comPrazo && !L.dataEntrega) {
       semData += L.mat.falta + L.mo.falta;
       return;
     }
@@ -1512,7 +1520,7 @@ function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
          permite expandir a linha do grupo e mostrar de qual obra vem
          cada pedaço do total, em vez de só a contagem. */
       const junta = (mapa, valor, quando) => {
-        if (valor <= 0 || !dentro(quando)) return;
+        if (valor < 0.005 || !dentro(quando)) return;
         if (!mapa.has(v.num)) mapa.set(v.num, { num: v.num, nome: v.nome, total: 0, obras: new Map() });
         const g = mapa.get(v.num);
         g.total += valor;
@@ -1520,8 +1528,8 @@ function resumoGeral(obras, { hoje = new Date(), horizonteDias = null } = {}) {
         atual.valor += valor;
         g.obras.set(L.codigo, atual);
       };
-      junta(mat, v.matFalta, v.quandoMat);
-      junta(mo, v.moFalta, v.quandoMo);
+      junta(mat, parte(v.mat, v.matFalta), v.quandoMat);
+      junta(mo, parte(v.mo, v.moFalta), v.quandoMo);
     });
   });
 
@@ -1569,12 +1577,13 @@ function acumularQtd(mapaQtds, it) {
  * categoria", visivel e por ultimo — nunca escondido, pro que falta
  * classificar virar fila de trabalho, e nao sumir calado.
  */
-function resumoPorInsumo(obras) {
+function resumoPorInsumo(obras, { filtroItem = null } = {}) {
   const grupos = new Map();
   (obras || []).forEach((o) => {
     (o.categorias || []).forEach((cat) => {
       (cat.itens || []).forEach((it) => {
         if (it.ehTitulo) return;
+        if (filtroItem && !filtroItem(it, cat)) return;
         const { material } = parcelasDoItem(it, cat);
         if (material <= 0 || it.comprado) return;
         const nome = subgrupoDe(it.desc, cat.num) || "Sem categoria";
@@ -1606,12 +1615,13 @@ function resumoPorInsumo(obras) {
  * linhas) — é pra isso que a busca serve: digitar uma palavra junta tudo
  * que bate, mesmo em linhas separadas.
  */
-function resumoPorProduto(obras) {
+function resumoPorProduto(obras, { filtroItem = null } = {}) {
   const grupos = new Map();
   (obras || []).forEach((o) => {
     (o.categorias || []).forEach((cat) => {
       (cat.itens || []).forEach((it) => {
         if (it.ehTitulo) return;
+        if (filtroItem && !filtroItem(it, cat)) return;
         const { material } = parcelasDoItem(it, cat);
         if (material <= 0 || it.comprado) return;
         const nome = String(it.desc || "").replace(/\s+/g, " ").trim();
@@ -1935,8 +1945,10 @@ function resumoAditivos(aditivos) {
  * ja fez (prazo e filtro de obras). Assim o total do PDF e' o mesmo
  * numero da linha em que a pessoa clicou.
  */
-function relatorioDaVerba(obras, num, tipo, obrasDaLinha = null) {
+function relatorioDaVerba(obras, num, tipo, obrasDaLinha = null, { filtroItem = null, status = "pendente" } = {}) {
   const saida = [];
+  // O mesmo recorte e o mesmo status da linha do painel: o PDF tem que bater com ela.
+  const conta = (feito) => (status === "todos" ? true : status === "comprado" ? feito : !feito);
   (obras || []).forEach((o) => {
     if (obrasDaLinha && !obrasDaLinha.has(String(o.codigo))) return;
     const cat = (o.categorias || []).find((c) => String(c.num) === String(num));
@@ -1944,12 +1956,13 @@ function relatorioDaVerba(obras, num, tipo, obrasDaLinha = null) {
     const itens = [];
     (cat.itens || []).forEach((it) => {
       if (it.ehTitulo) return;
+      if (filtroItem && !filtroItem(it, cat)) return;
       const { material, mo } = parcelasDoItem(it, cat);
       if (material <= 0 && mo <= 0) return;
       const aloc = alocacaoDoItem(it, cat);
       if (tipo === "mat") {
-        if ((material > 0 || aloc === ALOC_MAT) && !it.comprado) itens.push({ it, valor: material });
-      } else if ((mo > 0 || aloc === ALOC_MO) && contratoEtapa(it) === "nao_solicitado") {
+        if ((material > 0 || aloc === ALOC_MAT) && conta(!!it.comprado)) itens.push({ it, valor: material });
+      } else if ((mo > 0 || aloc === ALOC_MO) && conta(contratoEtapa(it) !== "nao_solicitado")) {
         itens.push({ it, valor: mo });
       }
     });
@@ -4278,8 +4291,13 @@ const ALERTA_RECORTE_CUBA =
   "conferir se o recorte da pedra bate com a cuba efetivamente comprada (modelo, medida e tipo de instalacao) antes de liberar o corte.";
 const ALERTA_BASE_MONOCOMANDO =
   "conferir a base do monocomando no apartamento (deca, docol ou outra) e a compatibilidade do acabamento.";
-const ALERTA_CLIMATIZACAO =
-  "conferir na planta tecnica se a infraestrutura e split, vrf ou cassete, e validar compatibilidade com os equipamentos vendidos nesta verba.";
+const ALERTA_CLIMATIZACAO = "⚠️ CONFERÊNCIA OBRIGATÓRIA — TODA A VERBA: o executivo deve conferir na planta do empreendimento o sistema de climatização, tipo de refrigeração, potência, quantidade de equipamentos e espaço na área técnica, garantindo a compatibilidade da infraestrutura com os equipamentos vendidos.";
+/* Alerta que já traz o próprio título ("⚠️ CONFERÊNCIA OBRIGATÓRIA — GÁS: …")
+   não ganha o rótulo genérico da tela: sairia repetido. */
+function partesDoAlerta(texto) {
+  const m = /^⚠️\s*([^:]{3,80}):\s*([\s\S]*)$/.exec(String(texto || ""));
+  return m ? { titulo: m[1].trim(), corpo: m[2] } : null;
+}
 const ALERTA_CLIMATIZACAO_MAO_DE_OBRA =
   "conferir se a mao de obra contratada corresponde ao tipo de equipamento e ao ponto de infraestrutura previsto na planta.";
 
@@ -4290,11 +4308,11 @@ const ALERTA_CLIMATIZACAO_MAO_DE_OBRA =
 // passa pela conferência, mesmo com o tipo escrito: a descrição diz o
 // que foi pedido, não qual é o gás do prédio.
 const ALERTA_AQUECEDOR_SEM_TIPO =
-  "sem o tipo de gas na descricao: conferir se o predio e GN ou GLP e pedir o aquecedor na mesma versao.";
-const alertaAquecedorDoTipo = (tipo) =>
-  `aquecedor ${tipo}: conferir se o gas do predio e ${tipo} mesmo — aquecedor de um gas nao serve no outro sem conversao.`;
+  "⚠️ CONFERÊNCIA OBRIGATÓRIA — GÁS: o executivo deve conferir na planta do empreendimento o tipo de gás (GN ou GLP), a bitola da tubulação e a capacidade compatível do aquecedor (L/min). Solicitar o equipamento na versão e capacidade adequadas à infraestrutura prevista.";
+// Com o gás escrito no item, o texto é o mesmo e ganha o que o item diz no fim.
+const alertaAquecedorDoTipo = (tipo) => `${ALERTA_AQUECEDOR_SEM_TIPO} Item informado: ${tipo}.`;
 const alertaAquecedorTrocado = (vendido, executivo) =>
-  `o vendido e ${vendido} e o executivo e ${executivo}: conferir o gas do predio e qual versao do aquecedor comprar.`;
+  `${ALERTA_AQUECEDOR_SEM_TIPO} Atenção: o vendido é ${vendido} e o executivo é ${executivo}.`;
 
 // Aquecedor que não é a gás. Só conta quando a descrição não fala em
 // gás: "ignição elétrica" e "solar com apoio a gás" continuam a gás.
@@ -4970,8 +4988,8 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
       </div>
       {l.alertaTecnico && (
         <div className="conf-motivo">
-          <span className="alerta-conf">⚠️ <b>Alerta de conferência técnica:</b></span>{" "}
-          <span>{l.alertaTecnico}</span>
+          <span className="alerta-conf">⚠️ <b>{partesDoAlerta(l.alertaTecnico) ? `${partesDoAlerta(l.alertaTecnico).titulo}:` : "Alerta de conferência técnica:"}</b></span>{" "}
+          <span>{partesDoAlerta(l.alertaTecnico)?.corpo ?? l.alertaTecnico}</span>
         </div>
       )}
       {l.motivo && <div className="conf-motivo">{l.motivo}</div>}
@@ -5099,11 +5117,11 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
                       <div>
                         <b>
                           {alertaGrupo.length === 1
-                            ? "Alerta de conferência técnica — vale para toda a verba:"
+                            ? (partesDoAlerta(alertaGrupo[0]) ? `${partesDoAlerta(alertaGrupo[0]).titulo}:` : "Alerta de conferência técnica — vale para toda a verba:")
                             : `${alertaGrupo.length} alertas de conferência técnica nesta verba:`}
                         </b>{" "}
                         {alertaGrupo.length === 1 ? (
-                          <span>{alertaGrupo[0]}</span>
+                          <span>{partesDoAlerta(alertaGrupo[0])?.corpo ?? alertaGrupo[0]}</span>
                         ) : (
                           <ul className="grupo-alerta-lista">
                             {alertaGrupo.map((texto) => <li key={texto}>{texto}</li>)}
@@ -8748,6 +8766,8 @@ function ComprasView({ obra, onItemChange, usuario }) {
       {porVerba.map((g) => {
         const aberto = abertos.has(g.num);
         const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
+        const nComprados = g.itens.filter((r) => r.it.comprado).length;
+        const valorComprado = g.itens.reduce((t, r) => t + (r.it.comprado ? r.material : 0), 0);
         const grupoAssociado = g.itens.every((r) => casamentos.has(r.chave));
         // As colunas do Sienge só aparecem na etapa Sienge. Em Tudo, Sem
         // canal e nos outros canais elas respondiam uma pergunta que ali
@@ -8771,6 +8791,11 @@ function ComprasView({ obra, onItemChange, usuario }) {
                   <span className="grp-num mono">{g.num}</span>
                   <span className="grp-nome">{g.nome}</span>
                   <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "produto" : "produtos"}</span>
+                  {/* Quanto do grupo já foi comprado, sem precisar abrir: */}
+                  <span className={`grp-comprados ${nComprados === g.itens.length ? "tudo" : nComprados ? "parte" : ""}`}
+                    title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
+                    {nComprados === g.itens.length ? <><Check size={11} /> tudo comprado</> : `${nComprados} de ${g.itens.length} comprados`}
+                  </span>
                   {nSel > 0 && <span className="grp-avulsos">{nSel} selecionados</span>}
                 </div>
               </button>
@@ -8803,7 +8828,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
             </div>
             {aberto && (
               <div className="grp-itens">
-                <table>
+                <table className="tab-compras">
                   <thead>
                     <tr>
                       <th style={{ width: 34 }} />
@@ -8811,8 +8836,11 @@ function ComprasView({ obra, onItemChange, usuario }) {
                       <th>Descrição</th>
                       <th style={{ width: 74 }} className="center">Qtd.</th>
                       <th style={{ width: 104 }} className="right">Material</th>
-                      <th style={{ width: 112 }} className="center">Canal</th>
-                      <th style={{ width: 104 }} className="center">Status</th>
+                      {/* Na etapa Sienge o canal é sempre Sienge: a coluna dá lugar ao
+                          status da solicitação, que é o passo antes da compra. */}
+                      {!noSienge && <th style={{ width: 112 }} className="center">Canal</th>}
+                      {noSienge && <th style={{ width: 118 }} className="center">Status solicitado</th>}
+                      <th style={{ width: noSienge ? 112 : 104 }} className="center">{noSienge ? "Status comprado" : "Status"}</th>
                       {noSienge && doSienge && <th style={{ width: 122 }} className="center">Lançado Sienge</th>}
                       {/* A mae virou a primeira linha do detalhe: eram
                           duas colunas contando a mesma historia, e a
@@ -8822,7 +8850,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
                   </thead>
                   <tbody>
                     {g.itens.map((r) => (
-                      <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)}
+                      <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)} noSienge={noSienge}
                         onSelecionar={() => alternar(r.chave)}
                         casamento={casamentos.get(r.chave)}
                         grupos={grupos} aux={auxiliares ? auxiliares.get(r.chave) : null}
@@ -8914,6 +8942,16 @@ function ComprasView({ obra, onItemChange, usuario }) {
                   ? "Desmarcar comprado" : "Marcar comprado"}
               </button>
             )}
+            {etapa === "sienge" && (
+              <button className="btn-associar-sel" onClick={() => {
+                const desmarcar = selecionados.every((r) => r.it.solicitado);
+                selecionados.forEach((r) => onItemChange(r.catIdx, r.itemIdx, {
+                  solicitado: !desmarcar, solicitadoEm: desmarcar ? null : new Date().toISOString(),
+                }));
+              }} title="Marca os selecionados como já solicitados no Sienge">
+                <Check size={13} /> {selecionados.every((r) => r.it.solicitado) ? "Desmarcar solicitado" : "Marcar solicitado"}
+              </button>
+            )}
             {etapa === "sienge" && baseSienge && (
               <button className="btn-associar-sel" onClick={associarSelecionados}
                 title="Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão">
@@ -8961,9 +8999,18 @@ function situacaoNoSienge(it, casamento, grupos) {
 }
 
 // O descritivo do produto no padrao do Sienge: o que a pessoa editou na linha, ou o gerado.
+// A especificação entra antes do código, no padrão da casa. Quando ela começa
+// com o código do fornecedor ("6299 - laca branca + metal amendoa"), o código
+// vai pro fim e o resto fica como especificação:
+// CORBELLI / MESA LATERAL ORBITA / LACA BRANCA + METAL AMENDOA / 6299.
 function descritivoDoItem(it) {
-  return it.descritivoSienge ?? descricaoSienge({
-    marca: it.marca, desc: it.desc, modelo: it.modelo, cor: it.cor, codigo: it.codigoFornecedor,
+  if (it.descritivoSienge != null) return it.descritivoSienge;
+  let especificacao = String(it.especificacao || "").trim();
+  let codigo = String(it.codigoFornecedor || "").trim();
+  const m = !codigo && especificacao.match(/^([A-Za-z0-9][A-Za-z0-9./-]{2,})\s+[-–—]\s+(.+)$/);
+  if (m && /\d/.test(m[1])) { codigo = m[1]; especificacao = m[2]; }
+  return descricaoSienge({
+    marca: it.marca, desc: it.desc, modelo: it.modelo, cor: it.cor, especificacao, codigo,
   });
 }
 
@@ -9028,11 +9075,14 @@ function resumoCadastroSienge(itens, casamentos, grupos, auxiliares) {
   const linhas = new Map();
   const semMae = [];
   const soma = (a, b) => Math.round((a + b) * 10000) / 10000;
+  const somaReais = (a, b) => Math.round((a + b) * 100) / 100;
   (itens || []).forEach((r) => {
     const { mae, status } = situacaoNoSienge(r.it, casamentos?.get(r.chave) || null, grupos);
     const qtd = Number(r.it.qtdExecutivo ?? r.it.qtdVendida ?? r.it.qtd ?? 0) || 0;
+    // O custo orçado é o material da linha nas Compras (o que o executivo previu).
+    const custo = Number(r.material) || 0;
     if (!mae) {
-      semMae.push({ item: [r.it.codigo, r.it.desc].filter(Boolean).join(" "), quantidade: qtd, ambiente: r.it.ambiente || "" });
+      semMae.push({ item: [r.it.codigo, r.it.desc].filter(Boolean).join(" "), quantidade: qtd, custo, ambiente: r.it.ambiente || "" });
       return;
     }
     const jaExiste = status === "exato";
@@ -9043,14 +9093,14 @@ function resumoCadastroSienge(itens, casamentos, grupos, auxiliares) {
     // com as quantidades somadas: é o que deixa a inclusão no Sienge simples.
     const chave = `${textoComparavel(mae.codigo)}|${textoComparavel(mae.nome)}|${textoComparavel(descricaoDetalhe)}`;
     const antes = linhas.get(chave);
-    if (antes) { antes.quantidade = soma(antes.quantidade, qtd); return; }
+    if (antes) { antes.quantidade = soma(antes.quantidade, qtd); antes.custo = somaReais(antes.custo, custo); return; }
     linhas.set(chave, {
       maeCodigo: mae.codigo, maeNome: mae.nome || "",
       // Do detalhe que já existe o Sienge sabe os códigos; o relatório de
       // insumos não traz, então aqui eles saem em branco em vez de inventados.
       codigoDetalhe: jaExiste ? "" : String(r.it.codigoDetalheSienge || "").trim(),
       codigoAuxDetalhe: jaExiste ? "" : (auxiliares?.get(r.chave)?.codigo || ""),
-      descricaoDetalhe, quantidade: qtd,
+      descricaoDetalhe, quantidade: qtd, custo,
       situacao: jaExiste ? "detalhe já cadastrado" : "detalhe novo (cadastrar)",
     });
   });
@@ -9058,20 +9108,29 @@ function resumoCadastroSienge(itens, casamentos, grupos, auxiliares) {
 }
 function baixarResumoCadastroSienge(obra, { linhas, semMae }) {
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([[...CABECALHO_CADASTRO_SIENGE, "Situação"],
-    ...linhas.map((l) => [l.maeCodigo, l.maeNome, l.codigoDetalhe, l.codigoAuxDetalhe, l.descricaoDetalhe, l.quantidade, l.situacao])]);
-  ws["!cols"] = [{ wch: 14 }, { wch: 40 }, { wch: 12 }, { wch: 14 }, { wch: 60 }, { wch: 11 }, { wch: 24 }];
+  // Custo vai como número (dá pra somar no Excel), mostrado em reais.
+  const emReais = (planilha, col, n) => {
+    for (let lin = 1; lin <= n; lin++) {
+      const cel = planilha[XLSX.utils.encode_cell({ r: lin, c: col })];
+      if (cel && typeof cel.v === "number") cel.z = '"R$" #,##0.00';
+    }
+  };
+  const ws = XLSX.utils.aoa_to_sheet([[...CABECALHO_CADASTRO_SIENGE, "Custo orçado (R$)", "Situação"],
+    ...linhas.map((l) => [l.maeCodigo, l.maeNome, l.codigoDetalhe, l.codigoAuxDetalhe, l.descricaoDetalhe, l.quantidade, l.custo, l.situacao])]);
+  emReais(ws, 6, linhas.length);
+  ws["!cols"] = [{ wch: 14 }, { wch: 40 }, { wch: 12 }, { wch: 14 }, { wch: 60 }, { wch: 11 }, { wch: 16 }, { wch: 24 }];
   XLSX.utils.book_append_sheet(wb, ws, "Resumo");
   if (semMae.length) {
-    const wo = XLSX.utils.aoa_to_sheet([["Item no Confere", "Quantidade", "Ambiente"],
-      ...semMae.map((l) => [l.item, l.quantidade, l.ambiente])]);
-    wo["!cols"] = [{ wch: 60 }, { wch: 11 }, { wch: 24 }];
+    const wo = XLSX.utils.aoa_to_sheet([["Item no Confere", "Quantidade", "Custo orçado (R$)", "Ambiente"],
+      ...semMae.map((l) => [l.item, l.quantidade, l.custo, l.ambiente])]);
+    emReais(wo, 2, semMae.length);
+    wo["!cols"] = [{ wch: 60 }, { wch: 11 }, { wch: 16 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(wb, wo, "Sem insumo mãe");
   }
   XLSX.writeFile(wb, `sienge-resumo-obra-${obra.codigo}.xlsx`);
 }
 
-function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange }) {
+function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false }) {
   const { it, material } = row;
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
 
@@ -9097,9 +9156,22 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       </td>
       <td className="mono center">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
       <td className="mono right">{fmtBRL(material)}</td>
-      <td className="center">
-        {it.canalCompra ? <TagCanal id={it.canalCompra} comNome /> : <span className="pill pill-wait">—</span>}
-      </td>
+      {!noSienge && (
+        <td className="center">
+          {it.canalCompra ? <TagCanal id={it.canalCompra} comNome /> : <span className="pill pill-wait">—</span>}
+        </td>
+      )}
+      {noSienge && (
+        <td className="center">
+          <button className={`pill pill-btn ${it.solicitado ? "pill-ok" : "pill-wait"}`}
+            onClick={() => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() })}
+            title={it.solicitado
+              ? `Solicitado${it.solicitadoEm ? ` em ${new Date(it.solicitadoEm).toLocaleDateString("pt-BR")}` : ""} — clique pra desfazer`
+              : "Marcar como solicitado no Sienge"}>
+            {it.solicitado ? <><Check size={11} /> solicitado</> : "pendente"}
+          </button>
+        </td>
+      )}
       <td className="center">
         {/* Sem canal nao ha o que concluir: concluir o que ninguem sabe
             por onde vai comprar seria marcar comprado no escuro. */}
@@ -10057,12 +10129,16 @@ function GcLinhaObra({ L, onAbrir }) {
         </td>
         <td className="center">
           {atrasada ? (
-            <button className="gc-selo atraso" onClick={() => setAberto((x) => !x)}>
+            <button className="gc-selo atraso" onClick={(e) => { e.stopPropagation(); setAberto((x) => !x); }}
+              title={aberto ? "Esconder o que está atrasado" : "Ver o que está atrasado nesta obra"} aria-expanded={aberto}>
               <AlertTriangle size={11} /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
+              <ChevronDown size={11} className={`gc-selo-seta ${aberto ? "aberta" : ""}`} />
             </button>
           ) : L.perto.length > 0 ? (
-            <button className="gc-selo perto" onClick={() => setAberto((x) => !x)}>
+            <button className="gc-selo perto" onClick={(e) => { e.stopPropagation(); setAberto((x) => !x); }}
+              title={aberto ? "Esconder" : "Ver o que está perto do prazo"} aria-expanded={aberto}>
               <Clock size={11} /> {L.perto.length} perto do prazo
+              <ChevronDown size={11} className={`gc-selo-seta ${aberto ? "aberta" : ""}`} />
             </button>
           ) : <span className="dim">—</span>}
         </td>
@@ -10070,6 +10146,7 @@ function GcLinhaObra({ L, onAbrir }) {
       {aberto && (
         <tr className="gc-detalhe">
           <td colSpan={5}>
+            <div className="gc-detalhe-tit">O que está atrasado ou perto do prazo nesta obra</div>
             {[...L.atrasos.map((v) => ({ ...v, tipo: "atraso" })),
               ...L.perto.map((v) => ({ ...v, tipo: "perto" }))].map((v) => (
               <div key={v.num + v.tipo} className={`gc-prazo ${v.tipo}`}>
@@ -10262,10 +10339,12 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
 /* O relatorio de uma verba, no papel da empresa — o mesmo do aditivo
    (marca no topo, faixa verde, rodape). Um bloco por obra, com os itens
    e o total dela, e o total geral no fim. */
-function RelatorioVerba({ tipo, verba, linhas, recorte }) {
+function RelatorioVerba({ tipo, verba, linhas, recorte, status = "pendente" }) {
   const total = linhas.reduce((a, l) => a + l.total, 0);
   const nItens = linhas.reduce((a, l) => a + l.itens.length, 0);
-  const titulo = tipo === "mat" ? "Material a comprar" : "Mão de obra a contratar";
+  const titulo = tipo === "mat"
+    ? ({ comprado: "Material comprado", todos: "Material" }[status] || "Material a comprar")
+    : ({ comprado: "Mão de obra contratada", todos: "Mão de obra" }[status] || "Mão de obra a contratar");
   return (
     <div className="ad-page rel-doc" id="doc-relatorio-verba">
       <img className="ad-brandbar" src={LOGO_WS} alt="" />
@@ -10334,7 +10413,7 @@ function RelatorioVerba({ tipo, verba, linhas, recorte }) {
           {linhas.map((l) => (
             <div className="l" key={l.obra.codigo}><span>#{l.obra.codigo} · {l.obra.nome}</span><b>{fmtBRL(l.total)}</b></div>
           ))}
-          <div className="l f"><span>Total {tipo === "mat" ? "a comprar" : "a contratar"}</span><b>{fmtBRL(total)}</b></div>
+          <div className="l f"><span>Total {status === "comprado" ? (tipo === "mat" ? "comprado" : "contratado") : status === "todos" ? "geral" : (tipo === "mat" ? "a comprar" : "a contratar")}</span><b>{fmtBRL(total)}</b></div>
         </div>
       </div>
       <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
@@ -10438,12 +10517,159 @@ function RelatorioSobreposto({ children, onFechar, pronto = "Relatório pronto" 
   );
 }
 
-function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
+const SEM_COMPRADOR = "__sem_comprador__";
+
+/* Os fornecedores do material das obras do painel, com quantos itens cada
+   um tem — pro filtro. Mesmo nome e mesma chave das Compras da obra. */
+function fornecedoresDasObras(obras) {
+  const linhas = [];
+  (obras || []).forEach((o) => (o.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
+    if (it.ehTitulo || parcelasDoItem(it, cat).material <= 0) return;
+    linhas.push({ it });
+  })));
+  return fornecedoresDasLinhas(linhas);
+}
+
+function GcTelas({ tela, onTela }) {
+  return (
+    <div className="gc-telas">
+      <button className={`gc-chip ${tela === "painel" ? "on" : ""}`} onClick={() => onTela("painel")}>Painel</button>
+      <button className={`gc-chip ${tela === "compradores" ? "on" : ""}`} onClick={() => onTela("compradores")}>Compradores</button>
+    </div>
+  );
+}
+
+/* Quem compra cada grupo de compra. Um comprador por grupo; o grupo é o da
+   EAP, guardado pelo nome (a numeração já mudou uma vez). Só administrador
+   troca; o resto do time vê. */
+function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) {
+  const grupos = useMemo(() => (eapAtual()?.grupos || []).map((g) => ({ num: g.num, nome: g.nome })), []);
+  const pessoas = useMemo(() => (equipe || []).filter((p) => p.ativo !== false)
+    .sort((a, b) => String(a.nome || a.email).localeCompare(String(b.nome || b.email), "pt-BR")), [equipe]);
+  const donos = useMemo(() => {
+    const m = new Map();
+    compradores.mapa.forEach((c) => m.set(c.email, c.nome));
+    return [...m.entries()].map(([email, nome]) => ({ email, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [compradores]);
+  const [filtro, setFiltro] = useState("");
+  const [salvando, setSalvando] = useState(null);
+  const [erro, setErro] = useState(null);
+  const semTabela = !!compradores.faltaTabela;
+  const visiveis = grupos.filter((g) => !filtro
+    || (compradores.mapa.get(chaveDoGrupo(g.nome))?.email || SEM_COMPRADOR) === filtro);
+
+  async function trocar(g, email) {
+    const pessoa = email ? pessoas.find((p) => p.email === email) : null;
+    setSalvando(g.nome); setErro(null);
+    try {
+      const quem = pessoa ? { email: pessoa.email, nome: pessoa.nome || pessoa.email } : null;
+      await salvarComprador(g.nome, quem, usuario);
+      const mapa = new Map(compradores.mapa);
+      if (quem) mapa.set(chaveDoGrupo(g.nome), { grupo: g.nome, ...quem });
+      else mapa.delete(chaveDoGrupo(g.nome));
+      onMudou(mapa);
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setSalvando(null);
+    }
+  }
+
+  return (
+    <div className="gc-bloco gc-compradores">
+      <div className="gc-bloco-head">
+        <Users size={15} />
+        <span className="gc-bloco-titulo">Compradores por grupo de compra</span>
+        <select className="cmp-forn-sel" value={filtro} onChange={(e) => setFiltro(e.target.value)} aria-label="Filtrar por comprador">
+          <option value="">Todos os compradores</option>
+          {donos.map((c) => <option key={c.email} value={c.email}>{c.nome}</option>)}
+          <option value={SEM_COMPRADOR}>Sem comprador</option>
+        </select>
+      </div>
+      {semTabela && (
+        <div className="aviso-migracao"><AlertTriangle size={14} />
+          <span>Falta rodar o <b>supabase/compradores.sql</b> no Supabase. Até lá dá pra ver a lista, mas não dá pra salvar.</span>
+        </div>
+      )}
+      {compradores.erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{compradores.erro}</span></div>}
+      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>Não consegui salvar: {erro}</span></div>}
+      {!podeEditar && <div className="gc-nota">Só administrador troca o comprador de um grupo.</div>}
+      <div className="grp-itens gc-tabela">
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: 70 }}>Verba</th>
+              <th>Grupo de compra</th>
+              <th style={{ width: 320 }}>Comprador</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visiveis.map((g) => {
+              const atual = compradores.mapa.get(chaveDoGrupo(g.nome));
+              return (
+                <tr key={g.nome}>
+                  <td className="mono dim">{g.num}</td>
+                  <td>{g.nome}</td>
+                  <td>
+                    <select className="cmp-forn-sel" value={atual?.email || ""}
+                      disabled={!podeEditar || semTabela || salvando === g.nome}
+                      onChange={(e) => trocar(g, e.target.value)} aria-label={`Comprador de ${g.nome}`}>
+                      <option value="">— sem comprador —</option>
+                      {atual && !pessoas.some((p) => p.email === atual.email) && <option value={atual.email}>{atual.nome}</option>}
+                      {pessoas.map((p) => (
+                        <option key={p.email} value={p.email}>{p.nome || p.email}{p.cargo ? ` · ${p.cargo}` : ""}</option>
+                      ))}
+                    </select>
+                    {salvando === g.nome && <span className="dim"> salvando…</span>}
+                  </td>
+                </tr>
+              );
+            })}
+            {visiveis.length === 0 && (
+              <tr><td colSpan={3} className="dim">Nenhum grupo com esse comprador.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], podeEditarCompradores = false, usuario }) {
   const [horizonte, setHorizonte] = useState(null);
   /* Vazio quer dizer TODAS. Guardar o conjunto das escolhidas, e nao um
      "todas: sim/nao" separado, evita o estado impossivel de estar em
      "todas" com obra marcada. */
   const [escolhidas, setEscolhidas] = useState(() => new Set());
+  // O que o painel mostra: "pendente" (o que falta), "comprado" (o que já foi) ou os dois.
+  const [status, setStatus] = useState("pendente");
+  const [fornecedor, setFornecedor] = useState("");   // "" = todos
+  const [comprador, setComprador] = useState("");     // "" = todos
+  const [tela, setTela] = useState("painel");          // "painel" | "compradores"
+  const [compradores, setCompradores] = useState({ mapa: new Map(), carregando: true });
+  useEffect(() => {
+    let vivo = true;
+    carregarCompradores()
+      .then((c) => { if (vivo) setCompradores({ ...c, carregando: false }); })
+      .catch((e) => { if (vivo) setCompradores({ mapa: new Map(), carregando: false, erro: e.message || String(e) }); });
+    return () => { vivo = false; };
+  }, []);
+  const fornecedoresDoPainel = useMemo(() => fornecedoresDasObras(obras), [obras]);
+  const listaCompradores = useMemo(() => {
+    const m = new Map();
+    compradores.mapa.forEach((c) => m.set(c.email, c.nome));
+    return [...m.entries()].map(([email, nome]) => ({ email, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [compradores]);
+  /* Fornecedor e comprador recortam ITEM a item (o comprador pelo grupo da
+     EAP do item): os totais, as linhas e o PDF saem todos do mesmo recorte. */
+  const filtroItem = useMemo(() => {
+    if (!fornecedor && !comprador) return null;
+    return (it, cat) => {
+      if (fornecedor && chaveFornecedor(it) !== fornecedor) return false;
+      if (comprador && (compradores.mapa.get(chaveDoGrupo(cat.nome))?.email || SEM_COMPRADOR) !== comprador) return false;
+      return true;
+    };
+  }, [fornecedor, comprador, compradores]);
 
   /* A lista de chips sai do resumo SEM filtro: ela precisa continuar
      inteira depois de filtrar, senao quem escolhe uma obra perde o
@@ -10455,7 +10681,8 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   const visiveis = useMemo(
     () => (escolhidas.size ? obras.filter((o) => escolhidas.has(String(o.codigo))) : obras),
     [obras, escolhidas]);
-  const r = useMemo(() => resumoGeral(visiveis, { horizonteDias: horizonte }), [visiveis, horizonte]);
+  const r = useMemo(() => resumoGeral(visiveis, { horizonteDias: horizonte, filtroItem, status }),
+    [visiveis, horizonte, filtroItem, status]);
   const t = r.totais;
 
   const [buscaInsumo, setBuscaInsumo] = useState("");
@@ -10469,20 +10696,25 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
      tela e ja chama a impressao — no navegador, "Salvar como PDF". */
   const [relatorio, setRelatorio] = useState(null);
   const recorte = [
-    horizonte != null ? `resolver nas ${HORIZONTES.find((h) => h.dias === horizonte)?.rot || `${horizonte} dias`}` : null,
+    status === "pendente" && horizonte != null ? `resolver nas ${HORIZONTES.find((h) => h.dias === horizonte)?.rot || `${horizonte} dias`}` : null,
+    status === "comprado" ? "só o que já foi comprado" : status === "todos" ? "comprado e pendente" : null,
     escolhidas.size ? `${escolhidas.size} ${escolhidas.size === 1 ? "obra escolhida" : "obras escolhidas"}` : null,
+    fornecedor ? `fornecedor: ${fornecedoresDoPainel.find((f) => f.chave === fornecedor)?.nome || fornecedor}` : null,
+    comprador ? `comprador: ${comprador === SEM_COMPRADOR ? "sem comprador" : listaCompradores.find((c) => c.email === comprador)?.nome || comprador}` : null,
   ].filter(Boolean).join(" · ") || "todas as obras, sem recorte de prazo";
+  const rotMat = { comprado: "Material comprado", todos: "Material (comprado e a comprar)" }[status] || "Material a comprar";
+  const rotMo = { comprado: "Mão de obra contratada", todos: "Mão de obra (contratada e a contratar)" }[status] || "Mão de obra a contratar";
   const imprimir = (tipo) => (g) => {
-    const linhas = relatorioDaVerba(visiveis, g.num, tipo, new Set([...g.obras.keys()].map(String)));
-    setRelatorio({ tipo, verba: { num: g.num, nome: g.nome }, linhas, recorte });
+    const linhas = relatorioDaVerba(visiveis, g.num, tipo, new Set([...g.obras.keys()].map(String)), { filtroItem, status });
+    setRelatorio({ tipo, status, verba: { num: g.num, nome: g.nome }, linhas, recorte });
     setTimeout(() => window.print(), 300);
   };
   /* Nenhuma das duas respeita o horizonte de cima (ainda) — a data de
      necessidade e' calculada por verba, nao por item, e juntar as duas
      coisas exigiria recalcular data item a item. Por enquanto as listas
      mostram tudo que falta comprar, sem recorte de prazo. */
-  const porInsumo = useMemo(() => resumoPorInsumo(visiveis), [visiveis]);
-  const porProduto = useMemo(() => resumoPorProduto(visiveis), [visiveis]);
+  const porInsumo = useMemo(() => resumoPorInsumo(visiveis, { filtroItem }), [visiveis, filtroItem]);
+  const porProduto = useMemo(() => resumoPorProduto(visiveis, { filtroItem }), [visiveis, filtroItem]);
   const gruposInsumo = visaoInsumo === "produto" ? porProduto : porInsumo;
   const gruposInsumoFiltrado = useMemo(() => {
     const alvo = semAcentos(buscaInsumo).trim();
@@ -10490,6 +10722,16 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
   }, [gruposInsumo, buscaInsumo]);
 
   if (carregando) return <div className="empty-note">Carregando as obras…</div>;
+
+  if (tela === "compradores") {
+    return (
+      <>
+        <GcTelas tela={tela} onTela={setTela} />
+        <CompradoresView compradores={compradores} equipe={equipe} podeEditar={podeEditarCompradores} usuario={usuario}
+          onMudou={(mapa) => setCompradores((c) => ({ ...c, mapa }))} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -10500,14 +10742,19 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
         </RelatorioSobreposto>
       )}
 
+      <GcTelas tela={tela} onTela={setTela} />
       <div className="gc-topo">
-        <div className="gc-horizonte">
-          <span className="gc-horizonte-rot">Preciso resolver nas</span>
-          {HORIZONTES.map((h) => (
-            <button key={h.rot} className={`gc-chip ${horizonte === h.dias ? "on" : ""}`}
-              onClick={() => setHorizonte(h.dias)}>{h.rot}</button>
-          ))}
-        </div>
+        {status === "pendente" ? (
+          <div className="gc-horizonte">
+            <span className="gc-horizonte-rot">Preciso resolver nas</span>
+            {HORIZONTES.map((h) => (
+              <button key={h.rot} className={`gc-chip ${horizonte === h.dias ? "on" : ""}`}
+                onClick={() => setHorizonte(h.dias)}>{h.rot}</button>
+            ))}
+          </div>
+        ) : (
+          <span className="gc-horizonte-rot">O prazo vale pro que falta; aqui aparece {status === "comprado" ? "o que já foi comprado" : "o comprado e o pendente"}.</span>
+        )}
         <span className="gc-topo-info">
           {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"}
           {escolhidas.size > 0 ? " no filtro" : " com planilha"}
@@ -10522,6 +10769,26 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
         </div>
       )}
 
+      <div className="gc-filtros">
+        <div className="gc-horizonte">
+          <span className="gc-horizonte-rot">Mostrar</span>
+          {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
+            <button key={id} className={`gc-chip ${status === id ? "on" : ""}`} onClick={() => setStatus(id)}>{rot}</button>
+          ))}
+        </div>
+        <select className="cmp-forn-sel" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} aria-label="Filtrar por fornecedor">
+          <option value="">Todos os fornecedores</option>
+          {fornecedoresDoPainel.map((f) => (
+            <option key={f.chave} value={f.chave}>{f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} ({f.n})</option>
+          ))}
+        </select>
+        <select className="cmp-forn-sel" value={comprador} onChange={(e) => setComprador(e.target.value)} aria-label="Filtrar por comprador">
+          <option value="">Todos os compradores</option>
+          {listaCompradores.map((c) => <option key={c.email} value={c.email}>{c.nome}</option>)}
+          <option value={SEM_COMPRADOR}>Sem comprador</option>
+        </select>
+      </div>
+
       <div className="gc-totais">
         <GcTotal rot="A COMPRAR — MATERIAL" cor={COR_MAT} legenda="ainda não comprado"
           feito={t.matFeito} total={t.matTotal} />
@@ -10532,12 +10799,12 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
       {/* O que ela mais pediu vem primeiro: o volume por verba, somando
           todas as obras, é o que permite chegar no fornecedor com
           previsão em vez de pedido urgente. */}
-      <GcPorVerba titulo="Mão de obra a contratar, por verba" Icone={FileText}
+      <GcPorVerba titulo={`${rotMo}, por verba`} Icone={FileText}
         grupos={r.aContratar} cor={COR_MO} onAbrir={onAbrir} onImprimir={imprimir("mo")}
-        vazio={horizonte ? "Nada a contratar dentro desse prazo." : "Nada a contratar."} />
-      <GcPorVerba titulo="Material a comprar, por verba" Icone={ShoppingCart}
+        vazio={status !== "pendente" ? "Nada nesse recorte." : horizonte ? "Nada a contratar dentro desse prazo." : "Nada a contratar."} />
+      <GcPorVerba titulo={`${rotMat}, por verba`} Icone={ShoppingCart}
         grupos={r.aComprar} cor={COR_MAT} onAbrir={onAbrir} onImprimir={imprimir("mat")}
-        vazio={horizonte ? "Nada a comprar dentro desse prazo." : "Nada a comprar."} />
+        vazio={status !== "pendente" ? "Nada nesse recorte." : horizonte ? "Nada a comprar dentro desse prazo." : "Nada a comprar."} />
       {/* Mesma pergunta, outro corte: nao "quanto falta na verba 27" e
           sim "quanto falta comprar de colchão" — pra isso a linha precisa
           ser o insumo, e nao o grupo da EAP. "Por categoria" ainda so
@@ -10545,17 +10812,20 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir }) {
           categoria", visível); "Por produto" usa a descrição exata do
           item, sempre disponível, ao custo de mais linhas parecidas —
           é pra isso que a busca serve. */}
-      <GcPorVerba
-        titulo={visaoInsumo === "produto" ? "Material a comprar, por produto" : "Material a comprar, por insumo"}
-        Icone={Package}
-        grupos={gruposInsumoFiltrado} cor={COR_MAT} onAbrir={onAbrir}
-        busca={buscaInsumo} onBusca={setBuscaInsumo}
-        buscaPlaceholder={visaoInsumo === "produto" ? "Buscar produto — ex: colchão" : "Buscar insumo — ex: colchão"}
-        vazio="Nada a comprar."
-        abas={{
-          valor: visaoInsumo, onMudar: setVisaoInsumo,
-          opcoes: [{ id: "categoria", label: "Por categoria" }, { id: "produto", label: "Por produto" }],
-        }} />
+      {/* Por insumo e por produto contam só o que falta comprar. */}
+      {status === "pendente" && (
+        <GcPorVerba
+          titulo={visaoInsumo === "produto" ? "Material a comprar, por produto" : "Material a comprar, por insumo"}
+          Icone={Package}
+          grupos={gruposInsumoFiltrado} cor={COR_MAT} onAbrir={onAbrir}
+          busca={buscaInsumo} onBusca={setBuscaInsumo}
+          buscaPlaceholder={visaoInsumo === "produto" ? "Buscar produto — ex: colchão" : "Buscar insumo — ex: colchão"}
+          vazio="Nada a comprar."
+          abas={{
+            valor: visaoInsumo, onMudar: setVisaoInsumo,
+            opcoes: [{ id: "categoria", label: "Por categoria" }, { id: "produto", label: "Por produto" }],
+          }} />
+      )}
 
       {r.semData > 0 && (
         <div className="gc-nota-semdata">
@@ -15208,6 +15478,9 @@ export default function App() {
         .btn-associar-sel:hover { background: var(--blue-bg); color: var(--blue); }
         .sel-barra-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         .sel-barra-topo { flex-wrap: wrap; }
+        .grp-comprados { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line-2); white-space: nowrap; }
+        .grp-comprados.parte { color: var(--brand); background: var(--brand-tint); border-color: var(--brand-line); }
+        .grp-comprados.tudo { color: color-mix(in srgb, var(--green) 75%, var(--ink)); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
         .cmp-filtro-forn { margin-left: auto; display: flex; align-items: center; gap: 8px; }
         .cmp-forn-sel { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12px; padding: 6px 9px; background: var(--surface-1); color: var(--ink); max-width: 300px; }
         .cmp-forn-sel:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
@@ -15617,6 +15890,10 @@ export default function App() {
            telas — e rolar pro lado e o oposto de ler uma lista. */
         .grp-itens table { width: 100%; min-width: 900px; border-collapse: collapse; }
         .grp-itens th:nth-child(2), .grp-itens td:nth-child(2) { min-width: 230px; }
+        /* Nas Compras a 2ª coluna é o Cód. (a 1ª é a caixa de seleção): quem
+           precisa de largura mínima ali é a Descrição. */
+        .grp-itens table.tab-compras th:nth-child(2), .grp-itens table.tab-compras td:nth-child(2) { min-width: 0; }
+        .grp-itens table.tab-compras th:nth-child(3), .grp-itens table.tab-compras td:nth-child(3) { min-width: 230px; }
         /* A situacao virou o controle de incluir/tirar do plano. */
         .pill-btn { border: none; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
         .pill-btn:hover { filter: brightness(0.95); box-shadow: inset 0 0 0 1px currentColor; }
@@ -16553,6 +16830,13 @@ export default function App() {
         .gc-obras-filtro { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 20px; }
         .gc-obras-filtro .gc-chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gc-obras-filtro .gc-chip .mono { opacity: .6; margin-right: 3px; }
+        .gc-telas { display: flex; gap: 6px; margin-bottom: 16px; }
+        .gc-selo-seta { margin-left: 3px; transition: transform .15s ease; }
+        .gc-selo-seta.aberta { transform: rotate(180deg); }
+        .gc-detalhe-tit { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 2px 0 6px; }
+        .gc-filtros { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -6px 0 20px; }
+        .gc-compradores .gc-bloco-head .cmp-forn-sel { margin-left: auto; }
+        .gc-nota { font-size: 12px; color: var(--ink-3); margin: 6px 2px 10px; }
         .gc-totais { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
         .gc-total { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--surface-1); }
         .gc-total-rot { font-size: 10px; font-weight: 800; letter-spacing: .07em; }
@@ -17095,6 +17379,7 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Gestão de compras e contratações</span></div>
           <div className="obra-meta">Todas as obras lado a lado: o que falta comprar, o que falta contratar, e quais prazos já venceram</div>
           <GestaoComprasView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro}
+            equipe={pessoas} podeEditarCompradores={souAdmin} usuario={usuario}
             onAbrir={(id) => { setSelectedId(id); setModulo("comparativo"); }} />
           </>
           ) : !obra ? (

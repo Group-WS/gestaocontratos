@@ -31,7 +31,7 @@ const M = new Function("codigoAuxiliarDe", "descricaoSienge", "limparTemplate", 
   ${bloco("function descritivoDoItem(")}
   ${bloco("function auxiliaresDoGrupo(")}
   ${bloco("function templateComprasDoGrupo(")}
-  return { situacaoNoSienge, auxiliaresDoGrupo, templateComprasDoGrupo };
+  return { situacaoNoSienge, descritivoDoItem, auxiliaresDoGrupo, templateComprasDoGrupo };
 `)(codigoAuxiliarDe, descricaoSienge, limparTemplate, auxiliarEstavel);
 
 let f = 0;
@@ -93,6 +93,17 @@ conf("o mesmo produto duas vezes vira uma linha",
 const csv = montarTemplateSienge([...nova, ...semMae]).split("\r\n").filter(Boolean);
 conf("cabeçalho do template", csv[0], CABECALHO_TEMPLATE_SIENGE);
 conf("seis colunas em cada linha", csv.every((l) => l.split(";").length === 6), true);
+
+/* ---- 6. a especificação entra no descritivo, e o código dela vai pro fim ---- */
+conf("o exemplo dela", M.descritivoDoItem({ marca: "Corbelli", desc: "Mesa lareral orbita", especificacao: "6299 - laca branca + metal amendoa" }),
+  "CORBELLI / MESA LARERAL ORBITA / LACA BRANCA + METAL AMENDOA / 6299");
+conf("especificação sem código entra inteira",
+  M.descritivoDoItem({ marca: "Rivatti", desc: "Cadeira rio", especificacao: "laca metalizada bronze + tecido 2513" }),
+  "RIVATTI / CADEIRA RIO / LACA METALIZADA BRONZE + TECIDO 2513");
+conf("com código do fornecedor, a especificação fica como veio",
+  M.descritivoDoItem({ marca: "X", desc: "Mesa", especificacao: "6299 - laca", codigoFornecedor: "A1" }), "X / MESA / 6299 - LACA / A1");
+conf("o que a pessoa editou não muda",
+  M.descritivoDoItem({ desc: "Mesa", especificacao: "6299 - laca", descritivoSienge: "MINHA DESCRIÇÃO" }), "MINHA DESCRIÇÃO");
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
