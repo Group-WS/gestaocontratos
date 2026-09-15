@@ -25,7 +25,9 @@ const M = new Function(`
   ${bloco("function chaveFornecedor(")}
   ${bloco("function fornecedoresDasLinhas(")}
   ${bloco("function itensDoPedido(")}
-  return { SEM_FORNECEDOR, chaveFornecedor, fornecedoresDasLinhas, itensDoPedido };
+  ${bloco("function fornecedorParaPedido(")}
+  ${bloco("function textoSolicitacaoPipefy(")}
+  return { SEM_FORNECEDOR, chaveFornecedor, fornecedoresDasLinhas, itensDoPedido, textoSolicitacaoPipefy };
 `)();
 
 let f = 0;
@@ -56,6 +58,15 @@ conf("fornecedor todo comprado: pedido vazio", M.itensDoPedido([L("24", "X", { c
 conf("link vira o site", M.fornecedoresDasLinhas([L("24", "https://www.mercadolivre.com.br/espelho?x=1")])[0].nome, "mercadolivre.com.br");
 conf("links do mesmo site caem juntos",
   M.fornecedoresDasLinhas([L("24", "https://www.mercadolivre.com.br/a"), L("24", "http://mercadolivre.com.br/b")]).length, 1);
+
+/* ---- 4. o texto da solicitação no Pipefy ---- */
+const txt = M.textoSolicitacaoPipefy({ codigo: "2450", nome: "Ed. Wall Street, 602" }, [
+  { it: { desc: "Mesa lateral orbita", marca: "Corbelli", especificacao: "laca branca", qtdExecutivo: 1, un: "un", ambiente: "Living" } },
+  { it: { desc: "Espelho", marca: "https://www.mercadolivre.com.br/espelho/up/MLB1?gclid=abc", qtdExecutivo: 2, un: "pç" } },
+]).split("\n");
+conf("começa pela obra", txt[0], "Obra #2450 · Ed. Wall Street, 602");
+conf("um item por linha, no formato do formulário", txt[2], "1. Mesa lateral orbita / Corbelli / laca branca — 1 un — Living");
+conf("link do produto vai sem o rastreio", txt[3], "2. Espelho / https://www.mercadolivre.com.br/espelho/up/MLB1 — 2 pç");
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

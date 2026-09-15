@@ -17,7 +17,7 @@ import {
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
-  MapPin, Printer, Presentation
+  MapPin, Printer, Presentation, ExternalLink
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, faltandoNaTela } from "./lib/obras";
@@ -848,9 +848,19 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
               <span>{a.txt}</span>
             </div>
           ))}
-          <button className="btn-atalho dash-atalho" onClick={onIrParaCompras}>
-            <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
-          </button>
+          {/* Pedir compra avulsa é no Pipefy: o botão abre o formulário e leva
+              ao Plano de Compras. Com avulsas já lançadas, o botão vira "ver
+              a lista" e o Pipefy ganha um botão próprio, pra não abrir à toa. */}
+          <div className="dash-atalhos">
+            <button className="btn-atalho dash-atalho" onClick={() => { if (!avulsas.length) abrirPipefy(); onIrParaCompras(); }}>
+              <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
+            </button>
+            {avulsas.length > 0 && (
+              <button className="btn-atalho dash-atalho" onClick={abrirPipefy}>
+                <ExternalLink size={12} /> Solicitar no Pipefy
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="dobra-card">
@@ -7611,6 +7621,39 @@ function itensDoPedido(linhas) {
   return [...m.values()].sort((a, b) => String(a.num).localeCompare(String(b.num), "pt-BR", { numeric: true }));
 }
 
+/* Solicitação de compra avulsa no Pipefy (formulário público do Group WS).
+   O formulário novo do Pipefy não aceita campos preenchidos pelo link —
+   testado em 14/09/2026: nem as opções nem o texto entram —, então o app
+   copia a lista pronta pra colar em "Descrição dos itens". */
+const PIPEFY_SOLICITACAO = "https://app.pipefy.com/public/form/_np_TZEi";
+/* Abre o formulário numa aba nova, sem dar à página do Pipefy acesso a esta. */
+function abrirPipefy() {
+  const aba = window.open(PIPEFY_SOLICITACAO, "_blank");
+  if (aba) aba.opener = null;
+  return !!aba;
+}
+/* Fornecedor pra quem vai comprar: se colaram o link do produto, o link
+   (sem os parâmetros de rastreio) serve mais que o nome do site. */
+function fornecedorParaPedido(it) {
+  const bruto = String(it?.marca || "").trim();
+  if (/^https?:\/\//i.test(bruto)) {
+    try { const u = new URL(bruto); return u.origin + u.pathname; } catch { /* segue com o nome */ }
+  }
+  return nomeDoFornecedor(it);
+}
+/* O texto de "Descrição dos itens", na ordem que o próprio formulário pede:
+   DESCRIÇÃO / MARCA / MODELO / FORNECEDOR / CÓDIGO / COR / MEDIDAS. */
+function textoSolicitacaoPipefy(obra, linhas) {
+  const itens = linhas.map(({ it }, k) => {
+    const qtd = it.qtdExecutivo ?? it.qtdVendida ?? it.qtd ?? null;
+    const partes = [it.desc, fornecedorParaPedido(it), it.modelo, it.codigoFornecedor && `cód. ${it.codigoFornecedor}`, it.cor, it.especificacao]
+      .map((x) => String(x || "").trim()).filter(Boolean);
+    const quanto = qtd != null ? `${Number(qtd).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${it.un || "un"}` : "";
+    return `${k + 1}. ${partes.join(" / ")}${quanto ? ` — ${quanto}` : ""}${it.ambiente ? ` — ${it.ambiente}` : ""}`;
+  });
+  return [`Obra #${obra.codigo} · ${obra.nome}`, "", ...itens].join("\n");
+}
+
 /* GERADOR DE CÓDIGOS SIENGE — avulso, sem obra e sem gravar nada.
 
    Mesma associação da tela de Compras de Produtos, mas solta: sobe uma
@@ -8328,6 +8371,7 @@ function ComprasView({ obra, onItemChange, usuario }) {
   const [fornecedor, setFornecedor] = useState("");   // "" = todos
   const [orcamento, setOrcamento] = useState(null);   // o pedido aberto pra imprimir
   const [nomeNoPdf, setNomeNoPdf] = useState(true);   // às vezes o pedido sai sem dizer pra quem
+  const [pipefy, setPipefy] = useState(null);   // o aviso depois de abrir a solicitação no Pipefy
   const [sel, setSel] = useState(() => new Set());
   const [abertos, setAbertos] = useState(() => new Set());
   const [baseSienge, setBaseSienge] = useState(null);
@@ -8362,6 +8406,19 @@ function ComprasView({ obra, onItemChange, usuario }) {
     if (!f || f.chave === SEM_FORNECEDOR) return;
     setOrcamento({ fornecedor: f.nome, mostrarFornecedor: nomeNoPdf, grupos: itensDoPedido(visiveis) });
     setTimeout(() => window.print(), 300);
+  }
+
+  /* Solicitação de compra avulsa no Pipefy: copia a lista dos selecionados e
+     abre o formulário. Copiar vem antes de abrir — com a aba nova na frente,
+     o navegador recusa escrever na área de transferência. */
+  async function solicitarNoPipefy() {
+    const texto = textoSolicitacaoPipefy(obra, selecionados);
+    let copiado = false;
+    try { await navigator.clipboard.writeText(texto); copiado = true; } catch { /* mostra pra copiar à mão */ }
+    const abriu = abrirPipefy();
+    const verbas = [...new Map(selecionados.map((r) => [r.catNum, `${r.catNum} ${r.catNome}`])).values()];
+    setPipefy({ texto, copiado, abriu, n: selecionados.length,
+      squad: String(obra.squad || "").replace(/^squad\s+/i, ""), verbas });
   }
 
   const porVerba = useMemo(() => {
@@ -8787,6 +8844,28 @@ function ComprasView({ obra, onItemChange, usuario }) {
         </RelatorioSobreposto>
       )}
 
+      {pipefy && (
+        <div className="assoc-resultado pipefy-aviso">
+          <div className="pipefy-aviso-txt">
+            <div>
+              <b>{pipefy.copiado
+                ? `Lista de ${pipefy.n} ${pipefy.n === 1 ? "item copiada" : "itens copiada"}.`
+                : "Não consegui copiar sozinho: copie a lista abaixo."}</b>{" "}
+              No Pipefy: marque <b>Compra de Produto</b>, escolha a obra <b>#{obra.codigo}</b>
+              {pipefy.squad && <> e o squad <b>{pipefy.squad}</b></>}, e cole em <b>Descrição dos itens</b> (Ctrl+V).
+              {pipefy.verbas.length > 0 && <> Apropriação: {pipefy.verbas.join(", ")}.</>}
+              {" "}<a href={PIPEFY_SOLICITACAO} target="_blank" rel="noopener noreferrer">
+                {pipefy.abriu ? "Abrir o formulário de novo" : "Abrir o formulário"}
+              </a>
+            </div>
+            {!pipefy.copiado && (
+              <textarea className="pipefy-texto" readOnly value={pipefy.texto} rows={6} onFocus={(e) => e.target.select()} />
+            )}
+          </div>
+          <button className="aviso-x" onClick={() => setPipefy(null)} aria-label="Fechar"><X size={13} /></button>
+        </div>
+      )}
+
       {/* A escolha do canal fica na barra da selecao: e uma decisao sobre
           o LOTE, nao sobre uma linha. Marcar 40 produtos e ter que
           escolher o canal 40 vezes e a mesma decisao repetida 40 vezes. */}
@@ -8815,6 +8894,10 @@ function ComprasView({ obra, onItemChange, usuario }) {
             } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
               <Download size={13} /> Excel
             </button>
+            <button className="btn-associar-sel" onClick={solicitarNoPipefy}
+              title="Copia a lista dos selecionados e abre a solicitação de compra no Pipefy">
+              <ExternalLink size={13} /> Solicitar no Pipefy
+            </button>
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
             {selecionados.some((r) => r.it.canalCompra) && (
@@ -8835,6 +8918,14 @@ function ComprasView({ obra, onItemChange, usuario }) {
               <button className="btn-associar-sel" onClick={associarSelecionados}
                 title="Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão">
                 <PackageSearch size={13} /> Associar {selecionados.length}
+              </button>
+            )}
+            {etapa === "sienge" && (
+              <button className="btn-associar-sel"
+                onClick={() => baixarResumoCadastroSienge(obra,
+                  resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}
+                title="Excel pra quem lança o pedido no Sienge: insumo, detalhe, códigos e quantidade — iguais somam numa linha">
+                <Download size={13} /> Resumo p/ cadastro
               </button>
             )}
             {CANAIS_COMPRA.map((c) => (
@@ -8918,6 +9009,66 @@ function templateComprasDoGrupo(itens, casamentos, grupos, auxiliares) {
     });
   });
   return limparTemplate(linhas);
+}
+
+/* Resumo pra quem lança o pedido no Sienge: as colunas do template de
+   detalhe, mais a quantidade e a situação de cada detalhe. Entra todo item
+   com insumo mãe — o detalhe novo (que ainda precisa do Template Sienge do
+   grupo) e o que já existe no Sienge. Vale o que a tela mostra: a mãe
+   escolhida na linha ou a sugerida pelo "Associar insumos". O que está sem
+   mãe vai numa segunda aba, pra nada sumir calado. O Template Sienge do
+   grupo é outra coisa (o arquivo que o Sienge importa) e não passa por aqui. */
+const CABECALHO_CADASTRO_SIENGE = ["Código auxiliar do insumo*", "Descrição do insumo", "Código do detalhe*", "Código auxiliar do detalhe*", "Descrição do detalhe*", "Quantidade"];
+/* Texto pra comparar linha com linha: sem acento, sem espaço sobrando e em
+   maiúsculas — "Cadeira  Eiffel" e "CADEIRA EIFFEL" são o mesmo detalhe. */
+function textoComparavel(t) {
+  return String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
+}
+function resumoCadastroSienge(itens, casamentos, grupos, auxiliares) {
+  const linhas = new Map();
+  const semMae = [];
+  const soma = (a, b) => Math.round((a + b) * 10000) / 10000;
+  (itens || []).forEach((r) => {
+    const { mae, status } = situacaoNoSienge(r.it, casamentos?.get(r.chave) || null, grupos);
+    const qtd = Number(r.it.qtdExecutivo ?? r.it.qtdVendida ?? r.it.qtd ?? 0) || 0;
+    if (!mae) {
+      semMae.push({ item: [r.it.codigo, r.it.desc].filter(Boolean).join(" "), quantidade: qtd, ambiente: r.it.ambiente || "" });
+      return;
+    }
+    const jaExiste = status === "exato";
+    // A mesma limpeza do template: segmento repetido em seguida sai.
+    const descricaoDetalhe = jaExiste ? String(r.it.detalheSienge) : String(descritivoDoItem(r.it) ?? "").split(" / ")
+      .filter((pt, k, a) => k === 0 || pt.trim() !== a[k - 1].trim()).join(" / ");
+    // Mesmo código + mesmo nome de insumo + mesma descrição = uma linha só,
+    // com as quantidades somadas: é o que deixa a inclusão no Sienge simples.
+    const chave = `${textoComparavel(mae.codigo)}|${textoComparavel(mae.nome)}|${textoComparavel(descricaoDetalhe)}`;
+    const antes = linhas.get(chave);
+    if (antes) { antes.quantidade = soma(antes.quantidade, qtd); return; }
+    linhas.set(chave, {
+      maeCodigo: mae.codigo, maeNome: mae.nome || "",
+      // Do detalhe que já existe o Sienge sabe os códigos; o relatório de
+      // insumos não traz, então aqui eles saem em branco em vez de inventados.
+      codigoDetalhe: jaExiste ? "" : String(r.it.codigoDetalheSienge || "").trim(),
+      codigoAuxDetalhe: jaExiste ? "" : (auxiliares?.get(r.chave)?.codigo || ""),
+      descricaoDetalhe, quantidade: qtd,
+      situacao: jaExiste ? "detalhe já cadastrado" : "detalhe novo (cadastrar)",
+    });
+  });
+  return { linhas: [...linhas.values()], semMae };
+}
+function baixarResumoCadastroSienge(obra, { linhas, semMae }) {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([[...CABECALHO_CADASTRO_SIENGE, "Situação"],
+    ...linhas.map((l) => [l.maeCodigo, l.maeNome, l.codigoDetalhe, l.codigoAuxDetalhe, l.descricaoDetalhe, l.quantidade, l.situacao])]);
+  ws["!cols"] = [{ wch: 14 }, { wch: 40 }, { wch: 12 }, { wch: 14 }, { wch: 60 }, { wch: 11 }, { wch: 24 }];
+  XLSX.utils.book_append_sheet(wb, ws, "Resumo");
+  if (semMae.length) {
+    const wo = XLSX.utils.aoa_to_sheet([["Item no Confere", "Quantidade", "Ambiente"],
+      ...semMae.map((l) => [l.item, l.quantidade, l.ambiente])]);
+    wo["!cols"] = [{ wch: 60 }, { wch: 11 }, { wch: 24 }];
+    XLSX.utils.book_append_sheet(wb, wo, "Sem insumo mãe");
+  }
+  XLSX.writeFile(wb, `sienge-resumo-obra-${obra.codigo}.xlsx`);
 }
 
 function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange }) {
@@ -15048,6 +15199,11 @@ export default function App() {
         .assoc-resultado { display: flex; align-items: center; gap: 9px; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
         .assoc-resultado.ok { background: var(--green-bg); border: 1px solid var(--success-line); color: var(--green); }
         .assoc-resultado.parcial { background: var(--amber-bg); border: 1px solid var(--warning-line); color: var(--text); }
+        .pipefy-aviso { align-items: flex-start; background: var(--brand-tint); border: 1px solid var(--brand-line); color: var(--ink-2); line-height: 1.55; }
+        .pipefy-aviso-txt { display: grid; gap: 8px; flex: 1; min-width: 0; }
+        .pipefy-aviso a { color: var(--brand); font-weight: 600; }
+        .dash-atalhos { display: flex; flex-wrap: wrap; gap: 8px; }
+        .pipefy-texto { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface-1); color: var(--ink); resize: vertical; }
         .btn-associar-sel { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); color: var(--ink); border: none; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-right: 6px; }
         .btn-associar-sel:hover { background: var(--blue-bg); color: var(--blue); }
         .sel-barra-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -15183,7 +15339,6 @@ export default function App() {
         .mo-topo .btn-nova-solicitacao { margin-left: auto; }
         .mo-check { width: 19px; height: 19px; flex-shrink: 0; border-radius: 5px; border: 1.5px solid var(--border); background: var(--surface-1); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--bg); padding: 0; margin-left: 16px; }
         .mo-check:hover { border-color: var(--blue); }
-        .mo-linha.sel .mo-check, .grp-head .mo-check:has(svg) { background: var(--blue); border-color: var(--blue); }
         .mo-linha { display: flex; align-items: center; gap: 10px; padding-right: 14px; }
         .mo-linha.sel { background: var(--blue-bg); }
         .mo-linha .compras-row { flex: 1; min-width: 0; }
@@ -16641,7 +16796,12 @@ export default function App() {
         /* Caixa de seleção (Checkbox): 18px, raio 5, marcada em brand. */
         :is(.mo-check, .check) { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--line-3); background: var(--surface-2); color: var(--bg); }
         :is(.mo-check, .check):hover { border-color: var(--brand); }
-        .mo-linha.sel .mo-check, .grp-head .mo-check:has(svg), .check.check-on { background: var(--brand); border-color: var(--brand); }
+        .check.check-on { background: var(--brand); border-color: var(--brand); }
+        /* Marcada, a caixa mostra o certinho em cinza claro, sem pintar o
+           fundo. Antes o ícone tinha a cor do fundo e, na linha das
+           Compras, o check existia mas não aparecia. */
+        .mo-check:has(svg) { background: var(--surface-1); border-color: var(--ink-3); color: var(--ink-3); }
+        .mo-check svg { stroke-width: 3; }
         .fo-check { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--line-3); color: var(--bg); }
         .fo-item.on .fo-check { background: var(--brand); border-color: var(--brand); }
         .det-radio { border-color: var(--line-3); }
