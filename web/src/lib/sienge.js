@@ -746,3 +746,66 @@ export function faltaNoTemplate(l) {
   if (!String(l.descricaoDetalhe || "").trim()) falta.push("descrição do detalhe");
   return falta;
 }
+
+/* ============================================================
+   UNIDADE DE MEDIDA — do jeito da casa pro jeito do Sienge
+
+   A solicitação de compra manda `unitySymbol`, e o Sienge só aceita
+   símbolo que exista no cadastro dele. A planilha do executivo escreve
+   como quem digita: "UN", "und", "M²", "pç", "vg". Mandar isso cru volta
+   como erro de unidade inválida — e o item não entra.
+
+   As duas listas abaixo vieram do cadastro real (GET /units-of-measure,
+   consultado em 15/09/2026). Unidade que não casa BLOQUEIA o item na
+   tela, antes do envio: é melhor a pessoa corrigir a planilha do que o
+   Sienge escolher por ela.
+   ============================================================ */
+
+/* Os símbolos ativos no Sienge. Símbolo que está aqui passa direto. */
+const SIMBOLOS_SIENGE = new Set([
+  "%", "cm", "con", "cx", "dia", "dm3", "fl", "gr", "gra", "h", "kg", "l", "m",
+  "m2", "m3", "mes", "min", "ml", "mlh", "mm", "par", "pc", "pto", "sc20kg",
+  "sem", "t", "un", "vb", "l/m3", "m/min", "km", "a", "w", "mxmes", "gl",
+  "bl18l", "cento", "kw/h", "m2xmês", "sc25kg", "mil", "kgxkm", "m3xkm",
+  "unxkm", "m2xkm", "lxkm", "mxkm", "txkm", "l/u/m", "bl15l", "lt18", "bl5kg",
+  "bl16l", "lt3,6", "lt3,2", "lt0,8", "sc5kg", "rol100", "sc15kg", "rol50",
+  "rol25", "br3m", "br6m", "br12m", "cx25p", "pct25", "pct50", "br2,4m",
+  "unid", "kwp", "gf", "und",
+]);
+
+/* Como a casa escreve × o símbolo do Sienge.
+   "und"/"unid" existem no Sienge, mas foram criados pela importação de
+   NF-e — quem cadastra à mão usa "un", e é pra lá que tudo converge. */
+const APELIDOS_UNIDADE = {
+  un: "un", und: "un", unid: "un", unidade: "un", ud: "un", u: "un", pecas: "un",
+  pc: "pc", pç: "pc", pca: "pc", peca: "pc", "peça": "pc", pcs: "pc",
+  m2: "m2", "m²": "m2", mq: "m2", m3: "m3", "m³": "m3",
+  vb: "vb", vg: "vb", verba: "vb", global: "vb",
+  kg: "kg", quilo: "kg", g: "gr", gr: "gr", grama: "gr",
+  l: "l", lt: "l", litro: "l", ml: "ml",
+  m: "m", mt: "m", metro: "m", ml_: "m", cm: "cm", mm: "mm", km: "km",
+  par: "par", cx: "cx", caixa: "cx", jg: "par",
+  h: "h", hr: "h", hora: "h", dia: "dia", mes: "mes", "mês": "mes", sem: "sem",
+  t: "t", ton: "t", tonelada: "t", "%": "%", pto: "pto", ponto: "pto",
+  fl: "fl", folha: "fl", gl: "gl", galao: "gl", "galão": "gl", mlh: "mlh",
+};
+
+/**
+ * O símbolo que o Sienge aceita, ou `null` quando não há equivalente.
+ *
+ * `null` é resposta legítima e importante: "cj" (conjunto) simplesmente
+ * não existe no cadastro do Sienge, e inventar o mais parecido mandaria
+ * uma quantidade com o significado trocado.
+ */
+export function simboloSienge(un) {
+  const cru = String(un ?? "").trim();
+  if (!cru) return null;
+  const baixo = cru.toLowerCase();
+  if (SIMBOLOS_SIENGE.has(baixo)) return APELIDOS_UNIDADE[baixo] || baixo;
+  // Sem acento e sem ponto final abreviado ("un.", "m²" já coberto acima).
+  const limpo = norm(cru).replace(/\.$/, "");
+  if (APELIDOS_UNIDADE[baixo]) return APELIDOS_UNIDADE[baixo];
+  if (APELIDOS_UNIDADE[limpo]) return APELIDOS_UNIDADE[limpo];
+  if (SIMBOLOS_SIENGE.has(limpo)) return limpo;
+  return null;
+}

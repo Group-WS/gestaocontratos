@@ -37,6 +37,13 @@ import { carregarPrestadores, salvarPrestador, excluirPrestador } from "./lib/ma
 import { subgrupoDe } from "./lib/catalogoModelo.js";
 import { listarSiengeObras, marcarStatusSienge } from "./lib/siengeObra.js";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
+// A EAP do SIENGE (apropriação do orçamento) — outra coisa da `lib/eap`
+// acima, que é a EAP da casa. Ver o cabeçalho de lib/eapApropriacao.js.
+import { parseEapSienge, folhasDaEap, sugerirFolha, ehMaterial } from "./lib/eapSienge.js";
+import { listarVersoesEap, carregarEap, importarEap, definirVersaoPadrao, definirMapaVerba } from "./lib/eapApropriacao.js";
+import { montarSolicitacaoSienge, corpoDoEnvio, casarDetalhes } from "./lib/siengeSolicitacao.js";
+import { abrirEnvio, fecharEnvio, enviosPendentes, envioComMesmoConteudo, reconciliarEnvio,
+  listarEnviosSienge, assinaturaDoEnvio, novaChaveIdempotencia } from "./lib/siengeSolicitacoes.js";
 import Catalogo from "./Catalogo";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
@@ -6961,6 +6968,7 @@ const MODULOS = [
   { id: "catalogo", nome: "Catálogo TKWS", sub: "o que a casa especifica", Icone: BookOpen },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: DollarSign },
+  { id: "eap", nome: "EAP Sienge", sub: "apropriação do orçamento", Icone: Calculator },
   // Por ultimo: e' o que se abre com menos frequencia — obra concluida
   // ja saiu do dia a dia, e ela estava no meio do caminho do que nao saiu.
   { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
@@ -8530,6 +8538,32 @@ function casarComSienge(desc, grupos) {
   return { maes, detalhes: melhor ? ordenarDetalhes(desc, melhor.grupo) : [] };
 }
 
+/* "hoje, 19:49" em vez de "15/09/2026, 19:49:30".
+   Numa lista de dez envios do mesmo dia, a data por extenso repetida dez
+   vezes ocupa a coluna inteira e não distingue nada — a hora é que
+   distingue. Data cheia só quando não é hoje nem ontem. */
+/* Quanto custa o que foi pedido num envio.
+   Sai do payload guardado, não de conta refeita agora: é o valor que
+   valia quando o pedido saiu, e é isso que alguém quer ver ao consultar
+   o histórico meses depois. */
+function totalDoEnvio(h) {
+  return (h?.payload?.itens || []).reduce(
+    (a, i) => a + (Number(i.estimatedPrice) || 0) * (Number(i.quantity) || 0), 0);
+}
+
+function dataCurta(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const dia = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const hoje = dia(new Date());
+  const quando = dia(d);
+  const umDia = 86400000;
+  if (quando === hoje) return `hoje, ${hora}`;
+  if (quando === hoje - umDia) return `ontem, ${hora}`;
+  return `${d.toLocaleDateString("pt-BR")}, ${hora}`;
+}
+
 function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, editandoPor }) {
   const [etapa, setEtapa] = useState("todos");
   const [fornecedor, setFornecedor] = useState("");   // "" = todos
@@ -8547,8 +8581,120 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
   const [doSienge, setDoSienge] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erroBase, setErroBase] = useState(null);
+  /* A EAP do Sienge: de onde sai a apropriação de cada item solicitado.
+     Carregada uma vez, quando a etapa Sienge abre — sem ela o botão de
+     solicitar nem aparece, porque não haveria como apropriar. */
+  const [eapSienge, setEapSienge] = useState(null);
+  const [solicitacao, setSolicitacao] = useState(null); // o modal de envio
+  /* Envios que saíram daqui e não voltaram. Enquanto existir um destes, a
+     pergunta "será que entrou?" está em aberto — e reenviar às cegas é o
+     caminho da solicitação duplicada. */
+  const [pendentes, setPendentes] = useState([]);
+  const [conferindo, setConferindo] = useState(null);
+  /* O que já foi pedido nesta obra. Sem isso à vista, a única forma de
+     saber se algo já foi solicitado é abrir o Sienge — e quem não abre
+     acaba criando a segunda solicitação do mesmo produto. */
+  const [historico, setHistorico] = useState([]);
+  const [verHistorico, setVerHistorico] = useState(false);
+  // Qual solicitação está aberta mostrando o que foi pedido nela.
+  const [envioAberto, setEnvioAberto] = useState(null);
   // Toda mudança de item passa por aqui: sem a edição da obra, nada muda.
   const mudar = (catIdx, itemIdx, patch) => { if (podeEditar) onItemChange(catIdx, itemIdx, patch); };
+
+  useEffect(() => {
+    if (etapa !== "sienge" || eapSienge) return;
+    let vivo = true;
+    (async () => {
+      const vazio = { versao: null, versoes: [], mapa: {}, itens: [], erro: null };
+      try {
+        const versoes = await listarVersoesEap();
+        const padrao = versoes.find((v) => v.padrao) || versoes[0];
+        if (!padrao) { if (vivo) setEapSienge({ ...vazio, versoes }); return; }
+        const { itens, mapa } = await carregarEap(padrao.id);
+        // As versões vêm junto porque cada uma conhece uma unidade
+        // construtiva — é a lista que o modal oferece pra trocar.
+        if (vivo) setEapSienge({ versao: padrao, versoes, mapa, itens, erro: null });
+      } catch (e) {
+        /* A falha não derruba as Compras — mas também não é engolida.
+           Engolir era pior que o problema: o botão ficava desabilitado
+           dizendo "falta a EAP" mesmo quando a EAP estava lá e o que
+           falhou foi a permissão de leitura. */
+        if (vivo) setEapSienge({ ...vazio, erro: e.message || String(e) });
+      }
+    })();
+    return () => { vivo = false; };
+  }, [etapa, eapSienge]);
+
+  /* A checagem de envios em aberto roda toda vez que a etapa Sienge
+     abre — é barata (índice parcial) e é o que impede alguém de começar
+     um envio novo sem saber que o anterior ficou sem resposta. */
+  const recarregarPendentes = useCallback(async () => {
+    try { setPendentes(await enviosPendentes(obra.codigo)); } catch { /* não trava a tela */ }
+    try { setHistorico(await listarEnviosSienge(obra.codigo)); } catch { /* idem */ }
+  }, [obra.codigo]);
+
+  useEffect(() => {
+    if (etapa !== "sienge") return;
+    recarregarPendentes();
+  }, [etapa, recarregarPendentes]);
+
+  /* Perguntar ao Sienge o que ele de fato tem. É a única forma de
+     encerrar um pendente com certeza — o resto seria palpite. */
+  async function conferirNoSienge(p) {
+    setConferindo(p.id);
+    try {
+      if (!p.solicitacao_id) {
+        /* Sem número, não houve confirmação de criação. Pode ter criado
+           assim mesmo (a resposta é que se perdeu), então isto NÃO se
+           resolve sozinho: a pessoa confere no Sienge e diz o que achou. */
+        const achou = window.confirm(
+          "Este envio não chegou a receber um número de solicitação.\n\n" +
+          "Abra o Sienge em Suprimentos > Solicitações de Compra e veja se existe uma solicitação " +
+          `da obra ${obra.codigo} criada em ${new Date(p.enviado_em).toLocaleString("pt-BR")}.\n\n` +
+          "Clique OK se ENCONTROU (vou pedir o número) ou Cancelar se NÃO existe nenhuma.");
+        if (!achou) {
+          await reconciliarEnvio(p.id, { solicitacaoId: null, resposta: { reconciliacao: "não foi criada" }, status: "abandonado", ok: false, por: usuario });
+          await recarregarPendentes();
+          return;
+        }
+        const num = window.prompt("Número da solicitação encontrada no Sienge:");
+        if (!num || !/^\d+$/.test(num.trim())) return;
+        p = { ...p, solicitacao_id: Number(num.trim()) };
+      }
+
+      const res = await fetch(api(`/api/sienge/solicitacao/${p.solicitacao_id}`));
+      const texto = await res.text();
+      let dados = null;
+      if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
+      if (!res.ok || !dados) {
+        window.alert((dados?.error || "Não deu pra consultar o Sienge agora.") +
+          (dados?.comoResolver ? `\n\n${dados.comoResolver}` : ""));
+        return;
+      }
+
+      if (!dados.existe) {
+        await reconciliarEnvio(p.id, {
+          solicitacaoId: null, resposta: dados, status: "abandonado", ok: false, por: usuario,
+        });
+        window.alert(`A solicitação ${p.solicitacao_id} não existe no Sienge — nada foi criado. ` +
+          "Pode selecionar os itens e enviar de novo com segurança.");
+      } else {
+        const n = dados.itens.length;
+        await reconciliarEnvio(p.id, {
+          solicitacaoId: dados.solicitacaoId, resposta: dados,
+          status: n > 0 ? "concluido" : "parcial", ok: n > 0, por: usuario,
+        });
+        window.alert(`A solicitação ${dados.solicitacaoId} EXISTE no Sienge, com ${n} ` +
+          `${n === 1 ? "item" : "itens"}.\n\nNÃO reenvie o que já está lá. ` +
+          "Confira os itens no Sienge e, se faltar algum, selecione só ele nas Compras.");
+      }
+      await recarregarPendentes();
+    } catch (e) {
+      window.alert(`Não deu pra conferir: ${e.message}`);
+    } finally {
+      setConferindo(null);
+    }
+  }
 
   const rows = useMemo(() => produtosMAT(obra), [obra]);
 
@@ -9072,6 +9218,204 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
       {/* A escolha do canal fica na barra da selecao: e uma decisao sobre
           o LOTE, nao sobre uma linha. Marcar 40 produtos e ter que
           escolher o canal 40 vezes e a mesma decisao repetida 40 vezes. */}
+      {/* Envio sem resposta: a pergunta fica à vista até ser respondida.
+          É o gate que impede um reenvio às cegas virar duplicata. */}
+      {etapa === "sienge" && pendentes.length > 0 && (
+        <div className="import-erro erro-detalhado" style={{ marginBottom: 10 }}>
+          <AlertTriangle size={14} />
+          <div>
+            <div><b>
+              {pendentes.length === 1
+                ? "Um envio ao Sienge ficou sem confirmação."
+                : `${pendentes.length} envios ao Sienge ficaram sem confirmação.`}
+            </b></div>
+            <div className="erro-acao">
+              Não dá pra saber daqui se {pendentes.length === 1 ? "ele entrou" : "eles entraram"} —
+              reenviar sem conferir pode criar solicitação duplicada.
+            </div>
+            {pendentes.map((p) => (
+              <div key={p.id} className="sol-pendente">
+                <span>
+                  {dataCurta(p.enviado_em)}
+                  {p.solicitacao_id ? <> · solicitação <b className="mono">{p.solicitacao_id}</b></> : " · sem número"}
+                  {p.enviado_por ? ` · ${nomeDoEmail(p.enviado_por)}` : ""}
+                  {" · "}{(p.payload?.itens || []).length} {(p.payload?.itens || []).length === 1 ? "item" : "itens"}
+                </span>
+                <button className="btn-associar-sel" disabled={conferindo === p.id}
+                  onClick={() => conferirNoSienge(p)}>
+                  {conferindo === p.id ? "conferindo…" : "conferir no Sienge"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* O que esta obra já pediu ao Sienge. Fica fechado por padrão (é
+          consulta, não trabalho do dia), mas o cabeçalho sempre diz
+          quantas houve — é o bastante pra alguém desconfiar antes de
+          criar a terceira solicitação do mesmo produto. */}
+      {etapa === "sienge" && historico.length > 0 && (
+        <div className="hist-sienge">
+          <button className="hist-sienge-topo" onClick={() => setVerHistorico((v) => !v)}>
+            {verHistorico ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <span className="hist-sienge-titulo">
+              <b>{historico.length}</b>
+              {historico.length === 1 ? " solicitação enviada" : " solicitações enviadas"} ao Sienge
+            </span>
+            <span className="dim hist-sienge-quando">
+              última {dataCurta(historico[0].enviado_em)}
+            </span>
+          </button>
+          {verHistorico && (
+            <div className="sol-rolagem">
+              <table className="vend-itens sol-tabela hist-sienge-tabela">
+                <thead>
+                  <tr>
+                    <th style={{ width: 88 }}>Solicitação</th>
+                    <th style={{ width: 132 }}>Quando</th>
+                    <th style={{ width: 150 }}>Quem</th>
+                    <th>Resultado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historico.map((h) => {
+                    const res = h.resposta || {};
+                    const entraram = res.ok ?? 0;
+                    const recusados = (res.resultados || []).filter((r) => !r.ok).length;
+                    const itensPedidos = h.payload?.itens || [];
+                    const aberta = envioAberto === h.id;
+                    /* A cor diz de longe o que aconteceu: tudo entrou,
+                       entrou em parte, ou não entrou nada. Numa lista de
+                       dez linhas, ler dez frases pra descobrir isso é o
+                       que faz ninguém olhar o histórico. */
+                    const selo = h.status === "enviando" || h.status === "abandonado" ? "pill-falta"
+                      : entraram > 0 && recusados === 0 ? "pill-ok"
+                      : entraram > 0 ? "pill-falta" : "pill-erro";
+                    return (
+                      <React.Fragment key={h.id}>
+                        <tr className={aberta ? "hist-sienge-aberta" : ""}>
+                          {/* A linha inteira abre o conteúdo: o número
+                              sozinho não dizia o que foi pedido, e era a
+                              única coisa que a tabela mostrava dele. */}
+                          <td>
+                            <button className="hist-sienge-num"
+                              onClick={() => setEnvioAberto(aberta ? null : h.id)}
+                              title={aberta ? "Fechar" : "Ver o que foi pedido"}>
+                              {aberta ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                              <span className="mono">{h.solicitacao_id || "—"}</span>
+                            </button>
+                          </td>
+                          <td className="dim">{dataCurta(h.enviado_em)}</td>
+                          {/* O e-mail inteiro é a mesma informação com o
+                              dobro da largura — o nome basta, e o endereço
+                              fica no title. */}
+                          <td className="dim" title={h.enviado_por || ""}>
+                            {h.enviado_por ? nomeDoEmail(h.enviado_por) : "—"}
+                          </td>
+                          <td>
+                            <span className={`pill ${selo}`}>
+                              {h.status === "enviando" ? "sem confirmação"
+                                : h.status === "abandonado" ? "não criada"
+                                : recusados > 0
+                                ? `${entraram} de ${entraram + recusados}`
+                                : `${entraram} ${entraram === 1 ? "item" : "itens"}`}
+                            </span>
+                            {itensPedidos.length > 0 && (
+                              <span className="dim hist-sienge-nota">{fmtBRL(totalDoEnvio(h))}</span>
+                            )}
+                          </td>
+                        </tr>
+                        {aberta && (
+                          <tr className="hist-sienge-detalhe">
+                            <td colSpan={4}>
+                              {itensPedidos.length === 0 ? (
+                                <div className="dim">Este envio não registrou os itens.</div>
+                              ) : (
+                                <table className="vend-itens sol-tabela">
+                                  <thead>
+                                    <tr>
+                                      <th style={{ width: 58 }}>Insumo</th>
+                                      <th>O que foi pedido</th>
+                                      <th style={{ width: 56 }} className="right">Qtd.</th>
+                                      <th style={{ width: 42 }} className="center">Un.</th>
+                                      <th style={{ width: 100 }} className="right">Preço unit.</th>
+                                      <th style={{ width: 104 }} className="right">Total</th>
+                                      <th style={{ width: 132 }}>Resultado</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {itensPedidos.map((it, k) => {
+                                      /* Casa o item enviado com o que o Sienge
+                                         respondeu, pelas chaves das linhas da
+                                         obra — é o que liga "pedi isto" a
+                                         "entrou" ou "recusado por isto". */
+                                      const r = (res.resultados || []).find((x) =>
+                                        (x.chaves || []).join("|") === (it.chaves || []).join("|"));
+                                      const total = (Number(it.estimatedPrice) || 0) * (Number(it.quantity) || 0);
+                                      return (
+                                        <tr key={k} className={r && !r.ok ? "row-falta" : ""}>
+                                          <td className="mono">{it.productId}</td>
+                                          <td>
+                                            <span className="sol-corte" title={it.notes}>{it.notes}</span>
+                                            <span className="dim sol-sub">
+                                              <span className="mono">{it.costEstimationItemReference}</span>
+                                              {" · un. "}{it.buildingUnitId}
+                                              {Number.isInteger(it.detailId) && <> · detalhe <span className="mono">{it.detailId}</span></>}
+                                            </span>
+                                          </td>
+                                          <td className="right">{it.quantity}</td>
+                                          <td className="center mono">{it.unitySymbol}</td>
+                                          <td className="right">{fmtBRL(it.estimatedPrice)}</td>
+                                          <td className="right">{fmtBRL(total)}</td>
+                                          <td className={r && !r.ok ? "sol-motivo" : "dim"}>
+                                            {!r ? "—" : r.ok ? "entrou" : (r.erro || "recusado")}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr className="sol-total">
+                                      <td colSpan={5} className="right">Total pedido</td>
+                                      <td className="right">{fmtBRL(totalDoEnvio(h))}</td>
+                                      <td />
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              )}
+                              {h.payload?.notes && (
+                                <div className="dim hist-sienge-obs">Observação: {h.payload.notes}</div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {solicitacao && eapSienge?.versao && (
+        <ModalSolicitarSienge
+          obra={obra} linhas={solicitacao} eap={eapSienge} usuario={usuario}
+          onFechar={() => { setSolicitacao(null); recarregarPendentes(); }}
+          onEnviado={(aceitas, solicitacaoId) => {
+            /* Só o que o Sienge aceitou fica marcado. O que ele recusou
+               continua selecionado e sem marca — senão a tela diria que
+               foi pedido algo que não foi. */
+            const em = new Date().toISOString();
+            rows.filter((r) => aceitas.has(r.chave)).forEach((r) => mudar(r.catIdx, r.itemIdx, {
+              solicitado: true, solicitadoEm: em,
+              solicitacaoSienge: { id: solicitacaoId, em, por: usuario },
+            }));
+            setSel((p) => { const n = new Set(p); aceitas.forEach((c) => n.delete(c)); return n; });
+          }} />
+      )}
       {selecionados.length > 0 && (
         <div className="mo-escopo-barra">
           <div>
@@ -9143,6 +9487,50 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
                 <PackageSearch size={13} /> Associar {selecionados.length}
               </button>
             )}
+            {/* Solicitar no Sienge: o único botão daqui que ESCREVE em
+                outro sistema. Só na etapa Sienge — é o canal que passa por
+                lá.
+
+                Ele APARECE mesmo sem a EAP cadastrada, desabilitado e
+                dizendo o que falta. Esconder era pior: quem não sabe que a
+                funcionalidade depende de um cadastro procura um botão que
+                não está em lugar nenhum, e conclui que não foi entregue. */}
+            {etapa === "sienge" && (
+              <button className="btn-associar-sel"
+                disabled={!podeEditar || !eapSienge?.versao}
+                onClick={() => setSolicitacao(selecionados.map((r) => {
+                  // A situação do insumo é resolvida aqui, com a base na
+                  // memória; o modal só monta e remonta a partir dela.
+                  const { mae, status } = situacaoNoSienge(r.it, casamentos.get(r.chave) || null, grupos);
+                  /* O texto que vai como observação do item no Sienge é o
+                     MESMO que a linha mostra — a mesma regra do resumo de
+                     cadastro: quem escolheu uma variante manda a variante;
+                     quem vai cadastrar detalhe novo manda o descritivo, já
+                     com a edição à mão, se houve. Mandar o gerado pra quem
+                     escolheu variante descreveria outra coisa. */
+                  const descritivo = status === "exato"
+                    ? String(r.it.detalheSienge)
+                    : descritivoDoItem(r.it);
+                  return { ...r, mae, status, descritivo };
+                }))}
+                title={!podeEditar ? `Em ${MODO_LEITURA_DICA}`
+                  : !eapSienge ? "Carregando a EAP do Sienge…"
+                  : eapSienge.erro ? `Não deu pra ler a EAP do Sienge: ${eapSienge.erro}`
+                  : !eapSienge.versao ? "Nenhuma EAP do Sienge cadastrada — vá em EAP Sienge (menu lateral) e importe o relatório de orçamento. Sem ela não há como apropriar a compra no orçamento."
+                  : "Cria a solicitação de compra direto no Sienge — você confere tudo antes de enviar"}>
+                <ExternalLink size={13} /> Solicitar Compra no Sienge
+                {/* O motivo fica no RÓTULO, não só no title: botão
+                    desabilitado sem motivo à vista vira "não funciona". */}
+                {(!podeEditar || !eapSienge?.versao) && (
+                  <span className="dim"> · {
+                    !podeEditar ? "habilite a edição"
+                      : !eapSienge ? "carregando a EAP…"
+                      : eapSienge.erro ? "erro ao ler a EAP"
+                      : "falta a EAP"
+                  }</span>
+                )}
+              </button>
+            )}
             {etapa === "sienge" && (
               <button className="btn-associar-sel"
                 onClick={() => baixarResumoCadastroSienge(obra,
@@ -9173,6 +9561,963 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
    lista ou na busca, que varre a base inteira), ou a primeira candidata;
    e so' fica "ja cadastrada" o que a pessoa marcou como uma variante que
    existe. O resto vai pro template como detalhe novo. */
+/* Erro que a pessoa consegue agir a respeito.
+ *
+ * "Failed to execute 'json' on 'Response'" é uma mensagem verdadeira e
+ * inútil: quem está comprando não sabe se errou algo, se espera, ou se
+ * chama alguém. Todo erro deste fluxo passa a levar as duas partes — o
+ * QUE houve e o QUE FAZER —, e, quando não é algo de resolver na tela,
+ * diz a quem pedir. O backend manda a orientação junto (`comoResolver`),
+ * porque é ele quem sabe a causa. */
+function comoResolverErro(mensagem, comoResolver) {
+  const e = new Error(mensagem);
+  e.comoResolver = comoResolver || null;
+  return e;
+}
+
+/* O resultado depois de um reenvio: o item que entrou agora deixa de
+   constar como recusado, e o que continuou recusado atualiza a mensagem.
+   Sem isso, reenviar com sucesso mantinha o erro velho na tela e a
+   pessoa não tinha como saber que já estava resolvido. */
+function juntarResultado(antes, novo) {
+  if (!antes) return novo;
+  const porChave = new Map();
+  const idDe = (r) => (r.chaves || []).join("|") || `p${r.productId}`;
+  antes.resultados.forEach((r) => porChave.set(idDe(r), r));
+  novo.resultados.forEach((r) => porChave.set(idDe(r), r));
+  const resultados = [...porChave.values()];
+  return {
+    // O número é o da solicitação que já existe — o reenvio entra nela.
+    solicitacaoId: antes.solicitacaoId || novo.solicitacaoId,
+    resultados,
+    ok: resultados.filter((r) => r.ok).length,
+    falhas: resultados.filter((r) => !r.ok).length,
+  };
+}
+
+/* Select com busca.
+ *
+ * Nasceu da apropriação: são 53 folhas da EAP, com nomes que começam
+ * iguais ("Instalações elétricas…", "Instalações hidrossanitárias…"), e
+ * num <select> nativo a única forma de achar é rolar a lista inteira. O
+ * detalhe do insumo tem o mesmo problema — dezenas de variantes do mesmo
+ * ar-condicionado, distinguidas pela potência no meio do texto.
+ *
+ * Não é um <select> estilizado: é um botão que abre um painel com campo
+ * de busca e a lista filtrada. O valor continua sendo o mesmo que o
+ * <select> daria, então quem chama não muda.
+ *
+ * Teclado: digita pra filtrar, ↑↓ anda, Enter escolhe, Esc fecha.
+ */
+function SelectBusca({ valor, onChange, opcoes, placeholder = "selecione…", vazio, aria, className = "", disabled }) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [ativo, setAtivo] = useState(0);
+  const [pos, setPos] = useState(null);
+  const caixa = useRef(null);
+  const campo = useRef(null);
+  const gatilho = useRef(null);
+
+  const escolhida = opcoes.find((o) => String(o.valor) === String(valor)) || null;
+  const termo = normSienge(busca);
+  const filtradas = useMemo(() => {
+    if (!termo) return opcoes;
+    return opcoes.filter((o) => normSienge(`${o.valor} ${o.rotulo}`).includes(termo));
+  }, [opcoes, termo]);
+
+  // Clicar fora fecha — sem isso o painel fica aberto atrás do resto.
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e) => {
+      const dentroDoGatilho = caixa.current?.contains(e.target);
+      const dentroDoPainel = e.target.closest?.(".sel-busca-painel");
+      if (!dentroDoGatilho && !dentroDoPainel) setAberto(false);
+    };
+    document.addEventListener("mousedown", fora);
+    return () => document.removeEventListener("mousedown", fora);
+  }, [aberto]);
+
+  /* O painel vai pro body, não pra dentro do campo.
+     Este select vive dentro de tabela com rolagem horizontal, e quando um
+     eixo tem overflow não-visível o outro também passa a cortar: o painel
+     aberto era decepado na primeira linha. Em portal, com posição
+     calculada do gatilho, ele aparece inteiro em qualquer lugar. */
+  useLayoutEffect(() => {
+    if (!aberto) { setPos(null); return; }
+    const medir = () => {
+      const r = gatilho.current?.getBoundingClientRect();
+      if (!r) return;
+      const largura = Math.max(r.width, 260);
+      const espacoAbaixo = window.innerHeight - r.bottom;
+      // Perto do rodapé, abre pra cima em vez de sair da tela.
+      const paraCima = espacoAbaixo < 240 && r.top > espacoAbaixo;
+      setPos({
+        left: Math.min(Math.max(8, r.left), window.innerWidth - largura - 8),
+        top: paraCima ? undefined : r.bottom + 4,
+        bottom: paraCima ? window.innerHeight - r.top + 4 : undefined,
+        width: largura,
+        maxAltura: Math.max(180, (paraCima ? r.top : espacoAbaixo) - 16),
+      });
+    };
+    medir();
+    // Rolar a página move o gatilho; o painel tem que ir junto ou fechar.
+    const aoMexer = () => setAberto(false);
+    window.addEventListener("scroll", aoMexer, true);
+    window.addEventListener("resize", aoMexer);
+    return () => {
+      window.removeEventListener("scroll", aoMexer, true);
+      window.removeEventListener("resize", aoMexer);
+    };
+  }, [aberto]);
+
+  useEffect(() => { if (aberto) { setBusca(""); setAtivo(0); campo.current?.focus(); } }, [aberto]);
+
+  function escolher(o) {
+    onChange(o ? o.valor : "");
+    setAberto(false);
+  }
+
+  function tecla(e) {
+    if (e.key === "ArrowDown") { e.preventDefault(); setAtivo((i) => Math.min(i + 1, filtradas.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setAtivo((i) => Math.max(i - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (filtradas[ativo]) escolher(filtradas[ativo]); }
+    else if (e.key === "Escape") { e.preventDefault(); setAberto(false); }
+  }
+
+  return (
+    <div className={`sel-busca ${className}`} ref={caixa}>
+      <button type="button" ref={gatilho} className="form-select sel-busca-gatilho" disabled={disabled}
+        aria-label={aria} aria-expanded={aberto} onClick={() => setAberto((v) => !v)}>
+        <span className={escolhida ? "" : "dim"}>{escolhida ? escolhida.rotulo : (vazio || placeholder)}</span>
+        <ChevronDown size={13} className="dim" />
+      </button>
+      {aberto && pos && createPortal(
+        <div className="sel-busca-painel" style={{
+          left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width,
+        }}>
+          <div className="sel-busca-campo">
+            <Search size={13} className="dim" />
+            <input ref={campo} value={busca} placeholder="buscar…" onKeyDown={tecla}
+              onChange={(e) => { setBusca(e.target.value); setAtivo(0); }} />
+          </div>
+          <div className="sel-busca-lista" role="listbox">
+            {vazio && (
+              <button type="button" className={`sel-busca-item ${!valor ? "sel-busca-ativo" : ""}`}
+                onClick={() => escolher(null)}>{vazio}</button>
+            )}
+            {filtradas.map((o, i) => (
+              <button type="button" key={o.valor} role="option"
+                aria-selected={String(o.valor) === String(valor)}
+                className={`sel-busca-item ${i === ativo ? "sel-busca-ativo" : ""} ${String(o.valor) === String(valor) ? "sel-busca-escolhida" : ""}`}
+                onMouseEnter={() => setAtivo(i)} onClick={() => escolher(o)}>
+                {o.rotulo}
+              </button>
+            ))}
+            {!filtradas.length && <div className="sel-busca-nada">nada encontrado para “{busca}”</div>}
+          </div>
+        </div>,
+        document.body)}
+    </div>
+  );
+}
+
+function AvisoErro({ erro }) {
+  if (!erro) return null;
+  const mensagem = typeof erro === "string" ? erro : erro.message;
+  const acao = typeof erro === "string" ? null : erro.comoResolver;
+  return (
+    <div className="import-erro erro-detalhado">
+      <AlertTriangle size={14} />
+      <div>
+        <div><b>{mensagem}</b></div>
+        {/* Sem orientação a caixa continua sendo só a mensagem — melhor
+            isso que uma linha genérica de "tente novamente" que não
+            acrescenta nada. */}
+        {acao && <div className="erro-acao">{acao}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* O envio da solicitação ao Sienge.
+ *
+ * Tudo é conferível antes de sair: a apropriação de cada verba, o que
+ * vai, e o que NÃO vai com o motivo. O botão só aparece depois disso
+ * porque, do outro lado, não há desfazer — solicitação criada é
+ * solicitação que alguém vai ter que cancelar no ERP. */
+function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado }) {
+  const [notas, setNotas] = useState(`Obra #${obra.codigo} · ${obra.nome}`);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [resultado, setResultado] = useState(null);
+  /* A unidade construtiva vem da OBRA, não do cadastro da EAP.
+     O id dela é a planilha do orçamento e muda de obra para obra — o 9 do
+     relatório da obra modelo não existe na 2519, e mandá-lo fazia o Sienge
+     recusar todo item com "Item do orçamento é inválido". Começa vazia e é
+     preenchida quando a lista da obra chega. */
+  const [unidade, setUnidade] = useState("");
+  const [unidades, setUnidades] = useState(null);
+  const [erroUnidades, setErroUnidades] = useState(null);
+  // O mapa das verbas também é editável aqui, e o que muda é gravado no
+  // cadastro: quem descobre a apropriação errada é quem está enviando, e
+  // mandá-la ao módulo EAP só pra voltar seria o caminho mais longo.
+  const [mapa, setMapa] = useState(eap.mapa);
+  const [erroMapa, setErroMapa] = useState(null);
+  /* Correções feitas no painel de recusados, por item. Vivem SÓ aqui: a
+     planilha da obra não muda por causa de um reenvio, e misturar as duas
+     coisas faria o envio virar uma porta lateral de edição da obra. */
+  const [edicoes, setEdicoes] = useState({});
+  const [descartados, setDescartados] = useState(() => new Set());
+  /* Os detalhes que o Sienge tem pra cada insumo do lote. É o detalhe que
+     diz QUAL produto é — "AR CONDICIONADO" é o insumo, "LG / SPLIT DUAL
+     INVERTER 18.000 BTUS QUENTE E FRIO" é o detalhe. Sem ele a compra sai
+     genérica e quem cota não sabe o que comprar. */
+  /* Um envio anterior com EXATAMENTE este conteúdo. É o aviso que separa
+     "estou reenviando de propósito" de "não lembrava que já tinha
+     mandado" — a segunda é como nascem as solicitações repetidas. */
+  const [jaEnviado, setJaEnviado] = useState(null);
+  // O conteúdo da solicitação anterior, quando a pessoa pede pra ver.
+  const [anterior, setAnterior] = useState(null);
+  const [vendoAnterior, setVendoAnterior] = useState(false);
+  /* O que saiu daqui e o que voltou, em JSON. Mensagem do ERP costuma ser
+     curta demais pra diagnosticar ("Item do orçamento é inválido" não diz
+     QUAL campo está errado) — e aí o que resolve é ver o corpo exato da
+     chamada, sem precisar abrir o console do navegador. */
+  const [verEnvio, setVerEnvio] = useState(false);
+  const [ultimoEnvio, setUltimoEnvio] = useState(null);
+  const [catalogo, setCatalogo] = useState(null);
+  const [erroCatalogo, setErroCatalogo] = useState(null);
+  // Detalhe escolhido à mão, por item: vence o casamento automático.
+  const [detalheEscolhido, setDetalheEscolhido] = useState({});
+  /* Insumo trocado à mão. Existe porque o casamento com a base às vezes
+     acerta a família e erra o código, e sem isto a correção obrigava a
+     fechar o modal, voltar em "Associar insumos" e recomeçar a seleção. */
+  const [insumoEscolhido, setInsumoEscolhido] = useState({});
+
+  /* Remontar a cada mudança, em vez de remendar o que já foi montado: a
+     troca de uma folha pode DESBLOQUEAR itens que estavam barrados por
+     falta dela — e um remendo só corrigiria os que já tinham passado. */
+  const pedido = useMemo(
+    () => montarSolicitacaoSienge(linhas, { mapaEap: mapa, unidadeId: unidade }),
+    [linhas, mapa, unidade]);
+  const { bloqueados, verbas } = pedido;
+
+  /* Os detalhes do Sienge entram DEPOIS da montagem, porque dependem de
+     rede. Enquanto não chegam, o pedido existe e é enviável — só sem
+     especificar o produto. */
+  /* A troca do insumo entra ANTES do casamento de detalhes: os detalhes
+     pertencem ao insumo, então trocar o código muda a lista inteira. */
+  const itensComInsumo = useMemo(() => pedido.itens.map((i) => {
+    const novo = insumoEscolhido[i.chaves.join("|")];
+    if (novo === undefined || Number(novo) === i.productId) return i;
+    return { ...i, productId: Number(novo) || 0, trocouInsumo: true };
+  }), [pedido.itens, insumoEscolhido]);
+
+  const itens = useMemo(() => {
+    const comDetalhe = catalogo ? casarDetalhes(itensComInsumo, catalogo) : itensComInsumo;
+    return comDetalhe.map((i) => {
+      const escolhido = detalheEscolhido[i.chaves.join("|")];
+      if (escolhido === undefined) return i;
+      // "" é a escolha explícita de não mandar detalhe nenhum.
+      return { ...i, detailId: escolhido === "" ? undefined : Number(escolhido) };
+    });
+  }, [itensComInsumo, catalogo, detalheEscolhido]);
+
+  /* Trocar o insumo descarta o detalhe que estava escolhido: ele era um
+     detalhe DAQUELE insumo, e mandá-lo com outro código aponta pra um
+     produto que não existe. */
+  function trocarInsumo(chave, codigo) {
+    setInsumoEscolhido((m) => ({ ...m, [chave]: codigo }));
+    setDetalheEscolhido((d) => { const n = { ...d }; delete n[chave]; return n; });
+  }
+
+  /* Consulta pela ASSINATURA do conteúdo, não pela chave da tentativa:
+     a chave muda a cada clique, a assinatura não. */
+  useEffect(() => {
+    if (!itens.length) { setJaEnviado(null); return; }
+    let vivo = true;
+    (async () => {
+      try {
+        const achado = await envioComMesmoConteudo(obra.codigo,
+          assinaturaDoEnvio({ buildingId: obra.codigo, itens }));
+        if (vivo) setJaEnviado(achado);
+      } catch { /* o aviso é um extra: falhar aqui não trava o envio */ }
+    })();
+    return () => { vivo = false; };
+  }, [obra.codigo, itens]);
+
+  /* Os ids em uso, incluindo os digitados à mão — é o que faz o detalhe
+     do insumo novo aparecer sem fechar o modal. */
+  const idsEmUso = useMemo(
+    () => [...new Set(itensComInsumo.map((i) => i.productId).filter((n) => Number.isInteger(n) && n > 0))].sort().join(","),
+    [itensComInsumo]);
+
+  useEffect(() => {
+    const ids = idsEmUso ? idsEmUso.split(",") : [];
+    if (!ids.length) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const res = await fetch(api(`/api/sienge/insumos/${obra.codigo}?ids=${ids.join(",")}`));
+        const texto = await res.text();
+        let dados = null;
+        if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
+        if (!vivo) return;
+        if (!res.ok || !dados) {
+          setErroCatalogo((dados && dados.error) || "Não deu pra buscar os detalhes dos insumos no Sienge.");
+          setCatalogo([]);
+          return;
+        }
+        /* Acumula em vez de substituir: trocar um insumo não pode
+           apagar os detalhes dos outros que já vieram. */
+        setCatalogo((antes) => {
+          const mapa = new Map((antes || []).map((x) => [Number(x.id), x]));
+          (dados.insumos || []).forEach((x) => mapa.set(Number(x.id), x));
+          return [...mapa.values()];
+        });
+        setErroCatalogo(null);
+      } catch (e) {
+        if (vivo) { setErroCatalogo(e.message); setCatalogo((a) => a || []); }
+      }
+    })();
+    return () => { vivo = false; };
+  }, [obra.codigo, idsEmUso]);
+
+  const unidadeValida = Number.isInteger(Number(unidade)) && Number(unidade) > 0;
+  /* Código de insumo apagado ou zerado trava o envio: sem productId o
+     Sienge recusa o item, e a solicitação já teria sido criada. */
+  const insumosInvalidos = itens.filter((i) => !Number.isInteger(i.productId) || i.productId <= 0);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const res = await fetch(api(`/api/sienge/obra/${obra.codigo}/unidades`));
+        const texto = await res.text();
+        let dados = null;
+        if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
+        if (!vivo) return;
+        if (!res.ok || !dados) {
+          /* 404 com HTML é o backend sem esta rota — servidor antigo no ar.
+             Distinguir isso de "o Sienge não respondeu" evita mandar
+             alguém investigar o ERP por um problema que é de deploy. */
+          setErroUnidades(res.status === 404 && !dados
+            ? "O servidor em execução não tem a consulta de unidades construtivas (versão antiga). Em desenvolvimento, reinicie o backend: na pasta monday-proxy, pare e rode npm start de novo."
+            : (dados && dados.error) || "Não deu pra ler as unidades construtivas desta obra no Sienge.");
+          setUnidades([]);
+          return;
+        }
+        setUnidades(dados.unidades || []);
+        /* A primeira planilha é o "Orçamento Executivo" em toda obra que
+           olhamos — é o default certo. Escolher sozinho só quando há uma
+           opção óbvia; com várias, a pessoa confirma. */
+        if (dados.unidades?.length) setUnidade(String(dados.unidades[0].id));
+      } catch (e) {
+        if (vivo) { setErroUnidades(e.message); setUnidades([]); }
+      }
+    })();
+    return () => { vivo = false; };
+  }, [obra.codigo]);
+  const total = itens.reduce((a, i) => a + i.custoTotal, 0);
+  // Quantas linhas desapareceram dentro de outra por serem o mesmo item.
+  const somadas = itens.reduce((a, i) => a + i.chaves.length - 1, 0);
+
+  /* As verbas que a seleção alcança — inclusive as que estão sem folha,
+     que é justamente onde a troca precisa aparecer. `verbas` do pedido só
+     traz as que produziram item. */
+  const verbasDaSelecao = [...new Set(linhas.map((r) => r.catNum))].sort();
+  // Uma vez, e não por linha de verba: são 53 folhas × uma lista por verba.
+  const folhasEap = useMemo(() => (eap.itens || []).filter((i) => i.folha)
+    .map((f) => ({ valor: f.codigo, rotulo: `${f.codigo} · ${f.descricao}` })), [eap.itens]);
+
+  /* O item recusado é identificado pelas chaves das linhas da obra que
+     ele representa — não pelo índice na lista, que muda a cada reenvio. */
+  const chaveDoResultado = (r) => (r.chaves || []).join("|") || `p${r.productId}`;
+  const itemDoResultado = (r) => itens.find((i) => chaveDoResultado(i) === chaveDoResultado(r)) || null;
+  const recusados = (resultado?.resultados || [])
+    .filter((r) => !r.ok && !descartados.has(chaveDoResultado(r)));
+
+  const editar = (id, patch) => setEdicoes((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
+  const descartar = (id) => setDescartados((d) => new Set(d).add(id));
+
+  /* Reenviar é mandar os mesmos itens para a solicitação que JÁ existe.
+     A quantidade e a observação saem da edição, quando houve. */
+  function reenviar(alvos) {
+    const ids = new Set(alvos.map(chaveDoResultado));
+    const itensAlvo = itens
+      .filter((i) => ids.has(chaveDoResultado(i)))
+      .map((i) => {
+        const ed = edicoes[chaveDoResultado(i)] || {};
+        const qtd = ed.quantity === undefined ? i.quantity : Number(ed.quantity);
+        return {
+          ...i,
+          quantity: Number.isFinite(qtd) && qtd > 0 ? qtd : i.quantity,
+          notes: ed.notes === undefined ? i.notes : String(ed.notes).slice(0, 4000),
+        };
+      });
+    if (!itensAlvo.length) {
+      setErro(comoResolverErro(
+        "Não achei os itens deste reenvio.",
+        "Feche o modal e selecione os itens de novo nas Compras."));
+      return;
+    }
+    return enviar({ itensAlvo, solicitacaoId: resultado.solicitacaoId });
+  }
+
+  /* O que a solicitação anterior tem HOJE, perguntado ao Sienge.
+     É o que transforma "só siga se ela não vale" numa decisão possível:
+     ou os itens estão lá (e reenviar duplica), ou ela foi cancelada e
+     está vazia (e reenviar é o certo). */
+  async function verAnterior(id) {
+    setVendoAnterior(true);
+    setAnterior(null);
+    try {
+      const res = await fetch(api(`/api/sienge/solicitacao/${id}`));
+      const texto = await res.text();
+      let dados = null;
+      if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
+      if (!res.ok || !dados) {
+        setAnterior({ erro: (dados && dados.error) || "Não deu pra consultar o Sienge agora." });
+        return;
+      }
+      setAnterior(dados);
+    } catch (e) {
+      setAnterior({ erro: e.message });
+    } finally {
+      setVendoAnterior(false);
+    }
+  }
+
+  async function trocarFolha(verbaNum, codigo) {
+    const antes = mapa;
+    setMapa((m) => { const n = { ...m }; if (codigo) n[verbaNum] = codigo; else delete n[verbaNum]; return n; });
+    setErroMapa(null);
+    try {
+      await definirMapaVerba(eap.versao.id, verbaNum, codigo, usuario);
+    } catch (e) {
+      setMapa(antes); // o cadastro recusou: a tela não pode dizer o contrário
+      setErroMapa(e.message || String(e));
+    }
+  }
+
+  /* O envio, com as garantias que ele precisa ter por escrever em outro
+     sistema. Na ordem em que acontecem:
+
+     1. REGISTRO ANTES. A linha em `sienge_solicitacao` nasce com
+        status 'enviando' antes da primeira chamada. Se tudo cair depois
+        disso, sobra a pergunta registrada — e não o silêncio que faz
+        alguém reenviar às cegas.
+     2. CHAVE DE TENTATIVA. Um uuid por tentativa, com índice único no
+        banco: duplo clique, F5 no meio e retomada do mesmo modal
+        esbarram nele em vez de virar duas solicitações.
+     3. REENVIO NA MESMA SOLICITAÇÃO. Quando já existe número, os itens
+        recusados voltam para ela, nunca para uma nova.
+     4. SÓ O ACEITO É MARCADO. O que o Sienge recusou continua
+        pendente na obra, com o motivo à vista. */
+  async function enviar({ itensAlvo = itens, solicitacaoId = null } = {}) {
+    if (enviando) return; // trava de duplo clique, antes de qualquer coisa
+    setEnviando(true);
+    setErro(null);
+
+    const corpo = corpoDoEnvio({ buildingId: obra.codigo, notes: notas, itens: itensAlvo });
+    if (solicitacaoId) corpo.solicitacaoId = solicitacaoId;
+    setUltimoEnvio({ enviado: corpo, recebido: null, quando: new Date().toISOString() });
+    const chave = novaChaveIdempotencia();
+    const assinatura = assinaturaDoEnvio({ buildingId: obra.codigo, itens: itensAlvo });
+
+    let registro = null;
+    try {
+      registro = await abrirEnvio({
+        obraCodigo: obra.codigo, buildingId: Number(obra.codigo), por: usuario,
+        payload: corpo, chave, assinatura, solicitacaoId,
+      });
+    } catch (e) {
+      setEnviando(false);
+      setErro(e.jaEnviado
+        ? comoResolverErro(e.message, "Confira o resultado na tela antes de tentar de novo.")
+        : e.migracaoPendente
+        ? comoResolverErro(e.message,
+            "Nada foi enviado. Falta aplicar no banco a atualização desta funcionalidade: " +
+            "rode supabase/sienge_solicitacao.sql no SQL Editor do Supabase (é seguro rodar de novo). " +
+            "Se você não faz isso, peça a quem cuida do sistema — tentar de novo não resolve sozinho.")
+        : comoResolverErro(
+            `Não deu pra registrar o envio antes de mandar pro Sienge: ${e.message}`,
+            "O envio foi INTERROMPIDO de propósito, e nada foi mandado. Sem o registro, um envio " +
+            "que se perdesse no caminho viraria solicitação duplicada. Tente de novo; se persistir, " +
+            "avise quem cuida do sistema."));
+      return;
+    }
+
+    try {
+      const res = await fetch(api("/api/sienge/solicitacao"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corpo),
+      });
+
+      /* Ler como texto e só então tentar o JSON.
+         `res.json()` direto estoura com "Unexpected end of JSON input"
+         quando a resposta vem vazia — que é o caso quando o backend não
+         está de pé (em dev, o proxy do Vite manda pra localhost:3001) ou
+         quando a função serverless morre antes de responder. A mensagem
+         que aparecia era sobre o parser, e escondia a única coisa útil:
+         que o servidor não respondeu. */
+      const texto = await res.text();
+      let dados = null;
+      if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
+
+      if (!dados || !res.ok) {
+        /* O registro fica como está — 'enviando' — de propósito.
+           Um erro do servidor não prova que o Sienge não recebeu: a
+           chamada pode ter ido e a resposta se perdido. Quem decide é a
+           consulta ao Sienge, no aviso de pendência da tela de Compras.
+           A exceção é o erro de validação (400) e a falta de credencial
+           (503), onde o servidor garante que nada saiu. */
+        const nadaSaiu = res.status === 400 || res.status === 503;
+        if (nadaSaiu) {
+          await fecharEnvio(registro.id, {
+            solicitacaoId: null, resposta: dados || { erro: texto || null },
+            status: "falhou", ok: false,
+          }).catch(() => {});
+        }
+        throw comoResolverErro(
+          (dados && dados.error) || (texto
+            ? `O servidor respondeu de um jeito que este app não entendeu (HTTP ${res.status}).`
+            : "O servidor do Confere não respondeu."),
+          (dados && dados.comoResolver) || (texto
+            ? "Isso costuma ser defeito do servidor, não algo pra resolver na tela. Avise quem cuida do sistema, com o horário da tentativa."
+            : "Em desenvolvimento, o backend precisa estar rodando: na pasta monday-proxy, rode npm start. Em produção, avise quem cuida do sistema.") +
+            (nadaSaiu ? " Nada foi enviado ao Sienge." : " Este envio ficou SEM CONFIRMAÇÃO: não reenvie antes de conferir — a tela de Compras vai oferecer a checagem no Sienge."));
+      }
+
+      const status = dados.falhas === 0 ? "concluido" : "parcial";
+      setUltimoEnvio((e) => ({ ...(e || {}), recebido: dados }));
+      setResultado((antes) => juntarResultado(antes, dados));
+
+      /* Fechar o registro é o passo que pode falhar com o Sienge já
+         tendo recebido. Aqui a orientação é o oposto da de cima: NÃO
+         reenviar. */
+      try {
+        await fecharEnvio(registro.id, {
+          solicitacaoId: dados.solicitacaoId, resposta: dados, status, ok: dados.falhas === 0,
+        });
+      } catch (e) {
+        setErro(comoResolverErro(
+          `A solicitação ${dados.solicitacaoId} foi criada no Sienge, mas o registro dela aqui no Confere falhou: ${e.message}`,
+          "NÃO envie de novo — no Sienge está tudo certo, só o histórico daqui ficou sem esta linha. " +
+          "Anote o número da solicitação e avise quem cuida do sistema."));
+      }
+
+      // Só o que o Sienge aceitou vira "solicitado" na obra.
+      const aceitas = new Set(dados.resultados.filter((r) => r.ok).flatMap((r) => r.chaves));
+      if (aceitas.size) onEnviado(aceitas, dados.solicitacaoId);
+    } catch (e) {
+      setErro(e.comoResolver ? e : comoResolverErro(e.message || String(e), null));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  /* Mensagens num lugar só, logo abaixo do cabeçalho.
+     Antes elas nasciam onde o código que as produz estava — erro de envio
+     no fim, aviso de repetição no meio do formulário, falha do catálogo
+     entre a tabela e os campos. Quem usa não acompanha essa geografia:
+     procura recado sempre no mesmo canto. */
+  const avisos = [];
+  if (jaEnviado) avisos.push({ tipo: "repetido" });
+  if (erroCatalogo) avisos.push({ tipo: "catalogo" });
+
+  return createPortal(
+    <div className="sobreposto-fundo" onClick={(e) => { if (e.target === e.currentTarget && !enviando) onFechar(); }}>
+      <div className="sobreposto-caixa">
+        <div className="sobreposto-topo">
+          <div>
+            <div className="flat-panel-title">Solicitar compra no Sienge</div>
+            <div className="flat-panel-sub">
+              Obra <b>#{obra.codigo}</b> · solicitante <b>VALENTINA</b>
+            </div>
+          </div>
+          <button className="clear-btn" onClick={onFechar} disabled={enviando}><X size={14} /></button>
+        </div>
+
+        <div className="sobreposto-corpo">
+          <AvisoErro erro={erro} />
+
+          {avisos.map((a) => a.tipo === "repetido" ? (
+            <div key="repetido" className="import-erro erro-detalhado">
+              <AlertTriangle size={14} />
+              <div>
+                <div><b>
+                  Estes itens já foram enviados
+                  {jaEnviado.solicitacao_id ? <> na solicitação <span className="mono">{jaEnviado.solicitacao_id}</span></> : ""}
+                  {" · "}{new Date(jaEnviado.enviado_em).toLocaleString("pt-BR")}
+                  {jaEnviado.enviado_por ? ` · ${jaEnviado.enviado_por}` : ""}
+                </b></div>
+                <div className="erro-acao">Enviar de novo cria uma segunda solicitação com o mesmo conteúdo.</div>
+                {jaEnviado.solicitacao_id && !anterior && (
+                  <button className="btn-associar-sel sol-acao-aviso" disabled={vendoAnterior}
+                    onClick={() => verAnterior(jaEnviado.solicitacao_id)}>
+                    {vendoAnterior ? "consultando…" : "conferir no Sienge"}
+                  </button>
+                )}
+                {anterior?.erro && <div className="erro-acao">{anterior.erro}</div>}
+                {/* A API não devolve os itens de uma solicitação (o GET
+                    responde 405), então o que dá pra afirmar é se ela
+                    existe e em que estado está — e é só isso que a tela
+                    diz. Prometer a lista seria prometer o que não há. */}
+                {anterior && !anterior.erro && (
+                  <div className="erro-acao">
+                    {!anterior.existe ? (
+                      <>A solicitação <b>não existe mais</b> no Sienge — foi cancelada. Pode enviar.</>
+                    ) : (
+                      <>
+                        A solicitação <b>{anterior.solicitacaoId} existe</b>
+                        {anterior.cabecalho?.status ? ` (${anterior.cabecalho.status})` : ""}.
+                        {" "}Para não duplicar, cancele-a no Sienge antes de enviar —
+                        Suprimentos &gt; Solicitações de Compra.
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div key="catalogo" className="import-erro erro-detalhado">
+              <AlertTriangle size={14} />
+              <div>
+                <div><b>Não deu pra ler os detalhes dos insumos.</b></div>
+                <div className="erro-acao">{erroCatalogo} Dá pra enviar assim mesmo, sem apontar o detalhe.</div>
+              </div>
+            </div>
+          ))}
+
+          {resultado ? (
+            <>
+              <div className="sol-numero">
+                <CheckCircle2 size={16} />
+                <span>Solicitação <b className="mono">{resultado.solicitacaoId}</b> no Sienge</span>
+                <button className="btn-associar-sel" title="Copiar o número"
+                  onClick={() => navigator.clipboard?.writeText(String(resultado.solicitacaoId))}>
+                  <Copy size={12} /> copiar
+                </button>
+              </div>
+
+              <div className="sol-placar">
+                <b>{resultado.ok}</b> {resultado.ok === 1 ? "item entrou" : "itens entraram"}
+                {resultado.falhas > 0 && <> · <b className="sol-motivo">{resultado.falhas} recusado{resultado.falhas > 1 ? "s" : ""}</b></>}
+              </div>
+
+              {recusados.length > 0 && (
+                <>
+                  <div className="sol-secao-rotulo">Itens recusados</div>
+                  <div className="flat-panel-sub">
+                    Corrija e reenvie — vai para a <b>mesma solicitação {resultado.solicitacaoId}</b>.
+                    A correção vale só para este reenvio; a planilha da obra não muda.
+                  </div>
+                  <div className="sol-rolagem"><table className="vend-itens sol-tabela">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 58 }}>Insumo</th>
+                        {/* O motivo é a informação principal desta tabela:
+                            coluna própria, não subtexto de outro campo. */}
+                        <th style={{ width: "34%" }}>Motivo da recusa</th>
+                        <th>Observação</th>
+                        <th style={{ width: 76 }} className="right">Qtd.</th>
+                        <th style={{ width: 96 }} className="center">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recusados.map((r) => {
+                        const id = chaveDoResultado(r);
+                        const ed = edicoes[id] || {};
+                        const item = itemDoResultado(r);
+                        return (
+                          <tr key={id} className="row-falta">
+                            <td>
+                              <input className="form-input sol-campo-compacto mono"
+                                type="number" min="1" step="1"
+                                value={insumoEscolhido[id] ?? r.productId}
+                                onChange={(e) => trocarInsumo(id, e.target.value)}
+                                aria-label="Código do insumo no Sienge" />
+                            </td>
+                            {/* Texto do Sienge, palavra por palavra. Quando
+                                ele recusa sem dizer nada, dizer isso é
+                                melhor que uma célula vazia — que parece
+                                defeito da tela, não resposta do ERP. */}
+                            <td className="sol-motivo">
+                              {r.erro || "Recusado sem motivo informado. Confira o item no Sienge."}
+                            </td>
+                            <td>
+                              <input className="form-input sol-campo-compacto" value={ed.notes ?? item?.notes ?? ""}
+                                onChange={(e) => editar(id, { notes: e.target.value })}
+                                maxLength={4000} aria-label="Observação do item" />
+                            </td>
+                            <td className="right">
+                              <input className="form-input sol-campo-compacto right" type="number" min="0" step="any"
+                                value={ed.quantity ?? item?.quantity ?? ""}
+                                onChange={(e) => editar(id, { quantity: e.target.value })}
+                                aria-label="Quantidade" />
+                            </td>
+                            <td className="sol-acoes">
+                              <button className="btn-associar-sel" disabled={enviando}
+                                onClick={() => reenviar([r])} title="Reenviar só este item">
+                                reenviar
+                              </button>
+                              <button className="btn-associar-sel" disabled={enviando}
+                                onClick={() => descartar(id)}
+                                title="Tirar do envio — continua pendente nas Compras">
+                                <X size={12} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table></div>
+                  <div className="sol-acao-bloco">
+                    <button className="btn-import" disabled={enviando} onClick={() => reenviar(recusados)}>
+                      {enviando ? "Reenviando…" : `Reenviar ${recusados.length} ${recusados.length === 1 ? "item" : "itens"}`}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {ultimoEnvio && (
+                <div className="sol-tecnico">
+                  <button className="btn-arvore-eap" onClick={() => setVerEnvio((v) => !v)}>
+                    {verEnvio ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    Detalhes técnicos do envio
+                  </button>
+                  {verEnvio && (
+                    <>
+                      <div className="flat-panel-sub sol-tecnico-nota">
+                        O corpo exato da chamada e a resposta do Sienge — para entender recusa que a
+                        mensagem não explica.
+                        <button className="btn-associar-sel sol-acao-aviso"
+                          onClick={() => navigator.clipboard?.writeText(JSON.stringify(ultimoEnvio, null, 2))}>
+                          <Copy size={12} /> copiar
+                        </button>
+                      </div>
+                      <div className="sol-json-rotulo">Enviado</div>
+                      <pre className="sol-json">{JSON.stringify(ultimoEnvio.enviado, null, 2)}</pre>
+                      <div className="sol-json-rotulo">Resposta do Sienge</div>
+                      <pre className="sol-json">{JSON.stringify(ultimoEnvio.recebido, null, 2)}</pre>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="sol-secao-rotulo">Apropriação no orçamento</div>
+              <div className="sol-verbas">
+                {verbasDaSelecao.map((num) => {
+                  const v = verbas.find((x) => x.num === num);
+                  return (
+                    <div key={num} className="sol-verba-linha">
+                      <span className="sol-verba-num">verba <b className="mono">{num}</b></span>
+                      <SelectBusca className="mono sol-verba-sel" aria={`Item do orçamento da verba ${num}`}
+                        valor={mapa[num] || ""} vazio="— sem apropriação —"
+                        opcoes={folhasEap}
+                        onChange={(v) => trocarFolha(num, v || null)} />
+                      <span className="dim sol-verba-qtd">{v ? `${v.itens} ${v.itens === 1 ? "item" : "itens"}` : "—"}</span>
+                    </div>
+                  );
+                })}
+                <div className="flat-panel-sub">Trocar aqui grava no cadastro (EAP Sienge).</div>
+                {erroMapa && <div className="import-erro"><AlertTriangle size={13} /> {erroMapa}</div>}
+              </div>
+
+              <div className="sol-secao-rotulo">Dados da solicitação</div>
+              <div className="sol-campos">
+                <label className="sol-campo">
+                  <span>Unidade construtiva</span>
+                  {/* As unidades são as DESTA obra, lidas do Sienge: o id é a
+                      planilha do orçamento e muda de obra para obra. Número
+                      de outra obra volta como "Item do orçamento é inválido",
+                      depois da solicitação já criada. Sem a lista, o campo
+                      abre pra digitação em vez de travar o envio. */}
+                  {unidades && !unidades.length ? (
+                    <input className="form-input" type="number" min="1" value={unidade}
+                      placeholder="ex.: 1" onChange={(e) => setUnidade(e.target.value)} />
+                  ) : (
+                    <SelectBusca aria="Unidade construtiva" disabled={!unidades}
+                      valor={unidade} placeholder={unidades ? "selecione…" : "carregando…"}
+                      opcoes={(unidades || []).map((u) => ({ valor: String(u.id), rotulo: `${u.id} · ${u.descricao}` }))}
+                      onChange={setUnidade} />
+                  )}
+                  {erroUnidades
+                    ? <span className="dim">{erroUnidades} Quase sempre é <b>1</b> (Orçamento Executivo).</span>
+                    : unidades && !unidades.length
+                    ? <span className="dim">Nenhuma encontrada. Confira o número da planilha no Sienge.</span>
+                    : null}
+                </label>
+
+                <label className="sol-campo">
+                  <span>Observação da solicitação</span>
+                  <input className="form-input" value={notas}
+                    onChange={(e) => setNotas(e.target.value)} maxLength={4000} />
+                </label>
+              </div>
+
+              <div className="sol-secao-rotulo">
+                Itens
+                {/* Prestação de contas das linhas selecionadas: cada uma
+                    aparece no que vai (às vezes somada) ou no que não vai.
+                    Sem essa conta, agregação parece sumiço. */}
+                <span className="sol-conta">
+                  {linhas.length} {linhas.length === 1 ? "linha selecionada" : "linhas selecionadas"}
+                  {somadas > 0 && ` · ${somadas} ${somadas === 1 ? "somada" : "somadas"}`}
+                  {bloqueados.length > 0 && ` · ${bloqueados.length} fora`}
+                </span>
+              </div>
+
+              <div className="sol-rolagem"><table className="vend-itens sol-tabela">
+                <thead>
+                  <tr>
+                    <th style={{ width: 84 }}>Insumo</th>
+                    <th>Detalhe · apropriação</th>
+                    <th style={{ width: 62 }} className="right">Qtd.</th>
+                    <th style={{ width: 46 }} className="center">Un.</th>
+                    <th style={{ width: 104 }} className="right">Preço unit.</th>
+                    <th style={{ width: 112 }} className="right">Valor total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {itens.map((i, k) => (
+                    <tr key={k}>
+                      {/* O código do insumo é editável: o casamento com a
+                          base acerta a família e às vezes erra o código, e
+                          sem isto a correção obrigava a fechar o modal e
+                          refazer a seleção. A descrição ao lado é a
+                          conferência — digitar 275 e ler "AR CONDICIONADO"
+                          é o que diz se o número está certo. */}
+                      <td>
+                        <input className="form-input sol-campo-compacto mono"
+                          type="number" min="1" step="1"
+                          value={insumoEscolhido[i.chaves.join("|")] ?? i.productId}
+                          onChange={(e) => trocarInsumo(i.chaves.join("|"), e.target.value)}
+                          aria-label="Código do insumo no Sienge" />
+                      </td>
+                      <td>
+                        {/* O nome que o Sienge dá a este código. Vermelho
+                            quando o código não existe no orçamento da obra:
+                            é erro que só apareceria depois do envio. */}
+                        {catalogo && (
+                          i.insumoDescricao
+                            ? <span className="dim sol-insumo-nome">{i.insumoDescricao}</span>
+                            : <span className="sol-motivo sol-insumo-nome">insumo não encontrado nesta obra</span>
+                        )}
+                        <span className="sol-corte" title={i.notes}>{i.notes}</span>
+                        {/* Onde este item cai no orçamento: é a informação
+                            que faz alguém parar o envio. */}
+                        <span className="dim sol-sub">
+                          <span className="mono">{i.costEstimationItemReference}</span>
+                          {" · un. "}{i.buildingUnitId}
+                          {/* O código do detalhe é como se confere o item
+                              dentro do Sienge — sem ele, a linha diz o que
+                              foi pedido mas não onde olhar. */}
+                          {Number.isInteger(i.detailId) && <> · detalhe <span className="mono">{i.detailId}</span></>}
+                          {i.chaves.length > 1 && ` · ${i.chaves.length} linhas somadas`}
+                          {i.detalheNovo && " · detalhe novo"}
+                        </span>
+                        {i.detalhesDisponiveis?.length > 0 && (
+                          <span className="sol-detalhe">
+                            <SelectBusca className="sol-campo-compacto" aria="Detalhe do insumo no Sienge"
+                              valor={i.detailId ?? ""} vazio="— sem detalhe —"
+                              opcoes={i.detalhesDisponiveis.map((d) => ({
+                                valor: String(d.id),
+                                rotulo: `${d.id}${d.codigo ? ` (${d.codigo})` : ""} · ${d.descricao}`,
+                              }))}
+                              onChange={(v) => setDetalheEscolhido((d) => ({ ...d, [i.chaves.join("|")]: v }))} />
+                          </span>
+                        )}
+                      </td>
+                      <td className="right">{i.quantity}</td>
+                      <td className="center mono">{i.unitySymbol}</td>
+                      <td className="right">{fmtBRL(i.estimatedPrice)}</td>
+                      {/* O custo de material da linha nas Compras — é ele que
+                          soma o total e bate com a tela de origem. O unitário
+                          ao lado é derivado dele. */}
+                      <td className="right">{fmtBRL(i.custoTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="sol-total">
+                    <td colSpan={5} className="right">Total</td>
+                    <td className="right">{fmtBRL(total)}</td>
+                  </tr>
+                </tfoot>
+              </table></div>
+
+              {bloqueados.length > 0 && (
+                <>
+                  <div className="sol-secao-rotulo">
+                    Não vão
+                    <span className="sol-conta">continuam selecionados nas Compras</span>
+                  </div>
+                  <div className="sol-rolagem"><table className="vend-itens sol-tabela">
+                    <thead>
+                      <tr>
+                        <th style={{ width: "38%" }}>Item</th>
+                        <th style={{ width: 52 }}>Verba</th>
+                        <th>Motivo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bloqueados.map((b, k) => (
+                        <tr key={k} className="row-falta">
+                          {/* Descrição de item passa fácil de 100 caracteres.
+                              Corta em 3 linhas, e o texto inteiro fica no
+                              title — o motivo ao lado é que não pode sumir. */}
+                          <td><span className="sol-corte" title={b.item}>{b.item}</span></td>
+                          <td className="mono">{b.verba}</td>
+                          <td>{b.motivo}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table></div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="sobreposto-rodape">
+          {resultado ? (
+            <>
+              {/* Fechar com item recusado em aberto é uma decisão, não um
+                  descuido: eles continuam pendentes e dá pra retomar. */}
+              {recusados.length > 0 && (
+                <span className="dim sol-rodape-aviso">
+                  {recusados.length} {recusados.length === 1 ? "item continua" : "itens continuam"} pendente{recusados.length === 1 ? "" : "s"} nas Compras.
+                </span>
+              )}
+              <button className="btn-import" onClick={onFechar}>Fechar</button>
+            </>
+          ) : (
+            <>
+              <span className={insumosInvalidos.length ? "sol-motivo sol-rodape-aviso" : "dim sol-rodape-aviso"}>
+                {insumosInvalidos.length
+                  ? `${insumosInvalidos.length} ${insumosInvalidos.length === 1 ? "item está" : "itens estão"} sem código de insumo`
+                  : `${itens.length} ${itens.length === 1 ? "item" : "itens"} · ${fmtBRL(total)}`}
+              </span>
+              <button className="btn-associar-sel" onClick={onFechar} disabled={enviando}>Cancelar</button>
+              <button className="btn-import"
+                disabled={enviando || !itens.length || !unidadeValida || insumosInvalidos.length > 0}
+                title={insumosInvalidos.length ? "Há item sem código de insumo" : undefined}
+                onClick={() => enviar()}>
+                {enviando ? "Enviando…" : `Enviar ao Sienge`}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body);
+}
+
 function situacaoNoSienge(it, casamento, grupos) {
   const candidatas = (casamento?.maes || []).map((x) => x.grupo);
   const escolhida = it.maeSienge
@@ -13622,6 +14967,326 @@ function normalizarData(v) {
   return iso ? iso[0] : null;
 }
 
+/* ============================================================
+   EAP DO SIENGE — a estrutura de apropriação do orçamento
+
+   Toda solicitação de compra enviada ao Sienge tem que dizer ONDE o
+   produto entra no orçamento: um código de item ("04.001.001.001") e uma
+   unidade construtiva. Isso não existia no GC — a planilha da obra usa a
+   EAP DA CASA, que tem outra numeração e outros nomes.
+
+   Daí as duas metades desta tela: a ÁRVORE (importada do relatório de
+   orçamento do Sienge) e o MAPA que liga cada verba da casa a uma folha
+   dela. O mapa é o que faz a solicitação sair sem ninguém digitar código.
+   ============================================================ */
+
+/* A árvore que o Sienge mostra: nível 1 e 2 agrupam, a folha (nível 4) é
+   a única que aceita apropriação. O nível 3 quase sempre repete o nome do
+   2 no relatório, então ele não vira linha própria — só a folha pendura. */
+function arvoreDaEap(itens) {
+  const raizes = [];
+  const porCod = new Map();
+  (itens || []).forEach((i) => porCod.set(i.codigo, { ...i, filhos: [] }));
+  porCod.forEach((no) => {
+    if (no.nivel === 1) { raizes.push(no); return; }
+    // A folha pendura no nível 2 (pulando o 3, que só repete o nome).
+    const paiCod = no.nivel === 4 ? no.codigo.split(".").slice(0, 2).join(".") : no.codigo.split(".").slice(0, no.nivel - 1).join(".");
+    const pai = porCod.get(paiCod);
+    if (pai) pai.filhos.push(no);
+  });
+  // O nível 3 não entra na tela, mas continua no banco (o Sienge tem).
+  porCod.forEach((no) => { if (no.nivel === 2) no.filhos = no.filhos.filter((f) => f.nivel === 4); });
+  return raizes;
+}
+
+function EapSiengeView({ usuario }) {
+  const [versoes, setVersoes] = useState([]);
+  const [versaoId, setVersaoId] = useState(null);
+  const [itens, setItens] = useState([]);
+  const [mapa, setMapa] = useState({});
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [previa, setPrevia] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [abertos, setAbertos] = useState(() => new Set());
+  const inputRef = useRef(null);
+
+  const versao = versoes.find((v) => v.id === versaoId) || null;
+  const folhas = useMemo(() => folhasDaEap(itens), [itens]);
+  const verbas = eapPadrao();
+
+  /* Duas buscas separadas, e não uma que faz as duas coisas: a lista de
+     versões só muda quando alguém importa, e o conteúdo muda a cada troca
+     no seletor. Juntando as duas, escolher a versão relistava tudo e a
+     abertura da tela carregava o banco duas vezes. */
+  async function recarregarVersoes(preferir = null) {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const lista = await listarVersoesEap();
+      setVersoes(lista);
+      // Abre na versão pedida; senão na padrão; senão na mais recente.
+      const alvo = lista.find((v) => v.id === preferir) || lista.find((v) => v.padrao) || lista[0] || null;
+      setVersaoId(alvo?.id ?? null);
+      if (!alvo) { setItens([]); setMapa({}); setCarregando(false); }
+    } catch (e) {
+      setErro(e.message || String(e));
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { recarregarVersoes(); }, []);
+
+  useEffect(() => {
+    if (!versaoId) return;
+    let vivo = true;
+    setCarregando(true);
+    (async () => {
+      try {
+        const { itens: its, mapa: m } = await carregarEap(versaoId);
+        // Trocar de versão duas vezes rápido deixaria a resposta antiga
+        // chegar por último e sobrescrever a nova.
+        if (!vivo) return;
+        setItens(its);
+        setMapa(m);
+      } catch (e) {
+        if (vivo) setErro(e.message || String(e));
+      } finally {
+        if (vivo) setCarregando(false);
+      }
+    })();
+    return () => { vivo = false; };
+  }, [versaoId]);
+
+  async function aoEscolher(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setErro(null);
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false, raw: false });
+      const lido = parseEapSienge(linhas);
+      // A prévia é obrigatória de propósito: uma EAP lida pela metade
+      // apropria compra no lugar errado, e o Sienge aceita calado.
+      setPrevia({ ...lido, arquivo: file.name });
+    } catch (err) {
+      setErro(err.message || String(err));
+    }
+  }
+
+  async function confirmarImportacao() {
+    setSalvando(true);
+    setErro(null);
+    try {
+      const { id, orfaos } = await importarEap(previa, { por: usuario, herdarDe: versaoId });
+      setPrevia(null);
+      await recarregarVersoes(id);
+      setAviso(orfaos.length
+        ? `EAP importada. ${orfaos.length} ${orfaos.length === 1 ? "verba perdeu" : "verbas perderam"} a ligação porque o código não existe nesta versão: ${orfaos.map((o) => `${o.verba} → ${o.codigo}`).join(", ")}. Refaça abaixo.`
+        : "EAP importada e o mapa das verbas foi herdado inteiro.");
+    } catch (err) {
+      setErro(err.message || String(err));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function ligar(verbaNum, codigo) {
+    const antes = mapa;
+    setMapa((m) => { const n = { ...m }; if (codigo) n[verbaNum] = codigo; else delete n[verbaNum]; return n; });
+    try {
+      await definirMapaVerba(versaoId, verbaNum, codigo, usuario);
+    } catch (e) {
+      setMapa(antes); // o banco recusou: a tela não pode ficar dizendo o contrário
+      setErro(e.message || String(e));
+    }
+  }
+
+  async function tornarPadrao() {
+    try {
+      await definirVersaoPadrao(versaoId);
+      await recarregarVersoes(versaoId);
+    } catch (e) { setErro(e.message || String(e)); }
+  }
+
+  const semFolha = verbas.filter((v) => !mapa[v.num]);
+  const arvore = useMemo(() => arvoreDaEap(itens), [itens]);
+  const termo = normSienge(busca);
+  const casa = (i) => !termo || i.codigo.includes(busca.trim()) || normSienge(i.descricao).includes(termo);
+
+  return (
+    <>
+      <div className="import-card">
+        <div className="import-bar">
+          <div className="import-info">
+            <Upload size={14} />
+            <span>Suba o <b>Relatório de Orçamento</b> da obra modelo (Excel, exportado do Sienge). Dele saem os códigos de apropriação e a unidade construtiva que toda solicitação de compra exige. Importar <b>não apaga</b> a versão anterior: cria outra, e o mapa das verbas é herdado.</span>
+          </div>
+          <button className="btn-import" disabled={salvando} onClick={() => inputRef.current && inputRef.current.click()}>
+            <Upload size={13} /> Importar orçamento
+          </button>
+          <input ref={inputRef} type="file" accept=".xlsx,.xlsm,.xlsb,.xls" style={{ display: "none" }} onChange={aoEscolher} />
+        </div>
+        {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
+        {aviso && <div className="import-erro" style={{ background: "var(--blue-bg)", color: "var(--blue)" }}>
+          <CheckCircle2 size={14} /> {aviso} <button className="clear-btn" onClick={() => setAviso(null)}><X size={12} /></button>
+        </div>}
+      </div>
+
+      {previa && (
+        <div className="flat-panel">
+          <div className="flat-panel-header">
+            <div>
+              <div className="flat-panel-title">Confira antes de gravar — {previa.arquivo}</div>
+              <div className="flat-panel-sub">Nada foi gravado ainda.</div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-associar-sel" onClick={() => setPrevia(null)}>Cancelar</button>
+              <button className="btn-import" disabled={salvando || !previa.versao.unidadeId || !previa.itens.some((i) => i.folha)}
+                onClick={confirmarImportacao}>
+                {salvando ? "Gravando…" : "Gravar como versão nova"}
+              </button>
+            </div>
+          </div>
+          <div style={{ padding: "0 16px 14px", display: "grid", gap: 6 }}>
+            <div><b>Unidade construtiva:</b> {previa.versao.unidadeId ? `${previa.versao.unidadeId} — ${previa.versao.nome}` : <span className="dim">não encontrada</span>}</div>
+            <div><b>Versão do orçamento:</b> {previa.versao.versaoOrcamento || "—"} · <b>Obra:</b> {previa.versao.obraModelo || "—"}</div>
+            <div><b>Itens:</b> {previa.itens.length} · <b>apropriáveis:</b> {previa.itens.filter((i) => i.folha).length}</div>
+            {previa.avisos.map((a, i) => (
+              <div key={i} className="import-erro"><AlertTriangle size={13} /> {a}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flat-panel">
+        <div className="flat-panel-header">
+          <div>
+            <div className="flat-panel-title">
+              Verbas da casa → item do orçamento do Sienge
+              {semFolha.length > 0 && <span className="dim"> · {semFolha.length} sem ligação</span>}
+            </div>
+            <div className="flat-panel-sub">
+              É daqui que sai o código de apropriação de cada produto solicitado. Verba sem ligação
+              <b> bloqueia o envio</b> dos itens dela — de propósito: apropriar na conta errada é pior que parar.
+            </div>
+          </div>
+          {versoes.length > 0 && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <select value={versaoId ?? ""} onChange={(e) => setVersaoId(Number(e.target.value))}>
+                {versoes.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.nome} · un. {v.unidade_id}{v.padrao ? " · padrão" : ""}
+                  </option>
+                ))}
+              </select>
+              {versao && !versao.padrao && (
+                <button className="btn-associar-sel" onClick={tornarPadrao}>Tornar padrão</button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {carregando ? (
+          <div className="empty-note">Carregando…</div>
+        ) : !versao ? (
+          <div className="empty-note">Nenhuma EAP cadastrada ainda — importe o relatório de orçamento acima.</div>
+        ) : (
+          <table className="vend-itens">
+            <thead>
+              <tr>
+                <th style={{ width: 44 }}>Verba</th>
+                <th style={{ width: 260 }}>Nome na casa</th>
+                <th>Item do orçamento no Sienge</th>
+              </tr>
+            </thead>
+            <tbody>
+              {verbas.map((v) => {
+                const atual = mapa[v.num] || "";
+                const sugestao = !atual ? sugerirFolha(v.nome, itens) : null;
+                return (
+                  <tr key={v.num} className={atual ? "" : "row-falta"}>
+                    <td className="mono">{v.num}</td>
+                    <td>{v.nome}</td>
+                    <td>
+                      <select className="form-select" value={atual} onChange={(e) => ligar(v.num, e.target.value || null)}>
+                        <option value="">— sem ligação (bloqueia o envio) —</option>
+                        {folhas.map((f) => (
+                          <option key={f.codigo} value={f.codigo}>{f.codigo} · {f.descricao}</option>
+                        ))}
+                      </select>
+                      {sugestao && (
+                        <button className="btn-associar-sel" style={{ marginTop: 4 }}
+                          onClick={() => ligar(v.num, sugestao.folha.codigo)}
+                          title="Sugestão por semelhança de nome — confira antes de aceitar">
+                          <Check size={12} /> usar {sugestao.folha.codigo} · {sugestao.folha.descricao}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {versao && (
+        <div className="flat-panel">
+          <div className="flat-panel-header">
+            <div>
+              <div className="flat-panel-title">A EAP como o Sienge mostra — {folhas.length} itens apropriáveis</div>
+              <div className="flat-panel-sub">
+                Unidade construtiva <b>{versao.unidade_id}</b> · orçamento {versao.versao_orcamento || "—"} ·
+                importada {versao.importado_em ? new Date(versao.importado_em).toLocaleDateString("pt-BR") : "—"}
+                {versao.importado_por ? ` por ${versao.importado_por}` : ""}
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
+              <Search size={13} className="dim" />
+              <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+              {busca && <button className="clear-btn" onClick={() => setBusca("")}><X size={12} /></button>}
+            </div>
+          </div>
+          <div style={{ padding: "0 16px 16px" }}>
+            {arvore.map((raiz) => (
+              <div key={raiz.codigo} style={{ marginBottom: 10 }}>
+                <div className="mono eap-raiz">{raiz.codigo} · {raiz.descricao}</div>
+                {raiz.filhos.map((g) => {
+                  const dentro = g.filhos.filter(casa);
+                  if (termo && !dentro.length && !casa(g)) return null;
+                  const aberto = abertos.has(g.codigo) || !!termo;
+                  return (
+                    <div key={g.codigo} className="eap-grupo">
+                      <button className="btn-arvore-eap"
+                        onClick={() => setAbertos((p) => { const n = new Set(p); n.has(g.codigo) ? n.delete(g.codigo) : n.add(g.codigo); return n; })}>
+                        {aberto ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <span className="mono">{g.codigo}</span> {g.descricao}
+                        <span className="dim"> · {g.filhos.length}</span>
+                      </button>
+                      {aberto && (termo ? dentro : g.filhos).map((f) => (
+                        <div key={f.codigo} className="eap-folha">
+                          <span className="mono">{f.codigo}</span> {f.descricao}
+                          {!ehMaterial(f.descricao) && <span className="dim"> · mão de obra</span>}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function BancoPrecosView() {
   const [busca, setBusca] = useState("");
   const [precos, setPrecos] = useState([]);
@@ -16123,6 +17788,168 @@ export default function App() {
         .pipefy-texto { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface-1); color: var(--ink); resize: vertical; }
         .btn-associar-sel { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); color: var(--ink); border: none; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-right: 6px; }
         .btn-associar-sel:hover { background: var(--blue-bg); color: var(--blue); }
+        /* ---------- EAP do Sienge ---------- */
+        /* A árvore não é navegação: ela é conteúdo que abre e fecha. Por
+           isso não reusa .nav-item, que carrega o visual da barra lateral. */
+        .btn-arvore-eap { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+          background: none; border: none; padding: 2px 0; font: inherit; font-size: 12.5px;
+          color: var(--ink); cursor: pointer; }
+        .btn-arvore-eap:hover { color: var(--blue); }
+        .eap-folha { padding: 1px 0 1px 20px; font-size: 12.5px; }
+        .eap-raiz { font-weight: 600; margin-bottom: 2px; }
+        .eap-grupo { margin-left: 14px; }
+
+
+        /* ---------- Solicitação de compra no Sienge ---------- */
+        /* Modal de verdade (o .rel-overlay ao lado é de impressão: ele
+           esconde o #root). Aqui a tela continua atrás, porque a pessoa
+           está conferindo o que selecionou. */
+        /* Sobreposição no padrão do design system: os tokens de overlay e
+           sombra existem justamente pra isto — rgba cru aqui passaria a
+           mesma cor nos dois temas, e o claro ficaria com véu preto. */
+        .sobreposto-fundo { position: fixed; inset: 0; z-index: 1200;
+          background: var(--overlay-strong); backdrop-filter: var(--overlay-blur);
+          display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .sobreposto-caixa { background: var(--bg); color: var(--text);
+          border: 1px solid var(--line-2); border-radius: var(--radius-lg);
+          width: min(1080px, 100%); max-height: 88vh; display: flex; flex-direction: column;
+          box-shadow: var(--shadow-4); }
+        .sobreposto-topo { display: flex; align-items: flex-start; justify-content: space-between;
+          gap: 12px; padding: 20px 24px 12px; border-bottom: 1px solid var(--line-2); }
+        .sobreposto-corpo { padding: 16px 24px; overflow: auto; }
+        .sobreposto-rodape { display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+          padding: 16px 24px; border-top: 1px solid var(--line-2); background: var(--surface-1);
+          border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+        .sol-numero { display: flex; align-items: center; gap: 8px; font-size: 15px;
+          padding: 12px 16px; border-radius: var(--radius); background: var(--green-bg); }
+        .sol-verbas { display: grid; gap: 4px; padding: 12px 16px; border-radius: var(--radius);
+          background: var(--surface-1); border: 1px solid var(--line-1); font-size: 12.5px; }
+        /* As tabelas do modal herdam o table-layout fixed da .vend-itens,
+           que espreme o texto em vez de quebrá-lo quando a coluna não tem
+           largura declarada — era o que cortava "Item · Verba · Motivo".
+           Aqui as larguras estão declaradas e o resto quebra. */
+        .sol-tabela td, .sol-tabela th { overflow-wrap: anywhere; word-break: break-word;
+          white-space: normal; line-height: 1.45; }
+        /* A descrição do produto passa fácil de 100 caracteres. Três
+           linhas e o resto no title (atributo HTML): o motivo ao lado é
+           que não pode perder espaço pra ela. */
+        .sol-corte { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+          overflow: hidden; }
+        .sol-sub { display: block; font-size: 11px; margin-top: 2px; }
+        /* O erro em duas partes: o que houve (forte) e o que fazer
+           (logo abaixo, sem competir com a primeira linha). */
+        .erro-detalhado { align-items: flex-start; gap: 10px; padding: 12px 16px;
+          border-radius: var(--radius); margin-bottom: 12px; }
+        .erro-detalhado:last-child { margin-bottom: 0; }
+        /* display:block porque margin-top não vale em elemento inline —
+           era o que sumia com o motivo da recusa quando ele vinha logo
+           depois de um input de largura total. */
+        .erro-acao { display: block; margin-top: 4px; font-weight: 400; line-height: 1.45; opacity: .92; }
+        .sol-motivo { color: var(--danger); line-height: 1.45; }
+        .sol-total td { font-weight: 700; border-top: 1px solid var(--line-2); }
+        /* Campo do design system em versão de TABELA: mesma borda, mesmo
+           raio, mesmo fundo (--field) e mesmo foco — só o respiro vertical
+           encolhe, porque a linha tem altura de linha, não de formulário. */
+        .sol-campo-compacto { width: 100%; padding: 6px 10px; font-size: 12.5px; }
+        .sol-campo-compacto.right { text-align: right; }
+        .sol-insumo-nome { display: block; font-size: 11px; margin-bottom: 2px; }
+        .sol-detalhe { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11.5px; }
+        .sol-detalhe .sel-busca { flex: 1; min-width: 0; }
+        .sol-rodape-aviso { margin-right: auto; font-size: 12px; }
+        .sol-tecnico { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-1); }
+        .sol-json-rotulo { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+          letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute); margin: 12px 0 4px; }
+        .sol-json { margin: 0; padding: 12px; border-radius: var(--radius); background: var(--surface-1);
+          border: 1px solid var(--line-1); font-family: var(--font-mono); font-size: 11px;
+          line-height: 1.5; max-height: 240px; overflow: auto; white-space: pre-wrap;
+          word-break: break-word; color: var(--text-soft); }
+        .hist-sienge { border: 1px solid var(--line-2); border-radius: var(--radius);
+          margin-bottom: 16px; overflow: hidden; background: var(--bg); }
+        .hist-sienge-topo { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+          background: var(--surface-1); border: none; padding: 12px 16px; font: inherit; font-size: 13px;
+          color: var(--text); cursor: pointer; }
+        .hist-sienge-topo:hover { background: var(--surface-2); }
+        /* O título não quebra em três linhas: ele ocupa o espaço que
+           sobra e empurra a data pra direita. */
+        .hist-sienge-titulo { flex: 1; min-width: 0; }
+        .hist-sienge-quando { font-size: 11.5px; white-space: nowrap; }
+        .hist-sienge-tabela td { padding-top: 10px; padding-bottom: 10px; vertical-align: middle; }
+        .hist-sienge-num { display: inline-flex; align-items: center; gap: 5px; background: none;
+          border: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer; }
+        .hist-sienge-num:hover { color: var(--brand); }
+        .hist-sienge-aberta > td { background: var(--surface-1); }
+        .hist-sienge-detalhe > td { padding: 0 0 12px; background: var(--surface-1); }
+        .hist-sienge-detalhe .vend-itens { background: var(--bg); border-top: 1px solid var(--line-1); }
+        .hist-sienge-obs { padding: 10px 12px 0; font-size: 11.5px; }
+        .hist-sienge-nota { margin-left: 8px; font-size: 11px; }
+        .pill-erro { background: var(--danger-soft); color: var(--danger); }
+        .sol-pendente { display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-1);
+          font-size: 12px; font-weight: 400; }
+        .sol-pendente:first-of-type { border-top: none; }
+        .sol-verba-linha { display: flex; align-items: center; gap: 8px; }
+        .sol-verba-linha .sel-busca { flex: 1; min-width: 0; }
+        /* Largura fixa nos dois lados: com o texto solto, cada linha
+           começava e terminava num ponto diferente e a coluna de selects
+           ficava serrilhada. */
+        /* ---------- Select com busca ---------- */
+        .sel-busca { position: relative; flex: 1; min-width: 0; }
+        /* O gatilho é o mesmo campo do design system (.form-select), só
+           que como botão: mesma borda, mesmo raio, mesmo fundo e o mesmo
+           foco — a seta nativa dá lugar ao chevron. */
+        .sel-busca-gatilho { display: flex; align-items: center; justify-content: space-between;
+          gap: 8px; width: 100%; text-align: left; background-image: none; padding-right: 12px;
+          cursor: pointer; }
+        .sel-busca-gatilho > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sel-busca-gatilho:disabled { opacity: 0.5; cursor: not-allowed; }
+        /* z acima do modal (1200): o painel é aberto de dentro dele. */
+        .sel-busca-painel { position: fixed; z-index: 1300;
+          background: var(--surface-1); border: 1px solid var(--line-2); border-radius: var(--radius);
+          box-shadow: var(--shadow-3); overflow: hidden; }
+        .sel-busca-campo { display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+          border-bottom: 1px solid var(--line-1); }
+        .sel-busca-campo input { flex: 1; min-width: 0; border: none; background: none; outline: none;
+          font: inherit; font-size: 12.5px; color: var(--text); }
+        .sel-busca-lista { max-height: 260px; overflow-y: auto; }
+        .sel-busca-item { display: block; width: 100%; text-align: left; border: none; background: none;
+          padding: 7px 12px; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer;
+          white-space: normal; line-height: 1.35; }
+        .sel-busca-ativo { background: var(--surface-2); }
+        .sel-busca-escolhida { color: var(--brand); font-weight: 600; }
+        .sel-busca-nada { padding: 10px 12px; font-size: 12px; color: var(--text-mute); }
+        /* Na tabela o gatilho acompanha a altura da linha, como os outros
+           campos compactos. */
+        .sol-campo-compacto .sel-busca-gatilho,
+        .sel-busca.sol-campo-compacto .sel-busca-gatilho { padding: 6px 10px; font-size: 12.5px; }
+
+        .sol-verba-num { width: 76px; flex-shrink: 0; }
+        .sol-verba-qtd { width: 64px; flex-shrink: 0; text-align: right; }
+        .sol-placar { margin: 12px 0; font-size: 13px; }
+        .sol-conta { font-family: var(--font-sans); font-size: 11px; font-weight: 400;
+          letter-spacing: 0; text-transform: none; color: var(--text-mute); margin-left: 8px; }
+        .sol-acoes { display: flex; gap: 4px; justify-content: center; }
+        .sol-acao-bloco { margin-top: 12px; }
+        .sol-acao-aviso { margin-left: 8px; margin-top: 6px; }
+        .sol-tecnico-nota { margin-top: 8px; }
+        /* Rótulo de seção no padrão dos outros blocos do app: mono,
+           caixa alta, discreto — separa as partes do modal sem pesar. */
+        .sol-secao-rotulo { display: flex; align-items: baseline; flex-wrap: wrap;
+          font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+          letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute);
+          margin: 20px 0 8px; }
+        .sol-secao-rotulo:first-child { margin-top: 0; }
+        /* Respiro em múltiplos de 4, como manda o design system. */
+        .sol-campos { display: grid; grid-template-columns: 200px 1fr; gap: 12px; align-items: end; }
+        .sol-campo { display: grid; gap: 4px; font-size: 12px; color: var(--text-soft); }
+        .sol-campo input { width: 100%; }
+        /* Tabela mais larga que a tela rola dentro do próprio quadro, em
+           vez de esticar o modal e o corpo da página. */
+        .sol-rolagem { overflow-x: auto; }
+        @media (max-width: 720px) {
+          .sol-campos { grid-template-columns: 1fr; }
+          .sobreposto-topo, .sobreposto-corpo, .sobreposto-rodape { padding-left: 16px; padding-right: 16px; }
+        }
+
         .sel-barra-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         .sel-barra-topo { flex-wrap: wrap; }
         .grp-comprados { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line-2); white-space: nowrap; }
@@ -18043,6 +19870,13 @@ export default function App() {
           <div className="title-row"><span className="title-accent">Banco de Preços</span></div>
           <div className="obra-meta">Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge</div>
           <BancoPrecosView />
+          </>
+          ) : modulo === "eap" ? (
+          <>
+          <div className="eyebrow">INTEGRAÇÃO SIENGE</div>
+          <div className="title-row"><span className="title-accent">EAP Sienge</span></div>
+          <div className="obra-meta">Onde cada produto é apropriado no orçamento — o que a solicitação de compra exige</div>
+          <EapSiengeView usuario={usuario} />
           </>
           ) : modulo === "a_contratar" ? (
           <>
