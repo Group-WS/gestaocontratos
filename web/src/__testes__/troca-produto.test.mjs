@@ -71,5 +71,13 @@ conf("ligada ao original sem código", M.linhasDaTroca(semCodigo.itens, semCodig
 conf("o original sem código é chamado pela descrição", M.rotuloDoItem(semCodigo.itens[0]).startsWith("Fita LED 2835"), true);
 conf("o código null-T não aparece na coluna", M.codigoVisivel(semCodigo.itens[1]), "");
 
+// Na tela (15/09): a troca mostra quantidade × valor unitário, e o item do
+// Sienge se marca solicitado e comprado fora da etapa Sienge também.
+const linhaCompra = src.slice(src.indexOf("function LinhaCompra("), src.indexOf("MÓDULO CONTRATOS"));
+conf("a linha nova mostra qtd × valor unitário", /\{qtdFmt\} \{it\.un\} × \{fmtBRL\(it\.custoMaterial/.test(linhaCompra), true);
+conf("a riscada mostra como era", linhaCompra.includes("antes: {qtdFmt} {it.un} ×"), true);
+conf("fora da etapa Sienge dá pra marcar solicitado", linhaCompra.includes('!noSienge && it.canalCompra === "sienge"'), true);
+conf("a riscada mostra 'trocado' no lugar dos status", /<td colSpan=\{nCols - 5\}[\s\S]{0,200}troca-pill[\s\S]{0,300}> trocado/.test(linhaCompra), true);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

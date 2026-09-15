@@ -9482,6 +9482,9 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
   const quando = (rot, em) => `${rot}${em ? ` em ${new Date(em).toLocaleDateString("pt-BR")}` : ""}`;
   const nCols = 7 + (lancado !== undefined ? 1 : 0) + (mostrarSienge ? 1 : 0);
+  // Quantidade e valor unitário, pras linhas da troca (pedido de 15/09/2026).
+  const qtdLinha = Number(it.qtdExecutivo ?? it.qtdVendida ?? 0) || 0;
+  const qtdFmt = qtdLinha.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 
   // O produto que foi trocado: riscado, em cinza, sem ação nenhuma.
   if (it.troca) {
@@ -9495,6 +9498,9 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
           {troca?.novas?.length > 0 && (
             <div className="troca-meta troca-por">trocado por {troca.novas.join(" + ")}</div>
           )}
+          {qtdLinha > 0 && (
+            <div className="troca-meta">antes: {qtdFmt} {it.un} × {fmtBRL((row.materialOriginal || 0) / qtdLinha)}</div>
+          )}
           <div className="troca-meta">
             em {new Date(t.em).toLocaleDateString("pt-BR")}
             {t.aprovadoPor?.nome ? ` · aprovado por ${t.aprovadoPor.nome}` : ""}{t.motivo ? ` · ${t.motivo}` : ""}
@@ -9505,7 +9511,12 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         </td>
         <td className="mono center"><s>{it.qtdExecutivo ?? it.qtdVendida ?? "—"} {it.un}</s></td>
         <td className="mono right"><s>{fmtBRL(row.materialOriginal || 0)}</s></td>
-        {Array.from({ length: nCols - 5 }, (_, k) => <td key={k} />)}
+        {/* No lugar dos status, a troca: em branco parecia linha esquecida (15/09/2026). */}
+        <td colSpan={nCols - 5} className="center">
+          <span className="pill troca-pill" title={troca?.novas?.length ? `Trocado por ${troca.novas.join(" + ")}` : "Trocado"}>
+            <ArrowLeftRight size={10} /> trocado
+          </span>
+        </td>
       </tr>
     );
   }
@@ -9535,6 +9546,11 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
                 <button type="button" className="troca-link" onClick={onDesfazerTroca}>desfazer</button>
               )}
             </span>
+          )}
+          {troca?.tipo === "nova" && (
+            <div className="troca-meta">
+              {qtdFmt} {it.un} × {fmtBRL(it.custoMaterial ?? (qtdLinha > 0 ? material / qtdLinha : 0))}
+            </div>
           )}
           {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
             <button type="button" className="troca-link" onClick={onAbrirTroca} title="Trocar por outro produto (aprovado com o executivo da obra)">
@@ -9569,16 +9585,32 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         {/* Sem canal nao ha o que concluir: concluir o que ninguem sabe
             por onde vai comprar seria marcar comprado no escuro. */}
         {!it.canalCompra ? <span className="dim">—</span> : (
+          <div className="status-par">
+          {/* Fora da etapa Sienge, o item do Sienge também se marca solicitado
+              aqui, em cima do comprado: na etapa Tudo ele travava sem saída
+              (pedido de 15/09/2026). A regra é a mesma: primeiro solicitado,
+              depois comprado. */}
+          {!noSienge && it.canalCompra === "sienge" && (
+            <button className={`pill pill-btn pill-mini ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
+              disabled={!podeEditar || !podeMudarSolicitado(it)}
+              onClick={() => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() })}
+              title={!podeEditar ? `${estaSolicitado(it) ? quando("Solicitado", it.solicitadoEm) : "Não solicitado"} — ${MODO_LEITURA_DICA}`
+                : it.comprado ? "Já comprado: desmarque o comprado antes de mexer na solicitação"
+                : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
+                : "Marcar como solicitado no Sienge"}>
+              {estaSolicitado(it) ? <><Check size={10} /> solicitado</> : "solicitar"}
+            </button>
+          )}
           <button className={`pill pill-btn ${it.comprado ? "pill-ok" : "pill-wait"}`}
             disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}
             onClick={() => onItemChange({ comprado: !it.comprado, compradoEm: it.comprado ? null : new Date().toISOString() })}
             title={!podeEditar ? `${it.comprado ? quando("Comprado", it.compradoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
               : it.comprado ? `${quando("Comprado", it.compradoEm)} — clique pra desfazer`
               : podeMarcarComprado(it) ? "Marcar como comprado — entra no total do Dashboard"
-                : noSienge ? "Marque como solicitado antes de comprado"
-                  : "Item do Sienge: marque como solicitado na etapa Sienge antes de comprado"}>
+                : "Marque como solicitado antes de comprado"}>
             {it.comprado ? <><Check size={11} /> comprado</> : "pendente"}
           </button>
+          </div>
         )}
       </td>
 
@@ -17822,6 +17854,9 @@ export default function App() {
         .row-trocado .item-desc, .item-trocado { text-decoration: line-through; color: var(--ink-3); }
         .troca-meta { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
         .troca-por { color: var(--ink-2); }
+        .status-par { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+        .pill.pill-mini { font-size: 10px; padding: 1px 7px; }
+        .pill.troca-pill { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--ink-3); border: 1px dashed var(--line-2); }
         .troca-tag { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; font-size: 10.5px; color: var(--ink-3); }
         .troca-tag-plano { margin-left: 0; margin-right: 6px; }
         .troca-link { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0; border: 0; background: none; font: inherit; font-size: 10.5px; color: var(--ink-3); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
