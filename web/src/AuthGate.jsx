@@ -1,6 +1,21 @@
 import React, { useEffect, useState } from "react";
+import { Lock } from "lucide-react";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { LogoGroupWS } from "./marca.jsx";
+import capa from "./assets/login-capa.jpg";
+import capaPequena from "./assets/login-capa-1000.jpg";
+
+/* "Precisa de ajuda?" cai no WhatsApp de quem administra o sistema. */
+const SUPORTE = "https://wa.me/5548999348866?text="
+  + encodeURIComponent("Olá! Preciso de ajuda para acessar o Gestão de Obras TKWS.");
+
+/* Só no `npm run dev`: `?previaLogin` mostra a tela de entrada mesmo com a
+   conta aberta, pra conferir o desenho sem sair dela (`?previaLogin=aviso`
+   mostra junto o aviso de sessão derrubada). Lido quando o módulo carrega;
+   no build vira null e some. */
+const PREVIA_LOGIN = import.meta.env.DEV
+  ? new URLSearchParams(window.location.search).get("previaLogin")
+  : null;
 
 /**
  * Envolve o app com o login do Supabase. Enquanto o Supabase não
@@ -72,6 +87,7 @@ export default function AuthGate({ children }) {
     return () => { vivo = false; sub.subscription.unsubscribe(); };
   }, []);
 
+  if (PREVIA_LOGIN !== null) return <LoginScreen derrubada={PREVIA_LOGIN === "aviso"} />;
   if (session === undefined) {
     return <Centro>Carregando…</Centro>;
   }
@@ -174,26 +190,29 @@ function LoginScreen({ derrubada }) {
     // Deu certo: o navegador sai desta pagina, entao nao ha o que limpar.
   }
 
-  /* Split-screen do padrão Auth do design system: marca à esquerda,
-     formulário à direita. No celular a marca some e o logo sobe pro topo
-     do formulário. */
+  /* Tela dividida: a foto de uma obra entregue à esquerda (62%) e o
+     acesso à direita (38%). No celular a foto vira uma faixa no topo e o
+     acesso desce. Só o desenho é daqui — quem entra continua sendo o
+     entrarComMicrosoft acima, sem mudança. */
   return (
     <div className="auth">
       <EstiloAuth />
-      <aside className="auth-marca">
-        <LogoGroupWS style={{ fontSize: 15 }} />
-        <div>
-          <h2 className="auth-manchete">Gestão de Obras <em>TKWS</em></h2>
-          <p className="auth-lema">Onde estratégia, execução e excelência se encontram.</p>
+      <AreaSegura />
+      <aside className="auth-capa">
+        <img className="auth-capa-foto" src={capa} srcSet={`${capaPequena} 1000w, ${capa} 2000w`}
+          sizes="(max-width: 900px) 100vw, 62vw" alt="" aria-hidden="true" decoding="async" />
+        <div className="auth-capa-conteudo">
+          <LogoGroupWS className="auth-capa-logo" />
+          <div>
+            <h1 className="auth-manchete">Gestão de Obras TKWS</h1>
+            <p className="auth-lema">Toda a jornada da obra, do planejamento à entrega.</p>
+          </div>
         </div>
       </aside>
-      <main className="auth-lado">
-        <div className="auth-form">
-          <div className="auth-logo-celular"><LogoGroupWS style={{ fontSize: 14 }} /></div>
-          <div>
-            <h1 className="auth-titulo">Entrar</h1>
-            <p className="auth-sub">Entre com seu acesso do time.</p>
-          </div>
+      <main className="auth-acesso">
+        <div className="auth-bloco">
+          <h2 className="auth-titulo">Bem-vinda</h2>
+          <p className="auth-sub">Acesse a plataforma com sua conta corporativa.</p>
 
           {/* Dizer o que houve evita a pessoa achar que perdeu o acesso. */}
           {derrubada && (
@@ -204,41 +223,117 @@ function LoginScreen({ derrubada }) {
           )}
           {erro && <div className="auth-erro" role="alert">{erro}</div>}
 
-          <button type="button" className="auth-botao" onClick={entrarComMicrosoft} disabled={carregando}>
-            <LogoMicrosoft /> {carregando ? "Entrando…" : "Entrar com a conta Microsoft"}
+          <button type="button" className="auth-botao" onClick={entrarComMicrosoft}
+            disabled={carregando} aria-busy={carregando}>
+            <span className="auth-botao-icone">
+              {carregando ? <span className="auth-giro" aria-hidden="true" /> : <LogoMicrosoft />}
+            </span>
+            {carregando ? "Conectando…" : "Continuar com Microsoft"}
           </button>
+
+          <div className="auth-rodape">
+            <p className="auth-exclusivo"><Lock size={12} strokeWidth={2.2} aria-hidden="true" /> Acesso exclusivo ao time Group WS</p>
+            <a className="auth-ajuda" href={SUPORTE} target="_blank" rel="noopener noreferrer">
+              Precisa de ajuda? <span>Fale com o suporte.</span>
+            </a>
+          </div>
         </div>
       </main>
     </div>
   );
 }
 
+/* No iPhone, `viewport-fit=cover` deixa a foto ir até a borda de cima e faz
+   o `env(safe-area-inset-*)` valer: o estilo usa isso pra manter o logo
+   longe do relógio e os avisos longe da barra de gesto. Só enquanto a tela
+   de entrada está aberta — o resto do app não trata essas áreas. */
+function AreaSegura() {
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta || /viewport-fit/.test(meta.content)) return;
+    const antes = meta.content;
+    meta.content = `${antes}, viewport-fit=cover`;
+    return () => { meta.content = antes; };
+  }, []);
+  return null;
+}
+
 /* O estilo do login mora aqui porque esta tela aparece ANTES do App
-   existir: a folha do App.jsx só entra depois de entrar. Os tokens vêm de
-   estilos/design-system.css, que é global. */
+   existir: a folha do App.jsx só entra depois de entrar. A fonte vem de
+   estilos/design-system.css; as cores ficam fixas aqui, e não nos tokens,
+   porque a entrada tem o mesmo desenho nos dois temas (o azul-marinho é o
+   fundo do tema escuro do design system).
+
+   A camada sobre a foto é chapada, sem degradê, e forte o bastante pro
+   texto branco ter contraste de 4,5:1 até nos pontos mais claros da foto,
+   que é de sol. */
 function EstiloAuth() {
   return <style>{`
-    .auth { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) 460px; background: var(--surface-1); color: var(--text); font-family: var(--font-sans); }
-    .auth-marca { display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 48px; color: var(--text); background: linear-gradient(135deg, var(--surface-3) 0%, var(--surface-4) 60%, var(--brand-soft) 100%); }
-    .auth-manchete { margin: 0; font-size: 40px; font-weight: 300; line-height: 1.05; letter-spacing: -0.02em; }
-    .auth-manchete em { font-style: italic; color: var(--brand); }
-    .auth-lema { margin: 12px 0 0; max-width: 420px; font-size: 14px; line-height: 1.55; color: var(--text-soft); }
-    .auth-lado { display: flex; align-items: center; justify-content: center; padding: 40px; background: var(--surface-1); }
-    .auth-form { display: grid; gap: 20px; width: 100%; max-width: 360px; }
-    .auth-logo-celular { display: none; color: var(--text); }
-    .auth-titulo { margin: 0; font-size: 28px; font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; }
-    .auth-sub { margin: 4px 0 0; font-size: 13.5px; color: var(--text-soft); }
-    .auth-aviso, .auth-erro { border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; color: var(--text); }
-    .auth-aviso { background: var(--warning-soft); border: 1px solid var(--warning-line); }
-    .auth-erro { background: var(--danger-soft); border: 1px solid var(--danger-line); }
-    .auth-botao { display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 44px; padding: 0 20px; border-radius: 10px; border: 1px solid var(--line-2); background: transparent; color: var(--text); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; }
-    .auth-botao:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-3); }
-    .auth-botao:disabled { opacity: 0.5; cursor: not-allowed; }
+    .auth {
+      --a-marinho: #0a2f4d; --a-marinho-hover: #0e3a5e; --a-marinho-fundo: #061828;
+      --a-tinta: #111111; --a-tinta-2: #5c5c5c; --a-tinta-3: #6b6b6b;
+      --a-linha: rgba(24, 24, 27, 0.1); --a-foco: #0e8194;
+      height: 100vh; height: 100dvh; overflow: hidden;
+      display: grid; grid-template-columns: minmax(0, 62fr) minmax(0, 38fr);
+      background: #ffffff; color: var(--a-tinta); font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    .auth-capa { position: relative; overflow: hidden; min-width: 0; background: var(--a-marinho-fundo); color: #ffffff; }
+    .auth-capa-foto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 55% 50%; }
+    .auth-capa::after { content: ""; position: absolute; inset: 0; background: rgba(6, 24, 40, 0.55); }
+    .auth-capa-conteudo { position: relative; z-index: 1; box-sizing: border-box; height: 100%; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 44px 48px 52px; }
+    .auth-capa-logo { font-size: 15px; align-self: flex-start; }
+    .auth-manchete { margin: 0; font-size: clamp(34px, 3.2vw, 50px); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; text-wrap: balance; }
+    .auth-lema { margin: 14px 0 0; max-width: 460px; font-size: 17px; line-height: 1.5; color: rgba(255, 255, 255, 0.86); text-wrap: balance; }
+    .auth-acesso { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 48px clamp(28px, 4.4vw, 64px); overflow-y: auto; }
+    .auth-bloco { display: flex; flex-direction: column; width: 100%; max-width: 420px; }
+    .auth-titulo { margin: 0; font-size: 32px; font-weight: 500; line-height: 1.1; letter-spacing: -0.02em; }
+    .auth-sub { margin: 10px 0 0; font-size: 15px; line-height: 1.5; color: var(--a-tinta-2); text-wrap: pretty; }
+    .auth-aviso, .auth-erro { margin-top: 24px; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.55; }
+    .auth-aviso { background: #fff8eb; border: 1px solid #efd8a6; color: #5a4210; }
+    .auth-erro { background: #fdf1f1; border: 1px solid #efc4c4; color: #7a1f1f; }
+    .auth-botao { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; height: 52px; margin-top: 32px; padding: 0 20px; border: 0; border-radius: 6px; background: var(--a-marinho); color: #ffffff; font-family: inherit; font-size: 15px; font-weight: 600; letter-spacing: 0.005em; cursor: pointer; transition: background-color 0.15s ease; }
+    .auth-botao:hover:not(:disabled) { background: var(--a-marinho-hover); }
+    .auth-botao:active:not(:disabled) { background: var(--a-marinho-fundo); }
+    .auth-botao:focus-visible { outline: 2px solid var(--a-foco); outline-offset: 3px; }
+    .auth-botao:disabled { cursor: progress; }
+    .auth-botao-icone { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; }
+    .auth-botao-icone svg { width: 18px; height: 18px; }
+    .auth-giro { box-sizing: border-box; width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: #ffffff; animation: auth-giro 0.8s linear infinite; }
+    @keyframes auth-giro { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .auth-giro { animation-duration: 2.4s; } }
+    .auth-rodape { display: flex; flex-direction: column; gap: 6px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--a-linha); font-size: 13px; line-height: 1.5; color: var(--a-tinta-3); }
+    .auth-rodape p { margin: 0; }
+    .auth-exclusivo { display: flex; align-items: center; gap: 6px; }
+    .auth-exclusivo svg { flex-shrink: 0; }
+    .auth-ajuda { align-self: flex-start; color: inherit; text-decoration: none; border-radius: 4px; }
+    .auth-ajuda span { color: var(--a-marinho); font-weight: 500; text-decoration: underline; text-decoration-color: rgba(10, 47, 77, 0.3); text-underline-offset: 3px; }
+    .auth-ajuda:hover span { text-decoration-color: currentColor; }
+    .auth-ajuda:focus-visible { outline: 2px solid var(--a-foco); outline-offset: 3px; }
     @media (max-width: 900px) {
-      .auth { grid-template-columns: 1fr; }
-      .auth-marca { display: none; }
-      .auth-lado { padding: 24px; }
-      .auth-logo-celular { display: block; }
+      .auth { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; }
+      .auth-capa { height: clamp(230px, 40vh, 360px); height: clamp(230px, 40dvh, 360px); }
+      .auth-capa-conteudo { gap: 16px; padding: max(22px, calc(env(safe-area-inset-top) + 12px)) max(24px, env(safe-area-inset-right)) 26px max(24px, env(safe-area-inset-left)); }
+      .auth-capa-logo { font-size: 13px; }
+      .auth-manchete { font-size: 28px; }
+      .auth-lema { margin-top: 8px; font-size: 15px; }
+      /* A área branca é uma coluna: o bloco de acesso fica no meio do espaço
+         acima dos avisos, e o vazio se divide por igual entre o topo e o
+         caminho do botão até os avisos. */
+      .auth-acesso { flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 28px max(24px, env(safe-area-inset-right)) max(28px, calc(env(safe-area-inset-bottom) + 16px)) max(24px, env(safe-area-inset-left)); overflow: visible; }
+      .auth-bloco { flex: 1 0 auto; max-width: none; }
+      .auth-titulo { margin-top: auto; font-size: 26px; }
+      .auth-botao { margin: 28px 0 auto; }
+      .auth-rodape { margin-top: 28px; }
+    }
+    /* celular baixo (SE, ou com a barra do navegador aberta) */
+    @media (max-width: 900px) and (max-height: 700px) {
+      .auth-capa { height: clamp(200px, 34vh, 300px); height: clamp(200px, 34dvh, 300px); }
+      .auth-manchete { font-size: 25px; }
+      .auth-lema { font-size: 14px; }
+      .auth-acesso { padding-top: 22px; }
+      .auth-botao { margin-top: 22px; }
+      .auth-rodape { margin-top: 20px; padding-top: 16px; }
     }
   `}</style>;
 }

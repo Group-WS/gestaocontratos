@@ -43,9 +43,10 @@ import arteFechamento from "./assets/capa-fechamento.png";
 const fmtData = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", {
   day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : null);
 
-export default function Apresentacao({ usuario, obras, produtos, onFechar }) {
+export default function Apresentacao({ usuario, obras, produtos, onFechar, obraInicial = "" }) {
   const [doc, setDoc] = useState(null);
-  const [obraCod, setObraCod] = useState("");
+  // aberta de dentro de uma obra, já chega com ela escolhida
+  const [obraCod, setObraCod] = useState(String(obraInicial || ""));
   const [idioma, setIdioma] = useState("pt");
   /* A página aberta. As três fixas da casa (abertura, dados, fechamento)
      entram na navegação junto com os ambientes: elas fazem parte do

@@ -1,5 +1,14 @@
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+
+/* O "ver como" (so' em npm run dev): ?verComo=mehoo no endereco. Lido
+   aqui, quando o modulo carrega, e nao na hora de montar o `eu`: o
+   AuthGate limpa o endereco logo no inicio (tira o ?code= do login), e
+   ler depois perdia o parametro — o recurso funcionava ou nao conforme
+   o tempo de carga. No build do site oficial este trecho nem existe. */
+const VER_COMO = import.meta.env.DEV
+  ? new URLSearchParams(window.location.search).get("verComo")
+  : null;
 import * as XLSX from "xlsx";
 import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
@@ -8,7 +17,7 @@ import {
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
-  MapPin, Printer
+  MapPin, Printer, Presentation
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, faltandoNaTela } from "./lib/obras";
@@ -26,6 +35,8 @@ import { subgrupoDe } from "./lib/catalogoModelo.js";
 import { listarSiengeObras, marcarStatusSienge } from "./lib/siengeObra.js";
 import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 import Catalogo from "./Catalogo";
+import Apresentacao from "./Apresentacao";
+import { listarProdutos } from "./lib/catalogo";
 import { LogoGroupWS, AlternarTema } from "./marca.jsx";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
@@ -525,7 +536,10 @@ function jornadaDaObra(obra) {
     { chave: "contrato", nome: "Contrato", feito: etapaConcluida("vendido_planilha", obra) },
     { chave: "criativo", nome: "Criativo", feito: !!cad.criativo },
     { chave: "executivo", nome: "Executivo", feito: !!cad.projeto },
-    { chave: "execucao", nome: "Execução da Obra", feito: !!obra.comprasLiberadas },
+    // Sem cronograma ainda, a execução não fecha sozinha: compras liberadas
+    // quer dizer que a obra COMEÇOU, não que acabou. Quando o módulo de
+    // Execução tiver o cronograma, é ele que conclui este marco.
+    { chave: "execucao", nome: "Execução da Obra", feito: false, andamento: !!obra.comprasLiberadas },
     { chave: "entrega", nome: "Entrega", feito: false },
   ];
   const i = passos.findIndex((p) => !p.feito);
@@ -539,11 +553,11 @@ function JornadaStepper({ passos, atualIndex }) {
         <React.Fragment key={p.chave}>
           {i > 0 && <div className={`jornada-linha ${passos[i - 1].feito ? "feita" : ""}`} />}
           <div className="jornada-passo">
-            <div className={`jornada-bola ${p.feito ? "feita" : i === atualIndex ? "atual" : ""}`}>
-              {p.feito ? <Check size={14} /> : i === atualIndex ? <span className="jornada-ponto" /> : null}
+            <div className={`jornada-bola ${p.feito ? "feita" : i === atualIndex || p.andamento ? "atual" : ""}`}>
+              {p.feito ? <Check size={14} /> : i === atualIndex || p.andamento ? <span className="jornada-ponto" /> : null}
             </div>
             <div className="jornada-nome">{p.nome}</div>
-            <div className="jornada-status">{p.feito ? "Concluído" : i === atualIndex ? "Em andamento" : "Aguardando"}</div>
+            <div className="jornada-status">{p.feito ? "Concluído" : i === atualIndex || p.andamento ? "Em andamento" : "Aguardando"}</div>
           </div>
         </React.Fragment>
       ))}
@@ -631,6 +645,9 @@ function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno,
         <div className="jornada-grupo-rot">Executivo</div>
         <div className="caderno-lista">
           {["especificacao", "marcenaria", "projeto"].map((k) => slot(cadernoPorChave(k), congeladoProjeto))}
+          {/* A apresentação pode chegar depois das compras liberadas: só trava
+              fora do modo de edição, como o contrato. */}
+          {slot(CADERNO_APRESENTACAO, !podeEditar)}
         </div>
       </div>
 
@@ -6137,6 +6154,11 @@ const CADERNOS_EXECUTIVO = [
    CADERNOS_EXECUTIVO: aqueles também vão pro painel da Mehoo, e o
    contrato só o administrador abre. */
 const CADERNO_CONTRATO = { chave: "contrato", titulo: "Contrato", sub: "Contrato assinado com o cliente." };
+/* A Apresentação de especificações pronta, o PDF que vai pro cliente. Pode
+   ser montada no editor do app ou feita fora e só anexada aqui. Fica fora
+   de CADERNOS_EXECUTIVO pelo mesmo motivo do contrato: aquela lista também
+   vai pro painel da Mehoo. */
+const CADERNO_APRESENTACAO = { chave: "apresentacao", titulo: "Apresentação de Especificações", sub: "O PDF da apresentação enviada ao cliente." };
 const cadernoPorChave = (chave) => CADERNOS_EXECUTIVO.find((c) => c.chave === chave);
 
 // Uma linha por caderno, não um bloco. São três anexos de consulta que
@@ -7550,6 +7572,45 @@ function produtosMAT(obra) {
   return out;
 }
 
+/* Fornecedor de um item de obra. Na planilha do Executivo a coluna se chama
+   Fornecedor e vira `marca` no item. A chave ignora caixa e espaços, pra
+   "Rivatti" e "RIVATTI " caírem no mesmo filtro. */
+const SEM_FORNECEDOR = "__sem__";
+function nomeDoFornecedor(it) {
+  const bruto = String(it?.marca || "").trim().replace(/\s+/g, " ");
+  // Link colado no lugar do nome (acontece): vale o site, não a URL inteira.
+  if (/^https?:\/\//i.test(bruto)) {
+    try { return new URL(bruto).hostname.replace(/^www\./, ""); } catch { /* fica o texto */ }
+  }
+  return bruto;
+}
+function chaveFornecedor(it) {
+  const n = nomeDoFornecedor(it);
+  return n ? n.toLocaleLowerCase("pt-BR") : SEM_FORNECEDOR;
+}
+/* Os fornecedores de uma lista de linhas, com quantos itens cada um tem:
+   em ordem alfabética, e os sem fornecedor por último. */
+function fornecedoresDasLinhas(linhas) {
+  const m = new Map();
+  linhas.forEach(({ it }) => {
+    const chave = chaveFornecedor(it);
+    if (!m.has(chave)) m.set(chave, { chave, nome: chave === SEM_FORNECEDOR ? "Sem fornecedor" : nomeDoFornecedor(it), n: 0 });
+    m.get(chave).n += 1;
+  });
+  return [...m.values()].sort((a, b) =>
+    (a.chave === SEM_FORNECEDOR) - (b.chave === SEM_FORNECEDOR) || a.nome.localeCompare(b.nome, "pt-BR"));
+}
+/* O que vai no pedido de orçamento: só o que ainda não foi comprado, por
+   verba, na ordem das verbas. */
+function itensDoPedido(linhas) {
+  const m = new Map();
+  linhas.filter(({ it }) => !it.comprado).forEach((r) => {
+    if (!m.has(r.catNum)) m.set(r.catNum, { num: r.catNum, nome: r.catNome, itens: [] });
+    m.get(r.catNum).itens.push(r);
+  });
+  return [...m.values()].sort((a, b) => String(a.num).localeCompare(String(b.num), "pt-BR", { numeric: true }));
+}
+
 /* GERADOR DE CÓDIGOS SIENGE — avulso, sem obra e sem gravar nada.
 
    Mesma associação da tela de Compras de Produtos, mas solta: sobe uma
@@ -8121,8 +8182,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
   );
 }
 
-function PedidoCompra({ obra, canal, itens, usuario }) {
-  const c = canalPorId(canal);
+function PedidoCompra({ obra, itens, usuario }) {
   const hoje = new Date().toLocaleDateString("pt-BR");
 
   // O prazo mais apertado entre as verbas do pedido: e a data que manda.
@@ -8140,59 +8200,85 @@ function PedidoCompra({ obra, canal, itens, usuario }) {
   }, [obra, itens]);
   const faltam = prazo ? diasAte(prazo) : null;
 
-  return (
-    <div className="doc-escopo pedido-doc" id="doc-pedido">
-      <div className="doc-banda">Pedido de compra — {c ? c.nome : "sem canal"}</div>
-      <div className="doc-cab">
-        <div><span className="doc-rot">Obra</span> {obra.codigo} · {obra.nome}</div>
-        {obra.endereco && <div><span className="doc-rot">Endereço</span> {obra.endereco}</div>}
-        <div><span className="doc-rot">Solicitado por</span> {usuario || "—"} em {hoje}</div>
-        <div><span className="doc-rot">Itens</span> {itens.length} {itens.length === 1 ? "produto" : "produtos"}</div>
-        {prazo && (
-          <div className={faltam < 0 ? "pedido-vencido" : faltam <= 15 ? "pedido-perto" : ""}>
-            <span className="doc-rot">Comprar até</span> {fmtData(prazo)}
-            {faltam != null && (faltam < 0
-              ? ` — venceu há ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
-              : faltam === 0 ? " — é hoje" : ` — faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`)}
-          </div>
-        )}
-        {obra.dataEntrega && (
-          <div><span className="doc-rot">Entrega da obra</span> {new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}</div>
-        )}
-      </div>
+  /* O mesmo papel dos outros relatórios (faixa, tabela por verba, rodapé).
+     Sem valor: esta folha vai pro fornecedor, e o custo do executivo é o
+     nosso teto — quem leva valor é o Excel, que fica em casa. */
+  const grupos = useMemo(() => {
+    const m = new Map();
+    itens.forEach((r) => {
+      if (!m.has(r.catNum)) m.set(r.catNum, { num: r.catNum, nome: r.catNome, itens: [] });
+      m.get(r.catNum).itens.push(r);
+    });
+    return [...m.values()].sort((a, b) => String(a.num).localeCompare(String(b.num), "pt-BR", { numeric: true }));
+  }, [itens]);
 
-      <h3 className="doc-h">Insumos</h3>
-      <table className="doc-tab">
-        <thead>
-          <tr>
-            <th style={{ width: 52 }}>Verba</th>
-            <th>Descrição</th>
-            <th style={{ width: 78 }}>Ambiente</th>
-            <th style={{ width: 62 }} className="center">Qtd.</th>
-            <th style={{ width: 46 }}>Un.</th>
-          </tr>
-        </thead>
-        <tbody>
-          {itens.map((r, k) => (
-            <tr key={k}>
-              <td className="mono">{r.catNum}</td>
-              <td>
-                <div>{r.it.desc}</div>
-                {/* A especificacao e o que evita o fornecedor mandar a
-                    peca parecida — e a pergunta que ele faria por telefone. */}
-                {r.it.especificacao && <div className="ped-espec">{r.it.especificacao}</div>}
-                {r.it.detalheSienge && <div className="ped-sienge">Sienge: {r.it.detalheSienge}</div>}
-              </td>
-              <td>{r.it.ambiente || "—"}</td>
-              <td className="center mono">{r.it.qtdExecutivo ?? r.it.qtdVendida ?? "—"}</td>
-              <td className="mono">{r.it.un || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="doc-rodape">
-        Gerado pelo Gestão de Obras TKWS em {hoje}. Quantidades conforme projeto executivo aprovado.
+  return (
+    <div className="ad-page rel-doc" id="doc-pedido">
+      <img className="ad-brandbar" src={LOGO_WS} alt="" />
+      <div className="ad-inner">
+        <div className="ad-dochead">
+          <div className="t">Pedido de compra</div>
+          <div className="meta">
+            <div><b>Obra:</b> #{obra.codigo} · {obra.nome}</div>
+            <div><b>Data:</b> {hoje} · <b>Itens:</b> {itens.length}</div>
+            <div><b>Solicitado por:</b> {usuario || "—"}</div>
+            {prazo && (
+              <div className={faltam < 0 ? "pedido-vencido" : faltam <= 15 ? "pedido-perto" : ""}>
+                <b>Comprar até:</b> {fmtData(prazo)}
+                {faltam != null && (faltam < 0
+                  ? ` — venceu há ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
+                  : faltam === 0 ? " — é hoje" : ` — faltam ${faltam} ${faltam === 1 ? "dia" : "dias"}`)}
+              </div>
+            )}
+            {obra.dataEntrega && (
+              <div><b>Entrega da obra:</b> {new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}</div>
+            )}
+          </div>
+        </div>
+
+        {grupos.map((g) => (
+          <div key={g.num} className="rel-obra">
+            <div className="ad-sectitle">{g.num} · {g.nome}</div>
+            <table className="ad-dt">
+              <thead>
+                <tr>
+                  <th className="c-cod">Cód.</th>
+                  <th>Descrição</th>
+                  <th className="c-amb">Ambiente</th>
+                  <th className="c-qtd">Qtd.</th>
+                  <th className="c-un">Un.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.itens.map(({ it }, k) => {
+                  const qtd = it.qtdExecutivo ?? it.qtdVendida ?? null;
+                  const extra = [it.modelo, it.cor, it.especificacao].filter(Boolean).join(" · ");
+                  return (
+                    <tr key={k}>
+                      <td className="c-cod">{it.codigo || "—"}</td>
+                      <td>
+                        <div className="ad-dt1">{it.desc}</div>
+                        {/* A especificação é o que evita o fornecedor mandar a
+                            peça parecida — é a pergunta que ele faria por telefone. */}
+                        {extra && <div className="rel-extra">{extra}</div>}
+                        {it.detalheSienge && <div className="rel-extra">Sienge: {it.detalheSienge}</div>}
+                      </td>
+                      <td className="c-amb">{it.ambiente || "—"}</td>
+                      <td className="c-qtd">{qtd != null ? Number(qtd).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—"}</td>
+                      <td className="c-un">{it.un || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ))}
+
+        <div className="ad-prevalencia">
+          Gerado pelo Gestão de Obras TKWS em {hoje}. Quantidades conforme projeto executivo aprovado.
+        </div>
       </div>
+      <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
     </div>
   );
 }
@@ -8239,6 +8325,9 @@ function casarComSienge(desc, grupos) {
 
 function ComprasView({ obra, onItemChange, usuario }) {
   const [etapa, setEtapa] = useState("todos");
+  const [fornecedor, setFornecedor] = useState("");   // "" = todos
+  const [orcamento, setOrcamento] = useState(null);   // o pedido aberto pra imprimir
+  const [nomeNoPdf, setNomeNoPdf] = useState(true);   // às vezes o pedido sai sem dizer pra quem
   const [sel, setSel] = useState(() => new Set());
   const [abertos, setAbertos] = useState(() => new Set());
   const [baseSienge, setBaseSienge] = useState(null);
@@ -8248,18 +8337,32 @@ function ComprasView({ obra, onItemChange, usuario }) {
   const [pedido, setPedido] = useState(null);
   // O que o Sienge diz que foi lancado — vem do PDF que a pessoa sobe.
   const [doSienge, setDoSienge] = useState(null);
-  const [lendoPdf, setLendoPdf] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erroBase, setErroBase] = useState(null);
 
   const rows = useMemo(() => produtosMAT(obra), [obra]);
 
-  const visiveis = useMemo(() => {
+  const doCanal = useMemo(() => {
     if (etapa === "todos") return rows;
     if (etapa === "sienge") return rows.filter((r) => r.it.canalCompra === "sienge");
     if (etapa === "sem_canal") return rows.filter((r) => !r.it.canalCompra);
     return rows.filter((r) => r.it.canalCompra === etapa);
   }, [rows, etapa]);
+  const fornecedores = useMemo(() => fornecedoresDasLinhas(doCanal), [doCanal]);
+  // Trocar de etapa limpa o fornecedor: ele pode nem existir na outra.
+  useEffect(() => { setFornecedor(""); }, [etapa]);
+  const visiveis = useMemo(
+    () => (fornecedor ? doCanal.filter((r) => chaveFornecedor(r.it) === fornecedor) : doCanal),
+    [doCanal, fornecedor]);
+
+  /* O pedido de orçamento sai do filtro: escolhe o fornecedor, confere a
+     lista na tela e o PDF leva só o que dele ainda não foi comprado. */
+  function gerarPedido() {
+    const f = fornecedores.find((x) => x.chave === fornecedor);
+    if (!f || f.chave === SEM_FORNECEDOR) return;
+    setOrcamento({ fornecedor: f.nome, mostrarFornecedor: nomeNoPdf, grupos: itensDoPedido(visiveis) });
+    setTimeout(() => window.print(), 300);
+  }
 
   const porVerba = useMemo(() => {
     const m = new Map();
@@ -8344,71 +8447,6 @@ function ComprasView({ obra, onItemChange, usuario }) {
      de uma vez contra os 10 mil insumos: a tela congelava ao clicar em
      Sienge. Agora os produtos aparecem na hora, e cada grupo tem o seu
      "Associar insumos" na própria barra. */
-  /* Le o PDF do Sienge e confere contra o que esta na tela.
-
-     A pergunta e uma so: faltou lancar alguma compra? O Sienge e onde a
-     compra existe de verdade — enquanto ela nao estiver la, ela nao foi
-     feita, por mais marcada que esteja aqui.
-
-     Da pra subir mais de um arquivo (a solicitacao em aberto e o pedido)
-     e eles se somam, porque a conferencia nao liga de qual documento a
-     linha veio: ela so quer saber se o produto esta em algum. */
-  /* Varios arquivos de uma vez.
-
-     A conferencia junta tudo num monte so — a solicitacao em aberto e o
-     pedido respondem a mesma pergunta ("isto esta no Sienge?") — mas
-     ELES SAO LIDOS UM A UM, e um que falha nao derruba os outros: a tela
-     diz qual arquivo deu problema e fica com o que deu certo. Abortar o
-     lote inteiro por causa de um faria a pessoa recomecar a selecao. */
-  async function lerArquivosSienge(files) {
-    const lista = [...(files || [])];
-    if (!lista.length) return;
-    setLendoPdf(true); setErroBase(null);
-    const falhas = [];
-    for (const file of lista) {
-      try {
-        await lerUmArquivoSienge(file);
-      } catch (e) {
-        falhas.push(`${file.name}: ${e.message || e}`);
-      }
-    }
-    setLendoPdf(false);
-    if (falhas.length) setErroBase(`Não consegui ler ${falhas.length === 1 ? "um arquivo" : `${falhas.length} arquivos`} — ${falhas.join(" · ")}`);
-  }
-
-  async function lerUmArquivoSienge(file) {
-    {
-      let doc;
-      if (/\.(xlsx|xlsm|xlsb|xls|csv)$/i.test(file.name)) {
-        /* Excel nao passa pelo servidor: os dados ja vem em colunas, e
-           mandar a planilha inteira pra uma funcao serverless so pra
-           voltar com o mesmo conteudo seria uma ida e volta a toa. */
-        const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-        const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
-        doc = parsePedidoSiengeExcel(linhas);
-      } else {
-        const buf = await file.arrayBuffer();
-        doc = parsePedidoSienge(await textoDoPDF(buf));
-      }
-      if (!doc.itens.length) throw new Error("Não encontrei nenhum insumo neste arquivo. Me manda ele que eu ajusto o leitor.");
-      /* Mesmo arquivo de novo SUBSTITUI, nao soma.
-
-         Subir duas vezes duplicaria cada linha, e a conferencia passaria
-         a confirmar produtos com a copia — dando por lancado o que nao
-         foi. Reimportar um export corrigido e o caso comum, entao a
-         troca e o comportamento certo. */
-      const marca = { nome: file.name, numero: doc.numero, obra: doc.obraCodigo, n: doc.itens.length };
-      setDoSienge((antes) => {
-        const docs = (antes?.docs || []).filter((d) => d.nome !== file.name);
-        const itens = (antes?.itens || []).filter((i) => i.arquivo !== file.name);
-        return {
-          docs: [...docs, marca],
-          itens: [...itens, ...doc.itens.map((i) => ({ ...i, arquivo: file.name }))],
-        };
-      });
-    }
-  }
-
   async function recarregarBase() {
     setCarregando(true); setErroBase(null);
     try {
@@ -8525,17 +8563,6 @@ function ComprasView({ obra, onItemChange, usuario }) {
                 ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Associe grupo a grupo; depois escolha a mãe e a variante em cada linha, ou selecione e associe em massa.`
                 : "Os produtos já estão aqui. A busca do insumo no Sienge roda por grupo, no botão “Associar insumos” da barra de cada um."}
           </span>
-          {/* Subir o PDF do Sienge e' o passo que fecha a conferencia:
-              ate' aqui a tela diz o que DEVERIA ser comprado; o PDF diz o
-              que de fato foi lancado. Depois isso vem pela API. */}
-          <label className="btn-doc btn-pdf-sienge">
-            <Upload size={13} /> {lendoPdf ? "Lendo…" : "Subir relatórios do Sienge"}
-            {/* `multiple`: a solicitacao em aberto e o pedido sao dois
-                arquivos que respondem a mesma pergunta. Um por clique
-                obrigava a repetir o caminho da pasta. */}
-            <input type="file" multiple accept=".xlsx,.xlsm,.xls,.csv,.pdf" style={{ display: "none" }} disabled={lendoPdf}
-              onChange={(e) => { const fs = e.target.files; e.target.value = ""; lerArquivosSienge(fs); }} />
-          </label>
           {baseSienge && (
             <button className="btn-doc" onClick={recarregarBase} disabled={carregando}>
               <PackageSearch size={13} /> {carregando ? "Recarregando…" : "Recarregar base"}
@@ -8629,10 +8656,36 @@ function ComprasView({ obra, onItemChange, usuario }) {
 
       <div className="sel-barra-topo">
         <button className="btn-sel-tudo" onClick={selecionarTudo}>
-          <Check size={12} /> Selecionar os {visiveis.length} desta etapa
+          <Check size={12} /> Selecionar os {visiveis.length} {fornecedor ? "deste fornecedor" : "desta etapa"}
         </button>
         {sel.size > 0 && <button className="btn-limpar-sel-claro" onClick={() => setSel(new Set())}>Limpar seleção</button>}
+        <div className="cmp-filtro-forn">
+          <select className="cmp-forn-sel" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
+            aria-label="Filtrar por fornecedor">
+            <option value="">Todos os fornecedores ({doCanal.length})</option>
+            {fornecedores.map((f) => (
+              <option key={f.chave} value={f.chave}>{f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} ({f.n})</option>
+            ))}
+          </select>
+          {fornecedor && fornecedor !== SEM_FORNECEDOR && (
+            <label className="cmp-forn-nome" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
+              <input type="checkbox" checked={nomeNoPdf} onChange={(e) => setNomeNoPdf(e.target.checked)} />
+              nome no PDF
+            </label>
+          )}
+          <button className="btn-doc" onClick={gerarPedido} disabled={!fornecedor || fornecedor === SEM_FORNECEDOR}
+            title={!fornecedor || fornecedor === SEM_FORNECEDOR
+              ? "Escolha um fornecedor pra gerar o pedido"
+              : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
+            <Printer size={13} /> Pedido de orçamento
+          </button>
+        </div>
       </div>
+      {orcamento && (
+        <RelatorioSobreposto onFechar={() => setOrcamento(null)} pronto="Pedido de orçamento pronto">
+          <PedidoOrcamento obra={obra} usuario={usuario} {...orcamento} />
+        </RelatorioSobreposto>
+      )}
 
       {porVerba.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
       {porVerba.map((g) => {
@@ -8729,14 +8782,9 @@ function ComprasView({ obra, onItemChange, usuario }) {
       })}
 
       {pedido && (
-        <div className="pedido-wrap">
-          <div className="pedido-topo naoimprime">
-            <span>Pedido pronto — a impressão já abriu. Feche a prévia quando terminar.</span>
-            <button className="btn-doc" onClick={() => window.print()}><FileText size={13} /> Imprimir de novo</button>
-            <button className="btn-voltar" onClick={() => setPedido(null)}><X size={13} /> Fechar</button>
-          </div>
-          <PedidoCompra obra={obra} canal={pedido.canal} itens={pedido.itens} usuario={usuario} />
-        </div>
+        <RelatorioSobreposto onFechar={() => setPedido(null)} pronto="Pedido pronto">
+          <PedidoCompra obra={obra} itens={pedido.itens} usuario={usuario} />
+        </RelatorioSobreposto>
       )}
 
       {/* A escolha do canal fica na barra da selecao: e uma decisao sobre
@@ -8755,9 +8803,8 @@ function ComprasView({ obra, onItemChange, usuario }) {
                 nao tem um: as vezes a lista e pra pedir cotacao antes de
                 decidir por onde comprar. */}
             <button className="btn-associar-sel" onClick={() => {
-              const canal = etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra || null : etapa;
-              setPedido({ canal, itens: selecionados });
-              setTimeout(() => window.print(), 150);
+              setPedido({ itens: selecionados });
+              setTimeout(() => window.print(), 300);
             }} title="Abre a impressão do navegador — escolha Salvar como PDF">
               <FileText size={13} /> PDF
             </button>
@@ -8888,6 +8935,11 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       <td>
         <div className="item-desc">{it.desc}</div>
         {it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{it.ambiente}</span>}
+          {/* Quem vende. Na planilha do Executivo a coluna se chama
+              Fornecedor e vira `marca` no item; importado de PDF ela vem vazia. */}
+          <span className={`cmp-forn ${it.marca ? "" : "vazio"}`} title={it.marca || undefined}>
+            {it.marca ? `Fornecedor: ${nomeDoFornecedor(it)}` : "sem fornecedor"}
+          </span>
         {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
             "Cuba de apoio" e todas as cubas de apoio que existem. */}
         {it.especificacao && <div className="det-espec">{it.especificacao}</div>}
@@ -10139,9 +10191,84 @@ function RelatorioVerba({ tipo, verba, linhas, recorte }) {
   );
 }
 
+/* O pedido de orçamento que vai pro fornecedor: o mesmo papel do relatório
+   da Gestão de compras (faixa, tabela, rodapé), só com os itens dele que
+   ainda não foram comprados. As colunas de valor saem em branco de
+   propósito: quem preenche é o fornecedor, e o nosso custo não vai junto. */
+function PedidoOrcamento({ obra, fornecedor, mostrarFornecedor = true, grupos, usuario }) {
+  const nItens = grupos.reduce((a, g) => a + g.itens.length, 0);
+  const contato = /@/.test(String(usuario || "")) ? usuario : null;
+  return (
+    <div className="ad-page rel-doc" id="doc-pedido-orcamento">
+      <img className="ad-brandbar" src={LOGO_WS} alt="" />
+      <div className="ad-inner">
+        <div className="ad-dochead">
+          <div className="t">
+            Pedido de orçamento
+            {mostrarFornecedor && <div className="rel-sub">{fornecedor}</div>}
+          </div>
+          <div className="meta">
+            <div><b>Obra:</b> #{obra.codigo} · {obra.nome}</div>
+            <div><b>Data:</b> {new Date().toLocaleDateString("pt-BR")}</div>
+            <div><b>Itens:</b> {nItens}{contato && <> · <b>Contato:</b> {contato}</>}</div>
+          </div>
+        </div>
+
+        {grupos.length === 0 ? (
+          <div className="ad-docwarn">Nada a orçar: os itens deste fornecedor já foram comprados.</div>
+        ) : grupos.map((g) => (
+          <div key={g.num} className="rel-obra">
+            <div className="ad-sectitle">{g.num} · {g.nome}</div>
+            <table className="ad-dt">
+              <thead>
+                <tr>
+                  <th className="c-cod">Cód.</th>
+                  <th>Descrição</th>
+                  <th className="c-amb">Ambiente</th>
+                  <th className="c-qtd">Qtd.</th>
+                  <th className="c-un">Un.</th>
+                  <th className="c-vu">Valor unit.</th>
+                  <th className="c-vt">Valor total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.itens.map(({ it }, k) => {
+                  const qtd = it.qtdExecutivo ?? it.qtdVendida ?? it.qtd ?? null;
+                  const extra = [it.codigoFornecedor && `cód. ${it.codigoFornecedor}`, it.modelo, it.cor, it.especificacao]
+                    .filter(Boolean).join(" · ");
+                  return (
+                    <tr key={k}>
+                      <td className="c-cod">{it.codigo || "—"}</td>
+                      <td>
+                        <div className="ad-dt1">{it.desc}</div>
+                        {extra && <div className="rel-extra">{extra}</div>}
+                      </td>
+                      <td className="c-amb">{it.ambiente || "—"}</td>
+                      <td className="c-qtd">{qtd != null ? Number(qtd).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—"}</td>
+                      <td className="c-un">{it.un || "—"}</td>
+                      <td className="c-vu" />
+                      <td className="c-vt" />
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ))}
+
+        <div className="ad-cond">
+          <h4>Pedido:</h4>
+          <p>Solicitamos o orçamento dos itens acima, com valor unitário, prazo de entrega e condições de pagamento.</p>
+        </div>
+      </div>
+      <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
+    </div>
+  );
+}
+
 /* Por cima da tela, e FORA do #root: na impressao so' o documento sai —
    o CSS de impressao esconde o app inteiro enquanto isto existe. */
-function RelatorioSobreposto({ children, onFechar }) {
+function RelatorioSobreposto({ children, onFechar, pronto = "Relatório pronto" }) {
   useEffect(() => {
     const esc = (e) => { if (e.key === "Escape") onFechar(); };
     document.addEventListener("keydown", esc);
@@ -10150,7 +10277,7 @@ function RelatorioSobreposto({ children, onFechar }) {
   return createPortal(
     <div className="rel-overlay">
       <div className="rel-barra naoimprime">
-        <span>Relatório pronto — a impressão já abriu. Escolha <b>Salvar como PDF</b>.</span>
+        <span>{pronto} — a impressão já abriu. Escolha <b>Salvar como PDF</b>.</span>
         <button className="btn-doc" onClick={() => window.print()}><Printer size={13} /> Imprimir de novo</button>
         <button className="btn-voltar" onClick={onFechar}><X size={13} /> Fechar</button>
       </div>
@@ -10397,6 +10524,28 @@ function SecaoDoc({ grupos, titulo, classe }) {
   );
 }
 
+/* A folha tem 210 mm (794 px) e a coluna da pré-visualização quase sempre
+   é mais estreita: o texto saía cortado à direita. Aqui ela encolhe pra
+   caber inteira, como a prévia de impressão — só na tela; no papel o zoom
+   volta a 1. */
+function FolhaAjustada({ children }) {
+  const ref = useRef(null);
+  const [escala, setEscala] = useState(1);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const FOLHA_PX = (210 * 96) / 25.4;
+    const ro = new ResizeObserver(([e]) => setEscala(Math.min(1, e.contentRect.width / FOLHA_PX)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="ad-ajuste">
+      <div className="ad-ajuste-folha" style={{ zoom: escala }}>{children}</div>
+    </div>
+  );
+}
+
 function DocumentoAditivo({ doc, numero }) {
   const t = totaisDoDocumento(doc);
   const vazio = !(doc.supressao || []).some((g) => g.nome.trim() || g.itens.some((i) => i.descricao.trim()))
@@ -10404,6 +10553,9 @@ function DocumentoAditivo({ doc, numero }) {
 
   return (
     <div className="ad-page" id="doc-aditivo">
+      {/* A4 com margem fixa: sem isso vale a margem de cada navegador e o
+          rodapé não tem onde se apoiar. Só vale enquanto o aditivo está na tela. */}
+      <style>{"@media print { @page { size: A4; margin: 10mm; } }"}</style>
       <img className="ad-brandbar" src={LOGO_WS} alt="" />
       <div className="ad-inner">
         <div className="ad-dochead">
@@ -10432,29 +10584,34 @@ function DocumentoAditivo({ doc, numero }) {
           </div>
         </div>
 
-        {String(doc.cond || "").trim() && (
-          <div className="ad-cond">
-            <h4>Condições de pagamento:</h4>
-            <p>{doc.cond}</p>
+        <div className="ad-fecho">
+          {String(doc.cond || "").trim() && (
+            <div className="ad-cond">
+              <h4>Condições de pagamento:</h4>
+              <p>{doc.cond}</p>
+            </div>
+          )}
+
+          {/* A clausula de prevalencia.
+
+              Texto fixo, em toda proposta de aditivo: aditivo mexe no que
+              ja tinha sido aprovado, e sem isso escrito duas versoes
+              assinadas do mesmo escopo ficariam valendo ao mesmo tempo.
+
+              Pequena e cinza de proposito. Ela precisa ESTAR no documento,
+              nao competir com ele — o que o cliente le e' o que muda e
+              quanto custa. */}
+          <div className="ad-prevalencia">
+            As alterações deste aditivo substituem e alteram diretamente o que havia sido aprovado
+            anteriormente. Portanto, para todos os efeitos, passa a ser considerada válida a última
+            aprovação realizada neste aditivo, prevalecendo sobre as aprovações anteriores.
           </div>
-        )}
-
-        {/* A clausula de prevalencia.
-
-            Texto fixo, em toda proposta de aditivo: aditivo mexe no que
-            ja tinha sido aprovado, e sem isso escrito duas versoes
-            assinadas do mesmo escopo ficariam valendo ao mesmo tempo.
-
-            Pequena e cinza de proposito. Ela precisa ESTAR no documento,
-            nao competir com ele — o que o cliente le e' o que muda e
-            quanto custa. */}
-        <div className="ad-prevalencia">
-          As alterações deste aditivo substituem e alteram diretamente o que havia sido aprovado
-          anteriormente. Portanto, para todos os efeitos, passa a ser considerada válida a última
-          aprovação realizada neste aditivo, prevalecendo sobre as aprovações anteriores.
+          {/* O rodapé mora junto das condições: numa folha só os dois descem
+              pro pé; num aditivo comprido passam juntos pra última folha, em
+              vez de o rodapé ficar sozinho numa página. */}
+          <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
         </div>
       </div>
-      <div className="ad-pagefoot"><img src={RODAPE_WS} alt="" /></div>
     </div>
   );
 }
@@ -10783,7 +10940,7 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
         <div className="ad-prev">
           <div className="ad-prev-h naoimprime">Pré-visualização</div>
           <div className="ad-prev-box">
-            <DocumentoAditivo doc={doc} numero={aditivo.numero} />
+            <FolhaAjustada><DocumentoAditivo doc={doc} numero={aditivo.numero} /></FolhaAjustada>
           </div>
         </div>
       </div>
@@ -11997,6 +12154,9 @@ function arquivosDaObra(obra, { souAdmin = false } = {}) {
     const a = cad[c.chave];
     if (a) out.push({ ...a, id: `caderno-${c.chave}`, titulo: c.titulo, fase: c.chave === "criativo" ? "criativo" : "executivo", fixo: c.chave });
   });
+  if (cad.apresentacao) {
+    out.push({ ...cad.apresentacao, id: "caderno-apresentacao", titulo: CADERNO_APRESENTACAO.titulo, fase: "executivo", fixo: "apresentacao" });
+  }
 
   if (obra.clienteAssinaturaArq) {
     out.push({
@@ -12283,40 +12443,25 @@ function ObraMehoo({ L, canal }) {
                   <th>Item</th>
                   <th style={{ width: 78 }} className="center">Qtd.</th>
                   <th style={{ width: 110 }} className="right">Material</th>
-                  <th style={{ width: 150 }} className="center">Comprar até</th>
-                  <th style={{ width: 110 }} className="center">Situação</th>
+                  {/* "Comprar até" e "Situação" saíram (pedido de 14/09/2026):
+                      o painel da Mehoo fica só com o que ela precisa ler. O
+                      tom da linha continua dizendo o que já foi comprado. */}
                 </tr>
               </thead>
               <tbody>
-                {L.itens.map((r) => {
-                  const dias = r.limite ? diasAte(r.limite) : null;
-                  return (
-                    <tr key={r.catNum + r.it.codigo} className={r.it.comprado ? "row-comprado" : "row-falta"}>
-                      <td className="mono dim">{r.catNum}</td>
-                      <td>
-                        <div className="item-desc">{r.it.desc}</div>
-                        <div className="mh-item-sub">
-                          {[r.catNome, r.it.ambiente, r.it.marca, r.it.codigoFornecedor].filter(Boolean).join(" · ")}
-                        </div>
-                      </td>
-                      <td className="center mono">{r.it.qtdExecutivo ?? r.it.qtdVendida ?? "—"} {r.it.un || ""}</td>
-                      <td className="right mono">{fmtBRL(r.material)}</td>
-                      <td className="center">
-                        {r.limite ? (
-                          <span className={dias < 0 ? "gc-venceu" : dias <= 15 ? "mh-perto" : ""}>
-                            {r.limite.toLocaleDateString("pt-BR")}
-                            <span className="gc-dias">{dias < 0 ? `passou ${-dias} d` : `faltam ${dias} d`}</span>
-                          </span>
-                        ) : <span className="dim">—</span>}
-                      </td>
-                      <td className="center">
-                        {r.it.comprado
-                          ? <span className="chip chip-green"><Check size={11} /> comprado</span>
-                          : <span className="dim">a comprar</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {L.itens.map((r) => (
+                  <tr key={r.catNum + r.it.codigo} className={r.it.comprado ? "row-comprado" : "row-falta"}>
+                    <td className="mono dim">{r.catNum}</td>
+                    <td>
+                      <div className="item-desc">{r.it.desc}</div>
+                      <div className="mh-item-sub">
+                        {[r.catNome, r.it.ambiente, r.it.marca, r.it.codigoFornecedor].filter(Boolean).join(" · ")}
+                      </div>
+                    </td>
+                    <td className="center mono">{r.it.qtdExecutivo ?? r.it.qtdVendida ?? "—"} {r.it.un || ""}</td>
+                    <td className="right mono">{fmtBRL(r.material)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -12992,6 +13137,34 @@ function BarraEtapa({ edicao, salvando, carregando, onHabilitar, onFinalizar,
    APP
    ============================================================ */
 
+/* O atalho pro editor da Apresentação de especificações, já com a obra
+   escolhida. Fica só no Executivo e na Conf. Executivo, que é onde as
+   especificações nascem. */
+function BotaoApresentacao({ onAbrir, arquivo }) {
+  async function verPdf() {
+    if (arquivo?.url) { window.open(arquivo.url, "_blank"); return; }
+    try {
+      window.open(await linkParaArquivo(arquivo.caminho), "_blank");
+    } catch (e) {
+      window.alert(`Não consegui abrir o PDF: ${e.message || e}`);
+    }
+  }
+  return (
+    <>
+      {/* O PDF pronto mora junto dos cadernos do Executivo (Jornada da obra);
+          aqui só avisa que ele existe e abre com um clique. */}
+      {(arquivo?.caminho || arquivo?.url) && (
+        <button className="btn-apres-pdf" onClick={verPdf} title={`${arquivo.nome || "PDF"}: abrir`}>
+          <Check size={12} /> PDF anexado
+        </button>
+      )}
+      <button className="btn-apres" onClick={onAbrir}>
+        <Presentation size={13} /> Apresentação de especificações
+      </button>
+    </>
+  );
+}
+
 export default function App() {
   const [obras, setObras] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -13191,7 +13364,7 @@ export default function App() {
        conferir o que cada perfil enxerga sem trocar o perfil de ninguem no
        banco. No site oficial isto nem existe — o build tira o trecho. */
     if (import.meta.env.DEV && real && podeGerenciarPessoas(real)) {
-      const outro = new URLSearchParams(window.location.search).get("verComo");
+      const outro = VER_COMO;
       if (outro && PERFIS.some((x) => x.id === outro)) return { ...real, perfil: outro };
     }
     return real;
@@ -13458,6 +13631,17 @@ export default function App() {
   }
 
   const obra = obras.find((o) => o.id === selectedId);
+
+  /* Apresentação de especificações a partir da obra: o botão no topo abre
+     o mesmo editor do Catálogo já com esta obra escolhida. */
+  const [apresAberta, setApresAberta] = useState(false);
+  const [produtosApres, setProdutosApres] = useState(null);
+  async function abrirApresentacao() {
+    setApresAberta(true);
+    if (produtosApres) return;
+    // o editor monta os slides com os produtos do catálogo; sem eles abre vazio
+    try { setProdutosApres(await listarProdutos()); } catch { setProdutosApres([]); }
+  }
 
   // Ao abrir uma obra, traz o que já foi salvo dela.
   useEffect(() => {
@@ -14492,7 +14676,10 @@ export default function App() {
         .sidebar.recolhida .nav-badge, .sidebar.recolhida .nav-count { position: absolute; top: 4px; right: 2px; min-width: 7px; height: 7px; padding: 0; font-size: 0; border-radius: 50%; }
         .sidebar.recolhida .nav-item { position: relative; }
 
-        .main { flex: 1; padding: 32px 40px 60px; max-width: 1260px; }
+        /* min-width: 0 — sem ele o flex deixa o main crescer até caber a
+           tabela mais larga, e a tela inteira ganha rolagem de lado. As
+           tabelas largas rolam dentro do próprio bloco. */
+        .main { flex: 1; min-width: 0; padding: 32px 40px 60px; max-width: 1260px; }
         /* Nas telas de planilha a largura é o próprio conteúdo: são 13
            colunas, e limitar em 1260px obrigava a rolar de lado pra ver
            o custo total — justamente a coluna que mais importa. */
@@ -14525,6 +14712,19 @@ export default function App() {
         .btn-reabrir:hover:not(:disabled) { background: var(--panel); }
         .btn-concluir { background: var(--surface-1); color: var(--ink-2); border: 1px solid var(--border); font-size: 11.5px; padding: 6px 11px; }
         .btn-concluir:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+        .title-acoes { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
+        .btn-apres { display: inline-flex; align-items: center; gap: 6px; background: var(--brand-tint); color: var(--brand); border: 1px solid var(--brand-line); border-radius: 8px; font-size: 11.5px; font-weight: 600; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
+        .btn-apres:hover { background: var(--brand-soft); }
+        .btn-apres-pdf { display: inline-flex; align-items: center; gap: 5px; background: transparent; color: color-mix(in srgb, var(--green) 75%, var(--ink)); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); border-radius: 999px; font-size: 11.5px; font-weight: 600; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+        .btn-apres-pdf:hover { background: color-mix(in srgb, var(--green) 10%, transparent); }
+        .apres-abrindo { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; background: var(--bg); color: var(--ink-3); font-size: 13px; }
+        .cmp-forn { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; line-height: 1.5; color: var(--brand); background: var(--brand-tint); border: 1px solid var(--brand-line); vertical-align: 1px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .item-desc + .cmp-forn { margin-left: 0; }
+        .cmp-forn.vazio { color: var(--ink-3); background: transparent; border-color: var(--line-2); font-weight: 400; font-style: italic; }
+        /* Texto colado da internet (link inteiro na especificação, por
+           exemplo) não tem onde quebrar e esticava a tabela pra fora da
+           tela: aqui ele quebra onde precisar. */
+        .grp-itens .item-desc, .grp-itens .det-espec { overflow-wrap: anywhere; }
         .btn-start:disabled, .btn-reabrir:disabled, .btn-concluir:disabled { opacity: 0.55; cursor: default; }
 
         .vazio-box { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; background: var(--panel); border-radius: 12px; padding: 40px 20px; max-width: 720px; }
@@ -14794,6 +14994,14 @@ export default function App() {
         .ad-pagefoot { margin-top: auto; padding: 8mm 12mm 0; }
         .ad-pagefoot img { display: block; width: 100%; }
         .ad-docwarn { border: 1px dashed #b9ccd0; border-radius: 2mm; padding: 8mm; text-align: center; color: #6b7b7f; font-size: 9pt; }
+        /* A folha do aditivo tem altura de A4: o rodapé fica no pé da página
+           e as condições descem pra junto dele, em vez de tudo espremido no
+           topo com meia folha em branco embaixo. */
+        #doc-aditivo { min-height: 297mm; }
+        #doc-aditivo .ad-inner { display: flex; flex-direction: column; }
+        #doc-aditivo .ad-fecho { margin-top: auto; padding-top: 8mm; }
+        #doc-aditivo .ad-fecho > :first-child { margin-top: 0; }
+        #doc-aditivo .ad-fecho .ad-pagefoot { padding: 8mm 0 0; }
 
         @media (max-width: 1200px) { .ad-wrap { grid-template-columns: 1fr; } .ad-prev { position: static; } }
 
@@ -14811,6 +15019,13 @@ export default function App() {
           .ad-prev, .ad-prev-box { position: static !important; max-height: none !important; overflow: visible !important; padding: 0 !important; background: #fff !important; }
           .ad-page { width: auto !important; box-shadow: none !important; padding: 0 !important; display: block !important; }
           .ad-page .ad-inner { padding: 6mm 12mm 0; }
+          /* A4 com 10 mm de margem (o @page vem do próprio documento):
+             sobram 277 mm de altura. 274 deixa folga de arredondamento —
+             sem ela o rodapé pula sozinho pra uma segunda folha. */
+          #doc-aditivo.ad-page { display: flex !important; flex-direction: column; min-height: 274mm; }
+          /* Condições e rodapé são um bloco só: não se partem entre folhas. */
+          #doc-aditivo .ad-fecho { break-inside: avoid; }
+          .ad-ajuste-folha { zoom: 1 !important; }
           table.ad-dt tr { break-inside: avoid; }
           .ad-saldo { break-inside: avoid; }
         }
@@ -14836,6 +15051,11 @@ export default function App() {
         .btn-associar-sel { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); color: var(--ink); border: none; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-right: 6px; }
         .btn-associar-sel:hover { background: var(--blue-bg); color: var(--blue); }
         .sel-barra-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .sel-barra-topo { flex-wrap: wrap; }
+        .cmp-filtro-forn { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+        .cmp-forn-sel { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12px; padding: 6px 9px; background: var(--surface-1); color: var(--ink); max-width: 300px; }
+        .cmp-forn-sel:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
+        .cmp-forn-nome { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
         .btn-sel-tudo { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-2); }
         .btn-sel-tudo:hover { border-color: var(--ink); color: var(--ink); }
         .btn-limpar-sel-claro { background: transparent; border: none; color: var(--ink-3); font-size: 11.5px; cursor: pointer; font-family: inherit; text-decoration: underline; }
@@ -14890,7 +15110,6 @@ export default function App() {
 
         /* Conferencia com o Sienge: o que a planilha diz que tem pra
            comprar chegou mesmo la? */
-        .btn-pdf-sienge { cursor: pointer; }
         .confronto { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
         .confronto-topo { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink-2); padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
         .confronto-topo span { flex: 1; }
@@ -14955,11 +15174,6 @@ export default function App() {
         .ger-info { flex: 1; font-size: 12px; color: var(--ink-3); }
         .ger-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
         /* O pedido: mesma folha do escopo, com o cabecalho do pedido. */
-        .pedido-wrap { margin-top: 18px; }
-        .pedido-topo { display: flex; align-items: center; gap: 12px; background: var(--blue-bg); color: var(--blue); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
-        .pedido-topo .btn-voltar { margin-left: auto; }
-        .ped-espec { font-size: 10.5px; color: #6A6E72; font-style: italic; margin-top: 2px; }
-        .ped-sienge { font-size: 10px; color: #85898D; margin-top: 2px; }
         .pedido-vencido { color: var(--danger); font-weight: 700; }
         .pedido-perto { color: var(--alert); font-weight: 600; }
         /* DASHBOARD MO — a base de orcado de um escopo. */
@@ -16501,7 +16715,6 @@ export default function App() {
         .etapa-concluida, .assinatura-ok, .barra-etapa.feita { border-color: var(--success-line); }
         .bucket-falta { border-color: var(--warning-line); }
         .ac-painel, .assoc-barra { border-color: var(--brand-line); }
-        .pedido-topo { color: var(--text); }
         .aviso-deslocamento, .etapa-pendente { border: 1px solid var(--line-1); background: var(--surface-2); color: var(--text-soft); }
 
         /* ---------- Estado vazio (EmptyState) ---------- */
@@ -16743,12 +16956,23 @@ export default function App() {
             {/* Concluir a obra e um ato de fim de tudo. Repetido no topo
                 de oito telas ele fica ao lado do cotovelo de quem esta
                 conferindo item a item — agora mora so no Dashboard. */}
-            {grupo === "dashboard" && (
-              <button className="btn-concluir" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
-                {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={13} /> Concluir obra</>}
-              </button>
-            )}
+            <div className="title-acoes">
+              {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
+                && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
+                <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
+              )}
+              {grupo === "dashboard" && (
+                <button className="btn-concluir" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
+                  {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={13} /> Concluir obra</>}
+                </button>
+              )}
+            </div>
           </div>
+          {apresAberta && (produtosApres ? (
+            <Apresentacao usuario={usuario} produtos={produtosApres} obraInicial={obra.codigo}
+              obras={obrasAtivas.some((o) => String(o.codigo) === String(obra.codigo)) ? obrasAtivas : [obra, ...obrasAtivas]}
+              onFechar={() => setApresAberta(false)} />
+          ) : <div className="apres-abrindo">Abrindo a apresentação…</div>)}
           <div className="obra-meta">{obra.endereco} · {obra.cliente}</div>
 
           <BarraEtapa

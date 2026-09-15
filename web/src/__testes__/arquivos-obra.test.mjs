@@ -33,6 +33,7 @@ const M = eval(`(function () {
     { chave: "projeto", titulo: "Caderno Completo do Projeto Executivo" },
   ])};
   ${linha("const CADERNO_CONTRATO =")}
+  ${linha("const CADERNO_APRESENTACAO =")}
   ${linha("const avulsosDaObra =")}
   ${bloco("function arquivosDaObra(")}
   return { arquivosDaObra, avulsosDaObra };
@@ -89,6 +90,16 @@ const doAdmin = M.arquivosDaObra(comContrato, { souAdmin: true });
 conf("o admin vê o contrato", doAdmin.length, 1);
 conf("o contrato é fase contrato", doAdmin[0].fase, "contrato");
 conf("o contrato é fixo (não se apaga por Documentos)", !!doAdmin[0].fixo, true);
+
+/* ---- 4. A Apresentação de especificações pronta ----
+   Mora junto dos cadernos do Executivo, mas fora da lista que vai pro
+   painel da Mehoo. */
+const comApres = { cadernos: { apresentacao: { nome: "apresentacao.pdf", caminho: "2256/apresentacao/1.pdf" } } };
+const apres = M.arquivosDaObra(comApres);
+conf("a apresentação aparece em Documentos", apres.length, 1);
+conf("ela é fase executivo", apres[0].fase, "executivo");
+conf("com o nome certo", apres[0].titulo, "Apresentação de Especificações");
+conf("e é fixa (não se apaga por Documentos)", !!apres[0].fixo, true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
