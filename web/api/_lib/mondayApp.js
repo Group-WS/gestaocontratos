@@ -772,4 +772,430 @@ app.post("/api/executivo/parse", express.raw({ type: "*/*", limit: "30mb" }), as
 // tem ~19 MB e a Vercel corta requisições acima de 4,5 MB. Ele é lido
 // direto no navegador (web/src/App.jsx), sem envio e sem limite.
 
+/* ============================================================
+ * SOLICITAÇÃO DE COMPRA NO SIENGE
+ *
+ * A primeira coisa que o GC ESCREVE no Sienge — até aqui, tudo saía em
+ * planilha pra alguém redigitar lá dentro. Passa pelo servidor por um
+ * motivo só: a credencial do ERP não pode viver no navegador.
+ * ============================================================ */
+
+const { chamarSienge, siengeConfigurado, idCriado } = require("./sienge.js");
+
+// Quem assina as solicitações criadas por aqui. Decisão do negócio
+// (ver docs/ADR-003), não um detalhe de implementação: no Sienge, é este
+// nome que aparece como solicitante de tudo que sai do GC.
+const SOLICITANTE = "VALENTINA";
+
+const REF_ORCAMENTO = /^\d{2}(\.\d{3}){3}$/;
+const hojeISO = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+/* O que impede a chamada de sair daqui. Validar antes de tocar o Sienge
+   evita criar uma solicitação vazia — o cabeçalho é criado primeiro, e
+   se os itens forem todos recusados ela fica lá, órfã, pra alguém apagar
+   na mão. */
+function problemaNoPedido(corpo) {
+  if (!Number.isInteger(corpo?.buildingId)) return "Obra (buildingId) ausente ou inválida.";
+  if (!Array.isArray(corpo?.itens) || !corpo.itens.length) return "Nenhum item para enviar.";
+  for (const [i, it] of corpo.itens.entries()) {
+    const onde = `item ${i + 1}`;
+    if (!Number.isInteger(it?.productId)) return `${onde}: código do insumo ausente ou inválido.`;
+    if (!(Number(it?.quantity) > 0)) return `${onde}: quantidade precisa ser maior que zero.`;
+    if (!String(it?.unitySymbol || "").trim()) return `${onde}: unidade de medida ausente.`;
+    if (!REF_ORCAMENTO.test(String(it?.costEstimationItemReference || ""))) {
+      return `${onde}: referência do orçamento inválida (esperado nn.nnn.nnn.nnn).`;
+    }
+    if (!Number.isInteger(it?.buildingUnitId)) return `${onde}: unidade construtiva ausente ou inválida.`;
+  }
+  return null;
+}
+
+function itemParaSienge(it, data) {
+  const corpo = {
+    productId: it.productId,
+    quantity: Number(it.quantity),
+    unitySymbol: String(it.unitySymbol).trim(),
+    buildingsApropriations: [{
+      buildingUnitId: it.buildingUnitId,
+      costEstimationItemReference: it.costEstimationItemReference,
+      percentage: 100,
+    }],
+    // A entrega repete a quantidade do item: o GC não controla entrega
+    // parcelada, e o Sienge exige ao menos uma necessidade.
+    deliveryRequirements: [{ requirementDate: data, requirementQuantity: Number(it.quantity) }],
+  };
+  // Opcionais só entram quando existem: `detailId: null` é recusado, e
+  // `estimatedPrice: 0` diz "de graça", que não é o mesmo que "não sei".
+  if (Number.isInteger(it.detailId)) corpo.detailId = it.detailId;
+  if (Number.isInteger(it.trademarkId)) corpo.trademarkId = it.trademarkId;
+  if (Number(it.estimatedPrice) > 0) corpo.estimatedPrice = Number(it.estimatedPrice);
+  if (it.notes) corpo.notes = String(it.notes).slice(0, 4000);
+  return corpo;
+}
+
+/* As referências de orçamento que EXISTEM numa unidade construtiva.
+ *
+ * É a validação que impede a solicitação vazia. O cabeçalho precisa ser
+ * criado antes dos itens (a API exige o id pra mandá-los), então quando
+ * todo item é recusado sobra uma solicitação sem nada no ERP — e ela não
+ * pode ser apagada, porque a API não tem DELETE nem cancelamento. Foram
+ * nove assim numa tarde só.
+ *
+ * A recusa quase sempre é a mesma: a apropriação aponta pra um par
+ * (unidade construtiva, item do orçamento) que não existe naquela obra.
+ * Isso se confere com um GET, antes de escrever qualquer coisa.
+ */
+const ORCAMENTO_TTL_MS = 30 * 60_000;
+const orcamentoCache = new Map(); // `${obra}:${unidade}` -> { expira, refs }
+
+async function referenciasDoOrcamento(buildingId, unidadeId) {
+  const chave = `${buildingId}:${unidadeId}`;
+  const hit = orcamentoCache.get(chave);
+  if (hit && hit.expira > Date.now()) return hit.refs;
+
+  const r = await chamarSienge("GET",
+    `/building-cost-estimations/${buildingId}/sheets/${unidadeId}/items?limit=500`);
+  /* Não deu pra conferir: devolve null e o envio segue. Barrar um envio
+     legítimo porque uma consulta auxiliar falhou seria trocar um problema
+     raro por outro pior. */
+  if (!r.ok) return null;
+  const refs = new Set((r.body?.results || []).map((x) => x.wbsCode).filter(Boolean));
+  orcamentoCache.set(chave, { expira: Date.now() + ORCAMENTO_TTL_MS, refs });
+  return refs;
+}
+
+app.post("/api/sienge/solicitacao", async (req, res) => {
+  if (!siengeConfigurado()) {
+    return res.status(503).json({
+      error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
+      comoResolver: "Isto é configuração do sistema, não algo que dê pra resolver na tela. " +
+        "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD " +
+        "(em desenvolvimento, no monday-proxy/.env; em produção, nas variáveis da Vercel). " +
+        "Nada foi enviado ao Sienge.",
+    });
+  }
+  const problema = problemaNoPedido(req.body);
+  if (problema) {
+    return res.status(400).json({
+      error: `O pedido não passou na conferência antes de sair: ${problema}`,
+      comoResolver: "Isso não deveria chegar até aqui — a tela confere os mesmos campos antes de " +
+        "oferecer o envio. Feche o modal, confira o item citado nas Compras (quantidade, unidade, " +
+        "insumo associado) e tente de novo; se persistir, avise quem cuida do sistema, " +
+        "porque é sinal de defeito. Nada foi enviado ao Sienge.",
+    });
+  }
+
+  const { buildingId, notes, itens } = req.body;
+  const data = hojeISO();
+
+  /* Reenvio: quando o cliente manda `solicitacaoId`, a solicitação JÁ
+     existe no Sienge e só faltam itens nela. Criar outro cabeçalho aqui
+     seria a duplicata que todo o resto do desenho existe pra evitar —
+     item recusado volta pra MESMA solicitação. */
+  const reenvio = Number.isInteger(req.body.solicitacaoId) ? req.body.solicitacaoId : null;
+
+  try {
+    /* Confere a apropriação ANTES de criar o cabeçalho — é o que impede a
+       solicitação vazia, que não tem como ser apagada depois. */
+    const invalidos = [];
+    for (const unidadeId of [...new Set(itens.map((i) => i.buildingUnitId))]) {
+      const refs = await referenciasDoOrcamento(buildingId, unidadeId);
+      if (!refs) continue; // não deu pra conferir: deixa o Sienge decidir
+      if (!refs.size) {
+        invalidos.push(`a unidade construtiva ${unidadeId} não tem itens de orçamento nesta obra`);
+        continue;
+      }
+      itens.filter((i) => i.buildingUnitId === unidadeId)
+        .map((i) => i.costEstimationItemReference)
+        .filter((ref, k, a) => a.indexOf(ref) === k && !refs.has(ref))
+        .forEach((ref) => invalidos.push(`${ref} não existe na unidade construtiva ${unidadeId}`));
+    }
+    if (invalidos.length) {
+      return res.status(400).json({
+        error: `A apropriação não confere com o orçamento da obra ${buildingId}: ${invalidos.join("; ")}.`,
+        comoResolver: "NADA foi enviado e NENHUMA solicitação foi criada. " +
+          "A unidade construtiva é o número da planilha do orçamento e muda de obra para obra — " +
+          "confira o campo no topo do envio. O item do orçamento de cada verba se ajusta em EAP Sienge.",
+        etapa: "validacao",
+      });
+    }
+
+    const cabecalho = reenvio ? null : await chamarSienge("POST", "/purchase-requests", {
+      buildingId,
+      requesterUser: SOLICITANTE,
+      createdBy: SOLICITANTE,
+      requestDate: data,
+      notes: notes ? String(notes).slice(0, 4000) : undefined,
+    });
+    if (cabecalho && !cabecalho.ok) {
+      return res.status(502).json({
+        error: `O Sienge recusou a abertura da solicitação: ${cabecalho.erro}`,
+        comoResolver: "A mensagem acima vem do próprio Sienge. Ela costuma apontar o campo do " +
+          "cabeçalho (obra, solicitante, data). Confira se a obra existe no Sienge com o mesmo " +
+          "código que aparece aqui; se a mensagem citar o solicitante, o usuário VALENTINA precisa " +
+          "estar ativo lá. Nenhum item foi enviado.",
+        etapa: "solicitacao",
+      });
+    }
+
+    const solicitacaoId = reenvio || idCriado(cabecalho);
+    if (!solicitacaoId) {
+      return res.status(502).json({
+        error: "O Sienge criou a solicitação, mas não devolveu o número dela — " +
+          "por isso não deu pra enviar os itens.",
+        comoResolver: "NÃO tente de novo antes de conferir: abra no Sienge " +
+          "Suprimentos > Solicitações de Compra e veja se existe uma solicitação vazia criada agora. " +
+          "Se existir, lance os itens por lá ou cancele-a antes de reenviar daqui — repetir o envio " +
+          "sem isso cria uma segunda solicitação com os mesmos itens.",
+        etapa: "solicitacao",
+      });
+    }
+
+    /* Um POST por item, em sequência.
+     *
+     * O array inteiro numa chamada só seria mais rápido, e é justamente
+     * o que não serve: um insumo repetido devolve 422 e derrubaria o
+     * lote todo — inclusive os itens que estavam certos. Assim cada
+     * recusa fica sendo sobre o seu item, e a pessoa vê o que entrou e o
+     * que faltou, em vez de "deu erro".
+     *
+     * Em sequência, e não em paralelo, porque a cota do Sienge é
+     * compartilhada com o agendadefretesws (ver o backoff de 429 no
+     * cliente). */
+    const resultados = [];
+    for (const it of itens) {
+      const r = await chamarSienge("POST", `/purchase-requests/${solicitacaoId}/items`, [itemParaSienge(it, data)]);
+      resultados.push({ chaves: it.chaves || [], productId: it.productId, ok: r.ok, erro: r.erro });
+    }
+
+    res.json({
+      solicitacaoId,
+      reenvio: !!reenvio,
+      resultados,
+      ok: resultados.filter((r) => r.ok).length,
+      falhas: resultados.filter((r) => !r.ok).length,
+    });
+  } catch (err) {
+    // Aqui só chega o que não é sobre um item: credencial, timeout, rede.
+    // O `comoResolver` vem montado do cliente, que sabe qual foi a causa.
+    res.status(err.statusCode || 502).json({
+      error: err.message,
+      comoResolver: err.comoResolver || null,
+      code: err.code || null,
+    });
+  }
+});
+
+/* GET /api/sienge/insumos/:buildingId?ids=275,300 — os DETALHES de cada insumo.
+ *
+ * O detalhe é o que diz QUAL produto é: o insumo 275 é "AR CONDICIONADO",
+ * e o detalhe 4 é "LG / SPLIT DUAL INVERTER 18.000 BTUS QUENTE E FRIO /
+ * BRANCO". Mandar a solicitação só com o insumo deixa a compra genérica,
+ * e quem vai cotar não sabe o que comprar.
+ *
+ * Sai de `/building-cost-estimations/{obra}/resources`, que traz cada
+ * insumo do orçamento com `details[]` e `trademarks[]` — o único lugar da
+ * API pública onde esse catálogo aparece (os itens de pedido só devolvem
+ * o detalhe DE UM pedido que já existe, o que não serve para escolher).
+ *
+ * A varredura é inteira porque o endpoint ignora filtro por insumo: ~14
+ * páginas, ~5s na obra 2045. Daí o cache — sem ele, abrir o modal
+ * custaria isso toda vez. O catálogo muda quando alguém cadastra insumo
+ * novo, então meia hora de validade é folgado e ainda assim curto o
+ * bastante para um detalhe recém-criado aparecer.
+ */
+const CATALOGO_TTL_MS = 30 * 60_000;
+const catalogoInsumos = new Map(); // buildingId -> { expira, porId }
+
+async function carregarInsumosDaObra(buildingId) {
+  const hit = catalogoInsumos.get(buildingId);
+  if (hit && hit.expira > Date.now()) return hit.porId;
+
+  const porId = new Map();
+  const PAGINA = 200;
+  for (let offset = 0; offset < 20000; offset += PAGINA) {
+    const r = await chamarSienge("GET",
+      `/building-cost-estimations/${buildingId}/resources?limit=${PAGINA}&offset=${offset}`);
+    if (!r.ok) {
+      // Cache do que já veio seria pior que não ter: o modal mostraria
+      // meia lista de detalhes como se fosse a lista inteira.
+      const e = new Error(`Não deu pra ler os insumos da obra ${buildingId} no Sienge: ${r.erro}`);
+      e.statusCode = 502;
+      e.comoResolver = "Sem isso dá pra enviar a solicitação assim mesmo, só sem especificar o " +
+        "detalhe do produto. Tente de novo em alguns minutos; se persistir, avise quem cuida da integração.";
+      throw e;
+    }
+    const lote = r.body?.results || [];
+    lote.forEach((x) => porId.set(Number(x.id), {
+      id: Number(x.id),
+      descricao: x.description || "",
+      unidade: x.unitOfMeasure || null,
+      /* `id` é o `detailId` que a solicitação manda; `codigo` é o código
+         auxiliar que a pessoa vê no cadastro do Sienge (detailCode), e
+         que costuma vir vazio. Os dois aparecem na tela: o número do
+         detalhe é como alguém confere o item lá dentro. */
+      detalhes: (x.details || []).map((d) => ({
+        id: Number(d.id),
+        codigo: (d.detailCode ?? "").toString().trim() || null,
+        descricao: d.description || "",
+      })),
+      marcas: (x.trademarks || []).map((m) => ({ id: Number(m.id), descricao: m.description || m.name || "" })),
+    }));
+    if (lote.length < PAGINA) break;
+  }
+
+  catalogoInsumos.set(buildingId, { expira: Date.now() + CATALOGO_TTL_MS, porId });
+  return porId;
+}
+
+app.get("/api/sienge/insumos/:buildingId", async (req, res) => {
+  if (!siengeConfigurado()) {
+    return res.status(503).json({
+      error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
+      comoResolver: "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD.",
+    });
+  }
+  const buildingId = Number(req.params.buildingId);
+  if (!Number.isInteger(buildingId)) return res.status(400).json({ error: "Obra inválida." });
+
+  const ids = String(req.query.ids || "").split(",").map((n) => Number(n.trim())).filter(Number.isInteger);
+  try {
+    const porId = await carregarInsumosDaObra(buildingId);
+    // Só os insumos pedidos: a obra tem milhares, e o modal precisa de
+    // alguns — mandar tudo seria megabytes por abertura.
+    const insumos = (ids.length ? ids : [...porId.keys()])
+      .map((id) => porId.get(id))
+      .filter(Boolean);
+    res.json({ buildingId, insumos, naoEncontrados: ids.filter((id) => !porId.has(id)) });
+  } catch (err) {
+    res.status(err.statusCode || 502).json({
+      error: err.message,
+      comoResolver: err.comoResolver || null,
+      code: err.code || null,
+    });
+  }
+});
+
+/* GET /api/sienge/obra/:buildingId/unidades — as unidades construtivas.
+ *
+ * A unidade construtiva (`buildingUnitId`) é a PLANILHA do orçamento da
+ * obra, e o id dela **varia de obra para obra**:
+ *
+ *   obra 15 (modelo)  …  9 = EAP INICIAL - TKWS INTERIORES
+ *   obra 2519            1 = Orçamento Executivo · 2 = Pós Venda e Marketing
+ *
+ * Isso custou três solicitações vazias no Sienge (23494, 23498, 23501): o
+ * cadastro da EAP guardava a unidade do relatório importado — o 9 da obra
+ * modelo — e mandava esse número para qualquer obra. A apropriação é do
+ * par (unidade, item do orçamento), então o Sienge recusava item a item
+ * com "Item do orçamento é inválido", que é verdade e não diz onde está o
+ * erro: o item existe, a unidade é que não.
+ *
+ * Por isso a unidade passou a vir DAQUI, da obra de destino, e não do
+ * cadastro.
+ */
+app.get("/api/sienge/obra/:buildingId/unidades", async (req, res) => {
+  if (!siengeConfigurado()) {
+    return res.status(503).json({
+      error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
+      comoResolver: "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD.",
+    });
+  }
+  const buildingId = Number(req.params.buildingId);
+  if (!Number.isInteger(buildingId)) return res.status(400).json({ error: "Obra inválida." });
+
+  try {
+    const r = await chamarSienge("GET", `/building-cost-estimations/${buildingId}/sheets?limit=50`);
+    if (!r.ok) {
+      return res.status(502).json({
+        error: `Não deu pra ler as unidades construtivas da obra ${buildingId}: ${r.erro}`,
+        comoResolver: "Sem elas não dá pra apropriar a compra. Confira no Sienge se a obra tem " +
+          "orçamento cadastrado; se tiver, tente de novo em alguns minutos.",
+      });
+    }
+    const unidades = (r.body?.results || []).map((x) => ({
+      id: Number(x.id),
+      descricao: x.description || `Planilha ${x.id}`,
+      status: x.status || null,
+    }));
+    res.json({ buildingId, unidades });
+  } catch (err) {
+    res.status(err.statusCode || 502).json({
+      error: err.message, comoResolver: err.comoResolver || null, code: err.code || null,
+    });
+  }
+});
+
+/* GET /api/sienge/solicitacao/:id — o que o Sienge REALMENTE tem.
+ *
+ * A peça que fecha a garantia de não duplicar. Quando um envio fica sem
+ * resposta (aba fechada, timeout, rede caindo na volta), o registro local
+ * fica em 'enviando' e ninguém sabe se entrou. Supor é o caminho para as
+ * duas piores saídas: reenviar e duplicar, ou não reenviar e perder o
+ * pedido.
+ *
+ * Aqui a pergunta é feita a quem sabe. O Sienge é a fonte da verdade
+ * sobre as solicitações dele — o registro local é só o nosso rastro. */
+app.get("/api/sienge/solicitacao/:id", async (req, res) => {
+  if (!siengeConfigurado()) {
+    return res.status(503).json({
+      error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
+      comoResolver: "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD " +
+        "(em desenvolvimento, no monday-proxy/.env; em produção, nas variáveis da Vercel).",
+    });
+  }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: "Número de solicitação inválido." });
+  }
+
+  try {
+    const solicitacao = await chamarSienge("GET", `/purchase-requests/${id}`);
+    if (solicitacao.status === 404) {
+      // Resposta legítima e útil: a solicitação NÃO existe (nunca foi
+      // criada, ou foi cancelada). É o que libera o reenvio com segurança.
+      return res.json({ existe: false, solicitacaoId: id });
+    }
+    if (!solicitacao.ok) {
+      return res.status(502).json({
+        error: `Não deu pra consultar a solicitação ${id} no Sienge: ${solicitacao.erro}`,
+        comoResolver: "Abra o Sienge em Suprimentos > Solicitações de Compra e confira a solicitação " +
+          `${id} manualmente antes de reenviar qualquer coisa.`,
+      });
+    }
+
+    /* Só o cabeçalho, e não por escolha: `GET /purchase-requests/{id}/items`
+       responde 405 — a API aceita POST de itens e não devolve a lista deles.
+       Então a pergunta que dá pra responder aqui é "esta solicitação existe
+       e em que estado está", não "o que tem dentro". O que foi mandado por
+       este app está no nosso próprio registro (sienge_solicitacao), que é
+       quem a tela usa pra mostrar o conteúdo. */
+    const c = solicitacao.body || {};
+    res.json({
+      existe: true,
+      solicitacaoId: id,
+      cabecalho: {
+        buildingId: c.buildingId ?? null,
+        requesterUser: c.requesterUser ?? null,
+        requestDate: c.requestDate ?? null,
+        notes: c.notes ?? null,
+        // PENDING / AUTHORIZED / … — é o que diz se ela ainda vale.
+        status: c.status ?? null,
+        // IN_INCLUSION = aberta, ainda sendo montada.
+        consistent: c.consistent ?? null,
+        createdBy: c.createdBy ?? null,
+        createdAt: c.createdAt ?? null,
+      },
+      // A API não expõe os itens; a tela não deve prometer que expõe.
+      itensDisponiveis: false,
+    });
+  } catch (err) {
+    res.status(err.statusCode || 502).json({
+      error: err.message,
+      comoResolver: err.comoResolver || null,
+      code: err.code || null,
+    });
+  }
+});
+
 module.exports = app;
