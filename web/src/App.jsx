@@ -28,6 +28,7 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
+  custoItem, custoGrupo, temCusto, margemDoDocumento,
   rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
 import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
@@ -1742,7 +1743,7 @@ function verbaDoGrupoAditivo(g) {
 function aditivosPorVerba(aditivos) {
   const m = new Map();
   const pega = (num) => {
-    if (!m.has(num)) m.set(num, { num, adicao: 0, supressao: 0, numeros: new Set() });
+    if (!m.has(num)) m.set(num, { num, adicao: 0, supressao: 0, semCusto: 0, numeros: new Set() });
     return m.get(num);
   };
   (aditivos || []).filter(aditivoVale).forEach((a) => {
@@ -1754,6 +1755,13 @@ function aditivosPorVerba(aditivos) {
         const v = pega(num);
         v[secao] += valor;
         v.numeros.add(a.numero);
+        /* Quantas linhas de adicao entraram no Plano de Compras sem custo.
+           Elas aparecem la como "a orcar", e a barra do grupo diz quantas
+           sao — senao a pessoa precisa abrir o grupo pra descobrir. */
+        if (secao === "adicao") {
+          v.semCusto += (g.itens || []).filter(
+            (it) => !temCusto(it) && (String(it.descricao || "").trim() || totalItem(it) > 0)).length;
+        }
       });
     });
   });
@@ -1787,10 +1795,11 @@ function aditivosSemVerba(aditivos) {
  * e isso aparece no resumo do grupo, mas ela nao vira linha: uma linha
  * de compra negativa nao existe no mundo, e alguem tentaria comprar.
  *
- * O item nasce com `custo` e sem parcelas de material/mao de obra de
- * proposito: assim `alocacaoDoItem` decide MAT ou MO pelo mesmo caminho
- * de sempre — o padrao da empresa por descricao primeiro, as regras de
- * verba depois. Chutar a alocacao aqui criaria uma segunda verdade.
+ * O valor da linha e' o CUSTO, e nao o preco de venda do documento
+ * (pedido de 15/09/2026). Sao numeros diferentes: o documento diz o que o
+ * cliente paga, e comprar por ele faria a obra parecer gastar a margem
+ * inteira. Sem custo preenchido a linha entra sem valor nenhum, e a tabela
+ * a mostra como "a orcar".
  */
 function itensDeAditivo(aditivos) {
   const out = [];
@@ -1807,11 +1816,19 @@ function itensDeAditivo(aditivos) {
            le `it.tipo` — campo que o aditivo nao tem. O valor inteiro ia
            parar em mao de obra, calado, e o material do aditivo nao
            aparecia pra comprar. Dizendo a parcela aqui, ela e' o que a
-           pessoa escolheu na linha do aditivo, e nao um palpite. */
+           pessoa escolheu na linha do aditivo, e nao um palpite.
+
+           SEM custo as parcelas ficam nulas e `custo` nulo: e' assim que a
+           tabela mostra "a orcar". Copiar o preco de venda pra ca como
+           estimativa somaria no total da obra um numero que ninguem
+           conferiu — e ninguem veria que ele estava chutado. */
         const aloc = it.alocacao || ALOC_MAT;
-        const parcelas = aloc === ALOC_MO ? { totalMaterial: 0, totalMO: valor }
-          : aloc === ALOC_AMBOS ? { totalMaterial: valor / 2, totalMO: valor / 2 }
-          : { totalMaterial: valor, totalMO: 0 };
+        const gasto = custoItem(it);
+        const orcado = temCusto(it);
+        const parcelas = !orcado ? { totalMaterial: null, totalMO: null }
+          : aloc === ALOC_MO ? { totalMaterial: 0, totalMO: gasto }
+          : aloc === ALOC_AMBOS ? { totalMaterial: gasto / 2, totalMO: gasto / 2 }
+          : { totalMaterial: gasto, totalMO: 0 };
         out.push({
           catNum: num,
           item: {
@@ -1823,10 +1840,15 @@ function itensDeAditivo(aditivos) {
             id: `aditivo-${a.id}-${g.id}-${it.id}`,
             desc: String(it.descricao || "").split("\n")[0].trim() || "(sem descrição)",
             descCompleta: it.descricao || "",
+            /* A especificacao de compra entra no MESMO campo que a planilha
+               usa. E' ele que a linha das Compras mostra, que o descritivo
+               do Sienge le e que o PDF por insumo imprime: um campo, tres
+               telas, nenhuma ligacao nova pra manter viva. */
+            especificacao: String(it.espec || "").trim(),
             ambiente: it.ambiente || "",
             qtdExecutivo: parseNumAd(it.qtd) || null,
             un: it.unidade || "",
-            custo: valor,
+            custo: orcado ? gasto : null,
             alocacaoManual: aloc,
             aditivo: a.numero,
             aditivoId: a.id,
@@ -2493,10 +2515,13 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
               ela nao vira item — se so a adicao aparecesse, o grupo
               pareceria ter crescido mais do que cresceu. */}
           {aditivo && (
-            <span className="grp-aditivo" title={`Aditivo ${[...aditivo.numeros].join(", ")}`}>
+            <span className="grp-aditivo" title={`Aditivo ${[...aditivo.numeros].join(", ")} — estes são os valores do contrato; as linhas abaixo mostram o custo`}>
               <FileText size={9} /> aditivo
               {aditivo.adicao > 0 && <b className="adit-mais"> +{fmtBRL(aditivo.adicao)}</b>}
               {aditivo.supressao > 0 && <b className="adit-menos"> −{fmtBRL(aditivo.supressao)}</b>}
+              {/* Linha de aditivo sem custo entra "a orcar": dizer quantas
+                  sao aqui evita abrir o grupo so pra descobrir. */}
+              {aditivo.semCusto > 0 && <b className="adit-orcar"> · {aditivo.semCusto} a orçar</b>}
             </span>
           )}
           </div>
@@ -11855,6 +11880,14 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
           {eapPadrao().map((c) => <option key={c.num} value={c.num}>{c.num} · {c.nome}</option>)}
         </select>
         <span className="ad-sub mono">{fmtBRL(totalGrupo(g))}</span>
+        {/* A margem do grupo, so' na adicao e so' depois que alguem disse
+            algum custo: "margem 100%" num grupo sem custo nenhum seria uma
+            mentira bonita bem no lugar onde se decide preco. */}
+        {sec === "adicao" && custoGrupo(g) > 0 && (
+          <span className="ad-margem-g mono" title={`Custo ${fmtBRL(custoGrupo(g))}`}>
+            margem {fmtBRL(totalGrupo(g) - custoGrupo(g))}
+          </span>
+        )}
         <button className="ad-icon" title="Mover para cima" onClick={() => onMover(-1)}>↑</button>
         <button className="ad-icon" title="Mover para baixo" onClick={() => onMover(1)}>↓</button>
         <button className="ad-icon del" title="Excluir grupo" onClick={onRemover}><Trash2 size={12} /></button>
@@ -11883,7 +11916,7 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
                 ela tira) e errar o valor unitario. */}
             <BuscaExecutivo itens={doExecutivo} termo={it.descricao} ativo={!it.doExecutivo}
               onEscolher={(x) => escolherDoExecutivo(it.id, x)} />
-            <div className="ad-item-campos">
+            <div className={`ad-item-campos ${sec === "adicao" ? "com-custo" : ""}`}>
               <label>Ambiente<input className="form-input" value={it.ambiente}
                 onChange={(e) => setI(it.id, "ambiente", e.target.value)} /></label>
               <label>Qtd<input className="form-input" inputMode="decimal" value={it.qtd}
@@ -11892,6 +11925,15 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
                 onChange={(e) => setI(it.id, "unidade", e.target.value)} /></label>
               <label>Valor unitário<input className="form-input" inputMode="decimal" placeholder="0,00"
                 value={it.valor} onChange={(e) => setI(it.id, "valor", e.target.value)} /></label>
+              {/* O CUSTO e' interno e so' existe na adicao: e' ela que vira
+                  linha de compra. O valor ao lado e' o do cliente; este e' o
+                  que a obra gasta, e e' ele que sobe pro Plano de Compras.
+                  Vazio, a linha la aparece como "a orcar". */}
+              {sec === "adicao" && (
+                <label>Custo unit. <span className="ad-interno">interno</span>
+                  <input className="form-input" inputMode="decimal" placeholder="a orçar"
+                    value={it.custo || ""} onChange={(e) => setI(it.id, "custo", e.target.value)} /></label>
+              )}
               {/* MAT ou MO decide de que lado do orcamento este item cai
                   quando o aditivo for aprovado — Plano de Compras ou
                   Contratos. Sem escolha, tudo caia em mao de obra. */}
@@ -11904,6 +11946,18 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
                 </select>
               </label>
             </div>
+            {/* A especificacao de COMPRA. Ela nao sai no PDF do cliente: vai
+                pro campo que a planilha ja usa, e com isso aparece sozinha
+                na linha das Compras, no descritivo do cadastro do Sienge e
+                no PDF por insumo. */}
+            {sec === "adicao" && (
+              <label className="ad-espec">
+                Especificação de compra <span className="ad-interno">interna — não sai no PDF</span>
+                <textarea className="form-input ad-espec-in" rows={2}
+                  placeholder="marca, modelo, medida, acabamento, código do fornecedor…"
+                  value={it.espec || ""} onChange={(e) => setI(it.id, "espec", e.target.value)} />
+              </label>
+            )}
           </div>
         ))}
         <button className="ad-addbtn" onClick={addItem}><Plus size={12} /> Adicionar item</button>
@@ -11955,6 +12009,7 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
   const [sujo, setSujo] = useState(false);
 
   const t = totaisDoDocumento(doc);
+  const mg = margemDoDocumento(doc);
   const mexer = (novo) => { setDoc(novo); setSujo(true); };
   const campo = (k, v) => mexer({ ...doc, [k]: v });
 
@@ -12081,6 +12136,40 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
               <div className="ad-resumo forte">
                 <span>{rotuloSaldo(t.saldo)}</span>
                 <b className={`mono ${t.saldo < 0 ? "ad-credito" : ""}`}>{fmtBRL(t.saldo)}</b>
+              </div>
+              {/* O lado INTERNO do aditivo: quanto custa comprar o que foi
+                  adicionado, e o que sobra disso. Nada daqui entra no
+                  documento — o cliente ve preco, nao margem.
+
+                  So' a adicao: o custo do que foi suprimido mora na planilha
+                  do executivo, e traze-lo pra ca faria a conta fechar com
+                  dois lugares diferentes ao mesmo tempo. */}
+              <div className="ad-margem">
+                <div className="ad-margem-h">
+                  Interno <span className="ad-interno">não sai no PDF</span>
+                </div>
+                <div className="ad-resumo"><span>Custo da adição</span>
+                  <b className="mono">{fmtBRL(mg.custo)}</b></div>
+                {/* Margem SO' depois que alguem disse algum custo. Sem custo
+                    nenhum a conta daria "margem 100%", que e' uma mentira
+                    bonita bem no lugar onde se decide preco. Com parte das
+                    linhas orcada ela sai, mas dita como parcial. */}
+                <div className="ad-resumo">
+                  <span>Margem da adição{mg.custo > 0 && mg.semCusto > 0 ? " (parcial)" : ""}</span>
+                  {mg.custo > 0 ? (
+                    <b className={`mono ${mg.margem < 0 ? "ad-credito" : ""}`}>
+                      {fmtBRL(mg.margem)}{mg.pct != null ? ` · ${mg.pct.toFixed(1).replace(".", ",")}%` : ""}
+                    </b>
+                  ) : <b className="mono dim">—</b>}
+                </div>
+                {mg.semCusto > 0 && (
+                  <div className="ad-orcar">
+                    <AlertTriangle size={12} />
+                    <span>{mg.semCusto === 1
+                      ? "1 linha da adição entra no Plano de Compras como “a orçar”"
+                      : `${mg.semCusto} linhas da adição entram no Plano de Compras como “a orçar”`} — falta o custo.</span>
+                  </div>
+                )}
               </div>
               <label className="ad-largo" style={{ marginTop: 10, display: "block" }}>Condições de pagamento
                 <textarea className="form-input" rows={3} value={doc.cond || ""}
@@ -16315,6 +16404,14 @@ export default function App() {
         .ad-addbtn:hover { border-color: var(--ink-3); color: var(--ink); }
         .ad-resumo { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12.5px; color: var(--ink-2); border-bottom: 1px solid var(--border-soft); }
         .ad-resumo.forte { font-size: 14px; font-weight: 700; color: var(--ink); border-bottom: none; padding-top: 9px; }
+        .ad-item-campos.com-custo { grid-template-columns: 1.3fr .6fr .5fr 1fr 1fr 1.1fr; }
+        .ad-espec { display: block; margin-top: 7px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+        .ad-espec-in { margin-top: 3px; width: 100%; font-size: 12px; resize: vertical; }
+        .ad-margem-g { font-size: 10.5px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+        .ad-margem { margin-top: 12px; border-top: 1px solid var(--border-soft); padding-top: 9px; }
+        .ad-margem-h { display: flex; align-items: baseline; gap: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); margin-bottom: 4px; }
+        .ad-orcar { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: 11px; line-height: 1.35; color: var(--alert); }
+        .adit-orcar { color: var(--alert); font-weight: 600; }
 
         .ad-prev { position: sticky; top: 12px; }
         .ad-prev-h { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 7px; }

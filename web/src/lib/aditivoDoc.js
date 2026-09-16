@@ -21,7 +21,12 @@ const uid = () => Math.random().toString(36).slice(2, 9);
    sem ela o valor do item cairia inteiro em mao de obra na hora de entrar
    no Plano de Compras, e o material do aditivo simplesmente nao apareceria
    pra comprar. */
-export const novoItem = () => ({ id: uid(), descricao: "", ambiente: "", qtd: "1,00", unidade: "un", valor: "", alocacao: "MAT" });
+/* `custo` e `espec` sao INTERNOS: nao existem no documento do cliente.
+   O `valor` e' o que o cliente paga; o `custo` e' o que a empresa gasta, e
+   e' ele que vai pro Plano de Compras — comprar pelo preco de venda faria
+   a obra parecer gastar a margem inteira. A `espec` e' marca/modelo/medida:
+   o que quem compra precisa ler e o cliente nao precisa ver. */
+export const novoItem = () => ({ id: uid(), descricao: "", ambiente: "", qtd: "1,00", unidade: "un", valor: "", custo: "", espec: "", alocacao: "MAT" });
 export const novoGrupo = (n) => ({ id: uid(), num: String(n), nome: "", itens: [novoItem()] });
 
 export function novoDocumento(obra) {
@@ -78,6 +83,48 @@ export function totaisDoDocumento(doc) {
   const s = centSecao(doc?.supressao);
   const a = centSecao(doc?.adicao);
   return { supressao: s / 100, adicao: a / 100, saldo: (a - s) / 100 };
+}
+
+/* ---------- O CUSTO INTERNO ----------
+
+   Mesma conta do total, sobre o custo: centavos inteiros, arredondado no
+   item. Linha sem custo vale ZERO aqui e nao vira estimativa em lugar
+   nenhum — quem ainda nao sabe o custo nao sabe, e repetir o preco de
+   venda no lugar dele encheria o Plano de Compras de numero que ninguem
+   conferiu. */
+const centCusto = (i) => cent(parseNum(i.qtd) * parseNum(i.custo));
+const centCustoGrupo = (g) => (g.itens || []).reduce((a, i) => a + centCusto(i), 0);
+
+export const custoItem = (i) => centCusto(i) / 100;
+export const custoGrupo = (g) => centCustoGrupo(g) / 100;
+export const temCusto = (i) => parseNum(i.custo) > 0;
+
+/* Linha que EXISTE no documento (tem descricao ou valor) e ainda nao tem
+   custo. Ela entra no Plano de Compras como "a orcar", e o editor precisa
+   dizer quantas sao — senao a pessoa so descobre na outra tela. */
+function itensSemCusto(doc) {
+  return (doc?.adicao || []).reduce((a, g) => a + (g.itens || []).filter(
+    (i) => !temCusto(i) && (String(i.descricao || "").trim() || parseNum(i.valor) > 0),
+  ).length, 0);
+}
+
+/**
+ * A margem do aditivo: vendido menos custo, so' da ADICAO.
+ *
+ * Supressao fica de fora porque o custo do que saiu nao mora aqui — ele
+ * esta na planilha do executivo. Comparar a adicao vendida com a adicao
+ * comprada e' a unica conta que fecha com as duas colunas que a pessoa ve
+ * escritas na tela.
+ */
+export function margemDoDocumento(doc) {
+  const vendido = totalSecao(doc?.adicao);
+  const custo = (doc?.adicao || []).reduce((a, g) => a + centCustoGrupo(g), 0) / 100;
+  const margem = vendido - custo;
+  return {
+    vendido, custo, margem,
+    pct: vendido > 0 ? (margem / vendido) * 100 : null,
+    semCusto: itensSemCusto(doc),
+  };
 }
 
 /* Positivo o cliente paga; negativo ele recebe de volta. Chamar os dois

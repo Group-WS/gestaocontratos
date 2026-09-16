@@ -43,6 +43,9 @@ const M = eval(`(function () {
   const cent = (n) => Math.round(n * 100);
   const totalItem = (i) => cent(parseNumAd(i.qtd) * parseNumAd(i.valor)) / 100;
   const totalGrupo = (g) => (g.itens || []).reduce((a, i) => a + cent(totalItem(i)), 0) / 100;
+  // O custo interno: o que a linha vale no Plano de Compras.
+  const custoItem = (i) => cent(parseNumAd(i.qtd) * parseNumAd(i.custo)) / 100;
+  const temCusto = (i) => parseNumAd(i.custo) > 0;
   ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
@@ -57,8 +60,8 @@ let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
   console.log(`${ok ? "ok  " : "FALHOU"} ${n.padEnd(58)} ${String(o).padEnd(12)} ${ok ? "" : "esperava " + e}`); };
 
-const item = (desc, qtd, valor, alocacao = "MAT") =>
-  ({ id: desc, descricao: desc, qtd, valor, unidade: "un", ambiente: "", alocacao });
+const item = (desc, qtd, valor, alocacao = "MAT", custo = "", espec = "") =>
+  ({ id: desc, descricao: desc, qtd, valor, unidade: "un", ambiente: "", alocacao, custo, espec });
 const grupo = (nome, itens, verba) => ({ id: nome, num: "1", nome, itens, ...(verba ? { verba } : {}) });
 
 const aprovado = {
@@ -66,7 +69,8 @@ const aprovado = {
   totalAdicao: 5000, totalSupressao: 2000,
   doc: {
     supressao: [grupo("MOVEIS SOB MEDIDA", [item("Bancada antiga", "1,00", "2.000,00")])],
-    adicao: [grupo("MOVEIS SOB MEDIDA", [item("Bancada nova", "1,00", "5.000,00")])],
+    adicao: [grupo("MOVEIS SOB MEDIDA", [
+      item("Bancada nova", "1,00", "5.000,00", "MAT", "3.000,00", "LACA BRANCA / 6299")])],
   },
 };
 const rascunho = {
@@ -125,10 +129,27 @@ const itens = M.itensDeAditivo(todos);
 conf("um item, e é o da adição", itens.length, 1);
 conf("na verba certa", itens[0].catNum, "21");
 conf("com a descrição da primeira linha", itens[0].item.desc, "Bancada nova");
-conf("e o valor do item", itens[0].item.custo, 5000);
+/* A linha leva o CUSTO, não o preço de venda (pedido de 15/09/2026):
+   comprar pelo valor do cliente faria a obra parecer gastar a margem
+   inteira, e o Plano de Compras existe pra dizer o gasto. */
+conf("leva o custo, não o preço de venda", itens[0].item.custo, 3000);
+conf("e o material é o custo", itens[0].item.totalMaterial, 3000);
+/* A especificação de compra cai no mesmo campo da planilha: é ele que a
+   linha das Compras mostra, que o descritivo do Sienge lê e que o PDF por
+   insumo imprime. */
+conf("a especificação de compra vem junto", itens[0].item.especificacao, "LACA BRANCA / 6299");
 conf("marcado com o número do aditivo", itens[0].item.aditivo, "2405/1");
 // Sem código a tabela do plano repetiria a mesma chave em toda linha.
 conf("tem código próprio", /^AD 2405\/1/.test(itens[0].item.codigo), true);
+
+/* Sem custo preenchido a linha entra SEM valor, e a tabela a mostra como
+   "a orçar". Repetir o preço de venda como estimativa somaria no total da
+   obra um número que ninguém conferiu — e ninguém veria que era chute. */
+const semCusto = [{ ...aprovado, id: "aSC", doc: { supressao: [], adicao: [
+  grupo("MOVEIS SOB MEDIDA", [item("Bancada nova", "1,00", "5.000,00")])] } }];
+const linhaSC = M.itensDeAditivo(semCusto)[0].item;
+conf("linha sem custo entra sem valor", linhaSC.custo, null);
+conf("e sem parcela nenhuma", `${linhaSC.totalMaterial}/${linhaSC.totalMO}`, "null/null");
 
 /* ---- 5. As categorias derivadas ---- */
 const categorias = [
@@ -159,13 +180,19 @@ conf("índice negativo é barrado", M.indiceRealDoItem(obraCrua, "21", -1), null
    coisa: duas telas somando bases diferentes é como a pessoa descobre
    que não pode confiar em nenhuma das duas. */
 const stats = M.obraComprasStats({ categorias, aditivos: todos });
-conf("o material do aditivo conta nas compras", stats.totalProdutos, 15000);
+conf("o material do aditivo conta nas compras", stats.totalProdutos, 13000);
+// 10.000 da planilha + 3.000 de CUSTO do aditivo — e não os 5.000 vendidos.
+conf("e conta o custo, não a venda", stats.totalProdutos - 10000, 3000);
+conf("linha sem custo não infla o total",
+  M.obraComprasStats({ categorias, aditivos: semCusto }).totalProdutos, 10000);
+conf("a verba diz quantas faltam orçar", M.aditivosPorVerba(semCusto).get("21").semCusto, 1);
+conf("com custo, nada falta orçar", porVerba.get("21").semCusto, 0);
 
 /* Item marcado como mão de obra vai pra Contratos, não pra compra. Sem o
    campo de alocação TODO item de aditivo caía em mão de obra calado, e o
    material do aditivo nunca aparecia pra comprar. */
 const soMO = [{ ...aprovado, id: "aMO", doc: { supressao: [], adicao: [
-  grupo("MOVEIS SOB MEDIDA", [item("Montagem", "1,00", "5.000,00", "MO")])] } }];
+  grupo("MOVEIS SOB MEDIDA", [item("Montagem", "1,00", "5.000,00", "MO", "3.000,00")])] } }];
 conf("item de MO não conta nas compras", M.obraComprasStats({ categorias, aditivos: soMO }).totalProdutos, 10000);
 conf("mas vira item na lista do grupo", M.categoriasComAditivos(categorias, soMO)[0].itens.length, 2);
 conf("sem aditivo aprovado, só a planilha", M.obraComprasStats({ categorias, aditivos: [rascunho] }).totalProdutos, 10000);

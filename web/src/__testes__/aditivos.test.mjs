@@ -7,6 +7,7 @@
  * conversa pra desfazer isso é com quem paga.
  */
 import { parseNum, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
+  custoItem, custoGrupo, temCusto, margemDoDocumento,
   rotuloSaldo, numeroAditivo, proximaSeq, novoDocumento, novoGrupo, novoItem,
   CONDICOES_PADRAO, linkPipefy, pipefyPendente } from "../lib/aditivoDoc.js";
 
@@ -89,6 +90,33 @@ conf("e com um grupo em cada seção", novo.supressao.length + novo.adicao.lengt
 // Dois grupos criados na mesma linha não podem compartilhar id: a tela
 // inteira é indexada por ele.
 conf("ids não colidem", new Set([novoGrupo(1).id, novoGrupo(1).id, novoItem().id]).size, 3);
+
+/* ---- 6. O custo interno ----
+   O documento diz o que o CLIENTE paga; o custo diz o que a empresa gasta.
+   Confundir os dois faz o Plano de Compras comprar pelo preco de venda — e
+   a obra parece gastar a margem inteira. */
+const ic = (qtd, valor, custo) => ({ ...novoItem(), descricao: "linha", qtd, valor, custo });
+conf("custo do item é qtd × custo unitário", custoItem(ic("2,00", "1.500,00", "900,00")), 1800);
+conf("linha sem custo vale zero", custoItem(ic("2,00", "1.500,00", "")), 0);
+conf("e não é estimada pelo preço de venda", temCusto(ic("2,00", "1.500,00", "")), false);
+conf("grupo soma os custos das linhas",
+  custoGrupo({ ...novoGrupo(1), itens: [ic("2,00", "1.500,00", "900,00"), ic("1,00", "500,00", "300,00")] }), 2100);
+
+/* A margem é da ADIÇÃO, e só dela: o custo do que foi suprimido mora na
+   planilha do executivo, não no aditivo. */
+const docM = {
+  supressao: [{ ...novoGrupo(1), itens: [ic("1,00", "1.000,00", "600,00")] }],
+  adicao: [{ ...novoGrupo(1), itens: [ic("2,00", "1.500,00", "900,00"), ic("1,00", "500,00", "")] }],
+};
+const mg = margemDoDocumento(docM);
+conf("vendido é só o da adição", mg.vendido, 3500);
+conf("custo é só o da adição", mg.custo, 1800);
+conf("margem é vendido menos custo", mg.margem, 1700);
+conf("e a porcentagem sai do vendido", mg.pct.toFixed(1), "48.6");
+conf("a linha sem custo é denunciada", mg.semCusto, 1);
+// Sem vendido nenhum não existe porcentagem — dividir por zero daria Infinity.
+conf("sem vendido não divide por zero", margemDoDocumento({ adicao: [] }).pct, null);
+conf("documento vazio não quebra", margemDoDocumento(undefined).margem, 0);
 
 /* ---- Pipefy ----
    Aditivo aprovado obriga abrir a "Solicitação de contrato". O app não
