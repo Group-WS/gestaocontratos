@@ -18,8 +18,12 @@ create table if not exists aditivo (
   seq           int  not null,
   numero        text not null,
   descricao     text,                          -- do que se trata, em uma linha
+  -- 'aguardando' e' o enviado ao cliente, esperando resposta: entra entre
+  -- o rascunho e a decisao, e NAO conta no dinheiro. Banco que ja existia
+  -- antes disso precisa do supabase/aditivo-aguardando.sql, porque
+  -- `create table if not exists` nao mexe na trava de uma tabela pronta.
   status        text not null default 'rascunho'
-                check (status in ('rascunho','aprovado','reprovado')),
+                check (status in ('rascunho','aguardando','aprovado','reprovado')),
   -- O documento inteiro: cabecalho, grupos, itens, condicoes. Guardado
   -- como retrato, igual aos escopos — o que foi enviado ao cliente nao
   -- pode mudar porque alguem editou um padrao depois.

@@ -249,5 +249,22 @@ conf("termo vazio não busca", M.acharNoExecutivo(achatados, "").length, 0);
 conf("sem executivo não quebra", M.acharNoExecutivo(undefined, "bancada").length, 0);
 conf("nada casa devolve vazio", M.acharNoExecutivo(achatados, "geladeira").length, 0);
 
+/* ---- 10. Aguardando cliente ----
+   É o aditivo que já foi enviado e espera resposta. Espera não é
+   compromisso: ele NÃO mexe no dinheiro, igual ao rascunho. Se contasse,
+   o Dashboard passaria a somar proposta que o cliente ainda pode
+   recusar. */
+const aguardando = { ...aprovado, id: "a4", numero: "2405/4", status: "aguardando" };
+conf("aguardando não entra na verba", M.aditivosPorVerba([aguardando]).size, 0);
+conf("nem vira item comprável", M.itensDeAditivo([aguardando]).length, 0);
+conf("nem mexe no total das compras",
+  M.obraComprasStats({ categorias, aditivos: [aguardando] }).totalProdutos, 10000);
+conf("não conta como aprovado", M.resumoAditivos([aguardando]).aprovados.length, 0);
+/* Mas ele precisa APARECER: é o que está esperando resposta, e sumir do
+   painel é o jeito de esquecer dele. */
+conf("aparece como em aberto", M.resumoAditivos([aguardando]).pendentes.length, 1);
+conf("junto com o rascunho", M.resumoAditivos([aguardando, rascunho]).pendentes.length, 2);
+conf("e o reprovado continua fora", M.resumoAditivos([reprovado]).pendentes.length, 0);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

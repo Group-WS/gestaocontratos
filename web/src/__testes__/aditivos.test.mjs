@@ -6,7 +6,8 @@
  * torto numa tela interna: é uma proposta assinada no valor errado, e a
  * conversa pra desfazer isso é com quem paga.
  */
-import { parseNum, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
+import { STATUS_ADITIVO,
+  parseNum, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
   custoItem, custoGrupo, temCusto, margemDoDocumento, planilhaDoAditivo,
   rotuloSaldo, numeroAditivo, proximaSeq, novoDocumento, novoGrupo, novoItem,
   CONDICOES_PADRAO, linkPipefy, pipefyPendente } from "../lib/aditivoDoc.js";
@@ -210,6 +211,13 @@ const achaS = (r) => (semNada.folhas[1].linhas.find((l) => l[0] === r) || [])[1]
 conf("sem custo, a margem fica vazia", achaS("Margem da adição"), "");
 conf("documento vazio não quebra", planilhaDoAditivo({}, {}).folhas[0].linhas.length >= 5, true);
 conf("e sem item não inventa filtro", planilhaDoAditivo({}, {}).folhas[0].filtro, null);
+
+/* ---- 8. As fases do documento ----
+   A ordem é o caminho: nasce rascunho, vai pro cliente, volta decidido. */
+conf("quatro fases", STATUS_ADITIVO.length, 4);
+conf("na ordem do caminho", STATUS_ADITIVO.map((s) => s.id).join(">"),
+  "rascunho>aguardando>aprovado>reprovado");
+conf("com o nome que ela pediu", STATUS_ADITIVO.find((s) => s.id === "aguardando").nome, "Aguardando cliente");
 
 /* ---- Pipefy ----
    Aditivo aprovado obriga abrir a "Solicitação de contrato". O app não

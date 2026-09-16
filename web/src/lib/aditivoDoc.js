@@ -6,8 +6,18 @@
  * navegador so e passa a ficar guardado por obra, com numero e status.
  */
 
+/* A ordem E' o caminho do documento: nasce rascunho, vai pro cliente,
+   e volta aprovado ou reprovado.
+
+   "Aguardando cliente" e' espera, nao compromisso: ela NAO mexe no
+   dinheiro, igual ao rascunho. Quem conta no Dashboard, no CMV e no
+   Plano de Compras continua sendo so' o aprovado (`aditivoVale`).
+
+   O banco tem trava nesses valores: fase nova exige
+   supabase/aditivo-aguardando.sql rodado. */
 export const STATUS_ADITIVO = [
   { id: "rascunho", nome: "Rascunho", cor: "var(--ink-3)" },
+  { id: "aguardando", nome: "Aguardando cliente", cor: "var(--alert)" },
   { id: "aprovado", nome: "Aprovado", cor: "var(--green)" },
   { id: "reprovado", nome: "Reprovado", cor: "var(--red)" },
 ];

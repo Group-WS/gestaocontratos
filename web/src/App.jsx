@@ -968,8 +968,8 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
             </>
           ) : (
             <div className="dash-adit-sub">
-              {adit.pendentes.length} {adit.pendentes.length === 1 ? "aditivo em rascunho" : "aditivos em rascunho"} —
-              rascunho não entra no orçamento. Só o aprovado conta.
+              {adit.pendentes.length} {adit.pendentes.length === 1 ? "aditivo em aberto" : "aditivos em aberto"} —
+              em rascunho ou aguardando o cliente. Nenhum dos dois entra no orçamento: só o aprovado conta.
             </div>
           )}
 
@@ -1717,7 +1717,8 @@ function resumoPorProduto(obras, { filtroItem = null } = {}) {
 /* ============================================================
    O ADITIVO DENTRO DO ORCAMENTO DA OBRA
 
-   Aditivo APROVADO mexe no dinheiro; rascunho e reprovado nao. E' a
+   Aditivo APROVADO mexe no dinheiro; rascunho, aguardando cliente e
+   reprovado nao — esperar resposta nao e' compromisso assumido. E' a
    unica regra que separa um documento em discussao de um compromisso
    assumido — e ela precisa valer nas tres telas, senao o Dashboard diz
    uma coisa e o Plano de Compras outra.
@@ -2021,7 +2022,11 @@ function resumoAditivos(aditivos) {
   const saldo = aprovados.reduce((a, x) => a + (x.totalAdicao - x.totalSupressao), 0);
   return {
     aprovados,
-    pendentes: (aditivos || []).filter((a) => a.status === "rascunho"),
+    /* EM ABERTO: o rascunho e o que esta com o cliente. Os dois esperam
+       decisao e nenhum dos dois conta no dinheiro. Deixar de fora o que
+       foi enviado ao cliente sumiria do painel justamente o aditivo que
+       mais precisa de resposta. */
+    pendentes: (aditivos || []).filter((a) => a.status === "rascunho" || a.status === "aguardando"),
     saldo,
     adicao: aprovados.reduce((a, x) => a + x.totalAdicao, 0),
     supressao: aprovados.reduce((a, x) => a + x.totalSupressao, 0),
@@ -13834,6 +13839,7 @@ function LinhaAditivo({ a, usuario, obraNome, mostrarObra, onAbrir, onExcluir, o
               className={`ad-tag ${st.id} ${a.status === st.id ? "on" : ""} ${st.id === "aprovado" && pipefyPendente(a) ? "cobra" : ""}`}
               disabled={salvando} onClick={() => gravar({ status: st.id })}
               title={st.id === "rascunho" ? "Volta para rascunho — sai do orçamento"
+                : st.id === "aguardando" ? "Enviado ao cliente, esperando resposta — ainda não entra no orçamento"
                 : st.id === "aprovado" ? "Aprovar — passa a contar no Dashboard, no CMV e no Plano de Compras"
                 : "Reprovar — não entra no orçamento"}>
               {st.nome}
@@ -18143,6 +18149,7 @@ export default function App() {
         .ad-tag { border: 1px solid var(--border); background: var(--surface-1); border-radius: 20px; padding: 4px 11px; font-size: 11px; font-weight: 700; font-family: inherit; color: var(--ink-3); cursor: pointer; }
         .ad-tag:hover { border-color: var(--ink-3); }
         .ad-tag.rascunho.on { background: var(--panel); border-color: var(--ink-3); color: var(--ink-2); }
+        .ad-tag.aguardando.on { background: var(--alert-soft); border-color: var(--alert); color: var(--alert); }
         .ad-tag.aprovado.on { background: var(--green-bg); border-color: var(--green); color: var(--green); }
         .ad-tag.reprovado.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 
@@ -20187,6 +20194,7 @@ export default function App() {
         .cbadge, .tipo-chip-conta { background: color-mix(in srgb, var(--text) 8%, transparent); color: inherit; font-family: var(--font-mono); }
         .cfiltro.active .cbadge, .tipo-chip.active .tipo-chip-conta { background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand); }
         .ad-tag.rascunho.on { background: var(--surface-3); border-color: var(--line-3); color: var(--text); }
+        .ad-tag.aguardando.on { background: color-mix(in srgb, var(--warning) 14%, transparent); border-color: var(--warning); color: var(--warning); }
         .ad-tag.aprovado.on { background: var(--success-soft); border-color: var(--success); color: var(--success); }
         .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 

@@ -61,6 +61,13 @@ export async function salvarAditivo(id, { descricao, status, doc, usuario }) {
     campos.total_adicao = t.adicao;
   }
   const { data, error } = await supabase.from("aditivo").update(campos).eq("id", id).select().single();
+  /* A fase "Aguardando cliente" so' existe no banco depois do SQL: antes
+     disso o Postgres recusa a linha com um erro que nao diz o que fazer
+     ("violates check constraint"), e a pessoa fica achando que o app
+     quebrou. */
+  if (error?.code === "23514" && /status/i.test(error.message || "")) {
+    throw new Error("O banco ainda não conhece a fase “Aguardando cliente”: falta rodar supabase/aditivo-aguardando.sql no Supabase (SQL Editor).");
+  }
   if (error) throw error;
   return paraApp(data);
 }
