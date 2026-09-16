@@ -136,6 +136,213 @@ export function rotuloSaldo(s) {
   return "Saldo do aditivo";
 }
 
+/* ---------- A PLANILHA INTERNA ----------
+
+   O PDF e' do cliente; esta planilha e' de dentro de casa. Por isso ela
+   leva justamente o que o documento esconde: custo, margem e a
+   especificacao de compra.
+
+   Devolve MATRIZ, nao arquivo. Quem tem o XLSX na mao monta o arquivo; o
+   que decide o conteudo fica aqui, onde o teste alcanca sem navegador.
+
+   As verbas entram por funcao de fora porque quem sabe a EAP e' o App —
+   a lib nao conhece (e nao deve conhecer) a tabela de verbas. */
+
+const NOME_ALOC_PLANILHA = { MAT: "MATERIAL (MAT)", MO: "MÃO DE OBRA (MO)", AMBOS: "MAT+MO" };
+
+export const CABECALHO_PLANILHA_ADITIVO = [
+  "Seção", "Grupo", "Nome do grupo", "Verba", "Nome da verba", "Item", "Descrição",
+  "Ambiente", "Qtd", "Un.", "Valor unit. (cliente)", "Total cliente (R$)",
+  "Custo unit. (interno)", "Custo total (R$)", "Margem (R$)", "Margem (%)",
+  "Alocação", "Especificação de compra", "No Plano de Compras",
+];
+
+/* As larguras saem do CONTEUDO, nao de um numero redondo: descricao e
+   especificacao sao frases, ambiente e' uma lista de comodos, e o resto
+   e' numero curto. Sem isso o Excel abre tudo com 8 caracteres e a
+   descricao vira "Fechadura PADO Op###". */
+const LARGURAS_ADITIVO = [11, 7, 22, 7, 24, 7, 52, 26, 9, 6, 16, 16, 16, 16, 14, 11, 18, 46, 20];
+
+const MOEDA = '"R$" #,##0.00';
+const PORCENTO = "0.0%";
+const DATA_HORA = "dd/mm/yyyy hh:mm";
+
+/* Texto vira Date so' quando da': celula de data com lixo dentro mostra
+   "Invalid Date" no Excel, que e' pior que a data em branco.
+
+   E dia sozinho ("2026-09-14") vira MEIO-DIA local, nao meia-noite: em
+   UTC a meia-noite do dia 14 e' 21h do dia 13 no Brasil, e a planilha
+   mostrava 13/09 onde a pessoa escreveu 14/09. Num papel sobre dinheiro,
+   um dia a menos e' erro de documento, nao detalhe. */
+const comoData = (v) => {
+  if (!v) return "";
+  if (v instanceof Date) return isNaN(v.getTime()) ? "" : v;
+  const texto = String(v);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(texto) ? new Date(`${texto}T12:00:00`) : new Date(texto);
+  return isNaN(d.getTime()) ? "" : d;
+};
+
+const dataBRcurta = (d) => (d instanceof Date
+  ? d.toLocaleDateString("pt-BR")
+  : String(d || "").slice(0, 10).split("-").reverse().join("/"));
+
+/**
+ * O aditivo em forma de planilha, folha a folha.
+ *
+ * Devolve FOLHAS DESCRITAS (linhas, larguras, mesclagens, formatos), e
+ * nao arquivo: quem tem o XLSX na mao monta o arquivo, e o que decide o
+ * conteudo — e o layout — fica aqui, onde o teste alcanca sem navegador.
+ *
+ * As verbas entram por funcao de fora porque quem conhece a EAP e' o App.
+ */
+export function planilhaDoAditivo(aditivo, doc, { verbaDoGrupo = () => null, nomeDaVerba = () => "", agora = new Date() } = {}) {
+  const d = doc || aditivo?.doc || {};
+  const t = totaisDoDocumento(d);
+  const m = margemDoDocumento(d);
+  const nCols = CABECALHO_PLANILHA_ADITIVO.length;
+  const vazia = new Array(nCols).fill("");
+
+  const cabecalho = [
+    [`Aditivo ${aditivo?.numero || ""}${aditivo?.descricao ? ` · ${aditivo.descricao}` : ""}`],
+    [`${d.cliente || ""}${d.data ? ` · documento de ${dataBRcurta(d.data)}` : ""}${aditivo?.status ? ` · ${aditivo.status}` : ""}`],
+    ["Uso interno — custo, margem e especificação de compra não saem no PDF do cliente."],
+    [],
+  ];
+  const linhas = [...cabecalho, [...CABECALHO_PLANILHA_ADITIVO]];
+  const linhaDoCabecalho = linhas.length - 1;
+  /* Que papel cada linha faz. O estilo sai DAQUI, e nao de uma regra
+     escrita dentro do App: assim o negrito do subtotal e' conferido no
+     teste junto com a soma que ele mostra. */
+  const subtotais = [];
+
+  /* Uma secao por vez, e um subtotal no fim de cada uma. O subtotal e' o
+     que faz a folha ser conferivel: quem abre soma a coluna e tem que
+     bater com o rodape do documento. */
+  const secao = (chave, rotulo) => {
+    const ehAdicao = chave === "adicao";
+    const itens = [];
+    (d[chave] || []).forEach((g) => {
+      const verba = verbaDoGrupo(g);
+      (g.itens || []).forEach((it, k) => {
+        const descricao = String(it.descricao || "").trim();
+        const venda = totalItem(it);
+        if (!descricao && venda <= 0) return;
+        /* Custo e margem SO' na adicao. Supressao e' escopo que saiu: o
+           custo do que saiu vive na planilha do executivo, e zero aqui
+           pareceria "custou nada", que e' outra coisa. */
+        const orcado = ehAdicao && temCusto(it);
+        const gasto = orcado ? custoItem(it) : null;
+        itens.push([
+          rotulo, g.num || "", g.nome || "", verba || "", verba ? nomeDaVerba(verba) : "",
+          `${g.num || ""}.${k + 1}`, descricao, it.ambiente || "",
+          parseNum(it.qtd), it.unidade || "", parseNum(it.valor), venda,
+          orcado ? parseNum(it.custo) : "",
+          orcado ? gasto : "",
+          orcado ? venda - gasto : "",
+          // FRACAO, e nao 30.47: o formato de porcentagem do Excel
+          // multiplica por cem sozinho. Guardar 30.47 mostraria 3047%.
+          orcado && venda > 0 ? (venda - gasto) / venda : "",
+          NOME_ALOC_PLANILHA[it.alocacao] || it.alocacao || "",
+          ehAdicao ? String(it.espec || "").trim() : "",
+          !ehAdicao ? "não vira linha"
+            : !verba ? "sem verba — não entra"
+            : orcado ? "entra com o custo" : "entra como a orçar",
+        ]);
+      });
+    });
+    if (!itens.length) return;
+    /* A linha em branco SEPARA as secoes, e so' entra quando ja ha algo
+       em cima. Sobrando no fim, o filtro do cabecalho levaria junto uma
+       linha vazia. */
+    if (linhas.length > linhaDoCabecalho + 1) linhas.push([...vazia]);
+    linhas.push(...itens);
+    const soma = (col) => itens.reduce((a, L) => a + (typeof L[col] === "number" ? L[col] : 0), 0);
+    const total = [...vazia];
+    total[6] = `Total ${rotulo.toLowerCase()}`;
+    total[11] = soma(11);
+    if (ehAdicao) { total[13] = soma(13); total[14] = soma(14); }
+    subtotais.push(linhas.length);
+    linhas.push(total);
+  };
+
+  secao("supressao", "Supressão");
+  secao("adicao", "Adição");
+
+  const folhaItens = {
+    nome: "Aditivo",
+    linhas,
+    larguras: LARGURAS_ADITIVO,
+    // O titulo ocupa a folha inteira; as tres primeiras linhas sao o cabecalho.
+    mesclagens: cabecalho.slice(0, 3).map((_, i) => ({ linha: i, de: 0, ate: nCols - 1 })),
+    alturas: [{ linha: 0, altura: 22 }],
+    filtro: linhas.length > linhaDoCabecalho + 1
+      ? { linha: linhaDoCabecalho, de: 0, ate: nCols - 1, ultima: linhas.length - 1 } : null,
+    papeis: {
+      titulo: 0,
+      apoio: [1, 2],
+      cabecalho: linhaDoCabecalho,
+      subtotais,
+      // Frase longa quebra dentro da celula; numero e codigo, nao.
+      quebraLinha: [2, 4, 6, 7, 17, 18],
+      congelarAte: linhaDoCabecalho,
+    },
+    formatos: [
+      ...[10, 11, 12, 13, 14].map((c) => ({ coluna: c, z: MOEDA, de: linhaDoCabecalho + 1 })),
+      { coluna: 15, z: PORCENTO, de: linhaDoCabecalho + 1 },
+    ],
+  };
+
+  /* A folha do resumo e' de leitura, nao de conta: duas colunas, rotulo e
+     valor, com o dinheiro formatado onde e' dinheiro. */
+  const res = [];
+  const fmtRes = [];
+  const por = (rotulo, valor, z) => { res.push([rotulo, valor]); if (z) fmtRes.push({ linha: res.length - 1, coluna: 1, z }); };
+  const respiro = () => res.push([]);
+
+  res.push([`Resumo do aditivo ${aditivo?.numero || ""}`], []);
+  por("Obra (centro de custo)", aditivo?.obraCodigo || "");
+  por("Do que se trata", aditivo?.descricao || "");
+  por("Status", aditivo?.status || "");
+  por("Cliente / obra", d.cliente || "");
+  por("Nº da proposta", d.proposta || "");
+  por("Data do documento", comoData(d.data), "dd/mm/yyyy");
+  respiro();
+  por("Total supressão", t.supressao, MOEDA);
+  por("Total adição", t.adicao, MOEDA);
+  por(rotuloSaldo(t.saldo), t.saldo, MOEDA);
+  respiro();
+  por("Custo da adição", m.custo, MOEDA);
+  // A mesma regra da tela: sem custo nenhum nao existe margem — "100%"
+  // seria uma mentira bonita dentro de uma planilha que alguem vai usar.
+  por("Margem da adição", m.custo > 0 ? m.margem : "", m.custo > 0 ? MOEDA : null);
+  por("Margem da adição (%)", m.custo > 0 && m.pct != null ? m.pct / 100 : "", m.custo > 0 ? PORCENTO : null);
+  por("Linhas de adição sem custo", m.semCusto);
+  respiro();
+  por("Condições de pagamento", d.cond || "");
+  por("Observação interna", d.observacao || "");
+  por("Pipefy", d.pipefy?.em ? `enviado em ${dataBRcurta(comoData(d.pipefy.em))}` : "pendente");
+  respiro();
+  por("Criado em", comoData(aditivo?.criadoEm), DATA_HORA);
+  por("Criado por", aditivo?.criadoPor || "");
+  por("Atualizado em", comoData(aditivo?.atualizadoEm), DATA_HORA);
+  por("Atualizado por", aditivo?.atualizadoPor || "");
+  respiro();
+  por("Planilha gerada em", comoData(agora), DATA_HORA);
+
+  const folhaResumo = {
+    nome: "Resumo",
+    linhas: res,
+    larguras: [30, 54],
+    mesclagens: [{ linha: 0, de: 0, ate: 1 }],
+    alturas: [{ linha: 0, altura: 22 }],
+    filtro: null,
+    formatos: fmtRes,
+    papeis: { titulo: 0, apoio: [], cabecalho: null, subtotais: [], colunaRotulo: 0, quebraLinha: [1] },
+  };
+
+  return { folhas: [folhaItens, folhaResumo] };
+}
+
 /* O numero que a obra ve: centro de custo + sequencia. */
 export const numeroAditivo = (codigo, seq) => `${codigo}/${seq}`;
 

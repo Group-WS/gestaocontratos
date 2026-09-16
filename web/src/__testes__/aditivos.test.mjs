@@ -7,7 +7,7 @@
  * conversa pra desfazer isso é com quem paga.
  */
 import { parseNum, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
-  custoItem, custoGrupo, temCusto, margemDoDocumento,
+  custoItem, custoGrupo, temCusto, margemDoDocumento, planilhaDoAditivo,
   rotuloSaldo, numeroAditivo, proximaSeq, novoDocumento, novoGrupo, novoItem,
   CONDICOES_PADRAO, linkPipefy, pipefyPendente } from "../lib/aditivoDoc.js";
 
@@ -117,6 +117,99 @@ conf("a linha sem custo é denunciada", mg.semCusto, 1);
 // Sem vendido nenhum não existe porcentagem — dividir por zero daria Infinity.
 conf("sem vendido não divide por zero", margemDoDocumento({ adicao: [] }).pct, null);
 conf("documento vazio não quebra", margemDoDocumento(undefined).margem, 0);
+
+/* ---- 7. A planilha interna (Excel) ----
+   O PDF é do cliente; a planilha é de dentro de casa, e leva o que o
+   documento esconde. Uma coluna trocada de lugar aqui vira decisão de
+   compra errada lá na frente. */
+const docX = {
+  cliente: "Obra X", proposta: "2405", data: "2026-09-16", cond: "à vista", observacao: "interno",
+  supressao: [{ ...novoGrupo(1), nome: "MOVEIS", itens: [ic("1,00", "1.000,00", "")] }],
+  adicao: [{ ...novoGrupo(1), nome: "MOVEIS", itens: [ic("2,00", "1.500,00", "900,00"), ic("1,00", "500,00", "")] }],
+};
+const pl = planilhaDoAditivo(
+  { numero: "2405/1", obraCodigo: "2405", descricao: "Fechaduras", status: "aprovado",
+    criadoEm: "2026-09-11T20:56:31Z" }, docX,
+  { verbaDoGrupo: () => "21", nomeDaVerba: () => "Móveis Sob Medida", agora: new Date("2026-09-16T12:00:00Z") });
+
+const aba = pl.folhas[0], resumo = pl.folhas[1];
+conf("duas folhas", pl.folhas.map((f) => f.nome).join("+"), "Aditivo+Resumo");
+
+// 3 linhas de cabeçalho + o vazio + a linha de títulos das colunas.
+const cab = aba.linhas.findIndex((L) => L[0] === "Seção");
+conf("o título das colunas vem depois do cabeçalho", cab, 4);
+conf("o título abre a folha", /^Aditivo 2405\/1 · Fechaduras/.test(aba.linhas[0][0]), true);
+conf("e diz que é interno", /uso interno/i.test(aba.linhas[2][0]), true);
+
+const item = (n) => aba.linhas[cab + n];
+conf("a supressão vem primeiro", item(1)[0], "Supressão");
+conf("supressão sai sem custo", item(1)[12], "");
+conf("e diz que não vira compra", item(1)[18], "não vira linha");
+conf("com subtotal logo abaixo", item(2)[6], "Total supressão");
+conf("que soma a coluna do cliente", item(2)[11], 1000);
+
+const adi = aba.linhas.findIndex((L) => L[0] === "Adição");
+conf("adição com custo diz que entra", aba.linhas[adi][18], "entra com o custo");
+conf("com o custo total da linha", aba.linhas[adi][13], 1800);
+conf("e a margem da linha", aba.linhas[adi][14], 1200);
+/* FRAÇÃO, não 40: o formato de porcentagem do Excel multiplica por cem
+   sozinho, e guardar 40 mostraria 4000%. */
+conf("a margem em fração, pro formato de %", aba.linhas[adi][15], 0.4);
+conf("adição sem custo entra a orçar", aba.linhas[adi + 1][18], "entra como a orçar");
+conf("e o subtotal da adição soma o custo", aba.linhas[adi + 2][13], 1800);
+
+/* Número tem que sair NÚMERO: como texto, o Excel não soma a coluna e
+   quem abre acha que a planilha está quebrada. */
+conf("o total sai como número", typeof aba.linhas[adi][11], "number");
+conf("a quantidade também", typeof aba.linhas[adi][8], "number");
+
+/* ---- o layout ----
+   Sem largura o Excel abre tudo com 8 caracteres e a descrição vira
+   "Fechadura PADO Op###". */
+conf("uma largura por coluna", aba.larguras.length, aba.linhas[cab].length);
+conf("a descrição é a coluna larga", aba.larguras[6] >= 40, true);
+conf("o título ocupa a folha inteira", aba.mesclagens[0].ate, aba.linhas[cab].length - 1);
+conf("o filtro começa na linha dos títulos", aba.filtro.linha, cab);
+conf("dinheiro tem formato de dinheiro", aba.formatos.some((x) => x.coluna === 11 && /R\$/.test(x.z)), true);
+conf("e a margem, formato de porcentagem", aba.formatos.some((x) => x.coluna === 15 && /%/.test(x.z)), true);
+conf("o formato começa depois dos títulos", aba.formatos[0].de, cab + 1);
+/* Linha vazia no fim entraria no intervalo do filtro e apareceria como
+   uma linha de dados em branco pra quem filtra. */
+conf("a última linha é o subtotal, não um vazio", aba.linhas[aba.linhas.length - 1][6], "Total adição");
+conf("e o filtro termina nela", aba.filtro.ultima, aba.linhas.length - 1);
+
+/* ---- o papel de cada linha ----
+   É daqui que sai o negrito: o App não decide sozinho o que é cabeçalho
+   nem o que é subtotal. */
+conf("o cabeçalho é a linha dos títulos", aba.papeis.cabecalho, cab);
+conf("um subtotal por seção com item", aba.papeis.subtotais.length, 2);
+conf("e o último subtotal é a última linha", aba.papeis.subtotais[1], aba.linhas.length - 1);
+conf("o título é a primeira linha", aba.papeis.titulo, 0);
+conf("congela até o cabeçalho", aba.papeis.congelarAte, cab);
+conf("a descrição quebra linha na célula", aba.papeis.quebraLinha.includes(6), true);
+conf("no resumo, o rótulo é a coluna da esquerda", resumo.papeis.colunaRotulo, 0);
+
+const acha = (r) => (resumo.linhas.find((l) => l[0] === r) || [])[1];
+conf("o resumo traz o custo da adição", acha("Custo da adição"), 1800);
+conf("a margem do documento", acha("Margem da adição"), 1700);
+conf("quantas linhas faltam orçar", acha("Linhas de adição sem custo"), 1);
+conf("o saldo com o nome certo", acha("Valor do aditivo"), 2500);
+conf("e a observação interna vai junto", acha("Observação interna"), "interno");
+/* Data como Date, não como texto ISO: "2026-09-11T20:56:31Z" numa célula
+   é ilegível, e o Excel não consegue ordenar. */
+conf("data vira data de verdade", acha("Criado em") instanceof Date, true);
+/* "2026-09-16" sozinho é meia-noite em UTC: no Brasil isso volta um dia,
+   e a planilha mostrava 15/09 onde ela escreveu 16/09. */
+conf("e o dia não volta pelo fuso", acha("Data do documento").getDate(), 16);
+conf("com formato de data", resumo.formatos.some((x) => /dd\/mm/.test(x.z)), true);
+
+// Sem custo nenhum não existe margem — nem na tela, nem na planilha.
+const semNada = planilhaDoAditivo({ numero: "2405/9" },
+  { adicao: [{ ...novoGrupo(1), itens: [ic("1,00", "900,00", "")] }] });
+const achaS = (r) => (semNada.folhas[1].linhas.find((l) => l[0] === r) || [])[1];
+conf("sem custo, a margem fica vazia", achaS("Margem da adição"), "");
+conf("documento vazio não quebra", planilhaDoAditivo({}, {}).folhas[0].linhas.length >= 5, true);
+conf("e sem item não inventa filtro", planilhaDoAditivo({}, {}).folhas[0].filtro, null);
 
 /* ---- Pipefy ----
    Aditivo aprovado obriga abrir a "Solicitação de contrato". O app não

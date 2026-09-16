@@ -28,7 +28,7 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
-  custoItem, custoGrupo, temCusto, margemDoDocumento,
+  custoItem, custoGrupo, temCusto, margemDoDocumento, planilhaDoAditivo,
   rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
 import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
@@ -12225,6 +12225,116 @@ function nomeDeArquivo(t) {
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "relatorio";
 }
 
+/* Uma folha descrita (linhas, larguras, mesclagens, formatos, papeis)
+   virando planilha de verdade, com negrito e faixa.
+
+   Quem escreve e' o ExcelJS, e ele entra por importacao SOB DEMANDA: e'
+   uma biblioteca grande e so' serve a quem clica em "Excel". Estatica,
+   ela pesaria no carregamento de todo mundo — inclusive de quem so' abre
+   o painel e nunca baixa planilha.
+
+   A lib antiga (`xlsx`) continua fazendo o resto do app: ela LE planilha
+   bem, e e' ela que o Sienge e o Catalogo usam. O que ela nao faz e'
+   escrever estilo — a versao gratuita gera o arquivo com uma fonte so. */
+
+const TINTA_CABECALHO = "FF08263F";   // o azul-marinho da marca
+const TINTA_TEXTO = "FFFFFFFF";
+const TINTA_FAIXA = "FFEAF4F9";       // o mesmo azul, bem diluido
+const TINTA_LINHA = "FFD8E2EA";
+
+async function baixarPlanilha(folhas, arquivo) {
+  const mod = await import("exceljs");
+  const ExcelJS = mod.default || mod;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Gestão de Obras TKWS";
+  wb.created = new Date();
+
+  folhas.forEach((f) => {
+    const papeis = f.papeis || {};
+    const ws = wb.addWorksheet(f.nome, papeis.congelarAte != null
+      // Congelar o cabecalho: numa planilha de 200 linhas, rolar sem ele
+      // e' ler numero sem saber de que coluna ele e'.
+      ? { views: [{ state: "frozen", ySplit: papeis.congelarAte + 1 }] }
+      : undefined);
+
+    // Celula vazia e' vazia mesmo: string em branco existe, e o Excel
+    // conta ela como preenchida em "ir para especial".
+    f.linhas.forEach((L) => ws.addRow((L || []).map((v) => (v === "" ? null : v))));
+
+    (f.larguras || []).forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+    (f.alturas || []).forEach(({ linha, altura }) => { ws.getRow(linha + 1).height = altura; });
+    (f.mesclagens || []).forEach(({ linha, de, ate }) => ws.mergeCells(linha + 1, de + 1, linha + 1, ate + 1));
+
+    if (f.filtro) {
+      ws.autoFilter = {
+        from: { row: f.filtro.linha + 1, column: f.filtro.de + 1 },
+        to: { row: f.filtro.ultima + 1, column: f.filtro.ate + 1 },
+      };
+    }
+
+    (f.formatos || []).forEach(({ coluna, linha, z, de }) => {
+      const põe = (r) => {
+        const cel = ws.getCell(r + 1, coluna + 1);
+        if (cel.value != null && cel.value !== "") cel.numFmt = z;
+      };
+      if (linha != null) põe(linha);
+      else for (let r = de || 0; r < f.linhas.length; r++) põe(r);
+    });
+
+    const nCols = Math.max(...f.linhas.map((L) => (L || []).length), 1);
+    const pintar = (linha, fundo, negrito) => {
+      for (let c = 1; c <= nCols; c++) {
+        const cel = ws.getCell(linha + 1, c);
+        if (fundo) cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fundo } };
+        cel.font = { ...(cel.font || {}), bold: !!negrito, color: { argb: fundo === TINTA_CABECALHO ? TINTA_TEXTO : "FF0B2239" } };
+      }
+    };
+
+    if (papeis.titulo != null) {
+      const cel = ws.getCell(papeis.titulo + 1, 1);
+      cel.font = { bold: true, size: 14, color: { argb: TINTA_CABECALHO } };
+    }
+    (papeis.apoio || []).forEach((l) => {
+      ws.getCell(l + 1, 1).font = { size: 10, italic: true, color: { argb: "FF5B7285" } };
+    });
+    if (papeis.cabecalho != null) {
+      pintar(papeis.cabecalho, TINTA_CABECALHO, true);
+      ws.getRow(papeis.cabecalho + 1).height = 26;
+      for (let c = 1; c <= nCols; c++) {
+        ws.getCell(papeis.cabecalho + 1, c).alignment = { vertical: "middle", wrapText: true };
+      }
+    }
+    (papeis.subtotais || []).forEach((l) => pintar(l, TINTA_FAIXA, true));
+    if (papeis.colunaRotulo != null) {
+      f.linhas.forEach((L, i) => {
+        if (i !== papeis.titulo && L && L.length) {
+          ws.getCell(i + 1, papeis.colunaRotulo + 1).font = { bold: true, color: { argb: "FF0B2239" } };
+        }
+      });
+    }
+    (papeis.quebraLinha || []).forEach((c) => {
+      ws.getColumn(c + 1).alignment = { wrapText: true, vertical: "top" };
+    });
+
+    // Um fio claro embaixo de cada linha de dados: separa sem enfeitar.
+    const primeira = papeis.cabecalho != null ? papeis.cabecalho + 1 : 0;
+    for (let r = primeira; r < f.linhas.length; r++) {
+      if (!(f.linhas[r] || []).length) continue;
+      for (let c = 1; c <= nCols; c++) {
+        ws.getCell(r + 1, c).border = { bottom: { style: "hair", color: { argb: TINTA_LINHA } } };
+      }
+    }
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  }));
+  baixarUrl(url, arquivo);
+  // Sem soltar, o arquivo fica na memoria da aba ate' recarregar.
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 function baixarUrl(url, nome) {
   const a = document.createElement("a");
   a.href = url; a.download = nome;
@@ -13427,6 +13537,31 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
     setTimeout(devolver, 4000);
   }
 
+  /* O Excel do aditivo. Uso interno, e por isso leva o que o PDF do
+     cliente nao mostra: custo, margem e a especificacao de compra.
+
+     Vai com o titulo e o status que estao NA TELA, e nao os que estavam
+     no banco quando a tela abriu — quem baixa acabou de digitar. */
+  async function baixarExcel() {
+    const eap = eapPadrao();
+    const { folhas } = planilhaDoAditivo(
+      { ...aditivo, descricao, status }, doc,
+      {
+        verbaDoGrupo: verbaDoGrupoAditivo,
+        nomeDaVerba: (n) => eap.find((c) => c.num === n)?.nome || "",
+      },
+    );
+    // A barra do numero abriria pasta no nome do arquivo.
+    const titulo = descricao.trim() ? `-${nomeDeArquivo(descricao)}` : "";
+    try {
+      await baixarPlanilha(folhas, `aditivo-${aditivo.numero.replace("/", "-")}${titulo}.xlsx`);
+    } catch (e) {
+      // A biblioteca da planilha chega por rede, sob demanda: sem ela, a
+      // pessoa precisa saber por que o arquivo nao veio.
+      setErro(`Não consegui gerar o Excel: ${e.message || e}`);
+    }
+  }
+
   async function mudarStatus(novo) {
     setStatus(novo);
     setSalvando(true); setErro(null);
@@ -13458,6 +13593,12 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
         </button>
         <button className="btn-doc" onClick={imprimir} title="Abre a impressão do navegador — escolha Salvar como PDF">
           <Download size={13} /> PDF
+        </button>
+        {/* O Excel e' o avesso do PDF: o PDF e' o que o cliente le, este e'
+            o que a casa precisa — custo, margem e especificacao de compra. */}
+        <button className="btn-doc" onClick={baixarExcel}
+          title="Planilha interna: custo, margem e especificação de compra — o que não sai no PDF do cliente">
+          <FileDown size={13} /> Excel
         </button>
       </div>
 
