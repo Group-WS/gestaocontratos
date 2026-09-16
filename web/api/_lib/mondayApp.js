@@ -833,6 +833,37 @@ function itemParaSienge(it, data) {
   return corpo;
 }
 
+/* As referências de orçamento que EXISTEM numa unidade construtiva.
+ *
+ * É a validação que impede a solicitação vazia. O cabeçalho precisa ser
+ * criado antes dos itens (a API exige o id pra mandá-los), então quando
+ * todo item é recusado sobra uma solicitação sem nada no ERP — e ela não
+ * pode ser apagada, porque a API não tem DELETE nem cancelamento. Foram
+ * nove assim numa tarde só.
+ *
+ * A recusa quase sempre é a mesma: a apropriação aponta pra um par
+ * (unidade construtiva, item do orçamento) que não existe naquela obra.
+ * Isso se confere com um GET, antes de escrever qualquer coisa.
+ */
+const ORCAMENTO_TTL_MS = 30 * 60_000;
+const orcamentoCache = new Map(); // `${obra}:${unidade}` -> { expira, refs }
+
+async function referenciasDoOrcamento(buildingId, unidadeId) {
+  const chave = `${buildingId}:${unidadeId}`;
+  const hit = orcamentoCache.get(chave);
+  if (hit && hit.expira > Date.now()) return hit.refs;
+
+  const r = await chamarSienge("GET",
+    `/building-cost-estimations/${buildingId}/sheets/${unidadeId}/items?limit=500`);
+  /* Não deu pra conferir: devolve null e o envio segue. Barrar um envio
+     legítimo porque uma consulta auxiliar falhou seria trocar um problema
+     raro por outro pior. */
+  if (!r.ok) return null;
+  const refs = new Set((r.body?.results || []).map((x) => x.wbsCode).filter(Boolean));
+  orcamentoCache.set(chave, { expira: Date.now() + ORCAMENTO_TTL_MS, refs });
+  return refs;
+}
+
 app.post("/api/sienge/solicitacao", async (req, res) => {
   if (!siengeConfigurado()) {
     return res.status(503).json({
@@ -864,6 +895,31 @@ app.post("/api/sienge/solicitacao", async (req, res) => {
   const reenvio = Number.isInteger(req.body.solicitacaoId) ? req.body.solicitacaoId : null;
 
   try {
+    /* Confere a apropriação ANTES de criar o cabeçalho — é o que impede a
+       solicitação vazia, que não tem como ser apagada depois. */
+    const invalidos = [];
+    for (const unidadeId of [...new Set(itens.map((i) => i.buildingUnitId))]) {
+      const refs = await referenciasDoOrcamento(buildingId, unidadeId);
+      if (!refs) continue; // não deu pra conferir: deixa o Sienge decidir
+      if (!refs.size) {
+        invalidos.push(`a unidade construtiva ${unidadeId} não tem itens de orçamento nesta obra`);
+        continue;
+      }
+      itens.filter((i) => i.buildingUnitId === unidadeId)
+        .map((i) => i.costEstimationItemReference)
+        .filter((ref, k, a) => a.indexOf(ref) === k && !refs.has(ref))
+        .forEach((ref) => invalidos.push(`${ref} não existe na unidade construtiva ${unidadeId}`));
+    }
+    if (invalidos.length) {
+      return res.status(400).json({
+        error: `A apropriação não confere com o orçamento da obra ${buildingId}: ${invalidos.join("; ")}.`,
+        comoResolver: "NADA foi enviado e NENHUMA solicitação foi criada. " +
+          "A unidade construtiva é o número da planilha do orçamento e muda de obra para obra — " +
+          "confira o campo no topo do envio. O item do orçamento de cada verba se ajusta em EAP Sienge.",
+        etapa: "validacao",
+      });
+    }
+
     const cabecalho = reenvio ? null : await chamarSienge("POST", "/purchase-requests", {
       buildingId,
       requesterUser: SOLICITANTE,

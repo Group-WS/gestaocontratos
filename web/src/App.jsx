@@ -10289,6 +10289,24 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                 {resultado.falhas > 0 && <> · <b className="sol-motivo">{resultado.falhas} recusado{resultado.falhas > 1 ? "s" : ""}</b></>}
               </div>
 
+              {/* Zero aceitos = solicitação vazia no Sienge, e ela não sai
+                  de lá sozinha: a API não tem DELETE nem cancelamento.
+                  Quem não for avisado agora não descobre depois — e o ERP
+                  acumula solicitações sem nada dentro. */}
+              {resultado.ok === 0 && !resultado.reenvio && (
+                <div className="import-erro erro-detalhado">
+                  <AlertTriangle size={14} />
+                  <div>
+                    <div><b>Nenhum item entrou — a solicitação {resultado.solicitacaoId} ficou vazia no Sienge.</b></div>
+                    <div className="erro-acao">
+                      Corrija os itens abaixo e reenvie para ela, ou <b>cancele-a no Sienge</b>
+                      {" "}(Suprimentos &gt; Solicitações de Compra). Solicitação vazia não pode ser
+                      apagada pela integração.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {recusados.length > 0 && (
                 <>
                   <div className="sol-secao-rotulo">Itens recusados</div>
