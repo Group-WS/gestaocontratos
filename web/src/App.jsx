@@ -1122,6 +1122,8 @@ function alocacaoDoItem(it, cat) {
   // leitura, nao um decreto: item lancado inteiro na coluna de material
   // as vezes e servico, e so quem conhece a obra sabe.
   if (it.alocacaoManual) return it.alocacaoManual;
+  // A linha que entrou numa troca de produto é produto, por definição.
+  if (it.trocaDe || it.trocaEm) return ALOC_MAT;
   // Linha que nasceu de uma separacao ja tem lado definido; deixar
   // qualquer regra mandar nela desfaria a separacao na tela.
   if (it.moSeparada) return ALOC_MAT;
@@ -1930,7 +1932,7 @@ function itensDoCanal(obra, canalId) {
   (obra.categorias || []).forEach((cat) => {
     const itens = cat.itens || [];
     itens.forEach((it) => {
-      if (it.ehTitulo || it.canalCompra !== canalId) return;
+      if (it.ehTitulo || it.troca || it.canalCompra !== canalId) return;
       const { material, mo } = parcelasDoItem(it, cat);
       const prazo = prazoDoGrupo(cat, itens);
       out.push({
@@ -2031,7 +2033,7 @@ function relatorioDaVerba(obras, num, tipo, obrasDaLinha = null, { filtroItem = 
       if (material <= 0 && mo <= 0) return;
       const aloc = alocacaoDoItem(it, cat);
       if (tipo === "mat") {
-        if ((material > 0 || aloc === ALOC_MAT) && conta(!!it.comprado)) itens.push({ it, valor: material });
+        if (!it.troca && (material > 0 || aloc === ALOC_MAT) && conta(!!it.comprado)) itens.push({ it, valor: material });
       } else if ((mo > 0 || aloc === ALOC_MO) && conta(contratoEtapa(it) !== "nao_solicitado")) {
         itens.push({ it, valor: mo });
       }
@@ -2104,6 +2106,27 @@ function enderecoResolvido(atual, doBanco, doSienge) {
   if (tem(atual)) return atual;
   return doSienge || atual;
 }
+
+/* As linhas que nasceram de uma troca de produto, e de qual item elas vieram.
+   A ligação é o instante da troca (troca.em no original, trocaEm nas
+   novas), e não o código: item sem código na planilha é comum, e a
+   primeira troca gravada (15/09/2026) saiu com o código "null-T". */
+function linhasDaTroca(itens, orig) {
+  const em = orig?.troca?.em;
+  return em ? (itens || []).filter((it) => it !== orig && it.trocaEm === em) : [];
+}
+function origemDaTroca(itens, nova) {
+  return nova?.trocaEm ? (itens || []).find((it) => it.troca?.em === nova.trocaEm) || null : null;
+}
+// Como chamar um item na tela: o código, ou o começo da descrição quando não tem.
+function rotuloDoItem(it) {
+  const cod = String(it?.codigo ?? "").trim();
+  if (cod && !/^null(-T\d*)?$/.test(cod)) return cod;
+  const d = String(it?.desc || "").replace(/\s+/g, " ").trim();
+  return d.length > 42 ? `${d.slice(0, 40)}…` : d;
+}
+// O código na coluna "Cód.": o "null-T" da primeira troca fica em branco.
+const codigoVisivel = (it) => (/^null(-T\d*)?$/.test(String(it?.codigo ?? "")) ? "" : it?.codigo);
 
 /* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
 
@@ -2228,9 +2251,16 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
           alerta. Duas colunas pra mesma informacao, uma parecendo erro.
 
           O controle nao se perdeu: a propria situacao virou o botao. */}
-      <td className="mono dim">{item.codigo}</td>
+      <td className="mono dim">{codigoVisivel(item)}</td>
       <td>
-        <div className="item-desc">{item.desc}</div>
+        <div className={`item-desc ${item.troca ? "item-trocado" : ""}`}>{item.desc}</div>
+        {item.troca && (
+          <span className="troca-tag troca-tag-plano">
+            trocado{linhasDaTroca(cat.itens, item).length ? ` por ${linhasDaTroca(cat.itens, item).map((n) => n.desc).join(" + ")}` : ""}
+            {item.troca.aprovadoPor?.nome ? ` · aprovado por ${item.troca.aprovadoPor.nome}` : ""}
+          </span>
+        )}
+        {item.trocaEm && <span className="troca-tag troca-tag-plano">troca de {rotuloDoItem(origemDaTroca(cat.itens, item) || { codigo: item.trocaDe })}</span>}
         {item.aditivo
           ? <span className="tag-aditivo" title={item.descCompleta || undefined}>
               <FileText size={9} /> aditivo {item.aditivo}{item.ambiente ? ` · ${item.ambiente}` : ""}
@@ -2331,6 +2361,13 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
 // material, serviço era tudo mão de obra — e a linha fica marcada como
 // estimada, pra ninguém tratar palpite como número da planilha.
 function parcelasDoItem(it, cat) {
+  /* Produto trocado nas Compras (pedido de 15/09/2026): o material passa pra
+     linha nova, e este fica riscado sem contar. A mão de obra dele, se
+     tiver, continua: o serviço ainda acontece. */
+  if (it.troca) {
+    const antes = parcelasDoItem({ ...it, troca: null }, cat);
+    return { ...antes, material: 0, trocado: true, materialOriginal: antes.material };
+  }
   const daPlanilha = parcelasDaPlanilha(it);
   /* MO separada virou linha propria em outra verba. Continuar contando
      aqui seria contar o mesmo dinheiro nos dois lugares — e o total da
@@ -2342,7 +2379,7 @@ function parcelasDoItem(it, cat) {
      cima devolveria o valor pra coluna errada. Avulso tambem fica fora:
      sem parcela nenhuma pra mover (`custo: null`), a regra do MAT+MO
      nao tem o que fazer nele. */
-  const semRegraAutomatica = it.moSeparada || it.separadoDe || it.avulso;
+  const semRegraAutomatica = it.moSeparada || it.separadoDe || it.avulso || it.trocaDe || it.trocaEm;
   const decidida = it.alocacaoManual
     || (semRegraAutomatica ? null : padraoDaDescricao(it.desc))
     // MAT+MO virou MO por regra da empresa — mesma condicao de
@@ -7727,8 +7764,10 @@ function produtosMAT(obra) {
       if (it.ehTitulo) return;
       const { material } = parcelasDoItem(it, cat);
       const aloc = alocacaoDoItem(it, cat);
-      if (material <= 0 && aloc !== ALOC_MAT) return;
+      // O trocado continua na lista (riscado, sem contar): é o histórico da troca.
+      if (material <= 0 && aloc !== ALOC_MAT && !it.troca) return;
       out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome, material, aloc,
+        materialOriginal: it.troca ? parcelasDoItem(it, cat).materialOriginal : material,
         chave: `${catIdx}-${itemIdx}` });
     });
   });
@@ -7767,7 +7806,7 @@ function fornecedoresDasLinhas(linhas) {
    verba, na ordem das verbas. */
 function itensDoPedido(linhas) {
   const m = new Map();
-  linhas.filter(({ it }) => !it.comprado).forEach((r) => {
+  linhas.filter(({ it }) => !it.comprado && !it.troca).forEach((r) => {
     if (!m.has(r.catNum)) m.set(r.catNum, { num: r.catNum, nome: r.catNome, itens: [] });
     m.get(r.catNum).itens.push(r);
   });
@@ -8538,10 +8577,6 @@ function casarComSienge(desc, grupos) {
   return { maes, detalhes: melhor ? ordenarDetalhes(desc, melhor.grupo) : [] };
 }
 
-/* "hoje, 19:49" em vez de "15/09/2026, 19:49:30".
-   Numa lista de dez envios do mesmo dia, a data por extenso repetida dez
-   vezes ocupa a coluna inteira e não distingue nada — a hora é que
-   distingue. Data cheia só quando não é hoje nem ontem. */
 /* Quanto custa o que foi pedido num envio.
    Sai do payload guardado, não de conta refeita agora: é o valor que
    valia quando o pedido saiu, e é isso que alguém quer ver ao consultar
@@ -8551,6 +8586,10 @@ function totalDoEnvio(h) {
     (a, i) => a + (Number(i.estimatedPrice) || 0) * (Number(i.quantity) || 0), 0);
 }
 
+/* "hoje, 19:49" em vez de "15/09/2026, 19:49:30".
+   Numa lista de dez envios do mesmo dia, a data por extenso repetida dez
+   vezes ocupa a coluna inteira e não distingue nada — a hora é que
+   distingue. Data cheia só quando não é hoje nem ontem. */
 function dataCurta(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return "—";
@@ -8564,7 +8603,8 @@ function dataCurta(iso) {
   return `${d.toLocaleDateString("pt-BR")}, ${hora}`;
 }
 
-function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, editandoPor }) {
+// As props de troca de produto vêm da main; as de solicitação, daqui.
+function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, editandoPor, onTrocar, onDesfazerTroca, equipe = [] }) {
   const [etapa, setEtapa] = useState("todos");
   const [fornecedor, setFornecedor] = useState("");   // "" = todos
   const [orcamento, setOrcamento] = useState(null);   // o pedido aberto pra imprimir
@@ -8600,6 +8640,20 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
   const [envioAberto, setEnvioAberto] = useState(null);
   // Toda mudança de item passa por aqui: sem a edição da obra, nada muda.
   const mudar = (catIdx, itemIdx, patch) => { if (podeEditar) onItemChange(catIdx, itemIdx, patch); };
+  // A troca de produto: a linha com o formulário aberto, pela chave.
+  const [trocando, setTrocando] = useState(null);
+  const registrarTroca = (r) => (linhas, dados) => {
+    if (!podeEditar || !onTrocar) return;
+    onTrocar(r.catIdx, r.itemIdx, linhas, dados);
+    // As chaves das linhas de baixo mudam com a linha nova: seleção e sugestões recomeçam.
+    setTrocando(null); setSel(new Set()); setCasamentos(new Map());
+  };
+  const desfazerTroca = (r, t) => () => {
+    if (!podeEditar || !onDesfazerTroca) return;
+    if (!window.confirm(`Desfazer a troca de ${t.rotulo}? A linha nova sai e o produto original volta a valer.`)) return;
+    onDesfazerTroca(r.catIdx, t.em);
+    setSel(new Set()); setCasamentos(new Map());
+  };
 
   useEffect(() => {
     if (etapa !== "sienge" || eapSienge) return;
@@ -8697,6 +8751,28 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
   }
 
   const rows = useMemo(() => produtosMAT(obra), [obra]);
+  // O trocado aparece riscado, mas não se compra: fica fora das contas e da seleção.
+  const ativos = useMemo(() => rows.filter((r) => !r.it.troca), [rows]);
+  /* A troca vista das duas pontas, pela chave da linha: no original, por
+     quais produtos foi trocado; na nova, de qual veio. As duas com quanto o
+     material mudou. */
+  const infoTroca = useMemo(() => {
+    const porChave = new Map(rows.map((r) => [r.chave, r]));
+    const info = new Map();
+    (obra.categorias || []).forEach((cat, catIdx) => {
+      const itens = cat.itens || [];
+      itens.forEach((it, itemIdx) => {
+        if (!it.troca) return;
+        const novas = linhasDaTroca(itens, it).map((n) => ({ it: n, chave: `${catIdx}-${itens.indexOf(n)}` }));
+        const custoNovo = novas.reduce((a, n) => a + (porChave.get(n.chave)?.material || 0), 0);
+        const dif = custoNovo - (porChave.get(`${catIdx}-${itemIdx}`)?.materialOriginal || 0);
+        const em = it.troca.em;
+        info.set(`${catIdx}-${itemIdx}`, { tipo: "original", em, novas: novas.map((n) => n.it.desc), dif, rotulo: rotuloDoItem(it) });
+        novas.forEach((n) => info.set(n.chave, { tipo: "nova", em, de: rotuloDoItem(it), dif, rotulo: rotuloDoItem(it) }));
+      });
+    });
+    return info;
+  }, [obra, rows]);
 
   const doCanal = useMemo(() => {
     if (etapa === "todos") return rows;
@@ -8774,12 +8850,13 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
   const alternar = (c) => setSel((p) => { const n = new Set(p); n.has(c) ? n.delete(c) : n.add(c); return n; });
   const alternarGrupo = (g) => setSel((p) => {
     const n = new Set(p);
-    const todosDentro = g.itens.every((r) => n.has(r.chave));
-    g.itens.forEach((r) => (todosDentro ? n.delete(r.chave) : n.add(r.chave)));
+    const daLinha = g.itens.filter((r) => !r.it.troca);
+    const todosDentro = daLinha.every((r) => n.has(r.chave));
+    daLinha.forEach((r) => (todosDentro ? n.delete(r.chave) : n.add(r.chave)));
     return n;
   });
   const abrir = (num) => setAbertos((p) => { const n = new Set(p); n.has(num) ? n.delete(num) : n.add(num); return n; });
-  const selecionarTudo = () => setSel(new Set(visiveis.map((r) => r.chave)));
+  const selecionarTudo = () => setSel(new Set(visiveis.filter((r) => !r.it.troca).map((r) => r.chave)));
 
   function definirCanal(canal) {
     selecionados.forEach((r) => mudar(r.catIdx, r.itemIdx, { canalCompra: canal }));
@@ -8866,10 +8943,10 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
     );
   }
 
-  const conta = (f) => rows.filter(f).length;
+  const conta = (f) => ativos.filter(f).length;
   const soma = (f) => rows.filter(f).reduce((a, r) => a + r.material, 0);
   const etapas = [
-    { id: "todos", rot: "Tudo", n: rows.length, v: soma(() => true) },
+    { id: "todos", rot: "Tudo", n: ativos.length, v: soma(() => true) },
     { id: "sem_canal", rot: "Sem canal", n: conta((r) => !r.it.canalCompra), v: soma((r) => !r.it.canalCompra) },
     ...CANAIS_COMPRA.map((c) => ({
       id: c.id, rot: c.nome, canal: c.id,
@@ -8886,7 +8963,7 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
       <div className="mo-topo">
         <div className="mo-num">
           <div className="mo-num-val mono">{fmtBRL(soma(() => true))}</div>
-          <div className="mo-num-rot">de material no executivo · {rows.length} produtos</div>
+          <div className="mo-num-rot">de material no executivo · {ativos.length} produtos</div>
         </div>
         <div className="mo-num">
           <div className="mo-num-val mono dim">{fmtBRL(soma((r) => !!r.it.canalCompra))}</div>
@@ -9077,6 +9154,7 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
       {porVerba.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
       {porVerba.map((g) => {
         const aberto = abertos.has(g.num);
+        const nItens = g.itens.filter((r) => !r.it.troca).length;
         const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
         const nComprados = g.itens.filter((r) => r.it.comprado).length;
         const nSolicitados = g.itens.filter((r) => estaSolicitado(r.it)).length;
@@ -9094,27 +9172,27 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
           <div className="grp-block" key={g.num}>
             <div className="grp-head">
               <button className="mo-check" onClick={() => alternarGrupo(g)}
-                title={nSel === g.itens.length ? "Tirar o grupo da seleção" : "Selecionar a verba inteira"}
+                title={nSel === nItens ? "Tirar o grupo da seleção" : "Selecionar a verba inteira"}
                 aria-label="Selecionar verba">
-                {nSel === g.itens.length ? <Check size={13} /> : nSel > 0 ? <Minus size={13} /> : null}
+                {nSel === nItens ? <Check size={13} /> : nSel > 0 ? <Minus size={13} /> : null}
               </button>
               <button className="grp-toggle" onClick={() => abrir(g.num)}>
                 <div className="grp-esq">
                   {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                   <span className="grp-num mono">{g.num}</span>
                   <span className="grp-nome">{g.nome}</span>
-                  <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "produto" : "produtos"}</span>
+                  <span className="grp-conta">{nItens} {nItens === 1 ? "produto" : "produtos"}</span>
                   {/* No Sienge, solicitar vem antes de comprar: quanto do grupo já foi solicitado. */}
                   {noSienge && (
-                    <span className={`grp-comprados ${nSolicitados === g.itens.length ? "tudo" : nSolicitados ? "parte" : ""}`}
+                    <span className={`grp-comprados ${nSolicitados === nItens ? "tudo" : nSolicitados ? "parte" : ""}`}
                       title="Solicitados no Sienge — o passo antes da compra">
-                      {nSolicitados === g.itens.length ? <><Check size={11} /> tudo solicitado</> : `${nSolicitados} de ${g.itens.length} solicitados`}
+                      {nSolicitados === nItens ? <><Check size={11} /> tudo solicitado</> : `${nSolicitados} de ${nItens} solicitados`}
                     </span>
                   )}
                   {/* Quanto do grupo já foi comprado, sem precisar abrir: */}
-                  <span className={`grp-comprados ${nComprados === g.itens.length ? "tudo" : nComprados ? "parte" : ""}`}
+                  <span className={`grp-comprados ${nComprados === nItens ? "tudo" : nComprados ? "parte" : ""}`}
                     title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
-                    {nComprados === g.itens.length ? <><Check size={11} /> tudo comprado</> : `${nComprados} de ${g.itens.length} comprados`}
+                    {nComprados === nItens ? <><Check size={11} /> tudo comprado</> : `${nComprados} de ${nItens} comprados`}
                   </span>
                   {nSel > 0 && <span className="grp-avulsos">{nSel} selecionados</span>}
                 </div>
@@ -9177,6 +9255,10 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
                         mostrarSienge={mostrarInsumo}
                         lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
                         podeEditar={podeEditar}
+                        trocando={trocando === r.chave} equipe={equipe} executivo={obra.responsavelExecutivo}
+                        onAbrirTroca={() => setTrocando(r.chave)} onFecharTroca={() => setTrocando(null)}
+                        onRegistrarTroca={registrarTroca(r)} troca={infoTroca.get(r.chave) || null}
+                        onDesfazerTroca={infoTroca.get(r.chave) ? desfazerTroca(r, infoTroca.get(r.chave)) : undefined}
                         onItemChange={(patch) => mudar(r.catIdx, r.itemIdx, patch)} />
                     ))}
                   </tbody>
@@ -10572,6 +10654,7 @@ function auxiliaresDoGrupo(itens, obraCodigo) {
 function templateComprasDoGrupo(itens, casamentos, grupos, auxiliares) {
   const linhas = [];
   (itens || []).forEach((r) => {
+    if (r.it.troca) return;   // o trocado não se cadastra no Sienge
     const c = casamentos.get(r.chave);
     if (!c) return;
     const { mae, status } = situacaoNoSienge(r.it, c, grupos);
@@ -10607,6 +10690,7 @@ function resumoCadastroSienge(itens, casamentos, grupos, auxiliares) {
   const soma = (a, b) => Math.round((a + b) * 10000) / 10000;
   const somaReais = (a, b) => Math.round((a + b) * 100) / 100;
   (itens || []).forEach((r) => {
+    if (r.it.troca) return;
     const { mae, status } = situacaoNoSienge(r.it, casamentos?.get(r.chave) || null, grupos);
     const qtd = Number(r.it.qtdExecutivo ?? r.it.qtdVendida ?? r.it.qtd ?? 0) || 0;
     // O custo orçado é o material da linha nas Compras (o que o executivo previu).
@@ -10660,19 +10744,138 @@ function baixarResumoCadastroSienge(obra, { linhas, semMae }) {
   XLSX.writeFile(wb, `sienge-resumo-obra-${obra.codigo}.xlsx`);
 }
 
-function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false }) {
+/* A troca de um produto nas Compras (pedido de 15/09/2026): o original fica
+   riscado, sem contar no material, e as linhas novas entram logo abaixo.
+   Nasce preenchida com o produto de antes: muda-se só o que trocou. Quem
+   aprovou é obrigatório; o motivo, não. Enxuta de propósito. */
+function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
+  const { it, material } = row;
+  const qtd0 = Number(it.qtdExecutivo ?? it.qtdVendida ?? 0) || 0;
+  const nova = (base = {}) => ({ desc: "", fornecedor: "", qtd: "", un: it.un || "un", custo: "", ...base });
+  const [linhas, setLinhas] = useState(() => [nova({
+    desc: it.desc || "", fornecedor: it.marca || "",
+    qtd: qtd0 ? String(qtd0).replace(".", ",") : "",
+    custo: qtd0 > 0 ? numBR(material / qtd0) : "",
+  })]);
+  const pessoas = (equipe || []).filter((p) => p.ativo !== false);
+  const [aprovador, setAprovador] = useState(() => (pessoas.some((p) => p.email === executivo) ? executivo : ""));
+  const [motivo, setMotivo] = useState("");
+  const [erro, setErro] = useState(null);
+  const qtdDe = (v) => Number(String(v).replace(/\./g, "").replace(",", ".")) || 0;
+  const totalDe = (l) => Math.round(qtdDe(l.qtd) * (parseBRL(l.custo) ?? 0) * 100) / 100;
+  const dif = linhas.reduce((a, l) => a + totalDe(l), 0) - (material || 0);
+  const mudarLinha = (i, campo, v) => { setErro(null); setLinhas((ls) => ls.map((l, k) => (k === i ? { ...l, [campo]: v } : l))); };
+
+  function registrar() {
+    if (linhas.some((l) => !l.desc.trim() || qtdDe(l.qtd) <= 0 || parseBRL(l.custo) == null)) {
+      setErro("Cada linha precisa de descrição, quantidade e custo unitário.");
+      return;
+    }
+    const quem = pessoas.find((p) => p.email === aprovador);
+    if (!quem) { setErro("Diga quem aprovou a troca."); return; }
+    onRegistrar(linhas.map((l) => ({
+      desc: l.desc.trim(), fornecedor: l.fornecedor.trim(), qtd: qtdDe(l.qtd), un: l.un.trim() || "un", custoUnit: parseBRL(l.custo) ?? 0,
+    })), { aprovadoPor: { email: quem.email, nome: quem.nome || quem.email }, motivo: motivo.trim() });
+  }
+
+  return (
+    <div className="troca-form">
+      {linhas.map((l, i) => (
+        <div key={i} className="troca-grade">
+          <input className="form-input" value={l.desc} placeholder="produto novo" aria-label="Descrição do produto novo"
+            onChange={(e) => mudarLinha(i, "desc", e.target.value)} />
+          <input className="form-input" value={l.fornecedor} placeholder="fornecedor" aria-label="Fornecedor"
+            onChange={(e) => mudarLinha(i, "fornecedor", e.target.value)} />
+          <input className="form-input" value={l.qtd} placeholder="qtd." inputMode="decimal" aria-label="Quantidade"
+            onChange={(e) => mudarLinha(i, "qtd", e.target.value)} />
+          <input className="form-input" value={l.un} placeholder="un" aria-label="Unidade"
+            onChange={(e) => mudarLinha(i, "un", e.target.value)} />
+          <input className="form-input" value={l.custo} placeholder="custo unit." inputMode="decimal" aria-label="Custo unitário"
+            onChange={(e) => mudarLinha(i, "custo", e.target.value)} />
+          <span className="troca-total">{fmtBRL(totalDe(l))}</span>
+          {i > 0 ? (
+            <button type="button" className="troca-tirar" title="Tirar esta linha" aria-label="Tirar esta linha"
+              onClick={() => setLinhas((ls) => ls.filter((_, k) => k !== i))}><X size={11} /></button>
+          ) : <span />}
+        </div>
+      ))}
+      <div className="troca-rodape">
+        <select className="form-input" value={aprovador} aria-label="Aprovado por"
+          onChange={(e) => { setErro(null); setAprovador(e.target.value); }}>
+          <option value="">aprovado por…</option>
+          {pessoas.map((p) => (
+            <option key={p.email} value={p.email}>{p.nome || p.email}{p.email === executivo ? " (executivo da obra)" : ""}</option>
+          ))}
+        </select>
+        <input className="form-input troca-motivo" value={motivo} placeholder="motivo (opcional)" aria-label="Motivo"
+          onChange={(e) => setMotivo(e.target.value)} />
+        <button type="button" className="troca-link" onClick={() => setLinhas((ls) => [...ls, nova()])}>+ outra linha</button>
+        <span className="troca-dif">
+          {Math.abs(dif) < 0.005 ? "mesmo custo do original" : `${dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(dif))} em relação ao original`}
+        </span>
+        <span className="troca-espaco" />
+        <button type="button" className="troca-btn troca-btn-ok" onClick={registrar}>registrar troca</button>
+        <button type="button" className="troca-btn" onClick={onFechar}>cancelar</button>
+      </div>
+      {erro && <div className="troca-erro">{erro}</div>}
+    </div>
+  );
+}
+
+function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false,
+  trocando = false, equipe = [], executivo, onAbrirTroca, onFecharTroca, onRegistrarTroca, onDesfazerTroca, troca = null }) {
   const { it, material } = row;
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
   const quando = (rot, em) => `${rot}${em ? ` em ${new Date(em).toLocaleDateString("pt-BR")}` : ""}`;
+  const nCols = 7 + (lancado !== undefined ? 1 : 0) + (mostrarSienge ? 1 : 0);
+  // Quantidade e valor unitário, pras linhas da troca (pedido de 15/09/2026).
+  const qtdLinha = Number(it.qtdExecutivo ?? it.qtdVendida ?? 0) || 0;
+  const qtdFmt = qtdLinha.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
+  // O produto que foi trocado: riscado, em cinza, sem ação nenhuma.
+  if (it.troca) {
+    const t = it.troca;
+    return (
+      <tr className="row-trocado">
+        <td />
+        <td className="mono dim">{codigoVisivel(it)}</td>
+        <td>
+          <div className="item-desc">{it.desc}</div>
+          {troca?.novas?.length > 0 && (
+            <div className="troca-meta troca-por">trocado por {troca.novas.join(" + ")}</div>
+          )}
+          {qtdLinha > 0 && (
+            <div className="troca-meta">antes: {qtdFmt} {it.un} × {fmtBRL((row.materialOriginal || 0) / qtdLinha)}</div>
+          )}
+          <div className="troca-meta">
+            em {new Date(t.em).toLocaleDateString("pt-BR")}
+            {t.aprovadoPor?.nome ? ` · aprovado por ${t.aprovadoPor.nome}` : ""}{t.motivo ? ` · ${t.motivo}` : ""}
+            {podeEditar && onDesfazerTroca && (
+              <button type="button" className="troca-link" onClick={onDesfazerTroca}>desfazer</button>
+            )}
+          </div>
+        </td>
+        <td className="mono center"><s>{it.qtdExecutivo ?? it.qtdVendida ?? "—"} {it.un}</s></td>
+        <td className="mono right"><s>{fmtBRL(row.materialOriginal || 0)}</s></td>
+        {/* No lugar dos status, a troca: em branco parecia linha esquecida (15/09/2026). */}
+        <td colSpan={nCols - 5} className="center">
+          <span className="pill troca-pill" title={troca?.novas?.length ? `Trocado por ${troca.novas.join(" + ")}` : "Trocado"}>
+            <ArrowLeftRight size={10} /> trocado
+          </span>
+        </td>
+      </tr>
+    );
+  }
 
   return (
+    <>
     <tr className={selecionado ? "linha-sel" : it.comprado ? "row-comprado" : "row-falta"}>
       <td className="center">
         <button className="mo-check mo-check-tab" onClick={onSelecionar} aria-label="Selecionar produto">
           {selecionado && <Check size={13} />}
         </button>
       </td>
-      <td className="mono dim">{it.codigo}</td>
+      <td className="mono dim">{codigoVisivel(it)}</td>
       <td>
         <div className="item-desc">{it.desc}</div>
         {it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{it.ambiente}</span>}
@@ -10681,6 +10884,25 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
           <span className={`cmp-forn ${it.marca ? "" : "vazio"}`} title={it.marca || undefined}>
             {it.marca ? `Fornecedor: ${nomeDoFornecedor(it)}` : "sem fornecedor"}
           </span>
+          {troca?.tipo === "nova" && (
+            <span className="troca-tag">
+              troca de {troca.de}{troca.dif != null && Math.abs(troca.dif) >= 0.005
+                ? ` · ${troca.dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(troca.dif))}` : ""}
+              {podeEditar && !it.comprado && onDesfazerTroca && (
+                <button type="button" className="troca-link" onClick={onDesfazerTroca}>desfazer</button>
+              )}
+            </span>
+          )}
+          {troca?.tipo === "nova" && (
+            <div className="troca-meta">
+              {qtdFmt} {it.un} × {fmtBRL(it.custoMaterial ?? (qtdLinha > 0 ? material / qtdLinha : 0))}
+            </div>
+          )}
+          {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
+            <button type="button" className="troca-link" onClick={onAbrirTroca} title="Trocar por outro produto (aprovado com o executivo da obra)">
+              <ArrowLeftRight size={10} /> trocar
+            </button>
+          )}
         {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
             "Cuba de apoio" e todas as cubas de apoio que existem. */}
         {it.especificacao && <div className="det-espec">{it.especificacao}</div>}
@@ -10709,16 +10931,32 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         {/* Sem canal nao ha o que concluir: concluir o que ninguem sabe
             por onde vai comprar seria marcar comprado no escuro. */}
         {!it.canalCompra ? <span className="dim">—</span> : (
+          <div className="status-par">
+          {/* Fora da etapa Sienge, o item do Sienge também se marca solicitado
+              aqui, em cima do comprado: na etapa Tudo ele travava sem saída
+              (pedido de 15/09/2026). A regra é a mesma: primeiro solicitado,
+              depois comprado. */}
+          {!noSienge && it.canalCompra === "sienge" && (
+            <button className={`pill pill-btn pill-mini ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
+              disabled={!podeEditar || !podeMudarSolicitado(it)}
+              onClick={() => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() })}
+              title={!podeEditar ? `${estaSolicitado(it) ? quando("Solicitado", it.solicitadoEm) : "Não solicitado"} — ${MODO_LEITURA_DICA}`
+                : it.comprado ? "Já comprado: desmarque o comprado antes de mexer na solicitação"
+                : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
+                : "Marcar como solicitado no Sienge"}>
+              {estaSolicitado(it) ? <><Check size={10} /> solicitado</> : "solicitar"}
+            </button>
+          )}
           <button className={`pill pill-btn ${it.comprado ? "pill-ok" : "pill-wait"}`}
             disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}
             onClick={() => onItemChange({ comprado: !it.comprado, compradoEm: it.comprado ? null : new Date().toISOString() })}
             title={!podeEditar ? `${it.comprado ? quando("Comprado", it.compradoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
               : it.comprado ? `${quando("Comprado", it.compradoEm)} — clique pra desfazer`
               : podeMarcarComprado(it) ? "Marcar como comprado — entra no total do Dashboard"
-                : noSienge ? "Marque como solicitado antes de comprado"
-                  : "Item do Sienge: marque como solicitado na etapa Sienge antes de comprado"}>
+                : "Marque como solicitado antes de comprado"}>
             {it.comprado ? <><Check size={11} /> comprado</> : "pendente"}
           </button>
+          </div>
         )}
       </td>
 
@@ -10763,6 +11001,14 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         </td>
       )}
     </tr>
+    {trocando && (
+      <tr className="troca-form-linha">
+        <td colSpan={nCols}>
+          <FormTroca row={row} equipe={equipe} executivo={executivo} onRegistrar={onRegistrarTroca} onFechar={onFecharTroca} />
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
@@ -17108,6 +17354,64 @@ export default function App() {
     }));
   }
 
+  /* Troca de produto nas Compras: o original fica riscado (com quem aprovou,
+     quando e por quê) e as linhas novas entram logo abaixo, cada uma com o
+     próprio custo. Item já comprado não troca: desmarca-se antes. */
+  function trocarProduto(catIdx, itemIdx, linhas, { aprovadoPor, motivo }) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c, ci) => {
+        if (ci !== catIdx) return c;
+        const itens = [...(c.itens || [])];
+        const orig = itens[itemIdx];
+        if (!orig || orig.comprado || orig.troca || !linhas?.length) return c;
+        const usados = new Set(itens.map((it) => it.codigo));
+        const agora = new Date().toISOString();
+        const novas = linhas.map((l) => {
+          // Código só quando o original tem um: "null-T" não diz nada a ninguém.
+          let codigo = null;
+          if (orig.codigo) {
+            let n = 1;
+            codigo = `${orig.codigo}-T`;
+            while (usados.has(codigo)) { n += 1; codigo = `${orig.codigo}-T${n}`; }
+            usados.add(codigo);
+          }
+          return {
+            codigo, desc: l.desc, marca: l.fornecedor || "", un: l.un || orig.un || "un",
+            qtdExecutivo: l.qtd, custoMaterial: l.custoUnit,
+            totalMaterial: Math.round(l.qtd * l.custoUnit * 100) / 100, totalMO: 0,
+            ambiente: orig.ambiente || "", tipo: "produto",
+            canalCompra: orig.canalCompra || null,
+            trocaDe: orig.codigo || null, trocaEm: agora, trocaPor: usuario,
+          };
+        });
+        itens[itemIdx] = { ...orig, troca: { em: agora, por: usuario, aprovadoPor, motivo: motivo || "", novas: novas.map((x) => x.codigo) } };
+        itens.splice(itemIdx + 1, 0, ...novas);
+        return { ...c, itens };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  /* Desfaz a troca: as linhas novas saem e o original volta a valer. A troca
+     é achada pelo instante em que foi feita, não pelo código (o item pode
+     não ter). Não desfaz o que já foi comprado. */
+  function desfazerTroca(catIdx, em) {
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c, ci) => {
+        if (ci !== catIdx) return c;
+        const itens = c.itens || [];
+        const orig = itens.find((it) => it.troca?.em === em);
+        if (!orig) return c;
+        const novas = linhasDaTroca(itens, orig);
+        if (novas.some((it) => it.comprado)) return c;
+        return { ...c, itens: itens.filter((it) => !novas.includes(it)).map((it) => (it === orig ? { ...it, troca: null } : it)) };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
   /* Registra a aprovação do cliente.
 
      O documento já subiu pro Storage antes de chegar aqui: `arq` é o que
@@ -19374,6 +19678,32 @@ export default function App() {
         .obra-endereco-btn:hover { opacity: 1; background: var(--surface-2); color: var(--ink); }
         .obra-endereco-edita { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 22px; }
         .obra-endereco-edita .form-input { flex: 1 1 380px; margin: 0; }
+        .row-trocado td { color: var(--ink-3); background: transparent; }
+        .row-trocado .item-desc, .item-trocado { text-decoration: line-through; color: var(--ink-3); }
+        .troca-meta { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+        .troca-por { color: var(--ink-2); }
+        .status-par { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+        .pill.pill-mini { font-size: 10px; padding: 1px 7px; }
+        .pill.troca-pill { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--ink-3); border: 1px dashed var(--line-2); }
+        .troca-tag { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; font-size: 10.5px; color: var(--ink-3); }
+        .troca-tag-plano { margin-left: 0; margin-right: 6px; }
+        .troca-link { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0; border: 0; background: none; font: inherit; font-size: 10.5px; color: var(--ink-3); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+        .troca-link:hover { color: var(--ink); }
+        .troca-form-linha td { background: var(--surface-2); padding: 6px 12px 8px; }
+        .troca-form { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--ink-2); }
+        .troca-grade { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1.3fr) 64px 52px 96px 104px 20px; gap: 6px; align-items: center; }
+        .troca-form .form-input { margin: 0; padding: 4px 8px; font-size: 12px; min-height: 0; }
+        .troca-total { text-align: right; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+        .troca-tirar { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: pointer; }
+        .troca-rodape { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+        .troca-rodape select.form-input { width: auto; max-width: 240px; }
+        .troca-motivo { flex: 1 1 180px; }
+        .troca-dif { font-size: 10.5px; color: var(--ink-3); }
+        .troca-espaco { flex: 1; }
+        .troca-btn { padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 6px; background: transparent; font: inherit; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
+        .troca-btn:hover { background: var(--surface-1); }
+        .troca-btn-ok { border-color: var(--brand-line); color: var(--brand); }
+        .troca-erro { font-size: 11px; color: var(--red); }
         .rel-doc .rel-sub { font-size: 10.5pt; font-weight: 600; color: #1c2426; margin-top: 1.5mm; letter-spacing: 0; }
         .rel-doc .rel-extra { font-size: 7.4pt; color: #6b7b7f; margin-top: .6mm; }
         .rel-doc .rel-entrega { font-size: 8pt; font-weight: 400; color: #6b7b7f; text-transform: none; letter-spacing: 0; }
@@ -19981,7 +20311,8 @@ export default function App() {
             <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} usuario={usuario}
-            podeEditar={edicao.minha} onHabilitar={perfilPermiteEditar ? habilitarEdicao : undefined} editandoPor={edicao.por} />}
+            podeEditar={edicao.minha} onHabilitar={perfilPermiteEditar ? habilitarEdicao : undefined} editandoPor={edicao.por}
+            onTrocar={trocarProduto} onDesfazerTroca={desfazerTroca} equipe={pessoas} />}
           {grupo === "arquivos" && (
             <ArquivosObraView obra={obra} usuario={usuario} podeEditar={edicao.minha} souAdmin={souAdmin}
               onArquivos={trocarArquivosDaObra} />
