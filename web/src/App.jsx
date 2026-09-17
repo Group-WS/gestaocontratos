@@ -7810,6 +7810,29 @@ function telaDoEndereco(caminho) {
   return { modulo: MODULO_DO_SLUG[partes[0]] || "inicio" };
 }
 
+/* O que fazer com o endereco lido na abertura (ou no botao voltar).
+
+   ESPERAR e' a resposta enquanto a lista de obras nao esta completa — e
+   "completa" quer dizer as tres cargas: todos os squads do Monday, a tabela
+   `obra` do banco e o perfil de quem esta usando. Antes disto o endereco so'
+   esperava a PRIMEIRA resposta do Monday, e isso abria a obra errada de
+   dois jeitos (17/09/2026):
+     - o Monday chega squad por squad; com o Comet primeiro, a 2450 (Sun)
+       ainda nao existia na lista, o endereco desistia e abria a 2195;
+     - a lista de ATIVAS depende do banco e do perfil; ainda vazia, ela
+       fazia a regra "abre a primeira ativa" zerar a obra que o endereco
+       tinha acabado de abrir.
+
+   So' com tudo carregado da' pra dizer "essa obra nao existe" e DESISTIR
+   sem medo de ser cedo demais. */
+function resolverRotaPendente(rota, { obras = [], prontas = false } = {}) {
+  if (!rota) return { acao: "nada" };
+  if (rota.modulo !== "comparativo") return { acao: "modulo", modulo: rota.modulo };
+  if (!prontas) return { acao: "esperar" };
+  const alvo = (obras || []).find((o) => String(o.codigo) === String(rota.codigoDaObra));
+  return alvo ? { acao: "abrir", obraId: alvo.id, tab: rota.tab || null } : { acao: "desistir" };
+}
+
 /* Em que grupo da esteira a etapa mora — o endereco nao carrega isso, e
    nao precisa: a etapa ja diz. */
 function grupoDaEtapa(tab) {
@@ -17414,6 +17437,11 @@ function BotaoApresentacao({ onAbrir, arquivo }) {
 export default function App() {
   const [obras, setObras] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  /* O endereco lido na abertura, esperando a lista de obras ficar completa
+     pra ser aplicado. Mora aqui, perto da obra selecionada, porque o efeito
+     "abre a primeira obra ativa" (mais abaixo) precisa saber que ha um
+     endereco esperando — e ele e' declarado antes do efeito do endereco. */
+  const [rotaPendente, setRotaPendente] = useState(() => telaDoEndereco(window.location.pathname));
   const [loading, setLoading] = useState(true);
   const [avisoMonday, setAvisoMonday] = useState(null);
   /* Abre no INICIO, e nao dentro de uma obra. O app caia na primeira da
@@ -17424,6 +17452,9 @@ export default function App() {
   // É isso que decide quem aparece na sidebar (ativa), quem está no
   // Arquivo (concluida) e quem ainda é só sugestão do Monday (ausente).
   const [registro, setRegistro] = useState(() => new Map());
+  // A tabela `obra` ja respondeu (com linhas ou com erro). E' uma das tres
+  // cargas que o endereco da tela espera antes de abrir uma obra.
+  const [registroCarregado, setRegistroCarregado] = useState(false);
   const [erroBanco, setErroBanco] = useState(null);
   const [siengeObras, setSiengeObras] = useState([]);
   const [siengeCarregando, setSiengeCarregando] = useState(true);
@@ -17558,7 +17589,8 @@ export default function App() {
           return faltando.length ? [...prev, ...faltando] : prev;
         });
       })
-      .catch((err) => { if (vivo) setErroBanco(err.message || String(err)); });
+      .catch((err) => { if (vivo) setErroBanco(err.message || String(err)); })
+      .finally(() => { if (vivo) setRegistroCarregado(true); });
     return () => { vivo = false; };
   }, []);
 
@@ -17785,6 +17817,10 @@ export default function App() {
   // Seleciona a primeira obra ativa assim que houver uma, e nunca deixa
   // uma obra que saiu da sidebar (concluída) presa como selecionada.
   useEffect(() => {
+    /* Com um endereco de obra esperando, quem escolhe a obra e' ele. Sem
+       esta linha, esta regra abria a primeira da lista enquanto as cargas
+       ainda chegavam — e era ela que trocava a 2450 pela 2195. */
+    if (rotaPendente?.modulo === "comparativo") return;
     if (obrasAtivas.length === 0) { setSelectedId(null); return; }
     setSelectedId((prev) => (obrasAtivas.some((o) => o.id === prev) ? prev : obrasAtivas[0].id));
   }, [obrasAtivas]);
@@ -17928,25 +17964,31 @@ export default function App() {
      Monday, em outro tempo), entao o endereco lido fica guardado ate'
      dar pra aplicar. Sem isso, abrir /obra/2450 direto caia no Inicio,
      porque na primeira renderizacao ainda nao existe obra nenhuma. */
-  const [rotaPendente, setRotaPendente] = useState(() => telaDoEndereco(window.location.pathname));
+  /* A lista de obras COMPLETA: todos os squads do Monday responderam, o
+     banco respondeu e o perfil de quem usa ja e' conhecido (sem ele a lista
+     de ativas fica vazia). Na migracao de perfil pendente o perfil nao
+     decide nada, entao nao ha' o que esperar dele. */
+  const obrasProntas = !loading && registroCarregado && (migracaoPendente || (!!usuario && !pessoasCarregando));
 
   useEffect(() => {
-    if (!rotaPendente) return;
-    if (rotaPendente.modulo === "comparativo") {
-      if (!obras.length) return;   // a lista ainda nao chegou
-      const alvo = obras.find((o) => String(o.codigo) === String(rotaPendente.codigoDaObra));
-      if (alvo) {
-        setSelectedId(alvo.id);
-        setModulo("comparativo");
-        setTab(rotaPendente.tab || null);
-        setGrupo(grupoDaEtapa(rotaPendente.tab));
-      }
-      setRotaPendente(null);
-      return;
+    const d = resolverRotaPendente(rotaPendente, { obras, prontas: obrasProntas });
+    if (d.acao === "nada" || d.acao === "esperar") return;
+    if (d.acao === "modulo") {
+      setModulo(d.modulo);
+    } else if (d.acao === "abrir") {
+      setSelectedId(d.obraId);
+      setModulo("comparativo");
+      setTab(d.tab);
+      setGrupo(grupoDaEtapa(d.tab));
+    } else if (d.acao === "desistir") {
+      /* O endereco apontava pra uma obra que nao esta na lista (ou nao e'
+         desta pessoa): vale a regra de sempre, a primeira obra ativa. A
+         regra ficou parada enquanto o endereco esperava, entao e' aqui que
+         ela precisa acontecer. */
+      setSelectedId((prev) => prev ?? (obrasAtivas[0]?.id ?? null));
     }
-    setModulo(rotaPendente.modulo);
     setRotaPendente(null);
-  }, [rotaPendente, obras]);
+  }, [rotaPendente, obras, obrasProntas, obrasAtivas]);
 
   // O botao voltar do navegador: relê o endereco e deixa o efeito acima aplicar.
   useEffect(() => {

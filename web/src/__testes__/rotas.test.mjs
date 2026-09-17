@@ -27,7 +27,8 @@ const M = eval(`(function () {
   ${pedaco("const SLUG_ETAPA = {", "/* O endereco que representa a tela aberta. */")}
   ${bloco("function enderecoDaTela(")}
   ${bloco("function telaDoEndereco(")}
-  return { enderecoDaTela, telaDoEndereco, SLUG_ETAPA, SLUG_MODULO };
+  ${bloco("function resolverRotaPendente(")}
+  return { enderecoDaTela, telaDoEndereco, resolverRotaPendente, SLUG_ETAPA, SLUG_MODULO };
 })()`);
 
 let f = 0;
@@ -89,6 +90,36 @@ telas.forEach((t) => {
  "assinatura_cliente", "comparativo", "compras", "contratos", "diario"].forEach((etapa) => {
   conf(`a etapa ${etapa} tem endereço`, !!M.SLUG_ETAPA[etapa], true);
 });
+
+/* ---- A obra errada: as duas corridas de 17/09/2026 ----
+   Entrar por /obra/2450/executivo abriu a 2195 duas vezes em quatro. A 2195
+   e a 2498 são do Squad Comet; a 2450 é do Sun. */
+const rota = M.telaDoEndereco("/obra/2450/executivo");
+const comet = [{ id: "c1", codigo: "2195" }, { id: "c2", codigo: "2498" }];
+const tudo = [...comet, { id: "s1", codigo: "2450" }];
+const acao = (d) => (d.acao === "abrir" ? `abrir ${d.obraId} ${d.tab}` : d.acao);
+
+/* Corrida 1: o Comet respondeu primeiro. A 2450 ainda não existe na lista, e
+   antes o endereço DESISTIA aqui — e a regra de sempre abria a 2195. */
+conf("só o Comet chegou: espera, não desiste", acao(M.resolverRotaPendente(rota, { obras: comet, prontas: false })), "esperar");
+/* Corrida 2: o Monday inteiro chegou, mas o banco ou o perfil não. A lista de
+   ativas ainda está vazia, e abrir agora deixava a outra regra zerar a obra. */
+conf("Monday completo sem banco/perfil: espera", acao(M.resolverRotaPendente(rota, { obras: tudo, prontas: false })), "esperar");
+conf("tudo carregado: abre a 2450 na etapa certa", acao(M.resolverRotaPendente(rota, { obras: tudo, prontas: true })), "abrir s1 executivo");
+conf("obra que não existe, tudo carregado: desiste", acao(M.resolverRotaPendente(M.telaDoEndereco("/obra/9999/plano"), { obras: tudo, prontas: true })), "desistir");
+conf("obra sem etapa abre a visão geral", M.resolverRotaPendente(M.telaDoEndereco("/obra/2450"), { obras: tudo, prontas: true }).tab, null);
+/* Módulo não depende da lista de obras: não tem por que esperar. */
+conf("módulo aplica na hora, mesmo sem lista", acao(M.resolverRotaPendente(M.telaDoEndereco("/aditivos"), { obras: [], prontas: false })), "modulo");
+conf("sem endereço pendente, nada", acao(M.resolverRotaPendente(null, { obras: tudo, prontas: true })), "nada");
+conf("código comparado como texto", acao(M.resolverRotaPendente(rota, { obras: [{ id: "n", codigo: 2450 }], prontas: true })), "abrir n executivo");
+
+/* As travas no App: sem elas a função acima não protege nada. */
+conf("a regra 'primeira ativa' não age com endereço esperando",
+  /if \(rotaPendente\?\.modulo === "comparativo"\) return;\s*\n\s*if \(obrasAtivas\.length === 0\)/.test(src), true);
+conf("a lista pronta espera Monday, banco e perfil",
+  /const obrasProntas = !loading && registroCarregado && \(migracaoPendente \|\| \(!!usuario && !pessoasCarregando\)\)/.test(src), true);
+conf("o banco avisa quando respondeu, com ou sem erro",
+  src.includes(".finally(() => { if (vivo) setRegistroCarregado(true); })"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
