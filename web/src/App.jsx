@@ -6346,7 +6346,8 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
     return n;
   });
 
-  const nItens = grupos.reduce((a, g) => a + g.itens.length, 0);
+  // `nProdutos` e nao `itens.length`: a lista pode ter linha de título.
+  const nItens = grupos.reduce((a, g) => a + (g.nProdutos ?? g.itens.length), 0);
   const nAprovados = grupos.reduce((a, g) => a + g.aprovados, 0);
   const falta = nItens - nAprovados;
   if (!nItens) return null;
@@ -6363,9 +6364,12 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
     );
   }
 
+  /* O título só faz sentido com a lista inteira: filtrando "falta aprovar",
+     um cabeçalho sem nada embaixo dele é ruído. */
   const visiveis = grupos
-    .map((g) => ({ ...g, itens: g.itens.filter((x) => (filtro === "falta" ? !x.aprovadoCliente : filtro === "aprovados" ? x.aprovadoCliente : true)) }))
-    .filter((g) => g.itens.length);
+    .map((g) => ({ ...g, itens: g.itens.filter((x) => (x.titulo ? filtro === "todos"
+      : filtro === "falta" ? !x.aprovadoCliente : filtro === "aprovados" ? x.aprovadoCliente : true)) }))
+    .filter((g) => g.itens.some((x) => !x.titulo));
 
   return (
     <div className="cli-bloco">
@@ -6394,7 +6398,7 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
       <div className="vend-list">
         {visiveis.map((g) => {
           const aberto = abertos.has(g.num);
-          const pendentes = g.itens.filter((x) => !x.aprovadoCliente);
+          const pendentes = g.itens.filter((x) => !x.titulo && !x.aprovadoCliente);
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
@@ -6403,7 +6407,7 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                     {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                     <span className="grp-num mono">{g.num}</span>
                     <span className="grp-nome">{g.nome}</span>
-                    <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "produto" : "produtos"}</span>
+                    <span className="grp-conta">{g.nProdutos ?? g.itens.length} {(g.nProdutos ?? g.itens.length) === 1 ? "produto" : "produtos"}</span>
                   </div>
                 </button>
                 <div className="grp-dir">
@@ -6425,11 +6429,29 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                     <tr><th>Produto</th><th className="c-qtd">Qtd</th><th className="right">Valor</th><th className="center">Cliente</th></tr>
                   </thead>
                   <tbody>
-                    {g.itens.map((x) => (
+                    {g.itens.map((x) => (x.titulo ? (
+                      /* Cabeçalho de trecho: a mesma linha que o Executivo
+                         mostra, sem preço e sem o que aprovar. */
+                      <tr key={x.chave} className="linha-titulo">
+                        <td colSpan={4}>{x.it.desc}</td>
+                      </tr>
+                    ) : (
                       <tr key={x.chave} className={x.aprovadoCliente ? "" : "row-estimativa"}>
                         <td>
                           <div className="item-desc">{x.it.desc}</div>
-                          {x.it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{x.it.ambiente}</span>}
+                          {/* Ambiente, fornecedor e observacao entram na tela do
+                              cliente (pedido dela, 17/09/2026): e' com isso que a
+                              equipe explica pra ele o que esta' aprovando. Ficam
+                              DENTRO da celula do produto, e nao em colunas novas —
+                              a tabela ja' e' larga e a obra tem 320 linhas. */}
+                          {(x.it.ambiente || x.it.marca) && (
+                            <span className="dim cli-meta"
+                              title={[x.it.ambiente, x.it.marca ? `Fornecedor: ${x.it.marca}` : null].filter(Boolean).join(" · ") || undefined}>
+                              {[x.it.ambiente, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null]
+                                .filter(Boolean).join(" · ")}
+                            </span>
+                          )}
+                          {x.it.especificacao && <div className="det-espec">{x.it.especificacao}</div>}
                         </td>
                         <td className="mono center">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="unit">{x.it.un}</span></td>
                         <td className="mono right">
@@ -6467,7 +6489,7 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                           )}
                         </td>
                       </tr>
-                    ))}
+                    )))}
                   </tbody>
                 </table>
               )}
@@ -8982,7 +9004,23 @@ function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } =
   (obra?.categorias || []).forEach((cat, catIdx) => {
     const itens = [];
     (cat.itens || []).forEach((it, itemIdx) => {
-      if (it.ehTitulo || it.troca) return;
+      /* O TITULO entra na tela do cliente, como cabecalho.
+
+         "voce tem que puxar nessa tela de aprovacao do cliente tudo conforme
+         esta na tela do executivo. se n vamos ter informacoes divergentes"
+         (17/09/2026). A linha de titulo nomeia um trecho dentro da verba
+         ("Parede", na 18 da 2498): nao tem preco e nao ha' o que aprovar,
+         mas some-la fazia a verba mostrar 21 onde o Executivo mostra 22 — e
+         quem compara as duas telas fica procurando o que faltou. Ela
+         aparece, e nao conta como produto. */
+      if (it.ehTitulo) {
+        if (comMaoDeObra) {
+          itens.push({ it, catIdx, itemIdx, titulo: true, material: 0, mo: 0, valor: 0,
+            chave: `${catIdx}-${itemIdx}`, liberado: false, aprovadoCliente: false, pendencia: null, pode: false });
+        }
+        return;
+      }
+      if (it.troca) return;
       const { material, mo } = parcelasDoItem(it, cat);
       const ehMO = alocacaoDoItem(it, cat) === ALOC_MO;
       if (ehMO && !comMaoDeObra) return;
@@ -9020,15 +9058,19 @@ function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } =
         pode: podeLiberarItem(it, ctx),
       });
     });
-    if (itens.length) {
+    // Verba que só tem título não é verba com produto: não entra na lista.
+    const produtos = itens.filter((x) => !x.titulo);
+    if (produtos.length) {
       grupos.push({
         num: cat.num, nome: cat.nome, catIdx, itens,
-        total: itens.reduce((a, x) => a + x.material, 0),
+        // Toda conta ignora o título: ele é cabeçalho, não produto.
+        nProdutos: produtos.length,
+        total: produtos.reduce((a, x) => a + x.material, 0),
         // O total que o cliente ve': item inteiro, material + mao de obra.
-        totalValor: itens.reduce((a, x) => a + x.valor, 0),
-        liberados: itens.filter((x) => x.liberado).length,
-        liberado: itens.reduce((a, x) => a + (x.liberado ? x.material : 0), 0),
-        aprovados: itens.filter((x) => x.aprovadoCliente).length,
+        totalValor: produtos.reduce((a, x) => a + x.valor, 0),
+        liberados: produtos.filter((x) => x.liberado).length,
+        liberado: produtos.reduce((a, x) => a + (x.liberado ? x.material : 0), 0),
+        aprovados: produtos.filter((x) => x.aprovadoCliente).length,
       });
     }
   });
@@ -21717,6 +21759,11 @@ export default function App() {
         /* O HISTORICO. Tamanho de legenda e cor apagada: ele fecha a pagina,
            nao disputa com ela. Quem precisa, abre. */
         .ad-icon:disabled { opacity: 0.3; cursor: default; }
+        /* Ambiente e fornecedor na tela do cliente: uma linha so'. O campo
+           Fornecedor as vezes vem com o nome E o link inteiro colados ("ArqPlace
+           - https://..."), e sem corte isso estica a linha inteira. O texto
+           completo fica na dica. */
+        .cli-meta { display: block; font-size: 10.5px; max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .hist { margin-top: 30px; padding-top: 10px; border-top: 1px solid var(--line-1); }
         .hist-abrir { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; font-family: inherit; font-size: 11.5px; color: var(--text-mute); cursor: pointer; }
         .hist-abrir:hover { color: var(--text); }
