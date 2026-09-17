@@ -5055,9 +5055,21 @@ function casarComCriativo(item, itensCriativo) {
 // comparando verba contra verba eles nunca se encontram, e os dois
 // aparecem como "só existe num lado". Quem confere na mão mapeia pelo
 // significado ("climatização é climatização"), não pelo número.
-function juntarItens(categorias, campo) {
+/* `tudo` traz a PLANILHA COMPLETA, sem tirar verba nenhuma.
+
+   Pedido dela em 17/09/2026 pra Conf. Executivo: "vamos trabalhar com a
+   planilha completa novamente, sem excluir qualquer item ou grupo".
+   `tudo` e' tudo mesmo: entram as verbas de regra (01, 02 e Moveis Sob
+   Medida) E o grupo fora da EAP padrao. Esse ultimo e' conteudo de
+   planilha como qualquer outro — foi nele que sumiram R$ 24.317 da 2405
+   no CMV, calados, ate' alguem notar.
+
+   Fica como opcao, e nao como mudanca no geral, porque esta funcao e'
+   compartilhada: o CMV (Depara Contrato x Planilha) continua sem as
+   verbas de regra — la elas tem motivo proprio e aparecem como N/A. */
+function juntarItens(categorias, campo, { tudo = false } = {}) {
   const out = [];
-  (categorias || []).filter(naoEhVerbaPadrao).forEach((c) => {
+  (categorias || []).filter((c) => tudo || naoEhVerbaPadrao(c)).forEach((c) => {
     // linhas de título (quantidade e valor zerados) ficam de fora: não
     // são produto, e comparar título com item gera divergência inventada
     (c[campo] || []).filter((it) => !it.ehTitulo).forEach((it) => out.push({ ...it, verbaNum: c.num, verbaNome: c.nome }));
@@ -5126,8 +5138,10 @@ function conferirObra(categorias) {
 
 // cruza a obra inteira (Vendido Planilha × Planilha Executivo)
 function conferirExecutivoObra(categorias) {
-  const vendido = juntarItens(categorias, "itensPlanilha");
-  const executivo = juntarItens(categorias, "itensPlanilhaExecutivo");
+  // A conferencia do executivo ve a planilha inteira (pedido dela,
+  // 17/09/2026): nenhuma verba fica de fora da comparacao.
+  const vendido = juntarItens(categorias, "itensPlanilha", { tudo: true });
+  const executivo = juntarItens(categorias, "itensPlanilhaExecutivo", { tudo: true });
   const cruzado = cruzarItens(vendido, executivo, (x) => x.qtdVendida, (x) => x.qtdVendida);
   const deslocamento = detectarDeslocamentoVerba(cruzado);
   const linhas = cruzado
@@ -6173,10 +6187,11 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
   const resumoES = useMemo(() => resumoEntrouSaiu(cruzamento), [cruzamento]);
   const linhasBrutas = useMemo(() => cruzamento.map(linhaConfExecutivo), [cruzamento]);
 
-  const naoAnalisadas = useMemo(
-    () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num, c.nome)),
-    [obra]
-  );
+  /* Nenhuma verba mais fica de fora aqui (17/09/2026), entao o bloco
+     "N/A" do rodape sai junto: com os itens dela na lista, repetir a
+     verba embaixo dizendo "nao analisada" seria a mesma tela afirmando
+     duas coisas. No CMV o bloco continua, porque la elas seguem fora. */
+  const naoAnalisadas = useMemo(() => [], []);
 
   /* O que ENTROU no executivo sem ter sido vendido, pela descricao.
 
