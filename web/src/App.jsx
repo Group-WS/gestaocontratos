@@ -2267,6 +2267,127 @@ function pendenciasDaObra(o) {
   return conta;
 }
 
+/* ---------- O HISTORICO DA OBRA ----------
+
+   Quem fez o que, e quando. Pedido dela em 17/09/2026, depois de achar a
+   2450 com tudo liberado pra compra e ninguem pra responder por isso.
+
+   Cada evento diz em que TELA ele aconteceu, porque o rodape de cada tela
+   mostra so' o que e' dela (escolha dela): no Executivo as edicoes, na
+   conferencia as aprovacoes e liberacoes, nas Compras o canal, a
+   solicitacao e a compra. */
+const TELA_DO_EVENTO = {
+  liberou_compra: "executivo_conferencia",
+  conferiu_alerta: "executivo_conferencia",
+  liberou_sem_cliente: "executivo_conferencia",
+  aprovou_cliente: "assinatura_cliente",
+  assinatura: "assinatura_cliente",
+  cmv: "vendido_conferencia",
+  liberou_compras: "comparativo",
+  sem_assinatura: "comparativo",
+  avulsa: "comparativo",
+  trocou: "compras",
+  comprou: "compras",
+  solicitou: "compras",
+  canal: "compras",
+  editou: "executivo",
+  /* Concluir etapa e' da esteira, nao de uma tela: aparece em todas. */
+  etapa: null,
+};
+
+/* O nome curto do item na linha do historico. Sem ele a frase fica "liberou
+   para compra" e ninguem sabe o que foi liberado. */
+function itemDoHistorico(it, cat) {
+  const cod = codigoVisivel(it);
+  const desc = String(it?.desc || "").replace(/\s+/g, " ").trim();
+  const curta = desc.length > 46 ? `${desc.slice(0, 44)}…` : desc;
+  return [cat?.num ? `${cat.num}` : null, cod || null, curta || null].filter(Boolean).join(" · ");
+}
+
+/* O HISTORICO QUE DA' PRA RECONSTRUIR DO PASSADO.
+
+   Os carimbos que o app ja' guardava: liberacao, aprovacao do cliente,
+   alerta conferido, excecao sem cliente, troca, compra avulsa, e as marcas
+   da obra (CMV, assinatura, liberacao das compras, etapas concluidas).
+
+   Duas coisas ele NAO sabe, e nao tem como saber olhando o estado:
+   - QUEM comprou ou solicitou. Esses campos guardam so' a data.
+   - O que foi DESFEITO. Desfazer apaga o carimbo, e o que foi apagado nao
+     deixa rastro. E' por isso que existe a parte 2, o registro de verdade. */
+function historicoDerivado(obra) {
+  const fora = [];
+  const anota = (ev) => { if (ev.em) fora.push({ ...ev, tela: ev.tela === undefined ? TELA_DO_EVENTO[ev.tipo] : ev.tela, origem: "carimbo" }); };
+
+  (obra?.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
+    if (it.ehTitulo) return;
+    const item = itemDoHistorico(it, cat);
+    anota({ tipo: "liberou_compra", em: it.liberadoCompra?.em, por: it.liberadoCompra?.por, item });
+    anota({ tipo: "aprovou_cliente", em: it.aprovadoCliente?.em, por: it.aprovadoCliente?.por, item });
+    anota({ tipo: "conferiu_alerta", em: it.alertaConferido?.em, por: it.alertaConferido?.por, item });
+    anota({ tipo: "liberou_sem_cliente", em: it.liberadoSemCliente?.em, por: it.liberadoSemCliente?.por, item,
+          detalhe: it.liberadoSemCliente?.motivo, autorizadoPor: it.liberadoSemCliente?.autorizadoPor });
+    anota({ tipo: "trocou", em: it.troca?.em, por: it.troca?.por, item,
+          detalhe: it.substituidoPorDesc || null, autorizadoPor: it.troca?.aprovadoPor?.nome || it.troca?.aprovadoPor });
+    anota({ tipo: "avulsa", em: it.avulsoEm, por: it.avulsoPor, item, detalhe: it.avulsoObs || null });
+    // Data sem quem: o campo nunca guardou o autor. A frase nao inventa nome.
+    anota({ tipo: "comprou", em: it.compradoEm, por: null, item });
+    anota({ tipo: "solicitou", em: it.solicitadoEm, por: null, item });
+  }));
+
+  anota({ tipo: "cmv", em: obra?.cmvLiberadoEm, por: obra?.cmvLiberadoPor });
+  anota({ tipo: "assinatura", em: obra?.clienteAssinouEm, por: obra?.clienteAssinaturaPor, detalhe: obra?.clienteAssinaturaObs || null });
+  anota({ tipo: "liberou_compras", em: obra?.compraLiberadaEm, por: obra?.compraLiberadaPor });
+  anota({ tipo: "sem_assinatura", em: obra?.compraSemAssinaturaEm, por: obra?.compraSemAssinaturaPor,
+        detalhe: obra?.compraSemAssinaturaJust || null });
+  Object.entries(obra?.etapasConcluidas || {}).forEach(([etapa, m]) => {
+    anota({ tipo: "etapa", em: m?.em, por: m?.por, detalhe: etapa });
+  });
+
+  return fora.sort((a, b) => String(b.em).localeCompare(String(a.em)));
+}
+
+/* Quantos itens contam como liberados sem ninguem ter liberado.
+
+   E' a resposta da pergunta dela: na 2450 nenhum item tinha carimbo, e os
+   152 apareciam liberados porque ja' tinham canal escolhido ou ja' estavam
+   comprados quando a regra passou a existir. O historico diz isso em vez de
+   ficar calado. */
+function liberadosSemRegistro(obra) {
+  let n = 0;
+  (obra?.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
+    if (it.ehTitulo) return;
+    if (liberadoParaCompra(it) && !it.liberadoCompra?.em) n += 1;
+  }));
+  return n;
+}
+
+/* O que cada evento diz, em português. Verbo no passado e sujeito de fora
+   ("Fulano liberou para compra"), porque a linha do historico e' a frase
+   inteira: quem, o que fez, e em que item. */
+const FRASE_DO_EVENTO = {
+  liberou_compra: "liberou para compra",
+  conferiu_alerta: "conferiu o alerta",
+  liberou_sem_cliente: "liberou sem a aprovação do cliente",
+  aprovou_cliente: "registrou a aprovação do cliente",
+  assinatura: "registrou a assinatura do cliente",
+  cmv: "liberou o CMV",
+  liberou_compras: "liberou o Plano de Compras",
+  sem_assinatura: "liberou as compras sem a assinatura",
+  avulsa: "pediu compra avulsa",
+  trocou: "trocou o produto",
+  comprou: "marcou como comprado",
+  solicitou: "marcou como solicitado",
+  canal: "escolheu o canal de compra",
+  editou: "editou",
+  etapa: "concluiu a etapa",
+};
+
+/* Só o que aconteceu NESTA tela. Evento sem tela (concluir etapa) aparece
+   em todas — ele e' da obra, nao de um lugar. */
+function historicoDaTela(eventos, tela) {
+  return (eventos || []).filter((ev) => !ev.tela || ev.tela === tela);
+}
+
 /* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
 
    Os testes recortam o trecho ACIMA desta linha e rodam de verdade. JSX
@@ -2296,6 +2417,85 @@ function CampoBusca({ valor, aoMudar, dica, contador }) {
       {!!valor && !!contador && <span className="busca-conta">{contador}</span>}
       {!!valor && (
         <button className="clear-btn" title="Limpar a busca" onClick={() => aoMudar("")}><X size={12} /></button>
+      )}
+    </div>
+  );
+}
+
+/* O HISTORICO NO PE' DA PAGINA.
+
+   Pedido dela em 17/09/2026: "esse historico pode ser bem discreto, mas
+   ajuda saber cada alteracao e aprovacao". Entao ele e' uma linha fechada,
+   no tamanho de legenda, e so' abre quando alguem quer.
+
+   Mostra o que aconteceu NESTA tela (escolha dela), com "ver tudo da obra"
+   do lado. E diz o que NAO sabe: item que conta como liberado sem ninguem
+   ter liberado aparece como "sem registro de quem" em vez de ficar calado —
+   foi essa a pergunta que gerou o pedido. */
+function HistoricoDaObra({ obra, tela }) {
+  const [aberto, setAberto] = useState(false);
+  const [tudo, setTudo] = useState(false);
+  const [maisLinhas, setMaisLinhas] = useState(false);
+  const eventos = useMemo(() => historicoDerivado(obra), [obra]);
+  const daTela = useMemo(() => (tudo ? eventos : historicoDaTela(eventos, tela)), [eventos, tela, tudo]);
+  const semRegistro = useMemo(() => liberadosSemRegistro(obra), [obra]);
+  const mostrarNota = semRegistro > 0 && (tudo || tela === "executivo_conferencia" || tela === "compras" || tela === "comparativo");
+
+  const LIMITE = 12;
+  const lista = maisLinhas ? daTela : daTela.slice(0, LIMITE);
+  const quando = (em) => {
+    const d = new Date(em);
+    return Number.isFinite(d.getTime())
+      ? d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "—";
+  };
+
+  return (
+    <div className="hist">
+      <button type="button" className="hist-abrir" onClick={() => setAberto((v) => !v)}
+        title="Quem fez o que nesta obra, e quando">
+        {aberto ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        Histórico{daTela.length ? ` · ${daTela.length}` : ""}
+      </button>
+      {aberto && (
+        <>
+          <div className="hist-barra">
+            <button type="button" className="hist-link" onClick={() => setTudo((v) => !v)}>
+              {tudo ? "só esta tela" : "ver tudo da obra"}
+            </button>
+          </div>
+          {lista.length === 0 && (
+            <div className="hist-nota">Nada registrado {tudo ? "nesta obra" : "nesta tela"} ainda.</div>
+          )}
+          <div className="hist-lista">
+            {lista.map((ev, i) => (
+              <div className="hist-linha" key={`${ev.tipo}-${ev.em}-${i}`}>
+                <span className="hist-quando">{quando(ev.em)}</span>
+                <span>
+                  {/* Sem quem: a data existe mas o campo nunca guardou o autor.
+                      Dizer "alguém" e' menos pior do que inventar um nome. */}
+                  <b className="hist-quem" title={ev.por || undefined}>{ev.por ? nomeDoEmail(ev.por) : "alguém"}</b>
+                  {" "}{FRASE_DO_EVENTO[ev.tipo] || ev.tipo}
+                  {ev.item ? <span className="hist-item"> — {ev.item}</span> : null}
+                  {ev.autorizadoPor ? <span className="hist-item"> · autorizado por {ev.autorizadoPor}</span> : null}
+                  {ev.detalhe ? <span className="hist-item"> · {ev.tipo === "etapa" ? nomeDaEtapa(ev.detalhe) : ev.detalhe}</span> : null}
+                </span>
+              </div>
+            ))}
+          </div>
+          {daTela.length > LIMITE && !maisLinhas && (
+            <button type="button" className="hist-link" onClick={() => setMaisLinhas(true)}>
+              ver os outros {daTela.length - LIMITE}
+            </button>
+          )}
+          {mostrarNota && (
+            <div className="hist-nota">
+              {semRegistro} {semRegistro === 1 ? "item já estava" : "itens já estavam"} no fluxo de compras antes desta
+              regra existir (canal escolhido ou compra feita), então {semRegistro === 1 ? "ele conta" : "eles contam"} como
+              liberado sem registro de quem liberou.
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -7840,6 +8040,12 @@ function grupoDaEtapa(tab) {
   if (ETAPAS_EXECUCAO.some((e) => e.id === tab)) return "execucao";
   if (ETAPAS_PLANEJAMENTO.some((e) => e.id === tab)) return "planejamento";
   return "dashboard";
+}
+
+/* O nome da etapa como ele aparece na aba. O historico nao mostra o id
+   interno ("executivo_conferencia"), que nao quer dizer nada pra quem le. */
+function nomeDaEtapa(id) {
+  return [...ETAPAS_PLANEJAMENTO, ...ETAPAS_EXECUCAO].find((e) => e.id === id)?.label || id;
 }
 
 const MODULOS = [
@@ -21405,6 +21611,20 @@ export default function App() {
            que o .obra-search traz, senao desalinha dos chips ao lado. */
         .busca-lista { margin-bottom: 0; flex: 0 1 300px; min-width: 170px; }
         .busca-conta { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute); flex-shrink: 0; white-space: nowrap; }
+        /* O HISTORICO. Tamanho de legenda e cor apagada: ele fecha a pagina,
+           nao disputa com ela. Quem precisa, abre. */
+        .hist { margin-top: 30px; padding-top: 10px; border-top: 1px solid var(--line-1); }
+        .hist-abrir { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; font-family: inherit; font-size: 11.5px; color: var(--text-mute); cursor: pointer; }
+        .hist-abrir:hover { color: var(--text); }
+        .hist-barra { margin: 8px 0 6px; }
+        .hist-link { background: none; border: none; padding: 0; font-family: inherit; font-size: 11px; color: var(--brand); cursor: pointer; }
+        .hist-link:hover { text-decoration: underline; }
+        .hist-lista { display: grid; gap: 5px; }
+        .hist-linha { display: flex; gap: 8px; align-items: baseline; font-size: 11.5px; color: var(--text-soft); line-height: 1.45; }
+        .hist-quando { flex-shrink: 0; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute); }
+        .hist-quem { color: var(--text); font-weight: 600; }
+        .hist-item { color: var(--text-mute); }
+        .hist-nota { margin-top: 8px; font-size: 11px; color: var(--text-mute); line-height: 1.5; max-width: 620px; }
         /* A fila da obra. Fica abaixo da pilula de fase, mais discreta que a
            esteira: a esteira e' o caminho, isto e' o que esta' parado agora. */
         .ini-marcos { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; }
@@ -22049,6 +22269,8 @@ export default function App() {
               onArquivos={trocarArquivosDaObra} />
           )}
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}
+          {/* O historico fecha a pagina, em qualquer tela da obra. */}
+          <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"} />
           </>
           )}
         </main>
