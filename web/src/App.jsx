@@ -6900,6 +6900,18 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
   // quando a obra foi liberada antes de o app aprender a salvar.
   const cmv = useMemo(() => cmvDaObra(obra), [obra]);
   const cmvValor = cmv?.total ?? 0;
+  /* O ADITIVO APROVADO MUDA O TETO (pedido dela, 17/09/2026).
+
+     Aditivo e' escopo a mais que o cliente comprou: ele levanta o teto na
+     adicao e baixa na supressao. Comparar a planilha contra o CMV puro,
+     com um aditivo aprovado em cima, dizia "acima do CMV" numa obra que
+     cabia — ou o contrario.
+
+     So' o APROVADO conta, a mesma regra das outras telas: rascunho e
+     "aguardando cliente" sao documento em discussao, nao compromisso. */
+  const adit = useMemo(() => resumoAditivos(obra.aditivos), [obra.aditivos]);
+  const temAditivo = adit.aprovados.length > 0;
+  const teto = cmvValor + (temAditivo ? adit.saldo : 0);
   const itensBase = obra.categorias.reduce((a, c) => a + (c.itensPlanilha || []).length, 0);
   const temBase = itensBase > 0;
   const temExecutivo = obra.categorias.some((c) => (c.itensPlanilhaExecutivo || []).length > 0);
@@ -7290,14 +7302,33 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                 : "—"}
             </span>
           </div>
+          {/* O aditivo entra ANTES do saldo, porque e' ele que muda o teto
+              contra o qual o saldo e' medido. Sem aditivo aprovado a linha
+              nem aparece: linha zerada e' ruido. */}
+          {temAditivo && (
+            <div className="fechamento-linha">
+              <span className="fechamento-rotulo">
+                {adit.aprovados.length === 1 ? "Aditivo aprovado" : `Aditivos aprovados (${adit.aprovados.length})`}
+                <span className="fechamento-detalhe">
+                  {fmtBRL(adit.adicao)} de adição{adit.supressao > 0 ? ` · ${fmtBRL(adit.supressao)} de supressão` : ""}
+                </span>
+              </span>
+              <span className="mono fechamento-valor" style={{ color: adit.saldo < 0 ? "var(--red)" : "var(--green)" }}>
+                {adit.saldo >= 0 ? "+" : ""}{fmtBRL(adit.saldo)}
+              </span>
+            </div>
+          )}
           <div className="fechamento-linha final">
             <span className="fechamento-rotulo">
               {cmvValor > 0
-                ? (total > cmvValor ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe")
+                ? (total > teto ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe")
                 : "Saldo final"}
+              {temAditivo && cmvValor > 0 && (
+                <span className="fechamento-detalhe">teto com o aditivo: {fmtBRL(teto)}</span>
+              )}
             </span>
-            <span className="mono fechamento-valor" style={cmvValor > 0 ? { color: total > cmvValor ? "var(--red)" : "var(--green)" } : undefined}>
-              {cmvValor > 0 ? fmtBRL(cmvValor - total) : "—"}
+            <span className="mono fechamento-valor" style={cmvValor > 0 ? { color: total > teto ? "var(--red)" : "var(--green)" } : undefined}>
+              {cmvValor > 0 ? fmtBRL(teto - total) : "—"}
             </span>
           </div>
           {!(cmvValor > 0) && (
@@ -17421,6 +17452,20 @@ export default function App() {
   }
 
   const obra = obras.find((o) => o.id === selectedId);
+  /* A obra COM os itens do aditivo aprovado dentro das verbas.
+
+     Pedido dela em 17/09/2026: o aditivo "deve seguir todo o fluxo e ser
+     mostrado em todo ele". Ate' aqui so' o Plano de Compras enxergava —
+     ele deriva por conta propria —, e a Conf. Executivo, a liberacao e a
+     aprovacao do cliente recebiam a obra crua, sem esses itens.
+
+     Derivado, nunca gravado: gravar isso em `categorias` faria o item de
+     aditivo aparecer duas vezes na leitura seguinte (ver a armadilha do
+     campo derivado). E o Plano continua com a derivacao dele — derivar
+     duas vezes duplicaria os itens na tela. */
+  const obraComAditivos = useMemo(() => (obra
+    ? { ...obra, categorias: categoriasComAditivos(obra.categorias, obra.aditivos) }
+    : obra), [obra]);
 
   /* Apresentação de especificações a partir da obra: o botão no topo abre
      o mesmo editor do Catálogo já com esta obra escolhida. */
@@ -20685,6 +20730,7 @@ export default function App() {
         .gc-cel-barra { display: flex; align-items: center; gap: 8px; }
         .gc-cel-txt { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
         .gc-cel-est { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
+        .fechamento-detalhe { display: block; font-size: 10.5px; font-weight: 400; color: var(--ink-3); margin-top: 2px; }
         .gc-selo { display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 20px; padding: 3px 9px; font-size: 10.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
         .gc-selo.atraso { background: var(--red-bg); color: var(--red); }
         .gc-selo.perto { background: var(--amber-bg); color: var(--amber); }
@@ -21248,7 +21294,7 @@ export default function App() {
             ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
-          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onLiberarSemCliente={liberarSemAprovacaoDoCliente} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onLiberarSemCliente={liberarSemAprovacaoDoCliente} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "assinatura_cliente" && (
             <>
               <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}
@@ -21256,7 +21302,7 @@ export default function App() {
               {/* A aprovacao PARCIAL, embaixo da assinatura: a tela de cima
                   continua sendo a da obra inteira, e esta responde "o que o
                   cliente ainda esta segurando?". */}
-              <AprovacaoClienteItens grupos={itensParaLiberar(obra)} obra={obra}
+              <AprovacaoClienteItens grupos={itensParaLiberar(obraComAditivos)} obra={obraComAditivos}
                 podeEditar={edicao.minha} onAprovar={aprovarItensPeloCliente} />
             </>
           )}

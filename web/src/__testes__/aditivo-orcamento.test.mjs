@@ -49,9 +49,17 @@ const M = eval(`(function () {
   ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
+  // O alerta tecnico tem teste proprio; aqui so' precisa existir.
+  const alertaConferenciaTecnica = () => null;
+  ${src.slice(src.indexOf("const chaveDescricao ="), src.indexOf("\n", src.indexOf("const chaveDescricao =")) + 1)}
+  ${bloco("function liberadoParaCompra(")}
+  ${bloco("function aprovadoPeloCliente(")}
+  ${bloco("function pendenciaParaLiberar(")}
+  ${bloco("function podeLiberarItem(")}
+  ${bloco("function itensParaLiberar(")}
   ${bloco("function obraComprasStats(")}
   ${bloco("function indiceRealDoItem(")}
-  return { aditivosPorVerba, aditivosSemVerba, itensDeAditivo, categoriasComAditivos,
+  return { itensParaLiberar, aditivosPorVerba, aditivosSemVerba, itensDeAditivo, categoriasComAditivos,
            resumoAditivos, indiceRealDoItem, obraComprasStats,
            itensParaSupressao, acharNoExecutivo };
 })()`);
@@ -265,6 +273,29 @@ conf("não conta como aprovado", M.resumoAditivos([aguardando]).aprovados.length
 conf("aparece como em aberto", M.resumoAditivos([aguardando]).pendentes.length, 1);
 conf("junto com o rascunho", M.resumoAditivos([aguardando, rascunho]).pendentes.length, 2);
 conf("e o reprovado continua fora", M.resumoAditivos([reprovado]).pendentes.length, 0);
+
+/* ---- 11. O aditivo segue o fluxo inteiro ----
+   Pedido dela em 17/09/2026: o aditivo tem que aparecer na Conf.
+   Executivo, na aprovação do cliente e no Plano de Compras — "só se o
+   aditivo for aprovado".
+
+   As telas recebem a obra derivada (`categoriasComAditivos`), e é dela
+   que sai a lista de liberação. Este teste percorre esse caminho. */
+const obraComAditivo = { ...obraCrua, clienteAssinouEm: "2026-09-10",
+  categorias: M.categoriasComAditivos(categorias, todos) };
+const paraLiberar = M.itensParaLiberar(obraComAditivo);
+const daVerba21 = paraLiberar.find((g) => g.num === "21");
+conf("o item do aditivo chega na lista de liberação", daVerba21.itens.length, 2);
+conf("e é o da adição aprovada", daVerba21.itens[1].it.aditivo, "2405/1");
+/* Item de aditivo já nasce liberado (quem aprovou o aditivo já decidiu
+   comprar), então ele não trava a fila. */
+conf("ele já entra liberado", daVerba21.itens[1].liberado, true);
+
+/* Rascunho e reprovado NÃO entram — é a mesma regra das outras telas. */
+const soRascunho = { ...obraCrua, categorias: M.categoriasComAditivos(categorias, [rascunho, reprovado]) };
+const semAprovado = M.itensParaLiberar(soRascunho);
+conf("aditivo em rascunho não vira linha", semAprovado.find((g) => g.num === "21").itens.length, 1);
+conf("nem o reprovado", semAprovado.some((g) => g.itens.some((x) => x.it.aditivo)), false);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
