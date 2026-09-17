@@ -134,6 +134,9 @@ conf("liberar compras NÃO vai por patch",
 /* ---- 3. Falha sempre cai no salvamento de sempre ---- */
 conf("o salvamento tenta o patch primeiro", /const p = await aplicarPatchObra\(obra\.codigo, fila\);/.test(src), true);
 conf("patch recusado não é tratado como sucesso", src.includes("p?.ok && !(p.recusados && p.recusados.length)"), true);
+/* O desvio é seguro, mas silencioso — e silêncio não se diagnostica. */
+conf("e o desvio deixa rastro no console", src.includes('console.warn("[obra] patch não aplicado, gravando a obra inteira:"'), true);
+conf("dizendo o motivo", src.includes("a função aplicar_patch_obra ainda não existe no banco"), true);
 conf("e depois dele vem o salvamento inteiro",
   src.indexOf("await aplicarPatchObra(") < src.indexOf("const r = await salvarDadosObra(obra.codigo, obra, usuario);"), true);
 conf("sem a função no banco, o lib avisa em vez de estourar", lib.includes("return { semFuncao: true };"), true);

@@ -18487,6 +18487,14 @@ export default function App() {
             setTimeout(() => setSalvando(null), 2000);
             return;
           }
+          /* Cair no salvamento inteiro é seguro, mas silencioso — e silêncio
+             não se diagnostica. O aviso diz POR QUE caiu: SQL não rodado,
+             trava de outra pessoa, ou patch recusado porque a posição do item
+             não bate mais. Não vira erro na tela: o trabalho está sendo
+             gravado do mesmo jeito. */
+          console.warn("[obra] patch não aplicado, gravando a obra inteira:",
+            p?.semFuncao ? "a função aplicar_patch_obra ainda não existe no banco"
+            : p?.motivo || `${p?.recusados?.length || 0} patch(es) recusado(s)`, p);
         }
         const r = await salvarDadosObra(obra.codigo, obra, usuario);
         filaPatch.current = [];
