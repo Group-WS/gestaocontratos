@@ -105,5 +105,38 @@ conf("unidade ausente e vazia são a mesma chave",
   M.chaveDoInsumo({ codigo: "1", descricao: "X" }) === M.chaveDoInsumo({ codigo: "1", descricao: "X", unidade: "" }), true);
 conf("base vazia: tudo é novo", M.soOsNovos(cadastro.precos, new Set()).novos.length, 3);
 
+/* ---- 4. O CADASTRO ATIVO, em lista propria ----
+   Pedido dela em 17/09/2026: "atualize o banco de dados de insumos ativos
+   do sienge para fazer a associacao corretamente. ex, mesa de centro nao ta
+   ativo, n pode mostrar oque esta inativo."
+
+   Esta lista é a fonte de DUAS coisas que a base de preços não sabe dizer:
+   quem está ativo, e como o Sienge chama o insumo HOJE. Ela não pode ser
+   deduzida de `precos` — o leitor descarta linha em "vb" (valor fechado),
+   linha sem data e linha sem preço, e esses insumos continuam ativos. */
+const cad = new Map(cadastro.cadastroAtivo.map((c) => [c.codigo, c]));
+conf("o cadastro vem em lista própria", cad.size, 4);
+conf("com o nome de agora", cad.get("3063")?.descricao, ARANDELA);
+conf("e com a unidade", cad.get("25")?.unidade, "mes");
+conf("preço de tabela quando existe", cad.get("25")?.precoTabela, 40.12);
+conf("... e nulo quando é zero", cad.get("3063")?.precoTabela, "null");
+conf("vb entra no cadastro, mesmo fora dos preços", cad.has("1"), true);
+conf("... e continua fora da lista de preços", cadastro.precos.some((p) => p.codigo === "1"), false);
+conf("o inativo NÃO entra no cadastro", cad.has("4756"), false);
+conf("código repetido entra uma vez só", cadastro.cadastroAtivo.filter((c) => c.codigo === "3065").length, 1);
+conf("o código vem como texto, igual ao banco", typeof cadastro.cadastroAtivo[0].codigo, "string");
+conf("o relatório de pedidos não fala de cadastro", pedidos.cadastroAtivo.length, 0);
+
+/* Linha ativa que o leitor descarta por FALTA DE DATA também sobrevive no
+   cadastro: sem data não dá preço de referência, mas o insumo existe. */
+const semData = await M.lerSiengeExcel(arquivo("sem-data.xlsx", [
+  ["Código", "Descrição", V, V, V, V, "Unidade", V, V, "Preço unitário", "Data do preço", "Ativo"],
+  [9001, "CAIXA DE PASSAGEM", V, V, V, V, "un", V, V, 10, V, "Sim"],
+  [9002, "MESA DE CENTRO", V, V, V, V, "un", V, V, 300, "30/08/2024", "Não"],
+]));
+conf("ativo sem data fica no cadastro", semData.cadastroAtivo.some((c) => c.codigo === "9001"), true);
+conf("... mesmo sem virar preço", semData.precos.length, 0);
+conf("e a mesa de centro inativa fica fora", semData.cadastroAtivo.some((c) => c.codigo === "9002"), false);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

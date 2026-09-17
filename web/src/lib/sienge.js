@@ -126,8 +126,29 @@ export function partesDoInsumo(descricao) {
   return { mae: p[0] || "", detalhe: p.slice(1).join(SEP) };
 }
 
-/** Agrupa a base por código: cada grupo é uma mãe com suas variantes. */
-export function agruparPorMae(base) {
+/** Agrupa a base por código: cada grupo é uma mãe com suas variantes.
+ *
+ * `cadastro` é o cadastro de insumos ATIVOS do Sienge (tabela
+ * `insumo_sienge`). Quando ele vem, MANDA em duas coisas — e é por isso que
+ * ele existe (pedido dela em 17/09/2026):
+ *
+ *   1. O NOME é o de agora. Sem o cadastro, o nome da mãe é o mais
+ *      repetido na base de preços — e a base tem uma linha por compra. O
+ *      código 411 continua ativo no Sienge chamando-se "MOBÍLIA SOLTA -
+ *      MESAS AUXILIARES", mas as dezenas de compras antigas dizem "MOBÍLIA
+ *      SOLTA - MESA DE CENTRO/LATERAL", então o velho ganhava por maioria.
+ *      Era isso que ela via: "mesa de centro nao ta ativo, n pode mostrar
+ *      oque esta inativo".
+ *   2. O QUE APARECE. Código que não está no cadastro saiu do ar no
+ *      Sienge, e não é oferecido — nem mesmo tendo compras na base. O
+ *      preço pago continua guardado em `insumo_preco`; ele é histórico da
+ *      obra e não some porque o Sienge desativou o item.
+ *
+ * Sem cadastro (tabela vazia, ou o SQL ainda não rodado), o comportamento é
+ * exatamente o de antes: nenhuma tela para de funcionar por causa de uma
+ * importação que ainda não aconteceu.
+ */
+export function agruparPorMae(base, cadastro = null) {
   const m = new Map();
   (base || []).forEach((i) => {
     const { mae, detalhe } = partesDoInsumo(i.descricao);
@@ -143,7 +164,36 @@ export function agruparPorMae(base) {
     g.variantes.forEach((v) => cont.set(v.mae, (cont.get(v.mae) || 0) + 1));
     g.nome = [...cont.entries()].sort((a, b) => b[1] - a[1])[0][0];
   });
-  return [...m.values()];
+
+  const ativos = new Map();
+  (cadastro || []).forEach((c) => {
+    const cod = String(c?.codigo ?? "").trim();
+    if (cod) ativos.set(cod, c);
+  });
+  if (!ativos.size) return [...m.values()];
+
+  const grupos = [];
+  ativos.forEach((c, cod) => {
+    const { mae } = partesDoInsumo(c.descricao);
+    const g = m.get(cod);
+    if (g) {
+      // O nome do cadastro entra como mãe também nas variantes: é ele que
+      // a tela mostra, e é por ele que a busca da mãe casa.
+      g.nome = mae || g.nome;
+      grupos.push(g);
+      return;
+    }
+    /* Insumo ativo que a obra nunca comprou: entra com ele mesmo como
+       variante. Sem isso, insumo novo do Sienge ficaria invisível até a
+       primeira compra — e é justamente na primeira que alguém precisa
+       associar. */
+    grupos.push({
+      codigo: cod,
+      nome: mae,
+      variantes: [{ codigo: cod, descricao: c.descricao, unidade: c.unidade || "", custoUnitario: 0, mae, detalhe: mae }],
+    });
+  });
+  return grupos;
 }
 
 /* Acha a MÃE do item — que coisa é, antes de qual variante.

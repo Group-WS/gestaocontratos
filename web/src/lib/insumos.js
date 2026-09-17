@@ -183,6 +183,98 @@ export async function sugerirPrecos(descricao, limite = 6) {
   return data || [];
 }
 
+/* ============================================================
+   O CADASTRO DE INSUMOS ATIVOS DO SIENGE (17/09/2026)
+
+   Pedido dela: "atualize o banco de dados de insumos ativos do sienge para
+   fazer a associacao corretamente. ex, mesa de centro nao ta ativo, n pode
+   mostrar oque esta inativo."
+
+   Por que uma tabela separada da base de precos:
+
+   `insumo_preco` guarda UMA LINHA POR COMPRA — 10.507 linhas, muitas com o
+   nome que o insumo tinha na epoca. O codigo 411 e o exemplo dela: continua
+   ativo no Sienge, mas hoje se chama "MOBILIA SOLTA - MESAS AUXILIARES", e
+   a associacao mostrava "MESA DE CENTRO/LATERAL" porque esse era o nome
+   mais repetido nas compras antigas.
+
+   Entao o que faltava nao era esconder preco: era ter a lista do que o
+   Sienge chama de insumo HOJE. Esta tabela e' essa lista, e o relatorio de
+   Insumos e' a fonte dela.
+
+   Precisa do `supabase/insumo-sienge.sql`. Enquanto a tabela nao existir ou
+   estiver vazia, tudo aqui devolve vazio em silencio e o app se comporta
+   como antes — importar cadastro e' o que liga a regra.
+   ============================================================ */
+
+const semTabelaCadastro = (e) => e?.code === "42P01" || /insumo_sienge/.test(e?.message || "");
+
+/** O cadastro inteiro: { codigo, descricao, unidade }. Vazio = regra desligada. */
+export async function carregarCadastroSienge() {
+  if (!supabaseConfigurado) return [];
+  const todos = [];
+  const passo = 1000;
+  for (let de = 0; ; de += passo) {
+    const { data, error } = await supabase
+      .from("insumo_sienge")
+      .select("codigo, descricao, unidade")
+      .range(de, de + passo - 1);
+    // Tabela ainda nao criada: nao e' erro de tela, e' regra desligada.
+    if (error) { if (semTabelaCadastro(error)) return []; throw error; }
+    todos.push(...(data || []));
+    if (!data || data.length < passo) break;
+  }
+  return todos;
+}
+
+/**
+ * Grava o cadastro lido do relatorio: o que existe atualiza o nome, o que
+ * nao veio no relatorio SAI da tabela.
+ *
+ * Sair da tabela e' o unico jeito de o insumo desativado parar de ser
+ * oferecido, e e' seguro: aqui nao mora preco pago nenhum — isso fica em
+ * `insumo_preco`, que esta funcao nao encosta.
+ */
+export async function salvarCadastroSienge(insumos, usuario, onProgresso) {
+  if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
+  const lista = (insumos || [])
+    .map((i) => ({
+      codigo: String(i.codigo || "").trim(),
+      descricao: String(i.descricao || "").replace(/\s+/g, " ").trim(),
+      unidade: String(i.unidade || "").trim(),
+      preco_tabela: Number.isFinite(i.precoTabela) ? i.precoTabela : null,
+      importado_por: usuario || null,
+    }))
+    .filter((i) => i.codigo && i.descricao);
+  // Relatorio vazio nao apaga o cadastro do time: arquivo lido errado
+  // chegaria exatamente assim.
+  if (!lista.length) return { gravados: 0, removidos: 0 };
+
+  const vistos = new Set();
+  const unicos = lista.filter((i) => (vistos.has(i.codigo) ? false : vistos.add(i.codigo)));
+
+  let gravados = 0;
+  for (let i = 0; i < unicos.length; i += TAMANHO_BLOCO) {
+    const bloco = unicos.slice(i, i + TAMANHO_BLOCO);
+    const { error } = await supabase.from("insumo_sienge").upsert(bloco, { onConflict: "codigo" });
+    if (error) { if (semTabelaCadastro(error)) return { gravados: 0, removidos: 0, semTabela: true }; throw error; }
+    gravados += bloco.length;
+    if (onProgresso) onProgresso(gravados, unicos.length);
+  }
+
+  // O que saiu do cadastro. Em blocos porque a lista de codigos vai na URL.
+  const antigos = await carregarCadastroSienge();
+  const sairam = antigos.map((a) => String(a.codigo)).filter((c) => !vistos.has(c));
+  let removidos = 0;
+  for (let i = 0; i < sairam.length; i += 150) {
+    const bloco = sairam.slice(i, i + 150);
+    const { error } = await supabase.from("insumo_sienge").delete().in("codigo", bloco);
+    if (error) throw error;
+    removidos += bloco.length;
+  }
+  return { gravados, removidos };
+}
+
 export async function limparPrecos() {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
   const { error } = await supabase.from("insumo_preco").delete().gte("id", 0);

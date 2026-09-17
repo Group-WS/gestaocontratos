@@ -233,5 +233,55 @@ conf("e a linha de mão de obra não entra", M.itensParaLiberar(partido)[0]?.ite
 conf("a tela do cliente abre em todos", /const \[filtro, setFiltro\] = useState\("todos"\);/.test(src), true);
 conf("e pede a lista com mão de obra", /itensParaLiberar\(obraComAditivos, null, \{ comMaoDeObra: true \}\)/.test(src), true);
 
+/* ---- LIBERAR O GRUPO INTEIRO ----
+   Pedido dela em 17/09/2026: "colocar opcao para liberar todos para compra
+   por grupo". O "Liberar N" já existia, mas só pegava o que podia — e na
+   verba onde TODOS os itens estão travados pelo alerta não aparecia botão
+   nenhum. Era exatamente a tela que ela estava olhando.
+
+   O segundo botão confere o alerta no nome de quem clicou e libera. O que
+   ele NÃO pode fazer nunca é varrer junto o que espera o cliente: aquilo é
+   portão com justificativa, linha por linha. */
+const verba = M.itensParaLiberar({
+  categorias: [{ num: "05", nome: "Instalações Elétricas e Iluminação", itens: [
+    { desc: "LED FLEX 10W", codigo: "05.1", totalMaterial: 100, aprovadoCliente: { em: "x" } },
+    { desc: "Mesa de apoio", codigo: "05.2", totalMaterial: 200, aprovadoCliente: { em: "x" } },
+    { desc: "Mesa de centro", codigo: "05.3", totalMaterial: 300, aprovadoCliente: { em: "x" }, alertaConferido: { em: "x", por: "ana" } },
+    { desc: "Fonte 12V", codigo: "05.4", totalMaterial: 400 },
+    { desc: "Fita LED", codigo: "05.5", totalMaterial: 500, canalCompra: "sienge" },
+  ] }],
+})[0];
+// O mesmo cálculo que a tela faz no cabeçalho do grupo.
+const faltam = verba.itens.filter((x) => !x.liberado && x.pode);
+const travadosAqui = verba.itens.filter((x) => !x.liberado && !x.pode && x.pendencia?.tipo !== "cliente");
+conf("o grupo tem 5 produtos", verba.nProdutos, 5);
+conf("o Liberar N pega quem já pode", faltam.map((x) => x.it.codigo).join(","), "05.1,05.3");
+conf("alerta já conferido também entra no Liberar N", faltam.some((x) => x.it.codigo === "05.3"), true);
+conf("travado por alerta entra no botão do alerta", travadosAqui.map((x) => x.it.codigo).join(","), "05.2");
+conf("quem espera o cliente NÃO é varrido", travadosAqui.some((x) => x.it.codigo === "05.4"), false);
+conf("e quem já está liberado fica fora dos dois",
+  faltam.concat(travadosAqui).some((x) => x.it.codigo === "05.5"), false);
+conf("os dois botões nunca pegam o mesmo item",
+  faltam.some((a) => travadosAqui.some((b) => a.chave === b.chave)), false);
+
+/* A tela: o botão existe, e a função que carimba vários chega até ela. */
+conf("o botão do grupo está na tela", src.includes("Conferi os alertas · liberar {travadosAqui.length}"), true);
+conf("ele confere e libera os mesmos alvos",
+  /onConferirVarios\(alvos, true\);\s*\n\s*onLiberar\(alvos, true\);/.test(src), true);
+conf("a função de carimbar vários existe", /function conferirAlertasEmVarios\(alvos, marcado\) \{/.test(src), true);
+conf("e ela grava por patch, item a item",
+  /enfileirarEmVarios\(alvos, \{ alertaConferido: carimbo \}\)/.test(src), true);
+conf("o App entrega a função para a tela",
+  /onConferirAlertaEmVarios=\{conferirAlertasEmVarios\}/.test(src), true);
+conf("a tela repassa para a lista", /onConferirVarios=\{onConferirAlertaEmVarios\}/.test(src), true);
+
+/* O CONTADOR DO GRUPO conta o GRUPO, não o recorte da tela.
+   Com o filtro de travados ligado ela leu "13 de 8 liberados": 13 da verba
+   inteira, 8 do que sobrou na tela. */
+conf("o contador usa os produtos do grupo",
+  src.includes("{g.liberados} de {g.nProdutos ?? g.itens.length} liberados"), true);
+conf("e o que está na tela vira um segundo número",
+  src.includes('{g.itens.length} {soTravados ? (g.itens.length === 1 ? "travado" : "travados") : "nesta busca"}'), true);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

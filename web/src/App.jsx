@@ -57,7 +57,7 @@ import {
 } from "./lib/parcelas";
 import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate, limparTemplate, auxiliarEstavel, norm as normSienge } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
-import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos } from "./lib/insumos";
+import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos, carregarCadastroSienge, salvarCadastroSienge } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
@@ -2321,7 +2321,10 @@ function historicoDerivado(obra) {
   (obra?.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
     if (it.ehTitulo) return;
     const item = itemDoHistorico(it, cat);
-    anota({ tipo: "liberou_compra", em: it.liberadoCompra?.em, por: it.liberadoCompra?.por, item });
+    /* Liberacao que veio da correcao de alocacao nao passou pela
+       conferencia; a linha diz isso em vez de parecer igual as outras. */
+    anota({ tipo: "liberou_compra", em: it.liberadoCompra?.em, por: it.liberadoCompra?.por, item,
+          detalhe: it.liberadoCompra?.viaAlocacao ? "ao corrigir a alocação" : null });
     anota({ tipo: "aprovou_cliente", em: it.aprovadoCliente?.em, por: it.aprovadoCliente?.por, item });
     anota({ tipo: "conferiu_alerta", em: it.alertaConferido?.em, por: it.alertaConferido?.por, item });
     anota({ tipo: "liberou_sem_cliente", em: it.liberadoSemCliente?.em, por: it.liberadoSemCliente?.por, item,
@@ -6533,7 +6536,7 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
    Item com alerta so' libera depois que alguem marcar que conferiu — e o
    "liberar a verba inteira" respeita isso, senao o atalho passaria por
    cima da verificacao que e' o motivo da regra existir. */
-function LiberarCompraView({ grupos: todosOsGrupos, busca = "", podeEditar, onLiberar, onConferir, onLiberarSemCliente }) {
+function LiberarCompraView({ grupos: todosOsGrupos, busca = "", podeEditar, onLiberar, onConferir, onConferirVarios, onLiberarSemCliente }) {
   const [abertos, setAbertos] = useState(() => new Set());
   /* "46 produtos esperam a conferência do alerta" contava e não levava a
      lugar nenhum: ela leu o aviso e não achou os 46 (17/09/2026). Agora o
@@ -6604,6 +6607,21 @@ function LiberarCompraView({ grupos: todosOsGrupos, busca = "", podeEditar, onLi
           // em cada verba não é procurar.
           const aberto = abertos.has(g.num) || filtrando;
           const faltam = g.itens.filter((x) => !x.liberado && x.pode);
+          /* LIBERAR O GRUPO INTEIRO (pedido dela em 17/09/2026: "colocar
+             opcao para liberar todos para compra por grupo").
+
+             O "Liberar N" de sempre pega o que ja' pode. Faltava o resto: a
+             verba onde TODOS os itens estao travados pelo alerta nao mostrava
+             botao nenhum, e era exatamente a tela que ela estava olhando.
+
+             Estes aqui saem com o alerta conferido NO NOME DE QUEM CLICOU, um
+             carimbo por item — o portao continua existindo, o que muda e' o
+             numero de cliques pra passar por ele conscientemente.
+
+             O cliente fica de fora de proposito: falta de aprovacao do
+             cliente nao e' alerta pra conferir, e' portao com justificativa
+             (o "liberar mesmo assim", linha por linha). */
+          const travadosAqui = g.itens.filter((x) => !x.liberado && !x.pode && x.pendencia?.tipo !== "cliente");
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
@@ -6612,7 +6630,19 @@ function LiberarCompraView({ grupos: todosOsGrupos, busca = "", podeEditar, onLi
                     {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                     <span className="grp-num mono">{g.num}</span>
                     <span className="grp-nome">{g.nome}</span>
-                    <span className="grp-conta">{g.liberados} de {g.itens.length} liberados</span>
+                    {/* O CONTADOR E' DO GRUPO, sempre — nao do recorte na tela.
+
+                        Com o filtro de travados ligado ela leu "13 de 8
+                        liberados" (17/09/2026): os 13 eram da verba inteira e
+                        os 8 eram o que tinha sobrado na tela. Agora o de
+                        dentro diz o grupo, e o que esta' na tela vira um
+                        segundo numero, dito com o nome do filtro. */}
+                    <span className="grp-conta">{g.liberados} de {g.nProdutos ?? g.itens.length} liberados</span>
+                    {filtrando && (
+                      <span className="grp-conta grp-conta-filtro">
+                        {g.itens.length} {soTravados ? (g.itens.length === 1 ? "travado" : "travados") : "nesta busca"}
+                      </span>
+                    )}
                   </div>
                 </button>
                 <div className="grp-dir">
@@ -6620,6 +6650,17 @@ function LiberarCompraView({ grupos: todosOsGrupos, busca = "", podeEditar, onLi
                   {podeEditar && faltam.length > 0 && (
                     <button className="btn-aprovar-linha" onClick={() => onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
                       <Check size={12} /> Liberar {faltam.length}
+                    </button>
+                  )}
+                  {podeEditar && onConferirVarios && travadosAqui.length > 0 && (
+                    <button className="btn-aprovar-linha btn-conferir-liberar"
+                      title={`Marca o alerta como conferido no seu nome nos ${travadosAqui.length} produtos e libera os ${travadosAqui.length} para compra`}
+                      onClick={() => {
+                        const alvos = travadosAqui.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
+                        onConferirVarios(alvos, true);
+                        onLiberar(alvos, true);
+                      }}>
+                      <AlertTriangle size={12} /> Conferi os alertas · liberar {travadosAqui.length}
                     </button>
                   )}
                 </div>
@@ -6710,7 +6751,7 @@ function LiberarCompraView({ grupos: todosOsGrupos, busca = "", podeEditar, onLi
   );
 }
 
-function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, onLiberarCompra, onConferirAlerta, onLiberarSemCliente }) {
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente }) {
   // Vem da obra e é gravado no banco. Antes era useState local: as
   // aprovações valiam só na sessão e sumiam no F5.
   const aprovacoes = obra.aprovacoes || new Set();
@@ -6787,7 +6828,8 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         contador: `${gruposParaLiberar.reduce((a, g) => a + g.liberados, 0)}/${gruposParaLiberar.reduce((a, g) => a + g.itens.length, 0)}`,
         render: (busca) => (
           <LiberarCompraView grupos={gruposParaLiberar} busca={busca} podeEditar={podeEditar}
-            onLiberar={onLiberarCompra} onConferir={onConferirAlerta} onLiberarSemCliente={onLiberarSemCliente} />
+            onLiberar={onLiberarCompra} onConferir={onConferirAlerta} onConferirVarios={onConferirAlertaEmVarios}
+            onLiberarSemCliente={onLiberarSemCliente} />
         ),
       }}
       onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
@@ -8980,6 +9022,35 @@ function liberadoParaCompra(it) {
   return !!(it.comprado || it.canalCompra || it.solicitado || it.avulso || it.aditivo);
 }
 
+/* CORRIGIR A ALOCACAO NAO MANDA O ITEM PRA FILA DE LIBERACAO.
+
+   Pedido dela em 17/09/2026: "quando muda a alocacao de recurso no plano de
+   compras ele pede uma liberacao. corrija isso, nao precisa liberar
+   novamente."
+
+   O que acontecia: mao de obra nao aparece na fila de liberacao, porque mao
+   de obra vai pra Contratos. Quando a alocacao muda pra material, o item
+   entra no fluxo de compra pela PRIMEIRA vez — e, sem carimbo, nascia "a
+   liberar". Do lado dela isso le como "pediu liberacao de novo".
+
+   Decisao dela: o item entra JA' LIBERADO. Corrigir onde o dinheiro senta
+   nao e' mudar escopo, e o item ja' estava no plano.
+
+   O carimbo sai com `viaAlocacao`, e o historico diz isso na linha: essa
+   liberacao nao passou pela conferencia, e quem for olhar depois precisa
+   saber disso sem adivinhar.
+
+   Devolve o carimbo a aplicar, ou `null` pra "nao mexe":
+   - mao de obra nao se compra, entao nao se libera;
+   - o que ja' conta como liberado fica como esta' — nao reescreve o nome
+     nem a data de quem liberou antes. */
+function liberacaoAoRealocar(item, alocEfetiva, { em, por } = {}) {
+  if (!item || item.ehTitulo) return null;
+  if (alocEfetiva === ALOC_MO) return null;
+  if (liberadoParaCompra(item)) return null;
+  return { em, por, viaAlocacao: true };
+}
+
 /* O que obriga a olhar antes de liberar.
 
    O alerta tecnico e' recalculado da DESCRICAO do proprio item — funcao
@@ -9303,19 +9374,26 @@ function GeradorSiengeView() {
   const [auxSorteado, setAuxSorteado] = useState(() => new Set());
   const [codDet, setCodDet] = useState(() => new Map());
 
+  /* O CADASTRO ATIVO vem junto da base, numa ida so'.
+
+     A base de precos tem uma linha por compra, com o nome da epoca; o
+     cadastro tem uma linha por insumo, com o nome de agora. Quem manda no
+     que aparece e' o cadastro (ver `agruparPorMae`). */
+  const [cadastroSienge, setCadastroSienge] = useState(null);
+
   // A base carrega sozinha: sem ela a tela nao faz nada, e pedir um
   // clique pra habilitar a unica funcao da tela e' cerimonia.
   useEffect(() => {
     let vivo = true;
     setCarregando(true);
-    carregarTodosInsumos()
-      .then((b) => { if (vivo) { setBaseSienge(b); if (!b.length) setErro("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços."); } })
+    Promise.all([carregarTodosInsumos(), carregarCadastroSienge()])
+      .then(([b, cad]) => { if (vivo) { setBaseSienge(b); setCadastroSienge(cad); if (!b.length && !cad.length) setErro("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços."); } })
       .catch((e) => { if (vivo) setErro(`Não consegui ler a base de insumos: ${e.message || e}`); })
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };
   }, []);
 
-  const grupos = useMemo(() => (baseSienge ? agruparPorMae(baseSienge) : null), [baseSienge]);
+  const grupos = useMemo(() => (baseSienge ? agruparPorMae(baseSienge, cadastroSienge) : null), [baseSienge, cadastroSienge]);
 
   const casados = useMemo(() => {
     if (!grupos || !linhas) return [];
@@ -10015,6 +10093,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   const casaRow = (r) => casaBusca(textoDoItem(r.it, { num: r.catNum, nome: r.catNome }), busca);
   const [abertos, setAbertos] = useState(() => new Set());
   const [baseSienge, setBaseSienge] = useState(null);
+  /* O cadastro ativo do Sienge: ele diz quais insumos existem hoje e
+     como cada um se chama agora (ver `agruparPorMae`). */
+  const [cadastroSienge, setCadastroSienge] = useState(null);
   const [resultado, setResultado] = useState(null);
   // O pedido so existe na tela enquanto imprime; fora disso ele nao ocupa
   // espaco nem confunde com a lista de trabalho.
@@ -10244,7 +10325,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   /* A base agrupada por MAE: o codigo do Sienge se repete, e debaixo de
      cada um moram as variantes. Agrupar uma vez custa uma passada; fazer
      por linha custaria 126 x 10.507. */
-  const grupos = useMemo(() => (baseSienge ? agruparPorMae(baseSienge) : null), [baseSienge]);
+  const grupos = useMemo(() => (baseSienge ? agruparPorMae(baseSienge, cadastroSienge) : null), [baseSienge, cadastroSienge]);
 
   /* Os candidatos de cada produto, guardados por linha. Estado, e não
      conta derivada dos produtos: derivada, ela refazia a busca da obra
@@ -10320,11 +10401,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   async function recarregarBase() {
     setCarregando(true); setErroBase(null);
     try {
-      const base = await carregarTodosInsumos();
+      const [base, cad] = await Promise.all([carregarTodosInsumos(), carregarCadastroSienge()]);
       setBaseSienge(base);
+      setCadastroSienge(cad);
       // As sugestões de antes eram da base velha.
       setCasamentos(new Map());
-      if (!base.length) setErroBase("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços.");
+      if (!base.length && !cad.length) setErroBase("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços.");
     } catch (e) {
       setErroBase(`Não consegui ler a base de insumos: ${e.message || e}`);
     } finally { setCarregando(false); }
@@ -10335,10 +10417,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     try {
       let base = grupos;
       if (!base) {
-        const insumos = await carregarTodosInsumos();
-        if (!insumos.length) { setErroBase("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços."); return; }
+        const [insumos, cad] = await Promise.all([carregarTodosInsumos(), carregarCadastroSienge()]);
+        if (!insumos.length && !cad.length) { setErroBase("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços."); return; }
         setBaseSienge(insumos);
-        base = agruparPorMae(insumos);
+        setCadastroSienge(cad);
+        base = agruparPorMae(insumos, cad);
       }
       // Deixa a tela mostrar o "Associando…" antes da conta, que é pesada.
       await new Promise((ok) => setTimeout(ok, 30));
@@ -16915,6 +16998,16 @@ async function lerSiengeExcel(file) {
   const cadastro = iAtivo >= 0;
 
   const mapa = new Map();
+  /* O CADASTRO ATIVO, em lista propria: codigo, nome de agora e unidade.
+
+     Nao da' pra deduzir isso de `precos`, por duas razoes. A primeira: o
+     leitor descarta linha em "vb" (valor fechado), linha sem data e linha
+     sem preco — e esses insumos continuam ATIVOS no Sienge. A segunda, que
+     e' o pedido dela: o nome. O codigo 411 hoje se chama "MOBILIA SOLTA -
+     MESAS AUXILIARES" no Sienge, e e' esse nome que a associacao tem que
+     mostrar, em vez do "MESA DE CENTRO/LATERAL" que ficou nas compras
+     antigas. */
+  const cadastroAtivo = new Map();
   let descartadosVb = 0, inativos = 0;
   for (let i = headerIdx + 1; i < linhas.length; i++) {
     const row = linhas[i];
@@ -16924,6 +17017,17 @@ async function lerSiengeExcel(file) {
     const preco = parseBRL(row[iPreco]);
     if (!cadastro && !(preco > 0)) continue;
     if (cadastro && /^n/i.test(String(row[iAtivo] ?? "").trim())) { inativos += 1; continue; }
+    if (cadastro) {
+      const cod = String(row[iCod] ?? "").trim();
+      // Primeira linha do codigo ganha: o relatorio traz um nome por codigo.
+      if (cod && !cadastroAtivo.has(cod)) {
+        cadastroAtivo.set(cod, {
+          codigo: cod, descricao,
+          unidade: String(row[iUn] ?? "").toLowerCase().trim(),
+          precoTabela: preco > 0 ? preco : null,
+        });
+      }
+    }
     const unidade = String(row[iUn] ?? "").toLowerCase().trim();
     if (unidade === "vb") { descartadosVb += 1; continue; } // valor fechado, não é preço unitário
 
@@ -16936,7 +17040,8 @@ async function lerSiengeExcel(file) {
       mapa.set(chave, { codigo, descricao, unidade, custoUnitario: preco > 0 ? preco : 0, dataRef, fornecedor: iForn >= 0 ? String(row[iForn] ?? "").trim() || null : null });
     }
   }
-  return { precos: Array.from(mapa.values()), cadastro, descartadosVb, inativos };
+  return { precos: Array.from(mapa.values()), cadastro, descartadosVb, inativos,
+           cadastroAtivo: Array.from(cadastroAtivo.values()) };
 }
 
 // aceita Date (do Excel) ou texto "dd/mm/aaaa" e devolve "aaaa-mm-dd"
@@ -17269,7 +17374,7 @@ function EapSiengeView({ usuario }) {
   );
 }
 
-function BancoPrecosView() {
+function BancoPrecosView({ usuario }) {
   const [busca, setBusca] = useState("");
   const [precos, setPrecos] = useState([]);
   const [total, setTotal] = useState(0);
@@ -17307,29 +17412,52 @@ function BancoPrecosView() {
      escrever por cima trocaria o preço pago por zero. Por isso ele só
      acrescenta o que falta — e, antes de gravar, mostra os números e pede
      confirmação: é a base do time inteiro. */
-  async function somarCadastro(lidos, { descartadosVb, inativos }) {
+  async function somarCadastro(lidos, { descartadosVb, inativos, cadastroAtivo }) {
     setImportando("Conferindo o que já está na base…");
     const { novos, jaExistiam } = soOsNovos(lidos, await chavesDaBase());
     setImportando(null);
     const n = (x) => x.toLocaleString("pt-BR");
     const fora = [descartadosVb ? `${n(descartadosVb)} em "vb"` : null, inativos ? `${n(inativos)} inativos` : null]
       .filter(Boolean).join(" e ");
-    if (novos.length === 0) {
-      alert(`Nenhum insumo novo: os ${n(lidos.length)} do cadastro já estão na base.`);
-      return;
-    }
+    /* O CADASTRO FAZ DUAS COISAS AGORA (17/09/2026).
+
+       Antes ele so' somava preco novo — e, quando nao havia nada a somar,
+       a importacao parava dizendo "nenhum insumo novo". Era exatamente o
+       caso dela: o cadastro nao tinha preco a acrescentar, mas era a
+       unica fonte do NOME de agora e da lista de quem continua ativo. Sem
+       isso, a associacao mostrava "MESA DE CENTRO/LATERAL", nome que o
+       Sienge nao usa mais. */
+    const doCadastro = cadastroAtivo && cadastroAtivo.length ? cadastroAtivo : lidos;
     const ok = window.confirm(
-      `Cadastro de insumos do Sienge — ${n(lidos.length)} insumos.\n\n` +
-      `• ${n(novos.length)} são novos e vão entrar na base.\n` +
-      `• ${n(jaExistiam)} já estão na base e ficam como estão (o preço gravado não muda).\n` +
-      (fora ? `• ${fora} ficaram de fora.\n` : "") +
-      `\nGravar os ${n(novos.length)} novos?`
+      `Cadastro de insumos do Sienge — ${n(doCadastro.length)} insumos ativos.\n\n` +
+      `• a associação passa a usar estes ${n(doCadastro.length)}, com o nome atual do Sienge.\n` +
+      `• quem não está mais no cadastro deixa de ser oferecido na associação.\n` +
+      (novos.length
+        ? `• ${n(novos.length)} insumos novos entram na base de preços.\n`
+        : `• nenhum preço novo: os insumos já estavam na base.\n`) +
+      (fora ? `• ${fora} ficaram de fora da base de preços.\n` : "") +
+      `\nNenhum preço é apagado: o que a obra pagou continua guardado, inclusive de insumo que saiu do cadastro.\n\nSeguir?`
     );
     if (!ok) return;
-    await salvarPrecos(novos, (feitas, tot) => setImportando(`Gravando ${feitas} de ${tot}…`));
+    if (novos.length) {
+      await salvarPrecos(novos, (feitas, tot) => setImportando(`Gravando ${feitas} de ${tot}…`));
+    }
+    setImportando("Atualizando o cadastro de insumos ativos…");
+    const { gravados, removidos, semTabela } = await salvarCadastroSienge(
+      doCadastro, usuario,
+      (feitos, tot) => setImportando(`Cadastro: ${n(feitos)} de ${n(tot)}…`),
+    );
     setImportando(null);
     await recarregar();
-    alert(`${n(novos.length)} insumos novos na base. ${n(jaExistiam)} já estavam lá e não mudaram.`);
+    alert(
+      (semTabela
+        ? `Os preços foram gravados, mas o cadastro de insumos ativos não: falta rodar o supabase/insumo-sienge.sql no Supabase. Até lá a associação continua como antes.`
+        : `Cadastro de insumos ativos atualizado: ${n(gravados)} insumos.` +
+          (removidos ? ` ${n(removidos)} saíram do Sienge e não são mais oferecidos na associação.` : "")) +
+      `\n\n` +
+      (novos.length ? `${n(novos.length)} preços novos na base. ` : "Nenhum preço novo. ") +
+      `${n(jaExistiam)} já estavam lá e não mudaram.`
+    );
   }
 
   async function aoEscolher(e) {
@@ -17340,11 +17468,11 @@ function BancoPrecosView() {
     setImportando("Lendo o arquivo…");
     try {
       const ehPDF = /\.pdf$/i.test(file.name);
-      const { precos: lidos, descartadosVb, cadastro, inativos } = ehPDF
+      const { precos: lidos, descartadosVb, cadastro, inativos, cadastroAtivo } = ehPDF
         ? await lerSiengePDF(file, (p, t) => setImportando(`Lendo página ${p} de ${t}…`))
         : await lerSiengeExcel(file);
       if (!lidos || lidos.length === 0) throw new Error("Não encontrei preços nesse arquivo.");
-      if (cadastro) { await somarCadastro(lidos, { descartadosVb, inativos }); return; }
+      if (cadastro) { await somarCadastro(lidos, { descartadosVb, inativos, cadastroAtivo }); return; }
       await salvarPrecos(lidos, (feitas, tot) => setImportando(`Gravando ${feitas} de ${tot}…`));
       setImportando(null);
       await recarregar();
@@ -17362,7 +17490,7 @@ function BancoPrecosView() {
         <div className="import-bar">
           <div className="import-info">
             <Upload size={14} />
-            <span>Suba o <b>Relação de Pedidos de Compra</b> do Sienge (PDF ou Excel). É o preço realmente pago; linhas em <b>vb</b> são ignoradas, porque valor fechado não serve de referência unitária. O <b>cadastro de Insumos</b> do Sienge (Excel) também entra: ele só acrescenta os insumos que faltam, sem mexer nos preços que já estão aqui.</span>
+            <span>Suba o <b>Relação de Pedidos de Compra</b> do Sienge (PDF ou Excel). É o preço realmente pago; linhas em <b>vb</b> são ignoradas, porque valor fechado não serve de referência unitária. O <b>cadastro de Insumos</b> do Sienge (Excel) também entra: ele acrescenta os preços que faltam sem mexer nos que já estão aqui e, principalmente, <b>é ele que diz quais insumos estão ativos e como o Sienge chama cada um hoje</b> — a associação usa essa lista.</span>
           </div>
           <button className="btn-import" disabled={!!importando} onClick={() => inputRef.current && inputRef.current.click()}>
             <Upload size={13} /> {importando || "Importar do Sienge"}
@@ -19254,7 +19382,19 @@ export default function App() {
      clique e a correcao sobreviver mesmo se o banco recusar; e na tabela
      da empresa, pra toda obra com a mesma descricao ja nascer certa. */
   function definirAlocacao(catIdx, itemIdx, item, valor) {
-    updateItem(catIdx, itemIdx, { alocacaoManual: valor });
+    /* A alocacao efetiva vem de `alocacaoDoItem`, e nao do `valor` cru:
+       limpar a correcao manual devolve o item pras regras de parcela, e
+       ai ele pode voltar a ser mao de obra — que nao se libera.
+
+       Os dois campos vao no MESMO patch de proposito: dois `updateItem`
+       seguidos no mesmo item fazem o segundo ler o estado velho. */
+    const depois = { ...item, alocacaoManual: valor };
+    const carimbo = liberacaoAoRealocar(item, alocacaoDoItem(depois, obra?.categorias?.[catIdx]), {
+      em: new Date().toISOString(), por: usuario,
+    });
+    updateItem(catIdx, itemIdx, carimbo
+      ? { alocacaoManual: valor, liberadoCompra: carimbo }
+      : { alocacaoManual: valor });
     salvarAlocacaoPadrao(item.desc, valor, usuario)
       .catch((e) => setErroBanco(
         `Alocação aplicada nesta obra, mas não virou padrão da empresa: ${e.message || e}. ` +
@@ -19403,6 +19543,35 @@ export default function App() {
         const quais = porCat.get(ci);
         if (!quais) return c;
         return { ...c, itens: (c.itens || []).map((it, ii) => (quais.has(ii) ? { ...it, liberadoCompra: carimbo } : it)) };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  /* Conferir o alerta de VARIOS itens numa passada.
+
+     E' o que o botao do grupo usa. Mesma razao do `liberarItensParaCompra`:
+     uma verba sao dezenas de linhas, e dezenas de atualizacoes de estado
+     seguidas fazem a tela piscar e o salvamento disparar em rajada.
+
+     O carimbo sai com nome e hora item a item, igual ao do "conferi" de uma
+     linha: liberar a verba inteira nao pode custar menos rastro do que
+     liberar uma linha. */
+  function conferirAlertasEmVarios(alvos, marcado) {
+    if (!alvos?.length) return;
+    const carimbo = marcado ? { em: new Date().toISOString(), por: usuario } : null;
+    enfileirarEmVarios(alvos, { alertaConferido: carimbo });
+    const porCat = new Map();
+    alvos.forEach(({ catIdx, itemIdx }) => {
+      if (!porCat.has(catIdx)) porCat.set(catIdx, new Set());
+      porCat.get(catIdx).add(itemIdx);
+    });
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c, ci) => {
+        const quais = porCat.get(ci);
+        if (!quais) return c;
+        return { ...c, itens: (c.itens || []).map((it, ii) => (quais.has(ii) ? { ...it, alertaConferido: carimbo } : it)) };
       });
       return { ...o, categorias };
     }));
@@ -21189,6 +21358,12 @@ export default function App() {
         .btn-editar-linha:hover { border-color: var(--blue); color: var(--blue); }
         .btn-aprovar-linha { display: inline-flex; align-items: center; gap: 5px; background: var(--green); border: none; border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: var(--bg); cursor: pointer; }
         .btn-aprovar-linha:hover { filter: brightness(1.08); }
+        /* Liberar o grupo atravessando o alerta: mesma forma do irmao
+           verde, cor de aviso. A acao e a mesma; o que muda e o que
+           ela atravessa, e isso tem que estar na cor. */
+        .btn-conferir-liberar { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
+        .btn-conferir-liberar:hover { filter: brightness(0.97); }
+        .grp-conta-filtro { color: var(--amber); }
         .conf-edit { display: flex; flex-direction: column; gap: 6px; }
         .conf-edit-row { display: flex; gap: 6px; }
         .conf-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
@@ -22493,7 +22668,7 @@ export default function App() {
           <div className="eyebrow">REFERÊNCIA DE CUSTO</div>
           <div className="title-row"><span className="title-accent">Banco de Preços</span></div>
           <div className="obra-meta">Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge</div>
-          <BancoPrecosView />
+          <BancoPrecosView usuario={usuario} />
           </>
           ) : modulo === "eap" ? (
           <>
@@ -22589,7 +22764,7 @@ export default function App() {
             ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
-          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onLiberarSemCliente={liberarSemAprovacaoDoCliente} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "assinatura_cliente" && (
             <>
               <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}
