@@ -2167,6 +2167,49 @@ function rotuloDoItem(it) {
 // O código na coluna "Cód.": o "null-T" da primeira troca fica em branco.
 const codigoVisivel = (it) => (/^null(-T\d*)?$/.test(String(it?.codigo ?? "")) ? "" : it?.codigo);
 
+/* Tudo que se pode digitar pra achar um item.
+
+   A verba entra aqui (decisao dela, 17/09/2026): quem procura "marcenaria"
+   quer a verba inteira, nao so' os itens que tem essa palavra escrita. Mas o
+   item NAO guarda o nome da verba — so' o numero, em `num` — entao a
+   categoria vem por parametro. Mesmo motivo do `matchesFilter(it, filter,
+   cat)`.
+
+   `a.desc` e `b.desc` sao as duas colunas da Conf. Executivo (o vendido e o
+   executivo lado a lado). Ler os dois aqui e' o que deixa UMA funcao servir as
+   cinco telas.
+
+   `marca` e' o FORNECEDOR — o nome do campo engana, mas buscar por fornecedor
+   e' caso real.
+
+   Dinheiro e quantidade NAO entram de proposito: com `custo` na lista, buscar
+   "1000" traria tudo que custa mil. */
+function textoDoItem(it, cat) {
+  return [
+    it?.desc, it?.a?.desc, it?.b?.desc,
+    codigoVisivel(it), it?.marca, it?.ambiente, it?.especificacao,
+    cat?.num, cat?.nome,
+  ].filter(Boolean).join(" ");
+}
+
+/* O termo casa com o texto?
+
+   ATENCAO A INVERSAO: termo vazio, so' espaco ou com uma letra devolve TRUE —
+   ou seja, nao filtra nada. O `acharNoExecutivo` faz o oposto (devolve lista
+   vazia) porque la' e' sugestao: sem termo, nao sugira. Aqui e' filtro de
+   lista: sem termo, mostre tudo. Trocar isso deixa as cinco telas em branco ao
+   abrir.
+
+   Casa TODAS as palavras do termo, em qualquer ordem e como pedaco: "cozinha
+   bancada" acha "Bancada da cozinha". `normSienge` tira acento e preserva o
+   separador de milhar, entao "9000" acha "9.000 BTUS" e nao acha "18.000". */
+function casaBusca(texto, termo) {
+  const t = normSienge(termo);
+  if (t.length < 2) return true;
+  const alvo = normSienge(texto);
+  return t.split(" ").every((palavra) => alvo.includes(palavra));
+}
+
 /* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
 
    Os testes recortam o trecho ACIMA desta linha e rodam de verdade. JSX
@@ -2174,6 +2217,32 @@ const codigoVisivel = (it) => (/^null(-T\d*)?$/.test(String(it?.codigo ?? "")) ?
    nada sobre a causa — ja aconteceu quatro vezes.
 
    Componente novo entra DEPOIS deste marcador. Funcao pura entra antes. */
+
+/* A caixa de busca das listas de itens.
+
+   Reusa o desenho do `.obra-search` que ja' existe na barra lateral, na EAP,
+   no banco de precos e nas obras novas — mesma caixa, mesma lupa, mesmo botao
+   de limpar.
+
+   O `contador` nao e' enfeite: com a busca ligada a lista encolhe mas o
+   subtotal da verba continua valendo a verba inteira. Sem o "3 de 40" escrito
+   do lado, a tela afirma duas coisas ao mesmo tempo.
+
+   Fica no topo do arquivo de proposito. Componente declarado dentro de outro
+   e' remontado a cada render, e o campo perderia o foco a cada tecla. */
+function CampoBusca({ valor, aoMudar, dica, contador }) {
+  return (
+    <div className="obra-search busca-lista">
+      <Search size={13} className="dim" />
+      <input placeholder={dica || "Buscar insumo, codigo ou fornecedor…"} value={valor || ""}
+             onChange={(e) => aoMudar(e.target.value)} />
+      {!!valor && !!contador && <span className="busca-conta">{contador}</span>}
+      {!!valor && (
+        <button className="clear-btn" title="Limpar a busca" onClick={() => aoMudar("")}><X size={12} /></button>
+      )}
+    </div>
+  );
+}
 
 function TagCanal({ id, comNome }) {
   const c = canalPorId(id);
@@ -2890,6 +2959,13 @@ function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, 
      tudo — é um clique, e o chip diz quantas estão escondidas. */
   const [soVendido, setSoVendido] = useState(true);
 
+  /* A busca por insumo (pedido dela, 17/09/2026).
+
+     Mora aqui e nao no pai de proposito: cada aba so' e' montada quando o
+     `tab` e' o dela, entao trocar de aba desmonta a tela e o termo morre
+     sozinho — sem precisar limpar na mao. */
+  const [busca, setBusca] = useState("");
+
   // Achada pelo NOME: a EAP renumerou uma vez e obra salva antes da troca
   // guarda a numeracao velha, entao "32" cru nao serve.
   // Só vale avisar da data faltando se algum grupo de fato tem prazo.
@@ -2933,11 +3009,25 @@ function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, 
      Avulso passa por cima do corte do vendido: ele não veio da planilha,
      então não tem como "ter sido vendido" — é justamente por isso que
      ele existe. Escondê-lo aqui seria esconder o pedido de quem pediu. */
-  const grupos = useMemo(() => obra.categorias.map((cat) => {
+  const gruposSemBusca = useMemo(() => obra.categorias.map((cat) => {
     const todos = (cat.itens || []).filter((it) => !it.ehTitulo);
     const base = soVendido ? todos.filter((it) => it.avulso || itemFoiVendido(it)) : todos;
     return { cat, itens: base.filter((it) => matchesFilter(it, itemFilter, cat) && casaAloc(it, tipoFilter, cat)) };
   }).filter((g) => g.itens.length > 0), [obra, soVendido, itemFilter, tipoFilter]);
+
+  /* A busca e' a ultima peneira, em cima do que os chips ja' escolheram.
+
+     Fica separada do memo acima pra tela poder dizer "3 de 40": sem os dois
+     numeros, o subtotal cheio de uma verba com 3 linhas na tela faria a
+     pagina afirmar duas coisas. O `.filter` do fim apaga a verba que ficou
+     sem nenhum item. */
+  const grupos = useMemo(() => {
+    if (!busca.trim()) return gruposSemBusca;
+    return gruposSemBusca
+      .map(({ cat, itens }) => ({ cat, itens: itens.filter((it) => casaBusca(textoDoItem(it, cat), busca)) }))
+      .filter((g) => g.itens.length > 0);
+  }, [gruposSemBusca, busca]);
+  const contaItens = (gs) => gs.reduce((a, g) => a + g.itens.length, 0);
 
   // Quantas linhas o "só o vendido" está escondendo. Sem esse número o
   // filtro vira uma caixa-preta: a pessoa não sabe se sumiram 3 linhas
@@ -3067,11 +3157,16 @@ function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, 
           {soVendido ? "Só o vendido" : "Vendido e não vendido"}
           {soVendido && ocultosNaoVendidos > 0 && <span className="tipo-chip-conta">{ocultosNaoVendidos} ocultos</span>}
         </button>
+        <span className="filter-sep" />
+        <CampoBusca valor={busca} aoMudar={setBusca}
+          contador={`${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens`} />
       </div>
 
       {grupos.map(({ cat, itens }) => (
         <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens}
-          expanded={expandedCats.has(cat.num + obra.id)}
+          /* Com busca ligada a verba abre sozinha: procurar e ainda ter que
+             clicar em cada verba pra ver o resultado nao e' procurar. */
+          expanded={expandedCats.has(cat.num + obra.id) || !!busca.trim()}
           onToggle={() => toggleCat(cat.num + obra.id)}
           onSepararMO={(codigo) => onSepararMO(cat.num, codigo)}
           onJuntarMO={(codigo) => onJuntarMO(cat.num, codigo)}
@@ -3099,8 +3194,10 @@ function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, 
       {temItens && grupos.length === 0 && (
         <div className="compras-empty">
           <SlidersHorizontal size={26} className="dim" />
-          <div className="compras-empty-title">Nenhum item com esses filtros</div>
-          <div className="compras-empty-sub">Nenhum item da EAP combina "{FILTROS_ALOC.find((t) => t.id === tipoFilter)?.label}" com "{FILTERS.find((f) => f.id === itemFilter)?.label}"{soVendido ? " dentro do que foi vendido" : ""}.</div>
+          <div className="compras-empty-title">{busca.trim() ? "Nenhum item com esse termo" : "Nenhum item com esses filtros"}</div>
+          <div className="compras-empty-sub">{busca.trim()
+            ? `Nada encontrado para "${busca.trim()}" dentro dos filtros escolhidos.`
+            : `Nenhum item da EAP combina "${FILTROS_ALOC.find((t) => t.id === tipoFilter)?.label}" com "${FILTERS.find((f) => f.id === itemFilter)?.label}"${soVendido ? " dentro do que foi vendido" : ""}.`}</div>
         </div>
       )}
       {/* A legenda antiga explicava as cores da barra vendido × executivo,
@@ -4194,6 +4291,11 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
   const [abertos, toggle] = useAbertos();
   const [verTexto, setVerTexto] = useState(null);
   const [filtroVenda, setFiltroVenda] = useState("todos");
+  /* A busca por insumo (pedido dela, 17/09/2026). Local: trocar de aba
+     desmonta a tela e o termo morre sozinho. */
+  const [busca, setBusca] = useState("");
+  const buscando = !!busca.trim();
+  const naBusca = (itens, c) => (buscando ? (itens || []).filter((it) => casaBusca(textoDoItem(it, c), busca)) : (itens || []));
   const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
 
   // Mesma leitura do Vendido Contrato: a EAP inteira sempre aparece, e o
@@ -4257,13 +4359,22 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
               <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
             </button>
           ))}
+          <span className="filter-sep" />
+          <CampoBusca valor={busca} aoMudar={setBusca}
+            contador={`${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens`} />
         </div>
 
         <div className="vend-list">
           {verbas.map((c) => {
             const itens = c.itensPlanilha || [];
+            /* O que a busca deixa na tela. O `subtotal` abaixo continua
+               somando a verba INTEIRA de proposito: a busca e' lente, nao
+               recorte. Quem diz que o que se ve' e' um pedaco e' a contagem
+               "3 de 40" no cabecalho da verba. */
+            const naTela = naBusca(itens, c);
+            if (buscando && naTela.length === 0) return null;
             const temItens = itens.length > 0;
-            const aberto = abertos.has(c.num);
+            const aberto = abertos.has(c.num) || buscando;
             const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
             return (
               <div key={c.num} className="vend-grupo">
@@ -4271,7 +4382,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
                   {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
-                  {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                  {temItens && <span className="vend-count">{buscando ? `${naTela.length} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</span>}
                   {!grupoFoiVendido(itens) && <span className="vend-nao-vendido">não vendido</span>}
                   {temItens && itens.filter((it) => !itemFoiVendido(it)).length > 0 && (
                     <span className="vend-nao-vendido leve">
@@ -4303,7 +4414,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
                       </tr>
                     </thead>
                     <tbody>
-                      {itens.map((it, i) => (
+                      {naTela.map((it, i) => (
                         <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
                           <td className="mono dim">{it.codigo || "—"}</td>
                           <td>
@@ -5259,6 +5370,11 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   // geral e a pessoa perde a noção de quanto falta. O contador de
   // pendências no cabeçalho já diz onde precisa entrar.
   const [manual, setManual] = useState(() => new Map());
+  /* A busca por insumo (pedido dela, 17/09/2026). Fica ACIMA do `return` de
+     baixo de proposito: hook declarado depois de um return condicional muda
+     de ordem entre renders e o React quebra. */
+  const [busca, setBusca] = useState("");
+  const buscando = !!busca.trim();
 
   if (linhas.length === 0) {
     return (
@@ -5271,9 +5387,24 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   }
 
   const cnt = (st) => linhas.filter((l) => l.status === st).length;
-  const visiveis = filtro === "todos" ? linhas : linhas.filter((l) => l.status === filtro);
+  const porStatus = filtro === "todos" ? linhas : linhas.filter((l) => l.status === filtro);
+  /* A busca peneira depois do status. Os cartoes do topo continuam contando
+     `linhas` (pelo `cnt` acima), entao o placar nao mente enquanto a lista
+     encolhe. `porVerba` e os grupos saem de `visiveis`, entao verba sem
+     resultado nem chega a existir. */
+  const visiveis = buscando
+    ? porStatus.filter((l) => casaBusca(textoDoItem(l, { num: l.catNum, nome: l.catNome }), busca))
+    : porStatus;
   const chave = (l) => `${l.catNum}:${l.codigo}`;
   const pendentesVisiveis = visiveis.filter((l) => l.status !== "ok");
+  /* Quantos selecionados a busca escondeu.
+
+     A selecao sobrevive a' mudanca do termo — de proposito, pra dar pra
+     buscar "cuba", selecionar, buscar "torneira", selecionar e aprovar tudo
+     junto (decisao dela, 17/09/2026). Mas "Aprovar selecionadas" GRAVA: sem
+     este aviso, a barra diria "40 selecionadas" numa tela mostrando 3. */
+  const chavesNaTela = new Set(visiveis.map(chave));
+  const selecionadosEscondidos = Array.from(selecionados).filter((k) => !chavesNaTela.has(k)).length;
   // No cartão "Entrou ou saiu" a lista lado a lado dá lugar ao resumo por categoria.
   const mostrarResumo = filtro === "somente_um" && !!resumoEntrouSaiu;
   // A tela extra ocupa o lugar da lista, como o resumo do "Entrou ou saiu".
@@ -5332,6 +5463,8 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
 
       <div className="compras-filtros">
         <button className={`cfiltro ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>Todos <span className="cbadge">{linhas.length}</span></button>
+        <CampoBusca valor={busca} aoMudar={setBusca}
+          contador={`${visiveis.length} de ${porStatus.length} linhas`} />
       </div>
 
       {mostrarExtra ? telaExtra.render() : mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} /> : (
@@ -5339,10 +5472,17 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
           {onAprovarLinha && pendentesVisiveis.length > 0 && (
             <div className="selecao-massa">
               {selecionados.size === 0 ? (
-                <button type="button" className="btn-editar-linha" onClick={selecionarTodasPendentes}>Selecionar todas as pendências visíveis ({pendentesVisiveis.length})</button>
+                <button type="button" className="btn-editar-linha" onClick={selecionarTodasPendentes}>Selecionar todas as pendências {buscando ? "desta busca" : "visíveis"} ({pendentesVisiveis.length})</button>
               ) : (
                 <>
-                  <span className="selecao-massa-texto">{selecionados.size} selecionada{selecionados.size > 1 ? "s" : ""}</span>
+                  <span className="selecao-massa-texto">
+                    {selecionados.size} selecionada{selecionados.size > 1 ? "s" : ""}
+                    {selecionadosEscondidos > 0 && (
+                      <b className="selecao-escondidos" title="Selecionadas que a busca está escondendo — elas também serão aprovadas">
+                        {" · "}{selecionadosEscondidos} fora da busca
+                      </b>
+                    )}
+                  </span>
                   <button type="button" className="btn-cancelar" onClick={limparSelecao}>Limpar</button>
                   <button type="button" className="btn-aprovar-linha" onClick={aprovarSelecionados}><CheckCircle2 size={12} /> Aprovar selecionadas</button>
                 </>
@@ -5350,10 +5490,19 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             </div>
           )}
 
+          {buscando && grupos.length === 0 && (
+            <div className="compras-empty">
+              <Search size={26} className="dim" />
+              <div className="compras-empty-title">Nenhuma linha com esse termo</div>
+              <div className="compras-empty-sub">{`Nada encontrado para "${busca.trim()}"${filtro === "todos" ? "" : " dentro do filtro escolhido"}.`}</div>
+            </div>
+          )}
           <div className="vend-list">
             {grupos.map((g) => {
               const { num, nome, itens } = g;
-              const aberto = estaAberto(g);
+              /* Com busca ligada a verba abre sozinha: procurar e ainda ter
+                 que clicar em cada verba nao e' procurar. */
+              const aberto = estaAberto(g) || buscando;
               const pend = itens.filter((l) => l.status !== "ok").length;
               const alertaGrupo = alertasPorVerba ? alertasPorVerba.get(num) : null;
               return (
@@ -6923,6 +7072,13 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
   // texto completo aberto no painel de leitura ({rotulo, texto})
   const [verTexto, setVerTexto] = useState(null);
   const [filtroVenda, setFiltroVenda] = useState("todos");
+  /* CUIDADO: esta tela tem DUAS coisas chamadas busca, a dez linhas uma da
+     outra. `buscandoEm` acima e' a busca no BANCO DE PRECOS, pra inserir uma
+     linha nova. `busca` aqui e' o filtro da LISTA — pedido dela em
+     17/09/2026. */
+  const [busca, setBusca] = useState("");
+  const buscando = !!busca.trim();
+  const contaNaBusca = (itens, c) => (itens || []).filter((it) => casaBusca(textoDoItem(it, c), busca)).length;
   const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   const vendidas = todasVerbas.filter((c) => grupoFoiVendido(c.itensPlanilhaExecutivo));
   const verbas = filtroVenda === "vendido" ? vendidas
@@ -7018,13 +7174,25 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
               <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
             </button>
           ))}
+          <span className="filter-sep" />
+          {/* Digitar na busca fecha o painel de insercao: nao da' pra estar
+              inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
+              de referencia sumiria por baixo da busca. */}
+          <CampoBusca valor={busca} aoMudar={(v) => { setBusca(v); setBuscandoEm(null); }}
+            contador={`${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens`} />
         </div>
 
         <div className="vend-list">
           {verbas.map((c) => {
             const itens = c.itensPlanilhaExecutivo || [];
+            /* Quantos itens desta verba casam com a busca. A LISTA NAO E'
+               FILTRADA — quem esconde a linha e' o `return null` la' dentro
+               do map, pelo motivo explicado la'. Aqui so' se conta, pra saber
+               se a verba inteira pode sumir e pra escrever "3 de 40". */
+            const nNaBusca = buscando ? contaNaBusca(itens, c) : itens.length;
+            if (buscando && nNaBusca === 0) return null;
             const temItens = itens.length > 0;
-            const aberto = abertos.has(c.num);
+            const aberto = abertos.has(c.num) || buscando;
             const subtotal = itens.reduce((a, it) => a + (it.excluido ? 0 : (it.custo || 0)), 0);
             // quanto essa verba valia no criativo — a referência do movimento
             /* O vendido do grupo vem do CRIATIVO INTEIRO, não dos itens que
@@ -7049,7 +7217,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                   {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
-                  {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+                  {temItens && <span className="vend-count">{buscando ? `${nNaBusca} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</span>}
                   {/* O vendido fica à vista: sem ele, "acima" e "abaixo" são
                       afirmações sem referência na tela. */}
                   {temItens && baseVerba > 0 && (
@@ -7095,6 +7263,18 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                     </thead>
                     <tbody>
                       {itens.map((it, i) => {
+                        /* A BUSCA ESCONDE A LINHA; ELA NAO SAI DO ARRAY.
+
+                           O `i` logo abaixo e' a POSICAO da linha na planilha
+                           e e' o que grava no banco — `onEditarItem(c.num, i,
+                           ...)` aparece em oito lugares nesta tabela, e o
+                           `buscandoEm` guarda `depois: i`. Trocar este
+                           `return null` por um `.filter()` no array renumera
+                           tudo: editar a segunda linha que aparece gravaria na
+                           segunda linha da planilha, que e' outra. Sem erro na
+                           tela e sem ninguem perceber ate' conferir a
+                           planilha. */
+                        if (buscando && !casaBusca(textoDoItem(it, c), busca)) return null;
                         const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
                         // Coordenada da célula na planilha: linha da lista + posição
                         // visual da coluna. É o que Tab e Enter seguem.
@@ -9339,6 +9519,11 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
   const [nomeNoPdf, setNomeNoPdf] = useState(true);   // às vezes o pedido sai sem dizer pra quem
   const [pipefy, setPipefy] = useState(null);   // o aviso depois de abrir a solicitação no Pipefy
   const [sel, setSel] = useState(() => new Set());
+  /* A busca por insumo (pedido dela, 17/09/2026). CUIDADO: ela NAO pode chegar
+     em `g.itens`, que e' quem gera o codigo auxiliar e o CSV do Sienge. */
+  const [busca, setBusca] = useState("");
+  const buscando = !!busca.trim();
+  const casaRow = (r) => casaBusca(textoDoItem(r.it, { num: r.catNum, nome: r.catNome }), busca);
   const [abertos, setAbertos] = useState(() => new Set());
   const [baseSienge, setBaseSienge] = useState(null);
   const [resultado, setResultado] = useState(null);
@@ -9514,6 +9699,12 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
   const visiveis = useMemo(
     () => (fornecedor ? doCanal.filter((r) => chaveFornecedor(r.it) === fornecedor) : doCanal),
     [doCanal, fornecedor]);
+  /* O que a busca deixa na tela, somando todas as verbas. Serve pra contagem
+     do campo, pro "Selecionar os N desta busca" e pra saber se a etapa ficou
+     vazia. NAO alimenta `porVerba` — o grupo continua inteiro. */
+  const naTelaTudo = useMemo(
+    () => (buscando ? visiveis.filter(casaRow) : visiveis),
+    [visiveis, busca, buscando]);
 
   /* O pedido de orçamento sai do filtro: escolhe o fornecedor, confere a
      lista na tela e o PDF leva só o que dele ainda não foi comprado. */
@@ -9584,7 +9775,9 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
     return n;
   });
   const abrir = (num) => setAbertos((p) => { const n = new Set(p); n.has(num) ? n.delete(num) : n.add(num); return n; });
-  const selecionarTudo = () => setSel(new Set(visiveis.filter((r) => !r.it.troca).map((r) => r.chave)));
+  /* Com busca ligada, "selecionar tudo" e' o que esta' na tela. O numero e o
+     rotulo do botao tem que concordar com o que se ve'. */
+  const selecionarTudo = () => setSel(new Set(naTelaTudo.filter((r) => !r.it.troca).map((r) => r.chave)));
 
   function definirCanal(canal) {
     selecionados.forEach((r) => mudar(r.catIdx, r.itemIdx, { canalCompra: canal }));
@@ -9848,9 +10041,11 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
 
       <div className="sel-barra-topo">
         <button className="btn-sel-tudo" onClick={selecionarTudo}>
-          <Check size={12} /> Selecionar os {visiveis.length} {fornecedor ? "deste fornecedor" : "desta etapa"}
+          <Check size={12} /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
         </button>
         {sel.size > 0 && <button className="btn-limpar-sel-claro" onClick={() => setSel(new Set())}>Limpar seleção</button>}
+        <CampoBusca valor={busca} aoMudar={setBusca}
+          contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
         <div className="cmp-filtro-forn">
           <select className="cmp-forn-sel" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
             aria-label="Filtrar por fornecedor">
@@ -9865,8 +10060,14 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
               nome no PDF
             </label>
           )}
-          <button className="btn-doc" onClick={gerarPedido} disabled={!fornecedor || fornecedor === SEM_FORNECEDOR}
-            title={!fornecedor || fornecedor === SEM_FORNECEDOR
+          {/* Com busca ligada o botao fica apagado (decisao dela,
+              17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
+              tela mostrando tres linhas enquanto o pedido leva sessenta e' a
+              pagina afirmando duas coisas. */}
+          <button className="btn-doc" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+            title={buscando
+              ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
+              : !fornecedor || fornecedor === SEM_FORNECEDOR
               ? "Escolha um fornecedor pra gerar o pedido"
               : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
             <Printer size={13} /> Pedido de orçamento
@@ -9880,10 +10081,22 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
       )}
 
       {porVerba.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
+      {porVerba.length > 0 && naTelaTudo.length === 0 && (
+        <div className="empty-note">{`Nada encontrado para "${busca.trim()}" nesta etapa.`}</div>
+      )}
       {porVerba.map((g) => {
-        const aberto = abertos.has(g.num);
+        /* O que a busca deixa aparecer NESTE grupo. Tudo o que vem depois —
+           `nItens`, `nComprados`, `g.total`, os auxiliares e o template do
+           Sienge — continua lendo `g.itens`, a verba inteira. */
+        const naTela = buscando ? g.itens.filter(casaRow) : g.itens;
+        if (buscando && naTela.length === 0) return null;
+        const aberto = abertos.has(g.num) || buscando;
         const nItens = g.itens.filter((r) => !r.it.troca).length;
         const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
+        /* O check da verba age sobre o que esta' na tela: com busca ligada,
+           marcar a verba nao pode selecionar 40 linhas enquanto 3 aparecem. */
+        const nNaTela = naTela.filter((r) => !r.it.troca).length;
+        const nSelNaTela = naTela.filter((r) => sel.has(r.chave)).length;
         const nComprados = g.itens.filter((r) => r.it.comprado).length;
         const nSolicitados = g.itens.filter((r) => estaSolicitado(r.it)).length;
         const valorComprado = g.itens.reduce((t, r) => t + (r.it.comprado ? r.material : 0), 0);
@@ -9899,17 +10112,17 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
         return (
           <div className="grp-block" key={g.num}>
             <div className="grp-head">
-              <button className="mo-check" onClick={() => alternarGrupo(g)}
-                title={nSel === nItens ? "Tirar o grupo da seleção" : "Selecionar a verba inteira"}
+              <button className="mo-check" onClick={() => alternarGrupo({ ...g, itens: naTela })}
+                title={nSelNaTela === nNaTela ? "Tirar da seleção" : buscando ? "Selecionar o que a busca mostra" : "Selecionar a verba inteira"}
                 aria-label="Selecionar verba">
-                {nSel === nItens ? <Check size={13} /> : nSel > 0 ? <Minus size={13} /> : null}
+                {nSelNaTela === nNaTela ? <Check size={13} /> : nSelNaTela > 0 ? <Minus size={13} /> : null}
               </button>
               <button className="grp-toggle" onClick={() => abrir(g.num)}>
                 <div className="grp-esq">
                   {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                   <span className="grp-num mono">{g.num}</span>
                   <span className="grp-nome">{g.nome}</span>
-                  <span className="grp-conta">{nItens} {nItens === 1 ? "produto" : "produtos"}</span>
+                  <span className="grp-conta">{buscando ? `${nNaTela} de ${nItens}` : nItens} {nItens === 1 && !buscando ? "produto" : "produtos"}</span>
                   {/* No Sienge, solicitar vem antes de comprar: quanto do grupo já foi solicitado. */}
                   {noSienge && (
                     <span className={`grp-comprados ${nSolicitados === nItens ? "tudo" : nSolicitados ? "parte" : ""}`}
@@ -9975,7 +10188,7 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
                     </tr>
                   </thead>
                   <tbody>
-                    {g.itens.map((r) => (
+                    {naTela.map((r) => (
                       <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)} noSienge={noSienge}
                         onSelecionar={() => alternar(r.chave)}
                         casamento={casamentos.get(r.chave)}
@@ -10232,6 +10445,14 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
             <div className="mo-escopo-val mono">{fmtBRL(totalSel)}</div>
             <div className="mo-escopo-rot">
               {selecionados.length} {selecionados.length === 1 ? "produto selecionado" : "produtos selecionados"}
+              {/* Os botoes desta barra marcam comprado e abrem solicitacao no
+                  Sienge. Se a busca escondeu parte da selecao, tem que estar
+                  escrito — senao a barra diz 40 numa tela mostrando 3. */}
+              {buscando && (() => {
+                const naTela = new Set(naTelaTudo.map((r) => r.chave));
+                const fora = selecionados.filter((r) => !naTela.has(r.chave)).length;
+                return fora > 0 ? <b className="selecao-escondidos">{" · "}{fora} fora da busca</b> : null;
+              })()}
             </div>
           </div>
           <div className="canal-escolha">
@@ -17730,19 +17951,58 @@ export default function App() {
   const travaRef = useRef(null);
   const naObra = modulo === "comparativo";
 
+  /* A obra mais recente, pra gravar na hora de soltar.
+
+     O estado da obra muda a cada tecla; a limpeza do efeito enxerga o
+     valor do render em que ela foi criada. Sem este espelho, o "grava
+     antes de soltar" gravaria uma versao velha — que e' pior que nao
+     gravar, porque desfaz o que a pessoa acabou de escrever. */
+  const obraRef = useRef(obra);
+  useEffect(() => { obraRef.current = obra; }, [obra]);
+
+  /* A TELA em que a pessoa esta trabalhando. Trocar de aba dentro da obra
+     conta como trocar de tela: e' o pedido dela de 17/09/2026. */
+  const telaDeTrabalho = naObra ? `obra:${obra?.codigo || ""}:${tab || "resumo"}` : `modulo:${modulo}`;
+
   useEffect(() => {
     const codigo = edicao.minha && naObra ? obra?.codigo : null;
     travaRef.current = codigo || null;
     if (!codigo) return;
-    return () => { liberarEdicao(codigo, usuario).catch(() => {}); };
-  }, [edicao.minha, naObra, obra?.codigo, usuario]);
+    return () => {
+      /* GRAVA E SO' ENTAO SOLTA.
 
-  /* Sair da obra tambem volta a tela pro modo leitura. Sem isso a trava
-     era solta no banco mas a tela continuava dizendo "Editando" — e a
-     pessoa seguia digitando numa obra que ja estava livre pra outro. */
+         O salvamento automatico espera 1,2s depois da ultima alteracao, e
+         a limpeza do outro efeito cancela esse relogio. Quem digitasse e
+         trocasse de aba na sequencia perderia o ultimo segundo de
+         trabalho. A ordem tambem importa no banco: `salvarDadosObra` so'
+         grava pra quem esta com a trava, entao gravar depois de soltar
+         nao gravaria nada. */
+      const ultima = obraRef.current;
+      const gravou = ultima && String(ultima.codigo) === String(codigo)
+        ? salvarDadosObra(codigo, ultima, usuario).catch(() => {})
+        : Promise.resolve();
+      gravou.then(() => liberarEdicao(codigo, usuario).catch(() => {}));
+    };
+  }, [edicao.minha, naObra, obra?.codigo, usuario, telaDeTrabalho]);
+
+  /* TROCAR DE TELA VOLTA PRO MODO LEITURA.
+
+     Antes isso valia so' pra quem saia da obra. A trava e' da obra
+     inteira, entao habilitar a edicao numa aba prendia todas as outras —
+     e a obra inteira, pra todo mundo — ate' a pessoa sair ou passarem 30
+     minutos. Agora a edicao vale so' na tela em que foi habilitada
+     (pedido dela, 17/09/2026); na proxima, e' um clique pra habilitar de
+     novo.
+
+     Sem esta parte a trava sairia do banco e a tela continuaria dizendo
+     "Editando" — e a pessoa seguiria digitando numa obra ja livre pra
+     outro. */
+  const telaAnterior = useRef(telaDeTrabalho);
   useEffect(() => {
-    if (!naObra && edicao.minha) setEdicao({ minha: false, por: null, desde: null });
-  }, [naObra, edicao.minha]);
+    if (telaAnterior.current === telaDeTrabalho) return;
+    telaAnterior.current = telaDeTrabalho;
+    if (edicao.minha) setEdicao({ minha: false, por: null, desde: null });
+  }, [telaDeTrabalho, edicao.minha]);
 
   /* Fechar a aba. `pagehide` e nao `beforeunload` porque este dispara em
      celular e em navegacao de volta; a promessa nao termina, mas o pedido
@@ -20921,6 +21181,11 @@ export default function App() {
         .obra-search:focus-within { border-color: var(--brand); background: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
         .obra-search input { font-family: inherit; font-size: 12.5px; color: var(--text); }
         .obra-search input::placeholder { color: var(--text-mute); }
+        /* A caixa de busca dentro de barra de filtros: sem a margem de baixo
+           que o .obra-search traz, senao desalinha dos chips ao lado. */
+        .busca-lista { margin-bottom: 0; flex: 0 1 300px; min-width: 170px; }
+        .busca-conta { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute); flex-shrink: 0; white-space: nowrap; }
+        .selecao-escondidos { color: var(--warning); font-weight: 600; }
         .nav-badge { background: var(--danger); color: var(--bg); font-family: var(--font-mono); font-size: 10px; font-weight: 700; border-radius: 999px; }
         .nav-badge-novo { background: var(--brand); }
         .nav-count { font-family: var(--font-mono); background: var(--surface-2); color: var(--text-mute); border-radius: 999px; }
