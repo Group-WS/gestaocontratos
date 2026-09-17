@@ -1,13 +1,5 @@
 {
-  "_comentario": [
-    "A regra do /api vem PRIMEIRO: a Vercel aplica em ordem, e sem isso",
-    "as chamadas do Sienge e do Monday cairiam no index.html.",
-    "A segunda regra e o que faz /obra/2450/compras existir: o app e uma",
-    "pagina so, entao qualquer endereco precisa devolver o index.html e",
-    "deixar o proprio app decidir o que mostrar. Sem ela, F5 num endereco",
-    "de obra da 404. Arquivo que existe (assets/, favicon) continua sendo",
-    "servido direto: o sistema de arquivos e consultado antes dos rewrites."
-  ],
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
