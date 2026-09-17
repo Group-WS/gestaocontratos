@@ -208,6 +208,26 @@ conf("o total de material do grupo segue material", tudo.find((g) => g.num === "
 /* A tela de liberação não muda de comportamento com a opção desligada. */
 conf("sem a opção, o item misto continua igual", soCompra.find((g) => g.num === "27")?.itens[0].material, 200);
 
+/* ---- Um produto, um preço ----
+   Item misto é partido em duas linhas pelo app (material + mão de obra, com
+   `separadoDe` apontando pro pai). Com a mão de obra à vista, o mesmo
+   produto apareceria duas vezes pro cliente aprovar: na 2498 eram 608 linhas
+   onde o executivo tem 443. */
+const partido = {
+  categorias: [{ num: "21", nome: "Móveis Sob Medida", itens: [
+    { desc: "Bancada em granito", codigo: "21.1", totalMaterial: 3500, totalMO: 0, custo: 3500, moSeparada: { valor: 1500 } },
+    { desc: "Bancada em granito", codigo: "21.1-mo", totalMaterial: 0, totalMO: 1500, custo: 1500, separadoDe: { codigo: "21.1" } },
+  ] }],
+};
+const pro = M.itensParaLiberar(partido, null, { comMaoDeObra: true });
+conf("o produto partido aparece uma vez só", pro[0]?.itens.length, 1);
+conf("com o preço inteiro, material + mão de obra", pro[0]?.itens[0].valor, 5000);
+conf("e o total do grupo não conta em dobro", pro[0]?.totalValor, 5000);
+/* Na liberação de compra a linha de mão de obra já saía pela regra de MO, e
+   o pai continua valendo só o material. */
+conf("na liberação de compra, o pai vale o material", M.itensParaLiberar(partido)[0]?.itens[0].material, 3500);
+conf("e a linha de mão de obra não entra", M.itensParaLiberar(partido)[0]?.itens.length, 1);
+
 /* A tela abre mostrando tudo, e não "falta aprovar" — verba com tudo
    aprovado desaparecia da tela. */
 conf("a tela do cliente abre em todos", /const \[filtro, setFiltro\] = useState\("todos"\);/.test(src), true);

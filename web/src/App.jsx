@@ -8974,6 +8974,16 @@ function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } =
       const { material, mo } = parcelasDoItem(it, cat);
       const ehMO = alocacaoDoItem(it, cat) === ALOC_MO;
       if (ehMO && !comMaoDeObra) return;
+      /* UM PRODUTO, UM PRECO na tela do cliente.
+
+         Item misto e' partido em duas linhas pelo proprio app: uma com o
+         material e outra so' com a mao de obra (`separadoDe` aponta pro
+         pai). Com a mao de obra a' vista, o mesmo produto apareceria DUAS
+         vezes pro cliente aprovar — na 2498 isso somava 608 linhas onde a
+         planilha do executivo tem 443. A linha filha sai, e o valor dela
+         volta pro pai logo abaixo. */
+      if (comMaoDeObra && it.separadoDe) return;
+      const moSeparada = comMaoDeObra ? (it.moSeparada?.valor || 0) : 0;
       const entrou = entrouPorDesc ? entrouPorDesc.has(chaveDescricao(it.desc)) : false;
       const doCliente = aprovadoPeloCliente(it, obra);
       const ctx = { entrou, semCliente: !doCliente };
@@ -8983,7 +8993,7 @@ function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } =
            mao de obra. `material` sozinho mostraria R$ 0,00 numa linha de
            mao de obra — preco zerado em tela de aprovacao e' pior que
            nenhum. */
-        mo, valor: material + mo, ehMO,
+        mo: mo + moSeparada, valor: material + mo + moSeparada, ehMO,
         chave: `${catIdx}-${itemIdx}`,
         liberado: liberadoParaCompra(it),
         aprovadoCliente: doCliente,
