@@ -6419,7 +6419,10 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
               {aberto && (
                 <table className="tab-compras grp-itens">
                   <thead>
-                    <tr><th>Produto</th><th className="c-qtd">Qtd</th><th className="right">Material</th><th className="center">Cliente</th></tr>
+                    {/* "Valor", e nao "Material": a coluna mostra o item inteiro,
+                        material mais mao de obra. Chamar de Material fazia a
+                        tela parecer so' de material — foi o que ela apontou. */}
+                    <tr><th>Produto</th><th className="c-qtd">Qtd</th><th className="right">Valor</th><th className="center">Cliente</th></tr>
                   </thead>
                   <tbody>
                     {g.itens.map((x) => (
