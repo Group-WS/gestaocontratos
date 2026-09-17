@@ -9237,8 +9237,26 @@ function produtosMAT(obra) {
       if (!liberadoParaCompra(it)) return;
       const { material } = parcelasDoItem(it, cat);
       const aloc = alocacaoDoItem(it, cat);
-      // O trocado continua na lista (riscado, sem contar): é o histórico da troca.
-      if (material <= 0 && aloc !== ALOC_MAT && !it.troca) return;
+      /* ITEM SEM VALOR, MAS LIBERADO, SOBE (decisão dela em 17/09/2026).
+
+         Antes, sem material a linha só passava se estivesse marcada como MAT.
+         A verba 33 da 2204 (Automação) mostrou o buraco: 13 itens "a orçar",
+         unidade `vb`, sem material e sem MO na planilha. Sem valor,
+         `alocacaoDoItem` não tem de onde deduzir o lado e devolve MAT+MO — e
+         aí a linha ficava presa no Plano, mesmo o executivo tendo liberado.
+
+         Item sem preço é justamente o que precisa de orçamento, e Compras é
+         onde se escolhe canal e se pede cotação. Liberar já é a decisão de
+         que aquilo se compra; exigir também um valor que ninguém tem ainda
+         era travar a compra pela falta do número que a compra vai descobrir.
+
+         MÃO DE OBRA CONTINUA FORA: ela vai para Contratos. Com valor zero o
+         app não distingue produto de serviço — quem distingue é a etiqueta
+         de alocação, no Plano. Foi dito a ela nestes termos.
+
+         O trocado continua na lista (riscado, sem contar): é o histórico da
+         troca. */
+      if (material <= 0 && aloc === ALOC_MO && !it.troca) return;
       out.push({ it, catIdx, itemIdx, catNum: cat.num, catNome: cat.nome, material, aloc,
         materialOriginal: it.troca ? parcelasDoItem(it, cat).materialOriginal : material,
         chave: `${catIdx}-${itemIdx}` });

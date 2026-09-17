@@ -283,5 +283,49 @@ conf("o contador usa os produtos do grupo",
 conf("e o que está na tela vira um segundo número",
   src.includes('{g.itens.length} {soTravados ? (g.itens.length === 1 ? "travado" : "travados") : "nesta busca"}'), true);
 
+/* ---- ITEM SEM VALOR, MAS LIBERADO, SOBE PARA COMPRAS ----
+   Decisão dela em 17/09/2026: "pode mudar a regra, item sem valor liberado
+   sobe pra compras".
+
+   A verba 33 da 2204 (Automação) mostrou o buraco: 13 itens "a orçar",
+   unidade `vb`, sem material e sem MO na planilha. Sem valor,
+   `alocacaoDoItem` não tem de onde deduzir o lado e devolve MAT+MO — e a
+   linha ficava presa no Plano, mesmo o executivo tendo liberado.
+
+   Duas coisas que não podem quebrar:
+     1. mão de obra continua FORA das Compras (vai para Contratos);
+     2. a liberação continua sendo o portão: sem valor E sem liberação, nada
+        sobe. */
+const semValor = {
+  categorias: [{ num: "33", nome: "Automação", itens: [
+    { desc: "Alexa echodot", codigo: "33.1", un: "vb", liberadoCompra: { em: "x", por: "y" } },
+    { desc: "Quadro de automação", codigo: "33.2", un: "vb", canalCompra: "sienge" },
+    { desc: "Programação automação", codigo: "33.3", un: "vb", alocacaoManual: "MO", liberadoCompra: { em: "x", por: "y" } },
+    { desc: "Tablet iPad", codigo: "33.4", un: "vb" },
+    { desc: "Switch TP-Link", codigo: "33.5", un: "vb", alocacaoManual: "MAT", liberadoCompra: { em: "x", por: "y" } },
+  ] }],
+};
+const naCompras = M.produtosMAT(semValor).map((r) => r.it.codigo);
+conf("sem valor e liberado sobe (MAT+MO)", naCompras.includes("33.1"), true);
+conf("... e com canal escolhido também", naCompras.includes("33.2"), true);
+conf("... e marcado como MAT, como antes", naCompras.includes("33.5"), true);
+conf("MÃO DE OBRA continua fora, mesmo liberada", naCompras.includes("33.3"), false);
+conf("sem liberação não sobe, com valor ou sem", naCompras.includes("33.4"), false);
+conf("a verba inteira dá 3 linhas", naCompras.length, 3);
+/* O valor continua sendo zero: a tela mostra "a orçar", e não um preço
+   inventado. É o que faz essa linha ser justamente a que precisa de cotação. */
+conf("e a linha sobe valendo zero", M.produtosMAT(semValor)[0]?.material, 0);
+
+/* O que já tinha valor não mudou de comportamento. */
+const comValor = {
+  categorias: [{ num: "27", nome: "Louças", itens: [
+    { desc: "Cuba", codigo: "27.1", qtdExecutivo: 1, custoMaterial: 300, liberadoCompra: { em: "x", por: "y" } },
+    { desc: "Instalação", codigo: "27.2", qtdExecutivo: 1, custoMO: 200, liberadoCompra: { em: "x", por: "y" } },
+  ] }],
+};
+const comV = M.produtosMAT(comValor).map((r) => r.it.codigo);
+conf("material com valor continua subindo", comV.includes("27.1"), true);
+conf("mão de obra com valor continua fora", comV.includes("27.2"), false);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
