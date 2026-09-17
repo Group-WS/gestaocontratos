@@ -56,5 +56,30 @@ contem("tipo recusado lista o que vale", explicar({ message: "mime type text/x-p
 contem("sessão vencida manda reentrar", explicar({ message: "new row violates row-level security policy" }), "Saia e entre de novo");
 contem("erro desconhecido não some", explicar({ message: "network timeout" }), "network timeout");
 
+/* ---- CONGELAR É NÃO TROCAR, NÃO É NÃO ANEXAR (17/09/2026) ----
+ *
+ * Ela abriu a 2204 com a edição na mão dela e não achou como subir os
+ * cadernos do Executivo: os três apareciam "sem arquivo" e sem botão. A obra
+ * já tinha as compras liberadas, e a regra congelava a linha inteira — a
+ * "Apresentação de Especificações", que não congela, era a única com Anexar
+ * na tela dela, e foi isso que entregou o motivo.
+ *
+ * O congelamento existe para proteger o que FOI MANDADO ao fornecedor: trocar
+ * o caderno depois apaga a prova. Slot vazio não tem prova para apagar.
+ */
+const app = (await import("fs")).readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
+conf("slot vazio aceita anexo mesmo congelado",
+  app.includes("{podeEditar && (!congelado || !arquivo) && ("), true);
+conf("... e modo leitura continua sem anexar nada",
+  /\{podeEditar && \(!congelado \|\| !arquivo\)/.test(app), true);
+conf("trocar arquivo congelado continua barrado, com o motivo",
+  app.includes("{podeEditar && congelado && arquivo && !perdido && ("), true);
+conf("congelar passou a ser só as compras liberadas",
+  app.includes("const congeladoProjeto = !!obra.comprasLiberadas;"), true);
+conf("o slot recebe os dois motivos separados",
+  /function CadernoSlot\(\{[^}]*congelado, podeEditar = true \}\)/.test(app), true);
+conf("contrato e apresentação não congelam com as compras",
+  app.includes("slot(CADERNO_CONTRATO)") && app.includes("{slot(CADERNO_APRESENTACAO)}"), true);
+
 console.log(falhas === 0 ? "\nTUDO OK" : `\n${falhas} FALHA(S)`);
 process.exit(falhas === 0 ? 0 : 1);

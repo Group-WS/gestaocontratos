@@ -629,12 +629,17 @@ function LinhaEquipe({ rotulo, valor, equipe, podeEditar, prioridade, onDefinir,
 function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno, onArquivos }) {
   const [erro, setErro] = useState(null);
   const cad = obra.cadernos || {};
-  // Os cadernos congelam com as compras liberadas: é o que foi mandado pro
-  // fornecedor, e trocar depois apagaria a prova.
-  const congeladoProjeto = !podeEditar || obra.comprasLiberadas;
-  const slot = (c, congelado) => (
+  /* Os cadernos do projeto congelam com as compras liberadas: é o que foi
+     mandado pro fornecedor, e TROCAR depois apagaria a prova. Anexar num slot
+     vazio continua valendo — ver o comentário no CadernoSlot.
+
+     Os dois motivos vão separados de propósito: "não posso editar esta obra"
+     e "este arquivo virou prova" não são a mesma coisa, e misturá-los foi o
+     que escondeu o botão de anexar dela. */
+  const congeladoProjeto = !!obra.comprasLiberadas;
+  const slot = (c, congelado = false) => (
     <CadernoSlot key={c.chave} titulo={c.titulo} chave={c.chave} arquivo={cad[c.chave]}
-      obraCodigo={obra.codigo} usuario={usuario} congelado={congelado}
+      obraCodigo={obra.codigo} usuario={usuario} congelado={congelado} podeEditar={podeEditar}
       onImportar={(info, anterior) => onImportCaderno(c.chave, info, anterior)} />
   );
   const outros = avulsosDaObra(obra).filter((a) => (a.fase || "outros") === "outros");
@@ -656,7 +661,7 @@ function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno,
           Contrato <span className="jornada-grupo-nota"><Lock size={10} /> só administrador</span>
         </div>
         <div className="caderno-lista">
-          {souAdmin ? slot(CADERNO_CONTRATO, !podeEditar) : (
+          {souAdmin ? slot(CADERNO_CONTRATO) : (
             <div className="caderno-slot">
               <Lock size={14} className="dim" />
               <span className="caderno-slot-titulo">Contrato</span>
@@ -679,7 +684,7 @@ function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno,
           {["especificacao", "marcenaria", "projeto"].map((k) => slot(cadernoPorChave(k), congeladoProjeto))}
           {/* A apresentação pode chegar depois das compras liberadas: só trava
               fora do modo de edição, como o contrato. */}
-          {slot(CADERNO_APRESENTACAO, !podeEditar)}
+          {slot(CADERNO_APRESENTACAO)}
         </div>
       </div>
 
@@ -7398,7 +7403,7 @@ const cadernoPorChave = (chave) => CADERNOS_EXECUTIVO.find((c) => c.chave === ch
 
 // Uma linha por caderno, não um bloco. São três anexos de consulta que
 // quase nunca mudam — ocupavam meia tela pra dizer "nenhum arquivo".
-function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, congelado }) {
+function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, congelado, podeEditar = true }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -7472,10 +7477,26 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
       ) : (
         <span className="caderno-slot-vazio">sem arquivo</span>
       )}
-      {!congelado && (
+      {/* CONGELAR E' NAO TROCAR — NAO E' NAO ANEXAR (17/09/2026).
+
+          Ela abriu a 2204 com a edicao na mao dela e nao achou como subir os
+          cadernos do Executivo: os tres estavam sem arquivo e sem botao. A
+          obra ja' tinha as compras liberadas, e a regra congelava a linha
+          inteira.
+
+          O congelamento existe pra proteger o que FOI MANDADO pro fornecedor:
+          trocar o caderno depois apaga a prova do que foi comprado. Slot
+          VAZIO nao tem prova nenhuma pra apagar — e recusar o anexo ali so'
+          garante que o documento nunca entra no sistema. */}
+      {podeEditar && (!congelado || !arquivo) && (
         <button className="caderno-acao" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
           <Upload size={12} /> {enviando ? "Enviando…" : arquivo ? "Trocar" : "Anexar"}
         </button>
+      )}
+      {podeEditar && congelado && arquivo && !perdido && (
+        <span className="caderno-slot-vazio" title="As compras já foram liberadas: este arquivo é a prova do que foi mandado para o fornecedor e não pode ser trocado.">
+          <Lock size={10} /> compras liberadas
+        </span>
       )}
       <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} style={{ display: "none" }} onChange={aoEscolher} />
       {erro && <span className="caderno-erro">{erro}</span>}
