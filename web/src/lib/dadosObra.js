@@ -159,6 +159,42 @@ export async function salvarDadosObra(codigo, conteudo, email) {
 }
 
 /**
+ * Grava SÓ o que mudou, em vez da obra inteira.
+ *
+ * Fatia 1 do ADR-004. Cada patch é um de dois formatos:
+ *   { verba, item, campos, confCodigo?, confDesc? }  — um campo de um item
+ *   { verba, mapa, chave, campos }                   — um mapa da verba
+ *
+ * `verba` e `item` são POSIÇÕES, e posição muda quando alguém insere ou apaga
+ * linha: por isso vão junto o código e a descrição que a tela viu. A função
+ * no banco confere antes de escrever e recusa o que não bater, em vez de
+ * gravar na linha errada.
+ *
+ * Devolve `{ semFuncao: true }` quando o `supabase/patch-obra.sql` ainda não
+ * rodou — quem chamou volta ao salvamento de sempre, sem incomodar ninguém.
+ */
+export async function aplicarPatchObra(codigo, patches) {
+  if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
+  if (!patches?.length) return { ok: true, aplicados: 0 };
+
+  const { data, error } = await supabase.rpc("aplicar_patch_obra", {
+    p_codigo: String(codigo),
+    p_patches: patches,
+  });
+
+  if (error) {
+    /* A função ainda não existe no banco. Não é erro de quem está usando o
+       app: é migração pendente, e o salvamento de sempre dá conta. */
+    if (error.code === "42883" || error.code === "PGRST202"
+        || /aplicar_patch_obra|Could not find the function/i.test(error.message || "")) {
+      return { semFuncao: true };
+    }
+    throw error;
+  }
+  return data || { ok: false };
+}
+
+/**
  * Só garante que a linha da obra existe no banco — sem mexer em nada que
  * já esteja lá, nem trava de edição, nem conteúdo (`ignoreDuplicates`
  * faz o upsert não tocar em nada quando a linha já existe).

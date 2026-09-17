@@ -59,7 +59,7 @@ import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, ac
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
+import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
@@ -2381,6 +2381,24 @@ const FRASE_DO_EVENTO = {
   editou: "editou",
   etapa: "concluiu a etapa",
 };
+
+/* OS CAMPOS QUE GRAVAM POR PATCH — fatia 1 do ADR-004.
+
+   O estado de compra: canal escolhido, solicitado e comprado. São as ações
+   mais disputadas (duas pessoas comprando na mesma obra) e as mais simples:
+   nenhuma delas muda a LISTA de itens, só um campo dentro de um item que já
+   existe.
+
+   Tudo que não estiver nesta lista continua salvando a obra inteira. Ela
+   cresce quando cada fatia seguinte for migrada, uma a uma e com teste —
+   nunca por adivinhação, porque um campo migrado sem cuidado é trabalho
+   perdido em silêncio. */
+const CAMPOS_DE_COMPRA = new Set(["canalCompra", "comprado", "compradoEm", "solicitado", "solicitadoEm"]);
+
+function patchSoDeCompra(patch) {
+  const chaves = Object.keys(patch || {});
+  return chaves.length > 0 && chaves.every((k) => CAMPOS_DE_COMPRA.has(k));
+}
 
 /* QUEM PODE EXCLUIR UM ADITIVO: so' quem criou, ou um administrador
    (decisao dela, 17/09/2026).
@@ -18446,7 +18464,26 @@ export default function App() {
            qual. Ninguem lia esse retorno: o app dizia "salvo", o campo
            novo voltava vazio no F5 e o defeito parecia estar no campo.
            Foi o que aconteceu com a data de entrega. */
+        /* SÓ O QUE MUDOU, quando dá (fatia 1 do ADR-004).
+
+           Se tudo que mudou desde o último salvamento é estado de compra, o
+           banco recebe só isso. Qualquer coisa fora do previsto — o SQL
+           ainda não rodado, trava de outra pessoa, patch recusado porque a
+           posição não bate — cai no salvamento inteiro, que é o caminho de
+           sempre e sabe avisar na tela. O pior resultado possível é gravar
+           como antes. */
+        const fila = filaPatch.current;
+        if (fila && fila.length) {
+          const p = await aplicarPatchObra(obra.codigo, fila);
+          if (p?.ok && !(p.recusados && p.recusados.length)) {
+            filaPatch.current = [];
+            setSalvando("salvo");
+            setTimeout(() => setSalvando(null), 2000);
+            return;
+          }
+        }
         const r = await salvarDadosObra(obra.codigo, obra, usuario);
+        filaPatch.current = [];
         setMigracao(r?.migracaoPendente || null);
         setSalvando(r?.migracaoPendente ? "parcial" : "salvo");
         setTimeout(() => setSalvando(null), 2000);
@@ -18612,8 +18649,40 @@ export default function App() {
      aditivo nao existe na planilha, e `updateItem` pelo indice nao o acha.
      Grava pela mesma trava e pelo mesmo salvamento automatico de qualquer
      outra compra — so' muda o endereco. */
+  /* A FILA DE PATCHES — fatia 1 do ADR-004.
+
+     `filaPatch` guarda o que dá pra gravar como "só isto mudou". `null`
+     quer dizer "precisa salvar a obra inteira", e é o estado inicial: o
+     primeiro salvamento depois de abrir a obra é sempre completo.
+
+     Como a fila sabe que alguém mexeu por FORA dela: cada enfileiramento
+     soma um no contador, e o efeito abaixo compara. Se a obra mudou sem o
+     contador andar, a mudança veio de um dos outros 43 caminhos de
+     gravação — e aí a fila é descartada, porque o salvamento inteiro tem
+     que levar tudo junto. Assim nenhum caminho novo precisa se lembrar de
+     avisar nada: o padrão é o seguro. */
+  const filaPatch = useRef(null);
+  const nEnfileirados = useRef(0);
+  const nVistos = useRef(0);
+
+  useEffect(() => {
+    if (nEnfileirados.current !== nVistos.current) { nVistos.current = nEnfileirados.current; return; }
+    filaPatch.current = null;
+  }, [obra]);
+
+  const precisaSalvarTudo = () => { filaPatch.current = null; nEnfileirados.current += 1; };
+  const enfileirarPatch = (p) => {
+    nEnfileirados.current += 1;
+    // Já precisa salvar tudo: o patch entra no bolo, não na fila.
+    if (filaPatch.current === null) return;
+    filaPatch.current.push(p);
+  };
+
   function atualizarCompraDeAditivo(catNum, itemId, patch) {
     if (!itemId) return;
+    const vi = (obra?.categorias || []).findIndex((c) => c.num === catNum);
+    if (vi >= 0) enfileirarPatch({ verba: vi, mapa: "comprasAditivo", chave: itemId, campos: patch });
+    else precisaSalvarTudo();
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const categorias = o.categorias.map((c) => {
@@ -18626,6 +18695,19 @@ export default function App() {
   }
 
   function updateItem(catIdx, itemIdx, patch) {
+    /* Estado de compra vai por patch; o resto salva a obra inteira. O código
+       e a descrição vão junto pra função no banco conferir que a posição
+       ainda é o item que a tela viu. */
+    if (patchSoDeCompra(patch)) {
+      const it = obra?.categorias?.[catIdx]?.itens?.[itemIdx];
+      enfileirarPatch({
+        verba: catIdx, item: itemIdx, campos: patch,
+        ...(typeof it?.codigo === "string" ? { confCodigo: it.codigo } : {}),
+        ...(it?.desc ? { confDesc: it.desc } : {}),
+      });
+    } else {
+      precisaSalvarTudo();
+    }
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const categorias = o.categorias.map((c, ci) => {
