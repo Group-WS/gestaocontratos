@@ -1,4 +1,4 @@
-/* Gravar só o que mudou — fatia 1 do ADR-004.
+/* Gravar só o que mudou — fatias 1 e 2 do ADR-004.
  *
  * Roda com: node web/src/__testes__/patch-compras.test.mjs
  *
@@ -36,9 +36,9 @@ const linha = (comeco) => {
 };
 
 const M = eval(`(function () {
-  ${linha("const CAMPOS_DE_COMPRA =")}
-  ${bloco("function patchSoDeCompra(")}
-  return { patchSoDeCompra, CAMPOS_DE_COMPRA };
+  ${src.slice(src.indexOf("const CAMPOS_POR_PATCH ="), src.indexOf("]);", src.indexOf("const CAMPOS_POR_PATCH =")) + 3)}
+  ${bloco("function podeIrPorPatch(")}
+  return { podeIrPorPatch, CAMPOS_POR_PATCH };
 })()`);
 
 let f = 0;
@@ -46,31 +46,53 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
   console.log(`${ok ? "ok  " : "FALHOU"} ${n.padEnd(58)} ${String(o).padEnd(10)} ${ok ? "" : "esperava " + e}`); };
 
 /* ---- 1. O que vai por patch ---- */
-conf("marcar comprado vai por patch", M.patchSoDeCompra({ comprado: true, compradoEm: "x" }), true);
-conf("marcar solicitado vai por patch", M.patchSoDeCompra({ solicitado: true, solicitadoEm: "x" }), true);
-conf("escolher canal vai por patch", M.patchSoDeCompra({ canalCompra: "sienge" }), true);
-conf("desmarcar também vai", M.patchSoDeCompra({ comprado: false, compradoEm: null }), true);
+conf("marcar comprado vai por patch", M.podeIrPorPatch({ comprado: true, compradoEm: "x" }), true);
+conf("marcar solicitado vai por patch", M.podeIrPorPatch({ solicitado: true, solicitadoEm: "x" }), true);
+conf("escolher canal vai por patch", M.podeIrPorPatch({ canalCompra: "sienge" }), true);
+conf("desmarcar também vai", M.podeIrPorPatch({ comprado: false, compradoEm: null }), true);
 
 /* Um campo de fora e o salvamento inteiro leva tudo: patch pela metade
    deixaria a outra alteração sem gravar, calada. */
-conf("editar quantidade NÃO vai por patch", M.patchSoDeCompra({ qtdExecutivo: 5 }), false);
-conf("compra mais quantidade juntas NÃO vão", M.patchSoDeCompra({ comprado: true, qtdExecutivo: 5 }), false);
-conf("aprovação do cliente NÃO vai (fatia 2)", M.patchSoDeCompra({ aprovadoCliente: { em: "x" } }), false);
-conf("troca NÃO vai (muda a lista)", M.patchSoDeCompra({ troca: { em: "x" } }), false);
-conf("patch vazio não vai", M.patchSoDeCompra({}), false);
-conf("undefined não quebra", M.patchSoDeCompra(undefined), false);
-conf("a lista da fatia 1 tem 5 campos", M.CAMPOS_DE_COMPRA.size, 5);
+conf("editar quantidade NÃO vai por patch", M.podeIrPorPatch({ qtdExecutivo: 5 }), false);
+conf("compra mais quantidade juntas NÃO vão", M.podeIrPorPatch({ comprado: true, qtdExecutivo: 5 }), false);
+/* Fatia 2: aprovações e liberações item a item. Carimbo inteiro, gravado ou
+   apagado de uma vez. */
+conf("aprovação do cliente vai por patch", M.podeIrPorPatch({ aprovadoCliente: { em: "x", por: "y" } }), true);
+conf("liberar para compra vai por patch", M.podeIrPorPatch({ liberadoCompra: { em: "x", por: "y" } }), true);
+conf("desfazer a liberação também vai", M.podeIrPorPatch({ liberadoCompra: null }), true);
+conf("conferir o alerta vai por patch", M.podeIrPorPatch({ alertaConferido: { em: "x", por: "y" } }), true);
+conf("liberar sem cliente vai por patch", M.podeIrPorPatch({ liberadoSemCliente: { em: "x" }, liberadoCompra: { em: "x" } }), true);
+conf("troca NÃO vai (muda a lista)", M.podeIrPorPatch({ troca: { em: "x" } }), false);
+conf("patch vazio não vai", M.podeIrPorPatch({}), false);
+conf("undefined não quebra", M.podeIrPorPatch(undefined), false);
+conf("a lista tem os 5 da fatia 1 e os 4 da fatia 2", M.CAMPOS_POR_PATCH.size, 9);
+/* O que NÃO migrou ainda, de propósito. Se algum destes entrar sem a fatia
+   dele, este teste cai — e é pra cair. */
+["qtdExecutivo", "custo", "desc", "troca", "excluido", "alocacaoManual"].forEach((c) => {
+  conf(`${c} continua fora do patch`, M.CAMPOS_POR_PATCH.has(c), false);
+});
 
 /* ---- 2. A fila, no App ---- */
-conf("o item enfileira com verba e posição", /enfileirarPatch\(\{\s*\n?\s*verba: catIdx, item: itemIdx, campos: patch,/.test(src), true);
+conf("mudar um item enfileira pelo mesmo caminho das ações em massa",
+  src.includes("if (podeIrPorPatch(patch)) enfileirarEmVarios([{ catIdx, itemIdx }], patch);"), true);
 conf("e manda o código e a descrição pra conferir",
   src.includes("confCodigo: it.codigo") && src.includes("confDesc: it.desc"), true);
-conf("o que não é compra pede salvamento inteiro", src.includes("      precisaSalvarTudo();"), true);
+conf("campo fora da lista pede salvamento inteiro",
+  src.includes("else precisaSalvarTudo();"), true);
+conf("o patch leva a posição da verba e do item",
+  src.includes("verba: catIdx, item: itemIdx, campos,"), true);
 /* A fila se descarta quando a obra muda por outro caminho: é o que faz
    nenhum dos outros 43 caminhos de gravação precisar avisar nada. */
 conf("mudança de fora descarta a fila",
   /if \(nEnfileirados\.current !== nVistos\.current\) \{ nVistos\.current = nEnfileirados\.current; return; \}\s*\n\s*filaPatch\.current = null;/.test(src), true);
 conf("a compra de aditivo vai por patch de mapa", src.includes('mapa: "comprasAditivo", chave: itemId'), true);
+
+/* Liberar ou aprovar uma verba inteira são dezenas de linhas: cada uma vira
+   um patch, pelo mesmo enfileirador. */
+conf("liberar para compra enfileira item a item", src.includes("enfileirarEmVarios(alvos, { liberadoCompra: carimbo })"), true);
+conf("aprovar pelo cliente enfileira item a item", src.includes("enfileirarEmVarios(alvos, { aprovadoCliente: carimbo })"), true);
+conf("o enfileirador em massa também confere código e descrição",
+  /const enfileirarEmVarios = \(alvos, campos\) => \{[\s\S]*confCodigo: it\.codigo[\s\S]*confDesc: it\.desc/.test(src), true);
 
 /* ---- 3. Falha sempre cai no salvamento de sempre ---- */
 conf("o salvamento tenta o patch primeiro", /const p = await aplicarPatchObra\(obra\.codigo, fila\);/.test(src), true);

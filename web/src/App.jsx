@@ -2382,22 +2382,28 @@ const FRASE_DO_EVENTO = {
   etapa: "concluiu a etapa",
 };
 
-/* OS CAMPOS QUE GRAVAM POR PATCH — fatia 1 do ADR-004.
+/* OS CAMPOS QUE GRAVAM POR PATCH — ADR-004.
 
-   O estado de compra: canal escolhido, solicitado e comprado. São as ações
-   mais disputadas (duas pessoas comprando na mesma obra) e as mais simples:
-   nenhuma delas muda a LISTA de itens, só um campo dentro de um item que já
-   existe.
+   Nenhum deles muda a LISTA de itens: são campos dentro de um item que já
+   existe. É por isso que dá pra gravar "só isto mudou" sem reescrever a obra
+   inteira, e é o que precisa valer pra TODOS antes da trava por tela.
 
-   Tudo que não estiver nesta lista continua salvando a obra inteira. Ela
-   cresce quando cada fatia seguinte for migrada, uma a uma e com teste —
-   nunca por adivinhação, porque um campo migrado sem cuidado é trabalho
-   perdido em silêncio. */
-const CAMPOS_DE_COMPRA = new Set(["canalCompra", "comprado", "compradoEm", "solicitado", "solicitadoEm"]);
+   Tudo que não estiver aqui continua salvando a obra inteira. A lista cresce
+   uma fatia por vez, com teste — nunca por adivinhação, porque campo migrado
+   sem cuidado é trabalho perdido em silêncio. */
+const CAMPOS_POR_PATCH = new Set([
+  // Fatia 1 — compras. As ações mais disputadas: duas pessoas comprando na
+  // mesma obra.
+  "canalCompra", "comprado", "compradoEm", "solicitado", "solicitadoEm",
+  /* Fatia 2 — aprovações e liberações item a item. Carimbos inteiros
+     ({ em, por }), gravados ou apagados de uma vez: liberar uma verba são
+     dezenas de linhas, e cada uma vira um patch. */
+  "liberadoCompra", "aprovadoCliente", "alertaConferido", "liberadoSemCliente",
+]);
 
-function patchSoDeCompra(patch) {
+function podeIrPorPatch(patch) {
   const chaves = Object.keys(patch || {});
-  return chaves.length > 0 && chaves.every((k) => CAMPOS_DE_COMPRA.has(k));
+  return chaves.length > 0 && chaves.every((k) => CAMPOS_POR_PATCH.has(k));
 }
 
 /* QUEM PODE EXCLUIR UM ADITIVO: so' quem criou, ou um administrador
@@ -18678,6 +18684,21 @@ export default function App() {
     filaPatch.current.push(p);
   };
 
+  /* O mesmo campo em vários itens de uma vez: liberar ou aprovar uma verba
+     inteira são dezenas de linhas, e cada uma vira um patch. O código e a
+     descrição vão junto pra função no banco conferir que a posição ainda é o
+     item que a tela viu. */
+  const enfileirarEmVarios = (alvos, campos) => {
+    (alvos || []).forEach(({ catIdx, itemIdx }) => {
+      const it = obra?.categorias?.[catIdx]?.itens?.[itemIdx];
+      enfileirarPatch({
+        verba: catIdx, item: itemIdx, campos,
+        ...(typeof it?.codigo === "string" ? { confCodigo: it.codigo } : {}),
+        ...(it?.desc ? { confDesc: it.desc } : {}),
+      });
+    });
+  };
+
   function atualizarCompraDeAditivo(catNum, itemId, patch) {
     if (!itemId) return;
     const vi = (obra?.categorias || []).findIndex((c) => c.num === catNum);
@@ -18698,16 +18719,8 @@ export default function App() {
     /* Estado de compra vai por patch; o resto salva a obra inteira. O código
        e a descrição vão junto pra função no banco conferir que a posição
        ainda é o item que a tela viu. */
-    if (patchSoDeCompra(patch)) {
-      const it = obra?.categorias?.[catIdx]?.itens?.[itemIdx];
-      enfileirarPatch({
-        verba: catIdx, item: itemIdx, campos: patch,
-        ...(typeof it?.codigo === "string" ? { confCodigo: it.codigo } : {}),
-        ...(it?.desc ? { confDesc: it.desc } : {}),
-      });
-    } else {
-      precisaSalvarTudo();
-    }
+    if (podeIrPorPatch(patch)) enfileirarEmVarios([{ catIdx, itemIdx }], patch);
+    else precisaSalvarTudo();
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const categorias = o.categorias.map((c, ci) => {
@@ -19302,6 +19315,8 @@ export default function App() {
   function liberarItensParaCompra(alvos, liberar) {
     if (!alvos?.length) return;
     const carimbo = liberar ? { em: new Date().toISOString(), por: usuario } : null;
+    // Fatia 2 do ADR-004: grava só este campo, item a item.
+    enfileirarEmVarios(alvos, { liberadoCompra: carimbo });
     const porCat = new Map();
     alvos.forEach(({ catIdx, itemIdx }) => {
       if (!porCat.has(catIdx)) porCat.set(catIdx, new Set());
@@ -19323,6 +19338,8 @@ export default function App() {
   function aprovarItensPeloCliente(alvos, aprovar) {
     if (!alvos?.length) return;
     const carimbo = aprovar ? { em: new Date().toISOString(), por: usuario } : null;
+    // Fatia 2 do ADR-004: grava só este campo, item a item.
+    enfileirarEmVarios(alvos, { aprovadoCliente: carimbo });
     const porCat = new Map();
     alvos.forEach(({ catIdx, itemIdx }) => {
       if (!porCat.has(catIdx)) porCat.set(catIdx, new Set());
