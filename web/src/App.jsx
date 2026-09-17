@@ -2210,6 +2210,34 @@ function casaBusca(texto, termo) {
   return t.split(" ").every((palavra) => alvo.includes(palavra));
 }
 
+/* Quanto trabalho esta' parado nesta obra, e esperando quem.
+
+   Os chips da esteira dizem se o DOCUMENTO chegou. Isto diz quanta COISA
+   esta' na fila — e sao perguntas diferentes: uma e' historico, a outra e'
+   o que precisa de alguem hoje.
+
+   A ordem e' a do fluxo real e cada item conta numa etapa SO', a primeira em
+   que esta' travado. Item que o cliente ainda nao aprovou nao e' "a liberar"
+   tambem: ele esta' esperando o cliente, e so'. Contar o mesmo item duas
+   vezes inflaria a fila e faria a tela mentir sobre o tamanho do trabalho.
+
+   Mao de obra fica de fora: ela nao se compra, vai pra Contratos. E' a mesma
+   trava que toda regra de compra precisa ter antes de qualquer outra
+   pergunta. */
+function pendenciasDaObra(o) {
+  const conta = { cliente: 0, liberar: 0, solicitar: 0 };
+  (o?.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
+    if (it.ehTitulo || it.excluido) return;
+    if (alocacaoDoItem(it, cat) === ALOC_MO) return;
+    if (!aprovadoPeloCliente(it, o)) { conta.cliente += 1; return; }
+    if (!liberadoParaCompra(it)) { conta.liberar += 1; return; }
+    /* So' o Sienge tem etapa de solicitacao; nos outros canais a compra e'
+       direta. Item sem canal escolhido ainda nao chegou nessa pergunta. */
+    if (it.canalCompra === "sienge" && !estaSolicitado(it)) conta.solicitar += 1;
+  }));
+  return conta;
+}
+
 /* =====[ FIM DO MODELO PURO — daqui pra baixo tem JSX ]=====
 
    Os testes recortam o trecho ACIMA desta linha e rodam de verdade. JSX
@@ -15222,6 +15250,30 @@ function InicioNum({ rot, valor, sub, cor, onClick }) {
   );
 }
 
+/* A fila da obra: o que esta' parado e esperando quem.
+
+   Le da esquerda pra direita na ordem do fluxo, entao o primeiro numero e' o
+   gargalo. Nada aparece quando nao ha' nada parado — obra em dia nao precisa
+   anunciar que esta' em dia, e a linha some. */
+function MarcosDaObra({ obra }) {
+  const p = pendenciasDaObra(obra);
+  const marcos = [
+    { chave: "cliente", n: p.cliente, texto: "esperando o cliente", dica: "Itens que o cliente ainda não aprovou" },
+    { chave: "liberar", n: p.liberar, texto: "a liberar", dica: "Aprovados pelo cliente, esperando o executivo liberar para compra" },
+    { chave: "solicitar", n: p.solicitar, texto: "a solicitar no Sienge", dica: "Liberados e com canal Sienge, ainda sem solicitação de compra" },
+  ].filter((m) => m.n > 0);
+  if (marcos.length === 0) return null;
+  return (
+    <div className="ini-marcos">
+      {marcos.map((m) => (
+        <span key={m.chave} className={`ini-marco ${m.chave}`} title={m.dica}>
+          <b>{m.n}</b> {m.texto}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0, onAbrirObra, onModulo, dadosLocalizacao = [], localizacaoCarregando = false, onToggleLocalizacao }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const t = r.totais;
@@ -15399,6 +15451,10 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                     })}
                   </div>
                   <span className={`ini-fase-pilula ${esteira.tom || ""}`}>{esteira.texto}</span>
+                  {/* A fila da obra, na ordem do fluxo. Numero zerado nao
+                      aparece: a linha vazia e' a obra em dia, e o silencio
+                      vira informacao. */}
+                  <MarcosDaObra obra={o} />
                 </div>
                 {/* Duas barras sem legenda ninguém decifra de relance —
                     o número já diz sozinho. GC bem pequeno: é contexto
@@ -17594,6 +17650,7 @@ export default function App() {
         comprasLiberadas: salvo.comprasLiberadas,
         deparaAprovado: salvo.deparaAprovado,
         cmvLiberado: salvo.cmvLiberado,
+        clienteAssinouEm: salvo.clienteAssinouEm,
       };
     });
   }, [obrasAtivas, painelDados, selectedId]);
@@ -21194,6 +21251,14 @@ export default function App() {
            que o .obra-search traz, senao desalinha dos chips ao lado. */
         .busca-lista { margin-bottom: 0; flex: 0 1 300px; min-width: 170px; }
         .busca-conta { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute); flex-shrink: 0; white-space: nowrap; }
+        /* A fila da obra. Fica abaixo da pilula de fase, mais discreta que a
+           esteira: a esteira e' o caminho, isto e' o que esta' parado agora. */
+        .ini-marcos { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; }
+        .ini-marco { font-size: 11px; color: var(--text-soft); white-space: nowrap; }
+        .ini-marco b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); }
+        .ini-marco.cliente b { color: var(--warning); }
+        .ini-marco.liberar b { color: var(--brand); }
+        .ini-marco.solicitar b { color: var(--purple); }
         .selecao-escondidos { color: var(--warning); font-weight: 600; }
         .nav-badge { background: var(--danger); color: var(--bg); font-family: var(--font-mono); font-size: 10px; font-weight: 700; border-radius: 999px; }
         .nav-badge-novo { background: var(--brand); }

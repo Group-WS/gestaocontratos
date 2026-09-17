@@ -278,7 +278,10 @@ export async function carregarResumoDeVarias(codigos, onParcial) {
     const fatia = codigos.slice(i, i + LOTE).map(String);
     const { data, error } = await supabase
       .from("obra_dados")
-      .select("obra_codigo, categorias, data_entrega, compras_liberadas, cadernos, depara_aprovado, cmv_liberado")
+      /* `cliente_assinou_em` entra pra contagem de pendencias do Inicio:
+         sem ele, obra com assinatura geral do cliente apareceria com TODOS
+         os itens "esperando o cliente" — o oposto da verdade. */
+      .select("obra_codigo, categorias, data_entrega, compras_liberadas, cadernos, depara_aprovado, cmv_liberado, cliente_assinou_em")
       .in("obra_codigo", fatia);
     if (error) throw error;
     (data || []).forEach((l) => tudo.set(String(l.obra_codigo), {
@@ -291,6 +294,10 @@ export async function carregarResumoDeVarias(codigos, onParcial) {
       // por uma — CMV liberado é um dos marcos que ele mostra.
       deparaAprovado: !!l.depara_aprovado,
       cmvLiberado: l.cmv_liberado ?? null,
+      /* Assinatura geral do cliente: sem ela, a contagem de pendências do
+         Início diria que a obra inteira está esperando o cliente que já
+         assinou. */
+      clienteAssinouEm: l.cliente_assinou_em || null,
     }));
     // Mapa novo a cada lote: o React so re-renderiza se a referencia mudar.
     if (onParcial) onParcial(new Map(tudo));
