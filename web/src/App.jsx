@@ -8688,6 +8688,17 @@ function podeLiberarItem(it, ctx) {
      ela so' sai com a aprovacao dele ou com a excecao justificada — e as
      duas ja entraram em `aprovadoPeloCliente`. */
   if (p.tipo === "cliente") return false;
+  /* SO' O "CONFERI" DADO AQUI VALE — decisao dela, 17/09/2026.
+
+     A aprovacao da linha na Conf. Executivo, feita antes desta trava
+     existir, NAO conta como alerta conferido. Na 2498 isso deixa 87 itens
+     com alerta pedindo o "conferi" de novo na hora de liberar. Ela escolheu
+     assim de proposito, "pra gente ver como vai ser, se ficar ruim depois
+     eu mudo". Nao e' defeito.
+
+     Pra mudar: aceitar tambem a aprovacao da linha — ela mora em
+     `obra.aprovacoes` (chave `exec:catNum:codigo`), e precisaria chegar aqui
+     pelo `ctx`. */
   return !!it?.alertaConferido;
 }
 
