@@ -97,5 +97,30 @@ const servico = { ...soTotal, tipo: "servico" };
 conf("serviço vira tudo mão de obra", parcelasDoItem(servico).mo, 500);
 conf("e nada de material", parcelasDoItem(servico).material, 0);
 
+/* ---- O PLANO EM MODO LEITURA (17/09/2026) ----
+ *
+ * Ela trocou a alocação de itens da Automação com a obra travada por outra
+ * pessoa. A tela mudou na hora, o salvamento automático NÃO roda sem a trava
+ * (ele exige `edicao.minha`), e a correção sumia no F5. Do lado dela ficou
+ * "MAS JÁ ESTÁ LANÇADO COMO MAT" — e o item continuava sem subir para as
+ * Compras, porque no banco ele nunca virou MAT.
+ *
+ * Não existe aviso honesto depois do clique: mudança que não grava é pior
+ * que mudança que não acontece, porque a tela mente por um F5 inteiro. Então
+ * o caminho inteiro fica trancado, e a etiqueta diz por quê.
+ */
+const app = src;
+conf("a etiqueta de alocação desabilita sem a trava", /<select value=\{aloc\}[\s\S]{0,200}disabled=\{!podeEditar\}/.test(app), true);
+conf("... e diz que é modo leitura", /title=\{podeEditar[\s\S]{0,140}MODO_LEITURA_DICA\}/.test(app), true);
+conf("a linha do plano recebe o modo leitura", /function LinhaPlano\(\{ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, podeEditar = true \}\)/.test(app), true);
+conf("o grupo do plano também", /function GrupoPlano\(\{[^}]*podeEditar = true \}\)/.test(app), true);
+conf("e a tela entrega o modo leitura ao grupo", app.includes("<GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens} podeEditar={podeEditar}"), true);
+/* Segunda tranca: mesmo que a etiqueta escape, a ação não passa. */
+conf("mudar alocação sem trava não chama o App", /if \(!podeEditar\) return;\s*\n\s*const i = indiceRealDoItem/.test(app), true);
+conf("separar MO fica de fora sem a trava", app.includes("onSepararMO={podeEditar ? (codigo) => onSepararMO(cat.num, codigo) : null}"), true);
+conf("juntar MO também", app.includes("onJuntarMO={podeEditar ? (codigo) => onJuntarMO(cat.num, codigo) : null}"), true);
+conf("separar o grupo inteiro também", app.includes("onSepararGrupo={podeEditar ? () => onSepararGrupo(cat.num) : null}"), true);
+conf("aprovar para compra também", /onClick=\{onAprovar\} disabled=\{!podeEditar\}/.test(app), true);
+
 console.log(falhas === 0 ? "\nTUDO OK" : `\n${falhas} FALHA(S)`);
 process.exit(falhas === 0 ? 0 : 1);

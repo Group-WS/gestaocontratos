@@ -2605,7 +2605,7 @@ function DestinoCompra({ item, aloc }) {
   return <span className="pill pill-wait">não identificado</span>;
 }
 
-function TagAloc({ aloc, manual, onChange }) {
+function TagAloc({ aloc, manual, onChange, podeEditar = true }) {
   // alocacaoDoItem nunca devolve vazio; se devolver, e defeito e tem que
   // gritar na tela, nao virar um tracinho discreto que ninguem investiga.
   if (!aloc) return <span className="aloc aloc-vazio" title="Item sem alocação de recurso — isto é um defeito, me avise">SEM ALOC.</span>;
@@ -2619,8 +2619,18 @@ function TagAloc({ aloc, manual, onChange }) {
   return (
     <span className="aloc-edit">
       {etiqueta}
+      {/* EM MODO LEITURA, DESABILITADA — e dizendo por que (17/09/2026).
+
+          Ela trocou a alocacao com a obra travada por outra pessoa: a tela
+          mudou, o salvamento automatico nao roda sem a trava, e a correcao
+          sumia no F5. Do lado dela ficou "ja esta lancado como MAT" e o item
+          nao subia pras Compras. Nao ha' aviso possivel depois do clique —
+          o unico jeito honesto e' nao deixar clicar. */}
       <select value={aloc} onChange={(e) => onChange(e.target.value)} aria-label="Alocação de recurso"
-        title="Trocar a alocação. O valor do item vai junto pra coluna escolhida — o total não muda.">
+        disabled={!podeEditar}
+        title={podeEditar
+          ? "Trocar a alocação. O valor do item vai junto pra coluna escolhida — o total não muda."
+          : MODO_LEITURA_DICA}>
         <option value={ALOC_MAT}>{NOME_ALOC.MAT}</option>
         <option value={ALOC_MO}>{NOME_ALOC.MO}</option>
         <option value={ALOC_AMBOS}>{NOME_ALOC.AMBOS}</option>
@@ -2639,7 +2649,7 @@ function TagAloc({ aloc, manual, onChange }) {
 
    O que NAO mudou: MO continua indo pra Contratos, nao pra Compras. A
    linha so de MO nao ganha caixinha de compra — ela diz pra onde vai. */
-function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar }) {
+function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, podeEditar = true }) {
   const alertas = itemAlertas(item);
   const bloqueado = alertas.includes("escopo");
   const { material, mo, estimado, manual } = parcelasDoItem(item, cat);
@@ -2718,7 +2728,7 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
             {/* A linha separada esta logo abaixo, na mesma verba — nao ha
                 mais pra onde mandar a pessoa. */}
             <CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo
-            {onJuntarMO && <button className="btn-juntar" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</button>}
+            {onJuntarMO && podeEditar && <button className="btn-juntar" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</button>}
           </span>
         )}
         {item.separadoDe && (
@@ -2736,11 +2746,11 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
         <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? item.qtdVendida ?? item.qtd ?? "—"}</span> <span className="unit">{item.un}</span>
       </td>
       <td className="center">
-        <TagAloc aloc={aloc} manual={!!item.alocacaoManual} onChange={onAlocar} />
+        <TagAloc aloc={aloc} manual={!!item.alocacaoManual} onChange={onAlocar} podeEditar={podeEditar} />
         {/* So faz sentido separar o que TEM as duas parcelas, e so uma
             vez. Item que ja mora na propria verba de mao de obra nao tem
             pra onde ir. */}
-        {podeSepararMO(item, cat) && onSepararMO && (
+        {podeSepararMO(item, cat) && onSepararMO && podeEditar && (
           <button className="btn-separar" onClick={onSepararMO}
             title="Tira a mão de obra deste item e cria uma linha só dela logo abaixo, com a mesma descrição e quantidade. O total não muda.">
             <GitCompare size={9} /> separar MO
@@ -2770,7 +2780,8 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
       </td>
       <td className="center">
         {bloqueado
-          ? <button className="btn-approve" onClick={onAprovar}><Check size={12} /> Aprovar p/ compra</button>
+          ? <button className="btn-approve" onClick={onAprovar} disabled={!podeEditar}
+              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={12} /> Aprovar p/ compra</button>
           : <DestinoCompra item={item} aloc={aloc} />}
       </td>
     </tr>
@@ -2908,7 +2919,7 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
   );
 }
 
-function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega, aditivo }) {
+function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, onSepararMO, onJuntarMO, onSepararGrupo, dataEntrega, aditivo, podeEditar = true }) {
   const mat = itens.reduce((a, it) => a + parcelasDoItem(it, cat).material, 0);
   const mo = itens.reduce((a, it) => a + parcelasDoItem(it, cat).mo, 0);
   const nAvulsos = itens.filter((it) => it.avulso).length;
@@ -3000,6 +3011,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
                     onSepararMO={onSepararMO ? () => onSepararMO(it.codigo) : null}
                     onJuntarMO={onJuntarMO ? () => onJuntarMO(it.codigo) : null}
                     onAprovar={() => onItemChange(idx, { statusEscopo: "aprovado" })}
+                    podeEditar={podeEditar}
                   />
                 );
               })}
@@ -3474,14 +3486,14 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       </div>
 
       {grupos.map(({ cat, itens }) => (
-        <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens}
+        <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens} podeEditar={podeEditar}
           /* Com busca ligada a verba abre sozinha: procurar e ainda ter que
              clicar em cada verba pra ver o resultado nao e' procurar. */
           expanded={expandedCats.has(cat.num + obra.id) || !!busca.trim()}
           onToggle={() => toggleCat(cat.num + obra.id)}
-          onSepararMO={(codigo) => onSepararMO(cat.num, codigo)}
-          onJuntarMO={(codigo) => onJuntarMO(cat.num, codigo)}
-          onSepararGrupo={() => onSepararGrupo(cat.num)}
+          onSepararMO={podeEditar ? (codigo) => onSepararMO(cat.num, codigo) : null}
+          onJuntarMO={podeEditar ? (codigo) => onJuntarMO(cat.num, codigo) : null}
+          onSepararGrupo={podeEditar ? () => onSepararGrupo(cat.num) : null}
           dataEntrega={obra.dataEntrega}
           aditivo={aditPorVerba.get(cat.num)}
           /* Os itens de aditivo entram DEPOIS dos da planilha, entao um
@@ -3504,6 +3516,10 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
             updateItem(obraCrua.categorias.indexOf(obraCrua.categorias[i.cat]), i.item, patch);
           }}
           onAlocar={(it, itemIdx, v) => {
+            /* Segunda tranca, alem da etiqueta desabilitada: sem a trava o
+               salvamento nao roda, e mudanca que nao grava e' pior do que
+               mudanca que nao acontece — a tela mente por um F5 inteiro. */
+            if (!podeEditar) return;
             const i = indiceRealDoItem(obraCrua, cat.num, itemIdx);
             if (i == null) return;
             onAlocar(i.cat, i.item, it, v);
