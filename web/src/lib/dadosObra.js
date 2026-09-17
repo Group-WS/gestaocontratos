@@ -25,6 +25,24 @@ const listaDeArquivos = (v) => (Array.isArray(v) ? v : []);
 // fechado no meio da edição travaria a obra para sempre.
 export const MINUTOS_ATE_TRAVA_EXPIRAR = 30;
 
+/* Trava vencida não é trava.
+ *
+ * O vencimento estava aplicado em dois lugares e faltando num terceiro:
+ * `pegarEdicao` deixa assumir uma trava velha, `listarTravas` não manda o
+ * cadeado pra barra lateral — mas a leitura da obra devolvia `editando_por`
+ * cru. O resultado é que a tarja dentro da obra anunciava alguém editando
+ * horas depois de a trava ter morrido.
+ *
+ * Aconteceu em 17/09/2026: a tarja dizia "editando desde 10:47" às 13:02,
+ * 136 minutos depois, com o cadeado da lista lateral já apagado. Quem olhava
+ * a obra achava que não podia mexer, e podia.
+ */
+export function travaViva(desde) {
+  if (!desde) return false;
+  const quando = new Date(desde).getTime();
+  return Number.isFinite(quando) && Date.now() - quando < MINUTOS_ATE_TRAVA_EXPIRAR * 60_000;
+}
+
 export async function carregarDadosObra(codigo) {
   if (!supabaseConfigurado) return null;
   const { data, error } = await supabase
@@ -225,8 +243,11 @@ function paraApp(linha) {
     cmvLiberado: linha.cmv_liberado ?? null,
     cmvLiberadoEm: linha.cmv_liberado_em || null,
     cmvLiberadoPor: linha.cmv_liberado_por || null,
-    editandoPor: linha.editando_por || null,
-    editandoDesde: linha.editando_desde || null,
+    /* Só anuncia quem está editando se a trava ainda vale — a mesma régua
+       que `listarTravas` usa pro cadeado da barra lateral. Sem isto os dois
+       discordavam: cadeado apagado e tarja dizendo que a obra estava tomada. */
+    editandoPor: travaViva(linha.editando_desde) ? linha.editando_por || null : null,
+    editandoDesde: travaViva(linha.editando_desde) ? linha.editando_desde || null : null,
     atualizadoEm: linha.atualizado_em || null,
     atualizadoPor: linha.atualizado_por || null,
   };

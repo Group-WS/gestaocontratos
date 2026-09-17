@@ -19236,7 +19236,12 @@ export default function App() {
         .adit-mais { color: var(--blue); }
         .adit-menos { color: var(--danger); }
         .cmv-linha-valor.credito { color: var(--green); }
-        .dash-gc-nome { font-size: 17px; font-weight: 700; color: var(--ink); }
+        /* O nome vinha em 17px/700 — do tamanho do titulo do cartao (18px)
+           e mais pesado que ele. O texto mais forte do bloco passava a ser um
+           dado, nao o cabecalho, e o nome ficava 1,7x o rotulo logo acima.
+           Continua sendo o item principal da linha (o rotulo tem 10px e o
+           e-mail 11px), sem disputar com o titulo. */
+        .dash-gc-nome { font-size: 14px; font-weight: 600; color: var(--ink); }
         .dash-gc-email { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .dash-gc-vazio { font-size: 12px; color: var(--ink-3); font-style: italic; }
         .dash-gc-acoes { display: flex; gap: 7px; margin-top: 9px; }
@@ -20449,7 +20454,11 @@ export default function App() {
         .caderno-card { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
         .caderno-lista { display: flex; flex-direction: column; gap: 1px; background: var(--border-soft); }
         .caderno-slot { display: flex; align-items: center; gap: 9px; background: var(--surface-1); padding: 8px 18px; font-size: 12px; }
-        .caderno-slot-titulo { color: var(--ink); font-weight: 500; }
+        /* Sem min-width zero o titulo se recusa a encolher, e numa linha
+           estreita ele empurra "Ver" e "Baixar" pra fora do cartao — foi o
+           que aconteceu com "Projeto Criativo", que e' mais longo que
+           "Contrato". */
+        .caderno-slot-titulo { color: var(--ink); font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .caderno-slot-arquivo { flex: 1; min-width: 0; color: var(--ink-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .caderno-slot-vazio { flex: 1; color: var(--ink-3); font-size: 11.5px; font-style: italic; }
         .caderno-acao { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 2px 4px; font-size: 11px; color: var(--blue); cursor: pointer; font-family: inherit; text-decoration: none; flex-shrink: 0; }
@@ -21468,6 +21477,104 @@ export default function App() {
         .grp-associar:hover:not(:disabled) { background: var(--brand-soft); }
         .grp-associar:disabled { opacity: 0.6; cursor: progress; }
         .grp-assoc-ok { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--success); white-space: nowrap; }
+
+        /* ==================================================================
+           CELULAR
+
+           Pedido dela em 17/09/2026, com o escopo que ela escolheu: piso de
+           qualidade — nada estoura pra fora, nada se sobrepoe, e tabela larga
+           rola dentro do proprio bloco em vez de arrastar a pagina junto.
+
+           UMA CAUSA SOZINHA RESPONDIA PELA MAIOR PARTE: o .nav-grupos media
+           558px sem quebrar nem rolar, e levava a pagina inteira a 658px numa
+           tela de 375. Com isso TODO cartao aparecia cortado na direita, e
+           parecia defeito de cada cartao — nao era.
+
+           Este bloco fica no fim porque disputa especificidade igual com as
+           regras acima; quem ganha e' a ordem.
+           ================================================================== */
+        @media (max-width: 760px) {
+          .main { padding: 18px 14px 48px; }
+          .topbar { gap: 10px; padding: 0 12px; }
+          .topbar-right { min-width: 0; gap: 4px; }
+          /* A marca media 320px e o lado direito 196px: 516px numa tela de
+             375, e os dois com flex-shrink zero. O seletor de tema, o sino e
+             o avatar ficavam FORA da tela, e a pagina inteira ganhava 155px
+             de rolagem lateral so' por isso. O logo fica; o nome do produto
+             sai, que ja' esta' no titulo da aba. */
+          .topbar-brand { flex-shrink: 1; min-width: 0; }
+          .brand-produto { display: none; }
+
+          /* Fileiras que nao cabem quebram, em vez de empurrar a pagina. */
+          .barra-etapa { flex-wrap: wrap; gap: 8px 12px; }
+          .be-dir { flex-wrap: wrap; flex-shrink: 1; min-width: 0; }
+          .title-row { flex-wrap: wrap; gap: 8px; }
+          .sel-barra-topo, .dash-atalhos, .filter-bar { flex-wrap: wrap; }
+
+          /* Os grupos da obra rolam dentro da propria faixa, como as abas ja'
+             faziam. Quebrar em duas linhas partiria a pastilha no meio. */
+          .nav-obra { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          .nav-obra::-webkit-scrollbar { height: 0; }
+          .nav-grupos { flex-shrink: 0; }
+
+          /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
+             sao duas colunas: sao duas fitas de uma palavra por linha. */
+          .dobra-colunas, .dobra-regua, .dash, .ad-wrap, .ad-cab, .conf-cols,
+          .escopo-conta, .escopo-campos, .confronto-placar, .ger-placar,
+          .sol-campos, .assinatura-campos, .form-row-3, .cad-campos,
+          .ad-item-campos, .ad-item-campos.com-custo, .import-row,
+          .ini-colunas, .ini-regua {
+            /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
+               min-width auto, e com isso se RECUSA a encolher abaixo do
+               proprio conteudo. Na Inicio, as duas colunas viravam uma so'
+               mas continuavam com 300px de largura numa caixa de 279 —
+               a pagina seguia rolando de lado por 7px. */
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          /* Painel Mehoo: era uma fileira horizontal de blocos espremida em
+             241px — o nome da obra saia uma palavra por linha e o endereco
+             virava uma fita vertical. Empilhado, cada numero fica numa linha
+             legivel. */
+          .mh-obra-head { flex-wrap: wrap; gap: 10px; }
+          .mh-obra-id { flex: 1 1 100%; }
+          .mh-entrega, .mh-num { flex: 0 0 auto; text-align: left; }
+          .mh-num-larga { width: auto; min-width: 120px; }
+
+          /* Tabela larga rola dentro do bloco dela; a pagina fica parada. */
+          .grp-itens, .vend-itens-wrap, .exec-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+          /* Alvo de toque: 16px de fonte no campo impede o zoom automatico do
+             iPhone ao focar, que e' o que faz a pagina "pular" ao digitar. */
+          input, select, textarea { font-size: 16px; }
+          .busca-lista { flex: 1 1 100%; }
+
+          /* Linha de caderno: titulo em cima, arquivo e botoes embaixo.
+
+             O .mh-caderno-tit tem largura FIXA de 210px e flex-shrink zero.
+             Numa caixa de 245px sobravam 35px pro nome do arquivo e pros dois
+             botoes juntos — "Ver" e "Baixar" eram cortados pela borda do
+             cartao. Soltando a largura e deixando o titulo ocupar a propria
+             linha, a de baixo fica so' com arquivo e acoes. */
+          .mh-caderno, .caderno-slot { flex-wrap: wrap; }
+          /* Tres linhas, nesta ordem: [icone + nome do caderno] / [arquivo] /
+             [Ver Baixar]. O titulo fica ao lado do icone (flex auto, nao
+             100%), senao o livrinho ganha uma linha so' pra ele. */
+          /* flex-basis ZERO, nao auto: com base automatica o titulo pede a
+             largura do proprio texto e, nao cabendo, pula pra linha de baixo
+             deixando o livrinho sozinho em cima. Com base zero ele divide a
+             linha com o icone e quebra o texto dentro dele mesmo. */
+          .mh-caderno-tit, .caderno-slot-titulo { width: auto; flex: 1 1 0; min-width: 0; white-space: normal; }
+          .mh-caderno-arq, .mh-caderno-vazio, .caderno-slot-arquivo { flex: 1 1 100%; }
+          .mh-caderno .caderno-acao:first-of-type, .caderno-slot .caderno-acao:first-of-type { margin-left: -8px; }
+
+          /* Alvo de toque: 11px de fonte num link de 2px de padding e' pequeno
+             demais pro polegar. */
+          .caderno-acao { min-height: 32px; padding: 2px 8px; }
+
+          /* A tabela de itens do Mehoo rola dentro do bloco, como as outras. */
+          .mh-tabela { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        }
       `}</style>
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
