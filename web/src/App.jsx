@@ -1888,10 +1888,39 @@ function itensDeAditivo(aditivos) {
 function categoriasComAditivos(categorias, aditivos) {
   const extras = itensDeAditivo(aditivos);
   if (!extras.length) return categorias || [];
+
+  /* O ESTADO DE COMPRA do item do aditivo (canal, solicitado, comprado).
+
+     O item e' derivado do documento do aditivo e nao mora na planilha, entao
+     o que a compra decide sobre ele precisa de um lugar proprio: o mapa
+     `comprasAditivo` da verba, pelo id estavel do item. Sem isso escolher o
+     canal numa linha de aditivo era perdido calado — `updateItem` procura o
+     item pelo indice e, alem do fim da planilha, nao acha nada.
+
+     A busca e' em TODAS as verbas, e nao so' na do item: se o aditivo for
+     editado e o grupo mudar de verba, a compra ja' feita continua valendo.
+
+     E o estado nunca sobrescreve o que e' do ADITIVO. Descricao, espec,
+     custo e alocacao vem do documento aprovado; deixar a compra reescrever
+     isso faria a linha discordar do documento que o cliente assinou. */
+  const DO_ADITIVO = new Set(["id", "codigo", "desc", "descCompleta", "especificacao", "ambiente",
+    "qtdExecutivo", "un", "custo", "totalMaterial", "totalMO", "alocacaoManual", "aditivo", "aditivoId"]);
+  const estado = new Map();
+  (categorias || []).forEach((c) => Object.entries(c.comprasAditivo || {}).forEach(([id, e]) => {
+    estado.set(id, { ...(estado.get(id) || {}), ...e });
+  }));
+  const comEstado = (item) => {
+    const e = estado.get(item.id);
+    if (!e) return item;
+    const livre = {};
+    Object.entries(e).forEach(([k, v]) => { if (!DO_ADITIVO.has(k)) livre[k] = v; });
+    return { ...item, ...livre };
+  };
+
   const porVerba = new Map();
   extras.forEach((x) => {
     if (!porVerba.has(x.catNum)) porVerba.set(x.catNum, []);
-    porVerba.get(x.catNum).push(x.item);
+    porVerba.get(x.catNum).push(comEstado(x.item));
   });
   return (categorias || []).map((c) => {
     const meus = porVerba.get(c.num);
@@ -2417,9 +2446,19 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
         )}
         {item.trocaEm && <span className="troca-tag troca-tag-plano">troca de {rotuloDoItem(origemDaTroca(cat.itens, item) || { codigo: item.trocaDe })}</span>}
         {item.aditivo
-          ? <span className="tag-aditivo" title={item.descCompleta || undefined}>
-              <FileText size={9} /> aditivo {item.aditivo}{item.ambiente ? ` · ${item.ambiente}` : ""}
-            </span>
+          ? <>
+              <span className="tag-aditivo" title={item.descCompleta ? `Texto do cliente: ${item.descCompleta}` : undefined}>
+                <FileText size={9} /> aditivo {item.aditivo}{item.ambiente ? ` · ${item.ambiente}` : ""}
+              </span>
+              {/* A ESPECIFICACAO INTERNA, a que vai pra quem compra.
+
+                  O nome da linha vem da descricao do documento do cliente;
+                  a especificacao de compra (marca, modelo, medida) vinha
+                  copiada pro campo certo mas nunca aparecia aqui. Relato
+                  dela em 17/09/2026: "nao veio a especificacao interna
+                  correta, veio a do cliente". */}
+              {item.especificacao && <div className="det-espec">{item.especificacao}</div>}
+            </>
           : item.avulso
           ? <span className="tag-avulso" title={item.avulsoEm ? `Pedido em ${new Date(item.avulsoEm).toLocaleDateString("pt-BR")}` : undefined}>
               <Plus size={9} /> compra avulsa{item.avulsoPor ? ` · ${item.avulsoPor}` : ""}
@@ -2963,7 +3002,7 @@ function indiceRealDoItem(obraCrua, catNum, itemIdx) {
    grupo de cada um. Derivado aqui, e nunca gravado: se isso entrasse em
    `obra.categorias` o proximo salvamento gravaria o aditivo dentro da
    planilha, e na leitura seguinte ele apareceria duas vezes. */
-function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onAlocar, onIrParaDashboard, podeEditar }) {
+function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggleCat, updateItem, itemFilter, setItemFilter, tipoFilter, setTipoFilter, onLiberar, onReabrir, onCriarAvulsa, onSepararMO, onJuntarMO, onSepararGrupo, onAlocar, onIrParaDashboard, podeEditar }) {
   /* A obra COM os itens de aditivo dentro do grupo de cada um.
 
      Tem que ser a primeira linha: tudo nesta tela le `obra`, e uma copia
@@ -3208,6 +3247,14 @@ function ComparativoView({ obra: obraCrua, expandedCats, toggleCat, updateItem, 
              vazio: na leitura seguinte ele apareceria duas vezes, uma
              como planilha e outra como aditivo. */
           onItemChange={(itemIdx, patch) => {
+            /* Linha de aditivo: a compra dela tem endereco proprio. Antes
+               esta funcao so' devolvia sem fazer nada, e marcar a situacao
+               de uma linha de aditivo no Plano se perdia calado. */
+            const alvo = (cat.itens || [])[itemIdx];
+            if (alvo?.aditivo) {
+              if (podeEditar && onCompraAditivo) onCompraAditivo(cat.num, alvo.id, patch);
+              return;
+            }
             const i = indiceRealDoItem(obraCrua, cat.num, itemIdx);
             if (i == null) return;
             updateItem(obraCrua.categorias.indexOf(obraCrua.categorias[i.cat]), i.item, patch);
@@ -4035,6 +4082,9 @@ function normalizarCategorias(salvas) {
       executivo: (a.executivo || 0) + (b.executivo || 0),
       itens: arr("itens"), itensContrato: arr("itensContrato"),
       itensPlanilha: arr("itensPlanilha"), itensPlanilhaExecutivo: arr("itensPlanilhaExecutivo"),
+      /* Sem esta linha o `...a` de cima guardaria so' as compras de aditivo
+         da primeira verba, e as da segunda sumiriam no proximo salvamento. */
+      comprasAditivo: { ...(a.comprasAditivo || {}), ...(b.comprasAditivo || {}) },
     };
   };
 
@@ -9540,7 +9590,18 @@ function dataCurta(iso) {
 }
 
 // As props de troca de produto vêm da main; as de solicitação, daqui.
-function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, editandoPor, onTrocar, onDesfazerTroca, equipe = [] }) {
+function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, podeEditar, onHabilitar, editandoPor, onTrocar, onDesfazerTroca, equipe = [] }) {
+  /* A obra COM os itens de aditivo aprovado, como o Plano de Compras ja'
+     fazia. Sem isto o item de aditivo aparecia no Plano e nunca chegava
+     aqui — relato dela em 17/09/2026, com o 2450/1 (alocacao MAT) que
+     deveria estar em "Sem canal".
+
+     Derivado, nunca gravado: toda gravacao sai por `mudar`, logo abaixo,
+     que manda a linha de aditivo pro endereco dela. */
+  const obra = useMemo(() => ({
+    ...obraCrua,
+    categorias: categoriasComAditivos(obraCrua.categorias, obraCrua.aditivos),
+  }), [obraCrua]);
   const [etapa, setEtapa] = useState("todos");
   const [fornecedor, setFornecedor] = useState("");   // "" = todos
   const [orcamento, setOrcamento] = useState(null);   // o pedido aberto pra imprimir
@@ -9580,7 +9641,21 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
   // Qual solicitação está aberta mostrando o que foi pedido nela.
   const [envioAberto, setEnvioAberto] = useState(null);
   // Toda mudança de item passa por aqui: sem a edição da obra, nada muda.
-  const mudar = (catIdx, itemIdx, patch) => { if (podeEditar) onItemChange(catIdx, itemIdx, patch); };
+  /* A LINHA DE ADITIVO GRAVA EM OUTRO ENDERECO.
+
+     O indice dela fica alem do fim da planilha (os itens de aditivo entram
+     depois dos reais), e `onItemChange` procura pelo indice: nao acharia
+     nada, e o canal escolhido se perderia calado. As verbas da obra com
+     aditivo vem na mesma ordem das reais, entao `catIdx` vale nas duas. */
+  const mudar = (catIdx, itemIdx, patch) => {
+    if (!podeEditar) return;
+    const alvo = obra.categorias?.[catIdx]?.itens?.[itemIdx];
+    if (alvo?.aditivo) {
+      if (onCompraAditivo) onCompraAditivo(obra.categorias[catIdx].num, alvo.id, patch);
+      return;
+    }
+    onItemChange(catIdx, itemIdx, patch);
+  };
   // A troca de produto: a linha com o formulário aberto, pela chave.
   const [trocando, setTrocando] = useState(null);
   const registrarTroca = (r) => (linhas, dados) => {
@@ -10225,7 +10300,9 @@ function ComprasView({ obra, onItemChange, usuario, podeEditar, onHabilitar, edi
                         lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
                         podeEditar={podeEditar}
                         trocando={trocando === r.chave} equipe={equipe} executivo={obra.responsavelExecutivo}
-                        onAbrirTroca={() => setTrocando(r.chave)} onFecharTroca={() => setTrocando(null)}
+                        /* Linha de aditivo nao troca de produto: a troca cria itens novos
+                           na planilha, e o item do aditivo mora no documento aprovado. */
+                        onAbrirTroca={r.it.aditivo ? undefined : () => setTrocando(r.chave)} onFecharTroca={() => setTrocando(null)}
                         onRegistrarTroca={registrarTroca(r)} troca={infoTroca.get(r.chave) || null}
                         onDesfazerTroca={infoTroca.get(r.chave) ? desfazerTroca(r, infoTroca.get(r.chave)) : undefined}
                         onItemChange={(patch) => mudar(r.catIdx, r.itemIdx, patch)} />
@@ -11873,6 +11950,11 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       <td className="mono dim">{codigoVisivel(it)}</td>
       <td>
         <div className="item-desc">{it.desc}</div>
+        {it.aditivo && (
+          <span className="tag-aditivo" title={it.descCompleta ? `Texto do cliente: ${it.descCompleta}` : undefined}>
+            <FileText size={9} /> aditivo {it.aditivo}
+          </span>
+        )}
         {it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{it.ambiente}</span>}
           {/* Quem vende. Na planilha do Executivo a coluna se chama
               Fornecedor e vira `marca` no item; importado de PDF ela vem vazia. */}
@@ -18120,6 +18202,25 @@ export default function App() {
     setExpandedCats((prev) => { const next = new Set(prev); next.has(num) ? next.delete(num) : next.add(num); return next; });
   }
 
+  /* A compra de uma linha de ADITIVO (canal, solicitado, comprado).
+
+     Vai pro mapa `comprasAditivo` da verba, e nao pra `itens`: o item do
+     aditivo nao existe na planilha, e `updateItem` pelo indice nao o acha.
+     Grava pela mesma trava e pelo mesmo salvamento automatico de qualquer
+     outra compra — so' muda o endereco. */
+  function atualizarCompraDeAditivo(catNum, itemId, patch) {
+    if (!itemId) return;
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c) => {
+        if (c.num !== catNum) return c;
+        const mapa = c.comprasAditivo || {};
+        return { ...c, comprasAditivo: { ...mapa, [itemId]: { ...(mapa[itemId] || {}), ...patch } } };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
   function updateItem(catIdx, itemIdx, patch) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
@@ -21885,9 +21986,9 @@ export default function App() {
             </div>
           )}
           {tab === "comparativo" && (
-            <ComparativoView obra={obra} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
+            <ComparativoView obra={obra} onCompraAditivo={atualizarCompraDeAditivo} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
-          {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} usuario={usuario}
+          {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} onCompraAditivo={atualizarCompraDeAditivo} usuario={usuario}
             podeEditar={edicao.minha} onHabilitar={perfilPermiteEditar ? habilitarEdicao : undefined} editandoPor={edicao.por}
             onTrocar={trocarProduto} onDesfazerTroca={desfazerTroca} equipe={pessoas} />}
           {grupo === "arquivos" && (
