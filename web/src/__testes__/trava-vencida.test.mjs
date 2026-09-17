@@ -75,5 +75,28 @@ conf("a tela desabilita a edição sozinha", /setEdicao\(\{ minha: false, por: n
 conf("o relógio reinicia a cada alteração da obra", app.includes("}, [edicao.minha, naObra, obra, usuario]);"), true);
 conf("a tarja promete o prazo de verdade", app.includes("Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração"), true);
 
+/* A TRAVA DE OUTRA PESSOA TAMBÉM VENCE NA TELA.
+   Caso dela, 17/09/2026: mandou a verba 30 sem botão nenhum — "cortinas e
+   persianas ta ficando preso na liberacao". Não era a verba. Ela tinha
+   aberto a obra enquanto outra pessoa editava, e esse "fulano está
+   editando" ficava guardado para sempre: os 5 minutos só eram conferidos na
+   LEITURA da obra. A trava vencia no banco, a pessoa ia embora, e a tela
+   continuava em modo leitura.
+
+   E não havia saída pela própria tela: o botão "Habilitar edição" fica
+   escondido justamente enquanto ela acha que a obra é de outro. */
+conf("a tela confere a trava alheia com o relógio andando",
+  /if \(!travaViva\(edicao\.desde\)\) setEdicao\(\{ minha: false, por: null, desde: null \}\);/.test(app), true);
+conf("... de tempos em tempos, não só ao abrir", /const t = setInterval\(vencer, 30_000\);/.test(app), true);
+conf("... e já na primeira passada", /vencer\(\);\s*\n\s*const t = setInterval\(vencer/.test(app), true);
+conf("o App importa a régua em vez de recriá-la",
+  /import \{[^}]*travaViva[^}]*\} from "\.\/lib\/dadosObra"/.test(app), true);
+/* Vencer NÃO é tomar. Pegar a obra continua sendo um clique consciente: se a
+   outra pessoa ainda estiver lá, o clique volta com o nome e a hora nova. */
+const efeito = app.slice(app.indexOf("A TRAVA DE OUTRA PESSOA TAMBEM VENCE"), app.indexOf("TROCAR DE TELA VOLTA PRO MODO LEITURA"));
+conf("vencer não toma a trava sozinho", /pegarEdicao\(/.test(efeito), false);
+conf("o botão de habilitar aparece quando não há dono",
+  app.includes("{onHabilitar && !editandoPor && ("), true);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

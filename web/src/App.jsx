@@ -59,7 +59,7 @@ import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, ac
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos, carregarCadastroSienge, salvarCadastroSienge } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
+import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
@@ -18732,6 +18732,34 @@ export default function App() {
     }, MINUTOS_ATE_TRAVA_EXPIRAR * 60_000);
     return () => clearTimeout(t);
   }, [edicao.minha, naObra, obra, usuario]);
+
+  /* A TRAVA DE OUTRA PESSOA TAMBEM VENCE NA TELA (17/09/2026).
+
+     Ela mandou o print da verba 30 sem botao nenhum: "cortinas e persianas
+     ta ficando preso na liberacao". Nao era a verba — era a trava.
+
+     Os 5 minutos eram conferidos SO' NA LEITURA da obra (`travaViva`, dentro
+     do `paraApp`). Quem abria a obra enquanto outra pessoa editava guardava
+     esse "fulano esta editando" pra sempre: a trava vencia no banco, a
+     pessoa do outro lado ia embora, e a tela continuava em modo leitura ate'
+     alguem apertar F5. Pior: o botao "Habilitar edicao" fica escondido
+     justamente enquanto a tela acha que a obra e de outro — entao nao havia
+     saida dentro da propria tela.
+
+     Agora o relogio corre aqui tambem. Vencido, a tela so' PARA de dizer que
+     a obra e' de outro — nao toma a trava sozinha: pegar a obra continua
+     sendo um clique consciente. Se a outra pessoa ainda estiver la' (ela
+     renova a trava a cada alteracao), o clique volta com o nome dela e a
+     hora nova, e a tela se corrige. */
+  useEffect(() => {
+    if (!edicao.por || !edicao.desde) return;
+    const vencer = () => {
+      if (!travaViva(edicao.desde)) setEdicao({ minha: false, por: null, desde: null });
+    };
+    vencer();
+    const t = setInterval(vencer, 30_000);
+    return () => clearInterval(t);
+  }, [edicao.por, edicao.desde]);
 
   /* TROCAR DE TELA VOLTA PRO MODO LEITURA.
 
