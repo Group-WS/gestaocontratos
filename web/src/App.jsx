@@ -6434,7 +6434,16 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                         <td className="mono center">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="unit">{x.it.un}</span></td>
                         <td className="mono right">
                           {fmtBRL(x.valor)}
-                          {x.ehMO ? <div className="dim" style={{ fontSize: 10 }}>mão de obra</div> : null}
+                          {/* O rotulo sai dos NUMEROS, nao da classificacao. Item de
+                              verba que a empresa cobra junto (o fornecedor instala) e'
+                              classificado como mao de obra tendo material dentro:
+                              chamar de "mao de obra" um valor com R$ 11.808 de
+                              material engana quem aprova. */}
+                          {x.mo > 0 && (
+                            <div className="dim" style={{ fontSize: 10 }}>
+                              {x.material > 0 || x.temMaterialNaPlanilha ? "material e mão de obra" : "mão de obra"}
+                            </div>
+                          )}
                         </td>
                         <td className="center">
                           {x.aprovadoCliente ? (
@@ -8997,6 +9006,13 @@ function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } =
            mao de obra — preco zerado em tela de aprovacao e' pior que
            nenhum. */
         mo: mo + moSeparada, valor: material + mo + moSeparada, ehMO,
+        /* Material como a PLANILHA trouxe, e nao como a alocacao resolveu.
+           Em verba que a empresa cobra junto (o fornecedor entrega
+           instalado), a alocacao joga o item inteiro em mao de obra — o
+           Rockface da 2498 tem R$ 11.808 de material e aparecia so' como
+           "mao de obra". Pro cliente, o rotulo tem que dizer que tem
+           material dentro. */
+        temMaterialNaPlanilha: parcelasDaPlanilha(it).material > 0,
         chave: `${catIdx}-${itemIdx}`,
         liberado: liberadoParaCompra(it),
         aprovadoCliente: doCliente,
