@@ -5786,7 +5786,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
           contador={`${visiveis.length} de ${porStatus.length} linhas`} />
       </div>
 
-      {mostrarExtra ? telaExtra.render() : mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} /> : (
+      {mostrarExtra ? telaExtra.render(busca) : mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} /> : (
         <>
           {onAprovarLinha && pendentesVisiveis.length > 0 && (
             <div className="selecao-massa">
@@ -6533,8 +6533,12 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
    Item com alerta so' libera depois que alguem marcar que conferiu — e o
    "liberar a verba inteira" respeita isso, senao o atalho passaria por
    cima da verificacao que e' o motivo da regra existir. */
-function LiberarCompraView({ grupos, podeEditar, onLiberar, onConferir, onLiberarSemCliente }) {
+function LiberarCompraView({ grupos: todosOsGrupos, busca = "", podeEditar, onLiberar, onConferir, onLiberarSemCliente }) {
   const [abertos, setAbertos] = useState(() => new Set());
+  /* "46 produtos esperam a conferência do alerta" contava e não levava a
+     lugar nenhum: ela leu o aviso e não achou os 46 (17/09/2026). Agora o
+     aviso é o filtro. */
+  const [soTravados, setSoTravados] = useState(false);
   // A linha onde a exceção está sendo escrita, pela chave.
   const [excecao, setExcecao] = useState(null);
   const alternar = (num) => setAbertos((p) => {
@@ -6543,11 +6547,21 @@ function LiberarCompraView({ grupos, podeEditar, onLiberar, onConferir, onLibera
     return n;
   });
 
-  const total = grupos.reduce((a, g) => a + g.total, 0);
-  const liberado = grupos.reduce((a, g) => a + g.liberado, 0);
-  const nItens = grupos.reduce((a, g) => a + g.itens.length, 0);
-  const nLiberados = grupos.reduce((a, g) => a + g.liberados, 0);
-  const travados = grupos.reduce((a, g) => a + g.itens.filter((x) => !x.liberado && !x.pode).length, 0);
+  /* Os números do topo contam a obra INTEIRA, sempre: eles são o placar da
+     liberação, não do recorte que está na tela. */
+  const total = todosOsGrupos.reduce((a, g) => a + g.total, 0);
+  const liberado = todosOsGrupos.reduce((a, g) => a + g.liberado, 0);
+  const nItens = todosOsGrupos.reduce((a, g) => a + g.itens.length, 0);
+  const nLiberados = todosOsGrupos.reduce((a, g) => a + g.liberados, 0);
+  const travados = todosOsGrupos.reduce((a, g) => a + g.itens.filter((x) => !x.liberado && !x.pode).length, 0);
+
+  // O que está na tela: o filtro do aviso e a busca, nesta ordem.
+  const filtrando = soTravados || !!busca.trim();
+  const grupos = !filtrando ? todosOsGrupos : todosOsGrupos
+    .map((g) => ({ ...g, itens: g.itens.filter((x) =>
+      (!soTravados || (!x.liberado && !x.pode))
+      && casaBusca(textoDoItem(x.it, { num: g.num, nome: g.nome }), busca)) }))
+    .filter((g) => g.itens.length);
 
   if (!nItens) {
     return (
@@ -6567,16 +6581,28 @@ function LiberarCompraView({ grupos, podeEditar, onLiberar, onConferir, onLibera
           <span className="lib-valor mono">{fmtBRL(liberado)} de {fmtBRL(total)}</span>
         </div>
         {travados > 0 && (
-          <div className="lib-travados">
+          <button type="button" className={`lib-travados ${soTravados ? "on" : ""}`}
+            onClick={() => setSoTravados((v) => !v)}
+            title={soTravados ? "Voltar para a lista inteira" : "Mostrar só esses produtos"}>
             <AlertTriangle size={13} />
-            <span>{travados} {travados === 1 ? "produto espera" : "produtos esperam"} a conferência do alerta antes de poder ser liberado.</span>
-          </div>
+            <span>
+              {travados} {travados === 1 ? "produto espera" : "produtos esperam"} a conferência do alerta antes de poder ser liberado.
+              {" "}<b>{soTravados ? "ver todos" : "ver quais"}</b>
+            </span>
+          </button>
         )}
       </div>
 
+      {filtrando && grupos.length === 0 && (
+        <div className="empty-note">
+          {soTravados ? "Nenhum produto esperando conferência de alerta com esse termo." : `Nada encontrado para "${busca.trim()}".`}
+        </div>
+      )}
       <div className="vend-list">
         {grupos.map((g) => {
-          const aberto = abertos.has(g.num);
+          // Filtrando, a verba abre sozinha: procurar e ainda ter que clicar
+          // em cada verba não é procurar.
+          const aberto = abertos.has(g.num) || filtrando;
           const faltam = g.itens.filter((x) => !x.liberado && x.pode);
           return (
             <div key={g.num} className="grp-block">
@@ -6759,8 +6785,8 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         sub: "o que o executivo libera para comprar",
         color: "var(--green)",
         contador: `${gruposParaLiberar.reduce((a, g) => a + g.liberados, 0)}/${gruposParaLiberar.reduce((a, g) => a + g.itens.length, 0)}`,
-        render: () => (
-          <LiberarCompraView grupos={gruposParaLiberar} podeEditar={podeEditar}
+        render: (busca) => (
+          <LiberarCompraView grupos={gruposParaLiberar} busca={busca} podeEditar={podeEditar}
             onLiberar={onLiberarCompra} onConferir={onConferirAlerta} onLiberarSemCliente={onLiberarSemCliente} />
         ),
       }}
@@ -21932,6 +21958,10 @@ export default function App() {
            Fornecedor as vezes vem com o nome E o link inteiro colados ("ArqPlace
            - https://..."), e sem corte isso estica a linha inteira. O texto
            completo fica na dica. */
+        .lib-travados { border: none; font-family: inherit; text-align: left; cursor: pointer; }
+        .lib-travados:hover { text-decoration: underline; }
+        .lib-travados b { font-weight: 700; text-decoration: underline; }
+        .lib-travados.on { background: var(--warning-tint); border-radius: 8px; padding: 4px 8px; }
         .cli-meta { display: block; font-size: 10.5px; max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .hist { margin-top: 30px; padding-top: 10px; border-top: 1px solid var(--line-1); }
         .hist-abrir { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; font-family: inherit; font-size: 11.5px; color: var(--text-mute); cursor: pointer; }
