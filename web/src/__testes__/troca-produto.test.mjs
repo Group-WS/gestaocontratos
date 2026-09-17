@@ -24,6 +24,7 @@ const M = eval(`(function () {
   const verbaPorNome = () => null;
   const subgrupoDe = () => null;
   ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
+  ${bloco("function liberadoParaCompra(")}
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
   ${bloco("function produtosMAT(")}
@@ -40,6 +41,10 @@ const cat = { num: "05", nome: "Instalações Elétricas e Iluminação", itens:
   { codigo: "5.12-T", desc: "Instalação fácil: fita LED 9,6W/m", un: "m", qtdExecutivo: 25, custoMaterial: 58, totalMaterial: 1450, totalMO: 0, trocaDe: "5.12", trocaEm: "2026-09-15T12:00:00Z" },
   { codigo: "5.13", desc: "Perfil de alumínio", un: "un", qtdExecutivo: 12, totalMaterial: 876, totalMO: 0 },
 ] };
+/* Fixtures de antes da liberação (16/09/2026). Este teste trata da
+   TROCA, não da liberação: marcadas como liberadas pra continuarem
+   chegando na tela de Compras. */
+cat.itens.forEach((it) => { it.liberadoCompra = { em: "2026-09-16" }; });
 const orig = M.parcelasDoItem(cat.itens[0], cat);
 conf("o trocado não conta material", orig.material, 0);
 conf("mas guarda o valor de antes", orig.materialOriginal, 1250);
@@ -65,6 +70,7 @@ const semCodigo = { num: "05", nome: "Instalações Elétricas e Iluminação", 
   { codigo: "null-T", desc: "Neoon Flex SKY67 - 25m", un: "cx", qtdExecutivo: 1, custoMaterial: 0, totalMaterial: 0, totalMO: 0,
     canalCompra: "sienge", trocaDe: null, trocaEm: "2026-09-15T19:54:59.124Z" },
 ] };
+semCodigo.itens.forEach((it) => { it.liberadoCompra = { em: "2026-09-16" }; });
 const linhas2 = M.produtosMAT({ categorias: [semCodigo] });
 conf("a linha nova de custo zero aparece nas Compras", linhas2.length, 2);
 conf("ligada ao original sem código", M.linhasDaTroca(semCodigo.itens, semCodigo.itens[0]).length, 1);

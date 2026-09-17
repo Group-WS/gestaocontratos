@@ -364,15 +364,17 @@ function matchesFilter(it, filter, cat) {
      coluna de material preenchida aparecia na lista como MAT e sumia ao
      filtrar "Liberado p/ compra" — a mesma tela dizendo as duas coisas. */
   if (alocacaoDoItem(it, cat) === ALOC_MO) return false;
-  /* "Liberado" e "Aguardando" sairam.
+  /* "Liberado" VOLTOU, e agora com campo de verdade atras dele.
 
-     Eles liam `it.liberado`, que ficou inalcancavel quando o botao de
-     incluir/tirar do plano deu lugar a coluna Destino. Filtro que sempre
-     devolve a mesma coisa e pior que filtro nenhum: a pessoa clica,
-     nada muda, e passa a desconfiar dos outros.
+     A primeira versao lia `it.liberado`, que ficou inalcancavel quando o
+     botao de incluir/tirar do plano deu lugar a coluna Destino: o filtro
+     devolvia sempre a mesma coisa, que e' pior que filtro nenhum. Foi
+     removido por isso.
 
-     No lugar entrou "Sem destino", que e a pergunta que a tela de fato
-     responde agora — o que ainda ninguem disse por onde compra. */
+     Desde 16/09/2026 existe a liberacao do executivo (`liberadoCompra`),
+     que alguem de fato marca — entao a pergunta voltou a ter resposta. */
+  if (filter === "liberado") return liberadoParaCompra(it);
+  if (filter === "nao_liberado") return !liberadoParaCompra(it);
   if (filter === "sem_destino") return !it.canalCompra && !it.comprado;
   if (filter === "comprado") return it.comprado === true;
   if (filter === "falta") return !it.comprado;
@@ -1490,6 +1492,7 @@ function dataDeNecessidade(obra, cat, itens, aloc) {
 function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
   const verbas = new Map();
   let matTotal = 0, matFeito = 0, moTotal = 0, moFeito = 0;
+  let matFaltaReal = 0, matFaltaEstimativa = 0;
 
   (o.categorias || []).forEach((cat) => {
     const itens = cat.itens || [];
@@ -1505,6 +1508,11 @@ function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
         verbas.set(cat.num, {
           num: cat.num, nome: cat.nome, obra: o.codigo, obraNome: o.nome,
           mat: 0, matFalta: 0, mo: 0, moFalta: 0,
+          /* O que falta comprar, partido em dois: o REAL, que o executivo
+             ja liberou, e a ESTIMATIVA, que ainda depende dele. Sem essa
+             divisao a Gestao promete precisao que nao tem — pedido dela
+             em 16/09/2026. */
+          matFaltaReal: 0, matFaltaEstimativa: 0,
           // Do que falta comprar pelo Sienge, quanto já foi solicitado lá.
           siengeFalta: 0, solicitadosFalta: 0,
           quandoMat: dataDeNecessidade(o, cat, itens, ALOC_MAT),
@@ -1519,6 +1527,8 @@ function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
         if (it.comprado) matFeito += material;
         else {
           v.matFalta += material;
+          if (liberadoParaCompra(it)) { matFaltaReal += material; v.matFaltaReal += material; }
+          else { matFaltaEstimativa += material; v.matFaltaEstimativa += material; }
           if (it.canalCompra === "sienge") { v.siengeFalta += 1; if (it.solicitado) v.solicitadosFalta += 1; }
         }
       }
@@ -1548,6 +1558,8 @@ function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
     dataEntrega: o.dataEntrega || null,
     faltamEntrega: o.dataEntrega ? diasAte(new Date(`${o.dataEntrega}T12:00:00`), hoje) : null,
     mat: { total: matTotal, feito: matFeito, falta: matTotal - matFeito,
+      // O que falta, dividido: real e' o liberado; estimativa, o resto.
+      faltaReal: matFaltaReal, faltaEstimativa: matFaltaEstimativa,
       pct: matTotal > 0 ? (matFeito / matTotal) * 100 : 0 },
     mo: { total: moTotal, feito: moFeito, falta: moTotal - moFeito,
       pct: moTotal > 0 ? (moFeito / moTotal) * 100 : 0 },
@@ -2196,6 +2208,21 @@ function DestinoCompra({ item, aloc }) {
       </span>
     );
   }
+  /* Sem liberacao nao ha' destino a dizer: o que falta nao e' escolher
+     por onde comprar, e' o executivo liberar a compra.
+
+     MAO DE OBRA FICA DE FORA desta pergunta. Ela nunca vai pra compra —
+     vai pra Contratos —, entao "a liberar" numa linha de MO seria cobrar
+     uma decisao que ninguem precisa tomar. Visto na obra 2450: 52 linhas
+     diziam "a liberar" e nenhuma ficava clara, porque eram justamente as
+     de mao de obra. */
+  if (aloc !== ALOC_MO && !liberadoParaCompra(item)) {
+    return (
+      <span className="pill pill-wait" title="Ainda não liberado para compra — o executivo libera na Conf. Executivo">
+        a liberar
+      </span>
+    );
+  }
   if (item.canalCompra) return <TagCanal id={item.canalCompra} comNome />;
   if (aloc === ALOC_MO) {
     const etapa = item.statusContrato ? CONTRATO_STAGES[item.statusContrato]?.label : null;
@@ -2268,6 +2295,10 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar })
       : item.avulso ? "row-avulso"
       : alertas.length ? "row-alert"
       : item.comprado ? "row-comprado"
+      /* CLARINHO: ainda nao liberado pelo executivo. Ele esta aqui pra
+         ser contado — a obra precisa dele na estimativa —, nao pra ser
+         trabalhado. Quem trabalha a linha e' quem ja pode comprar. */
+      : compravel && !liberadoParaCompra(item) ? "row-estimativa"
       : compravel ? "row-falta" : ""
     }>
       {/* A coluna "Compr." saiu.
@@ -2715,6 +2746,10 @@ function FormAvulsa({ obra, onCriar }) {
 
 const FILTERS = [
   { id: "todos", label: "Todos os itens" },
+  // A pergunta do dia depois que a liberacao existe: o que ja pode ser
+  // comprado, e o que ainda e' so' estimativa.
+  { id: "liberado", label: "Liberado p/ compra" },
+  { id: "nao_liberado", label: "A liberar (estimativa)" },
   { id: "sem_destino", label: "Sem destino" },
   { id: "comprado", label: "Já comprado" },
   { id: "falta", label: "Falta comprar" },
@@ -5116,7 +5151,6 @@ function conferirExecutivoObra(categorias) {
 // falso; aqui os nomes dizem o que a pessoa precisa FAZER com a linha.
 const EXEC_META = {
   ok: { label: "Conferido", sub: "item, qtd. e valor batem", color: "var(--ink-2)", bg: "transparent", Icon: CheckCircle2 },
-  diferente: { label: "Divergente", sub: "está nos dois, mas o número mudou", color: "var(--red)", bg: "var(--red-bg)", Icon: XCircle },
   somente_um: { label: "Entrou ou saiu", sub: "o que entrou e o que saiu do vendido, por categoria", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
   conferencia_tecnica: {
     label: "Conferência técnica", sub: "número bate — falta olhar medida e compatibilidade",
@@ -5204,7 +5238,7 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   );
 }
 
-function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null }) {
+function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null, telaExtra = null }) {
   const [filtro, setFiltro] = useState("todos");
   const [selecionados, setSelecionados] = useState(() => new Set());
   // Tudo começa recolhido: com 185 linhas, abrir sozinho enterra a visão
@@ -5228,6 +5262,8 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   const pendentesVisiveis = visiveis.filter((l) => l.status !== "ok");
   // No cartão "Entrou ou saiu" a lista lado a lado dá lugar ao resumo por categoria.
   const mostrarResumo = filtro === "somente_um" && !!resumoEntrouSaiu;
+  // A tela extra ocupa o lugar da lista, como o resumo do "Entrou ou saiu".
+  const mostrarExtra = !!telaExtra && filtro === telaExtra.id;
 
   // Agrupa por verba, na ordem em que as verbas aparecem — é assim que
   // a conferência acontece na prática: abre a verba, olha o que o
@@ -5269,13 +5305,22 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             <div className="conf-stat-sub">{m.sub}</div>
           </button>
         ))}
+        {telaExtra && (
+          <button className={`conf-stat ${filtro === telaExtra.id ? "active" : ""}`}
+            style={{ borderColor: filtro === telaExtra.id ? telaExtra.color : undefined }}
+            onClick={() => setFiltro(filtro === telaExtra.id ? "todos" : telaExtra.id)}>
+            <div className="conf-stat-num" style={{ color: telaExtra.color }}>{telaExtra.contador}</div>
+            <div className="conf-stat-label">{telaExtra.label}</div>
+            <div className="conf-stat-sub">{telaExtra.sub}</div>
+          </button>
+        )}
       </div>
 
       <div className="compras-filtros">
         <button className={`cfiltro ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>Todos <span className="cbadge">{linhas.length}</span></button>
       </div>
 
-      {mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} /> : (
+      {mostrarExtra ? telaExtra.render() : mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} /> : (
         <>
           {onAprovarLinha && pendentesVisiveis.length > 0 && (
             <div className="selecao-massa">
@@ -5741,6 +5786,14 @@ function linhaConfExecutivo(item) {
 
   let status = item.status;
   let motivo = item.motivo;
+  /* DIVERGENTE saiu (pedido dela, 16/09/2026).
+
+     Numero que mudou entre o vendido e o executivo deixou de ser
+     pendencia: o executivo reve a planilha inteira na tela "Liberar para
+     Compra" e decide item a item o que vai ser comprado. O motivo
+     continua escrito na linha — quem abre ainda ve o que mudou —, mas
+     nao segura mais a esteira nem pinta cartao vermelho. */
+  if (status === "diferente") status = "ok";
   // Alerta de item tira do verde mesmo com tudo batendo: o problema dele
   // não é de número, é de caber e de ser compatível. Mas não vira
   // "diferente" nem "só aparece em um" — nenhuma das duas é verdade.
@@ -5777,18 +5830,338 @@ function cruzamentoExecutivo(obra) {
 // cards: linha aprovada vira "ok" e sai da conta. Ver bloqueioDaEtapa.
 function pendenciasConfExecutivo(obra) {
   const aprovacoes = obra.aprovacoes || new Set();
-  const p = { divergente: 0, tecnica: 0 };
+  // So' a conferencia tecnica trava (16/09/2026): a divergencia de numero
+  // deixou de ser pendencia, e o que cabe/e' compativel continua sendo a
+  // pergunta que ninguem responde depois.
+  const p = { tecnica: 0 };
   cruzamentoExecutivo(obra).forEach((item) => {
     const l = linhaConfExecutivo(item);
     if (aprovacoes.has(`exec:${l.catNum}:${l.codigo}`)) return;
-    if (l.status === "diferente") p.divergente++;
-    else if (l.status === "conferencia_tecnica") p.tecnica++;
+    if (l.status === "conferencia_tecnica") p.tecnica++;
   });
   return p;
 }
 
 // CONF. EXECUTIVO — depara Vendido Planilha × Planilha Executivo.
-function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar }) {
+/* A excecao do cliente: quem libera sem a aprovacao diz por que e quem
+   autorizou. Os dois campos sao obrigatorios — excecao sem responsavel
+   nao e' excecao, e' buraco. */
+function FormExcecaoCliente({ onConfirmar, onCancelar }) {
+  const [motivo, setMotivo] = useState("");
+  const [quem, setQuem] = useState("");
+  const vale = motivo.trim().length >= 15 && quem.trim().length >= 3;
+  return (
+    <div className="cli-excecao">
+      <textarea rows={2} className="form-input" value={motivo} placeholder="Por que liberar sem a aprovação do cliente? (ex: aprovado por e-mail em 12/09, documento a caminho)"
+        onChange={(e) => setMotivo(e.target.value)} />
+      <input className="form-input" value={quem} placeholder="Quem autorizou"
+        onChange={(e) => setQuem(e.target.value)} />
+      <div className="cli-excecao-acoes">
+        <button type="button" className="btn-cancelar" onClick={onCancelar}>Cancelar</button>
+        <button type="button" className="btn-aprovar-linha" disabled={!vale}
+          onClick={() => onConfirmar({ motivo: motivo.trim(), quem: quem.trim() })}>
+          <Check size={12} /> Liberar com justificativa
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* A APROVACAO DO CLIENTE, ITEM A ITEM.
+
+   A assinatura geral continua sendo o caso normal e mora na tela de
+   cima. Isto aqui e' pra aprovacao PARCIAL: "as vezes o cliente segura
+   alguns itens" (ela, 16/09/2026).
+
+   O quadrado de cima e' o pedido dela: quem aprova precisa ver de
+   relance o que ainda falta, e filtrar so' isso. */
+function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
+  const [filtro, setFiltro] = useState("falta");
+  const [abertos, setAbertos] = useState(() => new Set());
+  const alternar = (num) => setAbertos((p) => {
+    const n = new Set(p);
+    n.has(num) ? n.delete(num) : n.add(num);
+    return n;
+  });
+
+  const nItens = grupos.reduce((a, g) => a + g.itens.length, 0);
+  const nAprovados = grupos.reduce((a, g) => a + g.aprovados, 0);
+  const falta = nItens - nAprovados;
+  if (!nItens) return null;
+
+  /* Com a assinatura geral registrada nao ha o que marcar: ela aprova
+     tudo. Dizer isso e' melhor que mostrar uma lista toda verde que nao
+     responde pergunta nenhuma. */
+  if (obra?.clienteAssinouEm) {
+    return (
+      <div className="import-ok" style={{ marginTop: 14 }}>
+        <ShieldCheck size={14} />
+        <span>A assinatura registrada aprova os {nItens} produtos da obra. Para aprovação parcial, remova o registro e marque item a item.</span>
+      </div>
+    );
+  }
+
+  const visiveis = grupos
+    .map((g) => ({ ...g, itens: g.itens.filter((x) => (filtro === "falta" ? !x.aprovadoCliente : filtro === "aprovados" ? x.aprovadoCliente : true)) }))
+    .filter((g) => g.itens.length);
+
+  return (
+    <div className="cli-bloco">
+      <div className="conf-stats">
+        <button className={`conf-stat ${filtro === "falta" ? "active" : ""}`}
+          style={{ borderColor: filtro === "falta" ? "var(--alert)" : undefined }}
+          onClick={() => setFiltro("falta")}>
+          <div className="conf-stat-num" style={{ color: "var(--alert)" }}>{falta}</div>
+          <div className="conf-stat-label">Falta aprovar com o cliente</div>
+          <div className="conf-stat-sub">nenhum destes pode ser liberado para compra</div>
+        </button>
+        <button className={`conf-stat ${filtro === "aprovados" ? "active" : ""}`}
+          style={{ borderColor: filtro === "aprovados" ? "var(--green)" : undefined }}
+          onClick={() => setFiltro("aprovados")}>
+          <div className="conf-stat-num" style={{ color: "var(--green)" }}>{nAprovados}</div>
+          <div className="conf-stat-label">Aprovados pelo cliente</div>
+          <div className="conf-stat-sub">liberados para o executivo decidir a compra</div>
+        </button>
+        <button className={`conf-stat ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>
+          <div className="conf-stat-num">{nItens}</div>
+          <div className="conf-stat-label">Todos os produtos</div>
+          <div className="conf-stat-sub">a planilha executivo inteira</div>
+        </button>
+      </div>
+
+      <div className="vend-list">
+        {visiveis.map((g) => {
+          const aberto = abertos.has(g.num);
+          const pendentes = g.itens.filter((x) => !x.aprovadoCliente);
+          return (
+            <div key={g.num} className="grp-block">
+              <div className="grp-head">
+                <button className="grp-toggle" onClick={() => alternar(g.num)}>
+                  <div className="grp-esq">
+                    {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
+                    <span className="grp-num mono">{g.num}</span>
+                    <span className="grp-nome">{g.nome}</span>
+                    <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "produto" : "produtos"}</span>
+                  </div>
+                </button>
+                <div className="grp-dir">
+                  {podeEditar && pendentes.length > 0 && (
+                    <button className="btn-aprovar-linha"
+                      onClick={() => onAprovar(pendentes.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
+                      <CheckCircle2 size={12} /> Aprovar {pendentes.length}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {aberto && (
+                <table className="tab-compras grp-itens">
+                  <thead>
+                    <tr><th>Produto</th><th className="c-qtd">Qtd</th><th className="right">Material</th><th className="center">Cliente</th></tr>
+                  </thead>
+                  <tbody>
+                    {g.itens.map((x) => (
+                      <tr key={x.chave} className={x.aprovadoCliente ? "" : "row-estimativa"}>
+                        <td>
+                          <div className="item-desc">{x.it.desc}</div>
+                          {x.it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{x.it.ambiente}</span>}
+                        </td>
+                        <td className="mono center">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="unit">{x.it.un}</span></td>
+                        <td className="mono right">{fmtBRL(x.material)}</td>
+                        <td className="center">
+                          {x.aprovadoCliente ? (
+                            <div className="status-par">
+                              <span className="pill pill-ok" title={x.it.aprovadoCliente?.em
+                                ? `Aprovado em ${new Date(x.it.aprovadoCliente.em).toLocaleDateString("pt-BR")}${x.it.aprovadoCliente.por ? ` por ${x.it.aprovadoCliente.por}` : ""}`
+                                : "Aprovado pelo cliente"}>
+                                <Check size={10} /> aprovado
+                              </span>
+                              {podeEditar && x.it.aprovadoCliente && !x.liberado && (
+                                <button type="button" className="troca-link"
+                                  onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</button>
+                              )}
+                            </div>
+                          ) : (
+                            <button className="pill pill-btn pill-wait" disabled={!podeEditar}
+                              title={podeEditar ? "Marcar que o cliente aprovou este produto" : MODO_LEITURA_DICA}
+                              onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
+                              o cliente segurou · aprovar
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* A PLANILHA DO EXECUTIVO PRA LIBERAR.
+
+   Sem edicao: aqui nao se corrige numero, se decide o que pode ser
+   comprado. Corrigir continua sendo na propria conferencia.
+
+   Item com alerta so' libera depois que alguem marcar que conferiu — e o
+   "liberar a verba inteira" respeita isso, senao o atalho passaria por
+   cima da verificacao que e' o motivo da regra existir. */
+function LiberarCompraView({ grupos, podeEditar, onLiberar, onConferir, onLiberarSemCliente }) {
+  const [abertos, setAbertos] = useState(() => new Set());
+  // A linha onde a exceção está sendo escrita, pela chave.
+  const [excecao, setExcecao] = useState(null);
+  const alternar = (num) => setAbertos((p) => {
+    const n = new Set(p);
+    n.has(num) ? n.delete(num) : n.add(num);
+    return n;
+  });
+
+  const total = grupos.reduce((a, g) => a + g.total, 0);
+  const liberado = grupos.reduce((a, g) => a + g.liberado, 0);
+  const nItens = grupos.reduce((a, g) => a + g.itens.length, 0);
+  const nLiberados = grupos.reduce((a, g) => a + g.liberados, 0);
+  const travados = grupos.reduce((a, g) => a + g.itens.filter((x) => !x.liberado && !x.pode).length, 0);
+
+  if (!nItens) {
+    return (
+      <div className="compras-empty">
+        <ShoppingCart size={30} className="dim" />
+        <div className="compras-empty-title">Nada para liberar ainda</div>
+        <div className="compras-empty-sub">Importe a Planilha Executivo desta obra — os produtos aparecem aqui para liberação.</div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="lib-topo">
+        <div className="lib-placar">
+          <b>{nLiberados}</b> de {nItens} {nItens === 1 ? "produto liberado" : "produtos liberados"}
+          <span className="lib-valor mono">{fmtBRL(liberado)} de {fmtBRL(total)}</span>
+        </div>
+        {travados > 0 && (
+          <div className="lib-travados">
+            <AlertTriangle size={13} />
+            <span>{travados} {travados === 1 ? "produto espera" : "produtos esperam"} a conferência do alerta antes de poder ser liberado.</span>
+          </div>
+        )}
+      </div>
+
+      <div className="vend-list">
+        {grupos.map((g) => {
+          const aberto = abertos.has(g.num);
+          const faltam = g.itens.filter((x) => !x.liberado && x.pode);
+          return (
+            <div key={g.num} className="grp-block">
+              <div className="grp-head">
+                <button className="grp-toggle" onClick={() => alternar(g.num)}>
+                  <div className="grp-esq">
+                    {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
+                    <span className="grp-num mono">{g.num}</span>
+                    <span className="grp-nome">{g.nome}</span>
+                    <span className="grp-conta">{g.liberados} de {g.itens.length} liberados</span>
+                  </div>
+                </button>
+                <div className="grp-dir">
+                  <span className="mono dim lib-grp-valor">{fmtBRL(g.liberado)} de {fmtBRL(g.total)}</span>
+                  {podeEditar && faltam.length > 0 && (
+                    <button className="btn-aprovar-linha" onClick={() => onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
+                      <Check size={12} /> Liberar {faltam.length}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {aberto && (
+                <table className="tab-compras grp-itens">
+                  <thead>
+                    <tr>
+                      <th>Produto</th>
+                      <th className="c-qtd">Qtd</th>
+                      <th className="right">Material</th>
+                      <th className="center">Situação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.itens.map((x) => (
+                      <tr key={x.chave} className={x.liberado ? "" : "row-estimativa"}>
+                        <td>
+                          <div className="item-desc">{x.it.desc}</div>
+                          {x.it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{x.it.ambiente}</span>}
+                          {x.pendencia && (
+                            <div className={`lib-alerta ${x.it.alertaConferido ? "conferido" : ""}`}>
+                              <AlertTriangle size={11} />
+                              <span>{x.pendencia.texto}</span>
+                              {podeEditar && !x.liberado && (
+                                <button type="button" className="troca-link"
+                                  onClick={() => onConferir(x.catIdx, x.itemIdx, !x.it.alertaConferido)}>
+                                  {x.it.alertaConferido ? "desmarcar" : "conferi"}
+                                </button>
+                              )}
+                              {x.it.alertaConferido && (
+                                <span className="lib-conferido-por">
+                                  conferido{x.it.alertaConferido.por ? ` por ${x.it.alertaConferido.por}` : ""}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="mono center">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="unit">{x.it.un}</span></td>
+                        <td className="mono right">{fmtBRL(x.material)}</td>
+                        <td className="center">
+                          {x.liberado ? (
+                            <div className="status-par">
+                              <span className="pill pill-ok" title={x.it.liberadoCompra?.em
+                                ? `Liberado em ${new Date(x.it.liberadoCompra.em).toLocaleDateString("pt-BR")}${x.it.liberadoCompra.por ? ` por ${x.it.liberadoCompra.por}` : ""}`
+                                : "Já estava no fluxo de compras"}>
+                                <Check size={10} /> liberado
+                              </span>
+                              {podeEditar && x.it.liberadoCompra && !x.it.comprado && (
+                                <button type="button" className="troca-link"
+                                  onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</button>
+                              )}
+                            </div>
+                          ) : (
+                            <>
+                              <button className="pill pill-btn pill-wait" disabled={!podeEditar || !x.pode}
+                                title={!podeEditar ? MODO_LEITURA_DICA
+                                  : x.pendencia?.tipo === "cliente" ? "O cliente ainda não aprovou este produto"
+                                  : !x.pode ? "Confira o alerta desta linha antes de liberar"
+                                  : "Liberar para compra"}
+                                onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
+                                estimativa · liberar
+                              </button>
+                              {/* A excecao, no mesmo padrao do portao da assinatura que
+                                  ja existe no Plano de Compras: bloqueia por padrao, mas
+                                  quem tem autoridade libera dizendo por que — e fica
+                                  gravado no item, com nome. */}
+                              {podeEditar && x.pendencia?.tipo === "cliente" && onLiberarSemCliente && (
+                                excecao === x.chave
+                                  ? <FormExcecaoCliente onCancelar={() => setExcecao(null)}
+                                      onConfirmar={(dados) => { onLiberarSemCliente(x.catIdx, x.itemIdx, dados); setExcecao(null); }} />
+                                  : <button type="button" className="troca-link" onClick={() => setExcecao(x.chave)}>liberar mesmo assim</button>
+                              )}
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, onLiberarCompra, onConferirAlerta, onLiberarSemCliente }) {
   // Vem da obra e é gravado no banco. Antes era useState local: as
   // aprovações valiam só na sessão e sumiam no F5.
   const aprovacoes = obra.aprovacoes || new Set();
@@ -5804,6 +6177,20 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
     () => obra.categorias.filter((c) => !c.foraDaEapPadrao && ehVerbaNaoAnalisada(c.num, c.nome)),
     [obra]
   );
+
+  /* O que ENTROU no executivo sem ter sido vendido, pela descricao.
+
+     E' a unica informacao da liberacao que nao da' pra recalcular do item
+     sozinho: ela so' existe olhando os dois documentos. A descricao e' a
+     ponte porque o codigo nao serve — a obra 2450 tem 198 de 269 itens
+     sem codigo (medido em 16/09/2026). */
+  const entrouPorDesc = useMemo(() => {
+    const s = new Set();
+    linhasBrutas.forEach((l) => { if (l.naoVendido) s.add(chaveDescricao(l.desc)); });
+    return s;
+  }, [linhasBrutas]);
+
+  const gruposParaLiberar = useMemo(() => itensParaLiberar(obra, entrouPorDesc), [obra, entrouPorDesc]);
 
   const linhas = useMemo(() => linhasBrutas.map((l) => (
     aprovacoes.has(`exec:${l.catNum}:${l.codigo}`) ? { ...l, status: "ok", motivo: null } : l
@@ -5842,6 +6229,17 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
       vazioTitulo="Nada pra conferir ainda"
       vazioSub="Importe a Vendido Planilha e a Planilha Executivo desta obra — o depara aparece aqui automaticamente."
       aprovacoes={aprovacoes} onAprovarLinha={obra.comprasLiberadas || !podeEditar ? undefined : toggleAprovacao} escopo="exec" resumoEntrouSaiu={resumoES}
+      telaExtra={{
+        id: "liberar",
+        label: "Liberar para Compra",
+        sub: "o que o executivo libera para comprar",
+        color: "var(--green)",
+        contador: `${gruposParaLiberar.reduce((a, g) => a + g.liberados, 0)}/${gruposParaLiberar.reduce((a, g) => a + g.itens.length, 0)}`,
+        render: () => (
+          <LiberarCompraView grupos={gruposParaLiberar} podeEditar={podeEditar}
+            onLiberar={onLiberarCompra} onConferir={onConferirAlerta} onLiberarSemCliente={onLiberarSemCliente} />
+        ),
+      }}
       onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
   );
 }
@@ -6646,7 +7044,13 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                     <thead>
                       <tr>
                         <th style={{ width: 72 }}>Item</th>
-                        <th style={{ minWidth: 220 }}>Descrição</th>
+                        {/* LARGURA, e nao min-width: a tabela e' `table-layout: fixed`,
+                            e nesse modo o navegador IGNORA min-width em coluna. Como
+                            esta era a unica sem largura declarada, ela recebia so' a
+                            sobra — cerca de 30px — e a descricao sumia, com o cabecalho
+                            grudado escorrendo por cima do vizinho (visto por ela em
+                            16/09/2026). */}
+                        <th style={{ width: 240 }}>Descrição</th>
                         <th style={{ width: 112 }}>Código / especif.</th>
                         <th style={{ width: 86 }}>Fornecedor</th>
                         <th style={{ width: 76 }}>Ambiente</th>
@@ -7677,6 +8081,20 @@ const ETAPAS_EXECUCAO = [
 
 const ETAPAS_POR_GRUPO = { planejamento: ETAPAS_PLANEJAMENTO, execucao: ETAPAS_EXECUCAO };
 
+/* Etapas que a esteira NAO tranca pela anterior.
+
+   O Executivo, a Conf. Executivo e a Aprovacao do Cliente sao feitos ao
+   mesmo tempo (pedidos dela em 16/09/2026: "o trabalho e' feito em
+   conjunto"). Trancar uma enquanto a outra esta sendo feita obriga a
+   CONCLUIR antes da hora so' pra poder olhar — e concluir cedo e' pior
+   que deixar aberto.
+
+   Isto solta o CADEADO DA ABA, e nao as regras de dentro: cada tela
+   continua com a protecao que tem. O Executivo e a conferencia exigem o
+   Depara aprovado; o Plano de Compras continua com o portao da
+   assinatura do cliente, que pede justificativa pra passar sem ela. */
+const ETAPAS_SEM_TRAVA_DE_ORDEM = new Set(["executivo_conferencia", "assinatura_cliente"]);
+
 /* Etapas que usam o botão genérico de concluir.
 
    Fora dela ficam Depara, Aprovação do Cliente e Plano de Compras: cada
@@ -7710,18 +8128,16 @@ function quemConcluiu(id, obra) {
 
 /* O que impede concluir a etapa agora, ou null.
 
-   Só a Conf. Executivo tem trava: Divergente e Conferência técnica
-   precisam estar 100% aprovados, zero pendência, antes de a esteira
-   andar. "Entrou ou saiu" não trava. Etapa que já estava concluída
-   continua concluída — a trava vale para o ato de concluir. */
+   Só a Conf. Executivo tem trava, e desde 16/09/2026 só a Conferência
+   técnica: ela precisa estar 100% aprovada, zero pendência, antes de a
+   esteira andar. Divergência de número e "Entrou ou saiu" não travam.
+   Etapa que já estava concluída continua concluída — a trava vale para o
+   ato de concluir. */
 function bloqueioDaEtapa(id, obra) {
   if (id !== "executivo_conferencia" || !obra) return null;
-  const { divergente, tecnica } = pendenciasConfExecutivo(obra);
-  if (divergente + tecnica === 0) return null;
-  const partes = [];
-  if (divergente) partes.push(`${divergente} ${divergente === 1 ? "divergente" : "divergentes"}`);
-  if (tecnica) partes.push(`${tecnica} em conferência técnica`);
-  return `Falta aprovar ${partes.join(" e ")}`;
+  const { tecnica } = pendenciasConfExecutivo(obra);
+  if (tecnica === 0) return null;
+  return `Falta aprovar ${tecnica} em conferência técnica`;
 }
 
 function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
@@ -7752,7 +8168,9 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
             // so anda pra frente, e pular etapa e o que gera compra sem
             // conferencia.
             const anterior = etapas[i - 1];
-            const travada = grupo === "planejamento" && anterior && !etapaConcluida(anterior.id, obra);
+            const travada = grupo === "planejamento" && anterior
+              && !ETAPAS_SEM_TRAVA_DE_ORDEM.has(t.id)
+              && !etapaConcluida(anterior.id, obra);
             return (
               <button key={t.id}
                 className={`tab ${tab === t.id ? "active" : ""} ${feita ? "feita" : ""} ${travada ? "travada" : ""}`}
@@ -7787,11 +8205,159 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
    aparecia pra comprar.
 
    Entra quem TEM parcela de material, e o valor que viaja e a PARCELA. */
+/* ============================================================
+   LIBERAR PARA COMPRA
+
+   O executivo decide, item a item, o que pode ser comprado. Ate' ele
+   dizer, a linha existe no Plano de Compras como ESTIMATIVA: aparece e
+   soma, mas nao entra na tela de Compras.
+
+   A decisao mora no ITEM, e nao numa lista de chaves. Medido em
+   16/09/2026: a obra 2450 tem 198 dos 269 itens SEM codigo, e as 200
+   linhas do executivo dela tambem — chave por verba+codigo nao acharia
+   nada ali, enquanto na 2519 acharia 196 de 219. Uma regra que funciona
+   numa obra e falha inteira na outra nao e' regra. O item, o app ja sabe
+   alcancar: e' assim que `comprado` e `solicitado` funcionam.
+   ============================================================ */
+
+/* Quem ja vivia no fluxo antes desta regra existir continua liberado.
+
+   Sem isto, ligar a regra esvaziaria a tela de Compras das obras em
+   andamento: so' na 2450 sao 156 itens com canal escolhido e 8 ja
+   comprados, que passariam a ser tratados como "ninguem liberou". */
+/* Editar um item aprovado o devolve PRA FILA (decisao dela, 16/09/2026).
+
+   Ela perguntou se o executivo podia alterar um item ja aprovado pelo
+   cliente: podia, e os carimbos ficavam como se nada tivesse mudado —
+   dava pra trocar produto e preco de algo que o cliente aprovou e seguir
+   comprando. Agora a edicao derruba a aprovacao e a liberacao.
+
+   So' os campos que mudam O QUE se compra ou QUANTO custa. Ambiente,
+   fornecedor e codigo ficam de fora: corrigir isso nao muda produto nem
+   preco, e mandar o item pra fila por causa de um acento seria ensinar a
+   equipe a evitar a correcao.
+
+   Os nomes de campo sao os mesmos que `recalcularCustos` ja usa pra
+   decidir que uma edicao mexeu em valor — uma lista so', nao duas. */
+const CAMPOS_QUE_DERRUBAM_APROVACAO = [
+  "desc", "qtdVendida", "qtdExecutivo",
+  "custo", "custoUnitario", "custoMaterial", "custoMO", "totalMaterial", "totalMO",
+];
+function edicaoDerrubaAprovacao(patch) {
+  return CAMPOS_QUE_DERRUBAM_APROVACAO.some((k) => Object.prototype.hasOwnProperty.call(patch || {}, k));
+}
+
+function liberadoParaCompra(it) {
+  if (!it) return false;
+  if (it.liberadoCompra) return true;
+  return !!(it.comprado || it.canalCompra || it.solicitado || it.avulso || it.aditivo);
+}
+
+/* O que obriga a olhar antes de liberar.
+
+   O alerta tecnico e' recalculado da DESCRICAO do proprio item — funcao
+   pura — e por isso nao depende de casar a linha do documento com a linha
+   do plano, que e' justamente o que nao da' pra fazer na 2450.
+
+   "Entrou" vem de fora porque so' existe olhando os dois documentos: e'
+   o item que apareceu no executivo sem ter sido vendido. */
+function pendenciaParaLiberar(it, { entrou = false, semCliente = false } = {}) {
+  /* O CLIENTE vem primeiro: ele e' o elo anterior da corrente. Sem a
+     aprovacao dele nao adianta conferir alerta nenhum — o item nao pode
+     ser comprado de qualquer jeito. */
+  if (semCliente) {
+    return { tipo: "cliente", texto: "O cliente ainda não aprovou este item — a aprovação dele vem antes da liberação." };
+  }
+  const tecnico = alertaConferenciaTecnica(it?.desc || "");
+  if (tecnico && tecnico.escopo === "item") return { tipo: "tecnica", texto: tecnico.texto };
+  if (entrou) {
+    return { tipo: "entrou", texto: "Entrou no executivo sem ter sido vendido ao cliente — confirme antes de liberar." };
+  }
+  return null;
+}
+
+/* O cliente aprovou este item?
+
+   A assinatura geral da obra aprova TUDO (decisao dela, 16/09/2026): ela
+   e' o caso normal, e a marcacao item a item existe pra quando a
+   aprovacao vem parcial — "as vezes o cliente segura alguns itens".
+   Sem isso, ligar a regra travaria toda obra que ja assinou. */
+function aprovadoPeloCliente(it, obra) {
+  if (obra?.clienteAssinouEm) return true;
+  return !!(it?.aprovadoCliente || it?.liberadoSemCliente);
+}
+
+/* Alerta na linha trava a liberacao ate' alguem dizer que olhou. E' a
+   regra que ela pediu: "obrigatorio o executivo tagar isso e realmente
+   fazer essa verificacao". */
+function podeLiberarItem(it, ctx) {
+  if (liberadoParaCompra(it)) return true;
+  const p = pendenciaParaLiberar(it, ctx);
+  if (!p) return true;
+  /* O alerta se resolve marcando que conferiu. A falta do cliente, nao:
+     ela so' sai com a aprovacao dele ou com a excecao justificada — e as
+     duas ja entraram em `aprovadoPeloCliente`. */
+  if (p.tipo === "cliente") return false;
+  return !!it?.alertaConferido;
+}
+
+/* A planilha do executivo como ela vai pra tela de liberacao: por verba,
+   so' o que se compra (mao de obra vai pra Contratos, nao pra compra) e
+   sem a linha trocada, que e' historico. */
+function itensParaLiberar(obra, entrouPorDesc = null) {
+  const grupos = [];
+  (obra?.categorias || []).forEach((cat, catIdx) => {
+    const itens = [];
+    (cat.itens || []).forEach((it, itemIdx) => {
+      if (it.ehTitulo || it.troca) return;
+      const { material } = parcelasDoItem(it, cat);
+      if (alocacaoDoItem(it, cat) === ALOC_MO) return;
+      const entrou = entrouPorDesc ? entrouPorDesc.has(chaveDescricao(it.desc)) : false;
+      const doCliente = aprovadoPeloCliente(it, obra);
+      const ctx = { entrou, semCliente: !doCliente };
+      itens.push({
+        it, catIdx, itemIdx, material,
+        chave: `${catIdx}-${itemIdx}`,
+        liberado: liberadoParaCompra(it),
+        aprovadoCliente: doCliente,
+        pendencia: pendenciaParaLiberar(it, ctx),
+        pode: podeLiberarItem(it, ctx),
+      });
+    });
+    if (itens.length) {
+      grupos.push({
+        num: cat.num, nome: cat.nome, catIdx, itens,
+        total: itens.reduce((a, x) => a + x.material, 0),
+        liberados: itens.filter((x) => x.liberado).length,
+        liberado: itens.reduce((a, x) => a + (x.liberado ? x.material : 0), 0),
+        aprovados: itens.filter((x) => x.aprovadoCliente).length,
+      });
+    }
+  });
+  return grupos;
+}
+
+/* Descricao normalizada: e' por ela que o "entrou" do cruzamento encontra
+   o item do plano. Codigo nao serve (a 2450 nao tem), e objeto nao serve
+   (as duas listas viram copias diferentes ao salvar). */
+const chaveDescricao = (d) => String(d || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
 function produtosMAT(obra) {
   const out = [];
   (obra.categorias || []).forEach((cat, catIdx) => {
     (cat.itens || []).forEach((it, itemIdx) => {
       if (it.ehTitulo) return;
+      /* SO' ENTRA O QUE O EXECUTIVO LIBEROU (16/09/2026).
+
+         E' aqui que a regra vira bloqueio: a tela de Compras e' onde se
+         escolhe canal, pede orcamento e marca comprado. Deixar entrar o
+         que ninguem liberou e' deixar comprar o que o cliente ainda pode
+         recusar.
+
+         O nao liberado NAO some da obra: ele continua no Plano de
+         Compras, clarinho, e continua somando como estimativa na Gestao.
+         So' nao da' pra agir sobre ele aqui. */
+      if (!liberadoParaCompra(it)) return;
       const { material } = parcelasDoItem(it, cat);
       const aloc = alocacaoDoItem(it, cat);
       // O trocado continua na lista (riscado, sem contar): é o histórico da troca.
@@ -11955,7 +12521,14 @@ function GcLinhaObra({ L, onAbrir }) {
         <td>
           <div className="gc-cel-barra">
             <GcBarra pct={L.mat.pct} cor={COR_MAT} />
-            <span className="gc-cel-txt mono">{fmtBRL(L.mat.falta)}</span>
+            <span className="gc-cel-txt mono">{fmtBRL(L.mat.faltaReal)}</span>
+            {/* A estimativa fica ao lado, em tom claro: ela conta pra
+                previsao de compra, mas ninguem pode comprar ainda. */}
+            {L.mat.faltaEstimativa > 0 && (
+              <span className="gc-cel-est mono" title="Estimativa: itens que o executivo ainda não liberou para compra">
+                + {fmtBRL(L.mat.faltaEstimativa)} est.
+              </span>
+            )}
           </div>
         </td>
         <td>
@@ -12001,7 +12574,12 @@ function GcLinhaObra({ L, onAbrir }) {
                     {v.solicitadosFalta === v.siengeFalta ? "tudo solicitado" : `${v.solicitadosFalta} de ${v.siengeFalta} solicitados`}
                   </span>
                 )}
-                <span className="mono gc-prazo-val">{fmtBRL(v.matFalta)}</span>
+                <span className="mono gc-prazo-val">{fmtBRL(v.matFaltaReal)}</span>
+                {v.matFaltaEstimativa > 0 && (
+                  <span className="mono gc-cel-est" title="Estimativa: ainda não liberado para compra">
+                    + {fmtBRL(v.matFaltaEstimativa)} est.
+                  </span>
+                )}
               </div>
             ))}
           </td>
@@ -17183,11 +17761,20 @@ export default function App() {
   // mostra) e `itens` (o que alimenta Plano de Compras, Compras e
   // Contratos). As duas nascem do mesmo import, na mesma ordem.
   function editarItemExecutivo(catNum, idx, patch) {
+    /* Mudou o que se compra ou quanto custa: o item volta pra fila. Perde
+       a aprovacao do cliente, a liberacao e a conferencia do alerta — esta
+       ultima porque o alerta e' calculado da DESCRICAO, e um "conferi"
+       dado sobre outro texto nao vale pro texto novo. */
+    const limpeza = edicaoDerrubaAprovacao(patch)
+      ? { aprovadoCliente: null, liberadoCompra: null, liberadoSemCliente: null, alertaConferido: null }
+      : null;
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const categorias = o.categorias.map((c) => {
         if (c.num !== catNum) return c;
-        const aplicar = (lista) => (lista || []).map((it, i) => (i === idx ? recalcularCustos({ ...it, ...patch }, patch) : it));
+        const aplicar = (lista) => (lista || []).map((it, i) => (i === idx
+          ? { ...recalcularCustos({ ...it, ...patch }, patch), ...(limpeza || {}) }
+          : it));
         return { ...c, itensPlanilhaExecutivo: aplicar(c.itensPlanilhaExecutivo), itens: aplicar(c.itens) };
       });
       return { ...o, categorias };
@@ -17606,6 +18193,71 @@ export default function App() {
       });
       return { ...o, categorias };
     }));
+  }
+
+  /* LIBERAR PARA COMPRA (16/09/2026).
+
+     Uma passada so' na lista, e nao um `updateItem` por item: liberar uma
+     verba inteira sao dezenas de linhas, e dezenas de atualizacoes de
+     estado seguidas fazem a tela piscar e o salvamento disparar em
+     rajada. */
+  function liberarItensParaCompra(alvos, liberar) {
+    if (!alvos?.length) return;
+    const carimbo = liberar ? { em: new Date().toISOString(), por: usuario } : null;
+    const porCat = new Map();
+    alvos.forEach(({ catIdx, itemIdx }) => {
+      if (!porCat.has(catIdx)) porCat.set(catIdx, new Set());
+      porCat.get(catIdx).add(itemIdx);
+    });
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c, ci) => {
+        const quais = porCat.get(ci);
+        if (!quais) return c;
+        return { ...c, itens: (c.itens || []).map((it, ii) => (quais.has(ii) ? { ...it, liberadoCompra: carimbo } : it)) };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  /* A aprovacao do cliente, item a item. Mesma passada unica da
+     liberacao: aprovar uma verba inteira sao dezenas de linhas. */
+  function aprovarItensPeloCliente(alvos, aprovar) {
+    if (!alvos?.length) return;
+    const carimbo = aprovar ? { em: new Date().toISOString(), por: usuario } : null;
+    const porCat = new Map();
+    alvos.forEach(({ catIdx, itemIdx }) => {
+      if (!porCat.has(catIdx)) porCat.set(catIdx, new Set());
+      porCat.get(catIdx).add(itemIdx);
+    });
+    setObras((prev) => prev.map((o) => {
+      if (o.id !== selectedId) return o;
+      const categorias = o.categorias.map((c, ci) => {
+        const quais = porCat.get(ci);
+        if (!quais) return c;
+        return { ...c, itens: (c.itens || []).map((it, ii) => (quais.has(ii) ? { ...it, aprovadoCliente: carimbo } : it)) };
+      });
+      return { ...o, categorias };
+    }));
+  }
+
+  /* A excecao: libera sem a aprovacao do cliente, com o porque e o nome
+     de quem autorizou gravados NO ITEM. Some junto se alguem desfizer a
+     liberacao — a justificativa vale pra aquela liberacao, nao pra
+     sempre. */
+  function liberarSemAprovacaoDoCliente(catIdx, itemIdx, { motivo, quem }) {
+    updateItem(catIdx, itemIdx, {
+      liberadoSemCliente: { em: new Date().toISOString(), por: usuario, motivo, autorizadoPor: quem },
+      liberadoCompra: { em: new Date().toISOString(), por: usuario },
+    });
+  }
+
+  /* O alerta conferido. Fica no item com quem marcou e quando: a
+     verificacao obrigatoria so' vale alguma coisa se ficar registrada. */
+  function conferirAlertaDoItem(catIdx, itemIdx, marcado) {
+    updateItem(catIdx, itemIdx, {
+      alertaConferido: marcado ? { em: new Date().toISOString(), por: usuario } : null,
+    });
   }
 
   /* Troca de produto nas Compras: o original fica riscado (com quem aprovou,
@@ -18150,6 +18802,24 @@ export default function App() {
         .ad-tag:hover { border-color: var(--ink-3); }
         .ad-tag.rascunho.on { background: var(--panel); border-color: var(--ink-3); color: var(--ink-2); }
         .ad-tag.aguardando.on { background: var(--alert-soft); border-color: var(--alert); color: var(--alert); }
+
+        /* LIBERAR PARA COMPRA — a estimativa e' clara de proposito: ela
+           esta na tela pra ser contada, nao pra ser trabalhada. */
+        .lib-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 12px; }
+        .lib-placar { font-size: 13px; color: var(--ink-2); display: flex; align-items: baseline; gap: 10px; }
+        .lib-placar b { font-size: 16px; color: var(--ink); }
+        .lib-valor { font-size: 12px; color: var(--ink-3); }
+        .lib-travados { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--alert); }
+        .lib-grp-valor { font-size: 11.5px; }
+        .row-estimativa td { opacity: .55; }
+        .row-estimativa .item-desc { font-weight: 400; }
+        .lib-alerta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 3px; font-size: 10.5px; line-height: 1.4; color: var(--alert); }
+        .lib-alerta.conferido { color: var(--ink-3); }
+        .lib-conferido-por { font-size: 10px; color: var(--ink-3); font-style: italic; }
+        .cli-bloco { margin-top: 18px; }
+        .cli-excecao { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; text-align: left; }
+        .cli-excecao .form-input { font-size: 11.5px; }
+        .cli-excecao-acoes { display: flex; gap: 6px; justify-content: flex-end; }
         .ad-tag.aprovado.on { background: var(--green-bg); border-color: var(--green); color: var(--green); }
         .ad-tag.reprovado.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 
@@ -19464,7 +20134,10 @@ export default function App() {
            uma saía com larguras próprias. Bastava um grupo ter conteúdo
            incomum — em Climatização, uma URL de 200 caracteres sem
            espaço — pra desalinhar tudo naquele grupo. */
-        .exec-itens { font-size: 11px; width: 100%; min-width: 1080px; border-top: none; table-layout: fixed; }
+        /* 1050px das colunas de largura fixa + 240px da Descricao. Com menos
+           que isso o navegador espreme a Descricao em vez de deixar a tabela
+           rolar, que e' o que .exec-scroll existe pra fazer. */
+        .exec-itens { font-size: 11px; width: 100%; min-width: 1290px; border-top: none; table-layout: fixed; }
         .exec-itens th, .exec-itens td { padding: 6px 7px; }
         /* texto sem espaço (URL, código longo) quebra em vez de esticar */
         /* Número não quebra. A regra antiga valia pra TODA célula, e numa
@@ -19996,6 +20669,7 @@ export default function App() {
         .gc-sem-data { font-size: 11px; color: var(--ink-3); font-style: italic; }
         .gc-cel-barra { display: flex; align-items: center; gap: 8px; }
         .gc-cel-txt { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+        .gc-cel-est { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
         .gc-selo { display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 20px; padding: 3px 9px; font-size: 10.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
         .gc-selo.atraso { background: var(--red-bg); color: var(--red); }
         .gc-selo.perto { background: var(--amber-bg); color: var(--amber); }
@@ -20559,10 +21233,17 @@ export default function App() {
             ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
-          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obra} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onLiberarSemCliente={liberarSemAprovacaoDoCliente} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "assinatura_cliente" && (
-            <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}
-              onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
+            <>
+              <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}
+                onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
+              {/* A aprovacao PARCIAL, embaixo da assinatura: a tela de cima
+                  continua sendo a da obra inteira, e esta responde "o que o
+                  cliente ainda esta segurando?". */}
+              <AprovacaoClienteItens grupos={itensParaLiberar(obra)} obra={obra}
+                podeEditar={edicao.minha} onAprovar={aprovarItensPeloCliente} />
+            </>
           )}
           {tab === "diario" && (
             <div className="compras-empty">

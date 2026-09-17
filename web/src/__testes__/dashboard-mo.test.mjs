@@ -33,6 +33,7 @@ const { servicosMO, produtosMAT, obraComprasStats } = eval(`(function () {
   const verbaPorNome = (n) => ({ "Gesso e Drywall": "10", "Pintura": "18", "Serralheria": "22",
     "Instalações Elétricas e Iluminação": "05", "Execução e Mão de Obra": "32" })[n] || null;
   ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
+  ${bloco("function liberadoParaCompra(")}
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
   ${bloco("function servicosMO(")}
@@ -59,6 +60,11 @@ const obra = { categorias: [
     { desc: "Forro de gesso", tipo: "servico", totalMaterial: 0, totalMO: 5173.5, custo: 5173.5 },
   ] },
 ] };
+
+/* Fixtures de antes da liberação (16/09/2026). Este teste trata do
+   rateio MAT/MO, não da liberação: marcadas como liberadas pra
+   continuarem chegando na tela de Compras. */
+obra.categorias.forEach((c) => c.itens.forEach((it) => { it.liberadoCompra = { em: "2026-09-16" }; }));
 
 const rows = servicosMO(obra);
 conf("entra quem TEM mão de obra", rows.length, 3);

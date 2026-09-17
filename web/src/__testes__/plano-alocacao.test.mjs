@@ -41,6 +41,7 @@ const api = eval(`(function () {
       "Execução e Mão de Obra": "32", "Pintura": "18", "Serralheria": "22",
     })[n] || null;
     ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
+    ${pega("function liberadoParaCompra(")}
     ${pega("function parcelasDoItem(")}
     ${pega("function parcelasDaPlanilha(")}
     ${pega("function itemAlertas(")}
@@ -92,14 +93,27 @@ conf("os chips declarados são 4", FILTROS_ALOC.length, 4);
 /* ---- 4. o filtro de situação segue a alocação, não o tipo ---- */
 // Era aqui que a tela se contradizia: a linha aparecia como MAT na lista
 // e sumia ao filtrar "Liberado p/ compra", porque `tipo` dizia serviço.
-conf("serviço-com-material passa em 'aguardando'", matchesFilter({ ...servico_com_material }, "aguardando"), true);
-conf("serviço-com-material passa em 'liberado'", matchesFilter({ ...servico_com_material, liberado: true }, "liberado"), true);
-conf("MO puro NÃO entra no fluxo de compras", matchesFilter({ ...so_mo, liberado: true }, "liberado"), false);
+//
+// Estas linhas usavam `liberado: true` e os filtros "aguardando"/"liberado",
+// que NÃO existiam em matchesFilter: caíam no `return true` do fim, e o que
+// de fato estava sendo testado era a guarda de mão de obra. Desde
+// 16/09/2026 "liberado" existe de verdade (`liberadoCompra`, que o
+// executivo marca), então aqui os dados passaram a usar o campo vivo — a
+// pergunta do teste continua sendo a mesma.
+const liberado = { em: "2026-09-16" };
+conf("serviço-com-material aparece no que falta liberar", matchesFilter({ ...servico_com_material }, "nao_liberado"), true);
+conf("serviço-com-material passa em 'liberado'", matchesFilter({ ...servico_com_material, liberadoCompra: liberado }, "liberado"), true);
+conf("MO puro NÃO entra no fluxo de compras", matchesFilter({ ...so_mo, liberadoCompra: liberado }, "liberado"), false);
+// A guarda de MO vem ANTES da liberação: mão de obra não entra em compra
+// nem quando alguém libera, nem quando ninguém liberou.
+conf("MO puro também não aparece no 'a liberar'", matchesFilter({ ...so_mo }, "nao_liberado"), false);
 // Virou MO pela regra nova — some do fluxo de compras junto com o resto
 // da mão de obra, e é exatamente esse o ponto da regra.
-conf("MAT+MO também não entra mais (virou MO)", matchesFilter({ ...spot, liberado: true }, "liberado"), false);
+conf("MAT+MO também não entra mais (virou MO)", matchesFilter({ ...spot, liberadoCompra: liberado }, "liberado"), false);
 // Só continua indo pra Compras quem tem material de verdade.
-conf("só material continua entrando", matchesFilter({ ...so_mat, liberado: true }, "liberado"), true);
+conf("só material continua entrando", matchesFilter({ ...so_mat, liberadoCompra: liberado }, "liberado"), true);
+// E o material que ninguém liberou fica do lado da estimativa.
+conf("material sem liberação fica no 'a liberar'", matchesFilter({ ...so_mat }, "nao_liberado"), true);
 
 /* ---- 5. avulso: declara a própria alocação e não move total nenhum ---- */
 // A Priscila decidiu que a avulsa registra só o pedido. Sem valor, ela

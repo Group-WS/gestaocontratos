@@ -34,6 +34,7 @@ const { resumoDaObra, resumoGeral } = eval(`(function () {
     "Climatização": "20", "Mobília Solta": "24", "Pintura": "18",
     "Gesso e Drywall": "10", "Louças e Metais": "27" })[n] || null;
   ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
+  ${bloco("function liberadoParaCompra(")}
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
   return { resumoDaObra, resumoGeral };

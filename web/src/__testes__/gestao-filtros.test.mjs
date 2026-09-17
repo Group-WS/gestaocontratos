@@ -25,6 +25,7 @@ const { resumoGeral, relatorioDaVerba } = eval(`(function () {
   const padraoDaDescricao = () => null;
   const verbaPorNome = (n) => ({ "Instalações Elétricas e Iluminação": "05", "Pintura": "18" })[n] || null;
   ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
+  ${bloco("function liberadoParaCompra(")}
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
   return { resumoGeral, relatorioDaVerba };

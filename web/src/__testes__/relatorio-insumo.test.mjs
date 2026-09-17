@@ -25,6 +25,7 @@ const M = eval(`(function () {
   const subgrupoDe = (desc) => (/cadeira|banqueta/i.test(desc) ? "Cadeiras e banquetas" : /mesa/i.test(desc) ? "Mesas" : null);
   ${bloco("function semAcentos(")}
   ${trecho("const ALOC_MAT =", "/* =====[ FIM DO MODELO PURO")}
+  ${bloco("function liberadoParaCompra(")}
   ${bloco("function parcelasDoItem(")}
   ${bloco("function parcelasDaPlanilha(")}
   return { resumoPorInsumo, resumoPorProduto, relatorioDoInsumo, resumoDaObra };

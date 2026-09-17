@@ -2,9 +2,13 @@
  *
  * Roda com: node web/src/__testes__/trava-conf-executivo.test.mjs
  *
- * A regra (set/2026): para concluir a Conf. Executivo e ir para a
- * próxima etapa, Divergente e Conferência técnica precisam estar 100%
- * aprovados — zero pendência. "Entrou ou saiu" não trava.
+ * A regra (16/09/2026): para concluir a Conf. Executivo e ir para a
+ * próxima etapa, só a Conferência técnica precisa estar 100% aprovada —
+ * zero pendência. Divergência de número e "Entrou ou saiu" não travam.
+ *
+ * A divergência saiu porque o executivo passou a rever a planilha inteira
+ * na tela "Liberar para Compra", item a item. O que cabe e o que é
+ * compatível continua travando: é a pergunta que ninguém responde depois.
  *
  * Roda as funções de verdade do App.jsx, a regra do alerta técnico
  * inclusive. Só o cruzamento das planilhas é trocado por linhas prontas,
@@ -52,15 +56,22 @@ const entrou = linha("28", "28.9", "somente_um", null, "Televisor 55 polegadas")
 
 console.log("=== O QUE TRAVA ===");
 conf("tudo conferido: libera", trava(obra([conferida])), null);
-conf("um divergente trava", trava(obra([conferida, divergente])), "Falta aprovar 1 divergente");
-conf("dois divergentes, no plural", trava(obra([divergente, linha("11", "11.3", "diferente", "Rodapé", "Rodapé")])), "Falta aprovar 2 divergentes");
 conf("aquecedor sem GN/GLP vira conferência técnica", trava(obra([aquecedor])), "Falta aprovar 1 em conferência técnica");
-conf("os dois juntos", trava(obra([divergente, aquecedor])), "Falta aprovar 1 divergente e 1 em conferência técnica");
+conf("duas técnicas contam junto",
+  trava(obra([aquecedor, linha("28", "28.5", "ok", "Aquecedor a gás 30L", "Aquecedor a Gás 30L")])),
+  "Falta aprovar 2 em conferência técnica");
+
+console.log("\n=== O QUE NÃO TRAVA MAIS ===");
+/* A divergência de número saiu da trava em 16/09/2026: quem revê isso
+   agora é o executivo, item a item, na tela "Liberar para Compra". */
+conf("divergente sozinho não trava", trava(obra([conferida, divergente])), null);
+conf("dois divergentes também não", trava(obra([divergente, linha("11", "11.3", "diferente", "Rodapé", "Rodapé")])), null);
+conf("divergente não soma com a técnica", trava(obra([divergente, aquecedor])), "Falta aprovar 1 em conferência técnica");
+conf("'entrou ou saiu' não trava", trava(obra([entrou])), null);
 
 console.log("\n=== O QUE LIBERA ===");
-conf("aprovada não conta mais", trava(obra([divergente, aquecedor], ["exec:11:11.2", "exec:28:28.4"])), null);
-conf("aprovar só uma deixa a outra travando", trava(obra([divergente, aquecedor], ["exec:11:11.2"])), "Falta aprovar 1 em conferência técnica");
-conf("'entrou ou saiu' não trava", trava(obra([entrou])), null);
+conf("aprovada não conta mais", trava(obra([aquecedor], ["exec:28:28.4"])), null);
+conf("aprovar a técnica libera mesmo com divergente", trava(obra([divergente, aquecedor], ["exec:28:28.4"])), null);
 
 console.log("\n=== SÓ NA CONF. EXECUTIVO ===");
 conf("outra etapa não tem essa trava", trava(obra([divergente]), "executivo"), null);
