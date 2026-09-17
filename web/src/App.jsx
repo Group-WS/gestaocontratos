@@ -18684,6 +18684,41 @@ export default function App() {
     filaPatch.current.push(p);
   };
 
+  /* AS MARCAS DA OBRA — fatia 2 do ADR-004.
+
+     Não moram dentro de `categorias`: são colunas próprias. O mapa existe
+     porque o app fala em camelo e o banco em underline, e porque a lista é
+     FECHADA dos dois lados — a função no banco recusa coluna que não
+     conhece, e aqui nada sai sem estar escrito. */
+  const COLUNA_DA_MARCA = {
+    aprovacoes: "aprovacoes",
+    etapasConcluidas: "etapas_concluidas",
+    comprasLiberadas: "compras_liberadas",
+    clienteAssinouEm: "cliente_assinou_em",
+    clienteAssinaturaPor: "cliente_assinatura_por",
+    clienteAssinaturaArq: "cliente_assinatura_arq",
+    clienteAssinaturaObs: "cliente_assinatura_obs",
+  };
+
+  /* O valor mais recente de uma marca: o que já está na fila ganha do que
+     está na tela. Aprovar dezenas de linhas de uma vez são dezenas de
+     chamadas no mesmo instante, e a tela só é atualizada depois — sem olhar
+     a fila, cada chamada partiria do mesmo estado velho e só a última
+     valeria, perdendo as outras. */
+  const valorNaFila = (coluna, seNaoTiver) => {
+    const fila = filaPatch.current;
+    if (fila) {
+      for (let i = fila.length - 1; i >= 0; i--) if (fila[i].coluna === coluna) return fila[i].valor;
+    }
+    return seNaoTiver;
+  };
+
+  const enfileirarMarcas = (marcas) => {
+    const chaves = Object.keys(marcas || {});
+    if (!chaves.length || !chaves.every((k) => COLUNA_DA_MARCA[k])) { precisaSalvarTudo(); return; }
+    chaves.forEach((k) => enfileirarPatch({ coluna: COLUNA_DA_MARCA[k], valor: marcas[k] ?? null }));
+  };
+
   /* O mesmo campo em vários itens de uma vez: liberar ou aprovar uma verba
      inteira são dezenas de linhas, e cada uma vira um patch. O código e a
      descrição vão junto pra função no banco conferir que a posição ainda é o
@@ -18798,10 +18833,15 @@ export default function App() {
      aprovar uma linha no Depara marcaria sozinha a linha correspondente na
      Conferência do Executivo, que é uma conferência que ninguém fez. */
   function aprovarLinhaConferencia(escopo, catNum, codigo) {
+    const chave = `${escopo}:${catNum}:${codigo}`;
+    // A fila manda: aprovar em massa são dezenas de chamadas no mesmo instante.
+    const base = new Set(valorNaFila("aprovacoes", Array.from(obra?.aprovacoes || [])));
+    base.add(chave);
+    enfileirarMarcas({ aprovacoes: Array.from(base) });
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const atual = new Set(o.aprovacoes || []);
-      atual.add(`${escopo}:${catNum}:${codigo}`);
+      atual.add(chave);
       return { ...o, aprovacoes: atual };
     }));
   }
@@ -19066,6 +19106,7 @@ export default function App() {
 
 
   function reabrirCompras() {
+    enfileirarMarcas({ comprasLiberadas: false });
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, comprasLiberadas: false } : o)));
   }
 
@@ -19438,6 +19479,10 @@ export default function App() {
      O documento já subiu pro Storage antes de chegar aqui: `arq` é o que
      ficou guardado dele (nome + caminho), não o File do navegador. */
   function registrarAssinaturaCliente({ data, obs, arq }) {
+    enfileirarMarcas({
+      clienteAssinouEm: data, clienteAssinaturaPor: usuario,
+      clienteAssinaturaObs: obs || null, clienteAssinaturaArq: arq || null,
+    });
     setObras((prev) => prev.map((o) => (o.id === selectedId ? {
       ...o,
       clienteAssinouEm: data,
@@ -19449,6 +19494,10 @@ export default function App() {
 
   function removerAssinaturaCliente() {
     const arq = obras.find((o) => o.id === selectedId)?.clienteAssinaturaArq;
+    enfileirarMarcas({
+      clienteAssinouEm: null, clienteAssinaturaPor: null,
+      clienteAssinaturaObs: null, clienteAssinaturaArq: null,
+    });
     setObras((prev) => prev.map((o) => (o.id === selectedId ? {
       ...o, clienteAssinouEm: null, clienteAssinaturaPor: null,
       clienteAssinaturaObs: null, clienteAssinaturaArq: null,
@@ -19463,6 +19512,16 @@ export default function App() {
      Plano de Compras já têm o seu (liberar CMV, registrar assinatura,
      liberar compras) e são lidas dali. */
   function concluirEtapa(id) {
+    /* O patch só entra se a etapa PODE ser concluída: a trava está dentro do
+       `setObras`, e enfileirar antes de saber gravaria o que a tela recusou. */
+    if (obra && !bloqueioDaEtapa(id, obra)) {
+      enfileirarMarcas({
+        etapasConcluidas: { ...(valorNaFila("etapas_concluidas", obra.etapasConcluidas) || {}),
+          [id]: { por: usuario, em: new Date().toISOString() } },
+      });
+    } else {
+      precisaSalvarTudo();
+    }
     // A mesma trava do botão, de novo aqui: o botão avisa, esta linha garante.
     setObras((prev) => prev.map((o) => (o.id === selectedId && !bloqueioDaEtapa(id, o) ? {
       ...o,
@@ -19471,6 +19530,9 @@ export default function App() {
   }
 
   function reabrirEtapa(id) {
+    const resto = { ...(valorNaFila("etapas_concluidas", obra?.etapasConcluidas) || {}) };
+    delete resto[id];
+    enfileirarMarcas({ etapasConcluidas: resto });
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const resto = { ...(o.etapasConcluidas || {}) };

@@ -94,6 +94,43 @@ conf("aprovar pelo cliente enfileira item a item", src.includes("enfileirarEmVar
 conf("o enfileirador em massa também confere código e descrição",
   /const enfileirarEmVarios = \(alvos, campos\) => \{[\s\S]*confCodigo: it\.codigo[\s\S]*confDesc: it\.desc/.test(src), true);
 
+/* ---- 2b. As marcas da OBRA (fatia 2) ----
+   Etapas, assinatura do cliente e aprovação da linha não moram dentro dos
+   itens: são colunas próprias. O app fala em camelo, o banco em underline, e
+   as duas listas são fechadas. */
+const mapa = eval("(" + src.slice(src.indexOf("const COLUNA_DA_MARCA = {") + "const COLUNA_DA_MARCA = ".length,
+  src.indexOf("};", src.indexOf("const COLUNA_DA_MARCA = {")) + 1) + ")");
+conf("a aprovação da linha tem coluna", mapa.aprovacoes, "aprovacoes");
+conf("as etapas concluídas têm coluna", mapa.etapasConcluidas, "etapas_concluidas");
+conf("a assinatura do cliente tem as quatro",
+  [mapa.clienteAssinouEm, mapa.clienteAssinaturaPor, mapa.clienteAssinaturaObs, mapa.clienteAssinaturaArq].join(","),
+  "cliente_assinou_em,cliente_assinatura_por,cliente_assinatura_obs,cliente_assinatura_arq");
+conf("compras liberadas tem coluna", mapa.comprasLiberadas, "compras_liberadas");
+/* Toda coluna que o app manda precisa estar na lista da função, senão ela
+   recusa e o app grava a obra inteira à toa. */
+const listaDoBanco = sql.slice(sql.indexOf("if col in ("), sql.indexOf(") then", sql.indexOf("if col in (")));
+Object.values(mapa).forEach((col) => {
+  conf(`a função no banco aceita ${col}`, listaDoBanco.includes(`'${col}'`), true);
+});
+conf("marca desconhecida cai no salvamento inteiro",
+  /if \(!chaves\.length \|\| !chaves\.every\(\(k\) => COLUNA_DA_MARCA\[k\]\)\) \{ precisaSalvarTudo\(\); return; \}/.test(src), true);
+
+/* Aprovar em massa são dezenas de chamadas no mesmo instante, e a tela só
+   atualiza depois: sem olhar a fila, cada uma partiria do estado velho e só
+   a última valeria. */
+conf("aprovar linha parte do que já está na fila",
+  src.includes('new Set(valorNaFila("aprovacoes", Array.from(obra?.aprovacoes || [])))'), true);
+conf("concluir etapa também", src.includes('valorNaFila("etapas_concluidas", obra.etapasConcluidas)'), true);
+conf("e só enfileira o que a tela aceitou", src.includes("if (obra && !bloqueioDaEtapa(id, obra)) {"), true);
+conf("assinatura registra as quatro colunas de uma vez",
+  /enfileirarMarcas\(\{\s*\n\s*clienteAssinouEm: data, clienteAssinaturaPor: usuario,/.test(src), true);
+conf("e removê-la apaga as quatro", /clienteAssinouEm: null, clienteAssinaturaPor: null,/.test(src), true);
+conf("reabrir compras vai por patch", src.includes("enfileirarMarcas({ comprasLiberadas: false })"), true);
+/* `liberarCompras` reescreve `categorias` junto, então continua no
+   salvamento inteiro — patch só do campo deixaria o resto para trás. */
+conf("liberar compras NÃO vai por patch",
+  src.slice(src.indexOf("function liberarCompras("), src.indexOf("function reabrirCompras(")).includes("enfileirarMarcas"), false);
+
 /* ---- 3. Falha sempre cai no salvamento de sempre ---- */
 conf("o salvamento tenta o patch primeiro", /const p = await aplicarPatchObra\(obra\.codigo, fila\);/.test(src), true);
 conf("patch recusado não é tratado como sucesso", src.includes("p?.ok && !(p.recusados && p.recusados.length)"), true);
@@ -103,6 +140,11 @@ conf("sem a função no banco, o lib avisa em vez de estourar", lib.includes("re
 conf("e reconhece os dois códigos de erro", lib.includes('error.code === "42883"') && lib.includes('error.code === "PGRST202"'), true);
 
 /* ---- 4. A função no banco ---- */
+conf("aprende a gravar coluna", sql.includes("elsif p ? 'coluna' then"), true);
+conf("com lista fechada de colunas", /if col in \('aprovacoes'/.test(sql), true);
+conf("cada marca só é escrita se veio na chamada", /case when marcas \? 'etapas_concluidas' then/.test(sql), true);
+conf("e a função continua com a mesma assinatura",
+  sql.includes("create or replace function public.aplicar_patch_obra(p_codigo text, p_patches jsonb)"), true);
 conf("segura a linha enquanto grava", /select categorias[\s\S]*for update/.test(sql), true);
 conf("confere o código antes de escrever", sql.includes("coalesce(alvo->>'codigo', '') <> coalesce(p->>'confCodigo', '')"), true);
 conf("confere a descrição antes de escrever", sql.includes("coalesce(alvo->>'desc', '')   <> coalesce(p->>'confDesc', '')"), true);
