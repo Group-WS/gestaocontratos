@@ -6334,7 +6334,11 @@ function FormExcecaoCliente({ onConfirmar, onCancelar }) {
    O quadrado de cima e' o pedido dela: quem aprova precisa ver de
    relance o que ainda falta, e filtrar so' isso. */
 function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
-  const [filtro, setFiltro] = useState("falta");
+  /* Abre mostrando TUDO (pedido dela, 17/09/2026): "sempre mostrar tudo como
+     tela inicial padrao para a equipe liberar oque precisa do cliente. caso
+     eles queiram filtrar eles mudam ali em cima". Antes abria em "falta
+     aprovar", e verba com tudo aprovado desaparecia da tela. */
+  const [filtro, setFiltro] = useState("todos");
   const [abertos, setAbertos] = useState(() => new Set());
   const alternar = (num) => setAbertos((p) => {
     const n = new Set(p);
@@ -6425,7 +6429,10 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                           {x.it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{x.it.ambiente}</span>}
                         </td>
                         <td className="mono center">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="unit">{x.it.un}</span></td>
-                        <td className="mono right">{fmtBRL(x.material)}</td>
+                        <td className="mono right">
+                          {fmtBRL(x.valor)}
+                          {x.ehMO ? <div className="dim" style={{ fontSize: 10 }}>mão de obra</div> : null}
+                        </td>
                         <td className="center">
                           {x.aprovadoCliente ? (
                             <div className="status-par">
@@ -8948,22 +8955,35 @@ function podeLiberarItem(it, ctx) {
   return !!it?.alertaConferido;
 }
 
-/* A planilha do executivo como ela vai pra tela de liberacao: por verba,
-   so' o que se compra (mao de obra vai pra Contratos, nao pra compra) e
-   sem a linha trocada, que e' historico. */
-function itensParaLiberar(obra, entrouPorDesc = null) {
+/* A planilha do executivo por verba, sem a linha trocada (que e' historico).
+   Serve a duas telas, e elas NAO querem a mesma coisa:
+
+   - LIBERAR PARA COMPRA (padrao): so' o que se compra. Mao de obra fica
+     fora, porque ela vai pra Contratos e nunca entra em compra — e' a trava
+     que toda regra de compra precisa ter antes de qualquer outra pergunta.
+   - APROVACAO DO CLIENTE (`comMaoDeObra`): TUDO. "nessa tela tem que ter
+     tudo" (17/09/2026). O cliente aprova o escopo inteiro, e a mao de obra
+     e' parte do que ele paga; a verba 03 Civil da 2498, que e' 100% mao de
+     obra, sumia da tela e ninguem tinha como aprovar. */
+function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } = {}) {
   const grupos = [];
   (obra?.categorias || []).forEach((cat, catIdx) => {
     const itens = [];
     (cat.itens || []).forEach((it, itemIdx) => {
       if (it.ehTitulo || it.troca) return;
-      const { material } = parcelasDoItem(it, cat);
-      if (alocacaoDoItem(it, cat) === ALOC_MO) return;
+      const { material, mo } = parcelasDoItem(it, cat);
+      const ehMO = alocacaoDoItem(it, cat) === ALOC_MO;
+      if (ehMO && !comMaoDeObra) return;
       const entrou = entrouPorDesc ? entrouPorDesc.has(chaveDescricao(it.desc)) : false;
       const doCliente = aprovadoPeloCliente(it, obra);
       const ctx = { entrou, semCliente: !doCliente };
       itens.push({
         it, catIdx, itemIdx, material,
+        /* O valor que o CLIENTE aprova e' o do item inteiro, material mais
+           mao de obra. `material` sozinho mostraria R$ 0,00 numa linha de
+           mao de obra — preco zerado em tela de aprovacao e' pior que
+           nenhum. */
+        mo, valor: material + mo, ehMO,
         chave: `${catIdx}-${itemIdx}`,
         liberado: liberadoParaCompra(it),
         aprovadoCliente: doCliente,
@@ -8975,6 +8995,8 @@ function itensParaLiberar(obra, entrouPorDesc = null) {
       grupos.push({
         num: cat.num, nome: cat.nome, catIdx, itens,
         total: itens.reduce((a, x) => a + x.material, 0),
+        // O total que o cliente ve': item inteiro, material + mao de obra.
+        totalValor: itens.reduce((a, x) => a + x.valor, 0),
         liberados: itens.filter((x) => x.liberado).length,
         liberado: itens.reduce((a, x) => a + (x.liberado ? x.material : 0), 0),
         aprovados: itens.filter((x) => x.aprovadoCliente).length,
@@ -22300,7 +22322,7 @@ export default function App() {
               {/* A aprovacao PARCIAL, embaixo da assinatura: a tela de cima
                   continua sendo a da obra inteira, e esta responde "o que o
                   cliente ainda esta segurando?". */}
-              <AprovacaoClienteItens grupos={itensParaLiberar(obraComAditivos)} obra={obraComAditivos}
+              <AprovacaoClienteItens grupos={itensParaLiberar(obraComAditivos, null, { comMaoDeObra: true })} obra={obraComAditivos}
                 podeEditar={edicao.minha} onAprovar={aprovarItensPeloCliente} />
             </>
           )}

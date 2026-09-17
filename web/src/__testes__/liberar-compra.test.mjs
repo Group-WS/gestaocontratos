@@ -178,5 +178,40 @@ conf("corrigir o código não derruba", M.edicaoDerrubaAprovacao({ especificacao
 conf("patch vazio não derruba", M.edicaoDerrubaAprovacao({}), false);
 conf("indefinido não quebra", M.edicaoDerrubaAprovacao(undefined), false);
 
+/* ---- A tela do cliente quer TUDO, a de liberação não ----
+   "nessa tela tem que ter tudo" (17/09/2026). Na 2498 a verba 03 Civil é
+   100% mão de obra: ela sumia da Aprovação do Cliente e ninguém tinha como
+   aprovar. Mas mão de obra NUNCA pode entrar na liberação de compra — ela
+   vai pra Contratos. Então a inclusão é por opção, e o padrão é sem. */
+const comCivil = {
+  categorias: [{ num: "03", nome: "Civil", itens: [
+    { desc: "Demolição de alvenaria", codigo: "03.1", totalMaterial: 0, totalMO: 3000, custo: 3000 },
+    { desc: "Contrapiso", codigo: "03.2", totalMaterial: 0, totalMO: 750, custo: 750 },
+  ] }, { num: "27", nome: "Louças", itens: [
+    { desc: "Cuba de apoio", codigo: "27.1", totalMaterial: 200, totalMO: 100, custo: 300 },
+  ] }],
+};
+const soCompra = M.itensParaLiberar(comCivil);
+const tudo = M.itensParaLiberar(comCivil, null, { comMaoDeObra: true });
+conf("liberação de compra não vê a verba de mão de obra", soCompra.map((g) => g.num).join(","), "27");
+conf("a tela do cliente vê as duas verbas", tudo.map((g) => g.num).join(","), "03,27");
+conf("e vê os dois itens da Civil", tudo.find((g) => g.num === "03")?.itens.length, 2);
+conf("a linha de mão de obra vem marcada", tudo.find((g) => g.num === "03")?.itens[0].ehMO, true);
+
+/* O valor que o cliente aprova é o do item inteiro. `material` sozinho
+   mostraria R$ 0,00 numa linha de mão de obra. */
+conf("o valor do item de mão de obra não é zero", tudo.find((g) => g.num === "03")?.itens[0].valor, 3000);
+conf("e o material dele continua zero", tudo.find((g) => g.num === "03")?.itens[0].material, 0);
+conf("no item misto o valor soma as duas parcelas", tudo.find((g) => g.num === "27")?.itens[0].valor, 300);
+conf("o total do grupo pro cliente é o cheio", tudo.find((g) => g.num === "03")?.totalValor, 3750);
+conf("o total de material do grupo segue material", tudo.find((g) => g.num === "03")?.total, 0);
+/* A tela de liberação não muda de comportamento com a opção desligada. */
+conf("sem a opção, o item misto continua igual", soCompra.find((g) => g.num === "27")?.itens[0].material, 200);
+
+/* A tela abre mostrando tudo, e não "falta aprovar" — verba com tudo
+   aprovado desaparecia da tela. */
+conf("a tela do cliente abre em todos", /const \[filtro, setFiltro\] = useState\("todos"\);/.test(src), true);
+conf("e pede a lista com mão de obra", /itensParaLiberar\(obraComAditivos, null, \{ comMaoDeObra: true \}\)/.test(src), true);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
