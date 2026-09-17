@@ -7475,6 +7475,92 @@ function IconeSienge({ size = 16 }) {
    lista com descricao quando aberta, tira de icones quando recolhida — e
    duas copias do mesmo elenco sairiam do ar uma da outra no primeiro
    modulo novo. */
+/* ============================================================
+   O ENDERECO DE CADA TELA
+
+   Pedido dela em 17/09/2026: "cada pagina tem uma funcionalidade", mas a
+   barra de enderecos mostrava sempre a da inicial. Sem endereco proprio
+   nao da' pra mandar o link de uma obra, o botao voltar do navegador nao
+   volta nada e o F5 devolve pro comeco.
+
+   A chave da obra no endereco e' o CODIGO (2450), nao o `id` interno: o
+   codigo e' o que a equipe fala e escreve, e o id muda conforme a obra
+   venha do Monday ou do nosso banco.
+
+   Os nomes sao curtos e em portugues porque quem le o endereco e' gente
+   daqui — "/obra/2450/conferencia" diz mais que "/obra/2450/exec_conf".
+   ============================================================ */
+
+const SLUG_ETAPA = {
+  vendido_planilha: "vendido",
+  vendido_conferencia: "cmv",
+  executivo: "executivo",
+  executivo_conferencia: "conferencia",
+  assinatura_cliente: "cliente",
+  comparativo: "plano",
+  compras: "compras",
+  contratos: "contratos",
+  diario: "diario",
+};
+const ETAPA_DO_SLUG = Object.fromEntries(Object.entries(SLUG_ETAPA).map(([etapa, slug]) => [slug, etapa]));
+
+/* O Inicio e' a raiz, e por isso vale "". Os outros modulos viram uma
+   palavra so'. "a_contratar" vira "gestao" porque e' assim que ela chama
+   a tela ("Gestao de compras e contratacoes"). */
+const SLUG_MODULO = {
+  inicio: "",
+  novas: "novas",
+  a_contratar: "gestao",
+  aditivos: "aditivos",
+  mehoo: "mehoo",
+  equipe: "equipe",
+  catalogo: "catalogo",
+  gerador: "gerador",
+  precos: "precos",
+  eap: "eap",
+  arquivo: "arquivo",
+};
+const MODULO_DO_SLUG = Object.fromEntries(
+  Object.entries(SLUG_MODULO).filter(([, slug]) => slug).map(([mod, slug]) => [slug, mod]));
+
+/* O endereco que representa a tela aberta. */
+function enderecoDaTela({ modulo, codigoDaObra = null, tab = null }) {
+  if (modulo === "comparativo") {
+    // Obra aberta sem etapa e' o Dashboard dela.
+    if (!codigoDaObra) return "/";
+    const etapa = tab ? SLUG_ETAPA[tab] : null;
+    return `/obra/${codigoDaObra}${etapa ? `/${etapa}` : ""}`;
+  }
+  const slug = SLUG_MODULO[modulo];
+  return slug ? `/${slug}` : "/";
+}
+
+/* A tela que um endereco representa.
+
+   Endereco desconhecido cai no Inicio em vez de dar tela branca: link
+   velho, erro de digitacao e recorte de mensagem acontecem. */
+function telaDoEndereco(caminho) {
+  const partes = String(caminho || "/").split("/").filter(Boolean);
+  if (!partes.length) return { modulo: "inicio" };
+  if (partes[0] === "obra" && partes[1]) {
+    return {
+      modulo: "comparativo",
+      codigoDaObra: decodeURIComponent(partes[1]),
+      tab: (partes[2] && ETAPA_DO_SLUG[partes[2]]) || null,
+    };
+  }
+  return { modulo: MODULO_DO_SLUG[partes[0]] || "inicio" };
+}
+
+/* Em que grupo da esteira a etapa mora — o endereco nao carrega isso, e
+   nao precisa: a etapa ja diz. */
+function grupoDaEtapa(tab) {
+  if (!tab) return "dashboard";
+  if (ETAPAS_EXECUCAO.some((e) => e.id === tab)) return "execucao";
+  if (ETAPAS_PLANEJAMENTO.some((e) => e.id === tab)) return "planejamento";
+  return "dashboard";
+}
+
 const MODULOS = [
   { id: "inicio", nome: "Início", sub: "o resumo de tudo", Icone: LayoutGrid },
   { id: "novas", nome: "Novas obras", sub: "vindas do Monday", Icone: Sparkle },
@@ -17463,9 +17549,57 @@ export default function App() {
      aditivo aparecer duas vezes na leitura seguinte (ver a armadilha do
      campo derivado). E o Plano continua com a derivacao dele — derivar
      duas vezes duplicaria os itens na tela. */
+  /* ---------- O ENDERECO DA TELA ----------
+
+     Ler na abertura, escrever a cada navegacao, e ouvir o botao voltar.
+
+     A obra so' pode ser resolvida quando a lista chegar (ela vem do
+     Monday, em outro tempo), entao o endereco lido fica guardado ate'
+     dar pra aplicar. Sem isso, abrir /obra/2450 direto caia no Inicio,
+     porque na primeira renderizacao ainda nao existe obra nenhuma. */
+  const [rotaPendente, setRotaPendente] = useState(() => telaDoEndereco(window.location.pathname));
+
+  useEffect(() => {
+    if (!rotaPendente) return;
+    if (rotaPendente.modulo === "comparativo") {
+      if (!obras.length) return;   // a lista ainda nao chegou
+      const alvo = obras.find((o) => String(o.codigo) === String(rotaPendente.codigoDaObra));
+      if (alvo) {
+        setSelectedId(alvo.id);
+        setModulo("comparativo");
+        setTab(rotaPendente.tab || null);
+        setGrupo(grupoDaEtapa(rotaPendente.tab));
+      }
+      setRotaPendente(null);
+      return;
+    }
+    setModulo(rotaPendente.modulo);
+    setRotaPendente(null);
+  }, [rotaPendente, obras]);
+
+  // O botao voltar do navegador: relê o endereco e deixa o efeito acima aplicar.
+  useEffect(() => {
+    const aoVoltar = () => setRotaPendente(telaDoEndereco(window.location.pathname));
+    window.addEventListener("popstate", aoVoltar);
+    return () => window.removeEventListener("popstate", aoVoltar);
+  }, []);
+
   const obraComAditivos = useMemo(() => (obra
     ? { ...obra, categorias: categoriasComAditivos(obra.categorias, obra.aditivos) }
     : obra), [obra]);
+
+  /* Escreve o endereco quando a tela muda.
+
+     `pushState` (e nao `replace`) porque e' o que faz o botao voltar
+     andar pra tras de verdade. A parte de consulta (`?verComo`) fica:
+     ela e' de quem abriu, nao da tela. */
+  useEffect(() => {
+    if (rotaPendente) return;   // ainda restaurando o endereco lido
+    const alvo = enderecoDaTela({ modulo, codigoDaObra: obra?.codigo || null, tab });
+    if (window.location.pathname !== alvo) {
+      window.history.pushState({}, "", alvo + window.location.search);
+    }
+  }, [modulo, obra, tab, rotaPendente]);
 
   /* Apresentação de especificações a partir da obra: o botão no topo abre
      o mesmo editor do Catálogo já com esta obra escolhida. */
