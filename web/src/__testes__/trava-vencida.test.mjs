@@ -40,10 +40,12 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
 
 const minutosAtras = (m) => new Date(Date.now() - m * 60_000).toISOString();
 
-conf("prazo continua 30 minutos", M.MINUTOS_ATE_TRAVA_EXPIRAR, 30);
+/* 5 minutos desde a última alteração — era 30, e ela pediu a troca em
+   17/09/2026 depois de ver a obra parada com a tarja de outra pessoa. */
+conf("prazo é de 5 minutos", M.MINUTOS_ATE_TRAVA_EXPIRAR, 5);
 conf("acabou de pegar, vale", M.travaViva(new Date().toISOString()), true);
-conf("29 minutos, ainda vale", M.travaViva(minutosAtras(29)), true);
-conf("31 minutos, venceu", M.travaViva(minutosAtras(31)), false);
+conf("4 minutos, ainda vale", M.travaViva(minutosAtras(4)), true);
+conf("6 minutos, venceu", M.travaViva(minutosAtras(6)), false);
 conf("o caso real (136 min) venceu", M.travaViva(minutosAtras(136)), false);
 
 /* Sem data não há trava: `liberarEdicao` zera os dois campos juntos, e linha
@@ -62,6 +64,16 @@ conf("data no futuro ainda é trava", M.travaViva(minutosAtras(-5)), true);
    é a divergência entre as duas que criou o caso de 17/09. */
 conf("a leitura da obra aplica a régua", /editandoPor: travaViva\(/.test(src), true);
 conf("listarTravas continua filtrando por data", /gte\("editando_desde", limite\)/.test(src), true);
+
+/* A TELA TAMBÉM DESISTE, e não só o banco.
+   Sem isto, passado o prazo a trava apenas PODE ser assumida por outra
+   pessoa — mas quem abriu continuava com "Editando" na tela, digitando numa
+   obra que já era de outro. O efeito devolve o modo leitura; quem grava
+   antes de soltar é a limpeza do efeito da trava, e por isso ele não solta. */
+const app = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "App.jsx"), "utf8");
+conf("a tela desabilita a edição sozinha", /setEdicao\(\{ minha: false, por: null, desde: null \}\);\s*\}, MINUTOS_ATE_TRAVA_EXPIRAR \* 60_000\)/.test(app), true);
+conf("o relógio reinicia a cada alteração da obra", app.includes("}, [edicao.minha, naObra, obra, usuario]);"), true);
+conf("a tarja promete o prazo de verdade", app.includes("Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

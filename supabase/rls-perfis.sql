@@ -100,12 +100,33 @@ create policy "vejo os dados das minhas obras" on obra_dados for all to authenti
   with check (public.meu_perfil() in ('master','admin','geral','gc'));
 
 -- ---------- aditivo ----------
+-- Separado por acao por causa da regra de EXCLUSAO (pedido dela,
+-- 17/09/2026): so' o criador do aditivo ou um administrador apaga. Se este
+-- arquivo voltasse a criar uma politica "for all", ele reabriria a exclusao
+-- pra todo mundo — ver supabase/aditivo-exclusao.sql.
 drop policy if exists "acesso time (autenticados)" on aditivo;
 drop policy if exists "aditivo das minhas obras" on aditivo;
-create policy "aditivo das minhas obras" on aditivo for all to authenticated
+drop policy if exists "aditivo: ler" on aditivo;
+drop policy if exists "aditivo: criar" on aditivo;
+drop policy if exists "aditivo: alterar" on aditivo;
+drop policy if exists "aditivo: excluir (criador ou admin)" on aditivo;
+create policy "aditivo: ler" on aditivo for select to authenticated
+  using (obra_codigo in (select public.minhas_obras())
+         and public.meu_perfil() in ('master','admin','geral','gc'));
+create policy "aditivo: criar" on aditivo for insert to authenticated
+  with check (public.meu_perfil() in ('master','admin','geral','gc'));
+create policy "aditivo: alterar" on aditivo for update to authenticated
   using (obra_codigo in (select public.minhas_obras())
          and public.meu_perfil() in ('master','admin','geral','gc'))
   with check (public.meu_perfil() in ('master','admin','geral','gc'));
+create policy "aditivo: excluir (criador ou admin)" on aditivo for delete to authenticated
+  using (
+    obra_codigo in (select public.minhas_obras())
+    and (
+      (criado_por is not null and lower(criado_por) = lower(auth.jwt() ->> 'email'))
+      or public.meu_perfil() in ('master','admin')
+    )
+  );
 
 -- ---------- tabelas de referencia ----------
 -- Insumo, EAP e alocacao padrao nao sao de obra nenhuma: quem entrou, le.

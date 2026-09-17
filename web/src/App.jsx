@@ -2382,6 +2382,23 @@ const FRASE_DO_EVENTO = {
   etapa: "concluiu a etapa",
 };
 
+/* QUEM PODE EXCLUIR UM ADITIVO: so' quem criou, ou um administrador
+   (decisao dela, 17/09/2026).
+
+   Aditivo e' documento que vai pro cliente e mexe no dinheiro da obra, e
+   excluir nao tem desfazer nem lixeira. Aditivo antigo sem criador gravado
+   fica so' pro administrador: na duvida, a exclusao e' de quem responde
+   pelo time, nao de quem passou por ali.
+
+   O e-mail e' comparado sem caixa e sem espaco em volta — a mesma regra que
+   o resto do app usa pra casar pessoa. */
+function podeExcluirAditivo(aditivo, usuario, souAdmin = false) {
+  if (souAdmin) return true;
+  const eu = String(usuario || "").trim().toLowerCase();
+  const criador = String(aditivo?.criadoPor || "").trim().toLowerCase();
+  return !!eu && !!criador && eu === criador;
+}
+
 /* Só o que aconteceu NESTA tela. Evento sem tela (concluir etapa) aparece
    em todas — ele e' da obra, nao de um lugar. */
 function historicoDaTela(eventos, tela) {
@@ -15067,7 +15084,8 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
    A observacao mora dentro do documento salvo (`doc.observacao`), e nao
    numa coluna nova: sem ela a tabela precisaria de mais um `alter table`,
    e migracao e' o passo que trava — este modulo ja custou tres. */
-function LinhaAditivo({ a, usuario, obraNome, mostrarObra, onAbrir, onExcluir, onSalvo, onErro }) {
+function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onAbrir, onExcluir, onSalvo, onErro }) {
+  const podeApagar = podeExcluirAditivo(a, usuario, souAdmin);
   const [obs, setObs] = useState(a.doc?.observacao || "");
   const [salvando, setSalvando] = useState(false);
   const saldo = a.totalAdicao - a.totalSupressao;
@@ -15130,13 +15148,19 @@ function LinhaAditivo({ a, usuario, obraNome, mostrarObra, onAbrir, onExcluir, o
       </td>
       <td className="center">
         <button className="ad-icon" title="Abrir" onClick={onAbrir}><Search size={12} /></button>
-        <button className="ad-icon del" title="Excluir" onClick={onExcluir}><Trash2 size={12} /></button>
+        {/* O botao fica a' vista e desabilitado, com o motivo na dica:
+            esconder faria a pessoa procurar onde nao esta'. */}
+        <button className="ad-icon del" disabled={!podeApagar} onClick={podeApagar ? onExcluir : undefined}
+          title={podeApagar ? "Excluir"
+            : `Só quem criou o aditivo${a.criadoPor ? ` (${nomeDoEmail(a.criadoPor)})` : ""} ou um administrador pode excluir`}>
+          <Trash2 size={12} />
+        </button>
       </td>
     </tr>
   );
 }
 
-function AditivosView({ obras, usuario }) {
+function AditivosView({ obras, usuario, souAdmin = false }) {
   /* Vazio quer dizer TODAS — o mesmo contrato do filtro dos outros
      paineis. Antes esta tela abria pedindo pra escolher uma obra, e ate
      escolher nao mostrava nada: quem so queria ver o que existe tinha
@@ -15212,6 +15236,12 @@ function AditivosView({ obras, usuario }) {
   }
 
   async function excluir(a) {
+    /* Segunda tranca, alem do botao desabilitado: a funcao tambem confere.
+       Botao e' aparencia; regra de quem pode apagar nao mora na aparencia. */
+    if (!podeExcluirAditivo(a, usuario, souAdmin)) {
+      setErro(`O aditivo ${a.numero} só pode ser excluído por quem o criou${a.criadoPor ? ` (${nomeDoEmail(a.criadoPor)})` : ""} ou por um administrador.`);
+      return;
+    }
     if (!window.confirm(`Excluir o aditivo ${a.numero}? Isso não pode ser desfeito.`)) return;
     try {
       await excluirAditivo(a.id);
@@ -15290,7 +15320,7 @@ function AditivosView({ obras, usuario }) {
                   </thead>
                   <tbody>
                     {visiveis.map((a) => (
-                      <LinhaAditivo key={a.id} a={a} usuario={usuario}
+                      <LinhaAditivo key={a.id} a={a} usuario={usuario} souAdmin={souAdmin}
                         obraNome={nomeDaObra(a.obraCodigo)} mostrarObra={!obra}
                         onAbrir={() => setAbertoId(a.id)}
                         onExcluir={() => excluir(a)}
@@ -18340,8 +18370,9 @@ export default function App() {
      Ela era solta so pelo botao "finalizar". Quem trocava de obra, ia
      olhar um modulo ou fechava a aba deixava a obra travada em nome dele
      — e a pessoa do lado via "em edicao por..." numa obra que ninguem
-     estava editando. A expiracao de 30 minutos era a unica saida, e 30
-     minutos e' meia manha de trabalho parada.
+     estava editando. A expiracao era a unica saida, e ela era de 30
+     minutos — meia manha de trabalho parada. Hoje sao 5, e a propria tela
+     desiste antes (ver o efeito da inatividade, logo abaixo).
 
      Agora a trava e' um efeito com dono: ela existe enquanto (a edicao e'
      minha) E (estou na tela da obra) E (e' esta obra). Qualquer uma
@@ -18383,6 +18414,27 @@ export default function App() {
     };
   }, [edicao.minha, naObra, obra?.codigo, usuario, telaDeTrabalho]);
 
+  /* CINCO MINUTOS SEM MEXER E A EDICAO SE DESABILITA (pedido dela, 17/09/2026).
+
+     O prazo do banco sozinho nao resolvia: passado o tempo, a trava apenas
+     PODE ser assumida por outra pessoa, mas a tela de quem abriu continuava
+     dizendo "Editando" — e a pessoa seguia digitando numa obra que ja' era
+     de outro. Agora a propria tela desiste.
+
+     O relogio reinicia a cada alteracao da obra, o mesmo sinal que o
+     salvamento automatico usa: quem esta' trabalhando nao e' interrompido.
+
+     Nao solta a trava aqui de proposito: mudar `edicao.minha` faz a limpeza
+     do efeito de cima rodar, e e' ela que GRAVA antes de soltar. Fazer as
+     duas coisas daria dois salvamentos e duas liberacoes. */
+  useEffect(() => {
+    if (!edicao.minha || !naObra || !obra?.codigo) return;
+    const t = setTimeout(() => {
+      setEdicao({ minha: false, por: null, desde: null });
+    }, MINUTOS_ATE_TRAVA_EXPIRAR * 60_000);
+    return () => clearTimeout(t);
+  }, [edicao.minha, naObra, obra, usuario]);
+
   /* TROCAR DE TELA VOLTA PRO MODO LEITURA.
 
      Antes isso valia so' pra quem saia da obra. A trava e' da obra
@@ -18404,7 +18456,7 @@ export default function App() {
 
   /* Fechar a aba. `pagehide` e nao `beforeunload` porque este dispara em
      celular e em navegacao de volta; a promessa nao termina, mas o pedido
-     sai — e se nao sair, a expiracao de 30 minutos ainda cobre. */
+     sai — e se nao sair, a expiracao de 5 minutos ainda cobre. */
   useEffect(() => {
     const sair = () => {
       if (travaRef.current) liberarEdicao(travaRef.current, usuario).catch(() => {});
@@ -21613,6 +21665,7 @@ export default function App() {
         .busca-conta { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute); flex-shrink: 0; white-space: nowrap; }
         /* O HISTORICO. Tamanho de legenda e cor apagada: ele fecha a pagina,
            nao disputa com ela. Quem precisa, abre. */
+        .ad-icon:disabled { opacity: 0.3; cursor: default; }
         .hist { margin-top: 30px; padding-top: 10px; border-top: 1px solid var(--line-1); }
         .hist-abrir { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; font-family: inherit; font-size: 11.5px; color: var(--text-mute); cursor: pointer; }
         .hist-abrir:hover { color: var(--text); }
@@ -22136,7 +22189,7 @@ export default function App() {
           <div className="eyebrow">DOCUMENTO DE OBRA</div>
           <div className="title-row"><span className="title-accent">Aditivos</span></div>
           <div className="obra-meta">Supressão e adição por obra, numeradas a partir do centro de custo — o documento aparece do lado enquanto você preenche</div>
-          <AditivosView obras={obrasAtivas} usuario={usuario} />
+          <AditivosView obras={obrasAtivas} usuario={usuario} souAdmin={souAdmin} />
           </>
           ) : modulo === "precos" ? (
           <>

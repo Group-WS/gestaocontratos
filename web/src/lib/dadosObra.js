@@ -20,10 +20,19 @@ const listaDeArquivos = (v) => (Array.isArray(v) ? v : []);
  * chaves.
  */
 
-// Depois deste tempo sem salvar, a trava de edição é considerada
-// abandonada e outra pessoa pode assumir. Sem isso, um navegador
-// fechado no meio da edição travaria a obra para sempre.
-export const MINUTOS_ATE_TRAVA_EXPIRAR = 30;
+/* Depois deste tempo SEM ALTERAÇÃO, a trava de edição é considerada
+   abandonada: outra pessoa pode assumir, o cadeado sai da lista e a própria
+   tela de quem abriu volta pro modo leitura.
+
+   Era 30 minutos — meia manhã de trabalho parada, e foi o que ela viu
+   acontecer duas vezes. Passou a 5 a pedido dela em 17/09/2026, contados
+   desde a última alteração: quem está trabalhando reinicia o relógio a cada
+   mexida e não é interrompido.
+
+   O relógio do banco é o `editando_desde`, que o salvamento automático
+   atualiza a cada gravação. Quem segura a trava sem mexer em nada não grava,
+   então não renova. */
+export const MINUTOS_ATE_TRAVA_EXPIRAR = 5;
 
 /* Trava vencida não é trava.
  *
