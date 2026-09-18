@@ -65,7 +65,11 @@ conf("liberar sem cliente vai por patch", M.podeIrPorPatch({ liberadoSemCliente:
 conf("troca NÃO vai (muda a lista)", M.podeIrPorPatch({ troca: { em: "x" } }), false);
 conf("patch vazio não vai", M.podeIrPorPatch({}), false);
 conf("undefined não quebra", M.podeIrPorPatch(undefined), false);
-conf("a lista tem os 5 da fatia 1 e os 4 da fatia 2", M.CAMPOS_POR_PATCH.size, 9);
+conf("a lista tem os 5 da fatia 1, os 4 da fatia 2 e o concluído", M.CAMPOS_POR_PATCH.size, 10);
+/* ADR-005: o carimbo do executivo dizendo que terminou a linha. Mesmo
+   formato dos outros ({ em, por }), então grava sozinho pelo mesmo caminho. */
+conf("concluído pelo executivo vai por patch", M.podeIrPorPatch({ concluidoExecutivo: { em: "x", por: "y" } }), true);
+conf("... e desfazer também", M.podeIrPorPatch({ concluidoExecutivo: null }), true);
 /* O que NÃO migrou ainda, de propósito. Se algum destes entrar sem a fatia
    dele, este teste cai — e é pra cair. */
 ["qtdExecutivo", "custo", "desc", "troca", "excluido", "alocacaoManual"].forEach((c) => {

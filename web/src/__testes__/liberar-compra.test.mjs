@@ -278,8 +278,13 @@ conf("a tela repassa para a lista", /onConferirVarios=\{onConferirAlertaEmVarios
 /* O CONTADOR DO GRUPO conta o GRUPO, não o recorte da tela.
    Com o filtro de travados ligado ela leu "13 de 8 liberados": 13 da verba
    inteira, 8 do que sobrou na tela. */
+/* ADR-005: a barra do grupo passou a dizer as três contas separadas —
+   quantos produtos, quantos liberados, quantos concluídos —, porque agora
+   são duas decisões na mesma tela. */
 conf("o contador usa os produtos do grupo",
-  src.includes("{g.liberados} de {g.nProdutos ?? g.itens.length} liberados"), true);
+  src.includes("{g.nProdutos ?? g.itens.length} produtos"), true);
+conf("e diz quantos foram concluídos pelo executivo",
+  src.includes(`{g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length} concluídos`), true);
 conf("e o que está na tela vira um segundo número",
   src.includes('{g.itens.length} {soTravados ? (g.itens.length === 1 ? "travado" : "travados") : "nesta busca"}'), true);
 
@@ -356,6 +361,51 @@ conf("o aprovar em massa ignora títulos", src.includes("const pendentes = g.ite
 conf("a tabela do grupo ocupa a largura inteira", src.includes("table.grp-itens { width: 100%; table-layout: fixed; }"), true);
 conf("com as colunas fixas, iguais em toda verba", src.includes("table.grp-itens th.c-qtd { width: 104px; }"), true);
 conf("e solta a amarra no celular", /@media \(max-width: 760px\) \{ table\.grp-itens \{ table-layout: auto; \} \}/.test(src), true);
+
+/* ---- ADR-005: A CONF. EXECUTIVO VIROU A PLANILHA INTEIRA (18/09/2026) ----
+ *
+ * "a ideia é trazer toda planilha do executivo (descricao, código/espec.,
+ * fornecedor ambiente e quantidade, custo unit. e total) ... ai vamos colocar
+ * uma coluna chamada: concluído executivo, aprovado para compra (somente admin
+ * tem permissao para liberar)."
+ */
+conf("a tela pede a planilha inteira, com mão de obra",
+  src.includes("itensParaLiberar(obra, entrouPorDesc, { comMaoDeObra: true })"), true);
+conf("as sete colunas estão na tabela",
+  ["Produto", "Qtd", "Custo unit.", "Total", "Cliente", "Concluído", "Aprovado p/ compra"]
+    .every((c) => src.includes(`>${c}</th>`)), true);
+conf("código, espec., fornecedor e ambiente ficam na célula do produto",
+  src.includes(`[codigoVisivel(x.it), x.it.especificacao, x.it.marca ? \`Fornecedor: \${nomeDoFornecedor(x.it)}\` : null, x.it.ambiente]`), true);
+
+/* A COR DIZ O ESTADO: laranja quando falta olhar o alerta técnico, normal
+   quando está conferido. */
+conf("linha com alerta técnico pendente sai laranja",
+  src.includes(`: x.pendencia?.tipo === "tecnica" && !x.it.alertaConferido ? "row-alert"`), true);
+
+/* SÓ ADMINISTRADOR LIBERA — a mudança de regra mais sensível do ADR. */
+conf("o botão de liberar exige administrador", src.includes("disabled={!podeEditar || !souAdmin || !x.pode}"), true);
+conf("... e diz o motivo quando não é", src.includes(`: !souAdmin ? "Só um administrador libera a compra"`), true);
+conf("o liberar em massa só aparece para admin", src.includes("{podeEditar && souAdmin && faltam.length > 0 && ("), true);
+conf("o 'conferi os alertas e libera' também", src.includes("{podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && ("), true);
+conf("desfazer a liberação também", src.includes("{podeEditar && souAdmin && x.it.liberadoCompra && !x.it.comprado && ("), true);
+/* Concluir NÃO é de admin: é de quem trabalha a linha. */
+conf("concluir não exige admin", src.includes("{podeEditar && onConcluir && aConcluir.length > 0 && ("), true);
+
+/* MÃO DE OBRA aparece na planilha, mas não se compra. */
+conf("mão de obra mostra o destino em vez de um botão",
+  src.includes(`<span className="pill pill-neutro" title="Mão de obra vai para Contratos, não para Compras">mão de obra</span>`), true);
+
+/* UMA REGRA SÓ para "o que se compra": o cartão dizia 0/444 e o placar
+   0 de 315 — dois números para a mesma pergunta na mesma tela. */
+conf("a regra do que se compra mora num lugar só",
+  src.includes("const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo && !x.ehMO);"), true);
+conf("o cartão de cima usa essa regra",
+  src.includes("contador: `${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => x.liberado).length, 0)}"), true);
+conf("e o placar da lista também", src.includes("const compraveis = compraveisDoGrupo;"), true);
+
+/* A justificativa da remoção aparece na linha (a gravação dela é a fatia 3). */
+conf("a linha removida mostra a justificativa", src.includes("Removido do executivo"), true);
+conf("... e diz quando não tem", src.includes("sem justificativa registrada"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
