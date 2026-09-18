@@ -412,13 +412,20 @@ conf("o aviso do cliente saiu da linha (virou coluna)",
 
 /* SÓ ADMINISTRADOR LIBERA — a mudança de regra mais sensível do ADR. */
 conf("o botão de liberar exige administrador",
-  src.includes("disabled={!podeEditar || !souAdmin || !x.pode || !x.it.concluidoExecutivo}"), true);
-/* A ORDEM DO FLUXO: "primeiro o executivo aprova e depois o aprovado para
-   compra". Sem o carimbo do executivo, nem a linha nem o botão em massa
-   liberam — e a dica diz o porquê. */
-conf("... e o carimbo do executivo antes", src.includes(`: !x.it.concluidoExecutivo ? "O executivo precisa concluir esta linha antes"`), true);
-conf("o liberar em massa respeita a ordem",
-  src.includes("!x.liberado && x.pode && x.it.concluidoExecutivo"), true);
+  src.includes("disabled={!podeEditar || !souAdmin || !x.pode}"), true);
+/* A ORDEM CONTINUA (o executivo vem antes), mas o clique não pede os dois:
+   "quando o usuario coloca aprovado para compra, caso o executivo nao esteja
+   aprovado, ele coloca como aprovado automaticamente" (18/09/2026). Pedir os
+   dois cliques era pedir para a pessoa repetir o que já decidiu. */
+conf("aprovar para compra conclui o executivo junto",
+  src.includes("if (faltaConcluir.length) concluirItensExecutivo(faltaConcluir, true);"), true);
+conf("... só em quem ainda não tinha o carimbo",
+  src.includes("?.concluidoExecutivo)") , true);
+conf("... e a dica avisa que os dois saem juntos",
+  src.includes(`: "Liberar para compra — marca o executivo como concluído junto"`), true);
+/* Quem não pode agir vê o estado; quem pode vê o botão. */
+conf("sem poder agir, a célula diz 'não aprovado'",
+  src.includes("{!x.liberado && (!podeEditar || !souAdmin) ? ("), true);
 conf("... e diz o motivo quando não é", src.includes(`: !souAdmin ? "Só um administrador libera a compra"`), true);
 conf("o liberar em massa só aparece para admin", src.includes("{podeEditar && souAdmin && faltam.length > 0 && ("), true);
 conf("o 'conferi os alertas e libera' também", src.includes("{podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && ("), true);
@@ -476,10 +483,10 @@ conf("... e o conferi vem no fim", src.includes("table.tab-conf .lib-alerta { ma
    Eu tinha colocado três, com "Cliente" — era leitura minha, não pedido dela. */
 conf("a tabela tem duas colunas de decisão", src.includes(`<th className="center c-dec">Concluído executivo</th>`), true);
 conf("a coluna Cliente saiu", /<th className="center c-dec">Cliente<\/th>/.test(src), false);
-/* O cliente continua sendo pré-requisito da liberação — ele só não é coluna
-   nem texto. Quem explica é a dica do botão, quando ele existe. */
-conf("o cliente segue barrando a liberação",
-  src.includes(`: x.pendencia?.tipo === "cliente" ? "O cliente ainda não aprovou este produto"`), true);
+/* O cliente saiu do fluxo de vez em 18/09/2026 — inclusive da dica do botão,
+   que não tem mais por que citá-lo. */
+conf("o cliente não aparece mais nem na dica",
+  /O cliente ainda não aprovou este produto/.test(src), false);
 /* Primeiro ela pediu a célula vazia ("se n ta aprovado, deixa sem nada
    preenchido"); vendo na tela, o vazio ficou demais: "aparecer nao aprovado
    clarinho". Mão de obra segue vazia — ela não é "não aprovada", ela não se

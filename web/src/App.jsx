@@ -5867,12 +5867,33 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
         {Object.entries(meta).filter(([st, m]) => st !== "ok" && !m.semCartao).map(([st, m]) => (
           <button key={st} className={`conf-stat ${filtro === st ? "active" : ""}`} style={{ borderColor: filtro === st ? m.color : undefined }} onClick={() => setFiltro(filtro === st ? "todos" : st)}>
             {st === "somente_um" && resumoEntrouSaiu ? (
-              <div className="conf-stat-num conf-stat-duplo">
-                <span className="conf-entrou">+{resumoEntrouSaiu.nEntrou}</span>
-                <span className="conf-saiu">−{resumoEntrouSaiu.nSaiu}</span>
-                {/* O que ficou e mudou de tamanho. Sem ele o cartao dizia
-                    "nada a ver aqui" numa obra que mudou 40 quantidades. */}
-                {resumoEntrouSaiu.nMudou > 0 && <span className="conf-mudou">~{resumoEntrouSaiu.nMudou}</span>}
+              /* CADA NUMERO FILTRA (pedido dela, 18/09/2026): "habilitar esse
+                 entrou mudou e saiu para quando clicar neles filtrar na tela".
+
+                 Entrou e mudou viram filtro da planilha — sao itens que estao
+                 la'. SAIU nao: ele so' existe no vendido, entao continua
+                 abrindo o painel, que e' o unico lugar onde da' pra ve-lo. */
+              <div className="conf-stat-num conf-stat-duplo" onClick={(e) => e.stopPropagation()}>
+                <span role="button" tabIndex={0} title="Ver só o que entrou no executivo"
+                  className={`conf-entrou conf-es-btn ${filtro === "es_entrou" ? "on" : ""}`}
+                  onClick={() => setFiltro(filtro === "es_entrou" ? "todos" : "es_entrou")}
+                  onKeyDown={(ev) => { if (ev.key === "Enter") setFiltro("es_entrou"); }}>
+                  +{resumoEntrouSaiu.nEntrou}
+                </span>
+                <span role="button" tabIndex={0} title="Ver a lista do que saiu — eles não estão na planilha do executivo"
+                  className={`conf-saiu conf-es-btn ${filtro === "somente_um" ? "on" : ""}`}
+                  onClick={() => setFiltro(filtro === "somente_um" ? "todos" : "somente_um")}
+                  onKeyDown={(ev) => { if (ev.key === "Enter") setFiltro("somente_um"); }}>
+                  −{resumoEntrouSaiu.nSaiu}
+                </span>
+                {resumoEntrouSaiu.nMudou > 0 && (
+                  <span role="button" tabIndex={0} title="Ver só o que mudou de quantidade ou valor"
+                    className={`conf-mudou conf-es-btn ${filtro === "es_mudou" ? "on" : ""}`}
+                    onClick={() => setFiltro(filtro === "es_mudou" ? "todos" : "es_mudou")}
+                    onKeyDown={(ev) => { if (ev.key === "Enter") setFiltro("es_mudou"); }}>
+                    ~{resumoEntrouSaiu.nMudou}
+                  </span>
+                )}
               </div>
             ) : (
               <div className="conf-stat-num" style={{ color: m.color }}>{cnt(st)}</div>
@@ -6867,7 +6888,7 @@ const FILTRO_DA_PLANILHA = {
 };
 
 function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "todos", podeEditar, souAdmin = false, obra,
-  onLiberar, onConferir, onConferirVarios, onLiberarSemCliente, onConcluir }) {
+  chavesES = null, onLiberar, onConferir, onConferirVarios, onLiberarSemCliente, onConcluir }) {
   const [abertos, setAbertos] = useState(() => new Set());
   /* Historia deste trecho: em 17/09 o aviso "46 produtos esperam a
      conferencia" virou filtro, porque contava e nao levava a lugar nenhum. Em
@@ -6918,7 +6939,13 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
 
 
   // O que está na tela: o cartão, o filtro do aviso e a busca, nesta ordem.
-  const peneiraDoCartao = FILTRO_DA_PLANILHA[filtro] || null;
+  /* Os dois filtros que vem de fora: entrou e mudou sao propriedades do
+     CRUZAMENTO (vendido x executivo), nao do item sozinho — por isso chegam
+     como conjunto de chaves em vez de morar no `FILTRO_DA_PLANILHA`. */
+  const peneiraDoCartao = FILTRO_DA_PLANILHA[filtro]
+    || (filtro === "es_entrou" && chavesES ? (x) => chavesES.entrou.has(chaveDescricao(x.it.desc)) : null)
+    || (filtro === "es_mudou" && chavesES ? (x) => chavesES.mudou.has(chaveDescricao(x.it.desc)) : null)
+    || null;
   const filtrando = !!busca.trim() || !!peneiraDoCartao;
   const grupos = !filtrando ? todosOsGrupos : todosOsGrupos
     .map((g) => ({ ...g, itens: g.itens.filter((x) =>
@@ -6985,8 +7012,9 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           // Filtrando, a verba abre sozinha: procurar e ainda ter que clicar
           // em cada verba não é procurar.
           const aberto = abertos.has(g.num) || filtrando;
-          // A ordem vale tambem em massa: so' entra quem o executivo concluiu.
-          const faltam = g.itens.filter((x) => !x.titulo && !x.liberado && x.pode && x.it.concluidoExecutivo);
+          // O carimbo do executivo sai junto no mesmo clique (ver
+          // `liberarItensParaCompra`), entao ele nao filtra mais quem entra.
+          const faltam = g.itens.filter((x) => !x.titulo && !x.liberado && x.pode);
           // Concluir a verba inteira: o que ainda nao tem o carimbo do executivo.
           const aConcluir = g.itens.filter((x) => !x.titulo && !x.it.concluidoExecutivo);
           /* LIBERAR O GRUPO INTEIRO (pedido dela em 17/09/2026: "colocar
@@ -7003,7 +7031,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
              O cliente fica de fora de proposito: falta de aprovacao do
              cliente nao e' alerta pra conferir, e' portao com justificativa
              (o "liberar mesmo assim", linha por linha). */
-          const travadosAqui = g.itens.filter((x) => !x.titulo && !x.liberado && !x.pode && x.it.concluidoExecutivo);
+          const travadosAqui = g.itens.filter((x) => !x.titulo && !x.liberado && !x.pode);
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
@@ -7218,7 +7246,10 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                               so' que apagada. Mao de obra entra tambem: ela nunca
                               vai ser aprovada pra compra, e dizer isso e' melhor
                               do que deixar um buraco na coluna. */}
-                          {!x.it.concluidoExecutivo && !x.liberado ? (
+                          {/* Quem NAO pode agir ve o estado; quem pode ve o botao.
+                              O carimbo do executivo deixou de ser pre-requisito do
+                              clique: aprovar a compra conclui junto (18/09/2026). */}
+                          {!x.liberado && (!podeEditar || !souAdmin) ? (
                               <span className="pill pill-nao">não aprovado</span>
                             ) : x.liberado ? (
                             <div className="status-par">
@@ -7234,18 +7265,16 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                             </div>
                           ) : (
                             <>
-                              {/* A ORDEM DO FLUXO (ajuste dela, 18/09/2026):
-                                  "primeiro o executivo aprova e depois o
-                                  aprovado para compra". Sem o carimbo do
-                                  executivo o botao nao age — e diz por que. */}
+                              {/* A ordem continua (o executivo vem antes), mas o
+                                  clique nao pede os dois: aprovar pra compra
+                                  conclui o executivo junto, quando falta. */}
                               <button className="pill pill-btn pill-wait"
-                                disabled={!podeEditar || !souAdmin || !x.pode || !x.it.concluidoExecutivo}
+                                disabled={!podeEditar || !souAdmin || !x.pode}
                                 title={!podeEditar ? MODO_LEITURA_DICA
                                   : !souAdmin ? "Só um administrador libera a compra"
-                                  : !x.it.concluidoExecutivo ? "O executivo precisa concluir esta linha antes"
-                                  : x.pendencia?.tipo === "cliente" ? "O cliente ainda não aprovou este produto"
                                   : !x.pode ? "Confira o alerta desta linha antes de liberar"
-                                  : "Liberar para compra"}
+                                  : x.it.concluidoExecutivo ? "Liberar para compra"
+                                  : "Liberar para compra — marca o executivo como concluído junto"}
                                 onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                 estimativa · liberar
                               </button>
@@ -7291,6 +7320,22 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
   // obra grande ele é a conta cara desta tela (ver cruzamentoExecutivo).
   const cruzamento = useMemo(() => cruzamentoExecutivo(obra), [obra]);
   const resumoES = useMemo(() => resumoEntrouSaiu(cruzamento), [cruzamento]);
+  /* QUEM ENTROU E QUEM MUDOU, pra planilha poder filtrar (pedido dela,
+     18/09/2026): "habilitar esse entrou mudou e saiu para quando clicar neles
+     filtrar na tela".
+
+     Pela descricao normalizada, que e' a mesma ponte do cruzamento — o codigo
+     nao serve (a 2450 tem 198 de 269 itens sem ele). Quem SAIU nao entra aqui:
+     ele nao existe na planilha do executivo, e por isso continua sendo o
+     painel, e nao um filtro de linha. */
+  const chavesES = useMemo(() => {
+    const entrou = new Set(), mudou = new Set();
+    (resumoES.grupos || []).forEach((g) => {
+      (g.entrou || []).forEach((x) => entrou.add(chaveDescricao(x.desc)));
+      (g.mudou || []).forEach((x) => mudou.add(chaveDescricao(x.desc)));
+    });
+    return { entrou, mudou };
+  }, [resumoES]);
   const linhasBrutas = useMemo(() => cruzamento.map(linhaConfExecutivo), [cruzamento]);
 
   /* Nenhuma verba mais fica de fora aqui (17/09/2026), entao o bloco
@@ -7415,6 +7460,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         contador: "",
         render: (busca, filtro) => (
           <PlanilhaConferenciaView grupos={gruposParaLiberar} busca={busca} filtro={filtro} podeEditar={podeEditar} souAdmin={souAdmin}
+            chavesES={chavesES}
             onLiberar={onLiberarCompra} onConferir={onConferirAlerta} onConferirVarios={onConferirAlertaEmVarios}
             onLiberarSemCliente={onLiberarSemCliente}
             onConcluir={onConcluirExecutivo} obra={obra} />
@@ -20290,6 +20336,22 @@ export default function App() {
   function liberarItensParaCompra(alvos, liberar) {
     if (!alvos?.length) return;
     const carimbo = liberar ? { em: new Date().toISOString(), por: usuario } : null;
+
+    /* APROVAR PRA COMPRA CONCLUI O EXECUTIVO JUNTO (regra dela, 18/09/2026):
+       "quando o usuario coloca aprovado para compra, caso o executivo nao
+       esteja aprovado, ele coloca como aprovado automaticamente."
+
+       A ordem continua sendo a mesma — o executivo vem antes —, mas quem
+       aprova a compra esta' dizendo, no mesmo gesto, que a linha esta' pronta.
+       Pedir os dois cliques era pedir pra pessoa repetir o que ja' decidiu.
+
+       So' carimba quem NAO tinha o carimbo: reescrever apagaria o nome de
+       quem concluiu antes, e o historico perderia o autor de verdade. */
+    const faltaConcluir = liberar
+      ? alvos.filter(({ catIdx, itemIdx }) => !obra?.categorias?.[catIdx]?.itens?.[itemIdx]?.concluidoExecutivo)
+      : [];
+    if (faltaConcluir.length) concluirItensExecutivo(faltaConcluir, true);
+
     // Fatia 2 do ADR-004: grava só este campo, item a item.
     enfileirarEmVarios(alvos, { liberadoCompra: carimbo });
     const porCat = new Map();
@@ -23290,6 +23352,11 @@ export default function App() {
         .conf-entrou { color: var(--success); }
         .conf-saiu { color: var(--danger); }
         .conf-mudou { color: var(--amber); }
+        /* Os tres numeros do cartao viraram filtro: precisam parecer
+           clicaveis e mostrar qual esta ligado. */
+        .conf-es-btn { cursor: pointer; border-radius: 8px; padding: 0 4px; }
+        .conf-es-btn:hover { background: var(--surface-2); }
+        .conf-es-btn.on { box-shadow: inset 0 -2px 0 currentColor; }
         .es-topo { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
         .es-total { padding: 14px 16px; border: 1px solid var(--line-1); border-radius: 12px; background: var(--surface-1); }
         .es-total.entrou { border-color: var(--success-line); background: var(--success-tint); }

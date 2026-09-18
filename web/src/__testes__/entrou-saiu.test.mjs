@@ -144,7 +144,12 @@ conf("a linha desenha o detalhe", src.includes(`{[it.codigo, it.espec, it.fornec
 conf("e o CSS dele existe", src.includes(".es-det {"), true);
 conf("a lista do que mudou é desenhada", /\{g\.mudou\.map\(\(it, i\) => <LinhaMudou/.test(src), true);
 conf("com o de/para do valor na linha", src.includes("valor: {fmtBRL(it.valorDe)} → {fmtBRL(it.valorPara)}"), true);
-conf("o cartão mostra o terceiro número", /<span className="conf-mudou">~\{resumoEntrouSaiu\.nMudou\}<\/span>/.test(src), true);
+/* Os três números viraram filtros em 18/09/2026: "habilitar esse entrou mudou
+   e saiu para quando clicar neles filtrar na tela". Entrou e mudou peneiram a
+   planilha; saiu abre o painel, porque ele não existe na planilha. */
+conf("o cartão mostra o terceiro número", /~\{resumoEntrouSaiu\.nMudou\}/.test(src), true);
+conf("e os três filtram ao clicar", src.includes(`setFiltro(filtro === "es_entrou" ? "todos" : "es_entrou")`), true);
+conf("o 'saiu' abre o painel, que é onde ele existe", src.includes(`setFiltro(filtro === "somente_um" ? "todos" : "somente_um")`), true);
 conf("e o rótulo do cartão diz as três coisas", src.includes('label: "Entrou, saiu ou mudou"'), true);
 conf("o CSS da linha nova existe", src.includes(".es-linha.mudou {"), true);
 
