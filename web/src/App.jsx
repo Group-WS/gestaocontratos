@@ -6879,11 +6879,24 @@ const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo);
    conferindo, e' outro portao. */
 const precisaConferir = (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido;
 
+/* APROVADO PARA COMPRA JA' ESTA CONCLUIDO (regra dela, 18/09/2026: "tudo que
+   ja consta como aprovado para compra, coloque como concluido executivo").
+
+   Isto e' DEDUZIDO, nao carimbado: quem foi aprovado antes desta coluna
+   existir nao tem como saber QUEM concluiu, e carimbar um nome qualquer seria
+   inventar autor — o mesmo erro que o historico evita quando diz "alguem".
+
+   Deduzir tambem mantem os dois totais batendo sozinhos, sem migracao de dado
+   em obra nenhuma: aprovar passou a carimbar os dois (ver
+   `liberarItensParaCompra`), e o que veio de antes conta pela aprovacao que
+   ja' esta' la'. */
+const estaConcluido = (x) => !!x.it.concluidoExecutivo || !!x.liberado;
+
 /* O que cada cartao peneira na planilha. Fora daqui, o cartao nao filtra —
    ele so' muda o que esta destacado em cima. */
 const FILTRO_DA_PLANILHA = {
   conferencia_tecnica: (x) => precisaConferir(x),
-  falta_concluir: (x) => !x.titulo && !x.it.concluidoExecutivo,
+  falta_concluir: (x) => !x.titulo && !estaConcluido(x),
   falta_liberar: (x) => !x.titulo && !x.liberado,
 };
 
@@ -7016,7 +7029,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           // `liberarItensParaCompra`), entao ele nao filtra mais quem entra.
           const faltam = g.itens.filter((x) => !x.titulo && !x.liberado && x.pode);
           // Concluir a verba inteira: o que ainda nao tem o carimbo do executivo.
-          const aConcluir = g.itens.filter((x) => !x.titulo && !x.it.concluidoExecutivo);
+          const aConcluir = g.itens.filter((x) => !x.titulo && !estaConcluido(x));
           /* LIBERAR O GRUPO INTEIRO (pedido dela em 17/09/2026: "colocar
              opcao para liberar todos para compra por grupo").
 
@@ -7049,7 +7062,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                         segundo numero, dito com o nome do filtro. */}
                     <span className="grp-conta">{g.nProdutos ?? g.itens.length} produtos</span>
                     <span className="grp-conta">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberados</span>
-                    <span className="grp-conta">{g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length} concluídos</span>
+                    <span className="grp-conta">{g.itens.filter((x) => !x.titulo && estaConcluido(x)).length} concluídos</span>
                     {filtrando && (
                       <span className="grp-conta grp-conta-filtro">
                         {g.itens.length} nesta busca
@@ -7063,14 +7076,14 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                     <button className="btn-desaprovar"
                       title="Marca a verba inteira como concluída pelo executivo"
                       onClick={() => onConcluir(aConcluir.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
-                      <Check size={12} /> Concluir {aConcluir.length}
+                      <Check size={12} /> Concluir executivo {aConcluir.length}
                     </button>
                   )}
                   {/* SO' ADMINISTRADOR LIBERA (decisao dela, ADR-005) — e o botao
                       some pra quem nao e', em vez de aparecer e recusar no clique. */}
                   {podeEditar && souAdmin && faltam.length > 0 && (
                     <button className="btn-aprovar-linha" onClick={() => onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
-                      <Check size={12} /> Liberar {faltam.length}
+                      <Check size={12} /> Liberar para compra {faltam.length}
                     </button>
                   )}
                   {podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && (
@@ -7207,12 +7220,16 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
 
                         {/* CONCLUIDO EXECUTIVO — quem trabalha a linha diz que terminou. */}
                         <td className="center">
-                          {x.it.concluidoExecutivo ? (
+                          {estaConcluido(x) ? (
                             <div className="status-par">
-                              <span className="pill pill-ok" title={`Concluído em ${new Date(x.it.concluidoExecutivo.em).toLocaleDateString("pt-BR")}${x.it.concluidoExecutivo.por ? ` por ${x.it.concluidoExecutivo.por}` : ""}`}>
+                              {/* Sem carimbo proprio, a etiqueta diz DE ONDE veio —
+                                  e nao inventa quem concluiu. */}
+                              <span className="pill pill-ok" title={x.it.concluidoExecutivo
+                                ? `Concluído em ${new Date(x.it.concluidoExecutivo.em).toLocaleDateString("pt-BR")}${x.it.concluidoExecutivo.por ? ` por ${x.it.concluidoExecutivo.por}` : ""}`
+                                : "Concluído porque já está aprovado para compra"}>
                                 <Check size={10} /> concluído
                               </span>
-                              {podeEditar && onConcluir && (
+                              {podeEditar && onConcluir && x.it.concluidoExecutivo && (
                                 <button type="button" className="troca-link"
                                   onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</button>
                               )}
@@ -7273,7 +7290,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 title={!podeEditar ? MODO_LEITURA_DICA
                                   : !souAdmin ? "Só um administrador libera a compra"
                                   : !x.pode ? "Confira o alerta desta linha antes de liberar"
-                                  : x.it.concluidoExecutivo ? "Liberar para compra"
+                                  : estaConcluido(x) ? "Liberar para compra"
                                   : "Liberar para compra — marca o executivo como concluído junto"}
                                 onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                 estimativa · liberar
@@ -7425,8 +7442,8 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         filtros: [
           {
             id: "falta_concluir",
-            label: "Falta concluir",
-            contador: gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && !x.it.concluidoExecutivo).length, 0),
+            label: "Falta concluir executivo",
+            contador: gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && !estaConcluido(x)).length, 0),
           },
           {
             id: "falta_liberar",
@@ -7440,7 +7457,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
             label: "Concluído executivo",
             sub: "o que o executivo já terminou de conferir",
             color: "var(--brand)",
-            contador: `${gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length, 0)}/${gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo).length, 0)}`,
+            contador: `${gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && estaConcluido(x)).length, 0)}/${gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo).length, 0)}`,
           },
           {
             id: "falta_liberar",

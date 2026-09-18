@@ -303,7 +303,18 @@ conf("a tela repassa para a lista", /onConferirVarios=\{onConferirAlertaEmVarios
 conf("o contador usa os produtos do grupo",
   src.includes("{g.nProdutos ?? g.itens.length} produtos"), true);
 conf("e diz quantos foram concluídos pelo executivo",
-  src.includes(`{g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length} concluídos`), true);
+  src.includes(`{g.itens.filter((x) => !x.titulo && estaConcluido(x)).length} concluídos`), true);
+/* "tudo que ja consta como aprovado para compra, coloque como concluido
+   executivo" (18/09/2026): DEDUZIDO, não carimbado — quem foi aprovado antes
+   desta coluna existir não tem como saber QUEM concluiu, e carimbar um nome
+   qualquer seria inventar autor. Deduzir ainda mantém os dois totais batendo
+   sem migrar dado em obra nenhuma. */
+conf("aprovado para compra já conta como concluído",
+  src.includes("const estaConcluido = (x) => !!x.it.concluidoExecutivo || !!x.liberado;"), true);
+conf("... e a etiqueta diz de onde veio, sem inventar autor",
+  src.includes(`: "Concluído porque já está aprovado para compra"`), true);
+conf("... e não oferece desfazer no que não tem carimbo",
+  src.includes("{podeEditar && onConcluir && x.it.concluidoExecutivo && ("), true);
 conf("e o que está na tela vira um segundo número",
   src.includes("{g.itens.length} nesta busca"), true);
 
@@ -428,6 +439,8 @@ conf("sem poder agir, a célula diz 'não aprovado'",
   src.includes("{!x.liberado && (!podeEditar || !souAdmin) ? ("), true);
 conf("... e diz o motivo quando não é", src.includes(`: !souAdmin ? "Só um administrador libera a compra"`), true);
 conf("o liberar em massa só aparece para admin", src.includes("{podeEditar && souAdmin && faltam.length > 0 && ("), true);
+/* Os botões da verba dizem a decisão inteira, não o verbo solto (18/09/2026). */
+conf("o botão da verba diz 'Liberar para compra'", src.includes("Liberar para compra {faltam.length}"), true);
 conf("o 'conferi os alertas e libera' também", src.includes("{podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && ("), true);
 conf("desfazer a liberação também", src.includes("{podeEditar && souAdmin && x.it.liberadoCompra && !x.it.comprado && ("), true);
 /* Concluir NÃO é de admin: é de quem trabalha a linha. */
@@ -499,7 +512,8 @@ conf("... e é uma etiqueta, como as vizinhas", src.includes(".pill-nao {"), tru
 conf("nenhum texto avulso de espera sobrou", /aguarda o (executivo|cliente)/.test(src), false);
 
 /* Os dois filtros do que FALTA, ao lado do "Todos" (pedido dela, 18/09/2026). */
-conf("existe o filtro do que falta concluir", src.includes(`label: "Falta concluir",`), true);
+conf("existe o filtro do que falta concluir", src.includes(`label: "Falta concluir executivo",`), true);
+conf("e o botão da verba diz o mesmo", src.includes("Concluir executivo {aConcluir.length}"), true);
 conf("e o do que falta aprovar para compra", src.includes(`label: "Falta aprovar p/ compra",`), true);
 conf("eles usam o mesmo filtro dos cartões", src.includes("{(telaExtra?.filtros || []).map((ff) => ("), true);
 
