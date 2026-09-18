@@ -122,5 +122,30 @@ conf("juntar MO também", app.includes("onJuntarMO={podeEditar ? (codigo) => onJ
 conf("separar o grupo inteiro também", app.includes("onSepararGrupo={podeEditar ? () => onSepararGrupo(cat.num) : null}"), true);
 conf("aprovar para compra também", /onClick=\{onAprovar\} disabled=\{!podeEditar\}/.test(app), true);
 
+/* ---- O PLANO MOSTRA O BLOQUEADO (regra dela, 18/09/2026) ----
+ *
+ * "no plano de compras deve aparecer todos esses itens bloqueados, até a
+ * liberacao do aprovado para compra. é importante ele aparecer já como
+ * bloqueado, para usarmos esses dados para computar oque tem para contratar e
+ * comprar no futuro." E: "só vai aparecer liberado lá oque foi aprovado para
+ * compra".
+ *
+ * MÃO DE OBRA ENTROU NA REGRA. Até aqui ela era exceção — "nunca vai pra
+ * compra, vai pra Contratos" —, mas com a aprovação valendo para a planilha
+ * inteira, ela também espera o "aprovado para compra" antes de mostrar
+ * destino. A linha continua na lista e continua contando no dinheiro: é dela
+ * que sai a conta do que ainda há para contratar e comprar.
+ */
+conf("sem aprovação, o destino é BLOQUEADO",
+  app.includes(`<span className="pill pill-bloqueado" title="Bloqueado até o administrador aprovar para compra, na Conf. Executivo">`), true);
+conf("e vale para toda linha, inclusive mão de obra",
+  app.includes("  if (!liberadoParaCompra(item)) {"), true);
+conf("o rótulo antigo 'a liberar' saiu", /pill-wait" title="Ainda não liberado para compra/.test(app), false);
+conf("a linha inteira fica clarinha até a aprovação",
+  app.includes(`: !liberadoParaCompra(item) ? "row-estimativa"`), true);
+/* Comprado continua ganhando do resto na leitura: quem abre o plano quer
+   saber primeiro o que já resolveu. */
+conf("comprado continua aparecendo primeiro", app.indexOf("if (item.comprado) {") < app.indexOf("if (!liberadoParaCompra(item)) {"), true);
+
 console.log(falhas === 0 ? "\nTUDO OK" : `\n${falhas} FALHA(S)`);
 process.exit(falhas === 0 ? 0 : 1);

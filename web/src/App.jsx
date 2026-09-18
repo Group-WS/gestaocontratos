@@ -1186,7 +1186,10 @@ function alocacaoDoItem(it, cat) {
    numeros dos chips nao fechariam com o da tela, e numero que nao fecha
    e numero em que ninguem confia. */
 const FILTROS_ALOC = [
-  { id: "todos", label: "MAT/MO" },
+  /* "Todas as alocacoes" e nao "MAT/MO" (pedido dela, 18/09/2026): o rotulo
+     antigo parecia um terceiro tipo de alocacao ao lado de MAT e MO, quando o
+     que ele faz e' nao filtrar nada. */
+  { id: "todos", label: "Todas as alocações" },
   { id: ALOC_MAT, label: NOME_ALOC.MAT, destino: "viram insumo no Sienge" },
   { id: ALOC_MO, label: NOME_ALOC.MO, destino: "viram contrato" },
   { id: ALOC_AMBOS, label: NOME_ALOC.AMBOS, destino: "carregam as duas parcelas na mesma linha" },
@@ -2608,18 +2611,21 @@ function DestinoCompra({ item, aloc }) {
       </span>
     );
   }
-  /* Sem liberacao nao ha' destino a dizer: o que falta nao e' escolher
-     por onde comprar, e' o executivo liberar a compra.
+  /* BLOQUEADO ATE' A APROVACAO (regra dela, 18/09/2026): "no plano de compras
+     deve aparecer todos esses itens bloqueados, ate' a liberacao do aprovado
+     para compra... e' importante ele aparecer ja' como bloqueado, para usarmos
+     esses dados para computar oque tem para contratar e comprar no futuro" e
+     "so' vai aparecer liberado la' oque foi aprovado para compra".
 
-     MAO DE OBRA FICA DE FORA desta pergunta. Ela nunca vai pra compra —
-     vai pra Contratos —, entao "a liberar" numa linha de MO seria cobrar
-     uma decisao que ninguem precisa tomar. Visto na obra 2450: 52 linhas
-     diziam "a liberar" e nenhuma ficava clara, porque eram justamente as
-     de mao de obra. */
-  if (aloc !== ALOC_MO && !liberadoParaCompra(item)) {
+     MAO DE OBRA ENTRA AQUI AGORA. Ate' hoje ela era excecao — "nunca vai pra
+     compra, vai pra Contratos" —, mas com a aprovacao valendo pra planilha
+     inteira, mao de obra tambem espera o aprovado para compra antes de mostrar
+     o destino. A linha continua na lista, contando no dinheiro: e' dela que
+     sai a conta do que ainda ha' pra contratar e comprar. */
+  if (!liberadoParaCompra(item)) {
     return (
-      <span className="pill pill-wait" title="Ainda não liberado para compra — o executivo libera na Conf. Executivo">
-        a liberar
+      <span className="pill pill-bloqueado" title="Bloqueado até o administrador aprovar para compra, na Conf. Executivo">
+        <Lock size={10} /> bloqueado
       </span>
     );
   }
@@ -2705,10 +2711,11 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
       : item.avulso ? "row-avulso"
       : alertas.length ? "row-alert"
       : item.comprado ? "row-comprado"
-      /* CLARINHO: ainda nao liberado pelo executivo. Ele esta aqui pra
-         ser contado — a obra precisa dele na estimativa —, nao pra ser
-         trabalhado. Quem trabalha a linha e' quem ja pode comprar. */
-      : compravel && !liberadoParaCompra(item) ? "row-estimativa"
+      /* CLARINHO: ainda nao aprovado para compra. Ele esta aqui pra ser
+         contado — a obra precisa dele na estimativa —, nao pra ser
+         trabalhado. Desde 18/09/2026 vale pra TODA linha, inclusive mao de
+         obra: a aprovacao passou a valer pra planilha inteira. */
+      : !liberadoParaCompra(item) ? "row-estimativa"
       : compravel ? "row-falta" : ""
     }>
       {/* A coluna "Compr." saiu.
@@ -21016,6 +21023,9 @@ export default function App() {
         /* Mesma forma das outras etiquetas da coluna, sem cor de estado: e'
            ausencia de decisao, nao um alerta. */
         .pill-nao { background: var(--surface-2); color: var(--text-mute); border: 1px solid var(--line-1); }
+        /* Bloqueado no Plano de Compras: cadeado e tom neutro. Nao e' erro —
+           e' a linha esperando a aprovacao, e ela conta no dinheiro. */
+        .pill-bloqueado { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); color: var(--text-soft); border: 1px solid var(--line-2); }
         table.tab-conf .item-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         /* O ALERTA APARECE INTEIRO (correcao dela, 18/09/2026): "esse texto
            deve aparecer inteiro e nao sumir, botao de conferido no final".

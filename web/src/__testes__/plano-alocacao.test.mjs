@@ -216,8 +216,10 @@ conf("o dinheiro também não muda de coluna antes de separar",
 
 /* ---- 8. os dois rótulos deixaram de colidir ---- */
 // "MAT E MO" (tudo) e "MAT/MO" (as duas parcelas) ficavam lado a lado na
-// mesma fila, indistinguíveis. Barra = tudo; mais = na mesma linha.
-conf("chip que mostra tudo se chama MAT/MO", FILTROS_ALOC[0].label, "MAT/MO");
+// mesma fila, indistinguíveis. Em 18/09/2026 o de tudo virou "Todas as
+// alocações", a pedido dela: com o rótulo antigo ele parecia um TERCEIRO tipo
+// de alocação, quando o que faz é não filtrar nada.
+conf("o chip que mostra tudo não usa nome de alocação", FILTROS_ALOC[0].label, "Todas as alocações");
 conf("existe um chip só de MAT+MO", FILTROS_ALOC[3].label, "MAT+MO");
 conf("a etiqueta das duas parcelas usa +", ROTULO_ALOC.AMBOS, "MAT+MO");
 conf("nenhum rótulo de filtro se repete", new Set(FILTROS_ALOC.map((x) => x.label)).size, FILTROS_ALOC.length);
