@@ -1173,10 +1173,21 @@ function alocacaoDoItem(it, cat) {
   if (cru.material > 0 && cru.mo > 0) return ALOC_AMBOS;
   if (cru.mo > 0) return ALOC_MO;
   if (cru.material > 0) return ALOC_MAT;
-  /* Nao deu pra classificar (nenhuma parcela tem valor): fica em MAT+MO,
-     nunca vazio nem chutado — aqui nao e dinheiro que precisou de lado,
-     e' item sem dado nenhum, e isso continua precisando aparecer como
-     "falta resolver", nao se disfarcar de mao de obra decidida. */
+  /* SEM VALOR NENHUM. Duas situacoes diferentes:
+
+     Em verba que TEM split proprio (05, 20, 24, 27, 28 — a empresa compra o
+     material e contrata a instalacao separado), o item e' o PRODUTO: a mao de
+     obra dele vai existir, mas numa linha propria. Ela viu isso na lampada da
+     2498: "se o item lampada entrou sem valor de mat e mo ele ta
+     classificando como mat+mo. mas na verdade tem que seguir a logica do
+     grupo e separar em dois itens: MAT e outro item MO. pois em algum momento
+     vai ser instalado esse produto tambem". A linha de MO sai pelo botao
+     "separar MO" — criar dezenas de linhas zeradas sozinhas foi a alternativa
+     que ela descartou (18/09/2026).
+
+     Nas outras verbas nao da' pra saber se e' produto ou servico, e "MAT+MO"
+     continua sendo a resposta honesta: falta resolver. */
+  if (cat && separaMOautomatico(cat.num, cat.nome)) return ALOC_MAT;
   return ALOC_AMBOS;
 }
 
@@ -1220,11 +1231,23 @@ const separaMOautomatico = (num, nome) =>
 /* So faz sentido separar o que TEM mao de obra pra tirar, uma vez so, e
    fora das verbas de pacote fechado. Sem esse teste o botao aparecia em
    item de valor zero e nao fazia nada ao ser clicado. */
+/* Item sem valor nenhum: nem material, nem mao de obra. E' o caso da lampada
+   que entrou so' com a descricao. */
+const semValorNenhum = (it, cat) => {
+  const p = parcelasDoItem(it, cat);
+  return !(p.material > 0) && !(p.mo > 0);
+};
+
 const podeSepararMO = (it, cat) =>
   !it.moSeparada && !it.separadoDe && !it.ehTitulo
   && !(cat && ehVerbaMatMoSempre(cat.num, cat.nome))
-  && alocacaoDoItem(it, cat) === ALOC_AMBOS
-  && parcelasDoItem(it, cat).mo > 0;
+  && (
+    (alocacaoDoItem(it, cat) === ALOC_AMBOS && parcelasDoItem(it, cat).mo > 0)
+    /* Zerado em verba com split proprio: a mao de obra ainda vai existir, so'
+       nao tem numero. Separar agora deixa a linha pronta pra receber o valor
+       — e' o botao que ela escolheu em vez da separacao automatica. */
+    || (cat && separaMOautomatico(cat.num, cat.nome) && semValorNenhum(it, cat))
+  );
 
 const codigoMOlivre = (usados, prefixo) => {
   let n = 1;
@@ -1254,7 +1277,11 @@ function partirMaoDeObra(item, cat, codigoNovo) {
   // aplicar por cima a regra nova de MAT+MO virar MO (ver `ehMatMoAutomatico`);
   // passando so' o numero essa checagem ficaria cega.
   const { mo } = parcelasDoItem(item, cat);
-  if (mo <= 0 || item.moSeparada) return null;
+  /* Zerado em verba com split proprio separa com R$ 0,00 de proposito: a
+     linha nasce pra receber o valor depois. Fora desse caso, separar sem
+     valor criaria linha vazia sem motivo. */
+  const zeradoComSplit = semValorNenhum(item, cat) && cat && separaMOautomatico(cat.num, cat.nome);
+  if ((mo <= 0 && !zeradoComSplit) || item.moSeparada) return null;
   return {
     original: { ...item, moSeparada: { valor: mo, codigo: codigoNovo } },
     linhaMO: {

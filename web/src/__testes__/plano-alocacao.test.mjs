@@ -323,5 +323,39 @@ conf("migrar não muda o total da obra", somaDe(migradas), somaDe(antigas));
 // Roda a cada carga da obra: rodar de novo não pode mexer em nada.
 conf("é idempotente", JSON.stringify(devolverMOaoGrupoDeOrigem(migradas)), JSON.stringify(migradas));
 
+/* ---- ITEM SEM VALOR NENHUM (regra dela, 18/09/2026) ----
+ *
+ * "se o item lampada entrou sem valor de mat e mo ele ta classificando como
+ * mat+mo. mas na verdade tem que seguir a logica do grupo e separar em dois
+ * itens: MAT e outro item MO. pois em algum momento vai ser instalado esse
+ * produto tambem."
+ *
+ * Nas verbas com split próprio (05, 20, 24, 27, 28 — a empresa compra o
+ * material e contrata a instalação separado), item zerado é o PRODUTO. A linha
+ * de mão de obra sai no botão "separar MO", quando alguém souber o valor:
+ * criar dezenas de linhas zeradas sozinhas foi a alternativa que ela
+ * descartou.
+ *
+ * Fora dessas verbas nada muda: sem valor, não dá para saber se é produto ou
+ * serviço, e "MAT+MO" continua sendo a resposta honesta.
+ */
+const zerado = { desc: "Lâmpada LED Halopin 4W 3000K Bivolt G9" };
+const verba05 = { num: "05", nome: "Instalações Elétricas e Iluminação" };
+const verba33 = { num: "33", nome: "Automação" };
+conf("zerado em verba com split é MATERIAL", alocacaoDoItem(zerado, verba05), ALOC_MAT);
+conf("zerado em verba sem split continua MAT+MO", alocacaoDoItem(zerado, verba33), ALOC_AMBOS);
+conf("e sem categoria nenhuma também", alocacaoDoItem(zerado, null), ALOC_AMBOS);
+/* O botão tem que aparecer — senão a linha de MO nunca nasce. */
+conf("o botão separar MO aparece no zerado", podeSepararMO(zerado, verba05), true);
+conf("... e não aparece fora dessas verbas", podeSepararMO(zerado, verba33), false);
+/* E a separação precisa aceitar valor zero AÍ, e só aí. */
+const parZerado = partirMaoDeObra({ ...zerado, codigo: "5.9" }, verba05, "05.mo1");
+conf("separa mesmo valendo zero", !!parZerado, true);
+conf("a linha de MO nasce zerada, pra receber o valor", parZerado?.linhaMO.custo, 0);
+conf("e aponta pro pai", parZerado?.linhaMO.separadoDe?.codigo, "5.9");
+conf("o pai vira MAT com a MO separada", parZerado?.original.moSeparada?.valor, 0);
+conf("fora da verba com split, não separa zerado",
+  partirMaoDeObra({ ...zerado, codigo: "33.1" }, verba33, "33.mo1"), "null");
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
