@@ -78,8 +78,39 @@ conf("congelar passou a ser só as compras liberadas",
   app.includes("const congeladoProjeto = !!obra.comprasLiberadas;"), true);
 conf("o slot recebe os dois motivos separados",
   /function CadernoSlot\(\{[^}]*congelado, podeEditar = true \}\)/.test(app), true);
-conf("contrato e apresentação não congelam com as compras",
-  app.includes("slot(CADERNO_CONTRATO)") && app.includes("{slot(CADERNO_APRESENTACAO)}"), true);
+conf("o contrato não congela com as compras", app.includes("slot(CADERNO_CONTRATO)"), true);
+
+/* ---- O ANEXO DUPLICADO SAIU, E "OUTROS" GANHOU DESCRIÇÃO (18/09/2026) ----
+ *
+ * "retire esse ultimo anexo 'apresentacao de especificacoes': esta duplicado
+ * ... vou manter somente o caderno de especificacao." E, em seguida: "em
+ * outros, quando for subir, aparecer uma descricao que ai aparece em negrito
+ * como no padrao."
+ *
+ * O que NÃO pode acontecer: o arquivo que já foi anexado ficar inalcançável.
+ * Ele continua listado em Documentos até ela apagar o vínculo pelo SQL —
+ * arquivo que existe no balde e perde o caminho na tela é arquivo perdido.
+ */
+conf("o slot duplicado saiu da Jornada", app.includes("{slot(CADERNO_APRESENTACAO)}"), false);
+conf("os três cadernos do executivo ficam", app.includes(`{["especificacao", "marcenaria", "projeto"].map((k) => slot(cadernoPorChave(k), congeladoProjeto))}`), true);
+conf("o que já foi anexado continua listado em Documentos",
+  app.includes(`out.push({ ...cad.apresentacao, id: "caderno-apresentacao"`), true);
+const sqlLimpeza = (await import("node:fs")).readFileSync(new URL("../../../supabase/limpar-apresentacao-caderno.sql", import.meta.url), "utf8");
+conf("e existe o SQL pra ela apagar o vínculo quando quiser",
+  sqlLimpeza.includes("cadernos = cadernos - 'apresentacao'"), true);
+/* O SQL mostra antes de apagar, e o passo que apaga vem comentado: apagar
+   vínculo de arquivo não tem desfazer pela tela. */
+conf("o SQL manda olhar a lista antes", sqlLimpeza.includes("PASSO 1 — VER o que existe hoje"), true);
+conf("e o comando de apagar vem comentado", sqlLimpeza.includes("-- update obra_dados set cadernos = cadernos - 'apresentacao'"), true);
+
+conf("Outros pergunta a descrição antes de subir",
+  app.includes(`placeholder="Descrição do arquivo (ex: Memorial descritivo)"`), true);
+conf("... e manda o título junto do arquivo",
+  app.includes("onArquivos(await anexarAvulso({ obra, file, titulo, fase, usuario }));"), true);
+conf("... limpando o campo depois", /setTitulo\(""\);/.test(app), true);
+conf("sem descrição continua valendo o nome do arquivo",
+  app.includes(`titulo: (titulo || "").trim() || file.name,`), true);
+conf("a linha mostra o título em negrito", app.includes(".arq-titulo { font-size: 13px; font-weight: 600;"), true);
 
 console.log(falhas === 0 ? "\nTUDO OK" : `\n${falhas} FALHA(S)`);
 process.exit(falhas === 0 ? 0 : 1);

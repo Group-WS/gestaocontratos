@@ -682,9 +682,15 @@ function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno,
         <div className="jornada-grupo-rot">Executivo</div>
         <div className="caderno-lista">
           {["especificacao", "marcenaria", "projeto"].map((k) => slot(cadernoPorChave(k), congeladoProjeto))}
-          {/* A apresentação pode chegar depois das compras liberadas: só trava
-              fora do modo de edição, como o contrato. */}
-          {slot(CADERNO_APRESENTACAO)}
+          {/* "Apresentação de Especificações" SAIU daqui em 18/09/2026, a
+              pedido dela: "esta duplicado... vou manter somente o caderno de
+              especificacao". Sem o slot, ninguem anexa mais nada nessa chave.
+
+              O que JA' foi anexado continua aparecendo em Documentos, e nao
+              some da vista por conta propria: arquivo que existe no balde e
+              deixa de ter caminho na tela vira arquivo perdido. Quem apaga o
+              vinculo e' ela, pelo `supabase/limpar-apresentacao-caderno.sql`
+              — e ate' la' o que existe continua alcancavel. */}
         </div>
       </div>
 
@@ -705,10 +711,19 @@ function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno,
 
 /* Um arquivo solto: o mesmo caminho de Documentos, com a fase já decidida
    por quem chama. */
+/* ANEXAR EM "OUTROS", COM DESCRICAO (pedido dela, 18/09/2026): "quando for
+   subir, aparecer uma descricao que ai aparece em negrito como no padrao. so'
+   pra ter uma referencia do que e' o arquivo."
+
+   O modelo ja' guardava `titulo` e a linha ja' o mostrava em negrito — quem
+   nao perguntava era esta tela, entao todo avulso da Jornada nascia chamado
+   pelo nome do arquivo ("WhatsApp Image 2026-09-18 at 14.22.31.pdf" nao diz
+   o que e'). Sem descricao continua valendo o nome do arquivo, como antes. */
 function AnexarAvulso({ obra, usuario, fase, onArquivos, rotulo = "Anexar arquivo" }) {
   const inputRef = useRef(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState(null);
+  const [titulo, setTitulo] = useState("");
 
   async function aoEscolher(e) {
     const file = e.target.files && e.target.files[0];
@@ -717,7 +732,8 @@ function AnexarAvulso({ obra, usuario, fase, onArquivos, rotulo = "Anexar arquiv
     setErro(null);
     setEnviando(true);
     try {
-      onArquivos(await anexarAvulso({ obra, file, fase, usuario }));
+      onArquivos(await anexarAvulso({ obra, file, titulo, fase, usuario }));
+      setTitulo("");
     } catch (err) {
       setErro(err.message || String(err));
     } finally {
@@ -727,6 +743,9 @@ function AnexarAvulso({ obra, usuario, fase, onArquivos, rotulo = "Anexar arquiv
 
   return (
     <div className="jornada-anexar">
+      <input className="form-input jornada-anexar-desc" value={titulo} maxLength={80}
+        placeholder="Descrição do arquivo (ex: Memorial descritivo)"
+        onChange={(e) => setTitulo(e.target.value)} />
       <button type="button" className="btn-add-item" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
         <Upload size={12} /> {enviando ? "Enviando…" : rotulo}
       </button>
@@ -22690,8 +22709,12 @@ export default function App() {
         .jornada-anexos .caderno-lista { border: 1px solid var(--line-1); border-radius: 10px; overflow: hidden; }
         .jornada-anexos .caderno-slot { flex-wrap: wrap; padding: 9px 12px; }
         .jornada-anexos .arq-linha { padding: 9px 12px; background: var(--surface-1); }
-        .jornada-anexar { margin-top: 8px; }
+        .jornada-anexar { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .jornada-anexar .btn-add-item { margin: 0; }
+        /* A descricao vem ANTES do botao: ela e' o que a linha vai mostrar em
+           negrito, e perguntar depois de escolher o arquivo seria perguntar
+           com o envio ja' rodando. */
+        .jornada-anexar-desc { flex: 1 1 220px; min-width: 0; max-width: 340px; font-size: 12px; padding: 6px 9px; }
         .jornada-vazio { font-size: 12px; color: var(--text-mute); }
         @media (max-width: 1100px) { .jornada-anexos { grid-template-columns: 1fr; } }
         /* ---------- Conf. Executivo: o que entrou e o que saiu ---------- */
