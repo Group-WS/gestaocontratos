@@ -6157,6 +6157,19 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
    acha o par dele no vendido e dá "conferido". Por isso a conta olha as
    marcas que o próprio Executivo grava (excluido, manual, substitui),
    além das sobras do cruzamento. */
+/* O DETALHE DA LINHA, pra conferir contra a planilha (pedido dela,
+   17/09/2026): "mostrar tambem o detalhe (cod/ espeficicacao e fornecedor),
+   que sao as informacoes que estao na planilha do executivo. (deixar bem
+   clarinho em baixo, pequeno, e' mais para conferencia.)"
+
+   Vem do lado que EXISTE: o que entrou so' existe no executivo, o que saiu
+   so' no vendido. Quando os dois existem (troca de produto), o executivo
+   manda — e' ele o documento novo. */
+const detalheDaPlanilha = (...fontes) => {
+  const de = (campo) => { for (const f of fontes) { const v = f?.[campo]; if (v) return String(v).trim(); } return null; };
+  return { codigo: de("codigo"), espec: de("especificacao"), fornecedor: de("marca") };
+};
+
 function resumoEntrouSaiu(cruzamento) {
   const porVerba = new Map();
   const grupo = (v) => {
@@ -6174,13 +6187,16 @@ function resumoEntrouSaiu(cruzamento) {
       grupo(l.verba).saiu.push({
         desc: ex.desc, qtd: ex.vendido?.qtd ?? ve?.qtdVendida ?? ex.qtdVendida, un: ex.un,
         valor: ex.vendido?.custo ?? ve?.custo ?? ex.custo ?? 0, trocadoPor: ex.substituidoPorDesc || null,
+        ...detalheDaPlanilha(ex, ve),
       });
     } else if (ex && (!ve || ex.manual || ex.substitui || ex.substituiDesc)) {
       grupo(l.verba).entrou.push({
         desc: ex.desc, qtd: ex.qtdVendida, un: ex.un, valor: ex.custo ?? 0, noLugarDe: ex.substituiDesc || null,
+        ...detalheDaPlanilha(ex),
       });
     } else if (ve && !ex) {
-      grupo(l.verba).saiu.push({ desc: ve.desc, qtd: ve.qtdVendida, un: ve.un, valor: ve.custo ?? 0 });
+      grupo(l.verba).saiu.push({ desc: ve.desc, qtd: ve.qtdVendida, un: ve.un, valor: ve.custo ?? 0,
+        ...detalheDaPlanilha(ve) });
     }
   });
 
@@ -6209,6 +6225,14 @@ function LinhaEntrouSaiu({ it, tipo }) {
       <span className="es-sinal">{tipo === "entrou" ? "+" : "−"}</span>
       <div className="es-desc">
         <div>{it.desc || "—"}</div>
+        {/* Codigo, especificacao e fornecedor, como estao na planilha. Linha
+            de conferencia: pequena e clara de proposito — quem le esta
+            comparando com o arquivo, nao decidindo por ela. */}
+        {(it.codigo || it.espec || it.fornecedor) && (
+          <div className="es-det" title="Como está na planilha: código · especificação · fornecedor">
+            {[it.codigo, it.espec, it.fornecedor].filter(Boolean).join(" · ")}
+          </div>
+        )}
         {it.noLugarDe && <div className="es-nota">no lugar de: {it.noLugarDe}</div>}
         {it.trocadoPor && <div className="es-nota">trocado por: {it.trocadoPor}</div>}
       </div>
@@ -22516,6 +22540,8 @@ export default function App() {
         .es-linha.entrou .es-sinal { color: var(--success); }
         .es-linha.saiu .es-sinal { color: var(--danger); }
         .es-nota { margin-top: 2px; font-size: 11px; color: var(--text-soft); }
+        /* Conferencia, nao decisao: menor e mais clara que a nota. */
+        .es-det { font-size: 10.5px; color: var(--text-mute); line-height: 1.45; margin-top: 2px; }
         .es-qtd { color: var(--text-soft); text-align: right; white-space: nowrap; }
         .es-val { text-align: right; white-space: nowrap; font-weight: 600; }
         @media (max-width: 900px) { .es-topo { grid-template-columns: 1fr; } .es-linha { grid-template-columns: 16px minmax(0, 1fr) auto; } .es-qtd { display: none; } }
