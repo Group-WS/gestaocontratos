@@ -128,5 +128,43 @@ conf("a lista pronta espera Monday, banco e perfil",
 conf("o banco avisa quando respondeu, com ou sem erro",
   src.includes(".finally(() => { if (vivo) setRegistroCarregado(true); })"), true);
 
+/* ---- O CADEADO SOME QUANDO JÁ HÁ COMPRA (regra dela, 18/09/2026) ----
+ *
+ * "se tiver um item ja aprovado para compra, o cadeado deve sumir do menu
+ * plano de compras e compras de produtos, pois ja tem uma compra para ser
+ * feita."
+ *
+ * A trava da esteira existe para ninguém comprar antes de conferir. Assim que
+ * um item é aprovado, a compra dele já existe — esconder a tela onde ela
+ * acontece não protege mais nada.
+ */
+const ate = (a, fim) => {
+  const i = src.indexOf(a);
+  if (i === -1) throw new Error(`não achei: ${a}`);
+  return src.slice(i, src.indexOf(fim, i) + fim.length);
+};
+const M2 = eval(`(function () {
+  ${bloco("function liberadoParaCompra(")}
+  ${ate("const temCompraAprovada =", "liberadoParaCompra(it)));")}
+  ${ate("const ETAPAS_QUE_ABREM_COM_COMPRA =", "]);")}
+  return { temCompraAprovada, ETAPAS_QUE_ABREM_COM_COMPRA };
+})()`);
+const obraCom = (itens) => ({ categorias: [{ num: "05", itens }] });
+conf("obra sem nada aprovado continua travada",
+  M2.temCompraAprovada(obraCom([{ desc: "Spot" }])), false);
+conf("um item aprovado abre as telas da compra",
+  M2.temCompraAprovada(obraCom([{ desc: "Spot" }, { desc: "Cuba", liberadoCompra: { em: "x" } }])), true);
+conf("item já comprado também conta", M2.temCompraAprovada(obraCom([{ desc: "X", comprado: true }])), true);
+/* Título e removido não geram compra nenhuma. */
+conf("título não abre", M2.temCompraAprovada(obraCom([{ desc: "PAREDE", ehTitulo: true, liberadoCompra: { em: "x" } }])), false);
+conf("item removido não abre", M2.temCompraAprovada(obraCom([{ desc: "X", excluido: true, liberadoCompra: { em: "x" } }])), false);
+conf("obra vazia não quebra", M2.temCompraAprovada({ categorias: [] }), false);
+conf("obra undefined não quebra", M2.temCompraAprovada(undefined), false);
+/* Só as duas telas da compra abrem — o resto da esteira continua em ordem. */
+conf("só Plano de Compras e Compras abrem",
+  [...M2.ETAPAS_QUE_ABREM_COM_COMPRA].sort().join(","), "comparativo,compras");
+conf("a trava da aba consulta a regra",
+  src.includes("&& !(ETAPAS_QUE_ABREM_COM_COMPRA.has(t.id) && temCompraAprovada(obra));"), true);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

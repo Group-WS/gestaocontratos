@@ -9641,6 +9641,21 @@ function bloqueioDaEtapa(id, obra) {
   return `Falta conferir ${tecnica} ${tecnica === 1 ? "produto" : "produtos"}`;
 }
 
+/* JA' TEM COMPRA PRA FAZER? (regra dela, 18/09/2026)
+
+   "se tiver um item ja aprovado para compra, o cadeado deve sumir do menu
+   plano de compras e compras de produtos, pois ja tem uma compra para ser
+   feita."
+
+   A trava da esteira existe pra ninguem comprar antes de conferir. Mas assim
+   que UM item e' aprovado pra compra, a compra dele ja' existe — e esconder a
+   tela onde ela acontece nao protege mais nada, so' atrapalha quem vai
+   executar. Linha de titulo e item removido nao contam. */
+const temCompraAprovada = (obra) => (obra?.categorias || []).some((cat) =>
+  (cat.itens || []).some((it) => !it.ehTitulo && !it.excluido && liberadoParaCompra(it)));
+
+const ETAPAS_QUE_ABREM_COM_COMPRA = new Set(["comparativo", "compras"]);
+
 function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
   const etapas = ETAPAS_POR_GRUPO[grupo] || [];
 
@@ -9671,7 +9686,9 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
             const anterior = etapas[i - 1];
             const travada = grupo === "planejamento" && anterior
               && !ETAPAS_SEM_TRAVA_DE_ORDEM.has(t.id)
-              && !etapaConcluida(anterior.id, obra);
+              && !etapaConcluida(anterior.id, obra)
+              // Com item aprovado pra compra, as telas da compra abrem.
+              && !(ETAPAS_QUE_ABREM_COM_COMPRA.has(t.id) && temCompraAprovada(obra));
             return (
               <button key={t.id}
                 className={`tab ${tab === t.id ? "active" : ""} ${feita ? "feita" : ""} ${travada ? "travada" : ""}`}
