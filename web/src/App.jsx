@@ -5728,7 +5728,12 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
 }
 
 function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null, telaExtra = null }) {
-  const [filtro, setFiltro] = useState("todos");
+  /* ABRE NA LISTAGEM GERAL (pedido dela, 18/09/2026): "quando eu clico em conf
+     executivo quero ver a listagem geral como esta nessa tela".
+
+     A planilha e' o trabalho; o depara lado a lado virou consulta, e continua
+     a um clique no chip "Todos". */
+  const [filtro, setFiltro] = useState(() => telaExtra?.id || "todos");
   const [selecionados, setSelecionados] = useState(() => new Set());
   // Tudo começa recolhido: com 185 linhas, abrir sozinho enterra a visão
   // geral e a pessoa perde a noção de quanto falta. O contador de
@@ -6807,7 +6812,8 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
           // Filtrando, a verba abre sozinha: procurar e ainda ter que clicar
           // em cada verba não é procurar.
           const aberto = abertos.has(g.num) || filtrando;
-          const faltam = g.itens.filter((x) => !x.titulo && !x.ehMO && !x.liberado && x.pode);
+          // A ordem vale tambem em massa: so' entra quem o executivo concluiu.
+          const faltam = g.itens.filter((x) => !x.titulo && !x.ehMO && !x.liberado && x.pode && x.it.concluidoExecutivo);
           // Concluir a verba inteira: o que ainda nao tem o carimbo do executivo.
           const aConcluir = g.itens.filter((x) => !x.titulo && !x.it.concluidoExecutivo);
           /* LIBERAR O GRUPO INTEIRO (pedido dela em 17/09/2026: "colocar
@@ -6824,7 +6830,8 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
              O cliente fica de fora de proposito: falta de aprovacao do
              cliente nao e' alerta pra conferir, e' portao com justificativa
              (o "liberar mesmo assim", linha por linha). */
-          const travadosAqui = g.itens.filter((x) => !x.titulo && !x.ehMO && !x.liberado && !x.pode && x.pendencia?.tipo !== "cliente");
+          const travadosAqui = g.itens.filter((x) => !x.titulo && !x.ehMO && !x.liberado && !x.pode
+            && x.pendencia?.tipo !== "cliente" && x.it.concluidoExecutivo);
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
@@ -6902,13 +6909,21 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                       /* A COR DIZ O ESTADO DA CONFERENCIA (pedido dela, 18/09/2026):
                          "se o item tiver alguma conferencia tecnica, pode aparecer a
                          linha em laranja, oque ta conferido aparece normal". */
+                      /* LARANJA E' O QUE PEDE CONFERENCIA (ajuste dela,
+                         18/09/2026). Alerta tecnico e item que entrou sem ter
+                         sido vendido sao os dois que se resolvem com o
+                         "conferi" — e sao eles que travam a liberacao. Falta
+                         do cliente NAO pinta a linha: ela virou coluna, e
+                         repetir em cor o que a coluna ja' diz e' barulho. */
                       <tr key={x.chave} className={
                         x.it.excluido ? "linha-excluida"
-                        : x.pendencia?.tipo === "tecnica" && !x.it.alertaConferido ? "row-alert"
+                        : x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "row-alert"
                         : ""
                       }>
                         <td>
-                          <div className="item-desc">{x.it.desc}</div>
+                          {/* O texto inteiro fica no `title`: a descricao corta em
+                              duas linhas pra lista caber na tela. */}
+                          <div className="item-desc" title={x.it.desc}>{x.it.desc}</div>
                           {/* Codigo, especificacao, fornecedor e ambiente: a linha de
                               conferencia contra a planilha. Dentro da celula do produto,
                               e nao em colunas proprias — sao dez informacoes por linha, e
@@ -6928,7 +6943,10 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                               {x.it.excluidoPor ? <span className="dim"> · {x.it.excluidoPor}</span> : null}
                             </div>
                           )}
-                          {x.pendencia && (
+                          {/* O aviso do cliente saiu daqui: ele virou a coluna
+                              "Cliente", ao lado. Dizer a mesma coisa duas vezes
+                              na mesma linha era o que engordava a lista. */}
+                          {x.pendencia && x.pendencia.tipo !== "cliente" && (
                             <div className={`lib-alerta ${x.it.alertaConferido ? "conferido" : ""}`}>
                               <AlertTriangle size={11} />
                               <span>{x.pendencia.texto}</span>
@@ -7000,8 +7018,11 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                           {/* MAO DE OBRA NAO SE COMPRA: ela aparece na planilha (a tela
                               mostra tudo), mas o destino dela e' Contratos — e dizer isso
                               e' melhor do que um botao que nunca deveria ser clicado. */}
+                          {/* Mao de obra nao se compra — e a coluna fica vazia.
+                              Escrever "mao de obra" aqui era repetir a alocacao
+                              de recurso numa coluna que fala de compra. */}
                           {x.ehMO ? (
-                            <span className="pill pill-neutro" title="Mão de obra vai para Contratos, não para Compras">mão de obra</span>
+                            <span className="dim">—</span>
                           ) : x.liberado ? (
                             <div className="status-par">
                               <span className="pill pill-ok" title={x.it.liberadoCompra?.em
@@ -7016,10 +7037,15 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                             </div>
                           ) : (
                             <>
-                              {/* SO' ADMINISTRADOR LIBERA (decisao dela, ADR-005). */}
-                              <button className="pill pill-btn pill-wait" disabled={!podeEditar || !souAdmin || !x.pode}
+                              {/* A ORDEM DO FLUXO (ajuste dela, 18/09/2026):
+                                  "primeiro o executivo aprova e depois o
+                                  aprovado para compra". Sem o carimbo do
+                                  executivo o botao nao age — e diz por que. */}
+                              <button className="pill pill-btn pill-wait"
+                                disabled={!podeEditar || !souAdmin || !x.pode || !x.it.concluidoExecutivo}
                                 title={!podeEditar ? MODO_LEITURA_DICA
                                   : !souAdmin ? "Só um administrador libera a compra"
+                                  : !x.it.concluidoExecutivo ? "O executivo precisa concluir esta linha antes"
                                   : x.pendencia?.tipo === "cliente" ? "O cliente ainda não aprovou este produto"
                                   : !x.pode ? "Confira o alerta desta linha antes de liberar"
                                   : "Liberar para compra"}
@@ -20684,7 +20710,23 @@ export default function App() {
         table.tab-conf th.c-total { width: 112px; }
         table.tab-conf th.c-dec { width: 104px; }
         table.tab-conf th.c-sit { width: 168px; }
-        .conf-det { margin-top: 2px; font-size: 10.5px; color: var(--text-mute); line-height: 1.45; }
+        .conf-det { margin-top: 1px; font-size: 10.5px; color: var(--text-mute); line-height: 1.35; }
+        /* LINHA FINA (pedido dela, 18/09/2026): "apresentar a linha mais
+           fina". Sao 443 linhas numa obra — cada pixel de altura custa uma
+           rolagem. A descricao para de quebrar em quatro linhas: ela ganha
+           reticencias em duas, e o texto inteiro fica no title. */
+        table.tab-conf td { padding: 5px 10px; font-size: 12px; line-height: 1.35; }
+        table.tab-conf th { padding: 6px 10px; }
+        table.tab-conf .item-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        /* O alerta cabe numa linha: a frase corta com reticencias (o texto
+           inteiro fica no title) e o "conferi" nunca some, que e' o que a
+           pessoa veio clicar. Com 32 alertas numa verba de 67, deixar a frase
+           quebrar em duas dobrava a altura da lista. */
+        table.tab-conf .lib-alerta { margin-top: 2px; font-size: 10.5px; display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: nowrap; }
+        table.tab-conf .lib-alerta > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        table.tab-conf .lib-alerta > button, table.tab-conf .lib-alerta .lib-conferido-por { flex-shrink: 0; }
+        table.tab-conf .pill { padding: 1px 7px; font-size: 10.5px; }
+        table.tab-conf .troca-link { font-size: 10.5px; }
         /* Removido do executivo: a justificativa fica na linha, nao num
            tooltip — quem confere precisa ler sem descobrir que da' pra passar
            o mouse. */

@@ -379,11 +379,24 @@ conf("código, espec., fornecedor e ambiente ficam na célula do produto",
 
 /* A COR DIZ O ESTADO: laranja quando falta olhar o alerta técnico, normal
    quando está conferido. */
-conf("linha com alerta técnico pendente sai laranja",
-  src.includes(`: x.pendencia?.tipo === "tecnica" && !x.it.alertaConferido ? "row-alert"`), true);
+/* LARANJA É O QUE PEDE CONFERÊNCIA (ajuste dela, 18/09/2026). Alerta
+   técnico e "entrou sem ter sido vendido" são os dois que se resolvem com o
+   "conferi" — e são eles que travam a liberação. Falta do cliente NÃO pinta:
+   ela virou coluna, e repetir em cor o que a coluna diz é barulho. */
+conf("linha que pede conferência sai laranja",
+  src.includes(`: x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "row-alert"`), true);
+conf("o aviso do cliente saiu da linha (virou coluna)",
+  src.includes(`{x.pendencia && x.pendencia.tipo !== "cliente" && (`), true);
 
 /* SÓ ADMINISTRADOR LIBERA — a mudança de regra mais sensível do ADR. */
-conf("o botão de liberar exige administrador", src.includes("disabled={!podeEditar || !souAdmin || !x.pode}"), true);
+conf("o botão de liberar exige administrador",
+  src.includes("disabled={!podeEditar || !souAdmin || !x.pode || !x.it.concluidoExecutivo}"), true);
+/* A ORDEM DO FLUXO: "primeiro o executivo aprova e depois o aprovado para
+   compra". Sem o carimbo do executivo, nem a linha nem o botão em massa
+   liberam — e a dica diz o porquê. */
+conf("... e o carimbo do executivo antes", src.includes(`: !x.it.concluidoExecutivo ? "O executivo precisa concluir esta linha antes"`), true);
+conf("o liberar em massa respeita a ordem",
+  src.includes("!x.liberado && x.pode && x.it.concluidoExecutivo"), true);
 conf("... e diz o motivo quando não é", src.includes(`: !souAdmin ? "Só um administrador libera a compra"`), true);
 conf("o liberar em massa só aparece para admin", src.includes("{podeEditar && souAdmin && faltam.length > 0 && ("), true);
 conf("o 'conferi os alertas e libera' também", src.includes("{podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && ("), true);
@@ -392,8 +405,10 @@ conf("desfazer a liberação também", src.includes("{podeEditar && souAdmin && 
 conf("concluir não exige admin", src.includes("{podeEditar && onConcluir && aConcluir.length > 0 && ("), true);
 
 /* MÃO DE OBRA aparece na planilha, mas não se compra. */
-conf("mão de obra mostra o destino em vez de um botão",
-  src.includes(`<span className="pill pill-neutro" title="Mão de obra vai para Contratos, não para Compras">mão de obra</span>`), true);
+/* "ta aparecendo a alocação de recurso ali (mao de obra) nao faz sentido":
+   a coluna fala de compra, não de alocação. Mão de obra deixa a célula vazia. */
+conf("mão de obra não escreve alocação na coluna de compra",
+  src.includes(`{x.ehMO ? (\n                            <span className="dim">—</span>`), true);
 
 /* UMA REGRA SÓ para "o que se compra": o cartão dizia 0/444 e o placar
    0 de 315 — dois números para a mesma pergunta na mesma tela. */
@@ -406,6 +421,17 @@ conf("e o placar da lista também", src.includes("const compraveis = compraveisD
 /* A justificativa da remoção aparece na linha (a gravação dela é a fatia 3). */
 conf("a linha removida mostra a justificativa", src.includes("Removido do executivo"), true);
 conf("... e diz quando não tem", src.includes("sem justificativa registrada"), true);
+
+/* "quando eu clico em conf executivo quero ver a listagem geral como esta
+   nessa tela": a planilha é o trabalho; o depara lado a lado virou consulta. */
+conf("a tela abre na listagem geral", src.includes(`const [filtro, setFiltro] = useState(() => telaExtra?.id || "todos");`), true);
+
+/* "apresentar a linha mais fina": com 443 linhas, cada pixel custa rolagem.
+   Medido na 2498 depois do ajuste: 54 px sem alerta, 71 px com (era 102). */
+conf("a linha da conferência é fina", src.includes("table.tab-conf td { padding: 5px 10px;"), true);
+conf("a descrição corta em duas linhas", src.includes("-webkit-line-clamp: 2"), true);
+conf("... com o texto inteiro no title", src.includes(`<div className="item-desc" title={x.it.desc}>`), true);
+conf("e o alerta cabe numa linha só", src.includes("flex-wrap: nowrap; }"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
