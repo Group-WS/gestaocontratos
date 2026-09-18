@@ -433,7 +433,12 @@ conf("a tela abre na listagem geral", src.includes(`const [filtro, setFiltro] = 
 conf("a linha da conferência é fina", src.includes("table.tab-conf td { padding: 5px 10px;"), true);
 conf("a descrição corta em duas linhas", src.includes("-webkit-line-clamp: 2"), true);
 conf("... com o texto inteiro no title", src.includes(`<div className="item-desc" title={x.it.desc}>`), true);
-conf("e o alerta cabe numa linha só", src.includes("flex-wrap: nowrap; }"), true);
+/* "esse texto deve aparecer inteiro e nao sumir, botao de conferido no final"
+   (18/09/2026): eu tinha cortado a frase com reticências para ganhar altura,
+   mas ela é a razão da linha existir — diz o que conferir. Quem cede é a
+   altura. */
+conf("o alerta aparece inteiro", src.includes("table.tab-conf .lib-alerta > span:first-of-type { white-space: normal; overflow: visible; }"), true);
+conf("... e o conferi vem no fim", src.includes("table.tab-conf .lib-alerta { margin-top: 3px; font-size: 10.5px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;"), true);
 
 /* ---- A CORREÇÃO DELA: DUAS COLUNAS, E SÓ (18/09/2026) ----
    "o fluxo correto é: Concuído Executivo / Aprovado para Compra / e só. o

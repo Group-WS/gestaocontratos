@@ -20857,12 +20857,15 @@ export default function App() {
         table.tab-conf th { padding: 6px 10px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
         .conf-cod { color: var(--text-soft); margin-right: 6px; font-size: 10.5px; }
         table.tab-conf .item-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        /* O alerta cabe numa linha: a frase corta com reticencias (o texto
-           inteiro fica no title) e o "conferi" nunca some, que e' o que a
-           pessoa veio clicar. Com 32 alertas numa verba de 67, deixar a frase
-           quebrar em duas dobrava a altura da lista. */
-        table.tab-conf .lib-alerta { margin-top: 2px; font-size: 10.5px; display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: nowrap; }
-        table.tab-conf .lib-alerta > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        /* O ALERTA APARECE INTEIRO (correcao dela, 18/09/2026): "esse texto
+           deve aparecer inteiro e nao sumir, botao de conferido no final".
+
+           Eu tinha cortado a frase com reticencias pra ganhar altura — mas
+           esta frase e' a razao da linha existir: ela diz o que conferir. Quem
+           cede e' a altura, nao o texto. O "conferi" vem depois da frase, no
+           fim, e nunca some. */
+        table.tab-conf .lib-alerta { margin-top: 3px; font-size: 10.5px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; line-height: 1.4; }
+        table.tab-conf .lib-alerta > span:first-of-type { white-space: normal; overflow: visible; }
         table.tab-conf .lib-alerta > button, table.tab-conf .lib-alerta .lib-conferido-por { flex-shrink: 0; }
         table.tab-conf .pill { padding: 1px 7px; font-size: 10.5px; }
         table.tab-conf .troca-link { font-size: 10.5px; }
