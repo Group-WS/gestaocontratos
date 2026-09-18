@@ -5619,7 +5619,7 @@ function conferirExecutivoObra(categorias) {
 // falso; aqui os nomes dizem o que a pessoa precisa FAZER com a linha.
 const EXEC_META = {
   ok: { label: "Conferido", sub: "item, qtd. e valor batem", color: "var(--ink-2)", bg: "transparent", Icon: CheckCircle2 },
-  somente_um: { label: "Entrou ou saiu", sub: "o que entrou e o que saiu do vendido, por categoria", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
+  somente_um: { label: "Entrou, saiu ou mudou", sub: "o que entrou, o que saiu e o que ficou com outra quantidade ou valor", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
   conferencia_tecnica: {
     label: "Conferência técnica", sub: "número bate — falta olhar medida e compatibilidade",
     color: "var(--alert)", bg: "var(--alert-soft)", Icon: AlertTriangle,
@@ -5785,6 +5785,9 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
               <div className="conf-stat-num conf-stat-duplo">
                 <span className="conf-entrou">+{resumoEntrouSaiu.nEntrou}</span>
                 <span className="conf-saiu">−{resumoEntrouSaiu.nSaiu}</span>
+                {/* O que ficou e mudou de tamanho. Sem ele o cartao dizia
+                    "nada a ver aqui" numa obra que mudou 40 quantidades. */}
+                {resumoEntrouSaiu.nMudou > 0 && <span className="conf-mudou">~{resumoEntrouSaiu.nMudou}</span>}
               </div>
             ) : (
               <div className="conf-stat-num" style={{ color: m.color }}>{cnt(st)}</div>
@@ -6174,7 +6177,7 @@ function resumoEntrouSaiu(cruzamento) {
   const porVerba = new Map();
   const grupo = (v) => {
     const chave = v?.num ?? "—";
-    if (!porVerba.has(chave)) porVerba.set(chave, { num: chave, nome: v?.nome || "", entrou: [], saiu: [] });
+    if (!porVerba.has(chave)) porVerba.set(chave, { num: chave, nome: v?.nome || "", entrou: [], saiu: [], mudou: [] });
     return porVerba.get(chave);
   };
 
@@ -6197,6 +6200,33 @@ function resumoEntrouSaiu(cruzamento) {
     } else if (ve && !ex) {
       grupo(l.verba).saiu.push({ desc: ve.desc, qtd: ve.qtdVendida, un: ve.un, valor: ve.custo ?? 0,
         ...detalheDaPlanilha(ve) });
+    } else if (ve && ex) {
+      /* MUDOU DE QUANTIDADE OU VALOR (pedido dela, 17/09/2026).
+
+         O item ficou nos dois documentos, mas nao do mesmo tamanho. Ate'
+         aqui isso nao aparecia em lugar nenhum deste cartao: em 16/09 a
+         linha "Divergente" virou "Conferido" pra nao travar a esteira, e a
+         diferenca de numero sumiu da vista.
+
+         Pra conferencia isso estava certo; pra pergunta que motivou o
+         cartao — "preciso lancar aditivo pro cliente?" — faltava: dez
+         luminarias que viraram catorze sao cobraveis igual a um item novo.
+
+         Um centavo de diferenca e' arredondamento de conversao, nao
+         mudanca de escopo: abaixo disso as duas listas ficariam cheias de
+         linha que ninguem precisa olhar. */
+      const qtdDe = ve.qtdVendida, qtdPara = ex.qtdVendida;
+      const valorDe = ve.custo ?? 0, valorPara = ex.custo ?? 0;
+      const mudouQtd = qtdDe != null && qtdPara != null && Math.abs(qtdPara - qtdDe) > 0.0001;
+      const mudouValor = Math.abs(valorPara - valorDe) >= 0.01;
+      if (mudouQtd || mudouValor) {
+        grupo(l.verba).mudou.push({
+          desc: ex.desc || ve.desc, un: ex.un || ve.un,
+          qtdDe, qtdPara, valorDe, valorPara, dif: valorPara - valorDe,
+          mudouQtd, mudouValor,
+          ...detalheDaPlanilha(ex, ve),
+        });
+      }
     }
   });
 
@@ -6205,15 +6235,23 @@ function resumoEntrouSaiu(cruzamento) {
       ...g,
       totEntrou: g.entrou.reduce((a, it) => a + (it.valor || 0), 0),
       totSaiu: g.saiu.reduce((a, it) => a + (it.valor || 0), 0),
+      // O que mudou e' SALDO: a linha que cresceu soma, a que encolheu
+      // abate. Somar os dois em modulo diria "mudou R$ 80 mil" numa obra
+      // que no fim mudou R$ 300.
+      totMudou: g.mudou.reduce((a, it) => a + (it.dif || 0), 0),
     }))
+    // Verba que nao teve nenhum dos tres nao entra na lista.
+    .filter((g) => g.entrou.length || g.saiu.length || g.mudou.length)
     .sort((a, b) => String(a.num).localeCompare(String(b.num), "pt-BR", { numeric: true }));
 
   return {
     grupos,
     nEntrou: grupos.reduce((a, g) => a + g.entrou.length, 0),
     nSaiu: grupos.reduce((a, g) => a + g.saiu.length, 0),
+    nMudou: grupos.reduce((a, g) => a + g.mudou.length, 0),
     totEntrou: grupos.reduce((a, g) => a + g.totEntrou, 0),
     totSaiu: grupos.reduce((a, g) => a + g.totSaiu, 0),
+    totMudou: grupos.reduce((a, g) => a + g.totMudou, 0),
   };
 }
 
@@ -6242,18 +6280,55 @@ function LinhaEntrouSaiu({ it, tipo }) {
   );
 }
 
+/* A linha do que MUDOU: o mesmo item, de outro tamanho.
+
+   Mostra o de/para do que mudou — quantidade, valor, ou os dois — porque
+   "mudou" sem o de/para nao serve pra conferir nem pra cobrar. O numero da
+   direita e' a DIFERENCA, com sinal: e' ela que vai pro aditivo. */
+function LinhaMudou({ it }) {
+  const qtd = it.mudouQtd
+    ? `${qtdComUnidade(it.qtdDe, "")} → ${qtdComUnidade(it.qtdPara, it.un)}`
+    : qtdComUnidade(it.qtdPara, it.un);
+  return (
+    <div className="es-linha mudou">
+      <span className="es-sinal">~</span>
+      <div className="es-desc">
+        <div>{it.desc || "—"}</div>
+        {(it.codigo || it.espec || it.fornecedor) && (
+          <div className="es-det" title="Como está na planilha: código · especificação · fornecedor">
+            {[it.codigo, it.espec, it.fornecedor].filter(Boolean).join(" · ")}
+          </div>
+        )}
+        {it.mudouValor && (
+          <div className="es-nota">valor: {fmtBRL(it.valorDe)} → {fmtBRL(it.valorPara)}</div>
+        )}
+      </div>
+      <span className="es-qtd mono">{qtd}</span>
+      <span className={`es-val mono ${it.dif > 0 ? "es-mais" : it.dif < 0 ? "es-menos" : ""}`}>
+        {it.dif > 0 ? "+" : it.dif < 0 ? "−" : ""}{fmtBRL(Math.abs(it.dif))}
+      </span>
+    </div>
+  );
+}
+
 function ResumoEntrouSaiu({ resumo }) {
-  const { grupos, nEntrou, nSaiu, totEntrou, totSaiu } = resumo;
+  const { grupos, nEntrou, nSaiu, nMudou = 0, totEntrou, totSaiu, totMudou = 0 } = resumo;
   if (grupos.length === 0) {
     return (
       <div className="compras-empty">
         <CheckCircle2 size={30} className="dim" />
-        <div className="compras-empty-title">Nada entrou nem saiu</div>
-        <div className="compras-empty-sub">O executivo tem os mesmos itens do vendido. O que mudou de número aparece em Divergente.</div>
+        <div className="compras-empty-title">Nada entrou, saiu nem mudou</div>
+        <div className="compras-empty-sub">O executivo tem os mesmos itens do vendido, nas mesmas quantidades e valores.</div>
       </div>
     );
   }
-  const saldo = totEntrou - totSaiu;
+  /* O SALDO CONTA AS TRES COISAS (17/09/2026).
+
+     Ele responde "quanto o executivo ficou acima ou abaixo do que foi
+     vendido" — e item que cresceu de 10 pra 14 pesa igual a item novo.
+     Com o saldo contando so' entrou e saiu, a conta batia com a lista e
+     nao batia com a obra. */
+  const saldo = totEntrou - totSaiu + totMudou;
   const itens = (n) => `${n} ${n === 1 ? "item" : "itens"}`;
   return (
     <>
@@ -6267,6 +6342,11 @@ function ResumoEntrouSaiu({ resumo }) {
           <div className="es-total-rot">Saiu</div>
           <div className="es-total-val">−{fmtBRL(totSaiu)}</div>
           <div className="es-total-sub">{itens(nSaiu)} vendidos que não estão no executivo</div>
+        </div>
+        <div className="es-total mudou">
+          <div className="es-total-rot">Mudou</div>
+          <div className="es-total-val">{totMudou > 0 ? "+" : totMudou < 0 ? "−" : ""}{fmtBRL(Math.abs(totMudou))}</div>
+          <div className="es-total-sub">{itens(nMudou)} que ficaram, com outra quantidade ou valor</div>
         </div>
         <div className="es-total">
           <div className="es-total-rot">Saldo</div>
@@ -6284,9 +6364,13 @@ function ResumoEntrouSaiu({ resumo }) {
               <span className="vend-nome">{g.nome}</span>
               {g.totEntrou > 0 && <span className="es-grupo-val entrou mono">+{fmtBRL(g.totEntrou)}</span>}
               {g.totSaiu > 0 && <span className="es-grupo-val saiu mono">−{fmtBRL(g.totSaiu)}</span>}
+              {Math.abs(g.totMudou) >= 0.01 && (
+                <span className="es-grupo-val mudou mono">{g.totMudou > 0 ? "+" : "−"}{fmtBRL(Math.abs(g.totMudou))}</span>
+              )}
             </div>
             {g.entrou.map((it, i) => <LinhaEntrouSaiu key={`e${i}`} it={it} tipo="entrou" />)}
             {g.saiu.map((it, i) => <LinhaEntrouSaiu key={`s${i}`} it={it} tipo="saiu" />)}
+            {g.mudou.map((it, i) => <LinhaMudou key={`m${i}`} it={it} />)}
           </div>
         ))}
       </div>
@@ -22518,14 +22602,19 @@ export default function App() {
         .conf-stat-duplo { display: flex; align-items: baseline; gap: 14px; }
         .conf-entrou { color: var(--success); }
         .conf-saiu { color: var(--danger); }
-        .es-topo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+        .conf-mudou { color: var(--amber); }
+        .es-topo { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
         .es-total { padding: 14px 16px; border: 1px solid var(--line-1); border-radius: 12px; background: var(--surface-1); }
         .es-total.entrou { border-color: var(--success-line); background: var(--success-tint); }
         .es-total.saiu { border-color: var(--danger-line); background: var(--danger-tint); }
+        /* MUDOU: cor de atencao, nao de erro. O item continua vendido — o
+           que mudou foi o tamanho dele, e isso e assunto de aditivo. */
+        .es-total.mudou { border-color: var(--amber); background: var(--amber-bg); }
         .es-total-rot { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .es-total-val { margin-top: 4px; font-size: 22px; font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text); }
         .es-total.entrou .es-total-val { color: var(--success); }
         .es-total.saiu .es-total-val { color: var(--danger); }
+        .es-total.mudou .es-total-val { color: var(--amber); }
         .es-total-sub { margin-top: 2px; font-size: 11.5px; color: var(--text-soft); }
         .es-grupo { border-bottom: 1px solid var(--line-1); }
         .es-grupo:last-child { border-bottom: none; }
@@ -22533,12 +22622,17 @@ export default function App() {
         .es-grupo-val { flex-shrink: 0; font-size: 12px; font-weight: 600; }
         .es-grupo-val.entrou { color: var(--success); }
         .es-grupo-val.saiu { color: var(--danger); }
+        .es-grupo-val.mudou { color: var(--amber); }
         .es-linha { display: grid; grid-template-columns: 16px minmax(0, 1fr) 110px 120px; align-items: start; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--line-1); font-size: 12.5px; color: var(--text); }
         .es-linha.entrou { background: var(--success-tint); box-shadow: inset 3px 0 0 var(--success); }
         .es-linha.saiu { background: var(--danger-tint); box-shadow: inset 3px 0 0 var(--danger); }
+        .es-linha.mudou { background: var(--amber-bg); box-shadow: inset 3px 0 0 var(--amber); }
         .es-sinal { font-family: var(--font-mono); font-weight: 700; }
         .es-linha.entrou .es-sinal { color: var(--success); }
         .es-linha.saiu .es-sinal { color: var(--danger); }
+        .es-linha.mudou .es-sinal { color: var(--amber); }
+        .es-mais { color: var(--success); }
+        .es-menos { color: var(--danger); }
         .es-nota { margin-top: 2px; font-size: 11px; color: var(--text-soft); }
         /* Conferencia, nao decisao: menor e mais clara que a nota. */
         .es-det { font-size: 10.5px; color: var(--text-mute); line-height: 1.45; margin-top: 2px; }

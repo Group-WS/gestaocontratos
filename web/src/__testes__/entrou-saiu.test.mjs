@@ -6,15 +6,16 @@
  * ta correta. tem que mostrar exatamente a diferença entre o vendido planilha
  * e o executivo... a ideia é ver se precisa lançar aditivo para o cliente."
  *
- * O QUE ESTE CARTÃO É: a lista de itens que existem em UM documento e não no
- * outro — mais as trocas de produto. É item que apareceu ou sumiu.
+ * O QUE ESTE CARTÃO É, depois da resposta dela ("pode fazer, adicionar a lista
+ * de mudou quantidade ou valor"): TUDO que mudou em relação ao vendido, em três
+ * listas — o que entrou, o que saiu, e o que ficou com outra quantidade ou
+ * valor. Juntas, são exatamente o que se cobra do cliente num aditivo.
  *
- * O QUE ELE NÃO É, e está fixado aqui de propósito: ele NÃO mostra item que
- * ficou nos dois com quantidade ou valor diferente. Essa linha entra em
- * "Conferido", porque em 16/09/2026 ela decidiu que "Divergente" deixaria de
- * ser pendência (`if (status === "diferente") status = "ok"` em
- * `linhaConfExecutivo`). Para a pergunta do aditivo isso importa: 10 luminárias
- * que viraram 14 são cobráveis e não aparecem neste cartão.
+ * A terceira lista nasceu de um buraco: a linha que mudou de número virava
+ * "Conferido" (`if (status === "diferente") status = "ok"` em
+ * `linhaConfExecutivo`, decisão dela de 16/09 para não travar a esteira) e
+ * sumia da vista. Dez luminárias que viraram catorze são cobráveis igual a um
+ * item novo.
  */
 import fs from "node:fs";
 
@@ -92,17 +93,47 @@ const fantasma = M.resumoEntrouSaiu([
 ]);
 conf("item criado e apagado no executivo não conta", fantasma.nEntrou + fantasma.nSaiu, 0);
 
-/* ---- 5. O BURACO, FIXADO DE PROPÓSITO ----
-   Quantidade e valor diferentes NÃO aparecem aqui. Para a pergunta do
-   aditivo, isto é o que o cartão não responde sozinho. */
-const qtdMudou = M.resumoEntrouSaiu([
-  { verba, planilhaVendido: item({ desc: "Luminária", qtdVendida: 10, custo: 1000 }),
-    planilhaExecutivo: item({ desc: "Luminária", qtdVendida: 14, custo: 1400 }) },
+/* ---- 5. MUDOU DE QUANTIDADE OU VALOR (pedido dela, 17/09/2026) ----
+   Era o buraco: item que ficou nos dois documentos com outro tamanho não
+   aparecia em lugar nenhum deste cartão, porque em 16/09 "Divergente" virou
+   "Conferido". Dez luminárias que viraram catorze são cobráveis igual a um
+   item novo — e é essa a pergunta que o cartão existe para responder. */
+const mud = M.resumoEntrouSaiu([
+  { verba, planilhaVendido: item({ desc: "Luminária", qtdVendida: 10, custo: 1000, codigo: "V-1" }),
+    planilhaExecutivo: item({ desc: "Luminária", qtdVendida: 14, custo: 1400, codigo: "05.1", marca: "Stella" }) },
+  { verba, planilhaVendido: item({ desc: "Perfil", qtdVendida: 5, custo: 800 }),
+    planilhaExecutivo: item({ desc: "Perfil", qtdVendida: 5, custo: 500 }) },
+  // mesma coisa dos dois lados: não entra
+  { verba, planilhaVendido: item({ desc: "Fita", qtdVendida: 2, custo: 300 }),
+    planilhaExecutivo: item({ desc: "Fita", qtdVendida: 2, custo: 300 }) },
 ]);
-conf("quantidade que mudou NÃO aparece em entrou/saiu", qtdMudou.nEntrou + qtdMudou.nSaiu, 0);
-conf("... nem no valor somado", qtdMudou.totEntrou + qtdMudou.totSaiu, 0);
-/* E a linha dessas vira "Conferido" na tela — decisão dela de 16/09/2026. */
-conf("a tela transforma 'diferente' em 'ok'", /if \(status === "diferente"\) status = "ok";/.test(src), true);
+conf("item que cresceu entra em MUDOU", mud.nMudou, 2);
+conf("o que não mexeu fica fora", mud.grupos[0].mudou.some((x) => x.desc === "Fita"), false);
+conf("guarda o de/para da quantidade", `${mud.grupos[0].mudou[0].qtdDe}→${mud.grupos[0].mudou[0].qtdPara}`, "10→14");
+conf("e o de/para do valor", `${mud.grupos[0].mudou[0].valorDe}→${mud.grupos[0].mudou[0].valorPara}`, "1000→1400");
+conf("a diferença é o que vai pro aditivo", mud.grupos[0].mudou[0].dif, 400);
+conf("linha que encolheu tem diferença negativa", mud.grupos[0].mudou[1].dif, -300);
+conf("o total do que mudou é SALDO, não módulo", mud.totMudou, 100);
+conf("o detalhe vem do executivo", mud.grupos[0].mudou[0].codigo, "05.1");
+conf("... com o fornecedor dele", mud.grupos[0].mudou[0].fornecedor, "Stella");
+conf("diz o que mudou: quantidade", mud.grupos[0].mudou[0].mudouQtd, true);
+conf("... e valor", mud.grupos[0].mudou[0].mudouValor, true);
+conf("só o valor mudando também conta", mud.grupos[0].mudou[1].mudouQtd, false);
+
+/* Um centavo é arredondamento de conversão, não mudança de escopo. */
+const centavo = M.resumoEntrouSaiu([
+  { verba, planilhaVendido: item({ desc: "X", qtdVendida: 1, custo: 1000 }),
+    planilhaExecutivo: item({ desc: "X", qtdVendida: 1, custo: 1000.005 }) },
+]);
+conf("meio centavo não vira linha", centavo.nMudou, 0);
+conf("... e a verba sem nada some da lista", centavo.grupos.length, 0);
+
+/* O que entrou/saiu NÃO pode virar "mudou" — seriam contados duas vezes. */
+conf("quem entrou não aparece também em mudou", r.grupos[0].mudou.length, 0);
+
+/* O SALDO conta as três coisas: item que cresceu pesa igual a item novo. */
+conf("o saldo do painel soma entrou, saiu e mudou",
+  src.includes("const saldo = totEntrou - totSaiu + totMudou;"), true);
 
 /* ---- 6. Obra vazia não quebra ---- */
 conf("cruzamento vazio não quebra", M.resumoEntrouSaiu([]).nEntrou, 0);
@@ -111,6 +142,11 @@ conf("cruzamento undefined não quebra", M.resumoEntrouSaiu(undefined).nSaiu, 0)
 /* ---- 7. A tela mostra o detalhe ---- */
 conf("a linha desenha o detalhe", src.includes(`{[it.codigo, it.espec, it.fornecedor].filter(Boolean).join(" · ")}`), true);
 conf("e o CSS dele existe", src.includes(".es-det {"), true);
+conf("a lista do que mudou é desenhada", /\{g\.mudou\.map\(\(it, i\) => <LinhaMudou/.test(src), true);
+conf("com o de/para do valor na linha", src.includes("valor: {fmtBRL(it.valorDe)} → {fmtBRL(it.valorPara)}"), true);
+conf("o cartão mostra o terceiro número", /<span className="conf-mudou">~\{resumoEntrouSaiu\.nMudou\}<\/span>/.test(src), true);
+conf("e o rótulo do cartão diz as três coisas", src.includes('label: "Entrou, saiu ou mudou"'), true);
+conf("o CSS da linha nova existe", src.includes(".es-linha.mudou {"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
