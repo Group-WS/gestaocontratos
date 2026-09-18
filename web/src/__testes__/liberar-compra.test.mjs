@@ -305,7 +305,7 @@ conf("o contador usa os produtos do grupo",
 conf("e diz quantos foram concluídos pelo executivo",
   src.includes(`{g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length} concluídos`), true);
 conf("e o que está na tela vira um segundo número",
-  src.includes('{g.itens.length} {soTravados ? (g.itens.length === 1 ? "travado" : "travados") : "nesta busca"}'), true);
+  src.includes("{g.itens.length} nesta busca"), true);
 
 /* ---- ITEM SEM VALOR, MAS LIBERADO, SOBE PARA COMPRAS ----
    Decisão dela em 17/09/2026: "pode mudar a regra, item sem valor liberado
@@ -509,7 +509,11 @@ conf("o cartão peneira a planilha, não troca de lista",
 conf("a régua de 'falta conferir' mora num lugar só",
   src.includes(`const precisaConferir = (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido;`), true);
 conf("o cartão conta por ela", src.includes("x.titulo && precisaConferir(x)).length, 0)}`,"), true);
-conf("o aviso da lista também", src.includes("!x.liberado && precisaConferir(x)).length, 0);"), true);
+/* O aviso em forma de parágrafo saiu em 18/09/2026: "retirar essa frase pois
+   ja tem um filtro em cima". O cartão "Falta conferir" conta o mesmo e leva ao
+   mesmo lugar — duas portas para a mesma sala, uma delas em prosa. */
+conf("o aviso em parágrafo saiu da lista", /produtos esperam a conferência do alerta/.test(src), false);
+conf("e o filtro que ele ligava saiu junto", src.includes("soTravados"), false);
 conf("e a trava da etapa também", src.includes("if (!x.titulo && precisaConferir(x)) tecnica += 1;"), true);
 conf("o filtro do cartão usa a mesma", src.includes("conferencia_tecnica: (x) => precisaConferir(x),"), true);
 conf("e o filtro chega na planilha", src.includes("render: (busca, filtro) => ("), true);

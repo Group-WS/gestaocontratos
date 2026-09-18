@@ -6842,10 +6842,11 @@ const FILTRO_DA_PLANILHA = {
 function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "todos", podeEditar, souAdmin = false, obra,
   onLiberar, onConferir, onConferirVarios, onLiberarSemCliente, onConcluir }) {
   const [abertos, setAbertos] = useState(() => new Set());
-  /* "46 produtos esperam a conferência do alerta" contava e não levava a
-     lugar nenhum: ela leu o aviso e não achou os 46 (17/09/2026). Agora o
-     aviso é o filtro. */
-  const [soTravados, setSoTravados] = useState(false);
+  /* Historia deste trecho: em 17/09 o aviso "46 produtos esperam a
+     conferencia" virou filtro, porque contava e nao levava a lugar nenhum. Em
+     18/09 ele saiu de vez — o cartao "Falta conferir" conta o mesmo e leva ao
+     mesmo lugar, e duas portas pra mesma sala so' ocupam espaco. */
+
   // A linha onde a exceção está sendo escrita, pela chave.
   const [excecao, setExcecao] = useState(null);
   /* SELECIONAR PRA CONCLUIR EM MASSA (pedido dela, 18/09/2026): "adicione a
@@ -6887,15 +6888,14 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
   /* O aviso fala de CONFERENCIA, entao conta so' conferencia. Antes ele
      somava tambem quem espera o cliente — e dizia "283 produtos esperam a
      conferencia do alerta" numa obra onde a maioria esperava o cliente. */
-  const travados = todosOsGrupos.reduce((a, g) => a + compraveis(g).filter((x) => !x.liberado && precisaConferir(x)).length, 0);
+
 
   // O que está na tela: o cartão, o filtro do aviso e a busca, nesta ordem.
   const peneiraDoCartao = FILTRO_DA_PLANILHA[filtro] || null;
-  const filtrando = soTravados || !!busca.trim() || !!peneiraDoCartao;
+  const filtrando = !!busca.trim() || !!peneiraDoCartao;
   const grupos = !filtrando ? todosOsGrupos : todosOsGrupos
     .map((g) => ({ ...g, itens: g.itens.filter((x) =>
-      (!soTravados || (!x.liberado && !x.pode))
-      && (!peneiraDoCartao || x.titulo || peneiraDoCartao(x))
+      (!peneiraDoCartao || x.titulo || peneiraDoCartao(x))
       && casaBusca(textoDoItem(x.it, { num: g.num, nome: g.nome }), busca)) }))
     // Verba que sobrou so' com titulo nao e' resultado.
     .filter((g) => g.itens.some((x) => !x.titulo));
@@ -6918,17 +6918,10 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
               aqui fica o dinheiro, que os cartoes nao dizem. */}
           <b>{fmtBRL(liberado)}</b> <span className="lib-valor">de {fmtBRL(total)} liberados para compra</span>
         </div>
-        {travados > 0 && (
-          <button type="button" className={`lib-travados ${soTravados ? "on" : ""}`}
-            onClick={() => setSoTravados((v) => !v)}
-            title={soTravados ? "Voltar para a lista inteira" : "Mostrar só esses produtos"}>
-            <AlertTriangle size={13} />
-            <span>
-              {travados} {travados === 1 ? "produto espera" : "produtos esperam"} a conferência do alerta antes de poder ser liberado.
-              {" "}<b>{soTravados ? "ver todos" : "ver quais"}</b>
-            </span>
-          </button>
-        )}
+        {/* O AVISO DOS TRAVADOS SAIU (pedido dela, 18/09/2026): "retirar essa
+            frase pois ja tem um filtro em cima". O cartao "Falta conferir"
+            conta o mesmo e leva ao mesmo lugar — duas portas pra mesma sala,
+            uma delas em forma de paragrafo. */}
       </div>
 
       {sel.size > 0 && (
@@ -6957,7 +6950,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
 
       {filtrando && grupos.length === 0 && (
         <div className="empty-note">
-          {soTravados ? "Nenhum produto esperando conferência de alerta com esse termo." : `Nada encontrado para "${busca.trim()}".`}
+          {busca.trim() ? `Nada encontrado para "${busca.trim()}".` : "Nada neste filtro."}
         </div>
       )}
       <div className="vend-list">
@@ -7004,7 +6997,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                     <span className="grp-conta">{g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length} concluídos</span>
                     {filtrando && (
                       <span className="grp-conta grp-conta-filtro">
-                        {g.itens.length} {soTravados ? (g.itens.length === 1 ? "travado" : "travados") : "nesta busca"}
+                        {g.itens.length} nesta busca
                       </span>
                     )}
                   </div>
