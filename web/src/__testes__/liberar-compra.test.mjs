@@ -406,9 +406,11 @@ conf("concluir não exige admin", src.includes("{podeEditar && onConcluir && aCo
 
 /* MÃO DE OBRA aparece na planilha, mas não se compra. */
 /* "ta aparecendo a alocação de recurso ali (mao de obra) nao faz sentido":
-   a coluna fala de compra, não de alocação. Mão de obra deixa a célula vazia. */
+   a coluna fala de compra, não de alocação — e a célula ficou vazia junto com
+   o resto do que ainda não é a vez. */
 conf("mão de obra não escreve alocação na coluna de compra",
-  src.includes(`{x.ehMO ? (\n                            <span className="dim">—</span>`), true);
+  /title="Mão de obra vai para Contratos/.test(src), false);
+conf("e o estilo que sobrou dela foi embora junto", src.includes(".pill-neutro {"), false);
 
 /* UMA REGRA SÓ para "o que se compra": o cartão dizia 0/444 e o placar
    0 de 315 — dois números para a mesma pergunta na mesma tela. */
@@ -439,19 +441,33 @@ conf("e o alerta cabe numa linha só", src.includes("flex-wrap: nowrap; }"), tru
    Eu tinha colocado três, com "Cliente" — era leitura minha, não pedido dela. */
 conf("a tabela tem duas colunas de decisão", src.includes(`<th className="center c-dec">Concluído executivo</th>`), true);
 conf("a coluna Cliente saiu", /<th className="center c-dec">Cliente<\/th>/.test(src), false);
-/* O cliente continua sendo pré-requisito da liberação — ele só não é coluna.
-   Quando é ele que falta, a célula da compra diz, senão sobra um botão
-   apagado sem explicação. */
-conf("mas o cliente continua dito quando falta", src.includes(`{x.pendencia?.tipo === "cliente" && (`), true);
-conf("e a célula diz quando falta o executivo", src.includes("aguarda o executivo"), true);
+/* O cliente continua sendo pré-requisito da liberação — ele só não é coluna
+   nem texto. Quem explica é a dica do botão, quando ele existe. */
+conf("o cliente segue barrando a liberação",
+  src.includes(`: x.pendencia?.tipo === "cliente" ? "O cliente ainda não aprovou este produto"`), true);
+/* "se n ta aprovado, deixa sem nada preenchido" (18/09/2026): texto avulso no
+   meio de colunas de botão não segue padrão. A célula da compra fica VAZIA até
+   ser a vez dela — mão de obra, e enquanto o executivo não concluir. */
+conf("a célula da compra fica vazia até ser a vez dela",
+  src.includes("{x.ehMO || (!x.it.concluidoExecutivo && !x.liberado) ? null"), true);
+conf("nenhum texto avulso sobrou na coluna", /aguarda o (executivo|cliente)/.test(src), false);
 
 /* ---- TUDO NA MESMA TELA (18/09/2026) ----
    "ai clicar no filtro conferencia tecnica, ele filtra tudo que falta
    conferencia, mas tudo na mesma tela." */
 conf("o cartão peneira a planilha, não troca de lista",
   src.includes("const FILTRO_DA_PLANILHA = {"), true);
-conf("conferência técnica mostra o que pede conferência",
-  src.includes(`conferencia_tecnica: (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido,`), true);
+/* UMA RÉGUA SÓ (pergunta dela, 18/09/2026: "esse total que espera conferencia
+   ta vindo da onde? ... devem ser a mesma regra"). Eram duas: a barra da etapa
+   contava as linhas do cruzamento com alerta técnico (7 na 2498) e a lista
+   contava o que trava a liberação (32). Agora as três — barra, cartão e aviso
+   — saem de `precisaConferir`. */
+conf("a régua de 'falta conferir' mora num lugar só",
+  src.includes(`const precisaConferir = (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido;`), true);
+conf("o cartão conta por ela", src.includes("x.titulo && precisaConferir(x)).length, 0)}`,"), true);
+conf("o aviso da lista também", src.includes("!x.liberado && precisaConferir(x)).length, 0);"), true);
+conf("e a trava da etapa também", src.includes("if (!x.titulo && precisaConferir(x)) tecnica += 1;"), true);
+conf("o filtro do cartão usa a mesma", src.includes("conferencia_tecnica: (x) => precisaConferir(x),"), true);
 conf("e o filtro chega na planilha", src.includes("render: (busca, filtro) => ("), true);
 /* O "Entrou, saiu ou mudou" é o único que abre painel próprio: ele fala de
    itens que nem estão na planilha do executivo (os que saíram). */
@@ -460,8 +476,14 @@ conf("o entrou/saiu mantém o painel dele", src.includes("{mostrarResumo ? <Resu
 /* O aviso fala de conferência, então conta só conferência: ele dizia "283
    produtos esperam a conferência" numa obra onde a maioria esperava o
    cliente. Medido na 2498 depois: 32. */
-conf("o aviso dos travados conta só conferência",
-  src.includes(`.filter((x) => !x.liberado && x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido).length, 0);`), true);
+/* Os cartões que ela pediu: "0 / total de itens : aprovado para compra; 0/
+   total de itens: concluido executivo; o total que precisam de conferencia
+   tecnica". E "aquele total conferido pode retirar, n faz sentido". */
+conf("o cartão de concluído existe", src.includes(`label: "Concluído executivo",`), true);
+conf("o de aprovado para compra também", src.includes(`label: "Aprovado para compra",`), true);
+conf("e o de falta conferir", src.includes(`label: "Falta conferir",`), true);
+conf("o cartão 'Conferido' saiu da barra", src.includes(`st !== "ok" && !m.semCartao`), true);
+conf("e o placar parou de repetir os cartões", src.includes("de {fmtBRL(total)} liberados para compra"), true);
 
 /* ---- O CÓDIGO NA FRENTE (18/09/2026) ----
    "pode trazer os códigos dos itens, pode ajudar o usuário a filtrar." */

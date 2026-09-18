@@ -5641,9 +5641,11 @@ function conferirExecutivoObra(categorias) {
 const EXEC_META = {
   ok: { label: "Conferido", sub: "item, qtd. e valor batem", color: "var(--ink-2)", bg: "transparent", Icon: CheckCircle2 },
   somente_um: { label: "Entrou, saiu ou mudou", sub: "o que entrou, o que saiu e o que ficou com outra quantidade ou valor", color: "var(--amber)", bg: "var(--amber-bg)", Icon: AlertTriangle },
+  /* Continua existindo pro selo da linha no depara; como CARTAO ele deu lugar
+     ao "Falta conferir", que conta pela regra unica (`precisaConferir`). */
   conferencia_tecnica: {
     label: "Conferência técnica", sub: "número bate — falta olhar medida e compatibilidade",
-    color: "var(--alert)", bg: "var(--alert-soft)", Icon: AlertTriangle,
+    color: "var(--alert)", bg: "var(--alert-soft)", Icon: AlertTriangle, semCartao: true,
   },
 };
 
@@ -5777,7 +5779,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   // No cartão "Entrou ou saiu" a lista lado a lado dá lugar ao resumo por categoria.
   const mostrarResumo = filtro === "somente_um" && !!resumoEntrouSaiu;
   // A tela extra ocupa o lugar da lista, como o resumo do "Entrou ou saiu".
-  const mostrarExtra = !!telaExtra && filtro === telaExtra.id;
+  const mostrarExtra = !!telaExtra;
 
   // Agrupa por verba, na ordem em que as verbas aparecem — é assim que
   // a conferência acontece na prática: abre a verba, olha o que o
@@ -5805,7 +5807,25 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   return (
     <>
       <div className="conf-stats">
-        {Object.entries(meta).map(([st, m]) => (
+        {/* Os cartoes da planilha vem primeiro: sao as duas decisoes da tela,
+            na ordem do fluxo. O "Entrou, saiu ou mudou" fecha a barra — ele
+            responde a comparacao com o vendido, que e' outra pergunta. */}
+        {(telaExtra?.cartoes || []).map((c) => (
+          <button key={c.id} className={`conf-stat ${filtro === c.id ? "active" : ""}`}
+            style={{ borderColor: filtro === c.id ? c.color : undefined }}
+            onClick={() => setFiltro(filtro === c.id ? telaExtra.id : c.id)}>
+            <div className="conf-stat-num" style={{ color: c.color }}>{c.contador}</div>
+            <div className="conf-stat-label">{c.label}</div>
+            <div className="conf-stat-sub">{c.sub}</div>
+          </button>
+        ))}
+        {/* A BARRA DIZ O TRABALHO, nao o que ja' passou (pedido dela,
+            18/09/2026): "aquele total conferido pode retirar, n faz sentido".
+
+            `meta.ok` continua existindo — e' ele que da' o selo verde da linha
+            no depara —, so' nao vira cartao: um numero grande de "ja' conferido"
+            ocupava um quarto da barra sem levar a lugar nenhum. */}
+        {Object.entries(meta).filter(([st, m]) => st !== "ok" && !m.semCartao).map(([st, m]) => (
           <button key={st} className={`conf-stat ${filtro === st ? "active" : ""}`} style={{ borderColor: filtro === st ? m.color : undefined }} onClick={() => setFiltro(filtro === st ? "todos" : st)}>
             {st === "somente_um" && resumoEntrouSaiu ? (
               <div className="conf-stat-num conf-stat-duplo">
@@ -5822,15 +5842,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             <div className="conf-stat-sub">{m.sub}</div>
           </button>
         ))}
-        {telaExtra && (
-          <button className={`conf-stat ${filtro === telaExtra.id ? "active" : ""}`}
-            style={{ borderColor: filtro === telaExtra.id ? telaExtra.color : undefined }}
-            onClick={() => setFiltro(filtro === telaExtra.id ? "todos" : telaExtra.id)}>
-            <div className="conf-stat-num" style={{ color: telaExtra.color }}>{telaExtra.contador}</div>
-            <div className="conf-stat-label">{telaExtra.label}</div>
-            <div className="conf-stat-sub">{telaExtra.sub}</div>
-          </button>
-        )}
+
       </div>
 
       <div className="compras-filtros">
@@ -6476,17 +6488,25 @@ function cruzamentoExecutivo(obra) {
 // O que falta aprovar na Conf. Executivo, contado do mesmo jeito que os
 // cards: linha aprovada vira "ok" e sai da conta. Ver bloqueioDaEtapa.
 function pendenciasConfExecutivo(obra) {
-  const aprovacoes = obra.aprovacoes || new Set();
-  // So' a conferencia tecnica trava (16/09/2026): a divergencia de numero
-  // deixou de ser pendencia, e o que cabe/e' compativel continua sendo a
-  // pergunta que ninguem responde depois.
-  const p = { tecnica: 0 };
+  /* A MESMA REGUA DA TELA (18/09/2026). Ela perguntou de onde vinha o total
+     que espera conferencia: vinham de dois lugares. A barra da etapa contava
+     as linhas do cruzamento com alerta TECNICO (7 na 2498) e a lista contava
+     o que esta' travado pra liberacao (32) — que inclui o item que ENTROU no
+     executivo sem ter sido vendido.
+
+     Agora as tres contas (barra da etapa, cartao e aviso da lista) saem de
+     `precisaConferir`, sobre a mesma lista que a tabela mostra. Efeito
+     colateral dito a ela: concluir a etapa passou a exigir conferir tambem os
+     que entraram sem ter sido vendidos — sao eles que travam a liberacao. */
+  const entrouPorDesc = new Set();
   cruzamentoExecutivo(obra).forEach((item) => {
     const l = linhaConfExecutivo(item);
-    if (aprovacoes.has(`exec:${l.catNum}:${l.codigo}`)) return;
-    if (l.status === "conferencia_tecnica") p.tecnica++;
+    if (l.naoVendido) entrouPorDesc.add(chaveDescricao(l.desc));
   });
-  return p;
+  let tecnica = 0;
+  itensParaLiberar(obra, entrouPorDesc, { comMaoDeObra: true })
+    .forEach((g) => g.itens.forEach((x) => { if (!x.titulo && precisaConferir(x)) tecnica += 1; }));
+  return { tecnica };
 }
 
 // CONF. EXECUTIVO — depara Vendido Planilha × Planilha Executivo.
@@ -6737,13 +6757,27 @@ const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo && !x.e
 
    A cor da linha diz o estado da conferencia: laranja quando falta olhar o
    alerta tecnico, normal quando esta' conferido. */
+/* FALTA CONFERIR — UMA REGRA SO' (pergunta dela, 18/09/2026: "esse total que
+   espera conferencia ta vindo da onde? ... esse total e o total de conferencia
+   que aparecem em cima devem ser a mesma regra").
+
+   Eram duas reguas diferentes na mesma tela: o cartao de cima contava as
+   linhas do cruzamento com alerta TECNICO (7 na 2498), e o aviso da lista
+   contava o que esta' travado pra liberacao (32) — que inclui o item que
+   ENTROU no executivo sem ter sido vendido. As duas coisas se resolvem com o
+   mesmo botao, o "conferi", e as duas travam a mesma liberacao.
+
+   Entao a regra e' uma: precisa de conferencia o que pede o "conferi" e ainda
+   nao recebeu. A falta do CLIENTE fica de fora — ela nao se resolve
+   conferindo, e' outro portao. */
+const precisaConferir = (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido;
+
 /* O que cada cartao peneira na planilha. Fora daqui, o cartao nao filtra —
    ele so' muda o que esta destacado em cima. */
 const FILTRO_DA_PLANILHA = {
-  // Pede conferencia: o que se resolve com o "conferi" e trava a liberacao.
-  conferencia_tecnica: (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido,
-  // Conferido: o que nao tem nada pendente de olhar.
-  ok: (x) => !x.pendencia || !!x.it.alertaConferido,
+  conferencia_tecnica: (x) => precisaConferir(x),
+  falta_concluir: (x) => !x.titulo && !x.it.concluidoExecutivo,
+  falta_liberar: (x) => !x.titulo && !x.ehMO && !x.liberado,
 };
 
 function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "todos", podeEditar, souAdmin = false, obra,
@@ -6791,8 +6825,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
   /* O aviso fala de CONFERENCIA, entao conta so' conferencia. Antes ele
      somava tambem quem espera o cliente — e dizia "283 produtos esperam a
      conferencia do alerta" numa obra onde a maioria esperava o cliente. */
-  const travados = todosOsGrupos.reduce((a, g) => a + compraveis(g)
-    .filter((x) => !x.liberado && x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido).length, 0);
+  const travados = todosOsGrupos.reduce((a, g) => a + compraveis(g).filter((x) => !x.liberado && precisaConferir(x)).length, 0);
 
   // O que está na tela: o cartão, o filtro do aviso e a busca, nesta ordem.
   const peneiraDoCartao = FILTRO_DA_PLANILHA[filtro] || null;
@@ -6819,11 +6852,9 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
     <>
       <div className="lib-topo">
         <div className="lib-placar">
-          <b>{nLiberados}</b> de {nItens} {nItens === 1 ? "produto liberado" : "produtos liberados"}
-          {/* O concluido anda junto: sao as duas decisoes da tela, e ver so' uma
-              faz parecer que a outra nao existe. */}
-          <span className="lib-valor">{nConcluidos} de {nProdutos} concluídos pelo executivo</span>
-          <span className="lib-valor mono">{fmtBRL(liberado)} de {fmtBRL(total)}</span>
+          {/* Os numeros de liberado e concluido agora sao os cartoes de cima —
+              aqui fica o dinheiro, que os cartoes nao dizem. */}
+          <b>{fmtBRL(liberado)}</b> <span className="lib-valor">de {fmtBRL(total)} liberados para compra</span>
         </div>
         {travados > 0 && (
           <button type="button" className={`lib-travados ${soTravados ? "on" : ""}`}
@@ -7086,17 +7117,17 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                           {/* MAO DE OBRA NAO SE COMPRA: ela aparece na planilha (a tela
                               mostra tudo), mas o destino dela e' Contratos — e dizer isso
                               e' melhor do que um botao que nunca deveria ser clicado. */}
-                          {/* Mao de obra nao se compra — e a coluna fica vazia.
-                              Escrever "mao de obra" aqui era repetir a alocacao
-                              de recurso numa coluna que fala de compra. */}
-                          {x.ehMO ? (
-                            <span className="dim">—</span>
-                          ) : !x.it.concluidoExecutivo && !x.liberado ? (
-                            /* A ORDEM E' A REGRA: enquanto o executivo nao concluir,
-                               nao ha' o que o administrador decidir aqui. Dizer isso e'
-                               melhor do que um botao apagado sem explicacao. */
-                            <span className="dim" title="O executivo precisa concluir esta linha antes">aguarda o executivo</span>
-                          ) : x.liberado ? (
+                          {/* VAZIO ENQUANTO NAO E' A VEZ DELA (correcao dela,
+                              18/09/2026): "se n ta aprovado, deixa sem nada
+                              preenchido".
+
+                              Mao de obra nao se compra. E, pela ordem que ela
+                              definiu, enquanto o executivo nao concluir nao ha' o
+                              que o administrador decidir — entao a celula fica
+                              limpa, em vez de explicar em texto o que a coluna do
+                              lado ja' mostra. O botao aparece quando e' a vez. */}
+                          {x.ehMO || (!x.it.concluidoExecutivo && !x.liberado) ? null
+                            : x.liberado ? (
                             <div className="status-par">
                               <span className="pill pill-ok" title={x.it.liberadoCompra?.em
                                 ? `Liberado em ${new Date(x.it.liberadoCompra.em).toLocaleDateString("pt-BR")}${x.it.liberadoCompra.por ? ` por ${x.it.liberadoCompra.por}` : ""}`
@@ -7129,12 +7160,6 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                   ja existe no Plano de Compras: bloqueia por padrao, mas
                                   quem tem autoridade libera dizendo por que — e fica
                                   gravado no item, com nome. */}
-                              {/* O cliente saiu da tabela como coluna, mas continua
-                                  sendo pre-requisito: quando e' ele que falta, a celula
-                                  diz — senao sobra um botao apagado sem explicacao. */}
-                              {x.pendencia?.tipo === "cliente" && (
-                                <div className="conf-aguarda" title="A aprovação do cliente vem antes da liberação">aguarda o cliente</div>
-                              )}
                               {podeEditar && souAdmin && x.pendencia?.tipo === "cliente" && onLiberarSemCliente && (
                                 excecao === x.chave
                                   ? <FormExcecaoCliente onCancelar={() => setExcecao(null)}
@@ -7234,8 +7259,36 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         label: "Liberar para Compra",
         sub: "o que o executivo libera para comprar",
         color: "var(--green)",
-        // Mesma regra do placar da lista: `compraveisDoGrupo`.
-        contador: `${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => x.liberado).length, 0)}/${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).length, 0)}`,
+        /* OS CARTOES DA PLANILHA (pedido dela, 18/09/2026): "0 / total de
+           itens : aprovado para compra; 0/ total de itens: concluido
+           executivo; o total que precisam de conferencia tecnica".
+
+           Todos contam a MESMA lista que a tabela mostra, e cada um e' o
+           filtro dela — numero e lista nao podem discordar. */
+        cartoes: [
+          {
+            id: "falta_concluir",
+            label: "Concluído executivo",
+            sub: "o que o executivo já terminou de conferir",
+            color: "var(--brand)",
+            contador: `${gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length, 0)}/${gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo).length, 0)}`,
+          },
+          {
+            id: "falta_liberar",
+            label: "Aprovado para compra",
+            sub: "o que o administrador liberou para comprar",
+            color: "var(--green)",
+            contador: `${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => x.liberado).length, 0)}/${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).length, 0)}`,
+          },
+          {
+            id: "conferencia_tecnica",
+            label: "Falta conferir",
+            sub: "alerta técnico ou item que entrou sem ter sido vendido",
+            color: "var(--alert)",
+            contador: `${gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && precisaConferir(x)).length, 0)}`,
+          },
+        ],
+        contador: "",
         render: (busca, filtro) => (
           <PlanilhaConferenciaView grupos={gruposParaLiberar} busca={busca} filtro={filtro} podeEditar={podeEditar} souAdmin={souAdmin}
             onLiberar={onLiberarCompra} onConferir={onConferirAlerta} onConferirVarios={onConferirAlertaEmVarios}
@@ -9356,7 +9409,7 @@ function bloqueioDaEtapa(id, obra) {
   if (id !== "executivo_conferencia" || !obra) return null;
   const { tecnica } = pendenciasConfExecutivo(obra);
   if (tecnica === 0) return null;
-  return `Falta aprovar ${tecnica} em conferência técnica`;
+  return `Falta conferir ${tecnica} ${tecnica === 1 ? "produto" : "produtos"}`;
 }
 
 function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
@@ -20791,7 +20844,6 @@ export default function App() {
         table.tab-conf td.c-check { padding-top: 8px; }
         table.tab-conf th.c-dec { width: 132px; }
         table.tab-conf th.c-sit { width: 172px; }
-        .conf-aguarda { margin-top: 3px; font-size: 10px; color: var(--text-mute); }
         .conf-det { margin-top: 1px; font-size: 10.5px; color: var(--text-mute); line-height: 1.35; }
         /* LINHA FINA (pedido dela, 18/09/2026): "apresentar a linha mais
            fina". Sao 443 linhas numa obra — cada pixel de altura custa uma
@@ -20818,7 +20870,6 @@ export default function App() {
            tooltip — quem confere precisa ler sem descobrir que da' pra passar
            o mouse. */
         .conf-removido { margin-top: 4px; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; font-size: 11px; color: var(--danger); }
-        .pill-neutro { color: var(--text-soft); background: var(--surface-2); border: 1px solid var(--line-2); }
         @media (max-width: 1100px) { table.tab-conf th.c-unit, table.tab-conf td:nth-child(3) { display: none; } }
         @media (max-width: 760px) { table.grp-itens { table-layout: auto; } }
         .cli-excecao { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; text-align: left; }
