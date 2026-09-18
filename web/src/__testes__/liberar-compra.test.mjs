@@ -371,11 +371,11 @@ conf("e solta a amarra no celular", /@media \(max-width: 760px\) \{ table\.grp-i
  */
 conf("a tela pede a planilha inteira, com mão de obra",
   src.includes("itensParaLiberar(obra, entrouPorDesc, { comMaoDeObra: true })"), true);
-conf("as sete colunas estão na tabela",
-  ["Produto", "Qtd", "Custo unit.", "Total", "Cliente", "Concluído", "Aprovado p/ compra"]
+conf("as colunas da planilha estão na tabela",
+  ["Produto", "Qtd", "Custo unit.", "Total", "Concluído executivo", "Aprovado p/ compra"]
     .every((c) => src.includes(`>${c}</th>`)), true);
-conf("código, espec., fornecedor e ambiente ficam na célula do produto",
-  src.includes(`[codigoVisivel(x.it), x.it.especificacao, x.it.marca ? \`Fornecedor: \${nomeDoFornecedor(x.it)}\` : null, x.it.ambiente]`), true);
+conf("espec., fornecedor e ambiente ficam na célula do produto",
+  src.includes(`[x.it.especificacao, x.it.marca ? \`Fornecedor: \${nomeDoFornecedor(x.it)}\` : null, x.it.ambiente]`), true);
 
 /* A COR DIZ O ESTADO: laranja quando falta olhar o alerta técnico, normal
    quando está conferido. */
@@ -432,6 +432,53 @@ conf("a linha da conferência é fina", src.includes("table.tab-conf td { paddin
 conf("a descrição corta em duas linhas", src.includes("-webkit-line-clamp: 2"), true);
 conf("... com o texto inteiro no title", src.includes(`<div className="item-desc" title={x.it.desc}>`), true);
 conf("e o alerta cabe numa linha só", src.includes("flex-wrap: nowrap; }"), true);
+
+/* ---- A CORREÇÃO DELA: DUAS COLUNAS, E SÓ (18/09/2026) ----
+   "o fluxo correto é: Concuído Executivo / Aprovado para Compra / e só. o
+   aprovado para compra só libera se o concluido executivo estiver aprovado."
+   Eu tinha colocado três, com "Cliente" — era leitura minha, não pedido dela. */
+conf("a tabela tem duas colunas de decisão", src.includes(`<th className="center c-dec">Concluído executivo</th>`), true);
+conf("a coluna Cliente saiu", /<th className="center c-dec">Cliente<\/th>/.test(src), false);
+/* O cliente continua sendo pré-requisito da liberação — ele só não é coluna.
+   Quando é ele que falta, a célula da compra diz, senão sobra um botão
+   apagado sem explicação. */
+conf("mas o cliente continua dito quando falta", src.includes(`{x.pendencia?.tipo === "cliente" && (`), true);
+conf("e a célula diz quando falta o executivo", src.includes("aguarda o executivo"), true);
+
+/* ---- TUDO NA MESMA TELA (18/09/2026) ----
+   "ai clicar no filtro conferencia tecnica, ele filtra tudo que falta
+   conferencia, mas tudo na mesma tela." */
+conf("o cartão peneira a planilha, não troca de lista",
+  src.includes("const FILTRO_DA_PLANILHA = {"), true);
+conf("conferência técnica mostra o que pede conferência",
+  src.includes(`conferencia_tecnica: (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido,`), true);
+conf("e o filtro chega na planilha", src.includes("render: (busca, filtro) => ("), true);
+/* O "Entrou, saiu ou mudou" é o único que abre painel próprio: ele fala de
+   itens que nem estão na planilha do executivo (os que saíram). */
+conf("o entrou/saiu mantém o painel dele", src.includes("{mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} />"), true);
+
+/* O aviso fala de conferência, então conta só conferência: ele dizia "283
+   produtos esperam a conferência" numa obra onde a maioria esperava o
+   cliente. Medido na 2498 depois: 32. */
+conf("o aviso dos travados conta só conferência",
+  src.includes(`.filter((x) => !x.liberado && x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido).length, 0);`), true);
+
+/* ---- O CÓDIGO NA FRENTE (18/09/2026) ----
+   "pode trazer os códigos dos itens, pode ajudar o usuário a filtrar." */
+conf("o código sai destacado, em mono", src.includes(`<span className="conf-cod mono">{codigoVisivel(x.it)}</span>`), true);
+
+/* ---- SELECIONAR PARA CONCLUIR EM MASSA (18/09/2026) ---- */
+conf("existe seleção por linha", src.includes(`aria-label="Selecionar linha"`), true);
+conf("e pela verba inteira", src.includes(`aria-label="Selecionar a verba"`), true);
+conf("a barra conclui o que está selecionado", /<Check size=\{12\} \/> Concluir \{sel\.size\}/.test(src), true);
+conf("... e diz quantas ficaram fora da tela", src.includes("fora do que está na tela"), true);
+conf("a seleção some no modo leitura", src.includes("{podeEditar && onConcluir && (\n                            <input type=\"checkbox\"") || src.includes(`{podeEditar && onConcluir && (`), true);
+/* Título de trecho não é produto: não entra na seleção nem na conclusão. */
+conf("título não entra na conclusão em massa", src.includes(".filter((x) => sel.has(x.chave) && !x.titulo)"), true);
+
+/* O cabeçalho quebra em duas linhas: "Concluído executivo" em 104 px saía por
+   cima do vizinho. */
+conf("o cabeçalho da conferência pode quebrar", src.includes("table.tab-conf th { padding: 6px 10px; white-space: normal;"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

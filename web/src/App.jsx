@@ -5839,7 +5839,14 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
           contador={`${visiveis.length} de ${porStatus.length} linhas`} />
       </div>
 
-      {mostrarExtra ? telaExtra.render(busca) : mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} /> : (
+      {/* TUDO NA MESMA TELA (pedido dela, 18/09/2026): "ai clicar no filtro
+          conferencia tecnica, ele filtra tudo que falta conferencia, mas tudo
+          na mesma tela". O cartao deixou de trocar de lista: ele peneira a
+          planilha, que continua sendo a tela. O unico que abre painel proprio
+          e' o "Entrou, saiu ou mudou" — ele fala de itens que nem estao na
+          planilha do executivo (os que sairam). */}
+      {mostrarResumo ? <ResumoEntrouSaiu resumo={resumoEntrouSaiu} />
+        : telaExtra ? telaExtra.render(busca, filtro) : (
         <>
           {onAprovarLinha && pendentesVisiveis.length > 0 && (
             <div className="selecao-massa">
@@ -6730,8 +6737,17 @@ const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo && !x.e
 
    A cor da linha diz o estado da conferencia: laranja quando falta olhar o
    alerta tecnico, normal quando esta' conferido. */
-function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar, souAdmin = false, obra,
-  onLiberar, onConferir, onConferirVarios, onLiberarSemCliente, onAprovarCliente, onConcluir }) {
+/* O que cada cartao peneira na planilha. Fora daqui, o cartao nao filtra —
+   ele so' muda o que esta destacado em cima. */
+const FILTRO_DA_PLANILHA = {
+  // Pede conferencia: o que se resolve com o "conferi" e trava a liberacao.
+  conferencia_tecnica: (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido,
+  // Conferido: o que nao tem nada pendente de olhar.
+  ok: (x) => !x.pendencia || !!x.it.alertaConferido,
+};
+
+function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "todos", podeEditar, souAdmin = false, obra,
+  onLiberar, onConferir, onConferirVarios, onLiberarSemCliente, onConcluir }) {
   const [abertos, setAbertos] = useState(() => new Set());
   /* "46 produtos esperam a conferência do alerta" contava e não levava a
      lugar nenhum: ela leu o aviso e não achou os 46 (17/09/2026). Agora o
@@ -6739,6 +6755,19 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
   const [soTravados, setSoTravados] = useState(false);
   // A linha onde a exceção está sendo escrita, pela chave.
   const [excecao, setExcecao] = useState(null);
+  /* SELECIONAR PRA CONCLUIR EM MASSA (pedido dela, 18/09/2026): "adicione a
+     opcao de selecionar para concluir em massa por item".
+
+     O botao da verba conclui a verba inteira; isto e' pro caso do meio —
+     escolher a dedo dez linhas no meio de 443. A selecao sobrevive ao filtro
+     e a' busca, e a barra diz quantas ficaram fora da tela, no mesmo desenho
+     que ela aprovou na Conf. Executivo. */
+  const [sel, setSel] = useState(() => new Set());
+  const marcar = (chave) => setSel((p) => {
+    const n = new Set(p);
+    n.has(chave) ? n.delete(chave) : n.add(chave);
+    return n;
+  });
   const alternar = (num) => setAbertos((p) => {
     const n = new Set(p);
     n.has(num) ? n.delete(num) : n.add(num);
@@ -6759,15 +6788,22 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
   const nLiberados = todosOsGrupos.reduce((a, g) => a + compraveis(g).filter((x) => x.liberado).length, 0);
   const nConcluidos = todosOsGrupos.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length, 0);
   const nProdutos = todosOsGrupos.reduce((a, g) => a + g.itens.filter((x) => !x.titulo).length, 0);
-  const travados = todosOsGrupos.reduce((a, g) => a + compraveis(g).filter((x) => !x.liberado && !x.pode).length, 0);
+  /* O aviso fala de CONFERENCIA, entao conta so' conferencia. Antes ele
+     somava tambem quem espera o cliente — e dizia "283 produtos esperam a
+     conferencia do alerta" numa obra onde a maioria esperava o cliente. */
+  const travados = todosOsGrupos.reduce((a, g) => a + compraveis(g)
+    .filter((x) => !x.liberado && x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido).length, 0);
 
-  // O que está na tela: o filtro do aviso e a busca, nesta ordem.
-  const filtrando = soTravados || !!busca.trim();
+  // O que está na tela: o cartão, o filtro do aviso e a busca, nesta ordem.
+  const peneiraDoCartao = FILTRO_DA_PLANILHA[filtro] || null;
+  const filtrando = soTravados || !!busca.trim() || !!peneiraDoCartao;
   const grupos = !filtrando ? todosOsGrupos : todosOsGrupos
     .map((g) => ({ ...g, itens: g.itens.filter((x) =>
       (!soTravados || (!x.liberado && !x.pode))
+      && (!peneiraDoCartao || x.titulo || peneiraDoCartao(x))
       && casaBusca(textoDoItem(x.it, { num: g.num, nome: g.nome }), busca)) }))
-    .filter((g) => g.itens.length);
+    // Verba que sobrou so' com titulo nao e' resultado.
+    .filter((g) => g.itens.some((x) => !x.titulo));
 
   if (!nItens) {
     return (
@@ -6801,6 +6837,30 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
           </button>
         )}
       </div>
+
+      {sel.size > 0 && (
+        <div className="selecao-massa">
+          <span><b>{sel.size}</b> {sel.size === 1 ? "linha selecionada" : "linhas selecionadas"}</span>
+          {(() => {
+            const naTela = new Set(grupos.flatMap((g) => g.itens.map((x) => x.chave)));
+            const fora = [...sel].filter((k) => !naTela.has(k)).length;
+            return fora > 0 ? <span className="dim">· {fora} fora do que está na tela</span> : null;
+          })()}
+          <div className="selecao-acoes">
+            {podeEditar && onConcluir && (
+              <button className="btn-aprovar-linha" onClick={() => {
+                const alvos = todosOsGrupos.flatMap((g) => g.itens)
+                  .filter((x) => sel.has(x.chave) && !x.titulo)
+                  .map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
+                if (!alvos.length) return;
+                onConcluir(alvos, true);
+                setSel(new Set());
+              }}><Check size={12} /> Concluir {sel.size}</button>
+            )}
+            <button className="btn-cancelar" onClick={() => setSel(new Set())}>Limpar</button>
+          </div>
+        </div>
+      )}
 
       {filtrando && grupos.length === 0 && (
         <div className="empty-note">
@@ -6891,12 +6951,31 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                 <table className="tab-compras grp-itens tab-conf">
                   <thead>
                     <tr>
+                      <th className="c-check">
+                        {/* Marca a verba inteira do que esta' na tela. */}
+                        {podeEditar && onConcluir && (
+                          <input type="checkbox" className="conf-check" aria-label="Selecionar a verba"
+                            checked={g.itens.every((x) => x.titulo || sel.has(x.chave))}
+                            onChange={(e) => setSel((p) => {
+                              const n = new Set(p);
+                              g.itens.forEach((x) => { if (!x.titulo) { e.target.checked ? n.add(x.chave) : n.delete(x.chave); } });
+                              return n;
+                            })} />
+                        )}
+                      </th>
                       <th>Produto</th>
                       <th className="c-qtd">Qtd</th>
                       <th className="right c-unit">Custo unit.</th>
                       <th className="right c-total">Total</th>
-                      <th className="center c-dec">Cliente</th>
-                      <th className="center c-dec">Concluído</th>
+                      {/* DUAS COLUNAS, e so' (correcao dela, 18/09/2026): "o fluxo
+                          correto e': Concluido Executivo / Aprovado para Compra / e
+                          so'. o aprovado para compra so' libera se o concluido
+                          executivo estiver aprovado."
+
+                          A aprovacao do cliente continua sendo pre-requisito da
+                          liberacao — ela so' nao e' mais coluna aqui; quando estiver
+                          faltando, a celula da compra diz. */}
+                      <th className="center c-dec">Concluído executivo</th>
                       <th className="center c-sit">Aprovado p/ compra</th>
                     </tr>
                   </thead>
@@ -6920,8 +6999,14 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                         : x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "row-alert"
                         : ""
                       }>
+                        <td className="c-check">
+                          {podeEditar && onConcluir && (
+                            <input type="checkbox" className="conf-check" aria-label="Selecionar linha"
+                              checked={sel.has(x.chave)} onChange={() => marcar(x.chave)} />
+                          )}
+                        </td>
                         <td>
-                          {/* O texto inteiro fica no `title`: a descricao corta em
+                          {/* O texto inteiro fica no title: a descricao corta em
                               duas linhas pra lista caber na tela. */}
                           <div className="item-desc" title={x.it.desc}>{x.it.desc}</div>
                           {/* Codigo, especificacao, fornecedor e ambiente: a linha de
@@ -6930,7 +7015,13 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                               coluna pra cada uma esmaga a descricao. */}
                           {(codigoVisivel(x.it) || x.it.especificacao || x.it.marca || x.it.ambiente) && (
                             <div className="conf-det">
-                              {[codigoVisivel(x.it), x.it.especificacao, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente]
+                              {/* O CODIGO NA FRENTE, em mono (pedido dela,
+                                  18/09/2026): "pode trazer os codigos dos itens,
+                                  pode ajudar o usuario a filtrar". A busca de cima
+                                  ja' procura por ele; destacado, da' pra achar a
+                                  linha no meio de 443 sem ler descricao. */}
+                              {codigoVisivel(x.it) && <span className="conf-cod mono">{codigoVisivel(x.it)}</span>}
+                              {[x.it.especificacao, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente]
                                 .filter(Boolean).join(" · ")}
                             </div>
                           )}
@@ -6970,29 +7061,6 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                             o numero da planilha, e e' com ele que se confere. */}
                         <td className="mono right">{fmtBRL(x.valor)}</td>
 
-                        {/* CLIENTE — veio da tela que sera aposentada (ADR-005). */}
-                        <td className="center">
-                          {x.aprovadoCliente ? (
-                            <div className="status-par">
-                              <span className="pill pill-ok" title={x.it.aprovadoCliente?.em
-                                ? `Aprovado em ${new Date(x.it.aprovadoCliente.em).toLocaleDateString("pt-BR")}${x.it.aprovadoCliente.por ? ` por ${x.it.aprovadoCliente.por}` : ""}`
-                                : "A assinatura da obra aprova este item"}>
-                                <Check size={10} /> aprovado
-                              </span>
-                              {podeEditar && x.it.aprovadoCliente && onAprovarCliente && (
-                                <button type="button" className="troca-link"
-                                  onClick={() => onAprovarCliente([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</button>
-                              )}
-                            </div>
-                          ) : (
-                            <button className="pill pill-btn pill-wait" disabled={!podeEditar || !onAprovarCliente}
-                              title={podeEditar ? "Marcar que o cliente aprovou este produto" : MODO_LEITURA_DICA}
-                              onClick={() => onAprovarCliente([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
-                              aprovar
-                            </button>
-                          )}
-                        </td>
-
                         {/* CONCLUIDO EXECUTIVO — quem trabalha a linha diz que terminou. */}
                         <td className="center">
                           {x.it.concluidoExecutivo ? (
@@ -7023,6 +7091,11 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                               de recurso numa coluna que fala de compra. */}
                           {x.ehMO ? (
                             <span className="dim">—</span>
+                          ) : !x.it.concluidoExecutivo && !x.liberado ? (
+                            /* A ORDEM E' A REGRA: enquanto o executivo nao concluir,
+                               nao ha' o que o administrador decidir aqui. Dizer isso e'
+                               melhor do que um botao apagado sem explicacao. */
+                            <span className="dim" title="O executivo precisa concluir esta linha antes">aguarda o executivo</span>
                           ) : x.liberado ? (
                             <div className="status-par">
                               <span className="pill pill-ok" title={x.it.liberadoCompra?.em
@@ -7056,6 +7129,12 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
                                   ja existe no Plano de Compras: bloqueia por padrao, mas
                                   quem tem autoridade libera dizendo por que — e fica
                                   gravado no item, com nome. */}
+                              {/* O cliente saiu da tabela como coluna, mas continua
+                                  sendo pre-requisito: quando e' ele que falta, a celula
+                                  diz — senao sobra um botao apagado sem explicacao. */}
+                              {x.pendencia?.tipo === "cliente" && (
+                                <div className="conf-aguarda" title="A aprovação do cliente vem antes da liberação">aguarda o cliente</div>
+                              )}
                               {podeEditar && souAdmin && x.pendencia?.tipo === "cliente" && onLiberarSemCliente && (
                                 excecao === x.chave
                                   ? <FormExcecaoCliente onCancelar={() => setExcecao(null)}
@@ -7078,7 +7157,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", podeEditar
   );
 }
 
-function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, souAdmin = false, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente, onAprovarCliente, onConcluirExecutivo }) {
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, souAdmin = false, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente, onConcluirExecutivo }) {
   // Vem da obra e é gravado no banco. Antes era useState local: as
   // aprovações valiam só na sessão e sumiam no F5.
   const aprovacoes = obra.aprovacoes || new Set();
@@ -7157,10 +7236,10 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         color: "var(--green)",
         // Mesma regra do placar da lista: `compraveisDoGrupo`.
         contador: `${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => x.liberado).length, 0)}/${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).length, 0)}`,
-        render: (busca) => (
-          <PlanilhaConferenciaView grupos={gruposParaLiberar} busca={busca} podeEditar={podeEditar} souAdmin={souAdmin}
+        render: (busca, filtro) => (
+          <PlanilhaConferenciaView grupos={gruposParaLiberar} busca={busca} filtro={filtro} podeEditar={podeEditar} souAdmin={souAdmin}
             onLiberar={onLiberarCompra} onConferir={onConferirAlerta} onConferirVarios={onConferirAlertaEmVarios}
-            onLiberarSemCliente={onLiberarSemCliente} onAprovarCliente={onAprovarCliente}
+            onLiberarSemCliente={onLiberarSemCliente}
             onConcluir={onConcluirExecutivo} obra={obra} />
         ),
       }}
@@ -20708,15 +20787,23 @@ export default function App() {
         table.tab-conf th.c-qtd { width: 88px; }
         table.tab-conf th.c-unit { width: 100px; }
         table.tab-conf th.c-total { width: 112px; }
-        table.tab-conf th.c-dec { width: 104px; }
-        table.tab-conf th.c-sit { width: 168px; }
+        table.tab-conf th.c-check { width: 34px; }
+        table.tab-conf td.c-check { padding-top: 8px; }
+        table.tab-conf th.c-dec { width: 132px; }
+        table.tab-conf th.c-sit { width: 172px; }
+        .conf-aguarda { margin-top: 3px; font-size: 10px; color: var(--text-mute); }
         .conf-det { margin-top: 1px; font-size: 10.5px; color: var(--text-mute); line-height: 1.35; }
         /* LINHA FINA (pedido dela, 18/09/2026): "apresentar a linha mais
            fina". Sao 443 linhas numa obra — cada pixel de altura custa uma
            rolagem. A descricao para de quebrar em quatro linhas: ela ganha
            reticencias em duas, e o texto inteiro fica no title. */
         table.tab-conf td { padding: 5px 10px; font-size: 12px; line-height: 1.35; }
-        table.tab-conf th { padding: 6px 10px; }
+        /* O CABECALHO QUEBRA EM DUAS LINHAS. A regra geral do th e' nowrap, e
+           "Concluido executivo" em 104 px saia por cima do vizinho — ela viu
+           os textos se sobrepondo. Aqui a coluna e' estreita de proposito,
+           entao quem cede e' o texto. */
+        table.tab-conf th { padding: 6px 10px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
+        .conf-cod { color: var(--text-soft); margin-right: 6px; font-size: 10.5px; }
         table.tab-conf .item-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         /* O alerta cabe numa linha: a frase corta com reticencias (o texto
            inteiro fica no title) e o "conferi" nunca some, que e' o que a
@@ -23315,7 +23402,7 @@ export default function App() {
             ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
-          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} souAdmin={souAdmin} onAprovarCliente={aprovarItensPeloCliente} onConcluirExecutivo={concluirItensExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} souAdmin={souAdmin} onConcluirExecutivo={concluirItensExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "assinatura_cliente" && (
             <>
               {/* A TOTAL abre fechada quando ja' esta assinada: nao ha' o que
