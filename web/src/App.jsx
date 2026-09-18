@@ -10881,16 +10881,31 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         const naTela = buscando ? g.itens.filter(casaRow) : g.itens;
         if (buscando && naTela.length === 0) return null;
         const aberto = abertos.has(g.num) || buscando;
-        const nItens = g.itens.filter((r) => !r.it.troca).length;
+        /* A LINHA TROCADA NAO CONTA EM NADA — e' historico (18/09/2026).
+
+           Ela trocou um produto na 24 e a barra continuou dizendo "tudo
+           solicitado", escondendo o item novo que entrou pendente. O total
+           de produtos ja' descartava a linha trocada, mas os contadores de
+           solicitado e comprado nao: a linha antiga estava solicitada de
+           antes, entao 22 solicitados + 1 trocada fechavam os 23 e o selo
+           dizia que nao faltava nada.
+
+           Uma lista so' pra todos os contadores: e' quando cada um filtra
+           do seu jeito que a barra afirma duas coisas. */
+        const ativos = g.itens.filter((r) => !r.it.troca);
+        const nItens = ativos.length;
+        const nTrocas = g.itens.length - ativos.length;
         const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
         /* O check da verba age sobre o que esta' na tela: com busca ligada,
            marcar a verba nao pode selecionar 40 linhas enquanto 3 aparecem. */
         const nNaTela = naTela.filter((r) => !r.it.troca).length;
         const nSelNaTela = naTela.filter((r) => sel.has(r.chave)).length;
-        const nComprados = g.itens.filter((r) => r.it.comprado).length;
-        const nSolicitados = g.itens.filter((r) => estaSolicitado(r.it)).length;
-        const valorComprado = g.itens.reduce((t, r) => t + (r.it.comprado ? r.material : 0), 0);
-        const grupoAssociado = g.itens.every((r) => casamentos.has(r.chave));
+        const nComprados = ativos.filter((r) => r.it.comprado).length;
+        const nSolicitados = ativos.filter((r) => estaSolicitado(r.it)).length;
+        const valorComprado = ativos.reduce((t, r) => t + (r.it.comprado ? r.material : 0), 0);
+        // Linha trocada nao se cadastra no Sienge: exigir insumo nela fazia a
+        // verba inteira parecer nao associada.
+        const grupoAssociado = ativos.every((r) => casamentos.has(r.chave));
         // As colunas do Sienge só aparecem na etapa Sienge. Em Tudo, Sem
         // canal e nos outros canais elas respondiam uma pergunta que ali
         // ninguém fez — e "não lançado" em produto sem canal é falso.
@@ -10925,6 +10940,16 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                     title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
                     {nComprados === nItens ? <><Check size={11} /> tudo comprado</> : `${nComprados} de ${nItens} comprados`}
                   </span>
+                  {/* TEVE TROCA AQUI (pedido dela, 18/09/2026): "sinalizar no
+                      grupo se teve alguma troca". Sem isto, a troca so'
+                      aparecia abrindo a verba e achando a linha riscada. */}
+                  {nTrocas > 0 && (
+                    <span className="grp-troca" title={nTrocas === 1
+                      ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
+                      : `${nTrocas} produtos desta verba foram trocados — as linhas antigas ficam riscadas, sem contar`}>
+                      <ArrowLeftRight size={11} /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
+                    </span>
+                  )}
                   {nSel > 0 && <span className="grp-avulsos">{nSel} selecionados</span>}
                 </div>
               </button>
@@ -20835,6 +20860,9 @@ export default function App() {
         .sel-barra-topo { flex-wrap: wrap; }
         .grp-comprados { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line-2); white-space: nowrap; }
         .grp-comprados.parte { color: var(--brand); background: var(--brand-tint); border-color: var(--brand-line); }
+        /* Teve troca nesta verba: mesma forma dos outros selos, cor do
+           trocado (a mesma da etiqueta da linha riscada). */
+        .grp-troca { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; color: var(--amber); background: var(--amber-bg); border: 1px solid var(--amber); }
         .grp-comprados.tudo { color: color-mix(in srgb, var(--green) 75%, var(--ink)); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
         .pill.pill-btn:disabled { cursor: not-allowed; }
         .pill.pill-btn.pill-wait:disabled { opacity: .45; }

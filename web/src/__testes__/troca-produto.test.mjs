@@ -85,5 +85,32 @@ conf("a riscada mostra como era", linhaCompra.includes("antes: {qtdFmt} {it.un} 
 conf("fora da etapa Sienge dá pra marcar solicitado", linhaCompra.includes('!noSienge && it.canalCompra === "sienge"'), true);
 conf("a riscada mostra 'trocado' no lugar dos status", /<td colSpan=\{nCols - 5\}[\s\S]{0,200}troca-pill[\s\S]{0,300}> trocado/.test(linhaCompra), true);
 
+/* ---- A BARRA DO GRUPO NAS COMPRAS (18/09/2026) ----
+ *
+ * Ela trocou um produto na verba 24 e a barra continuou dizendo "tudo
+ * solicitado", escondendo o item novo que entrou pendente: o total de
+ * produtos já descartava a linha trocada, mas os contadores de solicitado e
+ * comprado não. A linha antiga estava solicitada de antes — 22 solicitados
+ * + 1 trocada fechavam os 23.
+ *
+ * Uma lista só para todos os contadores: é quando cada um filtra do seu
+ * jeito que a barra afirma duas coisas.
+ */
+conf("uma lista só de ativos alimenta os contadores",
+  src.includes("const ativos = g.itens.filter((r) => !r.it.troca);"), true);
+conf("o total de produtos vem dela", src.includes("const nItens = ativos.length;"), true);
+conf("os solicitados também", src.includes("const nSolicitados = ativos.filter((r) => estaSolicitado(r.it)).length;"), true);
+conf("os comprados também", src.includes("const nComprados = ativos.filter((r) => r.it.comprado).length;"), true);
+conf("e o valor comprado", src.includes("const valorComprado = ativos.reduce((t, r) => t + (r.it.comprado ? r.material : 0), 0);"), true);
+/* Linha trocada não se cadastra no Sienge: exigir insumo nela fazia a verba
+   inteira parecer não associada. */
+conf("a associação do grupo ignora a trocada", src.includes("const grupoAssociado = ativos.every((r) => casamentos.has(r.chave));"), true);
+
+/* O SELO DE TROCA na barra: "sinalizar no grupo se teve alguma troca". */
+conf("a barra conta as trocas", src.includes("const nTrocas = g.itens.length - ativos.length;"), true);
+conf("e mostra o selo quando houve", /\{nTrocas > 0 && \(/.test(src), true);
+conf("com o plural certo", src.includes('{nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}'), true);
+conf("e o CSS do selo existe", src.includes(".grp-troca {"), true);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
