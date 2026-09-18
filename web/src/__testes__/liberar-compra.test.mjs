@@ -327,5 +327,35 @@ const comV = M.produtosMAT(comValor).map((r) => r.it.codigo);
 conf("material com valor continua subindo", comV.includes("27.1"), true);
 conf("mão de obra com valor continua fora", comV.includes("27.2"), false);
 
+/* ---- A TELA DE APROVAÇÃO DO CLIENTE (17/09/2026) ----
+   Três pedidos dela no mesmo dia: os dois nomes ("Aprovação da planilha
+   total" e "parcial"), a seta para abrir e fechar, e desaprovar em massa
+   "assim como tem a liberacao em massa do grupo". */
+conf("a aprovação total tem nome próprio", src.includes('titulo="Aprovação da planilha total"'), true);
+conf("a parcial também", src.includes('titulo="Aprovação da planilha parcial"'), true);
+conf("as duas abrem e fecham pela seta", /function SecaoAprovacao\(\{ titulo, sub, selo, aberta, onAlternar, children \}\)/.test(src), true);
+conf("a seta troca de lado", /aberta \? <ChevronDown size=\{15\}/.test(src), true);
+conf("o cabeçalho diz se já está assinada", src.includes("assinada em {new Date(obra.clienteAssinouEm"), true);
+
+/* Desaprovar em massa: o contrário exato do "Aprovar N", e só sobre o que
+   está aprovado — nunca sobre a verba inteira. */
+conf("existe desfazer em massa por grupo", /<X size=\{12\} \/> Desfazer \{aprovados\.length\}/.test(src), true);
+conf("ele age só sobre os aprovados",
+  src.includes("const aprovados = g.itens.filter((x) => !x.titulo && x.aprovadoCliente);"), true);
+conf("... e manda desaprovar, não aprovar",
+  /onAprovar\(aprovados\.map\(\(x\) => \(\{ catIdx: x\.catIdx, itemIdx: x\.itemIdx \}\)\), false\)/.test(src), true);
+conf("pergunta antes, porque desfazer em massa não tem volta",
+  /Desfazer a aprovação do cliente em \$\{aprovados\.length\}/.test(src), true);
+conf("e some no modo leitura", src.includes("{podeEditar && aprovados.length > 0 && ("), true);
+/* Título não é produto: não entra nem no aprovar nem no desaprovar. */
+conf("o aprovar em massa ignora títulos", src.includes("const pendentes = g.itens.filter((x) => !x.titulo && !x.aprovadoCliente);"), true);
+
+/* A LARGURA DA TABELA. Nestas telas a tabela é a própria `.grp-itens` — sem
+   div em volta —, então a regra `.grp-itens table` nunca a alcançava e cada
+   verba saía com uma largura medida pelo conteúdo. */
+conf("a tabela do grupo ocupa a largura inteira", src.includes("table.grp-itens { width: 100%; table-layout: fixed; }"), true);
+conf("com as colunas fixas, iguais em toda verba", src.includes("table.grp-itens th.c-qtd { width: 104px; }"), true);
+conf("e solta a amarra no celular", /@media \(max-width: 760px\) \{ table\.grp-itens \{ table-layout: auto; \} \}/.test(src), true);
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

@@ -6555,6 +6555,11 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
         {visiveis.map((g) => {
           const aberto = abertos.has(g.num);
           const pendentes = g.itens.filter((x) => !x.titulo && !x.aprovadoCliente);
+          /* Desfazer em massa (pedido dela, 17/09/2026): "acrescente a opcao
+             para desaprovar em massa, assim como tem a liberacao em massa do
+             grupo". Aprovar a verba errada era um clique; desfazer eram
+             dezenas, um por linha. */
+          const aprovados = g.itens.filter((x) => !x.titulo && x.aprovadoCliente);
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
@@ -6571,6 +6576,19 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                     <button className="btn-aprovar-linha"
                       onClick={() => onAprovar(pendentes.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
                       <CheckCircle2 size={12} /> Aprovar {pendentes.length}
+                    </button>
+                  )}
+                  {podeEditar && aprovados.length > 0 && (
+                    <button className="btn-desaprovar"
+                      title="Tira a aprovação do cliente destes produtos — eles voltam a esperar"
+                      onClick={() => {
+                        if (!window.confirm(
+                          `Desfazer a aprovação do cliente em ${aprovados.length} ${aprovados.length === 1 ? "produto" : "produtos"} da verba ${g.num}?\n\n` +
+                          "Eles voltam a esperar a aprovação e não podem ser liberados para compra."
+                        )) return;
+                        onAprovar(aprovados.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), false);
+                      }}>
+                      <X size={12} /> Desfazer {aprovados.length}
                     </button>
                   )}
                 </div>
@@ -8805,6 +8823,29 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
    O anexo é a prova. Se uma compra for questionada meses depois, o
    documento assinado precisa estar aqui dentro — não no e-mail de alguém
    que talvez nem trabalhe mais aqui. */
+/* AS DUAS APROVACOES DO CLIENTE, cada uma num bloco que abre e fecha
+   (pedido dela, 17/09/2026): "vamos mudar o nome: Aprovacao da planilha total
+   (essa opcao colocar a seta para expandir ou fechar) ou aprovacao da planilha
+   parcial".
+
+   Os nomes dizem o que cada uma faz: a TOTAL e' a assinatura da planilha
+   inteira de uma vez; a PARCIAL e' item a item, pro cliente que segurou
+   alguns. Antes as duas ficavam abertas, empilhadas, e a tela abria com um
+   formulario grande na frente da lista de trabalho. */
+function SecaoAprovacao({ titulo, sub, selo, aberta, onAlternar, children }) {
+  return (
+    <div className="aprov-secao">
+      <button type="button" className="aprov-secao-cab" onClick={onAlternar} aria-expanded={aberta}>
+        {aberta ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
+        <span className="aprov-secao-tit">{titulo}</span>
+        <span className="aprov-secao-sub">{sub}</span>
+        {selo}
+      </button>
+      {aberta && <div className="aprov-secao-corpo">{children}</div>}
+    </div>
+  );
+}
+
 function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEditar }) {
   const jaAssinou = !!obra.clienteAssinouEm;
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
@@ -18172,6 +18213,10 @@ export default function App() {
   const [usuario, setUsuario] = useState(null);
   // Estado da edição da obra aberta: quem tem a trava e se há algo por salvar.
   const [edicao, setEdicao] = useState({ minha: false, por: null, desde: null });
+  /* As duas aprovacoes do cliente. A total nasce fechada quando a obra ja'
+     esta assinada — o que sobra ali e' registro, nao trabalho. */
+  const [aprovTotalAberta, setAprovTotalAberta] = useState(true);
+  const [aprovParcialAberta, setAprovParcialAberta] = useState(true);
   const [salvando, setSalvando] = useState(null);
   const [carregandoDados, setCarregandoDados] = useState(false);
 
@@ -20393,6 +20438,29 @@ export default function App() {
         .lib-alerta.conferido { color: var(--ink-3); }
         .lib-conferido-por { font-size: 10px; color: var(--ink-3); font-style: italic; }
         .cli-bloco { margin-top: 18px; }
+        /* AS DUAS APROVACOES, cada uma num bloco que abre e fecha. */
+        .aprov-secao { border: 1px solid var(--line-1); border-radius: 14px; background: var(--surface-1); margin-bottom: 14px; overflow: hidden; }
+        .aprov-secao-cab { display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 16px; background: none; border: none; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+        .aprov-secao-cab:hover { background: var(--surface-2); }
+        .aprov-secao-tit { font-size: 13.5px; font-weight: 600; flex-shrink: 0; }
+        .aprov-secao-sub { font-size: 11.5px; color: var(--text-soft); flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .aprov-secao-corpo { padding: 0 16px 16px; }
+        /* Desfazer em massa: mesma forma do irmao verde, cor de recuo. */
+        .btn-desaprovar { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--line-2); border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: var(--text-soft); cursor: pointer; }
+        .btn-desaprovar:hover { border-color: var(--danger); color: var(--danger); }
+        /* A TABELA DO GRUPO ocupa a largura inteira.
+
+           Nestas duas telas (Aprovacao do Cliente e Liberar para Compra) a
+           tabela E a propria .grp-itens — nao ha div em volta —, entao a
+           regra ".grp-itens table" nunca a alcancava: cada verba saia com uma
+           largura diferente, medida pelo conteudo, e sobrava um vazio a
+           direita. Com largura fixa as colunas de todas as verbas se
+           alinham e a descricao quebra em vez de esticar. */
+        table.grp-itens { width: 100%; table-layout: fixed; }
+        table.grp-itens th.c-qtd { width: 104px; }
+        table.grp-itens th.right { width: 172px; }
+        table.grp-itens th.center { width: 178px; }
+        @media (max-width: 760px) { table.grp-itens { table-layout: auto; } }
         .cli-excecao { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; text-align: left; }
         .cli-excecao .form-input { font-size: 11.5px; }
         .cli-excecao-acoes { display: flex; gap: 6px; justify-content: flex-end; }
@@ -22970,13 +23038,29 @@ export default function App() {
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
           {tab === "assinatura_cliente" && (
             <>
-              <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}
-                onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
-              {/* A aprovacao PARCIAL, embaixo da assinatura: a tela de cima
-                  continua sendo a da obra inteira, e esta responde "o que o
-                  cliente ainda esta segurando?". */}
-              <AprovacaoClienteItens grupos={itensParaLiberar(obraComAditivos, null, { comMaoDeObra: true })} obra={obraComAditivos}
-                podeEditar={edicao.minha} onAprovar={aprovarItensPeloCliente} />
+              {/* A TOTAL abre fechada quando ja' esta assinada: nao ha' o que
+                  fazer ali, e o trabalho do dia e' a lista de baixo. */}
+              <SecaoAprovacao
+                titulo="Aprovação da planilha total"
+                sub="o cliente assina a planilha inteira de uma vez"
+                aberta={aprovTotalAberta}
+                onAlternar={() => setAprovTotalAberta((v) => !v)}
+                selo={obra.clienteAssinouEm
+                  ? <span className="pill pill-ok"><Check size={10} /> assinada em {new Date(obra.clienteAssinouEm + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                  : <span className="pill pill-wait">sem assinatura</span>}>
+                <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}
+                  onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
+              </SecaoAprovacao>
+              {/* A PARCIAL responde outra pergunta: "o que o cliente ainda
+                  esta segurando?". E' a lista de trabalho, entao abre aberta. */}
+              <SecaoAprovacao
+                titulo="Aprovação da planilha parcial"
+                sub="item a item, quando o cliente segura alguns"
+                aberta={aprovParcialAberta}
+                onAlternar={() => setAprovParcialAberta((v) => !v)}>
+                <AprovacaoClienteItens grupos={itensParaLiberar(obraComAditivos, null, { comMaoDeObra: true })} obra={obraComAditivos}
+                  podeEditar={edicao.minha} onAprovar={aprovarItensPeloCliente} />
+              </SecaoAprovacao>
             </>
           )}
           {tab === "diario" && (
