@@ -72,7 +72,7 @@ const telas = [
   { modulo: "arquivo" },
   { modulo: "comparativo", codigoDaObra: "2450", tab: null },
   { modulo: "comparativo", codigoDaObra: "2450", tab: "executivo" },
-  { modulo: "comparativo", codigoDaObra: "2498", tab: "assinatura_cliente" },
+  { modulo: "comparativo", codigoDaObra: "2498", tab: "executivo_conferencia" },
   { modulo: "comparativo", codigoDaObra: "2195", tab: "contratos" },
 ];
 telas.forEach((t) => {
@@ -87,9 +87,16 @@ telas.forEach((t) => {
 /* Toda etapa da esteira tem nome no endereço: uma etapa sem slug viraria
    um link que abre a obra no lugar errado, calado. */
 ["vendido_planilha", "vendido_conferencia", "executivo", "executivo_conferencia",
- "assinatura_cliente", "comparativo", "compras", "contratos", "diario"].forEach((etapa) => {
+ "comparativo", "compras", "contratos", "diario"].forEach((etapa) => {
   conf(`a etapa ${etapa} tem endereço`, !!M.SLUG_ETAPA[etapa], true);
 });
+
+/* A ABA "Aprovação do Cliente" foi aposentada em 18/09/2026 — as duas coisas
+   dela moram dentro da Conf. Executivo. O endereço antigo NÃO pode virar tela
+   em branco: link salvo, e-mail antigo e favorito continuam abrindo, agora na
+   Conf. Executivo. */
+conf("a rota antiga /cliente ainda responde", M.telaDoEndereco("/obra/2498/cliente")?.tab, "executivo_conferencia");
+conf("... e a etapa aposentada não gera mais endereço", !!M.SLUG_ETAPA.assinatura_cliente, false);
 
 /* ---- A obra errada: as duas corridas de 17/09/2026 ----
    Entrar por /obra/2450/executivo abriu a 2195 duas vezes em quatro. A 2195

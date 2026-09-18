@@ -231,7 +231,19 @@ conf("e a linha de mão de obra não entra", M.itensParaLiberar(partido)[0]?.ite
 /* A tela abre mostrando tudo, e não "falta aprovar" — verba com tudo
    aprovado desaparecia da tela. */
 conf("a tela do cliente abre em todos", /const \[filtro, setFiltro\] = useState\("todos"\);/.test(src), true);
-conf("e pede a lista com mão de obra", /itensParaLiberar\(obraComAditivos, null, \{ comMaoDeObra: true \}\)/.test(src), true);
+conf("e pede a lista com mão de obra",
+  /itensParaLiberar\(obraComAditivos \|\| obra, null, \{ comMaoDeObra: true \}\)/.test(src), true);
+/* A aba dela foi aposentada em 18/09/2026: a aprovação do cliente (total e
+   parcial) passou a morar dentro da Conf. Executivo, em blocos que abrem e
+   fecham. Some-la sem mudar de casa travaria a obra inteira — é a assinatura
+   que destrava o Plano de Compras. */
+conf("a aba Aprovação do Cliente saiu da esteira",
+  /\{ id: "assinatura_cliente", label: "Aprovação do Cliente"/.test(src), false);
+conf("a assinatura mudou de casa, não sumiu",
+  src.includes(`titulo="Aprovação da planilha total"`), true);
+conf("a aprovação parcial também", src.includes(`titulo="Aprovação da planilha parcial"`), true);
+conf("e só aparece enquanto não há assinatura da obra inteira",
+  src.includes("{onAprovarCliente && !obra.clienteAssinouEm && ("), true);
 
 /* ---- LIBERAR O GRUPO INTEIRO ----
    Pedido dela em 17/09/2026: "colocar opcao para liberar todos para compra

@@ -2304,8 +2304,11 @@ const TELA_DO_EVENTO = {
   liberou_compra: "executivo_conferencia",
   conferiu_alerta: "executivo_conferencia",
   liberou_sem_cliente: "executivo_conferencia",
-  aprovou_cliente: "assinatura_cliente",
-  assinatura: "assinatura_cliente",
+  /* A aba "Aprovacao do Cliente" foi aposentada em 18/09/2026: os dois
+     eventos dela passam a aparecer no rodape da Conf. Executivo, que e' onde
+     a aprovacao do cliente acontece agora. */
+  aprovou_cliente: "executivo_conferencia",
+  assinatura: "executivo_conferencia",
   cmv: "vendido_conferencia",
   liberou_compras: "comparativo",
   sem_assinatura: "comparativo",
@@ -7182,7 +7185,13 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
   );
 }
 
-function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, souAdmin = false, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente, onConcluirExecutivo }) {
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, souAdmin = false, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente, onConcluirExecutivo,
+  usuario, onRegistrarAssinatura, onRemoverAssinatura, onAprovarCliente, obraComAditivos }) {
+  /* A aprovacao do cliente mudou de casa (18/09/2026). Os dois blocos nascem
+     FECHADOS: o trabalho do dia e' a planilha, e a assinatura e' um evento que
+     acontece uma vez. O cabecalho ja' diz o estado sem abrir. */
+  const [totalAberta, setTotalAberta] = useState(false);
+  const [parcialAberta, setParcialAberta] = useState(false);
   // Vem da obra e é gravado no banco. Antes era useState local: as
   // aprovações valiam só na sessão e sumiam no F5.
   const aprovacoes = obra.aprovacoes || new Set();
@@ -7247,6 +7256,33 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
   }, [linhasBrutas]);
 
   return (
+    <>
+      {/* A APROVACAO DO CLIENTE, que era uma aba (18/09/2026). Fica em cima
+          porque e' portao: sem ela o Plano de Compras nao libera. Fechada por
+          padrao — o cabecalho ja' diz o estado. */}
+      {onRegistrarAssinatura && (
+        <SecaoAprovacao
+          titulo="Aprovação da planilha total"
+          sub="o cliente assina a planilha inteira de uma vez"
+          aberta={totalAberta}
+          onAlternar={() => setTotalAberta((v) => !v)}
+          selo={obra.clienteAssinouEm
+            ? <span className="pill pill-ok"><Check size={10} /> assinada em {new Date(obra.clienteAssinouEm + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+            : <span className="pill pill-wait">sem assinatura</span>}>
+          <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={onRegistrarAssinatura}
+            onRemover={onRemoverAssinatura} podeEditar={podeEditar} />
+        </SecaoAprovacao>
+      )}
+      {onAprovarCliente && !obra.clienteAssinouEm && (
+        <SecaoAprovacao
+          titulo="Aprovação da planilha parcial"
+          sub="item a item, quando o cliente segura alguns"
+          aberta={parcialAberta}
+          onAlternar={() => setParcialAberta((v) => !v)}>
+          <AprovacaoClienteItens grupos={itensParaLiberar(obraComAditivos || obra, null, { comMaoDeObra: true })}
+            obra={obraComAditivos || obra} podeEditar={podeEditar} onAprovar={onAprovarCliente} />
+        </SecaoAprovacao>
+      )}
     <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
       alertasPorVerba={alertasPorVerba}
       colALabel="Planilha (vendido)" colBLabel="Planilha (executivo)"
@@ -7297,6 +7333,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         ),
       }}
       onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
+    </>
   );
 }
 
@@ -8584,13 +8621,18 @@ const SLUG_ETAPA = {
   vendido_conferencia: "cmv",
   executivo: "executivo",
   executivo_conferencia: "conferencia",
-  assinatura_cliente: "cliente",
   comparativo: "plano",
   compras: "compras",
   contratos: "contratos",
   diario: "diario",
 };
-const ETAPA_DO_SLUG = Object.fromEntries(Object.entries(SLUG_ETAPA).map(([etapa, slug]) => [slug, etapa]));
+const ETAPA_DO_SLUG = {
+  ...Object.fromEntries(Object.entries(SLUG_ETAPA).map(([etapa, slug]) => [slug, etapa])),
+  /* A rota antiga da aba aposentada (18/09/2026) continua respondendo: ela
+     leva pra Conf. Executivo, onde a aprovacao do cliente passou a morar.
+     Link salvo, e-mail antigo e favorito nao podem virar tela em branco. */
+  cliente: "executivo_conferencia",
+};
 
 /* O Inicio e' a raiz, e por isso vale "". Os outros modulos viram uma
    palavra so'. "a_contratar" vira "gestao" porque e' assim que ela chama
@@ -9341,7 +9383,18 @@ const ETAPAS_PLANEJAMENTO = [
   { id: "vendido_conferencia", label: "CMV", icon: GitCompare },
   { id: "executivo", label: "Executivo", icon: BookOpen },
   { id: "executivo_conferencia", label: "Conf. Executivo", icon: GitCompare },
-  { id: "assinatura_cliente", label: "Aprovação do Cliente", icon: ShieldCheck },
+  /* "Aprovação do Cliente" SAIU DA ESTEIRA em 18/09/2026, a pedido dela: "e a
+     tela de aprovacao do cliente, ja podemos remover? ela n faz mais sentido
+     agora".
+
+     As duas coisas que moravam la' mudaram de casa, e nao sumiram — sumir
+     seria travar a obra inteira, porque e' a assinatura do cliente que
+     destrava o Plano de Compras. Agora as duas ficam dentro da Conf.
+     Executivo, em blocos que abrem e fecham:
+       - a assinatura da planilha inteira (o portao);
+       - a aprovacao item a item, pro caso do cliente segurar alguns.
+     O `assinatura_cliente` continua existindo como CHAVE (o historico e a
+     rota antiga apontam pra ele), so' nao e' mais uma etapa da esteira. */
   { id: "comparativo", label: "Plano de Compras", icon: LayoutGrid },
   { id: "compras", label: "Compras de Produtos", icon: ShoppingCart },
 ];
@@ -18555,10 +18608,6 @@ export default function App() {
   const [usuario, setUsuario] = useState(null);
   // Estado da edição da obra aberta: quem tem a trava e se há algo por salvar.
   const [edicao, setEdicao] = useState({ minha: false, por: null, desde: null });
-  /* As duas aprovacoes do cliente. A total nasce fechada quando a obra ja'
-     esta assinada — o que sobra ali e' registro, nao trabalho. */
-  const [aprovTotalAberta, setAprovTotalAberta] = useState(true);
-  const [aprovParcialAberta, setAprovParcialAberta] = useState(true);
   const [salvando, setSalvando] = useState(null);
   const [carregandoDados, setCarregandoDados] = useState(false);
 
@@ -23456,34 +23505,14 @@ export default function App() {
             ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
-          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} souAdmin={souAdmin} onConcluirExecutivo={concluirItensExecutivo} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
-          {tab === "assinatura_cliente" && (
-            <>
-              {/* A TOTAL abre fechada quando ja' esta assinada: nao ha' o que
-                  fazer ali, e o trabalho do dia e' a lista de baixo. */}
-              <SecaoAprovacao
-                titulo="Aprovação da planilha total"
-                sub="o cliente assina a planilha inteira de uma vez"
-                aberta={aprovTotalAberta}
-                onAlternar={() => setAprovTotalAberta((v) => !v)}
-                selo={obra.clienteAssinouEm
-                  ? <span className="pill pill-ok"><Check size={10} /> assinada em {new Date(obra.clienteAssinouEm + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                  : <span className="pill pill-wait">sem assinatura</span>}>
-                <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={registrarAssinaturaCliente}
-                  onRemover={removerAssinaturaCliente} podeEditar={edicao.minha} />
-              </SecaoAprovacao>
-              {/* A PARCIAL responde outra pergunta: "o que o cliente ainda
-                  esta segurando?". E' a lista de trabalho, entao abre aberta. */}
-              <SecaoAprovacao
-                titulo="Aprovação da planilha parcial"
-                sub="item a item, quando o cliente segura alguns"
-                aberta={aprovParcialAberta}
-                onAlternar={() => setAprovParcialAberta((v) => !v)}>
-                <AprovacaoClienteItens grupos={itensParaLiberar(obraComAditivos, null, { comMaoDeObra: true })} obra={obraComAditivos}
-                  podeEditar={edicao.minha} onAprovar={aprovarItensPeloCliente} />
-              </SecaoAprovacao>
-            </>
-          )}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} souAdmin={souAdmin} onConcluirExecutivo={concluirItensExecutivo}
+              usuario={usuario} obraComAditivos={obraComAditivos}
+              onRegistrarAssinatura={registrarAssinaturaCliente} onRemoverAssinatura={removerAssinaturaCliente}
+              onAprovarCliente={aprovarItensPeloCliente} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
+          {/* A aba "assinatura_cliente" foi aposentada em 18/09/2026: os dois
+              blocos dela agora moram dentro da Conf. Executivo. Quem abrir a
+              rota antiga (/obra/2450/cliente, um link salvo, o historico) cai
+              na Conf. Executivo, onde a aprovacao do cliente esta'. */}
           {tab === "diario" && (
             <div className="compras-empty">
               <BookOpen size={30} className="dim" />
