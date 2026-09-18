@@ -76,30 +76,34 @@ conf("sem alerta libera direto", M.podeLiberarItem(semAlerta, {}), true);
    pode sumir da tela de Compras porque hoje surgiu uma regra nova. */
 conf("já comprado não trava por alerta", M.podeLiberarItem({ ...comAlerta, comprado: true }, {}), true);
 
-/* ---- 3. O cliente, que vem antes do executivo ----
-   A corrente: o cliente aprova o item, o executivo libera, o item entra
-   nas Compras. */
+/* ---- 3. O CLIENTE DEIXOU DE BARRAR (decisão dela, 18/09/2026) ----
+ *
+ * Até aqui a aprovação do cliente era o primeiro elo da corrente: sem ela,
+ * nada era liberado para compra e o Plano de Compras ficava fechado. Ela
+ * tirou os dois blocos de aprovação da Conf. Executivo e, perguntada sobre o
+ * portão, escolheu tirar junto: "o cliente deixa de barrar".
+ *
+ * Quem segura a compra agora são as duas decisões internas — o executivo
+ * conclui a linha, o administrador libera. Os carimbos `aprovadoCliente` que
+ * já existem continuam gravados; só não decidem mais nada.
+ */
 const semAssinatura = {};
 const assinada = { clienteAssinouEm: "2026-09-10" };
-/* A assinatura geral aprova TUDO (decisão dela, 16/09): sem isso, ligar a
-   regra travaria toda obra que já assinou. */
-conf("assinatura geral aprova qualquer item", M.aprovadoPeloCliente({ desc: "Cuba" }, assinada), true);
+/* `aprovadoPeloCliente` continua existindo e respondendo a verdade — ela é
+   histórico, e o Início ainda a lê. O que mudou é quem a consulta. */
+conf("assinatura geral continua sendo lida", M.aprovadoPeloCliente({ desc: "Cuba" }, assinada), true);
 conf("sem assinatura, item novo não está aprovado", M.aprovadoPeloCliente({ desc: "Cuba" }, semAssinatura), false);
-conf("aprovação parcial no item vale", M.aprovadoPeloCliente({ aprovadoCliente: { em: "x" } }, semAssinatura), true);
-conf("a exceção justificada também", M.aprovadoPeloCliente({ liberadoSemCliente: { motivo: "por e-mail" } }, semAssinatura), true);
+conf("aprovação parcial no item continua valendo", M.aprovadoPeloCliente({ aprovadoCliente: { em: "x" } }, semAssinatura), true);
 
-const semCliente = { semCliente: true };
-conf("falta do cliente é a pendência", M.pendenciaParaLiberar(semAlerta, semCliente).tipo, "cliente");
-/* O cliente ganha do alerta técnico na ordem: sem ele, conferir medida
-   não adianta — o produto não pode ser comprado de jeito nenhum. */
-conf("o cliente vem antes do alerta técnico", M.pendenciaParaLiberar(comAlerta, semCliente).tipo, "cliente");
-conf("sem cliente não libera", M.podeLiberarItem(semAlerta, semCliente), false);
-/* E marcar "conferi" NÃO resolve a falta do cliente: são coisas
-   diferentes, de gente diferente. */
-conf("conferir o alerta não substitui o cliente",
-  M.podeLiberarItem({ ...comAlerta, alertaConferido: { por: "eu" } }, semCliente), false);
-conf("com o cliente e o alerta conferido, libera",
-  M.podeLiberarItem({ ...comAlerta, alertaConferido: { por: "eu" } }, { entrou: false }), true);
+/* O QUE MUDOU: a falta do cliente não é mais pendência, e não barra. */
+conf("falta do cliente deixou de ser pendência", M.pendenciaParaLiberar(semAlerta, {}), null);
+conf("item sem nada pendente libera", M.podeLiberarItem(semAlerta, {}), true);
+conf("o alerta técnico continua barrando", M.podeLiberarItem(comAlerta, {}), false);
+conf("e o 'conferi' continua resolvendo",
+  M.podeLiberarItem({ ...comAlerta, alertaConferido: { por: "eu" } }, {}), true);
+/* `semCliente` no contexto não faz mais nada — se alguém reintroduzir a
+   chamada antiga, o comportamento não pode voltar sozinho. */
+conf("o contexto antigo não ressuscita a regra", M.podeLiberarItem(semAlerta, { semCliente: true }), true);
 
 /* ---- 4. A planilha que vai pra tela ---- */
 const obra = {
@@ -131,18 +135,19 @@ conf("a chave da descrição ignora acento e caixa",
 const comEntrou = M.itensParaLiberar(obra, new Set([M.chaveDescricao("Cuba de apoio")]));
 conf("entrou não trava quem já está liberado", comEntrou[0].itens[1].pode, true);
 
-/* A obra do teste não tem assinatura, então tudo espera o cliente — e é
-   isso que trava a liberação, antes mesmo do alerta. */
+/* A obra do teste não tem assinatura — e desde 18/09/2026 isso não trava
+   mais nada: o cliente deixou de barrar a liberação. O `aprovados` continua
+   sendo contado (é histórico e o Início lê), só não decide. */
 conf("sem assinatura, nada está aprovado pelo cliente", g[0].aprovados, 0);
-/* "pode" olha quem AINDA NAO foi liberado: a cuba já liberada continua
-   podendo, porque ela já está no fluxo de compras. */
-conf("nada que falta liberar consegue passar", g[0].itens.filter((x) => !x.liberado && x.pode).length, 0);
-conf("a pendência da cuba é o cliente", g[0].itens[1].pendencia.tipo, "cliente");
+conf("mas a falta dele não trava mais", g[0].itens[1].pendencia, "null");
+/* Quem trava agora é só o alerta: a mesa tem um, a cuba não. */
+conf("a mesa continua travada pelo alerta", g[0].itens[0].pendencia?.tipo, "tecnica");
+conf("e a cuba, sem alerta, pode", g[0].itens[1].pode, true);
 
 const comAssinatura = M.itensParaLiberar({ ...obra, clienteAssinouEm: "2026-09-10" });
 conf("com a assinatura, todos aprovados", comAssinatura[0].aprovados, 2);
 conf("a cuba já liberada continua liberada", comAssinatura[0].itens[1].liberado, true);
-conf("e a mesa volta a travar só pelo alerta", comAssinatura[0].itens[0].pendencia.tipo, "tecnica");
+conf("e a mesa trava só pelo alerta", comAssinatura[0].itens[0].pendencia.tipo, "tecnica");
 
 conf("obra vazia não quebra", M.itensParaLiberar({}).length, 0);
 
@@ -231,19 +236,19 @@ conf("e a linha de mão de obra não entra", M.itensParaLiberar(partido)[0]?.ite
 /* A tela abre mostrando tudo, e não "falta aprovar" — verba com tudo
    aprovado desaparecia da tela. */
 conf("a tela do cliente abre em todos", /const \[filtro, setFiltro\] = useState\("todos"\);/.test(src), true);
-conf("e pede a lista com mão de obra",
-  /itensParaLiberar\(obraComAditivos \|\| obra, null, \{ comMaoDeObra: true \}\)/.test(src), true);
-/* A aba dela foi aposentada em 18/09/2026: a aprovação do cliente (total e
-   parcial) passou a morar dentro da Conf. Executivo, em blocos que abrem e
-   fecham. Some-la sem mudar de casa travaria a obra inteira — é a assinatura
-   que destrava o Plano de Compras. */
+/* A APROVAÇÃO DO CLIENTE SAIU DE VEZ (18/09/2026). Primeiro a aba, depois os
+   dois blocos que a haviam substituído — e, com eles, o portão: "o cliente
+   deixa de barrar". O que ficou segurando a compra são as duas decisões
+   internas: o executivo conclui, o administrador libera. */
 conf("a aba Aprovação do Cliente saiu da esteira",
   /\{ id: "assinatura_cliente", label: "Aprovação do Cliente"/.test(src), false);
-conf("a assinatura mudou de casa, não sumiu",
-  src.includes(`titulo="Aprovação da planilha total"`), true);
-conf("a aprovação parcial também", src.includes(`titulo="Aprovação da planilha parcial"`), true);
-conf("e só aparece enquanto não há assinatura da obra inteira",
-  src.includes("{onAprovarCliente && !obra.clienteAssinouEm && ("), true);
+conf("o bloco da assinatura saiu da Conf. Executivo",
+  src.includes(`titulo="Aprovação da planilha total"`), false);
+conf("o da aprovação parcial também", src.includes(`titulo="Aprovação da planilha parcial"`), false);
+conf("a falta do cliente não é mais pendência",
+  /tipo: "cliente", texto:/.test(src), false);
+conf("e o Plano de Compras não espera mais a assinatura",
+  src.includes("const semAssinatura = false;"), true);
 
 /* ---- LIBERAR O GRUPO INTEIRO ----
    Pedido dela em 17/09/2026: "colocar opcao para liberar todos para compra
@@ -267,7 +272,9 @@ const verba = M.itensParaLiberar({
 const faltam = verba.itens.filter((x) => !x.liberado && x.pode);
 const travadosAqui = verba.itens.filter((x) => !x.liberado && !x.pode && x.pendencia?.tipo !== "cliente");
 conf("o grupo tem 5 produtos", verba.nProdutos, 5);
-conf("o Liberar N pega quem já pode", faltam.map((x) => x.it.codigo).join(","), "05.1,05.3");
+/* Sem o portão do cliente, o 05.4 (que só esperava o cliente) passou a poder
+   ser liberado — é a mudança de 18/09/2026 aparecendo na conta. */
+conf("o Liberar N pega quem já pode", faltam.map((x) => x.it.codigo).join(","), "05.1,05.3,05.4");
 conf("alerta já conferido também entra no Liberar N", faltam.some((x) => x.it.codigo === "05.3"), true);
 conf("travado por alerta entra no botão do alerta", travadosAqui.map((x) => x.it.codigo).join(","), "05.2");
 conf("quem espera o cliente NÃO é varrido", travadosAqui.some((x) => x.it.codigo === "05.4"), false);
@@ -348,11 +355,14 @@ conf("mão de obra com valor continua fora", comV.includes("27.2"), false);
    Três pedidos dela no mesmo dia: os dois nomes ("Aprovação da planilha
    total" e "parcial"), a seta para abrir e fechar, e desaprovar em massa
    "assim como tem a liberacao em massa do grupo". */
-conf("a aprovação total tem nome próprio", src.includes('titulo="Aprovação da planilha total"'), true);
-conf("a parcial também", src.includes('titulo="Aprovação da planilha parcial"'), true);
+/* Os dois blocos existiram por algumas horas em 18/09/2026, entre a
+   aposentadoria da aba e a remoção do portão do cliente. Saíram junto com a
+   regra: "retirar essa aprovacao parcial, pois a regra mudou". */
+conf("nenhum bloco de aprovação do cliente sobrou",
+  src.includes("Aprovação da planilha") , false);
 conf("as duas abrem e fecham pela seta", /function SecaoAprovacao\(\{ titulo, sub, selo, aberta, onAlternar, children \}\)/.test(src), true);
 conf("a seta troca de lado", /aberta \? <ChevronDown size=\{15\}/.test(src), true);
-conf("o cabeçalho diz se já está assinada", src.includes("assinada em {new Date(obra.clienteAssinouEm"), true);
+conf("e a assinatura não é mais registrada aqui", src.includes("assinada em {new Date(obra.clienteAssinouEm"), false);
 
 /* Desaprovar em massa: o contrário exato do "Aprovar N", e só sobre o que
    está aprovado — nunca sobre a verba inteira. */
@@ -426,8 +436,16 @@ conf("e o estilo que sobrou dela foi embora junto", src.includes(".pill-neutro {
 
 /* UMA REGRA SÓ para "o que se compra": o cartão dizia 0/444 e o placar
    0 de 315 — dois números para a mesma pergunta na mesma tela. */
-conf("a regra do que se compra mora num lugar só",
-  src.includes("const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo && !x.ehMO);"), true);
+/* "todos os itens da planilha do executivo vao passar pela aprovacao
+   independente da alocacao de recurso" (18/09/2026): a alocação MAT/MO deixou
+   de decidir quem passa pela aprovação — só a linha de TÍTULO fica de fora.
+   Mão de obra é concluída e aprovada como o resto; o que ela não faz é virar
+   compra de produto, e isso é outra pergunta (`produtosMAT`). */
+conf("a regra do que passa pela aprovação mora num lugar só",
+  src.includes("const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo);"), true);
+conf("mão de obra também é aprovada", src.includes("falta_liberar: (x) => !x.titulo && !x.liberado,"), true);
+conf("e o dinheiro passa a ser o do item inteiro",
+  src.includes("compraveis(g).reduce((t, x) => t + x.valor, 0)"), true);
 conf("o cartão de cima usa essa regra",
   src.includes("contador: `${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => x.liberado).length, 0)}"), true);
 conf("e o placar da lista também", src.includes("const compraveis = compraveisDoGrupo;"), true);
@@ -462,12 +480,21 @@ conf("a coluna Cliente saiu", /<th className="center c-dec">Cliente<\/th>/.test(
    nem texto. Quem explica é a dica do botão, quando ele existe. */
 conf("o cliente segue barrando a liberação",
   src.includes(`: x.pendencia?.tipo === "cliente" ? "O cliente ainda não aprovou este produto"`), true);
-/* "se n ta aprovado, deixa sem nada preenchido" (18/09/2026): texto avulso no
-   meio de colunas de botão não segue padrão. A célula da compra fica VAZIA até
-   ser a vez dela — mão de obra, e enquanto o executivo não concluir. */
-conf("a célula da compra fica vazia até ser a vez dela",
-  src.includes("{x.ehMO || (!x.it.concluidoExecutivo && !x.liberado) ? null"), true);
-conf("nenhum texto avulso sobrou na coluna", /aguarda o (executivo|cliente)/.test(src), false);
+/* Primeiro ela pediu a célula vazia ("se n ta aprovado, deixa sem nada
+   preenchido"); vendo na tela, o vazio ficou demais: "aparecer nao aprovado
+   clarinho". Mão de obra segue vazia — ela não é "não aprovada", ela não se
+   compra. */
+/* "todo campo em branco nao preenchido deve constar como nao aprovado", e
+   "na mesma fonte do concluir": é etiqueta igual às outras, só que apagada. */
+conf("nenhuma célula fica em branco",
+  src.includes(`<span className="pill pill-nao">não aprovado</span>`), true);
+conf("... e é uma etiqueta, como as vizinhas", src.includes(".pill-nao {"), true);
+conf("nenhum texto avulso de espera sobrou", /aguarda o (executivo|cliente)/.test(src), false);
+
+/* Os dois filtros do que FALTA, ao lado do "Todos" (pedido dela, 18/09/2026). */
+conf("existe o filtro do que falta concluir", src.includes(`label: "Falta concluir",`), true);
+conf("e o do que falta aprovar para compra", src.includes(`label: "Falta aprovar p/ compra",`), true);
+conf("eles usam o mesmo filtro dos cartões", src.includes("{(telaExtra?.filtros || []).map((ff) => ("), true);
 
 /* ---- TUDO NA MESMA TELA (18/09/2026) ----
    "ai clicar no filtro conferencia tecnica, ele filtra tudo que falta
@@ -504,7 +531,12 @@ conf("e o placar parou de repetir os cartões", src.includes("de {fmtBRL(total)}
 
 /* ---- O CÓDIGO NA FRENTE (18/09/2026) ----
    "pode trazer os códigos dos itens, pode ajudar o usuário a filtrar." */
-conf("o código sai destacado, em mono", src.includes(`<span className="conf-cod mono">{codigoVisivel(x.it)}</span>`), true);
+/* "o codigo do item tem que vir antes, ali na esquerda do item, como esta na
+   planilha do executivo" (18/09/2026): coluna própria, não mais dentro da
+   célula do produto, onde ele se perdia entre especificação e fornecedor. */
+conf("o código tem coluna própria, na esquerda", src.includes(`<th className="c-cod">Cód.</th>`), true);
+conf("... e a célula vem antes do produto",
+  src.includes(`<td className="mono dim c-cod">{codigoVisivel(x.it) || "—"}</td>`), true);
 
 /* ---- SELECIONAR PARA CONCLUIR EM MASSA (18/09/2026) ---- */
 conf("existe seleção por linha", src.includes(`aria-label="Selecionar linha"`), true);

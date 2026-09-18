@@ -2278,11 +2278,12 @@ function casaBusca(texto, termo) {
    trava que toda regra de compra precisa ter antes de qualquer outra
    pergunta. */
 function pendenciasDaObra(o) {
+  /* `cliente` continua no formato pra nao quebrar quem le a fila, mas fica
+     em zero: a aprovacao do cliente deixou de barrar a compra (18/09/2026). */
   const conta = { cliente: 0, liberar: 0, solicitar: 0 };
   (o?.categorias || []).forEach((cat) => (cat.itens || []).forEach((it) => {
     if (it.ehTitulo || it.excluido) return;
     if (alocacaoDoItem(it, cat) === ALOC_MO) return;
-    if (!aprovadoPeloCliente(it, o)) { conta.cliente += 1; return; }
     if (!liberadoParaCompra(it)) { conta.liberar += 1; return; }
     /* So' o Sienge tem etapa de solicitacao; nos outros canais a compra e'
        direta. Item sem canal escolhido ainda nao chegou nessa pergunta. */
@@ -3207,8 +3208,11 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
      mas não trava de vez: se o cliente assinou no papel e ninguém
      registrou, travar pararia a obra por um problema de digitação. Um
      superior libera com justificativa, e fica gravado quem foi. */
-  const semAssinatura = !obra.clienteAssinouEm;
-  const precisaExcecao = acimaDoTeto || semAssinatura;
+  /* A assinatura do cliente deixou de travar o Plano de Compras
+     (decisao dela, 18/09/2026). O que trava aqui continua sendo o teto:
+     liberar acima do CMV pede justificativa e nome de quem autorizou. */
+  const semAssinatura = false;
+  const precisaExcecao = acimaDoTeto;
   const faltaJustificar = precisaExcecao && (justificativa.trim().length < 15 || aprovador.trim().length < 3);
   const bloqueado = !temItens || !podeEditar || faltaJustificar;
 
@@ -3218,9 +3222,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
         <div className="estouro-aviso bloqueio-assinatura">
           <Lock size={15} />
           <span>
-            <b>O cliente ainda não aprovou o projeto executivo.</b> Esta planilha não deveria ser
-            liberada antes disso — registre a assinatura na etapa <b>Aprovação do Cliente</b>.
-            Se ela já aconteceu e só falta registrar, um superior pode liberar aqui, com justificativa.
+            <b>O cliente ainda não aprovou o projeto executivo.</b>
           </span>
         </div>
       )}
@@ -5849,7 +5851,21 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
       </div>
 
       <div className="compras-filtros">
-        <button className={`cfiltro ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>Todos <span className="cbadge">{linhas.length}</span></button>
+        <button className={`cfiltro ${filtro === "todos" || filtro === telaExtra?.id ? "active" : ""}`}
+          onClick={() => setFiltro(telaExtra?.id || "todos")}>Todos <span className="cbadge">{linhas.length}</span></button>
+        {/* OS DOIS FILTROS DO QUE FALTA (pedido dela, 18/09/2026): "criar um
+            bloco de filtro mostrando oque falta concluir executivo e um bloco
+            de filtro mostrando oque falta aprovar pra compra".
+
+            Os cartoes de cima dizem o ANDAMENTO (0 de 238); estes dizem o que
+            SOBROU pra fazer, que e' o numero com que se trabalha. Sao o mesmo
+            filtro dos cartoes — clicar num ou noutro leva ao mesmo lugar. */}
+        {(telaExtra?.filtros || []).map((ff) => (
+          <button key={ff.id} className={`cfiltro ${filtro === ff.id ? "active" : ""}`}
+            onClick={() => setFiltro(filtro === ff.id ? telaExtra.id : ff.id)}>
+            {ff.label} <span className="cbadge">{ff.contador}</span>
+          </button>
+        ))}
         <CampoBusca valor={busca} aoMudar={setBusca}
           contador={`${visiveis.length} de ${porStatus.length} linhas`} />
       </div>
@@ -6769,16 +6785,19 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
    Item com alerta so' libera depois que alguem marcar que conferiu — e o
    "liberar a verba inteira" respeita isso, senao o atalho passaria por
    cima da verificacao que e' o motivo da regra existir. */
-/* O QUE SE COMPRA, numa regra so' (ADR-005).
+/* O QUE PASSA PELA APROVACAO, numa regra so' (ADR-005).
 
-   O cartao de cima e o placar da lista contavam a mesma coisa de dois jeitos:
-   o cartao dizia 0/444 (a planilha inteira, com titulo de trecho) e o placar
-   dizia 0 de 315 (so' o que se compra). Numeros diferentes pra mesma pergunta
-   na mesma tela — que e' exatamente o que ela nao quer ver.
+   Regra dela em 18/09/2026: "o total de itens concluido executivo tem que ser
+   igual ao total de itens aprovado para compra. todos os itens da planilha do
+   executivo vao passar pela aprovacao independente da alocacao de recurso."
 
-   Linha de titulo nao e' produto; mao de obra vai pra Contratos. Nenhuma das
-   duas se libera pra compra, e nenhuma das duas entra na conta. */
-const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo && !x.ehMO);
+   Ou seja: a alocacao MAT/MO deixou de decidir quem passa pela aprovacao. Mao
+   de obra tambem e' concluida pelo executivo e aprovada pelo administrador —
+   o que ela NAO faz e' virar compra de produto: o roteamento pra Contratos
+   continua, e e' outra pergunta (ver `produtosMAT`).
+
+   So' a linha de TITULO fica de fora: ela e' cabecalho de trecho, nao item. */
+const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo);
 
 /* A PLANILHA DA CONFERENCIA (ADR-005, 18/09/2026).
 
@@ -6810,7 +6829,7 @@ const precisaConferir = (x) => !!x.pendencia && x.pendencia.tipo !== "cliente" &
 const FILTRO_DA_PLANILHA = {
   conferencia_tecnica: (x) => precisaConferir(x),
   falta_concluir: (x) => !x.titulo && !x.it.concluidoExecutivo,
-  falta_liberar: (x) => !x.titulo && !x.ehMO && !x.liberado,
+  falta_liberar: (x) => !x.titulo && !x.liberado,
 };
 
 function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "todos", podeEditar, souAdmin = false, obra,
@@ -6849,8 +6868,11 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
      placar conta só o que se compra; senão ele diria "97 de 320" numa obra
      com 150 produtos compráveis. */
   const compraveis = compraveisDoGrupo;
-  const total = todosOsGrupos.reduce((a, g) => a + compraveis(g).reduce((t, x) => t + x.material, 0), 0);
-  const liberado = todosOsGrupos.reduce((a, g) => a + compraveis(g).reduce((t, x) => t + (x.liberado ? x.material : 0), 0), 0);
+  /* Com a mao de obra dentro da aprovacao, o dinheiro da linha e' o do ITEM
+     INTEIRO (material + MO) — somar so' material diria R$ 0,00 numa verba de
+     servico que acabou de ser aprovada. */
+  const total = todosOsGrupos.reduce((a, g) => a + compraveis(g).reduce((t, x) => t + x.valor, 0), 0);
+  const liberado = todosOsGrupos.reduce((a, g) => a + compraveis(g).reduce((t, x) => t + (x.liberado ? x.valor : 0), 0), 0);
   const nItens = todosOsGrupos.reduce((a, g) => a + compraveis(g).length, 0);
   const nLiberados = todosOsGrupos.reduce((a, g) => a + compraveis(g).filter((x) => x.liberado).length, 0);
   const nConcluidos = todosOsGrupos.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length, 0);
@@ -6937,7 +6959,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           // em cada verba não é procurar.
           const aberto = abertos.has(g.num) || filtrando;
           // A ordem vale tambem em massa: so' entra quem o executivo concluiu.
-          const faltam = g.itens.filter((x) => !x.titulo && !x.ehMO && !x.liberado && x.pode && x.it.concluidoExecutivo);
+          const faltam = g.itens.filter((x) => !x.titulo && !x.liberado && x.pode && x.it.concluidoExecutivo);
           // Concluir a verba inteira: o que ainda nao tem o carimbo do executivo.
           const aConcluir = g.itens.filter((x) => !x.titulo && !x.it.concluidoExecutivo);
           /* LIBERAR O GRUPO INTEIRO (pedido dela em 17/09/2026: "colocar
@@ -6954,8 +6976,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
              O cliente fica de fora de proposito: falta de aprovacao do
              cliente nao e' alerta pra conferir, e' portao com justificativa
              (o "liberar mesmo assim", linha por linha). */
-          const travadosAqui = g.itens.filter((x) => !x.titulo && !x.ehMO && !x.liberado && !x.pode
-            && x.pendencia?.tipo !== "cliente" && x.it.concluidoExecutivo);
+          const travadosAqui = g.itens.filter((x) => !x.titulo && !x.liberado && !x.pode && x.it.concluidoExecutivo);
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
@@ -7027,6 +7048,13 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                             })} />
                         )}
                       </th>
+                      {/* O CODIGO VEM ANTES, na esquerda (pedido dela,
+                          18/09/2026): "o codigo do item tem que vir antes, ali
+                          na esquerda do item, como esta na planilha do
+                          executivo". Coluna propria, como la' — dentro da
+                          celula do produto ele se perdia no meio da
+                          especificacao e do fornecedor. */}
+                      <th className="c-cod">Cód.</th>
                       <th>Produto</th>
                       <th className="c-qtd">Qtd</th>
                       <th className="right c-unit">Custo unit.</th>
@@ -7047,7 +7075,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                     {g.itens.map((x) => (x.titulo ? (
                       /* Cabecalho de trecho: a mesma linha que o Executivo mostra,
                          sem preco e sem o que decidir. */
-                      <tr key={x.chave} className="linha-titulo"><td colSpan={7}>{x.it.desc}</td></tr>
+                      <tr key={x.chave} className="linha-titulo"><td colSpan={8}>{x.it.desc}</td></tr>
                     ) : (
                       /* A COR DIZ O ESTADO DA CONFERENCIA (pedido dela, 18/09/2026):
                          "se o item tiver alguma conferencia tecnica, pode aparecer a
@@ -7069,6 +7097,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                               checked={sel.has(x.chave)} onChange={() => marcar(x.chave)} />
                           )}
                         </td>
+                        <td className="mono dim c-cod">{codigoVisivel(x.it) || "—"}</td>
                         <td>
                           {/* O texto inteiro fica no title: a descricao corta em
                               duas linhas pra lista caber na tela. */}
@@ -7077,14 +7106,10 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                               conferencia contra a planilha. Dentro da celula do produto,
                               e nao em colunas proprias — sao dez informacoes por linha, e
                               coluna pra cada uma esmaga a descricao. */}
-                          {(codigoVisivel(x.it) || x.it.especificacao || x.it.marca || x.it.ambiente) && (
+                          {/* Especificacao, fornecedor e ambiente. O codigo saiu
+                              daqui: virou coluna propria, na esquerda. */}
+                          {(x.it.especificacao || x.it.marca || x.it.ambiente) && (
                             <div className="conf-det">
-                              {/* O CODIGO NA FRENTE, em mono (pedido dela,
-                                  18/09/2026): "pode trazer os codigos dos itens,
-                                  pode ajudar o usuario a filtrar". A busca de cima
-                                  ja' procura por ele; destacado, da' pra achar a
-                                  linha no meio de 443 sem ler descricao. */}
-                              {codigoVisivel(x.it) && <span className="conf-cod mono">{codigoVisivel(x.it)}</span>}
                               {[x.it.especificacao, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente]
                                 .filter(Boolean).join(" · ")}
                             </div>
@@ -7159,8 +7184,16 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                               que o administrador decidir — entao a celula fica
                               limpa, em vez de explicar em texto o que a coluna do
                               lado ja' mostra. O botao aparece quando e' a vez. */}
-                          {x.ehMO || (!x.it.concluidoExecutivo && !x.liberado) ? null
-                            : x.liberado ? (
+                          {/* CELULA NENHUMA FICA EM BRANCO (pedido dela,
+                              18/09/2026): "todo campo em branco nao preenchido
+                              deve constar como nao aprovado" — e "na mesma fonte
+                              do concluir", entao e' uma etiqueta igual as outras,
+                              so' que apagada. Mao de obra entra tambem: ela nunca
+                              vai ser aprovada pra compra, e dizer isso e' melhor
+                              do que deixar um buraco na coluna. */}
+                          {!x.it.concluidoExecutivo && !x.liberado ? (
+                              <span className="pill pill-nao">não aprovado</span>
+                            ) : x.liberado ? (
                             <div className="status-par">
                               <span className="pill pill-ok" title={x.it.liberadoCompra?.em
                                 ? `Liberado em ${new Date(x.it.liberadoCompra.em).toLocaleDateString("pt-BR")}${x.it.liberadoCompra.por ? ` por ${x.it.liberadoCompra.por}` : ""}`
@@ -7287,32 +7320,15 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
 
   return (
     <>
-      {/* A APROVACAO DO CLIENTE, que era uma aba (18/09/2026). Fica em cima
-          porque e' portao: sem ela o Plano de Compras nao libera. Fechada por
-          padrao — o cabecalho ja' diz o estado. */}
-      {onRegistrarAssinatura && (
-        <SecaoAprovacao
-          titulo="Aprovação da planilha total"
-          sub="o cliente assina a planilha inteira de uma vez"
-          aberta={totalAberta}
-          onAlternar={() => setTotalAberta((v) => !v)}
-          selo={obra.clienteAssinouEm
-            ? <span className="pill pill-ok"><Check size={10} /> assinada em {new Date(obra.clienteAssinouEm + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-            : <span className="pill pill-wait">sem assinatura</span>}>
-          <AssinaturaClienteView obra={obra} usuario={usuario} onRegistrar={onRegistrarAssinatura}
-            onRemover={onRemoverAssinatura} podeEditar={podeEditar} />
-        </SecaoAprovacao>
-      )}
-      {onAprovarCliente && !obra.clienteAssinouEm && (
-        <SecaoAprovacao
-          titulo="Aprovação da planilha parcial"
-          sub="item a item, quando o cliente segura alguns"
-          aberta={parcialAberta}
-          onAlternar={() => setParcialAberta((v) => !v)}>
-          <AprovacaoClienteItens grupos={itensParaLiberar(obraComAditivos || obra, null, { comMaoDeObra: true })}
-            obra={obraComAditivos || obra} podeEditar={podeEditar} onAprovar={onAprovarCliente} />
-        </SecaoAprovacao>
-      )}
+      {/* A APROVACAO DO CLIENTE SAIU DA TELA (18/09/2026): "retirar essa
+          aprovacao da planilha total". Perguntada se o portao saia junto, ela
+          escolheu tirar os dois — o cliente deixa de barrar a liberacao e o
+          Plano de Compras.
+
+          O que ficou no lugar: as duas decisoes internas, que sao as colunas
+          da planilha — o executivo conclui, o administrador libera. A
+          assinatura do cliente continua podendo ser anexada em Documentos, e
+          os carimbos que ja' existem nos itens continuam gravados. */}
     <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
       alertasPorVerba={alertasPorVerba}
       colALabel="Planilha (vendido)" colBLabel="Planilha (executivo)"
@@ -7331,6 +7347,21 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
 
            Todos contam a MESMA lista que a tabela mostra, e cada um e' o
            filtro dela — numero e lista nao podem discordar. */
+        /* Os dois filtros do que FALTA, ao lado do "Todos". Contam a mesma
+           lista dos cartoes — os cartoes dizem o andamento, estes dizem o que
+           sobrou. */
+        filtros: [
+          {
+            id: "falta_concluir",
+            label: "Falta concluir",
+            contador: gruposParaLiberar.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && !x.it.concluidoExecutivo).length, 0),
+          },
+          {
+            id: "falta_liberar",
+            label: "Falta aprovar p/ compra",
+            contador: gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => !x.liberado).length, 0),
+          },
+        ],
         cartoes: [
           {
             id: "falta_concluir",
@@ -9670,13 +9701,18 @@ function liberacaoAoRealocar(item, alocEfetiva, { em, por } = {}) {
 
    "Entrou" vem de fora porque so' existe olhando os dois documentos: e'
    o item que apareceu no executivo sem ter sido vendido. */
-function pendenciaParaLiberar(it, { entrou = false, semCliente = false } = {}) {
-  /* O CLIENTE vem primeiro: ele e' o elo anterior da corrente. Sem a
-     aprovacao dele nao adianta conferir alerta nenhum — o item nao pode
-     ser comprado de qualquer jeito. */
-  if (semCliente) {
-    return { tipo: "cliente", texto: "O cliente ainda não aprovou este item — a aprovação dele vem antes da liberação." };
-  }
+function pendenciaParaLiberar(it, { entrou = false } = {}) {
+  /* O CLIENTE DEIXOU DE BARRAR (decisao dela, 18/09/2026).
+
+     Ate' aqui a aprovacao do cliente era o primeiro elo: sem ela, nada era
+     liberado pra compra e o Plano de Compras ficava fechado. Ela tirou o
+     bloco da assinatura da tela e, perguntada sobre o portao, escolheu tirar
+     os dois — "o cliente deixa de barrar".
+
+     Quem segura a compra agora sao as duas decisoes internas: o executivo
+     conclui a linha, o administrador libera. O carimbo `aprovadoCliente`
+     continua existindo nos itens que ja' o tem (historico), so' nao decide
+     mais nada. */
   const tecnico = alertaConferenciaTecnica(it?.desc || "");
   if (tecnico && tecnico.escopo === "item") return { tipo: "tecnica", texto: tecnico.texto };
   if (entrou) {
@@ -9768,7 +9804,8 @@ function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } =
       const moSeparada = comMaoDeObra ? (it.moSeparada?.valor || 0) : 0;
       const entrou = entrouPorDesc ? entrouPorDesc.has(chaveDescricao(it.desc)) : false;
       const doCliente = aprovadoPeloCliente(it, obra);
-      const ctx = { entrou, semCliente: !doCliente };
+      // `semCliente` saiu do contexto: o cliente nao barra mais (18/09/2026).
+      const ctx = { entrou };
       itens.push({
         it, catIdx, itemIdx, material,
         /* O valor que o CLIENTE aprova e' o do item inteiro, material mais
@@ -20959,6 +20996,8 @@ export default function App() {
         table.tab-conf th.c-unit { width: 100px; }
         table.tab-conf th.c-total { width: 112px; }
         table.tab-conf th.c-check { width: 34px; }
+        table.tab-conf th.c-cod { width: 62px; }
+        table.tab-conf td.c-cod { font-size: 11px; white-space: nowrap; }
         table.tab-conf td.c-check { padding-top: 8px; }
         table.tab-conf th.c-dec { width: 132px; }
         table.tab-conf th.c-sit { width: 172px; }
@@ -20974,6 +21013,9 @@ export default function App() {
            entao quem cede e' o texto. */
         table.tab-conf th { padding: 6px 10px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
         .conf-cod { color: var(--text-soft); margin-right: 6px; font-size: 10.5px; }
+        /* Mesma forma das outras etiquetas da coluna, sem cor de estado: e'
+           ausencia de decisao, nao um alerta. */
+        .pill-nao { background: var(--surface-2); color: var(--text-mute); border: 1px solid var(--line-1); }
         table.tab-conf .item-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         /* O ALERTA APARECE INTEIRO (correcao dela, 18/09/2026): "esse texto
            deve aparecer inteiro e nao sumir, botao de conferido no final".

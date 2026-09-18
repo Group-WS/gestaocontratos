@@ -48,27 +48,33 @@ const obraCom = (itens, extra = {}) => ({ categorias: [{ num: "27", nome: "Louç
 const item = (x = {}) => ({ desc: "Cuba de apoio", totalMaterial: 100, custo: 100, qtdVendida: 1, ...x });
 const resumo = (o) => { const p = M.pendenciasDaObra(o); return `${p.cliente}/${p.liberar}/${p.solicitar}`; };
 
-/* ---- 1. O funil: cada item conta numa etapa só ---- */
-conf("item cru espera o cliente", resumo(obraCom([item()])), "1/0/0");
-conf("aprovado pelo cliente, falta liberar",
+/* ---- 1. O funil: cada item conta numa etapa só ----
+   A APROVAÇÃO DO CLIENTE SAIU DO FUNIL em 18/09/2026: ela deixou de barrar a
+   compra (decisão dela, junto com a remoção dos blocos de aprovação da Conf.
+   Executivo). Quem segura agora são as duas decisões internas — o executivo
+   conclui a linha, o administrador libera. O contador `cliente` continua no
+   formato, em zero, pra não quebrar quem lê a fila. */
+conf("item cru espera liberação, não o cliente", resumo(obraCom([item()])), "0/1/0");
+conf("o carimbo do cliente não muda mais a fila",
   resumo(obraCom([item({ aprovadoCliente: { em: "x" } })])), "0/1/0");
 conf("liberado sem canal não vira solicitação",
-  resumo(obraCom([item({ aprovadoCliente: { em: "x" }, liberadoCompra: { em: "x" } })])), "0/0/0");
+  resumo(obraCom([item({ liberadoCompra: { em: "x" } })])), "0/0/0");
 conf("liberado com canal Sienge, falta solicitar",
-  resumo(obraCom([item({ aprovadoCliente: { em: "x" }, liberadoCompra: { em: "x" }, canalCompra: "sienge" })])), "0/0/1");
+  resumo(obraCom([item({ liberadoCompra: { em: "x" }, canalCompra: "sienge" })])), "0/0/1");
 conf("já solicitado sai da fila",
-  resumo(obraCom([item({ aprovadoCliente: { em: "x" }, liberadoCompra: { em: "x" }, canalCompra: "sienge", solicitado: true })])), "0/0/0");
+  resumo(obraCom([item({ liberadoCompra: { em: "x" }, canalCompra: "sienge", solicitado: true })])), "0/0/0");
 conf("já comprado sai da fila",
-  resumo(obraCom([item({ aprovadoCliente: { em: "x" }, liberadoCompra: { em: "x" }, canalCompra: "sienge", comprado: true })])), "0/0/0");
+  resumo(obraCom([item({ liberadoCompra: { em: "x" }, canalCompra: "sienge", comprado: true })])), "0/0/0");
 
 /* Canal que não é Sienge não tem etapa de solicitação — a compra é direta. */
 conf("canal Mehoo não pede solicitação",
-  resumo(obraCom([item({ aprovadoCliente: { em: "x" }, liberadoCompra: { em: "x" }, canalCompra: "mehoo" })])), "0/0/0");
+  resumo(obraCom([item({ liberadoCompra: { em: "x" }, canalCompra: "mehoo" })])), "0/0/0");
 
-/* ---- 2. A assinatura geral do cliente vale por todos ----
-   É o campo que faltava no resumo do painel: sem ele a obra inteira
-   apareceria "esperando o cliente" depois de o cliente ter assinado. */
-conf("assinatura geral tira todo mundo da fila do cliente",
+/* ---- 2. A assinatura geral não filtra mais nada ----
+   Ela valia por todos os itens quando o cliente barrava a compra. Com o
+   portão removido, obra assinada e obra sem assinatura contam igual — e é
+   isso que este caso fixa, pra ninguém reintroduzir a regra sem querer. */
+conf("obra assinada conta igual à não assinada",
   resumo(obraCom([item(), item(), item()], { clienteAssinouEm: "2026-09-17" })), "0/3/0");
 
 /* ---- 3. Quem NÃO entra na fila ---- */
@@ -85,19 +91,12 @@ conf("obra undefined", resumo(undefined), "0/0/0");
 conf("verba sem itens", resumo({ categorias: [{ num: "27", nome: "x" }] }), "0/0/0");
 
 /* ---- 5. Soma de vários, em etapas diferentes ---- */
-conf("três etapas ao mesmo tempo", resumo(obraCom([
+conf("duas etapas ao mesmo tempo", resumo(obraCom([
   item({ desc: "A" }),
-  item({ desc: "B", aprovadoCliente: { em: "x" } }),
-  item({ desc: "C", aprovadoCliente: { em: "x" } }),
-  item({ desc: "D", aprovadoCliente: { em: "x" }, liberadoCompra: { em: "x" }, canalCompra: "sienge" }),
-])), "1/2/1");
-
-/* ---- 6. O resumo do painel precisa carregar a assinatura ----
-   Sem esta coluna no SELECT, o teste 2 passa mas a tela mente. */
-const dados = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "lib", "dadosObra.js"), "utf8");
-const resumoDeVarias = dados.slice(dados.indexOf("export async function carregarResumoDeVarias"));
-conf("o resumo do painel busca cliente_assinou_em", resumoDeVarias.includes("cliente_assinou_em"), true);
-conf("e mapeia pra clienteAssinouEm", resumoDeVarias.includes("clienteAssinouEm"), true);
+  item({ desc: "B" }),
+  item({ desc: "C" }),
+  item({ desc: "D", liberadoCompra: { em: "x" }, canalCompra: "sienge" }),
+])), "0/3/1");
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
