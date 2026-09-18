@@ -6537,6 +6537,36 @@ function FormExcecaoCliente({ onConfirmar, onCancelar }) {
   );
 }
 
+/* A JUSTIFICATIVA DA REMOCAO (ADR-005 fatia 3, 18/09/2026).
+
+   Remover item do executivo tira dinheiro da obra e some com a linha das
+   telas de compra. Quem olhar depois — o cliente, o executivo, a Mehoo —
+   precisa achar o porque sem perguntar pra ninguem. Por isso e' campo
+   obrigatorio, e nao um "tem certeza?".
+
+   O minimo de 10 letras existe pra evitar o "ok" e o ".": nao e' garantia de
+   texto bom, e' o piso que faz a pessoa escrever alguma coisa. */
+function FormRemocao({ item, onCancelar, onConfirmar }) {
+  const [motivo, setMotivo] = useState("");
+  const vale = motivo.trim().length >= 10;
+  return (
+    <div className="form-remocao">
+      <div className="form-remocao-tit">
+        <X size={12} /> Remover <b>{item}</b> do executivo
+      </div>
+      <textarea rows={2} className="form-input" value={motivo} autoFocus
+        placeholder="Por que este item está saindo? (ex: cliente retirou na reunião de 12/09; duplicado da linha 4.2)"
+        onChange={(e) => setMotivo(e.target.value)} />
+      <div className="form-remocao-acoes">
+        <span className="dim">{vale ? "A justificativa aparece na Conf. Executivo." : "Escreva o motivo para remover."}</span>
+        <button type="button" className="btn-cancelar" onClick={onCancelar}>Cancelar</button>
+        <button type="button" className="btn-linha-excluir-confirma" disabled={!vale}
+          onClick={() => onConfirmar(motivo.trim())}>Remover</button>
+      </div>
+    </div>
+  );
+}
+
 /* A APROVACAO DO CLIENTE, ITEM A ITEM.
 
    A assinatura geral continua sendo o caso normal e mora na tela de
@@ -7989,6 +8019,8 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
 function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar }) {
+  // Qual linha esta' com o campo de justificativa aberto (ADR-005 fatia 3).
+  const [removendo, setRemovendo] = useState(null);
   const congelado = obra.comprasLiberadas || !podeEditar;
   // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
   // quando a obra foi liberada antes de o app aprender a salvar.
@@ -8328,8 +8360,10 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                 <div className="linha-acoes">
                                   <button
                                     className={`btn-linha-excluir ${it.excluido ? "desfazer" : ""}`}
-                                    title={it.excluido ? "Trazer de volta" : "Excluir do executivo"}
-                                    onClick={() => onEditarItem(c.num, i, { excluido: !it.excluido })}
+                                    title={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}
+                                    onClick={() => (it.excluido
+                                      ? onEditarItem(c.num, i, { excluido: false })
+                                      : setRemovendo(`${c.num}:${i}`))}
                                   >
                                     {it.excluido ? <RotateCcw size={13} /> : <X size={13} />}
                                   </button>
@@ -8346,6 +8380,27 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                            item se tratava. Abrindo no lugar, a linha que sai
                            fica logo acima, vermelha, e a que entra nasce
                            exatamente onde vai ficar. */
+                        /* A JUSTIFICATIVA ABRE AQUI, embaixo da linha que vai sair
+                           — e nao num alerta do navegador. Quem escreve precisa
+                           ver o item enquanto escreve. */
+                        if (removendo === `${c.num}:${i}`) {
+                          return (
+                            <React.Fragment key={`${it.codigo || i}-remover`}>
+                              {linha}
+                              <tr className="linha-remocao">
+                                <td colSpan={20}>
+                                  <FormRemocao
+                                    item={it.desc}
+                                    onCancelar={() => setRemovendo(null)}
+                                    onConfirmar={(motivo) => {
+                                      onEditarItem(c.num, i, { excluidoMotivo: motivo });
+                                      setRemovendo(null);
+                                    }} />
+                                </td>
+                              </tr>
+                            </React.Fragment>
+                          );
+                        }
                         const buscaAqui = buscandoEm?.verba === c.num && buscandoEm?.depois === i;
                         if (!buscaAqui) return linha;
                         return (
@@ -19701,6 +19756,20 @@ export default function App() {
   // mostra) e `itens` (o que alimenta Plano de Compras, Compras e
   // Contratos). As duas nascem do mesmo import, na mesma ordem.
   function editarItemExecutivo(catNum, idx, patch) {
+    /* A REMOCAO CARIMBA QUEM E QUANDO (ADR-005 fatia 3, 18/09/2026).
+
+       "Sempre que for removido um item, precisa abrir o campo de observacao
+       abaixo para justificativa. Essa observacao tem que aparecer na tela de
+       conferencia executivo."
+
+       O nome de quem removeu sai DAQUI, e nao da tela: assim nao ha' caminho
+       em que a justificativa chega sem autor. Trazer de volta limpa os tres
+       campos — a justificativa valia pra aquela remocao, nao pra sempre. */
+    if (patch?.excluidoMotivo) {
+      patch = { ...patch, excluido: true, excluidoPor: usuario, excluidoEm: new Date().toISOString() };
+    } else if (patch?.excluido === false) {
+      patch = { ...patch, excluidoMotivo: null, excluidoPor: null, excluidoEm: null };
+    }
     /* Mudou o que se compra ou quanto custa: o item volta pra fila. Perde
        a aprovacao do cliente, a liberacao e a conferencia do alerta — esta
        ultima porque o alerta e' calculado da DESCRICAO, e um "conferi"
@@ -22211,6 +22280,14 @@ export default function App() {
         .btn-linha-inserir:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-bg); }
         .exec-itens td.col-acoes { overflow: visible; }
         .btn-linha-excluir:hover { color: var(--red); border-color: var(--red); }
+        /* A justificativa da remocao: abre embaixo da linha que vai sair. */
+        .linha-remocao > td { background: var(--danger-tint); padding: 10px 14px !important; }
+        .form-remocao { display: flex; flex-direction: column; gap: 7px; max-width: 760px; }
+        .form-remocao-tit { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--danger); }
+        .form-remocao-acoes { display: flex; align-items: center; gap: 10px; justify-content: flex-end; font-size: 11px; }
+        .form-remocao-acoes .dim { margin-right: auto; }
+        .btn-linha-excluir-confirma { background: var(--danger); color: #fff; border: none; border-radius: 7px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+        .btn-linha-excluir-confirma:disabled { opacity: 0.45; cursor: not-allowed; }
         .btn-linha-excluir.desfazer:hover { color: var(--green); border-color: var(--green); }
         .liberado-barra { display: flex; align-items: center; gap: 9px; }
         .liberado-barra span { flex: 1; }
