@@ -207,7 +207,23 @@ export async function sugerirPrecos(descricao, limite = 6) {
    como antes — importar cadastro e' o que liga a regra.
    ============================================================ */
 
-const semTabelaCadastro = (e) => e?.code === "42P01" || /insumo_sienge/.test(e?.message || "");
+/* "A TABELA NAO EXISTE" E' SO' ISSO — e nao qualquer erro que cite o nome
+   dela (17/09/2026).
+
+   A primeira versao testava o nome no texto do erro. So' que o Postgres cita
+   o nome da tabela em quase tudo: falta de permissao vem como `new row
+   violates row-level security policy for table "insumo_sienge"`. Ou seja, um
+   banco que RECUSOU a gravacao era anunciado como "falta rodar o SQL" — e ela
+   ja' tinha rodado. Erro disfarcado de outro erro custa a tarde de quem esta'
+   do outro lado.
+
+   Os dois codigos que realmente dizem isso:
+   - 42P01: a tabela nao existe mesmo.
+   - PGRST205: ela existe, mas o PostgREST ainda nao a enxerga (o cache de
+     schema dele demora a recarregar depois de um `create table`). A saida
+     e' outra, e por isso o app precisa saber diferenciar. */
+const semTabelaCadastro = (e) => e?.code === "42P01" || e?.code === "PGRST205";
+const cachePendente = (e) => e?.code === "PGRST205";
 
 /** O cadastro inteiro: { codigo, descricao, unidade }. Vazio = regra desligada. */
 export async function carregarCadastroSienge() {
@@ -257,7 +273,18 @@ export async function salvarCadastroSienge(insumos, usuario, onProgresso) {
   for (let i = 0; i < unicos.length; i += TAMANHO_BLOCO) {
     const bloco = unicos.slice(i, i + TAMANHO_BLOCO);
     const { error } = await supabase.from("insumo_sienge").upsert(bloco, { onConflict: "codigo" });
-    if (error) { if (semTabelaCadastro(error)) return { gravados: 0, removidos: 0, semTabela: true }; throw error; }
+    if (error) {
+      if (semTabelaCadastro(error)) {
+        return { gravados: 0, removidos: 0, semTabela: true, cachePendente: cachePendente(error) };
+      }
+      /* Qualquer outro motivo sobe com o texto do banco. O caso que importa
+         e' a politica de acesso: se o `create policy` do insumo-sienge.sql
+         nao tiver rodado, a leitura devolve vazio (RLS esconde tudo) e a
+         gravacao e' recusada — e sem a mensagem ninguem descobre isso. */
+      throw new Error(`O banco recusou a gravação do cadastro: ${error.message || error}`
+        + (error.code ? ` (código ${error.code})` : "")
+        + `. Se falar em "row-level security", falta a política do supabase/insumo-sienge.sql — rode o arquivo inteiro.`);
+    }
     gravados += bloco.length;
     if (onProgresso) onProgresso(gravados, unicos.length);
   }

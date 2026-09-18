@@ -142,6 +142,7 @@ function bancoFalso(linhas, { semTabela = false } = {}) {
 
 const montar = (supabase) => new Function("supabase", "supabaseConfigurado", "TAMANHO_BLOCO", `
   ${linha("const semTabelaCadastro =")}
+  ${linha("const cachePendente =")}
   ${bloco("export async function carregarCadastroSienge(").replace(/^export /, "")}
   ${bloco("export async function salvarCadastroSienge(").replace(/^export /, "")}
   return { carregarCadastroSienge, salvarCadastroSienge };
@@ -223,6 +224,44 @@ conf("o SQL cria a tabela", sql.includes("create table if not exists insumo_sien
 conf("o código é a chave", /codigo\s+text primary key/.test(sql), true);
 conf("... e roda duas vezes sem erro", sql.includes("if not exists"), true);
 conf("o SQL não toca na base de preços", /insumo_preco/.test(sql.replace(/--.*/g, "")), false);
+
+/* ---- ERRO DISFARÇADO DE OUTRO ERRO (17/09/2026) ----
+   A primeira versão chamava de "tabela não existe" qualquer erro que citasse
+   o nome dela. O Postgres cita o nome em quase tudo — falta de permissão vem
+   como `new row violates row-level security policy for table "insumo_sienge"`.
+   Um banco que RECUSOU a gravação era anunciado como "falta rodar o SQL", que
+   era justamente o que ela já tinha feito. */
+{
+  const rls = { code: "42501", message: 'new row violates row-level security policy for table "insumo_sienge"' };
+  const b = bancoFalso([]);
+  b.supabase.from = () => ({
+    select: () => ({ range: () => Promise.resolve({ data: [], error: null }) }),
+    upsert: () => Promise.resolve({ error: rls }),
+    delete: () => ({ in: () => Promise.resolve({ error: null }) }),
+  });
+  const M = montar(b.supabase);
+  let erro = null;
+  try { await M.salvarCadastroSienge([{ codigo: "411", descricao: AGORA }], "eu"); }
+  catch (e) { erro = e; }
+  conf("erro de permissão não vira 'falta rodar o SQL'", !!erro, true);
+  conf("... e a mensagem do banco chega inteira", /row-level security/.test(erro?.message || ""), true);
+  conf("... com a dica do arquivo certo", /insumo-sienge\.sql/.test(erro?.message || ""), true);
+}
+/* O cache de schema do PostgREST é caso à parte: a tabela existe, ele é que
+   ainda não a enxerga. Sai como semTabela, mas marcado, porque a saída é
+   outra (esperar ou recarregar o schema). */
+{
+  const b = bancoFalso([]);
+  b.supabase.from = () => ({
+    select: () => ({ range: () => Promise.resolve({ data: [], error: null }) }),
+    upsert: () => Promise.resolve({ error: { code: "PGRST205", message: "Could not find the table 'public.insumo_sienge' in the schema cache" } }),
+    delete: () => ({ in: () => Promise.resolve({ error: null }) }),
+  });
+  const M = montar(b.supabase);
+  const r = await M.salvarCadastroSienge([{ codigo: "411", descricao: AGORA }], "eu");
+  conf("cache do PostgREST é reconhecido", r.semTabela, true);
+  conf("... e marcado como cache, não como tabela ausente", r.cachePendente, true);
+}
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
