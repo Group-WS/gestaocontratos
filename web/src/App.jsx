@@ -2558,8 +2558,22 @@ function VersoesDaObra({ obra, podeRestaurar, usuario }) {
   const [confirmando, setConfirmando] = useState(null);
   const [restaurando, setRestaurando] = useState(false);
 
+  /* "Ja' busquei as versoes desta obra" mora num ref, e nao no estado.
+   *
+   * ISTO NAO E' ENFEITE. Com `estado` na lista de dependencias do efeito de
+   * baixo, o `setEstado("carregando")` fazia o efeito rodar de novo — e a
+   * LIMPEZA do anterior marcava `vivo = false` antes da resposta chegar. O
+   * `.then` via a busca como abandonada e nao escrevia nada: a tela ficava
+   * em "Buscando…" para sempre. Aconteceu de verdade em 19/09/2026, e
+   * nenhum teste de codigo-fonte pegou — so' abrir a tela pegou.
+   *
+   * Num ref, marcar que ja' buscou nao provoca render, e o efeito so' roda
+   * quando a obra muda ou alguem abre o bloco. */
+  const jaBuscou = useRef(false);
+
   // Trocar de obra zera tudo: a lista aberta era da obra anterior.
   useEffect(() => {
+    jaBuscou.current = false;
     setAberto(false); setEstado("parado"); setVersoes([]);
     setConfirmando(null); setErro(null);
   }, [obra?.codigo]);
@@ -2568,14 +2582,15 @@ function VersoesDaObra({ obra, podeRestaurar, usuario }) {
      consultar as versoes a cada obra aberta seria consulta a' toa quase
      sempre — a lista so' interessa quando algo deu errado. */
   useEffect(() => {
-    if (!aberto || estado !== "parado") return;
+    if (!aberto || jaBuscou.current) return;
+    jaBuscou.current = true;
     let vivo = true;
     setEstado("carregando");
     listarVersoes(obra.codigo)
       .then((r) => { if (!vivo) return; setVersoes(r.versoes || []); setSemTabela(!!r.semTabela); setEstado("pronto"); })
       .catch((e) => { if (!vivo) return; setErro(e.message || String(e)); setEstado("erro"); });
     return () => { vivo = false; };
-  }, [aberto, estado, obra.codigo]);
+  }, [aberto, obra.codigo]);
 
   const agora = contaItensDaObra(obra);
   const quando = (em) => {

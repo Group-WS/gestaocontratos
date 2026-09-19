@@ -220,8 +220,26 @@ conf("restaurar pede confirmação com os dois números",
   tela.includes("troca os {agora} de agora por estes {v.n_itens}?"), true);
 /* A consulta só sai quando alguém abre: o Histórico fecha TODA tela da obra,
    e as versões só interessam quando algo deu errado. */
-conf("só busca as versões quando alguém abre", tela.includes("if (!aberto || estado !== \"parado\") return;"), true);
+conf("só busca as versões quando alguém abre", tela.includes("if (!aberto || jaBuscou.current) return;"), true);
 conf("trocar de obra zera a lista", tela.includes("}, [obra?.codigo]);"), true);
+
+/* O "JÁ BUSQUEI" FICA NUM REF, E O EFEITO NÃO DEPENDE DO ESTADO.
+ *
+ * Aconteceu em 19/09/2026, na primeira vez que abri a tela: com `estado` nas
+ * dependências, o `setEstado("carregando")` de dentro do efeito fazia ele
+ * rodar de novo, e a LIMPEZA do anterior marcava `vivo = false` antes de a
+ * resposta chegar. O `.then` desistia calado e a tela ficava em "Buscando…"
+ * para sempre.
+ *
+ * Nenhum teste de código-fonte pegou isso — foi abrir a tela que pegou. O
+ * que dá para travar aqui é a FORMA que evita o laço. */
+conf("o efeito da busca não depende do estado que ele mesmo muda",
+  tela.includes("}, [aberto, obra.codigo]);"), true);
+conf("... e não volta a ter `estado` nas dependências",
+  /\}, \[aberto, estado/.test(tela), false);
+conf("o controle de 'já busquei' é um ref, que não provoca render",
+  tela.includes("const jaBuscou = useRef(false);"), true);
+conf("... zerado ao trocar de obra", tela.includes("jaBuscou.current = false;"), true);
 conf("a tela diz quando o SQL ainda não rodou", tela.includes("supabase/obra-versao.sql"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
