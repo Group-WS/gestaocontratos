@@ -21,6 +21,13 @@
 -- TODA gravacao, inclusive UPDATE rodado a mao aqui no SQL Editor — que
 -- e' justamente o que nenhuma protecao dentro do app alcanca.
 --
+-- E PEGA O APAGAMENTO TAMBEM (2a versao, 19/09/2026). Sao dois gatilhos:
+-- um no UPDATE (sobrescrita) e outro no DELETE (a linha inteira indo
+-- embora). Sem o segundo, `delete from obra_dados` levaria a obra sem
+-- deixar copia — foi assim que o limpar-obras-teste.sql apagou 12 obras
+-- em 16/09. E' isto que faz o historico valer mais do que soft-delete:
+-- soft-delete guarda o FATO de que apagaram; aqui fica o CONTEUDO.
+--
 -- QUANTO ISSO OCUPA
 -- Uma versao por hora de trabalho em cada obra, MAIS uma sempre que o
 -- numero de itens cair. Sem essa regra, o salvamento automatico (que
@@ -90,29 +97,41 @@ declare
   depois   integer;
   ultima   timestamptz;
   eh_queda boolean;
+  apagando boolean := TG_OP = 'DELETE';
 begin
-  -- Gravacao que nao mexeu no conteudo nao vira versao. Pegar e soltar a
-  -- trava de edicao sao UPDATEs que so' tocam `editando_por` — sem isto,
-  -- cada abrir-e-fechar de obra deixaria uma copia de centenas de KB.
-  if OLD.categorias  is not distinct from NEW.categorias
- and OLD.cadernos    is not distinct from NEW.cadernos
- and OLD.arquivos    is not distinct from NEW.arquivos
- and OLD.aprovacoes  is not distinct from NEW.aprovacoes
- and OLD.escopos     is not distinct from NEW.escopos then
-    return NEW;
+  -- APAGAR A LINHA E' O CASO MAIS GRAVE, e por isso e' o unico que nao
+  -- passa por filtro nenhum: sempre vira versao, sem esperar o relogio.
+  --
+  -- Isto e' o que faz o historico valer mais que soft-delete. Marcar a
+  -- linha como apagada guardaria o FATO; aqui fica o CONTEUDO, e da' pra
+  -- devolver a obra inteira. E pega tambem o `delete` rodado a mao no SQL
+  -- Editor — foi assim que o limpar-obras-teste.sql apagou 12 obras.
+  if not apagando then
+    -- Gravacao que nao mexeu no conteudo nao vira versao. Pegar e soltar a
+    -- trava de edicao sao UPDATEs que so' tocam `editando_por` — sem isto,
+    -- cada abrir-e-fechar de obra deixaria uma copia de centenas de KB.
+    if OLD.categorias  is not distinct from NEW.categorias
+   and OLD.cadernos    is not distinct from NEW.cadernos
+   and OLD.arquivos    is not distinct from NEW.arquivos
+   and OLD.aprovacoes  is not distinct from NEW.aprovacoes
+   and OLD.escopos     is not distinct from NEW.escopos then
+      return NEW;
+    end if;
   end if;
 
   antes    := obra_conta_itens(OLD.categorias);
-  depois   := obra_conta_itens(NEW.categorias);
+  -- Apagar leva tudo: depois da linha sumir sobra zero item.
+  depois   := case when apagando then 0 else obra_conta_itens(NEW.categorias) end;
   eh_queda := depois < antes;
 
   select max(criado_em) into ultima
     from obra_versao where obra_codigo = OLD.obra_codigo;
 
-  -- UMA POR HORA, mais uma SEMPRE que o numero de itens cair.
+  -- UMA POR HORA, mais uma SEMPRE que o numero de itens cair, mais
+  -- SEMPRE que a linha for apagada.
   -- A queda nao respeita o relogio de proposito: e' o unico evento que
   -- some com trabalho, e e' o que a gente vai querer desfazer.
-  if eh_queda or ultima is null or ultima < now() - interval '1 hour' then
+  if apagando or eh_queda or ultima is null or ultima < now() - interval '1 hour' then
 
     insert into obra_versao (obra_codigo, conteudo, n_itens, queda, atualizado_por)
     values (OLD.obra_codigo, to_jsonb(OLD), antes, eh_queda, OLD.atualizado_por);
@@ -131,7 +150,9 @@ begin
               limit 24);
   end if;
 
-  return NEW;
+  -- Num gatilho BEFORE, devolver NULL CANCELA a operacao. No DELETE quem
+  -- deixa o apagamento seguir e' o OLD.
+  return case when apagando then OLD else NEW end;
 end $$;
 
 -- O nome vem depois de `trg_obra_dados_atualizado` no alfabeto, e gatilho
@@ -140,6 +161,17 @@ end $$;
 drop trigger if exists trg_obra_dados_versao on obra_dados;
 create trigger trg_obra_dados_versao
   before update on obra_dados
+  for each row execute function obra_dados_guarda_versao();
+
+-- O MESMO GATILHO NO APAGAMENTO.
+-- Sem este, `delete from obra_dados where obra_codigo = '2450'` levaria a
+-- obra sem deixar copia — o historico so' cobriria sobrescrita. Dois
+-- gatilhos e nao um "before update or delete" porque cada um fica legivel
+-- na listagem do banco, e porque desligar um sem o outro passa a ser
+-- possivel.
+drop trigger if exists trg_obra_dados_versao_del on obra_dados;
+create trigger trg_obra_dados_versao_del
+  before delete on obra_dados
   for each row execute function obra_dados_guarda_versao();
 
 -- ---------- 4. Quem enxerga ----------

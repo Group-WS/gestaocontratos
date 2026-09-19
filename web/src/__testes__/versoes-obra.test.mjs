@@ -87,13 +87,11 @@ function montarStub({ versao, erroNaBusca = null }) {
           },
         }),
       }),
-      update: (patch) => ({
-        eq: async () => {
-          chamadas.gravou += 1;
-          chamadas.patch = patch;
-          return { error: null };
-        },
-      }),
+      upsert: async (patch) => {
+        chamadas.gravou += 1;
+        chamadas.patch = patch;
+        return { error: null };
+      },
     }),
   };
   return { stub, chamadas };
@@ -181,9 +179,33 @@ conf("... guardando a linha inteira de antes", sql.includes("to_jsonb(OLD)"), tr
 /* Guardar a linha inteira (e não coluna por coluna) é o que faz o histórico
    sobreviver a colunas novas sem ninguém mexer no SQL de novo. */
 conf("... uma por hora", sql.includes("ultima < now() - interval '1 hour'"), true);
-conf("... e SEMPRE que os itens caem", sql.includes("if eh_queda or ultima is null"), true);
+conf("... e SEMPRE que os itens caem", sql.includes("or eh_queda or ultima is null"), true);
 conf("gravação que não mexeu no conteúdo não vira versão",
   sql.includes("OLD.categorias  is not distinct from NEW.categorias"), true);
+
+/* O APAGAMENTO DA LINHA também vira versão.
+ *
+ * Pergunta dela em 19/09/2026: "e o soft-delete?". A resposta é que o
+ * histórico faz mais — desde que pegue o DELETE. Sem o segundo gatilho,
+ * `delete from obra_dados where obra_codigo = '2450'` levaria a obra sem
+ * deixar cópia, e foi assim que o limpar-obras-teste.sql apagou 12 obras em
+ * 16/09. Soft-delete guardaria o FATO; aqui fica o CONTEÚDO. */
+conf("existe gatilho no apagamento também",
+  /create trigger trg_obra_dados_versao_del\s*\n\s*before delete on obra_dados/.test(sql), true);
+conf("apagar SEMPRE guarda versão, sem esperar o relógio",
+  sql.includes("if apagando or eh_queda or ultima is null"), true);
+conf("... e não passa pelo filtro de 'nada mudou'", sql.includes("if not apagando then"), true);
+conf("depois de apagar sobram zero itens",
+  sql.includes("case when apagando then 0 else obra_conta_itens(NEW.categorias) end"), true);
+/* Num gatilho BEFORE, devolver NULL CANCELA a operação — um `return NEW`
+   no DELETE (NEW é nulo ali) impediria qualquer apagamento no banco. */
+conf("o gatilho deixa o apagamento seguir",
+  sql.includes("return case when apagando then OLD else NEW end;"), true);
+/* E a restauração tem que conseguir RECRIAR a linha apagada. UPDATE numa
+   linha que não existe não atualiza nada e não reclama: a tela diria
+   "restaurado" e nada teria voltado. */
+conf("restaurar recria a obra apagada, não só atualiza",
+  src.includes('.upsert({ ...patch, obra_codigo: String(codigo) }, { onConflict: "obra_codigo" })'), true);
 
 /* A PODA não pode comer a versão de antes do estrago: é justamente a que
    alguém vem buscar, e as gravações seguintes a empurrariam para fora. */

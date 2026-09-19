@@ -96,10 +96,13 @@ export async function restaurarVersao(codigo, versaoId, email) {
     if (Object.prototype.hasOwnProperty.call(de, c)) patch[c] = de[c];
   });
 
+  /* UPSERT e nao UPDATE: a obra pode ter sido APAGADA, e nao so'
+     sobrescrita — o gatilho guarda versao nos dois casos. Um UPDATE numa
+     linha que nao existe mais nao atualiza nada e nao reclama: a tela diria
+     "restaurado" e nada teria voltado. */
   const { error: erroAoGravar } = await supabase
     .from("obra_dados")
-    .update(patch)
-    .eq("obra_codigo", String(codigo));
+    .upsert({ ...patch, obra_codigo: String(codigo) }, { onConflict: "obra_codigo" });
   if (erroAoGravar) throw erroAoGravar;
 
   return { restaurou: versao.n_itens, de: versao.criado_em };
