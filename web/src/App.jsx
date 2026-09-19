@@ -18636,7 +18636,7 @@ function ArquivoView({ obras, onReabrir, salvando }) {
    Minimalista de propósito: o estado é um ponto colorido e uma palavra;
    as ações são texto. O único botão cheio é o de avançar, porque é a
    única coisa aqui que empurra a obra pra frente. */
-function BarraEtapa({ edicao, salvando, carregando, onHabilitar, onFinalizar,
+function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar, onFinalizar,
                       etapaId, obra, onConcluir, onReabrirEtapa }) {
   const mostraEtapa = !!etapaId && !!onConcluir;
   const feita = mostraEtapa && etapaConcluida(etapaId, obra);
@@ -18651,6 +18651,21 @@ function BarraEtapa({ edicao, salvando, carregando, onHabilitar, onFinalizar,
   let estado;
   if (carregando) {
     estado = <span className="be-estado"><span className="be-ponto carregando" /> Carregando…</span>;
+  } else if (falhouCarregar) {
+    /* O CONTEUDO NAO CHEGOU — E POR ISSO NINGUEM EDITA.
+     *
+     * Sem esta porta, o "Carregando…" sumia, o "habilitar edicao" reaparecia,
+     * e a obra na memoria era so' o esqueleto do Monday: as verbas da EAP sem
+     * item nenhum. Um clique e qualquer alteracao depois, o salvamento
+     * automatico gravava esse esqueleto por cima da obra inteira.
+     *
+     * A frase diz o que fazer (F5), porque quem esta' na tela nao tem como
+     * saber que a obra que ele ve' nao e' a obra que esta' no banco. */
+    estado = (
+      <span className="be-estado be-falhou">
+        <AlertTriangle size={13} /> Não consegui carregar esta obra — recarregue a página (F5) antes de mexer.
+      </span>
+    );
   } else if (edicao.por) {
     const desde = edicao.desde ? new Date(edicao.desde).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
     estado = (
@@ -18809,6 +18824,12 @@ export default function App() {
   const [edicao, setEdicao] = useState({ minha: false, por: null, desde: null });
   const [salvando, setSalvando] = useState(null);
   const [carregandoDados, setCarregandoDados] = useState(false);
+  /* O CODIGO da obra cujo conteudo NAO chegou.
+   *
+   * Codigo, e nao um booleano: o app troca de obra sem recarregar a pagina, e
+   * uma falha na 2450 nao pode trancar a 2498. Enquanto ele apontar pra obra
+   * aberta, a edicao fica fechada — ver a BarraEtapa. */
+  const [falhaAoCarregar, setFalhaAoCarregar] = useState(null);
 
   useEffect(() => {
     if (!supabaseConfigurado) { setUsuario("local"); return; }
@@ -19336,6 +19357,7 @@ export default function App() {
     let vivo = true;
     setCarregandoDados(true);
     setEdicao({ minha: false, por: null, desde: null });
+    setFalhaAoCarregar(null);
     const codigo = obra.codigo;
 
     /* Os aditivos aprovados mexem no orcamento, no CMV e no Plano de
@@ -19397,7 +19419,11 @@ export default function App() {
           desde: deOutro ? dados.editandoDesde : null,
         });
       })
-      .catch((e) => { if (vivo) setErroBanco(e.message || String(e)); })
+      /* A obra continua na tela com o esqueleto do cadastro do Monday — e era
+         exatamente esse esqueleto que o salvamento automatico gravava por
+         cima da obra inteira quando alguem habilitava a edicao (caso da 2450,
+         19/09/2026). Marcar a falha aqui e' o que fecha a porta. */
+      .catch((e) => { if (vivo) { setErroBanco(e.message || String(e)); setFalhaAoCarregar(codigo); } })
       .finally(() => { if (vivo) setCarregandoDados(false); });
 
     return () => { vivo = false; };
@@ -21810,6 +21836,8 @@ export default function App() {
         .be-ponto { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex-shrink: 0; }
         .be-ponto.editando { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
         .be-ponto.carregando { background: var(--amber); }
+        /* Obra que nao carregou: vermelho, porque aqui nao se mexe. */
+        .be-estado.be-falhou { color: var(--red); font-weight: 600; }
         .be-salvo { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
         .be-link { font: inherit; font-size: 12px; color: var(--blue); background: transparent; border: none; padding: 0 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
         .be-link:hover { color: var(--ink-1); }
@@ -23720,6 +23748,7 @@ export default function App() {
 
           <BarraEtapa
             edicao={edicao} salvando={salvando} carregando={carregandoDados}
+            falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
             onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao}
             etapaId={ETAPAS_COM_CONCLUSAO.has(tab) ? tab : null} obra={obra}
             onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />

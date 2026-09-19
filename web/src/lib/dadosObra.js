@@ -63,6 +63,24 @@ export async function carregarDadosObra(codigo) {
   return data ? paraApp(data) : null;
 }
 
+/* A obra tem item em ALGUMA das quatro fontes?
+ *
+ * Quatro e não uma: o Vendido Contrato, o Vendido Planilha, o Executivo e a
+ * planilha do Executivo entram em momentos diferentes da obra, e uma obra que
+ * só tem o contrato importado é tão "cheia" quanto uma que já foi até as
+ * compras. Perder qualquer uma delas é perder trabalho.
+ *
+ * Fica fora de `salvarDadosObra` de propósito: é uma pergunta pura, e o teste
+ * a lê sem precisar do Supabase.
+ */
+export function temItemNasCategorias(categorias) {
+  return (categorias || []).some((c) =>
+    (c.itens || []).length > 0 ||
+    (c.itensContrato || []).length > 0 ||
+    (c.itensPlanilha || []).length > 0 ||
+    (c.itensPlanilhaExecutivo || []).length > 0);
+}
+
 /**
  * Grava o conteúdo da obra. Só quem está com a trava consegue —
  * o `eq("editando_por", email)` é o que garante isso no próprio banco,
@@ -70,6 +88,45 @@ export async function carregarDadosObra(codigo) {
  */
 export async function salvarDadosObra(codigo, conteudo, email) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
+
+  /* CINTO DE SEGURANÇA: obra vazia NÃO grava por cima de obra cheia.
+   *
+   * Em 19/09/2026 a obra 2450 amanheceu com as 33 verbas da EAP e zero itens
+   * — 269 itens, cadernos, anexos e aprovações apagados de uma vez. Só um
+   * backup do Supabase trouxe de volta.
+   *
+   * O caminho é este: ao abrir uma obra, ela começa na memória como o
+   * esqueleto do cadastro do Monday, e os itens chegam numa segunda viagem ao
+   * banco. Se essa viagem falha, o esqueleto FICA — e o salvamento
+   * automático, que não perguntava nada, gravava o esqueleto por cima da obra
+   * inteira. Sem aviso e sem rastro.
+   *
+   * Então: quando o que vai ser gravado não tem item nenhum, a gente lê a
+   * linha antes. Se lá tem item, RECUSA. A consulta extra só acontece no caso
+   * perigoso — obra com conteúdo grava como sempre gravou.
+   *
+   * Isto não conserta a causa (a viagem que falhou); ele impede o estrago,
+   * inclusive vindo de caminhos que ainda não conhecemos.
+   */
+  if (!temItemNasCategorias(conteudo.categorias)) {
+    const { data: atual, error: erroDaLeitura } = await supabase
+      .from("obra_dados")
+      .select("categorias")
+      .eq("obra_codigo", String(codigo))
+      .maybeSingle();
+    /* Não deu pra conferir? Também não grava. Aqui a dúvida pesa mais que a
+       gravação: o que está na tela é uma obra sem item nenhum. */
+    if (erroDaLeitura) {
+      throw new Error(`Não gravei: não consegui conferir a obra no banco antes (${erroDaLeitura.message}). Recarregue a página.`);
+    }
+    if (atual && temItemNasCategorias(atual.categorias)) {
+      throw new Error(
+        "NÃO GRAVEI — e foi de propósito. Esta tela está sem os itens da obra, "
+        + "mas a obra no banco tem itens. Gravar assim apagaria o trabalho de todo mundo. "
+        + "Recarregue a página (F5) e abra a obra de novo."
+      );
+    }
+  }
 
   const linha = {
     obra_codigo: String(codigo),
