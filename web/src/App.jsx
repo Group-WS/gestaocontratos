@@ -25,6 +25,7 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
   PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoGestor, nivelQueCuida, ehAdministrador,
   podeAbrirObras, registrarAcesso, estaOnline, quandoFoi } from "./lib/pessoas";
+import { listarVersoes, restaurarVersao } from "./lib/versoesObra";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
@@ -2526,6 +2527,144 @@ function CampoBusca({ valor, aoMudar, dica, contador }) {
   );
 }
 
+/* Quantos itens a obra tem AGORA, somando as quatro fontes.
+   E' o numero que fica ao lado do "restaurar": ninguem troca 269 itens por
+   12 sem ver os dois numeros na mesma frase. */
+function contaItensDaObra(obra) {
+  return (obra?.categorias || []).reduce((soma, c) => soma
+    + (c.itens || []).length + (c.itensContrato || []).length
+    + (c.itensPlanilha || []).length + (c.itensPlanilhaExecutivo || []).length, 0);
+}
+
+/* AS VERSOES GUARDADAS DA OBRA.
+ *
+ * Depois de 18/09/2026, quando tres obras foram esvaziadas e so' um backup
+ * do Supabase trouxe de volta, o banco passou a guardar a versao anterior a
+ * cada gravacao (supabase/obra-versao.sql). Aqui elas aparecem.
+ *
+ * Mora dentro do Historico porque e' a mesma pergunta — "o que aconteceu com
+ * esta obra" —, e escolha dela em 19/09/2026.
+ *
+ * RESTAURAR E' SO' DO ADMIN MASTER, tambem escolha dela: o botao desfaz o
+ * trabalho de outras pessoas de uma vez, e e' o mais perigoso do app. Todo
+ * mundo VE a lista: saber o que aconteceu com a obra nao e' privilegio.
+ */
+function VersoesDaObra({ obra, podeRestaurar, usuario }) {
+  const [aberto, setAberto] = useState(false);
+  const [estado, setEstado] = useState("parado");   // parado · carregando · pronto · erro
+  const [versoes, setVersoes] = useState([]);
+  const [semTabela, setSemTabela] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [confirmando, setConfirmando] = useState(null);
+  const [restaurando, setRestaurando] = useState(false);
+
+  // Trocar de obra zera tudo: a lista aberta era da obra anterior.
+  useEffect(() => {
+    setAberto(false); setEstado("parado"); setVersoes([]);
+    setConfirmando(null); setErro(null);
+  }, [obra?.codigo]);
+
+  /* So' busca quando alguem abre. O Historico fecha TODA tela da obra, e
+     consultar as versoes a cada obra aberta seria consulta a' toa quase
+     sempre — a lista so' interessa quando algo deu errado. */
+  useEffect(() => {
+    if (!aberto || estado !== "parado") return;
+    let vivo = true;
+    setEstado("carregando");
+    listarVersoes(obra.codigo)
+      .then((r) => { if (!vivo) return; setVersoes(r.versoes || []); setSemTabela(!!r.semTabela); setEstado("pronto"); })
+      .catch((e) => { if (!vivo) return; setErro(e.message || String(e)); setEstado("erro"); });
+    return () => { vivo = false; };
+  }, [aberto, estado, obra.codigo]);
+
+  const agora = contaItensDaObra(obra);
+  const quando = (em) => {
+    const d = new Date(em);
+    return Number.isFinite(d.getTime())
+      ? d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "—";
+  };
+
+  async function restaurar(v) {
+    setRestaurando(true); setErro(null);
+    try {
+      await restaurarVersao(obra.codigo, v.id, usuario);
+      /* Recarrega a pagina inteira de proposito: a obra na memoria acabou
+         de virar outra coisa, e meia tela atualizada e' pior do que uma
+         tela nova. A restauracao ja' esta' gravada quando isto roda. */
+      window.location.reload();
+    } catch (e) {
+      setErro(e.message || String(e));
+      setRestaurando(false);
+      setConfirmando(null);
+    }
+  }
+
+  return (
+    <div className="hist-versoes">
+      <button type="button" className="hist-link" onClick={() => setAberto((v) => !v)}>
+        {aberto ? "esconder as versões" : "versões guardadas desta obra"}
+      </button>
+
+      {aberto && estado === "carregando" && <div className="hist-nota">Buscando…</div>}
+
+      {aberto && estado === "erro" && <div className="hist-nota hist-erro">{erro}</div>}
+
+      {/* O SQL ainda nao rodou. Dizer isso e' melhor do que uma lista vazia,
+          que faria parecer que a obra nunca foi editada. */}
+      {aberto && estado === "pronto" && semTabela && (
+        <div className="hist-nota">
+          O histórico de versões ainda não foi criado no banco — falta rodar <b>supabase/obra-versao.sql</b>.
+        </div>
+      )}
+
+      {aberto && estado === "pronto" && !semTabela && versoes.length === 0 && (
+        <div className="hist-nota">
+          Nenhuma versão guardada ainda. A primeira aparece na próxima vez que alguém editar esta obra.
+        </div>
+      )}
+
+      {aberto && erro && estado !== "erro" && <div className="hist-nota hist-erro">{erro}</div>}
+
+      {aberto && versoes.length > 0 && (
+        <>
+          <div className="hist-lista">
+            {versoes.map((v) => (
+              <div className={`hist-linha ${v.queda ? "hist-queda" : ""}`} key={v.id}>
+                <span className="hist-quando">{quando(v.criado_em)}</span>
+                <span>
+                  <b className="hist-quem" title={v.atualizado_por || undefined}>
+                    {v.atualizado_por ? nomeDoEmail(v.atualizado_por) : "alguém"}
+                  </b>
+                  <span className="hist-item"> · {v.n_itens} {v.n_itens === 1 ? "item" : "itens"}</span>
+                  {/* A queda e' o evento que some com trabalho. Marcada na
+                      lista porque e' ela que alguem vem procurar aqui. */}
+                  {v.queda ? <span className="hist-item"> · a obra encolheu nesta gravação</span> : null}
+                </span>
+                {podeRestaurar && (confirmando === v.id ? (
+                  <span className="hist-confirma">
+                    troca os {agora} de agora por estes {v.n_itens}?
+                    <button type="button" className="hist-link hist-sim" disabled={restaurando}
+                      onClick={() => restaurar(v)}>{restaurando ? "restaurando…" : "sim, restaurar"}</button>
+                    <button type="button" className="hist-link" disabled={restaurando}
+                      onClick={() => setConfirmando(null)}>não</button>
+                  </span>
+                ) : (
+                  <button type="button" className="hist-link" onClick={() => setConfirmando(v.id)}>restaurar</button>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="hist-nota">
+            Uma versão por hora de trabalho, mais uma sempre que a obra encolhe.
+            {podeRestaurar ? " Restaurar também vira versão — dá para voltar atrás." : " Só o admin master restaura."}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* O HISTORICO NO PE' DA PAGINA.
 
    Pedido dela em 17/09/2026: "esse historico pode ser bem discreto, mas
@@ -2536,7 +2675,7 @@ function CampoBusca({ valor, aoMudar, dica, contador }) {
    do lado. E diz o que NAO sabe: item que conta como liberado sem ninguem
    ter liberado aparece como "sem registro de quem" em vez de ficar calado —
    foi essa a pergunta que gerou o pedido. */
-function HistoricoDaObra({ obra, tela }) {
+function HistoricoDaObra({ obra, tela, podeRestaurar = false, usuario }) {
   const [aberto, setAberto] = useState(false);
   const [tudo, setTudo] = useState(false);
   const [maisLinhas, setMaisLinhas] = useState(false);
@@ -2599,6 +2738,9 @@ function HistoricoDaObra({ obra, tela }) {
               liberado sem registro de quem liberou.
             </div>
           )}
+          {/* As versoes fecham o bloco: o que aconteceu vem primeiro, como
+              desfazer vem depois. */}
+          <VersoesDaObra obra={obra} podeRestaurar={podeRestaurar} usuario={usuario} />
         </>
       )}
     </div>
@@ -23148,6 +23290,16 @@ export default function App() {
         .hist-quem { color: var(--text); font-weight: 600; }
         .hist-item { color: var(--text-mute); }
         .hist-nota { margin-top: 8px; font-size: 11px; color: var(--text-mute); line-height: 1.5; max-width: 620px; }
+        /* As versoes guardadas, no fim do Historico. Separadas por um fio:
+           o que aconteceu em cima, como desfazer embaixo. */
+        .hist-versoes { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line-1); }
+        .hist-versoes .hist-lista { margin-top: 6px; }
+        /* A gravacao em que a obra encolheu. E' a linha que alguem vem
+           procurar aqui, entao ela nao se parece com as outras. */
+        .hist-linha.hist-queda .hist-item { color: var(--amber-ink, var(--amber)); }
+        .hist-confirma { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-size: 11px; color: var(--text-soft); }
+        .hist-sim { color: var(--red); font-weight: 600; }
+        .hist-erro { color: var(--red); }
         /* A fila da obra. Fica abaixo da pilula de fase, mais discreta que a
            esteira: a esteira e' o caminho, isto e' o que esta' parado agora. */
         .ini-marcos { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; }
@@ -23811,7 +23963,8 @@ export default function App() {
           )}
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}
           {/* O historico fecha a pagina, em qualquer tela da obra. */}
-          <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"} />
+          <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"}
+            podeRestaurar={podeGerenciarPessoas(eu, pessoas)} usuario={usuario} />
           </>
           )}
         </main>
