@@ -4462,8 +4462,21 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             <RotateCcw size={12} /> Reabrir etapas
           </button>
         )}
-        {onLimpar && temConteudo && !congelado && (
-          <button className="btn-limpar-import" disabled={carregando} onClick={() => {
+        {/* O REMOVER APARECE SEMPRE QUE HA' O QUE REMOVER — desabilitado
+            quando nao da', com o motivo na dica, em vez de sumir.
+            Pedido dela em 19/09/2026: "caso eu queira remover essa planilha,
+            eu nao estou conseguindo... a unica opcao e' so' se eu subir
+            novamente uma outra planilha". O botao existia, mas some no modo
+            leitura e na etapa congelada — e botao que some nao se procura,
+            se conclui que nao existe. */}
+        {onLimpar && temConteudo && (
+          <button className="btn-limpar-import" disabled={carregando || congelado}
+            title={congelado
+              ? (compraLiberada
+                  ? "O Plano de Compras já foi liberado e congelou esta etapa. Use \"Reabrir etapas\" antes de remover."
+                  : "Habilite a edição desta obra (no alto da página) para remover.")
+              : `Remover ${oQueLimpa || "os dados importados"} desta obra`}
+            onClick={() => {
             if (window.confirm(
               `Remover ${oQueLimpa || "os dados importados"}?\n\n` +
               "Some tudo que veio deste documento nesta obra. As outras etapas não são tocadas.\n\n" +
