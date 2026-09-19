@@ -3510,6 +3510,8 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
      `tab` e' o dela, entao trocar de aba desmonta a tela e o termo morre
      sozinho — sem precisar limpar na mao. */
   const [busca, setBusca] = useState("");
+  // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
+  const abreNaBusca = useAbertosComBusca(!!busca.trim());
 
   // Achada pelo NOME: a EAP renumerou uma vez e obra salva antes da troca
   // guarda a numeracao velha, entao "32" cru nao serve.
@@ -3711,8 +3713,8 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
         <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens} podeEditar={podeEditar}
           /* Com busca ligada a verba abre sozinha: procurar e ainda ter que
              clicar em cada verba pra ver o resultado nao e' procurar. */
-          expanded={expandedCats.has(cat.num + obra.id) || !!busca.trim()}
-          onToggle={() => toggleCat(cat.num + obra.id)}
+          expanded={abreNaBusca.aberto(cat.num + obra.id, expandedCats.has(cat.num + obra.id))}
+          onToggle={() => abreNaBusca.alternar(cat.num + obra.id, () => toggleCat(cat.num + obra.id))}
           onSepararMO={podeEditar ? (codigo) => onSepararMO(cat.num, codigo) : null}
           onJuntarMO={podeEditar ? (codigo) => onJuntarMO(cat.num, codigo) : null}
           onSepararGrupo={podeEditar ? () => onSepararGrupo(cat.num) : null}
@@ -4383,7 +4385,8 @@ function extrairItensDaPlanilha(linhas) {
 
 // Um botão de importar reutilizável (Contrato PDF / Planilha Excel),
 // cada um com seu próprio arquivo aceito e sua própria mensagem.
-function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada }) {
+function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada,
+                       motivoCongelado, avisoAntesDeTrocar }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
   const [ok, setOk] = useState(null);
@@ -4393,6 +4396,24 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
     const file = e.target.files && e.target.files[0];
     e.target.value = ""; // permite subir o MESMO arquivo de novo
     if (!file) return;
+
+    /* O QUE ESTA TROCA VAI CUSTAR, ANTES DE ELA ACONTECER.
+     *
+     * Substituir a Planilha Executivo nao acrescenta: ela TROCA a lista
+     * `itens` inteira pelo que veio do arquivo — e e' nessa lista que moram
+     * a aprovacao pra compra, o concluido executivo, o comprado, a
+     * solicitacao ao Sienge, o canal, a alocacao MAT/MO, as trocas de
+     * produto e as remocoes com justificativa. Nada disso e' comparado:
+     * e' trocado.
+     *
+     * Medido em 19/09/2026: a 2469 tinha 230 aprovacoes, 132 solicitacoes
+     * ao Sienge e 5 compras, e nada impedia a troca. So' trancar pra
+     * administrador mudaria QUEM aperta o botao; o estrago seguiria igual
+     * e silencioso. Por isso a permissao e o aviso andam juntos — pedido
+     * dela em 19/09/2026. */
+    const aviso = avisoAntesDeTrocar ? avisoAntesDeTrocar() : null;
+    if (aviso && !window.confirm(aviso)) return;
+
     setErro(null); setOk(null); setCarregando(true);
     try {
       const msg = await onFile(file);
@@ -4412,10 +4433,14 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
           {/* Dizer "está congelada" sem dizer como sair é beco sem saída:
               o botão de reabrir mora em OUTRA aba, e quem chega aqui pra
               trocar um arquivo errado não tem como adivinhar isso. */}
+          {/* `motivoCongelado` vem na frente porque ele e' o motivo MAIS
+              especifico: quem chega aqui numa obra com compra aprovada
+              precisa ler isso, e nao "modo leitura". */}
           <span>{congelado
-            ? (compraLiberada
+            ? (motivoCongelado
+                || (compraLiberada
                 ? <>Plano de Compras já liberado — esta etapa está congelada. Para <b>substituir ou remover</b> este documento, reabra as etapas.</>
-                : "Modo leitura — habilite a edição desta obra para importar ou remover.")
+                : "Modo leitura — habilite a edição desta obra para importar ou remover."))
             : dica}</span>
         </div>
         <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
@@ -4453,6 +4478,34 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
       {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
     </div>
   );
+}
+
+/* A BUSCA ABRE AS VERBAS QUE SOBRARAM — E QUEM QUISER FECHAR, FECHA.
+ *
+ * Era `abertos.has(x) || buscando`: com texto no campo o `||` ganhava do
+ * clique, e a seta do grupo virava enfeite. Relato dela em 19/09/2026, no
+ * Plano de Compras: "quando escrevo algo no filtro, a barra do grupo em
+ * baixo fica travada para expandir ou fechar".
+ *
+ * Aqui a busca decide o PADRAO e o clique continua mandando: durante a busca
+ * o que se guarda e' quem foi FECHADO a dedo. Limpar a busca esquece essa
+ * lista e as verbas voltam ao estado de antes — o termo era da busca, nao da
+ * tela.
+ *
+ * Um hook em vez de seis copias porque o defeito estava nas seis telas que
+ * ganharam busca: Vendido Planilha, Executivo, Conf. Executivo, Plano de
+ * Compras, Compras de Produtos e a EAP.
+ */
+function useAbertosComBusca(buscando) {
+  const [fechados, setFechados] = useState(() => new Set());
+  useEffect(() => { if (!buscando) setFechados(new Set()); }, [buscando]);
+  return {
+    aberto: (chave, abertoNormal) => (buscando ? !fechados.has(chave) : abertoNormal),
+    alternar: (chave, alternarNormal) => {
+      if (!buscando) { alternarNormal(); return; }
+      setFechados((p) => { const n = new Set(p); n.has(chave) ? n.delete(chave) : n.add(chave); return n; });
+    },
+  };
 }
 
 // hook pequeno pra controlar quais verbas estão expandidas numa tabela
@@ -4855,6 +4908,8 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
      desmonta a tela e o termo morre sozinho. */
   const [busca, setBusca] = useState("");
   const buscando = !!busca.trim();
+  // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
+  const abreNaBusca = useAbertosComBusca(buscando);
   const naBusca = (itens, c) => (buscando ? (itens || []).filter((it) => casaBusca(textoDoItem(it, c), busca)) : (itens || []));
   const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
 
@@ -4934,11 +4989,11 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             const naTela = naBusca(itens, c);
             if (buscando && naTela.length === 0) return null;
             const temItens = itens.length > 0;
-            const aberto = abertos.has(c.num) || buscando;
+            const aberto = abreNaBusca.aberto(c.num, abertos.has(c.num));
             const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
             return (
               <div key={c.num} className="vend-grupo">
-                <button className="vend-head" onClick={() => temItens && toggle(c.num)} style={{ cursor: temItens ? "pointer" : "default" }}>
+                <button className="vend-head" onClick={() => temItens && abreNaBusca.alternar(c.num, () => toggle(c.num))} style={{ cursor: temItens ? "pointer" : "default" }}>
                   {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
@@ -5942,6 +5997,8 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
      de ordem entre renders e o React quebra. */
   const [busca, setBusca] = useState("");
   const buscando = !!busca.trim();
+  // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
+  const abreNaBusca = useAbertosComBusca(buscando);
 
   if (linhas.length === 0) {
     return (
@@ -6124,12 +6181,12 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
               const { num, nome, itens } = g;
               /* Com busca ligada a verba abre sozinha: procurar e ainda ter
                  que clicar em cada verba nao e' procurar. */
-              const aberto = estaAberto(g) || buscando;
+              const aberto = abreNaBusca.aberto(g, estaAberto(g));
               const pend = itens.filter((l) => l.status !== "ok").length;
               const alertaGrupo = alertasPorVerba ? alertasPorVerba.get(num) : null;
               return (
                 <div key={num} className="vend-grupo">
-                  <button className="vend-head" onClick={() => toggle(g)}>
+                  <button className="vend-head" onClick={() => abreNaBusca.alternar(g, () => toggle(g))}>
                     {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
                     <span className="vend-num mono">{num}</span>
                     <span className="vend-nome">{nome}</span>
@@ -7117,6 +7174,8 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
     || (filtro === "es_mudou" && chavesES ? (x) => chavesES.mudou.has(chaveDescricao(x.it.desc)) : null)
     || null;
   const filtrando = !!busca.trim() || !!peneiraDoCartao;
+  // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
+  const abreNaBusca = useAbertosComBusca(filtrando);
   const grupos = !filtrando ? todosOsGrupos : todosOsGrupos
     .map((g) => ({ ...g, itens: g.itens.filter((x) =>
       (!peneiraDoCartao || x.titulo || peneiraDoCartao(x))
@@ -7181,7 +7240,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
         {grupos.map((g) => {
           // Filtrando, a verba abre sozinha: procurar e ainda ter que clicar
           // em cada verba não é procurar.
-          const aberto = abertos.has(g.num) || filtrando;
+          const aberto = abreNaBusca.aberto(g.num, abertos.has(g.num));
           // O carimbo do executivo sai junto no mesmo clique (ver
           // `liberarItensParaCompra`), entao ele nao filtra mais quem entra.
           const faltam = g.itens.filter((x) => !x.titulo && !x.liberado && x.pode);
@@ -7205,7 +7264,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
-                <button className="grp-toggle" onClick={() => alternar(g.num)}>
+                <button className="grp-toggle" onClick={() => abreNaBusca.alternar(g.num, () => alternar(g.num))}>
                   <div className="grp-esq">
                     {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                     <span className="grp-num mono">{g.num}</span>
@@ -8296,10 +8355,64 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
 // (unitário e total) por item, dentro de cada grupo — igual à Vendido
 // Planilha. Por trás, também alimenta o Comparativo/Compras/Contratos
 // (produto × serviço classificado pelo custo de material).
-function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar }) {
+/* O QUE UMA TROCA DA PLANILHA EXECUTIVO VAI LEVAR JUNTO.
+ *
+ * `importPlanilhaExecutivo` nao acrescenta: ela faz
+ * `itens: doArquivo` — troca a lista inteira pelo que veio do Excel. E e'
+ * nessa lista que vivem a aprovacao pra compra, o concluido executivo, o
+ * comprado, a solicitacao ao Sienge, o canal, a alocacao MAT/MO, as trocas
+ * de produto e as remocoes com justificativa.
+ *
+ * Esta funcao conta o que existe HOJE pra tela poder dizer o preco antes de
+ * alguem pagar. Declarada com `function` pra nao depender de ordem.
+ */
+function resumoDoQueSePerde(obra) {
+  const r = { itens: 0, liberados: 0, concluidos: 0, comprados: 0, solicitados: 0, removidos: 0, trocas: 0 };
+  (obra?.categorias || []).forEach((c) => (c.itens || []).forEach((it) => {
+    if (it.ehTitulo) return;
+    r.itens += 1;
+    if (liberadoParaCompra(it)) r.liberados += 1;
+    if (it.concluidoExecutivo) r.concluidos += 1;
+    if (it.comprado) r.comprados += 1;
+    if (it.solicitado) r.solicitados += 1;
+    if (it.excluido) r.removidos += 1;
+    if (it.troca) r.trocas += 1;
+  }));
+  return r;
+}
+
+/* A frase do aviso, so' com o que existe de verdade nesta obra.
+   Listar "0 compras" ao lado de "230 aprovacoes" dilui o que importa. */
+function frasesDoQueSePerde(r) {
+  const n = (q, um, varios) => (q ? `${q} ${q === 1 ? um : varios}` : null);
+  return [
+    n(r.liberados, "item aprovado para compra", "itens aprovados para compra"),
+    n(r.concluidos, "item concluído no executivo", "itens concluídos no executivo"),
+    n(r.solicitados, "solicitação já enviada ao Sienge", "solicitações já enviadas ao Sienge"),
+    n(r.comprados, "compra já feita", "compras já feitas"),
+    n(r.trocas, "troca de produto", "trocas de produto"),
+    n(r.removidos, "remoção com justificativa", "remoções com justificativa"),
+  ].filter(Boolean);
+}
+
+function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar, souAdmin = false }) {
   // Qual linha esta' com o campo de justificativa aberto (ADR-005 fatia 3).
   const [removendo, setRemovendo] = useState(null);
-  const congelado = obra.comprasLiberadas || !podeEditar;
+
+  /* SUBSTITUIR A PLANILHA COM COMPRA APROVADA: SO' ADMINISTRADOR.
+   *
+   * Pedido dela em 19/09/2026: "se tiver algo ja liberado para compra,
+   * somente admin pode fazer essa alteracao".
+   *
+   * A trava que existia aqui usava `comprasLiberadas`, a chave ANTIGA — de
+   * antes de a aprovacao passar a ser item a item (ADR-005). Ela deixou de
+   * proteger: medido no mesmo dia, a obra 2469 tinha 230 aprovacoes, 132
+   * solicitacoes ao Sienge e 5 compras com essa chave em `false`, e
+   * qualquer pessoa que editasse podia trocar a planilha e levar tudo.
+   */
+  const perdas = useMemo(() => resumoDoQueSePerde(obra), [obra]);
+  const trocaCustaCaro = perdas.liberados > 0;
+  const congelado = obra.comprasLiberadas || !podeEditar || (trocaCustaCaro && !souAdmin);
   // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
   // quando a obra foi liberada antes de o app aprender a salvar.
   const cmv = useMemo(() => cmvDaObra(obra), [obra]);
@@ -8333,6 +8446,8 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
      17/09/2026. */
   const [busca, setBusca] = useState("");
   const buscando = !!busca.trim();
+  // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
+  const abreNaBusca = useAbertosComBusca(buscando);
   const contaNaBusca = (itens, c) => (itens || []).filter((it) => casaBusca(textoDoItem(it, c), busca)).length;
   const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   const vendidas = todasVerbas.filter((c) => grupoFoiVendido(c.itensPlanilhaExecutivo));
@@ -8402,7 +8517,23 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
       <ImportButton congelado={congelado} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
         onLimpar={onLimparExecutivo} oQueLimpa="os itens da Planilha Executivo"
         onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
-        temConteudo={temExecutivo}
+        /* O motivo especifico ganha da mensagem generica: quem chega aqui
+           com compra aprovada precisa saber que e' permissao, e nao modo
+           leitura nem etapa congelada. */
+        motivoCongelado={trocaCustaCaro && !souAdmin && podeEditar && !obra.comprasLiberadas
+          ? <>Esta obra já tem <b>{perdas.liberados} {perdas.liberados === 1 ? "item aprovado" : "itens aprovados"} para compra</b>. Trocar a planilha apagaria essas aprovações — só um <b>administrador</b> pode fazer isso.</>
+          : null}
+        /* O aviso com os numeros: so' aparece quando ha' o que perder, e
+           lista apenas o que esta obra tem de verdade. */
+        avisoAntesDeTrocar={temExecutivo && trocaCustaCaro ? () => {
+          const linhas = frasesDoQueSePerde(perdas);
+          return "SUBSTITUIR A PLANILHA EXECUTIVO?\n\n"
+            + "A lista de itens é TROCADA pela do arquivo novo. Isto apaga, nesta obra:\n\n"
+            + linhas.map((l) => `  · ${l}`).join("\n")
+            + "\n\nO que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra"
+            + " e sem a ligação com o Sienge.\n\n"
+            + "O histórico de versões guarda o estado de agora, então dá para voltar atrás.";
+        } : null}
         dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
         onFile={aoImportar} />
 
@@ -8447,7 +8578,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             const nNaBusca = buscando ? contaNaBusca(itens, c) : itens.length;
             if (buscando && nNaBusca === 0) return null;
             const temItens = itens.length > 0;
-            const aberto = abertos.has(c.num) || buscando;
+            const aberto = abreNaBusca.aberto(c.num, abertos.has(c.num));
             const subtotal = itens.reduce((a, it) => a + (it.excluido ? 0 : (it.custo || 0)), 0);
             // quanto essa verba valia no criativo — a referência do movimento
             /* O vendido do grupo vem do CRIATIVO INTEIRO, não dos itens que
@@ -8468,7 +8599,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             return (
               <div key={c.num} className="vend-grupo">
                 {/* abre mesmo sem itens: é onde se lança item manual */}
-                <button className="vend-head" onClick={() => toggle(c.num)}>
+                <button className="vend-head" onClick={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}>
                   {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
@@ -11020,6 +11151,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
      em `g.itens`, que e' quem gera o codigo auxiliar e o CSV do Sienge. */
   const [busca, setBusca] = useState("");
   const buscando = !!busca.trim();
+  // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
+  const abreNaBusca = useAbertosComBusca(buscando);
   const casaRow = (r) => casaBusca(textoDoItem(r.it, { num: r.catNum, nome: r.catNome }), busca);
   const [abertos, setAbertos] = useState(() => new Set());
   const [baseSienge, setBaseSienge] = useState(null);
@@ -11606,7 +11739,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
            Sienge — continua lendo `g.itens`, a verba inteira. */
         const naTela = buscando ? g.itens.filter(casaRow) : g.itens;
         if (buscando && naTela.length === 0) return null;
-        const aberto = abertos.has(g.num) || buscando;
+        const aberto = abreNaBusca.aberto(g.num, abertos.has(g.num));
         /* A LINHA TROCADA NAO CONTA EM NADA — e' historico (18/09/2026).
 
            Ela trocou um produto na 24 e a barra continuou dizendo "tudo
@@ -11648,7 +11781,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 aria-label="Selecionar verba">
                 {nSelNaTela === nNaTela ? <Check size={13} /> : nSelNaTela > 0 ? <Minus size={13} /> : null}
               </button>
-              <button className="grp-toggle" onClick={() => abrir(g.num)}>
+              <button className="grp-toggle" onClick={() => abreNaBusca.alternar(g.num, () => abrir(g.num))}>
                 <div className="grp-esq">
                   {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                   <span className="grp-num mono">{g.num}</span>
@@ -22091,9 +22224,17 @@ export default function App() {
         .grp-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-right: 16px; }
         .grp-head:hover { background: var(--surface-2); }
         .grp-toggle { flex: 1; min-width: 0; background: transparent; border: none; padding: 12px 16px; cursor: pointer; font-family: inherit; text-align: left; }
-        .grp-esq { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        /* A ALTURA CEDE, O NOME NAO.
+           Com a edicao ligada a barra ganha ate' tres botoes a' direita, e o
+           nome da verba era o unico item sem trava de encolhimento — ia ate'
+           zero e sumia, levando a seta junto. A linha virava "05" e tres
+           etiquetas, sem dizer de que verba se tratava. Agora as etiquetas
+           descem de linha e o nome fica. Mesma regra do alerta da Conf.
+           Executivo (18/09/2026): quem cede e' a altura. */
+        .grp-esq { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; row-gap: 6px; }
+        .grp-esq > svg { flex-shrink: 0; }
         .grp-num { font-size: 11.5px; color: var(--ink-3); width: 20px; flex-shrink: 0; }
-        .grp-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .grp-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 10ch; }
         .grp-conta { font-size: 10.5px; color: var(--ink-3); background: var(--panel); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         .grp-avulsos { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--purple); background: var(--purple-soft); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         /* MAT e MO em colunas de largura fixa: com valores alinhados da
@@ -23948,7 +24089,7 @@ export default function App() {
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} podeEditar={edicao.minha} />}
           {tab === "executivo" && ((obra.deparaAprovado || obra.executivoLiberadoDireto)
-            ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
+            ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} souAdmin={souAdmin} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} souAdmin={souAdmin} onConcluirExecutivo={concluirItensExecutivo}

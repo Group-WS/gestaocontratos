@@ -82,6 +82,26 @@ returns integer language sql immutable as $$
   ), 0)::integer;
 $$;
 
+-- Quantos itens ja' estao APROVADOS PRA COMPRA.
+--
+-- Existe por causa da substituicao da Planilha Executivo (19/09/2026): ela
+-- TROCA a lista de itens pela do arquivo novo, e o numero de itens fica
+-- parecido — some o ESTADO deles, nao a quantidade. Contando so' itens, uma
+-- troca dessas passaria pelo filtro de uma hora sem deixar versao nenhuma,
+-- e seria exatamente a gravacao que mais precisa de volta.
+create or replace function obra_conta_liberados(cats jsonb)
+returns integer language sql immutable as $$
+  select coalesce((
+    select count(*)
+      from jsonb_array_elements(cats) as c,
+           jsonb_array_elements(case when jsonb_typeof(c -> 'itens') = 'array'
+                                     then c -> 'itens' else '[]'::jsonb end) as it
+     where jsonb_typeof(cats) = 'array'
+       and coalesce((it ->> 'liberadoCompra')::boolean, false)
+       and not coalesce((it ->> 'excluido')::boolean, false)
+  ), 0)::integer;
+$$;
+
 -- ---------- 3. O gatilho ----------
 -- SECURITY DEFINER porque a tabela tem RLS: o gatilho precisa gravar o
 -- historico de qualquer pessoa, inclusive de quem nao teria permissao de
@@ -122,7 +142,15 @@ begin
   antes    := obra_conta_itens(OLD.categorias);
   -- Apagar leva tudo: depois da linha sumir sobra zero item.
   depois   := case when apagando then 0 else obra_conta_itens(NEW.categorias) end;
-  eh_queda := depois < antes;
+
+  -- QUEDA E' PERDER ITEM **OU** PERDER APROVACAO.
+  -- Substituir a Planilha Executivo troca a lista inteira: a contagem de
+  -- itens quase nao muda, mas as aprovacoes, o canal e a ligacao com o
+  -- Sienge vao a zero. Olhar so' para a quantidade deixaria passar
+  -- justamente a gravacao que mais precisa de volta.
+  eh_queda := depois < antes
+           or (case when apagando then 0 else obra_conta_liberados(NEW.categorias) end)
+              < obra_conta_liberados(OLD.categorias);
 
   select max(criado_em) into ultima
     from obra_versao where obra_codigo = OLD.obra_codigo;
