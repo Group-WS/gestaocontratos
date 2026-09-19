@@ -7277,8 +7277,20 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                         dentro diz o grupo, e o que esta' na tela vira um
                         segundo numero, dito com o nome do filtro. */}
                     <span className="grp-conta">{g.nProdutos ?? g.itens.length} produtos</span>
-                    <span className="grp-conta">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberados</span>
-                    <span className="grp-conta">{g.itens.filter((x) => !x.titulo && estaConcluido(x)).length} concluídos</span>
+                    {/* OS NOMES INTEIROS, E NA ORDEM DO FLUXO — pedido dela em
+                        19/09/2026: "vamos padronizar os nomes: sempre colocar
+                        'Concluido executivo' e 'Liberado para compra' mesmo aqui
+                        na barra. e sempre na ordem, primeiro vem o concluido e
+                        depois o liberado."
+
+                        Antes a barra dizia "7 de 7 liberados · 7 concluídos":
+                        o liberado vinha na frente (fora da ordem do fluxo), os
+                        dois com o nome pela metade, e um com denominador e o
+                        outro sem. Os dois olham a MESMA lista — todo item passa
+                        pelas duas decisões, independente da alocação —, entao
+                        mostrar os dois como "X de Y" e' o que deixa comparar. */}
+                    <span className="grp-conta">{compraveisDoGrupo(g).filter((x) => estaConcluido(x)).length} de {compraveisDoGrupo(g).length} concluído executivo</span>
+                    <span className="grp-conta">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberado para compra</span>
                     {filtrando && (
                       <span className="grp-conta grp-conta-filtro">
                         {g.itens.length} nesta busca

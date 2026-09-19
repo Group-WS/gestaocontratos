@@ -302,8 +302,24 @@ conf("a tela repassa para a lista", /onConferirVarios=\{onConferirAlertaEmVarios
    são duas decisões na mesma tela. */
 conf("o contador usa os produtos do grupo",
   src.includes("{g.nProdutos ?? g.itens.length} produtos"), true);
-conf("e diz quantos foram concluídos pelo executivo",
-  src.includes(`{g.itens.filter((x) => !x.titulo && estaConcluido(x)).length} concluídos`), true);
+/* OS NOMES INTEIROS E NA ORDEM DO FLUXO (pedido dela, 19/09/2026):
+   "sempre colocar 'Concluido executivo' e 'Liberado para compra' mesmo aqui
+   na barra. e sempre na ordem, primeiro vem o concluido e depois o liberado."
+   Antes era "7 de 7 liberados · 7 concluídos": liberado na frente, os dois
+   com o nome pela metade, e só um com denominador. */
+conf("e diz quantos foram concluídos pelo executivo, com o nome inteiro",
+  src.includes("de {compraveisDoGrupo(g).length} concluído executivo"), true);
+conf("... e quantos foram liberados para compra, idem",
+  src.includes("de {compraveisDoGrupo(g).length} liberado para compra"), true);
+/* A ordem é a do fluxo: sem o carimbo do executivo o admin não libera, então
+   ler "liberado" antes de "concluído" conta a história de trás pra frente. */
+conf("o concluído vem ANTES do liberado na barra",
+  src.indexOf("concluído executivo</span>") < src.indexOf("liberado para compra</span>"), true);
+/* Os dois olham a MESMA lista — todo item passa pelas duas decisões,
+   independente da alocação —, então os dois têm o mesmo denominador e dá
+   pra comparar um com o outro de relance. */
+conf("os dois contam sobre a mesma base",
+  (src.match(/de \{compraveisDoGrupo\(g\)\.length\}/g) || []).length, 2);
 /* "tudo que ja consta como aprovado para compra, coloque como concluido
    executivo" (18/09/2026): DEDUZIDO, não carimbado — quem foi aprovado antes
    desta coluna existir não tem como saber QUEM concluiu, e carimbar um nome
