@@ -284,7 +284,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
       <EstiloApresentacao />
 
       <div className="ap-topo">
-        <button className="ap-voltar" onClick={onFechar}><X size={15} /></button>
+        <button aria-label="Fechar" className="ap-voltar" onClick={onFechar}><X size={15} /></button>
         <b>Apresentação de especificações</b>
 
         <select className="ap-sel" value={obraCod} onChange={(e) => setObraCod(e.target.value)}>

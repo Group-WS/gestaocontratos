@@ -8173,7 +8173,7 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
           onChange={(e) => setTermo(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Escape") onCancelar(); }}
         />
-        <button className="clear-btn" onClick={onCancelar}><X size={13} /></button>
+        <button aria-label="Cancelar" className="clear-btn" onClick={onCancelar}><X size={13} /></button>
       </div>
 
       {erro && <div className="busca-insumo-vazio">{erro}</div>}
@@ -8504,7 +8504,7 @@ function DetalheTexto({ item, onFechar }) {
       fundo="detalhe-fundo" caixa="detalhe-caixa">
         <div className="detalhe-topo">
           <span>{item.rotulo}</span>
-          <button className="clear-btn" onClick={onFechar}><X size={14} /></button>
+          <button aria-label="Fechar" className="clear-btn" onClick={onFechar}><X size={14} /></button>
         </div>
         <textarea className="detalhe-texto" readOnly value={item.texto} onFocus={(e) => e.target.select()} />
         <div className="detalhe-acoes">
@@ -13524,7 +13524,7 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
               Obra <b>#{obra.codigo}</b> · solicitante <b>VALENTINA</b>
             </div>
           </div>
-          <button className="clear-btn" onClick={onFechar} disabled={enviando}><X size={14} /></button>
+          <button aria-label="Fechar" className="clear-btn" onClick={onFechar} disabled={enviando}><X size={14} /></button>
         </div>
 
         <div className="sobreposto-corpo">

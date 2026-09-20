@@ -393,7 +393,7 @@ function FormProduto({ p, produtos, fornecedores, verbas, onFechar, onSalvar, on
       <div className="cat-caixa">
         <div className="cat-caixa-topo">
           <b>{p.id ? "Editar produto" : "Novo produto"}</b>
-          <button onClick={onFechar}><X size={16} /></button>
+          <button aria-label="Fechar" onClick={onFechar}><X size={16} /></button>
         </div>
 
         <div className="cat-campos">
@@ -591,7 +591,7 @@ function FormFornecedor({ f, onFechar, onSalvar }) {
       <div className="cat-caixa cat-caixa-fina">
         <div className="cat-caixa-topo">
           <b>{f.id ? "Editar fornecedor" : "Novo fornecedor"}</b>
-          <button onClick={onFechar}><X size={16} /></button>
+          <button aria-label="Fechar" onClick={onFechar}><X size={16} /></button>
         </div>
         <div className="cat-campos">
           <label className="cat-largo">Nome
@@ -685,7 +685,7 @@ function EnviarParaObra({ produtos, obras, usuario, nomeVerba, onFechar, onPront
       <div className="cat-caixa">
         <div className="cat-caixa-topo">
           <b>Enviar {produtos.length} {produtos.length === 1 ? "produto" : "produtos"} para a obra</b>
-          <button onClick={onFechar}><X size={16} /></button>
+          <button aria-label="Fechar" onClick={onFechar}><X size={16} /></button>
         </div>
 
         {erro && <div className="cat-erro"><AlertTriangle size={14} /> <span>{erro}</span></div>}
@@ -901,7 +901,7 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
       <div className="cat-caixa">
         <div className="cat-caixa-topo">
           <b>Importar planilha de padronização</b>
-          <button onClick={onFechar}><X size={16} /></button>
+          <button aria-label="Fechar" onClick={onFechar}><X size={16} /></button>
         </div>
 
         {erro && <div className="cat-erro"><AlertTriangle size={14} /> <span>{erro}</span></div>}
