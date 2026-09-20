@@ -51,7 +51,7 @@ create policy "aditivo: alterar" on aditivo
 create policy "aditivo: excluir (criador ou admin)" on aditivo
   for delete to authenticated
   using (
-    (criado_por is not null and lower(criado_por) = lower(auth.jwt() ->> 'email'))
+    (criado_por is not null and lower(criado_por) = lower((select auth.jwt()) ->> 'email'))
     or public.admin_do_time()
   );
 

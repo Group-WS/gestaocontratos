@@ -66,7 +66,7 @@ create policy "leitura do time" on obra_comentario
 drop policy if exists "comentar em nome proprio" on obra_comentario;
 create policy "comentar em nome proprio" on obra_comentario
   for insert to authenticated
-  with check (autor = lower(auth.jwt() ->> 'email'));
+  with check (autor = lower((select auth.jwt()) ->> 'email'));
 
 -- APAGAR: o autor, ou um administrador.
 --
@@ -76,7 +76,7 @@ create policy "comentar em nome proprio" on obra_comentario
 drop policy if exists "apagar o proprio, ou admin" on obra_comentario;
 create policy "apagar o proprio, ou admin" on obra_comentario
   for delete to authenticated
-  using (autor = lower(auth.jwt() ->> 'email') or public.admin_do_time());
+  using (autor = lower((select auth.jwt()) ->> 'email') or public.admin_do_time());
 
 -- Editar um comentario ja' escrito nao existe de proposito: recado alterado
 -- depois de lido confunde mais do que ajuda. Quem errou apaga e escreve de

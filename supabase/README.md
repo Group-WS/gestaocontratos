@@ -1,0 +1,89 @@
+# Os arquivos SQL do Confere
+
+Não são migrations: são scripts avulsos, aplicados à mão no SQL Editor do
+Supabase. Quase todos são reaplicáveis (`if not exists`, `drop policy if
+exists`), mas **a ordem entre eles não é livre** — e não estava escrita em
+lugar nenhum até agora.
+
+Esta página existe porque montar o banco do zero num Postgres limpo falhou
+três vezes seguidas por ordem errada. Os erros eram claros
+(`column "perfil" does not exist`), mas só aparecem quem tenta.
+
+## Ordem de aplicação, num banco novo
+
+Dentro de cada bloco a ordem não importa. Entre blocos, importa.
+
+**1. Estrutura**
+`schema.sql` · `equipe.sql`
+
+**2. Acesso — nesta ordem exata**
+`acessos.sql` → `perfis.sql` → `admin-master.sql`
+
+> `perfis.sql` lê a coluna `admin`, criada em `acessos.sql`.
+> `admin-master.sql` lê a coluna `perfil`, criada em `perfis.sql`.
+> Trocar dois deles de lugar derruba o script com erro de coluna.
+
+**3. O resto do domínio**
+`eap.sql` · `etapas.sql` · `prazos.sql` · `escopos.sql` · `aditivos.sql` ·
+`aditivo-exclusao.sql` · `aditivo-aguardando.sql` · `alocacao.sql` ·
+`apresentacao.sql` · `obra-versao.sql` · `obra-versao-liberado-carimbo.sql` ·
+`obra-comentario.sql` · `arquivos.sql` · `arquivos-obra.sql` · `catalogo.sql` ·
+`insumo-sienge.sql` · `sienge_obra.sql` · `sienge_eap.sql` ·
+`sienge_solicitacao.sql` · `sienge_obra_status_manual.sql` · `compradores.sql` ·
+`mao-de-obra-propria.sql` · `pessoa-canal.sql` · `ultimo-acesso.sql` ·
+`foto-perfil.sql` · `equipe-da-obra.sql` · `contrato-restrito.sql` ·
+`patch-obra.sql`
+
+> `aditivo-exclusao.sql` e `obra-comentario.sql` chamam `admin_do_time()`,
+> que vem do bloco 2. Por isso o bloco 2 vem antes deste.
+
+**4. Cadastrar a equipe e dar perfil a cada um, pelo app.**
+Alguém precisa ficar com **Admin master** — sem isso, o passo 5 se recusa
+a rodar, de propósito.
+
+**5. Fechar o acesso — nesta ordem**
+`pessoa-escrita-restrita.sql` → `rls-perfis.sql` → `rls-perfis-complemento.sql`
+
+> Os três juntos, na mesma sessão. Rodar só o primeiro deixa o resto do
+> banco aberto; rodar só os dois primeiros deixa o histórico da obra, o
+> caderno e as solicitações abertos.
+
+## Scripts que NÃO são de estrutura
+
+Estes são operações pontuais, de uma vez só, e não entram na montagem de um
+banco novo: `trocar-email-luana.sql`, `limpar-obras-teste.sql`,
+`limpar-apresentacao-caderno.sql`, `remove-verba-32.sql`,
+`catalogo-duplicidades.sql`, `renumera-execucao-mao-de-obra.sql`,
+`sienge_eap_seed.sql`.
+
+Vale separá-los numa pasta própria quando houver oportunidade — hoje eles
+estão misturados com o que define o banco, e não há como olhar a pasta e
+saber o que é o quê.
+
+## Sobre políticas que "somam"
+
+O erro mais caro desta pasta não dá erro: várias políticas na mesma tabela
+se **somam** (é OR, não AND). Uma política esquecida dizendo `using (true)`
+anula todo o recorte por perfil, em silêncio.
+
+Foi exatamente o que aconteceu com `obra_versao` (tinha uma política
+`leitura do time (autenticados)` vinda de outro arquivo) e com
+`alocacao_padrao` (tinha três). Por isso `rls-perfis.sql` e
+`rls-perfis-complemento.sql` apagam as políticas **por enumeração**, e não
+por nome.
+
+Depois de rodar, esta consulta deve devolver só as três leituras de time
+que são intencionais (`comprador_grupo`, `obra_comentario`,
+`prestador_interno`):
+
+```sql
+select c.relname as tabela, p.polname as politica
+  from pg_policy p join pg_class c on c.oid = p.polrelid
+ where c.relnamespace = 'public'::regnamespace
+   and pg_get_expr(p.polqual, p.polrelid) = 'true'
+ order by 1, 2;
+```
+
+## Testes
+
+Ver [tests/README.md](tests/README.md).

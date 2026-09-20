@@ -2,7 +2,7 @@
 -- RLS POR PERFIL  ·  ESCRITO, DESLIGADO
 -- ============================================================
 --
--- NAO RODE ISTO AINDA.
+-- PRONTO PRA RODAR — com acompanhamento, e na ordem abaixo.
 --
 -- E so' depois de existir um admin master (supabase/admin-master.sql e o
 -- perfil dado no app): aqui so' o master escreve na tabela pessoa.
@@ -16,6 +16,9 @@
 --   2. cadastrar a equipe e dar perfil a cada um
 --   3. conferir na tela quem esta vendo o que
 --   4. so' entao rodar isto, com alguem acompanhando
+--   5. e logo em seguida supabase/rls-perfis-complemento.sql, que cuida
+--      das outras dez tabelas — sem ele, historico, apresentacao e
+--      solicitacao continuam servindo tudo pra qualquer um logado
 --
 -- Ate la o acesso e' filtro de tela: o banco continua servindo tudo pra
 -- quem esta logado. Esta e' a janela conhecida, e ela tem fim.
@@ -29,7 +32,7 @@ returns text
 language sql stable security definer set search_path = public
 as $$
   select perfil from pessoa
-   where email = lower(auth.jwt() ->> 'email') and ativo
+   where email = lower((select auth.jwt()) ->> 'email') and ativo
 $$;
 
 create or replace function public.sou_admin()
@@ -54,7 +57,7 @@ as $$
            when 'admin' then true
            when 'geral' then true
            -- o GC ve as dele, e as que ainda nao tem dono
-           when 'gc'    then o.gc is null or lower(o.gc) = lower(auth.jwt() ->> 'email')
+           when 'gc'    then o.gc is null or lower(o.gc) = lower((select auth.jwt()) ->> 'email')
            -- a Mehoo ve todas, dentro do painel dela (decisao de 14/09/2026;
            -- antes eram so' as obras com item do canal)
            when 'mehoo' then true
@@ -62,19 +65,38 @@ as $$
          end
 $$;
 
+-- ---------- limpeza ----------
+-- Apaga TODA policy das tabelas que este arquivo recorta, por enumeracao,
+-- e nao por nome.
+--
+-- Por que nao basta o `drop policy if exists "<nome>"`: politicas se
+-- SOMAM. Basta uma sobrevivente dizendo `using (true)` — porque foi criada
+-- com outro nome, em outro arquivo, noutro dia — pra que todo o recorte
+-- abaixo nao valha nada, sem erro nenhum e sem aviso nenhum. Era o caso de
+-- alocacao_padrao, que tinha tres ("time le alocacao padrao", "time
+-- atualiza...", "time apaga..."), e de obra_versao no arquivo irmao.
+do $$
+declare t text; pol record;
+begin
+  foreach t in array array[
+    'pessoa','obra','obra_dados','aditivo','insumo_preco','eap_grupo','alocacao_padrao'
+  ] loop
+    for pol in
+      select polname from pg_policy where polrelid = format('public.%I', t)::regclass
+    loop
+      execute format('drop policy if exists %I on public.%I', pol.polname, t);
+    end loop;
+  end loop;
+end $$;
+
 -- ---------- pessoa ----------
 -- Todo mundo le a propria linha (e' o que decide se entra). Administrador
 -- e admin master leem todas; escrever, so' o admin master (a Equipe e os
 -- acessos sao dele). Ninguem mais escreve nada -- inclusive a propria
 -- linha: senao qualquer um se promoveria.
-drop policy if exists "acesso time (autenticados)" on pessoa;
-drop policy if exists "leio a minha linha"  on pessoa;
-drop policy if exists "admin le todas"      on pessoa;
-drop policy if exists "admin escreve todas" on pessoa;
-drop policy if exists "master escreve todas" on pessoa;
 
 create policy "leio a minha linha" on pessoa for select to authenticated
-  using (email = lower(auth.jwt() ->> 'email'));
+  using (email = lower((select auth.jwt()) ->> 'email'));
 create policy "admin le todas" on pessoa for select to authenticated
   using (public.sou_admin());
 create policy "master escreve todas" on pessoa for all to authenticated
@@ -82,19 +104,14 @@ create policy "master escreve todas" on pessoa for all to authenticated
 
 -- A linha que nasce no primeiro login: a pessoa pode se inserir, mas so'
 -- com perfil NULO. E' o que permite entrar na fila sem poder se liberar.
-drop policy if exists "entro na fila" on pessoa;
 create policy "entro na fila" on pessoa for insert to authenticated
-  with check (email = lower(auth.jwt() ->> 'email') and perfil is null);
+  with check (email = lower((select auth.jwt()) ->> 'email') and perfil is null);
 
 -- ---------- obra e obra_dados ----------
-drop policy if exists "acesso time (autenticados)" on obra;
-drop policy if exists "vejo as minhas obras" on obra;
 create policy "vejo as minhas obras" on obra for all to authenticated
   using (codigo in (select public.minhas_obras()))
   with check (public.meu_perfil() in ('master','admin','geral','gc'));
 
-drop policy if exists "acesso time (autenticados)" on obra_dados;
-drop policy if exists "vejo os dados das minhas obras" on obra_dados;
 create policy "vejo os dados das minhas obras" on obra_dados for all to authenticated
   using (obra_codigo in (select public.minhas_obras()))
   with check (public.meu_perfil() in ('master','admin','geral','gc'));
@@ -104,12 +121,6 @@ create policy "vejo os dados das minhas obras" on obra_dados for all to authenti
 -- 17/09/2026): so' o criador do aditivo ou um administrador apaga. Se este
 -- arquivo voltasse a criar uma politica "for all", ele reabriria a exclusao
 -- pra todo mundo — ver supabase/aditivo-exclusao.sql.
-drop policy if exists "acesso time (autenticados)" on aditivo;
-drop policy if exists "aditivo das minhas obras" on aditivo;
-drop policy if exists "aditivo: ler" on aditivo;
-drop policy if exists "aditivo: criar" on aditivo;
-drop policy if exists "aditivo: alterar" on aditivo;
-drop policy if exists "aditivo: excluir (criador ou admin)" on aditivo;
 create policy "aditivo: ler" on aditivo for select to authenticated
   using (obra_codigo in (select public.minhas_obras())
          and public.meu_perfil() in ('master','admin','geral','gc'));
@@ -123,7 +134,7 @@ create policy "aditivo: excluir (criador ou admin)" on aditivo for delete to aut
   using (
     obra_codigo in (select public.minhas_obras())
     and (
-      (criado_por is not null and lower(criado_por) = lower(auth.jwt() ->> 'email'))
+      (criado_por is not null and lower(criado_por) = lower((select auth.jwt()) ->> 'email'))
       or public.meu_perfil() in ('master','admin')
     )
   );
@@ -135,9 +146,6 @@ do $$
 declare t text;
 begin
   foreach t in array array['insumo_preco','eap_grupo','alocacao_padrao'] loop
-    execute format('drop policy if exists "acesso time (autenticados)" on %I', t);
-    execute format('drop policy if exists "leio referencia" on %I', t);
-    execute format('drop policy if exists "escrevo referencia" on %I', t);
     execute format('create policy "leio referencia" on %I for select to authenticated using (public.meu_perfil() is not null)', t);
     execute format('create policy "escrevo referencia" on %I for all to authenticated using (public.meu_perfil() in (''master'',''admin'',''geral'',''gc'')) with check (public.meu_perfil() in (''master'',''admin'',''geral'',''gc''))', t);
   end loop;
