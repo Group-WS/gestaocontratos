@@ -1,18 +1,14 @@
 # CI do Confere.
 #
-# Roda em todo push e em todo PR. Tres trabalhos, independentes:
+# Roda em todo push e em todo PR. Dois trabalhos, independentes:
 #
 #   app    os testes do projeto (npm test) e o build do front — inclusive o
 #          que sobe o backend e confere que nenhuma rota responde sem login
-#   banco  monta o banco do zero num Postgres de verdade e prova que o RLS
-#          nega o que tem que negar — ninguem se promove, o GC nao ve a obra
-#          do outro, o historico acompanha a obra
 #   e2e    no navegador: sem sessao, o app para na tela de entrada; publicado
 #          sem configuracao, ninguem entra
 #
-# Por que o segundo existe: o erro mais caro do banco nao da erro. Uma
-# politica esquecida dizendo `using (true)` anula o recorte por perfil em
-# silencio, e so' um teste que troca de identidade e tenta ler percebe.
+# Os testes de policy (RLS) e o gate de qualidade rodam no outro workflow,
+# quality-gate.yml, que e' o do padrao Group WS.
 
 name: CI
 
@@ -44,36 +40,6 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-
-  banco:
-    name: Testes de policy (RLS)
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        # A imagem do Supabase: ja' traz o pgTAP.
-        image: supabase/postgres:15.8.1.060
-        env:
-          POSTGRES_PASSWORD: teste
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      PGHOST: localhost
-      PGPORT: 5432
-      PGUSER: postgres
-      PGPASSWORD: teste
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cliente do Postgres
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
-
-      - name: Monta o banco e roda os testes
-        run: bash supabase/tests/rodar.sh
 
   e2e:
     name: Ponta a ponta (navegador)

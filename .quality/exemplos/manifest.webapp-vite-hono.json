@@ -1,0 +1,55 @@
+{
+  "versaoDoPadrao": "1.0.0",
+  "projeto": "nome-do-projeto",
+  "perfil": "webapp-vite-hono",
+  "comandosDeValidacao": ["pnpm lint", "pnpm typecheck", "pnpm test", "pnpm build"],
+  "caminhos": {
+    "frontend": ["apps/web/src"],
+    "api": ["apps/api/src"],
+    "regrasDeNegocio": ["packages/shared/src/domain"],
+    "catalogoDeRegras": "docs/regras-de-negocio",
+    "migrations": "supabase/migrations",
+    "testesDoBanco": "supabase/tests",
+    "testesE2E": ["e2e"],
+    "ignorar": ["**/database.types.ts"]
+  },
+  "designSystem": {
+    "pacote": "@group-ws/ws-ui",
+    "vinculo": "copia",
+    "pastasDoDesignSystem": [
+      "apps/web/src/components/ui",
+      "apps/web/src/components/tkws",
+      "apps/web/src/components/atoms",
+      "apps/web/src/components/molecules",
+      "apps/web/src/components/organisms",
+      "apps/web/src/components/templates",
+      "apps/web/src/styles",
+      "apps/web/src/lib/utils.ts",
+      "apps/web/src/lib/calendar-date.ts",
+      "apps/web/src/store/theme.ts",
+      "apps/web/scripts/check-ds.mjs"
+    ],
+    "templatesDePagina": ["PageShell", "SystemFrame"],
+    "arquivosDePagina": ["apps/web/src/features/**/*Page.tsx"],
+    "fontes": ["Host Grotesk", "JetBrains Mono"],
+    "exigirLogo": "GroupWsLogo"
+  },
+  "navegador": {
+    "wrapper": "apps/web/src/lib/browser-storage.ts",
+    "permitidos": [
+      {
+        "chave": "sb-<project-ref>-auth-token",
+        "tipo": "sessao",
+        "motivo": "Sessão do Supabase Auth, gerida pelo supabase-js"
+      }
+    ]
+  },
+  "seguranca": {
+    "helpersDeAutenticacao": ["requireAuth"],
+    "clientesAdministrativos": ["supabaseAdmin", "createAdminClient"],
+    "rotasPublicas": []
+  },
+  "supabase": {
+    "schemasExpostos": ["public"]
+  }
+}

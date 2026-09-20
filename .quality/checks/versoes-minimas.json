@@ -1,0 +1,21 @@
+{
+  "atualizadoEm": "2026-09-17",
+  "fonte": "https://github.com/vercel/next.js/security/advisories · https://react.dev/blog",
+  "pacotes": {
+    "next": [
+      { "faixa": "<15", "bloquear": true, "motivo": "linha fora da política de suporte do Next.js: não recebe correções de segurança; migre para a 16" },
+      { "faixa": "15", "minima": "15.5.24", "motivo": "GHSA-2xp9-vwfh-vxw4 (execução remota via imagem AVIF, advisory de 25/08/2026) e CVE-2025-66478 (React2Shell)" },
+      { "faixa": "16", "minima": "16.3.3", "motivo": "GHSA-2xp9-vwfh-vxw4 (execução remota via imagem AVIF, advisory de 25/08/2026) e CVE-2025-66478 (React2Shell)" }
+    ],
+    "react": [
+      { "faixa": "19.0", "minima": "19.0.1", "motivo": "CVE-2025-55182 (React2Shell, execução remota em React Server Components)" },
+      { "faixa": "19.1", "minima": "19.1.2", "motivo": "CVE-2025-55182 (React2Shell, execução remota em React Server Components)" },
+      { "faixa": "19.2", "minima": "19.2.1", "motivo": "CVE-2025-55182 (React2Shell, execução remota em React Server Components)" }
+    ],
+    "react-dom": [
+      { "faixa": "19.0", "minima": "19.0.1", "motivo": "CVE-2025-55182 (React2Shell) — manter alinhado ao react" },
+      { "faixa": "19.1", "minima": "19.1.2", "motivo": "CVE-2025-55182 (React2Shell) — manter alinhado ao react" },
+      { "faixa": "19.2", "minima": "19.2.1", "motivo": "CVE-2025-55182 (React2Shell) — manter alinhado ao react" }
+    ]
+  }
+}

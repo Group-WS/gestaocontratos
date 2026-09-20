@@ -1,0 +1,43 @@
+{
+  "versaoDoPadrao": "1.0.0",
+  "projeto": "nome-do-projeto",
+  "perfil": "nextjs",
+  "comandosDeValidacao": ["pnpm lint", "pnpm typecheck", "pnpm test", "pnpm build"],
+  "caminhos": {
+    "frontend": ["src"],
+    "api": ["src"],
+    "regrasDeNegocio": ["src/domain"],
+    "catalogoDeRegras": "docs/regras-de-negocio",
+    "migrations": "supabase/migrations",
+    "testesDoBanco": "supabase/tests",
+    "testesE2E": ["e2e"],
+    "ignorar": ["src/types/database.types.ts"]
+  },
+  "designSystem": {
+    "pacote": "@group-ws/ws-ui",
+    "vinculo": "pacote",
+    "templatesDePagina": ["PageShell", "SystemFrame"],
+    "arquivosDePagina": ["src/app/**/page.tsx"],
+    "fontes": ["Host Grotesk", "JetBrains Mono"],
+    "exigirLogo": "GroupWsLogo",
+    "fronteiraCliente": "src/components/ds.ts"
+  },
+  "navegador": {
+    "wrapper": "src/lib/browser-storage.ts",
+    "permitidos": [
+      {
+        "chave": "sb-<project-ref>-auth-token",
+        "tipo": "sessao",
+        "motivo": "Sessão do Supabase Auth em cookies, gerida pelo @supabase/ssr"
+      }
+    ]
+  },
+  "seguranca": {
+    "helpersDeAutenticacao": ["requireUser"],
+    "clientesAdministrativos": ["createAdminClient"],
+    "rotasPublicas": ["src/app/auth/confirm/route.ts"]
+  },
+  "supabase": {
+    "schemasExpostos": ["public"]
+  }
+}

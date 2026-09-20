@@ -1,0 +1,47 @@
+{
+  "versaoDoPadrao": "1.0.0",
+  "projeto": "gestaocontratos",
+  "perfil": "webapp-vite-hono",
+  "comandosDeValidacao": [
+    "npm --prefix web test",
+    "npm --prefix web run build"
+  ],
+  "caminhos": {
+    "frontend": ["web/src"],
+    "api": ["web/api"],
+    "regrasDeNegocio": ["web/src/regras"],
+    "catalogoDeRegras": "docs/regras-de-negocio",
+    "migrations": "supabase",
+    "testesDoBanco": "supabase/tests",
+    "testesE2E": ["e2e"],
+    "ignorar": ["**/database.types.ts"]
+  },
+  "designSystem": {
+    "pacote": "@group-ws/ws-ui",
+    "vinculo": "copia",
+    "pastasDoDesignSystem": ["web/src/estilos/design-system.css"],
+    "templatesDePagina": ["PageShell", "SystemFrame"],
+    "arquivosDePagina": ["web/src/features/**/*Page.jsx"],
+    "fontes": ["Host Grotesk", "JetBrains Mono"],
+    "exigirLogo": "LogoGroupWS"
+  },
+  "navegador": {
+    "wrapper": null,
+    "permitidos": [
+      {
+        "chave": "sb-<project-ref>-auth-token",
+        "tipo": "sessao",
+        "motivo": "Sessão do Supabase Auth, gerida pelo supabase-js"
+      }
+    ]
+  },
+  "seguranca": {
+    "helpersDeAutenticacao": ["exigirLogin"],
+    "pastasDeRotas": ["web/api/_lib/mondayApp.js"],
+    "clientesAdministrativos": ["supabaseAdmin", "createAdminClient"],
+    "rotasPublicas": []
+  },
+  "supabase": {
+    "schemasExpostos": ["public"]
+  }
+}

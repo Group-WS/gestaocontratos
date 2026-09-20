@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.quality/hooks/inicio-de-sessao.mjs\"",
+            "timeout": 30,
+            "statusMessage": "Rodando o gate de qualidade"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.quality/hooks/protecao-de-regras.mjs\" --ferramenta=claude",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.quality/hooks/fim-de-sessao.mjs\"",
+            "timeout": 120,
+            "statusMessage": "Conferindo o gate antes de encerrar"
+          }
+        ]
+      }
+    ]
+  }
+}

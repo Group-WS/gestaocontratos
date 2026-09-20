@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.quality/hooks/inicio-de-sessao.mjs\"",
+            "timeout": 30,
+            "statusMessage": "Rodando o gate de qualidade"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$|^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.quality/hooks/protecao-de-regras.mjs\" --ferramenta=codex",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.quality/hooks/fim-de-sessao.mjs\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  },
+  "description": "Gate de qualidade Group WS"
+}

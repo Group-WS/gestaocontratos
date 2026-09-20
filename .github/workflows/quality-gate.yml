@@ -1,0 +1,72 @@
+# Gate de qualidade Group WS — instalado por groupws-dev-quality. Não edite: atualize o padrão.
+name: Quality gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Gate de qualidade
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Gate (pull request)
+        if: github.event_name == 'pull_request'
+        run: node .quality/checks/gate.mjs --base "origin/${{ github.base_ref }}" --sem-cor
+      - name: Gate (branch principal)
+        if: github.event_name != 'pull_request'
+        run: node .quality/checks/gate.mjs --sem-cor
+
+  # ── DESVIO DO PADRAO (gestaocontratos, 20/09/2026) ─────────────────
+  # O original roda `supabase start` + `supabase test db`, que exigem
+  # supabase/config.toml e supabase/migrations/. Este projeto ainda nao tem
+  # nenhum dos dois: os scripts sao avulsos, aplicados a mao, e a ordem
+  # entre eles vive em supabase/README.md. O banco subiria VAZIO e o job
+  # ficaria vermelho pra sempre — justamente o check que o padrao manda
+  # exigir na protecao da branch.
+  #
+  # Entao o job continua com o MESMO NOME, mas monta o banco pelo
+  # supabase/tests/rodar.sh, que aplica os scripts na ordem certa num
+  # Postgres com pgTAP e roda os mesmos testes.
+  #
+  # ATENCAO: reinstalar o padrao (instalar.mjs) SOBRESCREVE este arquivo e
+  # desfaz o desvio. Depois de reinstalar, reaplique este bloco — ate' o
+  # projeto ter migrations numeradas, quando o original passa a servir.
+  banco:
+    name: Testes do banco (pgTAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: supabase/postgres:15.8.1.060
+        env:
+          POSTGRES_PASSWORD: teste
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: teste
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cliente do Postgres
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+      - name: Monta o banco e roda o pgTAP
+        run: bash supabase/tests/rodar.sh
