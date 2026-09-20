@@ -10524,7 +10524,8 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
           const lista = ETAPAS_POR_GRUPO[g.id];
           const feitas = lista ? lista.filter((e) => etapaConcluida(e.id, obra)).length : 0;
           return (
-            <button key={g.id} className={`nav-grupo ${grupo === g.id ? "active" : ""}`} onClick={() => onGrupo(g.id)}>
+            <button key={g.id} className={`nav-grupo ${grupo === g.id ? "active" : ""}`}
+              aria-current={grupo === g.id ? "page" : undefined} onClick={() => onGrupo(g.id)}>
               <Icon size={15} /> {g.label}
               {lista && <span className="nav-grupo-progresso">{feitas}/{lista.length}</span>}
             </button>
@@ -10549,6 +10550,8 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
             return (
               <button key={t.id}
                 className={`tab ${tab === t.id ? "active" : ""} ${feita ? "feita" : ""} ${travada ? "travada" : ""}`}
+                aria-current={tab === t.id ? "page" : undefined}
+                aria-disabled={travada || undefined}
                 onClick={() => onChange(t.id)}
                 title={travada ? `Conclua "${anterior.label}" primeiro` : undefined}>
                 {feita ? <CheckCircle2 size={14} className="tab-check" /> : <Icon size={14} />}
@@ -15199,6 +15202,7 @@ function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPl
           <div className="gc-abas">
             {abas.opcoes.map((op) => (
               <button key={op.id} type="button" className={`gc-aba ${abas.valor === op.id ? "on" : ""}`}
+                aria-pressed={abas.valor === op.id}
                 onClick={() => abas.onMudar(op.id)}>{op.label}</button>
             ))}
           </div>
