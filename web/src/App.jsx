@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Dialogo from "./componentes/Dialogo.jsx";
+import Avisos, { avisar } from "./componentes/Aviso.jsx";
+import Esqueleto from "./componentes/Esqueleto.jsx";
 
 /* O "ver como" (so' em npm run dev): ?verComo=mehoo no endereco. Lido
    aqui, quando o modulo carrega, e nao na hora de montar o `eu`: o
@@ -16333,7 +16335,9 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
     return alvo ? gruposInsumo.filter((g) => semAcentos(g.nome).includes(alvo)) : gruposInsumo;
   }, [gruposInsumo, buscaInsumo]);
 
-  if (carregando) return <div className="empty-note">Carregando as obras…</div>;
+  if (carregando) return (
+    <Esqueleto linhas={6} altura={56} classe="esq-lista" rotulo="Carregando as obras…" />
+  );
 
   if (tela === "mao_propria") {
     return (
@@ -18005,7 +18009,15 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
         </div>
       </div>
 
-      {carregando && <div className="empty-note">Carregando as obras…</div>}
+      {/* Era a frase "Carregando as obras…", que nao diz quanto vem nem
+          como e' — e a tela pulava quando o conteudo chegava. O contorno
+          ocupa o lugar do que esta' vindo, entao nada se move depois. */}
+      {carregando && (
+        <div className="ini-carregando">
+          <Esqueleto linhas={4} altura={72} classe="esq-regua" rotulo="Carregando as obras…" />
+          <Esqueleto linhas={3} altura={92} classe="esq-lista" rotulo="" />
+        </div>
+      )}
 
       <div className="ini-regua">
         <InicioNum rot="OBRAS ATIVAS" valor={obras.length} Icone={Building2} tom="var(--mod-crm)"
@@ -18226,6 +18238,12 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
          reapareceria se um dia o perfil mudasse. */
       await onSalvar({ ...p, perfil: perfil || null, canal: perfil === "canal" ? (canal || null) : null },
         perfil === "gc" ? [...minhas] : null);
+      /* O painel FECHA ao salvar, entao o resultado sai da tela junto com
+         ele. Mudar a permissao de alguem e' serio demais pra terminar em
+         silencio: o aviso e' a unica confirmacao que sobra. */
+      avisar(perfil
+        ? `${p.nome} agora tem o acesso de ${PERFIS.find((x) => x.id === perfil)?.nome || perfil}.`
+        : `${p.nome} ficou sem perfil e volta para a fila de espera.`);
       onFechar();
     } catch (e) {
       setErro(e.message || String(e));
@@ -18371,7 +18389,11 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
   async function salvar() {
     setSalvando(true); setAviso(null);
     try {
+      const eraEdicao = !!editando;
       await onSalvar({ email: email.trim().toLowerCase(), nome: nome.trim(), cargo, por: usuario });
+      /* Limpar o formulario tanto pode querer dizer "salvei" quanto
+         "perdi o que voce digitou". O aviso desfaz a duvida. */
+      avisar(eraEdicao ? `${nome.trim()} atualizado.` : `${nome.trim()} entrou na Equipe.`);
       setEmail(""); setNome(""); setEditando(null);
     } catch (e) {
       setAviso(e.message || String(e));
@@ -19005,7 +19027,9 @@ function PainelCanalView({ obras, carregando, erro, canalId }) {
     [obras, escolhidas]);
   const p = useMemo(() => painelDoCanal(visiveis, canalId), [visiveis, canalId]);
 
-  if (carregando) return <div className="empty-note">Carregando as obras…</div>;
+  if (carregando) return (
+    <Esqueleto linhas={6} altura={56} classe="esq-lista" rotulo="Carregando as obras…" />
+  );
 
   return (
     <>
@@ -22146,6 +22170,10 @@ export default function App() {
 
   return (
     <div className="app">
+
+      {/* Um so' no app inteiro: os avisos saem por portal, entao a posicao
+          aqui nao importa — o que importa e' existir uma vez. */}
+      <Avisos />
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}

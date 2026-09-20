@@ -2045,7 +2045,11 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .ini-cel-rot, .ini-cel-val, .ini-cel-sub { display: block; }
 .ini-cel-rot { font-size: var(--t-micro); font-weight: 700; letter-spacing: .08em; color: var(--ink-3); }
 .ini-cel-val { font-family: var(--font-sans); font-size: var(--t-title); font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ini-cel-sub { font-size: var(--t-micro); color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* O subtitulo QUEBRA, nao corta. Com o chip de icone ao lado sobrou
+   menos largura, e "0 com planilha carr…" nao informa nada — duas
+   linhas curtas se leem, reticencia nao. O VALOR continua sem quebrar:
+   numero cortado pela metade e' pior que numero espremido. */
+.ini-cel-sub { font-size: var(--t-micro); color: var(--ink-3); margin-top: 2px; line-height: 1.35; }
 @media (max-width: 900px) { .ini-regua { grid-template-columns: repeat(2, 1fr); } }
 .ini-colunas { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; align-items: start; }
 .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: var(--t-body); font-weight: 700; color: var(--ink); padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
