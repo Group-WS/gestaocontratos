@@ -19,7 +19,8 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound
+  MessageSquare, HardHat, Camera, UserRound,
+  UserCheck,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -17667,17 +17668,32 @@ function passosCriticosAtrasados(o) {
   return { dias, passos };
 }
 
-/* Sem ícone, sem badge colorido — a cor mora só no rótulo, pequeno e
-   discreto. Número grande em grafite, sempre; é a mesma hierarquia que
-   um extrato bancário usa, e é o que sustenta "técnico e sóbrio" sem
-   precisar de nenhum enfeite. */
-function InicioNum({ rot, valor, sub, cor, onClick }) {
+/* Estes numeros ja' foram SEM icone, de proposito: "a cor mora so' no
+   rotulo, numero grande em grafite, a mesma hierarquia de um extrato
+   bancario — tecnico e sobrio sem precisar de enfeite".
+   
+   A Priscila viu essa versao e pediu o contrario, com a palavra dela:
+   "ta muito frio". O argumento antigo continua de pe' como argumento; ele
+   so' nao e' o que ela quer olhar todo dia, e isso decide.
+   
+   O que ficou da disciplina antiga: o tom do chip sai das cores de MODULO
+   do design system (--mod-*), que existem pra categorizar — obra, material,
+   mao de obra. Nao e' cor escolhida a olho pra cada cartao ficar diferente
+   do vizinho; e' a mesma cor que aquele assunto tem no resto do app. */
+function InicioNum({ rot, valor, sub, cor, Icone, tom, onClick }) {
   const Tag = onClick ? "button" : "div";
   return (
     <Tag className={`ini-cel ${onClick ? "clicavel" : ""}`} onClick={onClick}>
-      <div className="ini-cel-rot" style={cor ? { color: cor } : undefined}>{rot}</div>
-      <div className="ini-cel-val">{valor}</div>
-      <div className="ini-cel-sub">{sub}</div>
+      {Icone && (
+        <span className="ini-cel-chip" style={tom ? { color: tom, background: `color-mix(in srgb, ${tom} 12%, transparent)` } : undefined}>
+          <Icone size={18} />
+        </span>
+      )}
+      <span className="ini-cel-txt">
+        <span className="ini-cel-rot" style={cor ? { color: cor } : undefined}>{rot}</span>
+        <span className="ini-cel-val">{valor}</span>
+        <span className="ini-cel-sub">{sub}</span>
+      </span>
     </Tag>
   );
 }
@@ -17715,6 +17731,39 @@ function MarcosDaObra({ obra }) {
  *
  * O rotulo sai de PAPEIS_DA_OBRA, que e' onde a grafia mora: a coluna do
  * banco e' `tailor_made`, e o que se le' na tela e' "Taylor Made". */
+/* A REGUA DOS 90 DIAS.
+ *
+ * A regra mais importante do sistema — os cadernos fecham 90 dias antes da
+ * entrega — existia so' como frase vermelha na lista ao lado. Como regua,
+ * ela mostra o que a frase esconde: QUANTO a obra ja' entrou na janela.
+ *
+ * O portao fica em "entrega menos 90 dias". Entrega em 61 dias quer dizer
+ * que o portao fechou ha' 29 — e "entrega em 61 dias" soa tranquilo,
+ * enquanto "29 dias fora do prazo" nao soa.
+ *
+ * A barra mede a INVASAO, nao o tempo que falta: ela enche conforme a obra
+ * afunda na janela proibida. Obra que ainda nao chegou nos 90 nao tem
+ * regua nenhuma — nao ha' o que mostrar, e barra vazia pareceria atraso.
+ *
+ * Some tambem quando a obra esta' em execucao: dai os cadernos fecharam e
+ * o prazo deixou de existir. */
+function ReguaDos90({ obra }) {
+  const { dias } = passosCriticosAtrasados(obra);
+  if (dias == null || dias > 90) return null;
+  const dentro = Math.min(90, Math.max(0, 90 - dias));   // dias ja' gastos da janela
+  const pct = Math.round((dentro / 90) * 100);
+  const texto = dias < 0
+    ? `entrega passou há ${-dias} ${-dias === 1 ? "dia" : "dias"}`
+    : dentro === 0 ? "o prazo fecha hoje"
+    : `${dentro} ${dentro === 1 ? "dia" : "dias"} fora do prazo`;
+  return (
+    <div className="ini-regua90" title={`Os cadernos fecham 90 dias antes da entrega. ${texto}.`}>
+      <span className="ini-regua90-trilho"><i style={{ width: `${pct}%` }} /></span>
+      <span className="ini-regua90-txt">{texto}</span>
+    </div>
+  );
+}
+
 function EquipeDaObra({ obra, equipe }) {
   const nomes = equipeDaObra(obra).map((papel) => ({
     ...papel,
@@ -17818,56 +17867,106 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
     .map((o) => ({ o, ...passosCriticosAtrasados(o) }))
     .filter(({ passos }) => passos.length > 0);
 
-  /* Uma lista so, ordenada pelo que dói primeiro. Cada linha leva ao
-     lugar de resolver — aviso que nao tem para onde ir vira paisagem. */
+  /* O QUE RESOLVER HOJE.
+     
+     Cada item tem campos, nao uma frase pronta: acao (o verbo), onde (a
+     obra), peso e ordem (pra ordenar), valor (o dinheiro, quando ha).
+     Frase pronta nao se ordena, e era esse o problema — o comentario
+     antigo aqui dizia "ordenada pelo que doi primeiro" e a lista nunca
+     foi ordenada: a ordem era a dos `push`, por acaso.
+
+     Ordenar por DIAS poe R$ 2,6 mil na frente de R$ 196 mil. Risco e'
+     dinheiro vezes tempo, e o dinheiro manda: entre uma compra vencida
+     ontem de R$ 200 mil e uma vencida ha um mes de R$ 2 mil, a primeira
+     e' a que segura a obra.
+
+     O `peso` e' a faixa, e a `ordem` desempata dentro dela:
+       0  compra vencida       — maior valor primeiro
+       1  prazo dos 90 dias    — vence antes primeiro
+       2  gente esperando      — custo de outra pessoa, nao de quem le
+       3  compromisso solto    — aditivo sem Pipefy, obra sem data
+       4  cadastro             — obra sem GC, obra do Monday nao iniciada */
   const atencao = [];
   r.linhas.forEach((L) => {
     L.atrasos.forEach((v) => atencao.push({
-      tom: "ruim",
-      txt: <>Em <b>#{L.codigo} {L.nome}</b>, a compra de <b>{v.nome}</b> venceu há {-v.dias} dias — {fmtBRL(v.matFalta)}</>,
+      tom: "ruim", peso: 0, ordem: -v.matFalta,
+      acao: <>Liberar a compra de <b>{v.nome}</b></>,
+      onde: <><span className="mono dim">#{L.codigo}</span> {L.nome}</>,
+      valor: fmtBRL(v.matFalta),
+      quando: `venceu há ${-v.dias} ${-v.dias === 1 ? "dia" : "dias"}`,
+      botao: "Abrir obra",
       ir: () => onAbrirObra(L.id),
     }));
   });
   atrasadas90.forEach(({ o, dias, passos }) => {
     const nomes = passos.map((p) => p.rotulo).join(", ");
-    const verbo = passos.length === 1 ? "precisa estar pronto" : "precisam estar prontos";
     atencao.push({
-      tom: "ruim",
-      txt: dias < 0
-        ? <><b>#{o.codigo} {o.nome}</b> já passou da data de entrega e ainda não está em execução — {nomes} {verbo} há {90 - dias} dias</>
-        : <><b>#{o.codigo} {o.nome}</b> entrega em {dias} {dias === 1 ? "dia" : "dias"} e ainda não está em execução — {nomes} {verbo} até 90 dias antes da entrega</>,
+      tom: "ruim", peso: 1, ordem: dias,
+      acao: <>Fechar {passos.length === 1 ? "o caderno" : "os cadernos"} de <b>{nomes}</b></>,
+      onde: <><span className="mono dim">#{o.codigo}</span> {o.nome}</>,
+      nota: "segura a contratação",
+      quando: dias < 0
+        ? `entrega passou há ${-dias} ${-dias === 1 ? "dia" : "dias"}`
+        : dias >= 90 ? "o prazo fecha hoje"
+        : `o prazo fechou há ${90 - dias} ${90 - dias === 1 ? "dia" : "dias"}`,
+      botao: "Abrir obra",
       ir: () => onAbrirObra(o.id),
     });
   });
+  /* A fila de acesso: gente parada esperando pra trabalhar, e o custo de
+     demorar e' de outra pessoa, nao de quem le. Vinha por `unshift` no
+     topo absoluto — acima de qualquer compra vencida. Continua alto, mas
+     abaixo do dinheiro parado: 22 pessoas esperando ha dias custa menos
+     que R$ 196 mil de compra vencida segurando uma obra inteira.
+     So' o administrador ve — pra quem nao pode liberar, seria um aviso
+     sem para onde ir. */
+  if (nPendentes > 0) atencao.push({
+    tom: "aviso", peso: 2, ordem: -nPendentes,
+    acao: <>Liberar acesso para <b>{nPendentes}</b> {nPendentes === 1 ? "pessoa" : "pessoas"}</>,
+    onde: "esperando para começar a trabalhar",
+    botao: "Abrir equipe",
+    ir: () => onModulo("equipe"),
+  });
   pipefyAberto.forEach(({ a, o }) => atencao.push({
-    tom: "aviso",
-    txt: <>O aditivo <b>{a.numero}</b> de <b>{o.nome}</b> está aprovado e ainda sem a Solicitação de contrato no Pipefy</>,
+    tom: "aviso", peso: 3, ordem: 0,
+    acao: <>Abrir a Solicitação de contrato do aditivo <b>{a.numero}</b></>,
+    onde: o.nome,
+    nota: "aprovado, e o comercial ainda não viu",
+    botao: "Abrir aditivos",
     ir: () => onModulo("aditivos"),
   }));
   semEntrega.forEach((o) => atencao.push({
-    tom: "aviso",
-    txt: <><b>#{o.codigo} {o.nome}</b> não tem data de entrega — sem ela nenhum prazo de compra é calculado</>,
+    tom: "aviso", peso: 3, ordem: 1,
+    acao: <>Definir a data de entrega</>,
+    onde: <><span className="mono dim">#{o.codigo}</span> {o.nome}</>,
+    nota: "sem ela nenhum prazo de compra é calculado",
+    botao: "Abrir obra",
     ir: () => onAbrirObra(o.id),
   }));
   if (semGC.length) atencao.push({
-    tom: "info",
-    txt: <><b>{semGC.length}</b> {semGC.length === 1 ? "obra está" : "obras estão"} sem GC responsável</>,
+    tom: "info", peso: 4, ordem: 0,
+    acao: <>Atribuir GC a <b>{semGC.length}</b> {semGC.length === 1 ? "obra" : "obras"}</>,
+    onde: "obra sem responsável não entra no recorte de ninguém",
+    botao: "Abrir obra",
     ir: () => onAbrirObra(semGC[0].id),
   });
   if (novas.length) atencao.push({
-    tom: "info",
-    txt: <><b>{novas.length}</b> obras do Monday ainda não foram iniciadas aqui</>,
+    tom: "info", peso: 4, ordem: 1,
+    acao: <>Iniciar <b>{novas.length}</b> obras que vieram do Monday</>,
+    onde: "ainda não existem aqui",
+    botao: "Abrir novas",
     ir: () => onModulo("novas"),
   });
-  /* A fila vem PRIMEIRO na lista: e' gente parada esperando pra
-     trabalhar, e o custo de demorar e' de outra pessoa, nao de quem le.
-     So' o administrador ve — pra quem nao pode liberar, isso seria um
-     aviso sem para onde ir. */
-  if (nPendentes > 0) atencao.unshift({
-    tom: "aviso",
-    txt: <><b>{nPendentes}</b> {nPendentes === 1 ? "pessoa está aguardando" : "pessoas estão aguardando"} liberação de acesso</>,
-    ir: () => onModulo("equipe"),
-  });
+  atencao.sort((a, b) => a.peso - b.peso || a.ordem - b.ordem);
+
+  /* O QUE ESTA' PARA VENCER.
+     `resumoGeral` ja' calcula `L.perto` — compra que vence em ate' 15
+     dias — e esta tela jogava fora, mostrando so' o que JA' venceu. Ou
+     seja: o painel so' avisava depois que o prazo passou. Uma linha so',
+     no fim da lista, porque isto ainda nao e' problema: e' o que evita
+     que vire um. */
+  const paraVencer = r.linhas.flatMap((L) => L.perto.map((v) => ({ ...v, L })));
+  const totalParaVencer = paraVencer.reduce((s, v) => s + v.matFalta, 0);
 
   return (
     <>
@@ -17909,16 +18008,16 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
       {carregando && <div className="empty-note">Carregando as obras…</div>}
 
       <div className="ini-regua">
-        <InicioNum rot="OBRAS ATIVAS" valor={obras.length}
+        <InicioNum rot="OBRAS ATIVAS" valor={obras.length} Icone={Building2} tom="var(--mod-crm)"
           sub={`${r.linhas.length} com planilha carregada`} />
         {/* Azul só aqui — é o número que a casa mais precisa olhar. Os
            outros três ficam em grafite: cor demais na régua toda tira
            a força justamente do que devia se destacar. */}
-        <InicioNum rot="A COMPRAR" cor="var(--blue)" valor={fmtBRL(t.matTotal - t.matFeito)}
+        <InicioNum rot="A COMPRAR" cor="var(--blue)" Icone={Package} tom="var(--mod-catalogo)" valor={fmtBRL(t.matTotal - t.matFeito)}
           sub={`de ${fmtBRL(t.matTotal)} em material`} onClick={() => onModulo("a_contratar")} />
-        <InicioNum rot="A CONTRATAR" valor={fmtBRL(t.moTotal - t.moFeito)}
+        <InicioNum rot="A CONTRATAR" Icone={HardHat} tom="var(--mod-orcamentos)" valor={fmtBRL(t.moTotal - t.moFeito)}
           sub={`de ${fmtBRL(t.moTotal)} em mão de obra`} onClick={() => onModulo("a_contratar")} />
-        <InicioNum rot="MINHAS OBRAS" valor={minhas.length}
+        <InicioNum rot="MINHAS OBRAS" Icone={UserCheck} tom="var(--mod-settings)" valor={minhas.length}
           sub={minhas.length ? "onde você é o GC" : "nenhuma atribuída a você"} />
       </div>
 
@@ -17950,18 +18049,43 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
         <div>
           <div className="ini-titulo">
             <AlertTriangle size={14} className="ini-titulo-icone" />
-            Pedindo atenção
+            Resolver hoje
             {atencao.length > 0 && <span className="ini-conta">{atencao.length}</span>}
+            {atencao.length > 0 && <span className="ini-titulo-nota">por valor em risco</span>}
           </div>
           {atencao.length === 0 ? (
             <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção agora.</div>
-          ) : atencao.map((a, i) => (
-            <button key={i} className={`ini-alerta ${a.tom}`} onClick={a.ir}>
-              <AlertTriangle size={13} />
-              <span>{a.txt}</span>
-              <ChevronRight size={13} className="ini-seta" />
-            </button>
-          ))}
+          ) : (
+            <div className="ini-fila">
+              {atencao.map((a, i) => (
+                <button key={i} className={`ini-tarefa ${a.tom}`} onClick={a.ir}>
+                  <span className="ini-tarefa-tom" aria-hidden="true" />
+                  <span className="ini-tarefa-txt">
+                    <span className="ini-tarefa-acao">{a.acao}</span>
+                    <span className="ini-tarefa-onde">{a.onde}</span>
+                  </span>
+                  <span className="ini-tarefa-num">
+                    {a.valor && <span className="ini-tarefa-valor mono">{a.valor}</span>}
+                    {a.nota && <span className="ini-tarefa-nota">{a.nota}</span>}
+                    {a.quando && <span className="ini-tarefa-quando">{a.quando}</span>}
+                  </span>
+                  <span className="ini-tarefa-botao">{a.botao} <ChevronRight size={12} /></span>
+                </button>
+              ))}
+              {/* O que ainda NAO venceu. Fecha a lista, em voz baixa: e' o
+                  unico item aqui que nao e' problema — e' o que evita um. */}
+              {paraVencer.length > 0 && (
+                <button type="button" className="ini-avencer" onClick={() => onModulo("a_contratar")}>
+                  <Clock size={14} />
+                  <span>
+                    <b>{paraVencer.length}</b> {paraVencer.length === 1 ? "compra vence" : "compras vencem"} nos próximos 15 dias,
+                    {" "}somando <b>{fmtBRL(totalParaVencer)}</b>
+                  </span>
+                  <ChevronRight size={12} className="ini-seta" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div>
@@ -17990,7 +18114,8 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
           {listaObras.map((o) => {
             const L = r.linhas.find((x) => x.codigo === o.codigo);
             const esteira = esteiraDaObra(o);
-            const executivoAtrasado = passosCriticosAtrasados(o).passos.some((p) => p.chave === "projeto");
+            const atrasados = new Set(passosCriticosAtrasados(o).passos.map((p) => p.chave));
+            const feitos = esteira.passos.filter((p) => p.feito).length;
 
             return (
               <button key={o.id} className="ini-obra" onClick={() => onAbrirObra(o.id)}>
@@ -18004,8 +18129,19 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                   </div>
                   <EquipeDaObra obra={o} equipe={equipe} />
                   <div className="ini-esteira">
+                    {/* O CONTADOR escrito. Com seis selos era preciso
+                        CONTAR os verdes pra saber onde a obra esta'; "4 de
+                        6" responde sem contar, e cabe numa palavra. */}
+                    <span className={`ini-esteira-conta ${feitos === esteira.passos.length ? "on" : atrasados.size ? "atrasado" : ""}`}>
+                      {feitos} de {esteira.passos.length}
+                    </span>
                     {esteira.passos.map((p) => {
-                      const alerta = p.chave === "projeto" && executivoAtrasado;
+                      /* TODO passo atrasado fica vermelho, nao so' o
+                         Executivo. Ate' aqui a lista ao lado cobrava
+                         Especificacao e Marcenaria em vermelho, e o selo
+                         delas no cartao ficava cinza — a mesma obra dizia
+                         duas coisas em duas partes da mesma tela. */
+                      const alerta = atrasados.has(p.chave);
                       return (
                         <span key={p.chave} className={`ini-passo-chip ${p.feito ? "on" : ""} ${alerta ? "atrasado" : ""}`}
                           title={`${p.rotulo}: ${p.feito ? "feito" : alerta ? "pendente — passou do prazo de 90 dias antes da entrega" : "pendente"}`}>
@@ -18015,6 +18151,7 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                     })}
                   </div>
                   <span className={`ini-fase-pilula ${esteira.tom || ""}`}>{esteira.texto}</span>
+                  <ReguaDos90 obra={o} />
                   {/* A fila da obra, na ordem do fluxo. Numero zerado nao
                       aparece: a linha vazia e' a obra em dia, e o silencio
                       vira informacao. */}

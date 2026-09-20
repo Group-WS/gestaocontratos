@@ -2035,6 +2035,14 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .ini-cel.clicavel { cursor: pointer; }
 .ini-cel.clicavel:hover { border-color: var(--ink-3); }
 .ini-cel.clicavel:hover .ini-cel-val { color: var(--blue); }
+/* O CHIP DE ICONE ao lado do numero. A cor vem do modulo, nao do cartao:
+   obra, material e mao de obra ja' tem cor propria no resto do app, e
+   repeti-la aqui faz o olho reconhecer o assunto antes de ler o rotulo. */
+.ini-cel { display: flex; align-items: flex-start; gap: 12px; }
+.ini-cel-chip { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0;
+  border-radius: var(--radius-lg); color: var(--brand); background: var(--brand-soft); }
+.ini-cel-txt { min-width: 0; }
+.ini-cel-rot, .ini-cel-val, .ini-cel-sub { display: block; }
 .ini-cel-rot { font-size: var(--t-micro); font-weight: 700; letter-spacing: .08em; color: var(--ink-3); }
 .ini-cel-val { font-family: var(--font-sans); font-size: var(--t-title); font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ini-cel-sub { font-size: var(--t-micro); color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2061,6 +2069,45 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .dash-falta-aprovar .ini-seta { margin-left: auto; flex-shrink: 0; opacity: .7; }
 .dash-falta-aprovar b { font-variant-numeric: tabular-nums; }
 .ini-seta { flex-shrink: 0; opacity: .5; margin-top: 2px; }
+
+/* A FILA DO DIA — uma tarefa por linha.
+   Cartao solto por alerta virava nove caixas vermelhas empilhadas, cada
+   uma gritando igual: alarme demais nao se le', se ignora. Agora e' uma
+   lista dentro de um cartao so', e o tom mora num filete de 3px na
+   esquerda — mesma informacao, um decimo da tinta. */
+.ini-fila { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; }
+.ini-tarefa { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit;
+  background: none; border: 0; border-top: 1px solid var(--border-soft); padding: 12px 16px; cursor: pointer;
+  transition: background .12s ease; }
+.ini-tarefa:first-child { border-top: 0; }
+.ini-tarefa:hover { background: var(--surface-2); }
+.ini-tarefa-tom { width: 3px; align-self: stretch; border-radius: var(--radius-sm); flex-shrink: 0; background: var(--border); }
+.ini-tarefa.ruim  .ini-tarefa-tom { background: var(--danger); }
+.ini-tarefa.aviso .ini-tarefa-tom { background: var(--warning); }
+.ini-tarefa.info  .ini-tarefa-tom { background: var(--brand); }
+.ini-tarefa-txt { flex: 1; min-width: 0; }
+/* O VERBO no corpo, o lugar em apoio: a linha responde "o que eu faço"
+   antes de "onde". Era o contrario — a frase comecava pela obra. */
+.ini-tarefa-acao { display: block; font-size: var(--t-body); color: var(--ink); line-height: 1.35; }
+.ini-tarefa-onde { display: block; font-size: var(--t-meta); color: var(--ink-3); margin-top: 2px; }
+.ini-tarefa-num { flex-shrink: 0; text-align: right; }
+.ini-tarefa-valor { display: block; font-size: var(--t-body); font-weight: 600; color: var(--ink); }
+.ini-tarefa-nota { display: block; font-size: var(--t-meta); color: var(--ink-3); }
+.ini-tarefa-quando { display: block; font-size: var(--t-meta); color: var(--danger); margin-top: 2px; }
+.ini-tarefa.aviso .ini-tarefa-quando, .ini-tarefa.info .ini-tarefa-quando { color: var(--ink-3); }
+.ini-tarefa-botao { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; white-space: nowrap;
+  font-size: var(--t-meta); font-weight: 500; color: var(--brand);
+  border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 12px; }
+.ini-tarefa:hover .ini-tarefa-botao { border-color: var(--brand); background: var(--brand-soft); }
+/* O que ainda NAO venceu, em voz baixa: fundo de apoio, sem filete de tom.
+   E' o unico item da lista que nao e' problema. */
+.ini-avencer { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit;
+  background: var(--surface-2); border: 0; border-top: 1px solid var(--border-soft);
+  padding: 12px 16px; font-size: var(--t-meta); color: var(--ink-2); cursor: pointer; }
+.ini-avencer:hover { background: var(--surface-3); }
+.ini-avencer > span { flex: 1; }
+.ini-avencer svg:first-child { color: var(--warning); flex-shrink: 0; }
+.ini-titulo-nota { margin-left: auto; font-size: var(--t-meta); font-weight: 400; color: var(--ink-3); }
 .ini-seta.aberta { transform: rotate(180deg); }
 .ini-detalhe { margin: -4px 0 8px; padding: 6px 12px 8px; border: 1px solid var(--danger-line); border-top: 0; border-radius: 0 0 8px 8px; background: var(--surface-1); }
 .ini-detalhe-linha { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: var(--t-micro); padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -2085,6 +2132,22 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .ini-passo-chip { display: inline-flex; align-items: center; gap: 1px; font-size: var(--t-micro); font-weight: 600; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 2px 6px; }
 .ini-passo-chip.on { color: var(--success); background: var(--success-soft); border-color: var(--success-line); }
 .ini-passo-chip.atrasado { color: var(--red); background: var(--red-bg); border-color: var(--danger-line); }
+
+/* O CONTADOR da esteira: vem PRIMEIRO, antes dos selos, porque e' a
+   resposta — os selos sao o detalhe de onde ela esta'. */
+.ini-esteira-conta { display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: var(--t-micro);
+  font-weight: 600; color: var(--ink-2); background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); padding: 2px 8px; white-space: nowrap; }
+.ini-esteira-conta.on { color: var(--success); background: var(--success-soft); border-color: var(--success-line); }
+.ini-esteira-conta.atrasado { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-line); }
+
+/* A REGUA DOS 90 DIAS. A barra mede a INVASAO da janela, nao o tempo que
+   falta: ela enche conforme a obra afunda no prazo que ja' passou. */
+.ini-regua90 { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ini-regua90-trilho { position: relative; flex: 0 0 96px; height: 4px; border-radius: var(--radius-pill);
+  background: var(--panel); overflow: hidden; }
+.ini-regua90-trilho i { display: block; height: 100%; background: var(--danger); border-radius: var(--radius-pill); }
+.ini-regua90-txt { font-size: var(--t-micro); color: var(--danger); }
 .loc-bloco { margin-top: 24px; }
 .loc-legenda { margin-left: auto; display: flex; gap: 12px; }
 .loc-legenda-item { display: flex; align-items: center; gap: 4px; font-size: var(--t-micro); color: var(--ink-3); font-weight: 500; }
