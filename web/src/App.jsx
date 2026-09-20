@@ -9842,6 +9842,17 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     let alvo = null;
 
     const entrar = (e) => {
+      /* AINDA DENTRO DO MESMO DESTINO: nada a fazer.
+
+         Esta linha parece redundante e nao e'. Ao mostrar a dica eu TIRO o
+         `title` do botao, pra dica do navegador nao aparecer por cima da
+         minha. So' que dai o botao deixa de ser achavel por
+         `closest("[title]")` — entao mexer o mouse de um pixel dentro dele
+         (ou passar por cima do icone) caia na limpeza abaixo, a dica sumia,
+         o `title` voltava, e o proximo mouseover a trazia de novo. Relato
+         dela em 20/09/2026: "quando eu passo o mouse em cima dos botoes ele
+         fica piscando". */
+      if (alvo && alvo.contains(e.target)) return;
       const b = e.target.closest("[title]");
       /* SAIR DO TRILHO PRO PAINEL NAO E' SAIR DA BARRA: o painel e' filho
          dela, entao o `mouseleave` la' de baixo nunca chega. Sem limpar

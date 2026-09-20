@@ -77,6 +77,19 @@ conf("a dica de hover vale pro trilho inteiro", src.includes('!b.closest(".trilh
    direita pra escolher uma. Visto na tela em 20/09/2026. */
 conf("... e some ao entrar no painel",
   src.includes('if (!b || !el.contains(b) || !b.closest(".trilho")) { if (alvo) sair(); return; }'), true);
+/* ... SEM PISCAR. A linha abaixo parece redundante ao lado da de cima e não
+   é: ao mostrar a dica o `title` do botão é retirado, pra dica do navegador
+   não subir por cima da nossa. Só que aí o botão deixa de ser achável por
+   `closest("[title]")` — e mexer o mouse um pixel dentro dele caía na
+   limpeza, a dica sumia, o `title` voltava, e o mouseover seguinte a trazia
+   de novo. Relato dela em 20/09/2026, um minuto depois do conserto acima:
+   "quando eu passo o mouse em cima dos botões ele fica piscando". */
+conf("... e não pisca dentro do mesmo destino",
+  src.includes("if (alvo && alvo.contains(e.target)) return;"), true);
+/* A ordem é o conserto: a saída antecipada tem que vir ANTES da limpeza. */
+conf("... porque a saída vem antes da limpeza",
+  src.indexOf("if (alvo && alvo.contains(e.target)) return;")
+    < src.indexOf('if (!b || !el.contains(b) || !b.closest(".trilho"))'), true);
 
 /* CLICAR EM "OBRAS" SÓ MOSTRA. Relato dela: "depois que eu entrar na obra, no
    primeiro clique dentro a barra da sidebar recolhe" — era o botão Obras
