@@ -113,8 +113,11 @@ conf("os seis cliques passam pelo hook", cliques, 6);
    ============================================================ */
 /* A regra dela, de 18/09/2026, sobre o alerta da Conf. Executivo: o texto
    aparece inteiro e não some — quem cede é a ALTURA. Vale igual aqui. */
+/* O que segura a regra e' o flex-wrap mais o row-gap: com eles a etiqueta
+   desce em vez de espremer o nome. A medida do vao vem da escala e pode
+   andar um pixel sem mudar nada disso. */
 conf("as etiquetas descem de linha em vez de espremer o nome",
-  src.includes(".grp-esq { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; row-gap: 6px; }"), true);
+  /\.grp-esq \{[^}]*flex-wrap: wrap;[^}]*row-gap: \d+px/.test(src), true);
 conf("a seta nunca encolhe", src.includes(".grp-esq > svg { flex-shrink: 0; }"), true);
 conf("e o nome tem um piso, em vez de ir a zero",
   /\.grp-nome \{[^}]*min-width: 10ch;/.test(src), true);

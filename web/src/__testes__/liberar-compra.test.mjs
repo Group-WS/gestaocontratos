@@ -506,7 +506,10 @@ conf("... e o padrão continua sendo 'todos'", /useState\(\(\) => [^)]*\|\| "tod
 
 /* "apresentar a linha mais fina": com 443 linhas, cada pixel custa rolagem.
    Medido na 2498 depois do ajuste: 54 px sem alerta, 71 px com (era 102). */
-conf("a linha da conferência é fina", src.includes("table.tab-conf td { padding: 5px 10px;"), true);
+/* "Fina" quer dizer menos folga em cima e embaixo do que a tabela normal
+   — nao um valor exato, que a escala de espaco ajusta. */
+conf("a linha da conferência é fina",
+  Number(src.match(/table\.tab-conf td \{ padding: (\d+)px/)?.[1] ?? 99) <= 6, true);
 conf("a descrição corta em duas linhas", src.includes("-webkit-line-clamp: 2"), true);
 conf("... com o texto inteiro no title", src.includes(`<div className="item-desc" title={x.it.desc}>`), true);
 /* "esse texto deve aparecer inteiro e nao sumir, botao de conferido no final"
@@ -602,7 +605,9 @@ conf("título não entra na conclusão em massa", src.includes(".filter((x) => s
 
 /* O cabeçalho quebra em duas linhas: "Concluído executivo" em 104 px saía por
    cima do vizinho. */
-conf("o cabeçalho da conferência pode quebrar", src.includes("table.tab-conf th { padding: 6px 10px; white-space: normal;"), true);
+/* Poder quebrar e' o white-space: normal; a folga vem da escala. */
+conf("o cabeçalho da conferência pode quebrar",
+  /table\.tab-conf th \{[^}]*white-space: normal/.test(src), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

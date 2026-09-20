@@ -44,7 +44,7 @@
 .trilho-item.ativo { color: var(--brand); border-left-color: var(--brand); background: var(--card); }
 .barra.sem-painel .trilho-item.ativo { background: var(--page); }
 .trilho-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
-.trilho-badge { position: absolute; top: 5px; right: 8px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+.trilho-badge { position: absolute; top: 5px; right: 8px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: var(--radius-md);
                 background: var(--brand); color: #fff; font-size: var(--t-micro); font-weight: 600;
                 display: flex; align-items: center; justify-content: center; }
 .trilho-badge.espera { background: var(--amber); color: #3a2c00; }
@@ -69,17 +69,17 @@
 
 .painel { width: 232px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border-soft);
           display: flex; flex-direction: column; min-height: 0; padding: 12px 12px 0; }
-.painel-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.painel-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .painel-nome { font-size: var(--t-body); color: var(--ink); }
-.painel-conta { font-size: var(--t-micro); color: var(--ink-3); margin-left: 3px; }
-.painel-modos { display: inline-flex; align-items: center; gap: 5px; }
+.painel-conta { font-size: var(--t-micro); color: var(--ink-3); margin-left: 2px; }
+.painel-modos { display: inline-flex; align-items: center; gap: 4px; }
 .painel-modos button { background: none; border: none; padding: 0; font-family: inherit; font-size: var(--t-micro); color: var(--ink-3); cursor: pointer; }
 .painel-modos button:hover { color: var(--ink-1); }
 .painel-modos button.on { color: var(--brand); }
 .painel-modos-sep { color: var(--border); font-size: var(--t-micro); }
 .painel-busca { margin-bottom: 8px; }
-.painel-minhas { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 8px;
-                 background: none; border: 1px solid var(--border-soft); border-radius: 20px; padding: 3px 9px;
+.painel-minhas { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 8px;
+                 background: none; border: 1px solid var(--border-soft); border-radius: var(--radius-pill); padding: 2px 8px;
                  font-family: inherit; font-size: var(--t-micro); color: var(--ink-3); cursor: pointer; }
 .painel-minhas:hover { color: var(--ink-1); border-color: var(--border); }
 .painel-minhas.on { color: var(--brand); border-color: var(--brand); background: var(--brand-soft); }
@@ -89,8 +89,8 @@
    o nome da obra, sempre mostre tudo". Mesma regra do alerta da Conf.
    Executivo: quem cede e' a ALTURA, nao o texto. Por isso o alinhamento
    vai pro topo: o codigo fica na primeira linha e o nome desce. */
-.obra-linha { width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 6px 7px; margin: 0 -7px;
-              background: none; border: none; border-left: 2px solid transparent; border-radius: 6px;
+.obra-linha { width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 6px 6px; margin: 0 -6px;
+              background: none; border: none; border-left: 2px solid transparent; border-radius: var(--radius-md);
               font-family: inherit; text-align: left; cursor: pointer; }
 .obra-linha:hover { background: var(--panel); }
 .obra-linha.ativa { background: var(--brand-soft); border-left-color: var(--brand); }
@@ -102,15 +102,15 @@
 .obra-linha.ativa .obra-cod { color: var(--brand); }
 .obra-nome { min-width: 0; font-size: var(--t-micro); line-height: 1.38; color: var(--ink-2); overflow-wrap: anywhere; }
 .obra-linha.ativa .obra-nome { color: var(--ink); }
-.obra-linha.sem-simbolo { padding-left: 25px; }
+.obra-linha.sem-simbolo { padding-left: 24px; }
 .obra-trava { flex-shrink: 0; margin-left: auto; margin-top: 2px; color: var(--amber); }
-.obra-badge { flex-shrink: 0; margin-left: auto; margin-top: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+.obra-badge { flex-shrink: 0; margin-left: auto; margin-top: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: var(--radius-md);
               background: var(--red); color: #fff; font-size: var(--t-micro); font-weight: 600;
               display: flex; align-items: center; justify-content: center; }
 .obra-trava + .obra-badge { margin-left: 4px; }
 
 .painel-novas { display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 8px;
-                padding: 5px 8px; border: 1px solid var(--brand); border-radius: 6px;
+                padding: 4px 8px; border: 1px solid var(--brand); border-radius: var(--radius-md);
                 background: var(--brand-soft); color: var(--brand);
                 font-family: inherit; font-size: var(--t-micro); text-align: left; cursor: pointer; }
 .painel-novas:hover { background: var(--brand-bg, var(--brand-soft)); border-color: var(--brand-h); }
@@ -118,12 +118,12 @@
 .painel-novas:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 
 .painel-pe { flex-shrink: 0; border-top: 1px solid var(--border-soft); margin: 0 -12px; padding: 6px 12px 8px; }
-.painel-pe-item { width: 100%; display: flex; align-items: center; gap: 7px; padding: 5px 6px; margin: 0 -6px;
-                  background: none; border: none; border-radius: 6px; font-family: inherit; font-size: var(--t-micro);
+.painel-pe-item { width: 100%; display: flex; align-items: center; gap: 6px; padding: 4px 6px; margin: 0 -6px;
+                  background: none; border: none; border-radius: var(--radius-md); font-family: inherit; font-size: var(--t-micro);
                   color: var(--ink-2); text-align: left; cursor: pointer; }
 .painel-pe-item:hover { background: var(--panel); color: var(--ink-1); }
 .painel-pe-item.ativo { color: var(--brand); background: var(--brand-soft); }
-.painel-pe-conta { margin-left: auto; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+.painel-pe-conta { margin-left: auto; min-width: 15px; height: 15px; padding: 0 4px; border-radius: var(--radius-md);
                    background: var(--brand); color: #fff; font-size: var(--t-micro); font-weight: 600;
                    display: flex; align-items: center; justify-content: center; }
 .painel-pe-conta.neutro { background: var(--surface-4); color: var(--ink-2); }
@@ -134,12 +134,12 @@
 .squad-cab:hover { color: var(--ink-1); }
 .squad-cab-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .squad-cab-conta { font-size: var(--t-micro); color: var(--ink-3); }
-.obra-search { display: flex; align-items: center; gap: 7px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; margin-bottom: 8px; }
+.obra-search { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 8px; margin-bottom: 8px; }
 .obra-search input { flex: 1; border: none; outline: none; background: transparent; font-size: var(--t-meta); color: var(--ink); }
 .obra-search input::placeholder { color: var(--ink-3); }
 .clear-btn { border: none; background: transparent; color: var(--ink-3); cursor: pointer; display: flex; }
 /* Nos 62px o codigo E' o icone. */
-.squad-group-label { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
+.squad-group-label { display: flex; align-items: center; gap: 4px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
 .squad-group-label:hover { color: var(--ink-2); }
 /* ---- Rotulo no hover, na barra recolhida ----
 
@@ -151,7 +151,7 @@
    Este e' um elemento so', em position: fixed, posicionado pelo
    retangulo do botao sob o mouse. Fixed nao e' recortado por
    ancestral nenhum, que e' exatamente o problema a resolver. */
-.dica-lateral { position: fixed; z-index: 200; background: var(--ink); color: var(--bg); border-radius: 7px; padding: 7px 11px; font-size: var(--t-micro); font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-2); }
+.dica-lateral { position: fixed; z-index: 200; background: var(--ink); color: var(--bg); border-radius: var(--radius-md); padding: 6px 12px; font-size: var(--t-micro); font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-2); }
 .dica-lateral::before { content: ""; position: absolute; left: -4px; top: 50%; margin-top: -4px; width: 8px; height: 8px; background: var(--ink); transform: rotate(45deg); }
 
 /* O simbolo do squad so' existe recolhida: aberta, o nome basta. */
@@ -166,19 +166,19 @@
    da barra; sem isso eles paravam onde a lista acabasse. */
 /* Grudado embaixo mesmo com a barra rolando: com quarenta obras a
    lista rola, e o modulo tem que continuar a um clique. */
-.no-results { font-size: var(--t-micro); color: var(--ink-3); padding: 10px 6px; }
-.soon { font-size: var(--t-micro); color: var(--ink-3); background: var(--panel); padding: 2px 6px; border-radius: 20px; flex-shrink: 0; }
+.no-results { font-size: var(--t-micro); color: var(--ink-3); padding: 8px 6px; }
+.soon { font-size: var(--t-micro); color: var(--ink-3); background: var(--panel); padding: 2px 6px; border-radius: var(--radius-pill); flex-shrink: 0; }
 /* O menu era um e-mail quebrando em duas linhas e um "Sair desta
    conta" vermelho gritando. Agora ele se parece com o cartao de
    conta de qualquer ferramenta: quem esta logado em cima, uma
    linha, e a saida discreta embaixo. Vermelho so' no hover — sair
    nao e' perigoso, e' so' sair. */
-.perfil-menu { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow-3); padding: 6px; margin-bottom: 8px; }
-.perfil-cab { display: flex; align-items: center; gap: 10px; padding: 9px 9px 10px; }
+.perfil-menu { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-1); box-shadow: var(--shadow-3); padding: 6px; margin-bottom: 8px; }
+.perfil-cab { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px; }
 .perfil-cab-txt { min-width: 0; }
 .perfil-cab-nome { font-size: var(--t-meta); font-weight: 700; color: var(--ink); }
 .perfil-cab-email { font-size: var(--t-micro); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
-.perfil-sep { height: 1px; background: var(--border-soft); margin: 0 4px 5px; }
+.perfil-sep { height: 1px; background: var(--border-soft); margin: 0 4px 4px; }
 /* RECORTADOR DA FOTO — sem crase neste bloco: o estilo inteiro e'
    um template literal, e uma crase aqui derruba o build. */
 .recorte-caixa { width: min(360px, 100%); }
@@ -194,18 +194,18 @@
                    pointer-events: none; }
 .recorte-controles { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 12px 16px 4px; }
 .recorte-zoom { width: 30px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
-                background: none; border: 1px solid var(--line-2); border-radius: 7px; color: var(--ink-2); cursor: pointer; }
+                background: none; border: 1px solid var(--line-2); border-radius: var(--radius-md); color: var(--ink-2); cursor: pointer; }
 .recorte-zoom:hover:not(:disabled) { background: var(--panel); }
 .recorte-zoom:disabled { opacity: 0.4; cursor: default; }
 .recorte-pct { font-size: var(--t-meta); color: var(--ink-3); min-width: 48px; text-align: center; }
-.recorte-centralizar { margin-left: 8px; background: none; border: 1px solid var(--line-2); border-radius: 7px;
-                       padding: 5px 10px; font-family: inherit; font-size: var(--t-micro); color: var(--ink-2); cursor: pointer; }
+.recorte-centralizar { margin-left: 8px; background: none; border: 1px solid var(--line-2); border-radius: var(--radius-md);
+                       padding: 4px 8px; font-family: inherit; font-size: var(--t-micro); color: var(--ink-2); cursor: pointer; }
 .recorte-centralizar:hover { background: var(--panel); }
 .recorte-erro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-                justify-content: center; gap: 9px; padding: 24px; text-align: center; color: var(--bg);
+                justify-content: center; gap: 8px; padding: 24px; text-align: center; color: var(--bg);
                 font-size: var(--t-meta); line-height: 1.45; }
 .recorte-erro-arq { font-size: var(--t-micro); opacity: 0.7; margin-top: 2px; word-break: break-all; }
-.recorte-previa { display: flex; align-items: center; gap: 10px; padding: 8px 20px 14px; }
+.recorte-previa { display: flex; align-items: center; gap: 8px; padding: 8px 20px 12px; }
 .recorte-previa-bolinha { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; position: relative;
                           flex-shrink: 0; background: var(--panel); }
 .recorte-previa-bolinha img { position: absolute; left: 50%; top: 50%; max-width: none; }
@@ -217,19 +217,19 @@
 .perfil-foto:disabled { cursor: default; }
 .perfil-foto-capa { position: absolute; inset: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); color: #fff; opacity: 0; transition: opacity 0.12s ease; }
 .perfil-foto:hover .perfil-foto-capa, .perfil-foto:focus-visible .perfil-foto-capa { opacity: 1; }
-.perfil-aviso { font-size: var(--t-micro); color: var(--ink-3); padding: 0 9px 7px; }
+.perfil-aviso { font-size: var(--t-micro); color: var(--ink-3); padding: 0 8px 6px; }
 .perfil-aviso.erro { color: var(--red); }
-.perfil-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: var(--t-meta); font-weight: 600; color: var(--ink-2); cursor: pointer; text-align: left; }
+.perfil-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: var(--radius-md); padding: 8px 8px; font-family: inherit; font-size: var(--t-meta); font-weight: 600; color: var(--ink-2); cursor: pointer; text-align: left; }
 .perfil-item:hover { background: var(--panel); }
 .perfil-seta { margin-left: auto; transition: transform 0.12s ease; }
 .perfil-seta.aberta { transform: rotate(180deg); }
-.perfil-dados { padding: 2px 9px 8px; }
-.perfil-dados > div { display: flex; justify-content: space-between; gap: 10px; font-size: var(--t-micro); padding: 3px 0; }
+.perfil-dados { padding: 2px 8px 8px; }
+.perfil-dados > div { display: flex; justify-content: space-between; gap: 8px; font-size: var(--t-micro); padding: 2px 0; }
 .perfil-dados span { color: var(--ink-3); flex-shrink: 0; }
 .perfil-dados b { color: var(--ink); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
-.perfil-dados-nota { display: block !important; font-size: var(--t-micro); color: var(--ink-3); font-style: italic; margin-top: 5px; line-height: 1.35; text-align: left; }
-.perfil-tirar-foto { display: flex !important; align-items: center; gap: 5px; background: none; border: none; padding: 5px 0 0; font-family: inherit; font-size: var(--t-micro); color: var(--red); cursor: pointer; }
-.perfil-sair { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: var(--t-meta); font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.perfil-dados-nota { display: block !important; font-size: var(--t-micro); color: var(--ink-3); font-style: italic; margin-top: 4px; line-height: 1.35; text-align: left; }
+.perfil-tirar-foto { display: flex !important; align-items: center; gap: 4px; background: none; border: none; padding: 4px 0 0; font-family: inherit; font-size: var(--t-micro); color: var(--red); cursor: pointer; }
+.perfil-sair { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: var(--radius-md); padding: 8px 8px; font-family: inherit; font-size: var(--t-meta); font-weight: 600; color: var(--ink-2); cursor: pointer; }
 .perfil-sair:hover { background: var(--red-bg); color: var(--red); }
 .avatar-sm { width: 28px; height: 28px; font-size: var(--t-micro); }
 /* A foto preenche o circulo e e' recortada, nunca esticada —
@@ -262,12 +262,12 @@
 /* min-width: 0 — sem ele o flex deixa o main crescer até caber a
    tabela mais larga, e a tela inteira ganha rolagem de lado. As
    tabelas largas rolam dentro do próprio bloco. */
-.main { flex: 1; min-width: 0; padding: 32px 40px 60px; max-width: 1260px; }
+.main { flex: 1; min-width: 0; padding: 32px 40px 56px; max-width: 1260px; }
 /* Nas telas de planilha a largura é o próprio conteúdo: são 13
    colunas, e limitar em 1260px obrigava a rolar de lado pra ver
    o custo total — justamente a coluna que mais importa. */
 .main.larga { max-width: none; }
 .eyebrow { font-size: var(--t-micro); font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
-.obra-fictitious { margin-left: 8px; font-size: var(--t-micro); background: var(--panel); color: var(--ink-3); padding: 2px 8px; border-radius: 20px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.obra-fictitious { margin-left: 8px; font-size: var(--t-micro); background: var(--panel); color: var(--ink-3); padding: 2px 8px; border-radius: var(--radius-pill); text-transform: none; letter-spacing: 0; font-weight: 500; }
 .title-row { font-size: var(--t-display); line-height: 1.15; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .title-plain { font-weight: 700; color: var(--ink); }

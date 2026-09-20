@@ -89,7 +89,8 @@ conf("a foto é recortada, nunca esticada", app.includes(".avatar-foto { object-
 
 console.log("\n=== 3. A BOLINHA DO INÍCIO ===");
 conf("só renderiza quando há foto", app.includes("{euNaEquipe?.foto && <Avatar pessoa={euNaEquipe} nome={meuNome} classe=\"ini-foto\" />}"));
-conf("o bloco vira flex pra centrar a bolinha", /\.ini-topo \{ margin: 6px 0 18px; display: flex; align-items: center;/.test(app));
+/* Centrar a bolinha e' o ponto; a margem vem da escala de espaco. */
+conf("o bloco vira flex pra centrar a bolinha", /\.ini-topo \{[^}]*display: flex;[^}]*align-items: center/.test(app));
 conf("nome e recado alinham à direita dela", app.includes(".ini-topo-txt { min-width: 0; }"));
 conf("54px, como decidido", /\.ini-foto \{ width: 54px; height: 54px;/.test(app));
 
