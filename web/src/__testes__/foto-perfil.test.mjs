@@ -50,7 +50,17 @@ console.log("=== 1. O MENU FLUTUA, NÃO OCUPA COLUNA ===");
 conf("a variante do trilho declara position", /\.perfil-menu-trilho \{ position: absolute;/.test(app));
 conf("... com z-index acima do conteúdo", /\.perfil-menu-trilho \{[^}]*z-index: 40/.test(app));
 conf("... e largura própria", /\.perfil-menu-trilho \{[^}]*width: 230px/.test(app));
-conf("a .barra segue sticky, que é a referência", app.includes(".barra { display: flex; flex-shrink: 0; height: calc(100vh - 64px); position: sticky;"));
+conf("a .barra segue sticky, que é a referência", /\.barra \{[^}]*position: sticky/.test(app));
+/* A altura da .barra tem de ACOMPANHAR a da .topbar, e antes nao acompanhava:
+   a barra media calc(100vh - 64px) e a topbar valia 59px, entao o pe' do
+   trilho caia 5px fora da dobra. Este teste le' os dois numeros e compara,
+   em vez de congelar um valor — foi um valor congelado aqui que deixou a
+   diferenca passar. A .topbar que vale e' a ultima declarada. */
+const alturaTopbar = [...app.matchAll(/\.topbar \{[^}]*height: (\d+)px/g)].pop()?.[1];
+const topoDaBarra = app.match(/\.barra \{[^}]*top: (\d+)px/)?.[1];
+const alturaDaBarra = app.match(/\.barra \{[^}]*calc\(100vh - (\d+)px\)/)?.[1];
+conf("a barra comeca onde a topbar termina", topoDaBarra, alturaTopbar);
+conf("e desconta a mesma altura do seu tamanho", alturaDaBarra, alturaTopbar);
 // a regra que TINHA position mirava uma classe que nao existe mais
 conf("a regra morta .sidebar.recolhida saiu", app.includes(".sidebar.recolhida .perfil-menu {"), false);
 

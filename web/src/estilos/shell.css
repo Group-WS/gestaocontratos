@@ -26,7 +26,11 @@
    LISTA de obras, porque ela e' texto que se le' — nao moldura.
    Espinho cinza, lista branca, campo cinza.
    ============================================================ */
-.barra { display: flex; flex-shrink: 0; height: calc(100vh - 64px); position: sticky; top: 64px; }
+/* 59px e' a altura real da .topbar — quem manda e' a declaracao da camada
+   do Design System (componentes.css), que vence a de base.css por ordem.
+   Aqui estava 64px, a altura antiga: a barra nascia 5px abaixo do topo e
+   media 5px a mais que a tela, entao o pe' do trilho caia fora da dobra. */
+.barra { display: flex; flex-shrink: 0; height: calc(100vh - 59px); position: sticky; top: 59px; }
 
 .trilho { width: 56px; flex-shrink: 0; background: var(--surface-3); border-right: 1px solid var(--border-soft);
           display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
@@ -130,32 +134,11 @@
 .squad-cab:hover { color: var(--ink-1); }
 .squad-cab-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .squad-cab-conta { font-size: 10px; color: var(--ink-3); }
-
-.sidebar { width: 288px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
-.sidebar-scroll { flex: 1; padding: 6px 14px 16px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
-.nav-group-label { font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; }
-.nav-group-label:first-child { margin-top: 0; }
 .obra-search { display: flex; align-items: center; gap: 7px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; margin-bottom: 8px; }
 .obra-search input { flex: 1; border: none; outline: none; background: transparent; font-size: 12px; color: var(--ink); }
 .obra-search input::placeholder { color: var(--ink-3); }
 .clear-btn { border: none; background: transparent; color: var(--ink-3); cursor: pointer; display: flex; }
-.alert-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 11px; color: var(--ink-2); cursor: pointer; margin-bottom: 10px; }
-.alert-toggle.active { background: var(--red-bg); border-color: var(--red); color: var(--red); font-weight: 600; }
 /* Nos 62px o codigo E' o icone. */
-.nav-cod { display: none; font-size: 11px; font-weight: 700; color: var(--ink-2); letter-spacing: -.02em; }
-.sidebar.recolhida .nav-cod { display: block; }
-.sidebar.recolhida .nav-item > .nav-icon { display: none; }
-.sidebar.recolhida .nav-item.active .nav-cod { color: var(--blue); }
-.chip-sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 3px; }
-.squad-chip.neutro { background: none; border-color: var(--border); color: var(--ink-3); }
-.squad-chip.neutro.on { color: var(--ink); border-color: var(--ink-3); font-weight: 600; }
-.squad-chip.active.alerta { background: var(--red); border-color: var(--red); }
-.alert-toggle.escondido { display: none; }
-.squad-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
-.squad-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; font-size: 10.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
-.squad-chip:hover { border-color: var(--blue); }
-.squad-chip.active { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
-.squad-group { margin-bottom: 10px; }
 .squad-group-label { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
 .squad-group-label:hover { color: var(--ink-2); }
 /* ---- Rotulo no hover, na barra recolhida ----
@@ -172,13 +155,8 @@
 .dica-lateral::before { content: ""; position: absolute; left: -4px; top: 50%; margin-top: -4px; width: 8px; height: 8px; background: var(--ink); transform: rotate(45deg); }
 
 /* O simbolo do squad so' existe recolhida: aberta, o nome basta. */
-.squad-simbolo { display: none; }
-.sidebar.recolhida .squad-group-label { display: flex; justify-content: center; padding: 6px 0 4px; color: var(--ink-3); }
 /* So' o simbolo. O nome quebrava em tres linhas dentro dos 62px e
    encavalava com as obras logo abaixo. */
-.sidebar.recolhida .squad-group-label > .lucide,
-.sidebar.recolhida .squad-group-label > span:not(.squad-simbolo) { display: none; }
-.sidebar.recolhida .squad-simbolo { display: block; }
 .squad-tem-aberta { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
 
 .squad-group-label span { text-align: left; }
@@ -186,41 +164,10 @@
 .squad-group-label { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px; }
 /* A lista come o espaco que sobra pra empurrar os modulos pro pe
    da barra; sem isso eles paravam onde a lista acabasse. */
-.scroll-list { flex: 1; min-height: 90px; overflow-y: auto; padding-right: 2px; }
 /* Grudado embaixo mesmo com a barra rolando: com quarenta obras a
    lista rola, e o modulo tem que continuar a um clique. */
-.nav-modulos { margin-top: auto; position: sticky; bottom: 0; background: var(--surface-1); padding-bottom: 2px; }
-.nav-modulos::before { content: ""; display: block; height: 10px; margin: 0 -14px; background: linear-gradient(to bottom, transparent, var(--surface-1)); }
 .no-results { font-size: 11.5px; color: var(--ink-3); padding: 10px 6px; }
-.nav-group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; cursor: pointer; }
-.nav-group-toggle:hover { color: var(--ink-2); }
-.nav-group-toggle span:first-child { flex: 1; text-align: left; }
-.nav-tira { display: flex; align-items: center; gap: 4px; padding: 0 4px; }
-.nav-tira-item { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; height: 34px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--ink-3); cursor: pointer; }
-.nav-tira-item:hover { background: var(--panel); color: var(--ink); }
-.nav-tira-item.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
-.nav-tira-badge { position: absolute; top: 1px; right: 1px; background: var(--blue); color: var(--bg); font-size: 8.5px; font-weight: 700; border-radius: 20px; padding: 0 4px; line-height: 13px; }
-.sidebar.recolhida .nav-tira { flex-direction: column; }
-.nav-list { display: flex; flex-direction: column; gap: 2px; }
-.nav-list-topo { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-soft); }
-.nav-item { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; border-radius: 8px; padding: 9px 8px; cursor: pointer; text-align: left; transition: background 0.12s ease; }
-.nav-item:hover { background: var(--panel); }
-.nav-item.active { background: var(--blue-bg); }
-.nav-item.static { cursor: default; }
-.nav-item.disabled { opacity: 0.55; cursor: default; }
-.nav-item.disabled:hover { background: transparent; }
-.nav-icon { color: var(--ink-2); flex-shrink: 0; }
-.nav-item.active .nav-icon { color: var(--blue); }
-.nav-item-text { flex: 1; min-width: 0; }
-.nav-item-name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nav-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
-.nav-badge { background: var(--red); color: var(--bg); font-size: 10px; font-weight: 700; border-radius: 20px; padding: 1px 6px; font-family: var(--font-mono); flex-shrink: 0; }
 .soon { font-size: 9.5px; color: var(--ink-3); background: var(--panel); padding: 2px 6px; border-radius: 20px; flex-shrink: 0; }
-.sidebar-footer { border-top: 1px solid var(--border); padding: 12px 14px; flex-shrink: 0; }
-.profile { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
-.profile { width: 100%; background: none; border: none; font-family: inherit; text-align: left; }
-.profile.aberto { background: var(--panel); }
-.profile-name { color: var(--ink); }
 /* O menu era um e-mail quebrando em duas linhas e um "Sair desta
    conta" vermelho gritando. Agora ele se parece com o cartao de
    conta de qualquer ferramenta: quem esta logado em cima, uma
@@ -284,23 +231,15 @@
 .perfil-tirar-foto { display: flex !important; align-items: center; gap: 5px; background: none; border: none; padding: 5px 0 0; font-family: inherit; font-size: 11px; color: var(--red); cursor: pointer; }
 .perfil-sair { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
 .perfil-sair:hover { background: var(--red-bg); color: var(--red); }
-
-.profile:hover { background: var(--panel); }
 .avatar-sm { width: 28px; height: 28px; font-size: 10.5px; }
 /* A foto preenche o circulo e e' recortada, nunca esticada —
    esticar um retrato pra caber num quadrado deforma a pessoa.
    O tamanho vem da classe de quem chama, entao aqui so' entram o
    recorte e a limpeza do que era estilo de letra. */
 .avatar-foto { object-fit: cover; background: none; padding: 0; }
-.profile-text { flex: 1; min-width: 0; }
-.profile-name { font-size: 12px; font-weight: 600; }
-.profile-email { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Discreto: é um controle da barra, não um título. Antes vinha em
    caixa alta ocupando a largura toda, e competia com o nome da
    obra logo abaixo. */
-.sidebar-toggle { display: flex; align-items: center; justify-content: flex-start; gap: 5px; width: auto; margin: 10px 8px 2px; font-size: 11.5px; font-weight: 500; color: var(--ink-3); background: transparent; border: none; border-radius: 6px; padding: 5px 8px; cursor: pointer; flex-shrink: 0; }
-.sidebar-toggle:hover { color: var(--ink-1); background: var(--panel); }
-.sidebar.recolhida .sidebar-toggle { justify-content: center; margin: 10px auto 2px; }
 
 /* RECOLHIDA — só os símbolos.
    Some tudo que é texto e filtro; ficam os ícones, que já existiam
@@ -317,35 +256,8 @@
    linha, e o perfil e' so' o avatar — que continua abrindo o
    menu de sair. O atributo title de cada botao e' o rotulo no
    hover. */
-.sidebar.recolhida { width: 62px; }
-.sidebar.recolhida .sidebar-scroll { padding: 12px 6px; align-items: center; gap: 2px; }
-.sidebar.recolhida .squad-group { margin-bottom: 4px; }
-.sidebar.recolhida .nav-modulos { border-top: 1px solid var(--border); padding-top: 8px; margin-top: auto; width: 100%; }
-.sidebar.recolhida .nav-modulos::before { display: none; }
-.sidebar.recolhida .nav-tira { flex-direction: column; gap: 2px; }
-.sidebar.recolhida .nav-tira-item { width: 44px; flex: none; }
-.sidebar.recolhida .sidebar-toggle { justify-content: center; }
 /* O menu de sair nao cabe em 62px: ele salta pra fora da barra. */
-.sidebar.recolhida .sidebar-footer { position: relative; }
-.sidebar.recolhida .nav-group-toggle,
-.sidebar.recolhida .nav-group-label,
-.sidebar.recolhida .obra-search,
-.sidebar.recolhida .squad-filter,
-.sidebar.recolhida .alert-toggle,
-.sidebar.recolhida .nav-item-text,
-.sidebar.recolhida .nav-item-chevron,
-.sidebar.recolhida .no-results,
-.sidebar.recolhida .profile-text,
-.sidebar.recolhida .profile > .lucide-chevron-right { display: none; }
-.sidebar.recolhida .nav-item { justify-content: center; padding: 10px 0; width: 44px; }
-.sidebar.recolhida .nav-list { align-items: center; }
-.sidebar.recolhida .squad-group { width: 100%; }
-.sidebar.recolhida .sidebar-footer { padding: 10px 8px; }
-.sidebar.recolhida .profile { justify-content: center; gap: 0; padding: 7px 0; }
-.sidebar.recolhida .profile > .lucide-chevron-down { display: none; }
 /* badge vira ponto: o número não cabe, mas "tem alerta" precisa aparecer */
-.sidebar.recolhida .nav-badge, .sidebar.recolhida .nav-count { position: absolute; top: 4px; right: 2px; min-width: 7px; height: 7px; padding: 0; font-size: 0; border-radius: 50%; }
-.sidebar.recolhida .nav-item { position: relative; }
 
 /* min-width: 0 — sem ele o flex deixa o main crescer até caber a
    tabela mais larga, e a tela inteira ganha rolagem de lado. As

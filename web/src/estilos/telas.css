@@ -20,8 +20,6 @@
    ============================================================================ */
 
 /* --- Ciclo de vida da obra: novas / concluir / arquivo --- */
-.nav-badge-novo { background: var(--blue); }
-.nav-count { background: var(--panel); color: var(--ink-3); font-size: 10px; font-weight: 600; border-radius: 20px; padding: 1px 6px; font-family: var(--font-mono); flex-shrink: 0; }
 .link-inline { background: none; border: none; padding: 0; font: inherit; color: var(--blue); cursor: pointer; text-decoration: underline; }
 
 .secao-intro { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; background: var(--panel); border-radius: 10px; padding: 12px 15px; margin-bottom: 18px; max-width: 720px; }
@@ -477,8 +475,7 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 
 @media (max-width: 1200px) { .ad-wrap { grid-template-columns: 1fr; } .ad-prev { position: static; } }
 
-@media print {
-  .naoimprime, .sidebar, .topbar, .nav-obra, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
+@media print {.naoimprime, .topbar, .nav-obra, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
   .app, .body-layout, .main { background: #fff !important; padding: 0 !important; margin: 0 !important; display: block !important; }
   .doc-escopo { border: none; box-shadow: none; border-radius: 0; max-width: none; padding: 0; margin: 0; }
   .doc-item, .doc-tab tr { break-inside: avoid; }
@@ -537,7 +534,6 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .eap-folha { padding: 1px 0 1px 20px; font-size: 12.5px; }
 .eap-raiz { font-weight: 600; margin-bottom: 2px; }
 .eap-grupo { margin-left: 14px; }
-
 
 /* ---------- Solicitação de compra no Sienge ---------- */
 /* Modal de verdade (o .rel-overlay ao lado é de impressão: ele
@@ -1842,7 +1838,6 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .cmv-linha-barra span { display: block; height: 100%; background: var(--blue); border-radius: 20px; }
 .cmv-linha-valor { width: 110px; text-align: right; color: var(--ink); flex-shrink: 0; }
 
-
 /* Célula que vira campo ao clicar */
 .celula-valor { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 2px 5px; font-size: 11.5px; color: var(--ink); cursor: text; width: 100%; text-align: right; font-family: var(--font-mono); }
 .celula-valor:hover { border-color: var(--border); background: var(--surface-1); }
@@ -1934,8 +1929,6 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .eq-fila .arq-bloco-h { border-bottom-color: var(--amber); }
 .eq-fila .arq-bloco-tit { color: var(--text); }
 .eq-fila .arq-linha { background: var(--amber-bg); }
-.nav-badge-espera { background: var(--amber); }
-.nav-tira-badge.espera { background: var(--amber); }
 .eq-form .eq-campos { grid-template-columns: 1fr 1fr 170px; }
 .eq-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--blue-bg); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
 .eq-inativo { opacity: .55; }
@@ -2055,6 +2048,11 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .ini-alerta span { flex: 1; }
 .ini-alerta.ruim { background: var(--red-bg); border-color: var(--danger-line); color: var(--text); }
 .ini-alerta.aviso { background: var(--amber-bg); border-color: var(--warning-line); color: var(--text); }
+/* O terceiro tom existia no JS e nao existia aqui: alerta com tom "info"
+   (obra sem GC, obra do Monday nao iniciada) caia calado no estilo neutro,
+   igual a uma linha sem tom nenhum. Azul da marca porque info nao e' risco:
+   vermelho e ambar ja significam "isso custa" nesta mesma lista. */
+.ini-alerta.info { background: var(--blue-bg); border-color: var(--brand-line); color: var(--text); }
 /* "N itens esperam aprovacao" e' o unico alerta daqui que ABRE outra
    tela; os demais so' expandem no lugar. Por isso a seta aponta pra
    fora, e nao pra baixo. */
@@ -2111,7 +2109,9 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .ini-titulo-esq { display: inline-flex; align-items: center; gap: 8px; }
 .ini-link-finalizadas { display: inline-flex; align-items: center; gap: 2px; background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; padding: 2px 0; }
 .ini-link-finalizadas:hover { color: var(--ink); }
-@media (max-width: 1100px) { .ini-numeros { grid-template-columns: repeat(2, 1fr); } .ini-colunas { grid-template-columns: 1fr; } }
+/* .ini-numeros saiu daqui: a regua do Inicio virou .ini-regua ha' muito, e a
+   regra continuava mirando um nome que nao existe mais. */
+@media (max-width: 1100px) { .ini-colunas { grid-template-columns: 1fr; } }
 /* ---- Painel geral de compras e contratacoes ---- */
 .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }
 .gc-horizonte { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

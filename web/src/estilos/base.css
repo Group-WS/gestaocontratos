@@ -18,7 +18,10 @@
    ============================================================================ */
 
 * { box-sizing: border-box; }
-.app { min-height: 100vh; background: var(--page); color: var(--ink); font-family: var(--font-sans); font-size: 13.5px; }
+/* Sem font-size: o 13.5px daqui nunca valeu — componentes.css declara 14px
+   no mesmo seletor e vence pela ordem. Duas medidas para a mesma coisa so'
+   servem para quem le' escolher a errada. O corpo do app e' 14px. */
+.app { min-height: 100vh; background: var(--page); color: var(--ink); font-family: var(--font-sans); }
 .mono { font-family: var(--font-mono); }
 .dim { color: var(--ink-3); }
 .center { text-align: center; }
