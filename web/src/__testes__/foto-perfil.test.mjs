@@ -181,10 +181,14 @@ const lib2 = readFileSync(new URL("../lib/pessoas.js", import.meta.url), "utf8")
 
 console.log("\n=== 8. O RECORTADOR ===");
 conf("o componente existe", app.includes("function RecortadorFoto({ file, onConfirmar, onCancelar }) {"));
-conf("sai por portal, como o outro modal do app", /RecortadorFoto[\s\S]{0,6000}return createPortal\(/.test(app));
-conf("usa a moldura de modal que já existe", app.includes('className="sobreposto-caixa recorte-caixa"'));
-conf("fecha no Escape", /RecortadorFoto[\s\S]{0,1500}if \(e\.key === "Escape"\) onCancelar\(\);/.test(app));
-conf("e no clique no fundo", /className="sobreposto-fundo" onClick=\{\(e\) => \{ if \(e\.target === e\.currentTarget\) onCancelar\(\); \}\}/.test(app));
+/* Portal, Escape, clique no fundo e foco preso saem todos do <Dialogo>
+   agora. Quem garante cada um deles e' dialogo.test.mjs, uma vez — aqui
+   so' se confere que o Recortador usa o primitivo, e com que moldura. */
+conf("usa o Dialogo, e nao uma sobreposicao propria",
+  /RecortadorFoto[\s\S]{0,6000}<Dialogo rotulo="Ajustar a foto" onFechar=\{onCancelar\}/.test(app));
+conf("usa a moldura de modal que já existe", app.includes('caixa="sobreposto-caixa recorte-caixa"'));
+conf("nao sobrou Escape a mao no Recortador",
+  /function RecortadorFoto[\s\S]{0,1500}if \(e\.key === "Escape"\)/.test(app), false);
 // a mascara e' redonda: e' o ponto do pedido
 conf("a máscara é um círculo", app.includes(".recorte-mascara { position: absolute;") && app.includes("border-radius: 50%; box-shadow: 0 0 0 9999px"));
 /* StrictMode monta, limpa e monta de novo. Com o useMemo criando a URL e

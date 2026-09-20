@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import Dialogo from "./componentes/Dialogo.jsx";
 
 /* O "ver como" (so' em npm run dev): ?verComo=mehoo no endereco. Lido
    aqui, quando o modulo carrega, e nao na hora de montar o `eu`: o
@@ -719,12 +720,6 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [pegando, setPegando] = useState(null);
 
-  useEffect(() => {
-    const esc = (e) => { if (e.key === "Escape") onCancelar(); };
-    document.addEventListener("keydown", esc);
-    return () => document.removeEventListener("keydown", esc);
-  }, [onCancelar]);
-
   /* Carregou, mas carregou o QUE?
 
      Formato que o navegador nao decodifica nao dispara onError em todo
@@ -798,9 +793,9 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
     return { sx: cravar(cx, img.width), sy: cravar(cy, img.height), lado };
   }
 
-  return createPortal(
-    <div className="sobreposto-fundo" onClick={(e) => { if (e.target === e.currentTarget) onCancelar(); }}>
-      <div className="sobreposto-caixa recorte-caixa" role="dialog" aria-label="Ajustar a foto">
+  return (
+    <Dialogo rotulo="Ajustar a foto" onFechar={onCancelar}
+      fundo="sobreposto-fundo" caixa="sobreposto-caixa recorte-caixa">
         <div className="sobreposto-topo">
           <div>
             <div className="recorte-titulo">Ajustar a foto</div>
@@ -865,9 +860,7 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
           <button className="btn-liberar" disabled={!img || !!erro}
             onClick={() => onConfirmar(recorteAtual())}>Usar esta foto</button>
         </div>
-      </div>
-    </div>,
-    document.body,
+    </Dialogo>
   );
 }
 
@@ -8507,8 +8500,8 @@ function DetalheTexto({ item, onFechar }) {
   };
 
   return (
-    <div className="detalhe-fundo" onClick={onFechar}>
-      <div className="detalhe-caixa" onClick={(e) => e.stopPropagation()}>
+    <Dialogo rotulo={item.rotulo} onFechar={onFechar}
+      fundo="detalhe-fundo" caixa="detalhe-caixa">
         <div className="detalhe-topo">
           <span>{item.rotulo}</span>
           <button className="clear-btn" onClick={onFechar}><X size={14} /></button>
@@ -8519,8 +8512,7 @@ function DetalheTexto({ item, onFechar }) {
             <Copy size={12} /> {copiado ? "Copiado" : "Copiar"}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialogo>
   );
 }
 
@@ -13522,9 +13514,9 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
   if (jaEnviado) avisos.push({ tipo: "repetido" });
   if (erroCatalogo) avisos.push({ tipo: "catalogo" });
 
-  return createPortal(
-    <div className="sobreposto-fundo" onClick={(e) => { if (e.target === e.currentTarget && !enviando) onFechar(); }}>
-      <div className="sobreposto-caixa">
+  return (
+    <Dialogo rotulo="Solicitar compra no Sienge" onFechar={onFechar} podeFechar={!enviando}
+      fundo="sobreposto-fundo" caixa="sobreposto-caixa">
         <div className="sobreposto-topo">
           <div>
             <div className="flat-panel-title">Solicitar compra no Sienge</div>
@@ -13926,9 +13918,8 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
             </>
           )}
         </div>
-      </div>
-    </div>,
-    document.body);
+    </Dialogo>
+);
 }
 
 function situacaoNoSienge(it, casamento, grupos) {
@@ -15739,13 +15730,9 @@ function baixarUrl(url, nome) {
 /* O PDF gerado, por cima da tela: ele já baixou sozinho, e aqui a pessoa
    confere sem sair do painel. O visor é o do próprio navegador. */
 function PdfSobreposto({ pdf, onFechar }) {
-  useEffect(() => {
-    const esc = (e) => { if (e.key === "Escape") onFechar(); };
-    document.addEventListener("keydown", esc);
-    return () => document.removeEventListener("keydown", esc);
-  }, [onFechar]);
-  return createPortal(
-    <div className="rel-overlay">
+  return (
+    <Dialogo rotulo="Exportar PDF" onFechar={onFechar} fecharNoFundo={false}
+      fundo="rel-overlay">
       <div className="rel-barra">
         <span>
           {pdf.erro ? <>Não consegui gerar o PDF: {pdf.erro}</>
@@ -15759,8 +15746,7 @@ function PdfSobreposto({ pdf, onFechar }) {
       </div>
       {pdf.url ? <iframe className="pdf-visor" src={pdf.url} title={pdf.nome} />
         : !pdf.erro && <div className="pdf-gerando">Montando o PDF…</div>}
-    </div>,
-    document.body
+    </Dialogo>
   );
 }
 
@@ -15842,21 +15828,16 @@ function PedidoOrcamento({ obra, fornecedor, mostrarFornecedor = true, grupos, u
 /* Por cima da tela, e FORA do #root: na impressao so' o documento sai —
    o CSS de impressao esconde o app inteiro enquanto isto existe. */
 function RelatorioSobreposto({ children, onFechar, pronto = "Relatório pronto" }) {
-  useEffect(() => {
-    const esc = (e) => { if (e.key === "Escape") onFechar(); };
-    document.addEventListener("keydown", esc);
-    return () => document.removeEventListener("keydown", esc);
-  }, [onFechar]);
-  return createPortal(
-    <div className="rel-overlay">
+  return (
+    <Dialogo rotulo="Imprimir" onFechar={onFechar} fecharNoFundo={false}
+      fundo="rel-overlay">
       <div className="rel-barra naoimprime">
         <span>{pronto} — a impressão já abriu. Escolha <b>Salvar como PDF</b>.</span>
         <button className="btn-doc" onClick={() => window.print()}><Printer size={13} /> Imprimir de novo</button>
         <button className="btn-voltar" onClick={onFechar}><X size={13} /> Fechar</button>
       </div>
       <div className="rel-folha">{children}</div>
-    </div>,
-    document.body
+    </Dialogo>
   );
 }
 
@@ -16006,9 +15987,9 @@ function SimuladorEquipe({ g, prestadores, padrao = false, onFechar }) {
   const { diferenca, pct } = comparacaoEquipe(interno, aContratar);
   const especialidades = [...new Set(linhas.map((l) => l.especialidade))];
 
-  return createPortal(
-    <div className="rel-overlay" onClick={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
-      <div className="sim-painel" role="dialog" aria-label="Simular com a mão de obra própria">
+  return (
+    <Dialogo rotulo="Simular com a mão de obra própria" onFechar={onFechar}
+      fundo="rel-overlay" caixa="sim-painel">
         <div className="sim-topo">
           <Calculator size={16} />
           <div>
@@ -16086,9 +16067,7 @@ function SimuladorEquipe({ g, prestadores, padrao = false, onFechar }) {
               : "—"}</b>
           </div>
         </div>
-      </div>
-    </div>,
-    document.body
+    </Dialogo>
   );
 }
 
