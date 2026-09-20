@@ -9246,6 +9246,7 @@ const MODULOS = [
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
+  { id: "painel_canal", nome: "Painel por canal", sub: "cada canal de compra, obra por obra", Icone: PackageSearch },
   { id: "equipe", nome: "Equipe e acessos", sub: "quem é quem, e o que cada um vê", Icone: ShieldCheck },
   { id: "catalogo", nome: "Catálogo TKWS", sub: "o que a casa especifica", Icone: BookOpen },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
@@ -18076,7 +18077,7 @@ function CadernoBaixar({ titulo, arquivo }) {
   );
 }
 
-function ObraMehoo({ L, canal }) {
+function ObraDoCanal({ L, canal }) {
   const [aberto, setAberto] = useState(false);
   const o = L.obra;
   const pct = L.total > 0 ? (L.comprado / L.total) * 100 : 0;
@@ -18094,6 +18095,10 @@ function ObraMehoo({ L, canal }) {
               <IconeSquad nome={o.squad} size={11} />
               {o.squad || "sem squad"}
             </span>
+            {/* O GC RESPONSAVEL, em todos os canais (pedido dela, 19/09/2026).
+                Quem atende um canal precisa saber COM QUEM falar sobre aquela
+                obra, e o squad sozinho nao responde isso. */}
+            {o.gc && <span className="mh-obra-gc">· GC {nomeDoEmail(o.gc)}</span>}
             {o.endereco && o.endereco !== "—" && <span className="mh-obra-end">· {o.endereco}</span>}
           </div>
         </div>
@@ -18169,8 +18174,19 @@ function ObraMehoo({ L, canal }) {
   );
 }
 
-function MehooView({ obras, carregando, erro }) {
-  const canal = canalPorId("mehoo");
+/* O PAINEL DE UM CANAL DE COMPRA.
+ *
+ * Era a tela da Mehoo, escrita a' mao pra um canal so'. Virou generica em
+ * 19/09/2026, a pedido dela: "assim como a gente criou uma tela separada para
+ * Mehoo, queria criar uma para cada canal".
+ *
+ * Deu pouco trabalho porque `painelDoCanal(obras, canalId)` ja' era generico
+ * desde o comeco — a tela e' que fixava o "mehoo". Copiar seis vezes teria
+ * criado seis telas pra manter e uma setima no dia em que nascesse outro
+ * canal; assim, canal novo aparece sozinho.
+ */
+function PainelCanalView({ obras, carregando, erro, canalId }) {
+  const canal = canalPorId(canalId);
   // Vazio quer dizer TODAS, igual aos outros dois paineis.
   const [escolhidas, setEscolhidas] = useState(() => new Set());
 
@@ -18178,13 +18194,13 @@ function MehooView({ obras, carregando, erro }) {
      inteira depois de filtrar, senao quem escolhe uma obra perde o
      caminho de volta pras outras. */
   const comItens = useMemo(
-    () => painelDoCanal(obras, "mehoo").linhas.map((L) => ({ codigo: String(L.obra.codigo), nome: L.obra.nome })),
+    () => painelDoCanal(obras, canalId).linhas.map((L) => ({ codigo: String(L.obra.codigo), nome: L.obra.nome })),
     [obras]);
 
   const visiveis = useMemo(
     () => (escolhidas.size ? obras.filter((o) => escolhidas.has(String(o.codigo))) : obras),
     [obras, escolhidas]);
-  const p = useMemo(() => painelDoCanal(visiveis, "mehoo"), [visiveis]);
+  const p = useMemo(() => painelDoCanal(visiveis, canalId), [visiveis, canalId]);
 
   if (carregando) return <div className="empty-note">Carregando as obras…</div>;
 
@@ -18200,10 +18216,10 @@ function MehooView({ obras, carregando, erro }) {
       )}
 
       <div className="gc-totais">
-        <GcTotal rot="MATERIAL DA MEHOO" cor={canal.cor} legenda="ainda não comprado"
+        <GcTotal rot={`MATERIAL — ${canal.nome.toUpperCase()}`} cor={canal.cor} legenda="ainda não comprado"
           feito={p.comprado} total={p.total} />
         <div className="gc-total">
-          <div className="gc-total-rot" style={{ color: canal.cor }}>OBRAS COM ITENS DA MEHOO</div>
+          <div className="gc-total-rot" style={{ color: canal.cor }}>OBRAS COM ITENS — {canal.nome.toUpperCase()}</div>
           <div className="gc-total-val mono">{p.linhas.length}</div>
           <div className="gc-total-sub">{p.nItens} {p.nItens === 1 ? "item" : "itens"} no total</div>
           {p.atrasados > 0 && (
@@ -18215,13 +18231,13 @@ function MehooView({ obras, carregando, erro }) {
       {p.linhas.length === 0 ? (
         <div className="compras-empty">
           <ShoppingCart size={30} className="dim" />
-          <div className="compras-empty-title">Nenhum item da Mehoo ainda</div>
+          <div className="compras-empty-title">Nenhum item de {canal.nome} ainda</div>
           <div className="compras-empty-sub">
-            Os itens aparecem aqui quando alguém escolhe <b>Mehoo</b> como canal em
+            Os itens aparecem aqui quando alguém escolhe <b>{canal.nome}</b> como canal em
             <b> Compras de Produtos</b>, dentro da obra.
           </div>
         </div>
-      ) : p.linhas.map((L) => <ObraMehoo key={L.obra.codigo} L={L} canal={canal} />)}
+      ) : p.linhas.map((L) => <ObraDoCanal key={L.obra.codigo} L={L} canal={canal} />)}
     </>
   );
 }
@@ -19382,6 +19398,9 @@ export default function App() {
      null, senao voltar na aba depois abriria filtrado de novo, sem ninguem
      ter pedido. */
   const [filtroConferencia, setFiltroConferencia] = useState(null);
+  /* Qual canal o Painel por canal esta' mostrando. Comeca no primeiro da
+     lista; quem tem canal proprio na ficha nao escolhe (ver o render). */
+  const [canalDoPainel, setCanalDoPainel] = useState(CANAIS_COMPRA[0].id);
 
   useEffect(() => {
     if (!supabaseConfigurado) { setUsuario("local"); return; }
@@ -19671,10 +19690,24 @@ export default function App() {
     setObras((prev) => {
       let mudou = false;
       const prox = prev.map((o) => {
-        const alvo = enderecoResolvido(o.endereco, registro.get(String(o.codigo))?.endereco, enderecoSienge.get(String(o.codigo)));
-        if (!alvo || alvo === o.endereco) return o;
+        const linha = registro.get(String(o.codigo));
+        const alvo = enderecoResolvido(o.endereco, linha?.endereco, enderecoSienge.get(String(o.codigo)));
+        /* OS RESPONSAVEIS TAMBEM VEM DO NOSSO BANCO, e nao do Monday.
+           Sem isto a lista de obras ficava sem GC: `o.gc` so' existia na obra
+           ABERTA, e o Inicio mostrava a linha "GC ..." vazia em todas as sete
+           — nunca ninguem reparou porque o que falta nao chama atencao.
+           Achado em 19/09/2026 montando o Painel por canal, que precisa do GC
+           em cada linha (pedido dela). */
+        const papeis = {};
+        if (linha?.gc && linha.gc !== o.gc) papeis.gc = linha.gc;
+        if (linha?.tailor_made && linha.tailor_made !== o.tailorMade) papeis.tailorMade = linha.tailor_made;
+        if (linha?.responsavel_executivo && linha.responsavel_executivo !== o.responsavelExecutivo) {
+          papeis.responsavelExecutivo = linha.responsavel_executivo;
+        }
+        const trocaEndereco = alvo && alvo !== o.endereco;
+        if (!trocaEndereco && !Object.keys(papeis).length) return o;
         mudou = true;
-        return { ...o, endereco: alvo };
+        return { ...o, ...(trocaEndereco ? { endereco: alvo } : {}), ...papeis };
       });
       return mudou ? prox : prev;
     });
@@ -23431,6 +23464,16 @@ export default function App() {
         .mh-obra-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
         .mh-obra-sub { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11px; color: var(--ink-3); margin-top: 3px; }
         .mh-squad { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--ink-2); }
+        .mh-obra-gc { color: var(--ink-2); }
+        /* Os canais do Painel por canal. Chip apagado ate' ser o escolhido —
+           a cor e' do canal, e ela so' aparece em quem esta' na tela. */
+        .canal-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; }
+        .canal-chip { display: inline-flex; align-items: center; gap: 6px; font-family: inherit; font-size: 12px;
+                      padding: 6px 12px; border-radius: 20px; cursor: pointer;
+                      border: 1px solid var(--border-soft); background: var(--surface-1); color: var(--ink-2); }
+        .canal-chip:hover { border-color: var(--ink-3); }
+        .canal-chip b { font-size: 10.5px; letter-spacing: .04em; }
+        .canal-chip.ativo { font-weight: 600; }
         .mh-obra-end { font-size: 11px; color: var(--ink-3); }
         .mh-rot { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
         .mh-entrega, .mh-num { flex-shrink: 0; text-align: right; }
@@ -24300,12 +24343,33 @@ export default function App() {
             onSalvar={salvarPessoaNoTime} onSalvarAcesso={salvarAcessoDaPessoa}
             onExcluir={excluirPessoaDoTime} />
           </>
+          ) : modulo === "painel_canal" ? (
+          <>
+          <div className="eyebrow">CANAIS DE COMPRA</div>
+          <div className="title-row"><span className="title-accent">Painel por canal</span></div>
+          <div className="obra-meta">Cada obra com item do canal escolhido: quando ela entrega, quem é o GC, os cadernos pra baixar e o que já foi comprado</div>
+          {/* A ESCOLHA DO CANAL fica na propria tela, e nao numa arvore na
+              barra lateral: aqui ela mostra QUANTO cada canal tem, que e' a
+              informacao que faz escolher. Uma lista de nomes na lateral nao
+              diria isso. */}
+          <div className="canal-chips">
+            {CANAIS_COMPRA.map((c) => (
+              <button key={c.id} type="button"
+                className={`canal-chip ${canalDoPainel === c.id ? "ativo" : ""}`}
+                onClick={() => setCanalDoPainel(c.id)}
+                style={canalDoPainel === c.id ? { color: c.cor, borderColor: c.cor, background: c.bg } : undefined}>
+                <b>{c.sigla}</b> {c.nome}
+              </button>
+            ))}
+          </div>
+          <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId={canalDoPainel} />
+          </>
           ) : modulo === "mehoo" ? (
           <>
           <div className="eyebrow">CANAL DE COMPRA</div>
           <div className="title-row"><span className="title-accent">Mehoo</span></div>
           <div className="obra-meta">Cada obra com item da Mehoo: quando ela entrega, os cadernos do executivo pra baixar, e o que foi mandado pra eles</div>
-          <MehooView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} />
+          <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId="mehoo" />
           </>
           ) : modulo === "aditivos" ? (
           <>
