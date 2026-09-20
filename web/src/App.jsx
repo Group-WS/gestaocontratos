@@ -9358,7 +9358,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
    TOPO / SIDEBAR
    ============================================================ */
 
-function TopBar({ onInicio, usuario, nome, eu }) {
+function TopBar({ onInicio }) {
   return (
     <header className="topbar">
       {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
@@ -9382,8 +9382,13 @@ function TopBar({ onInicio, usuario, nome, eu }) {
             passa a duvidar do resto dos botoes da tela. */}
         <AlternarTema />
         <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
-        <Avatar pessoa={eu} nome={nome || nomeDoEmail(usuario)}
-          titulo={[nome, usuario].filter(Boolean).join(" · ")} />
+        {/* O avatar saiu daqui (pedido dela, 20/09/2026: "esse avatar aqui
+            em cima pode retirar, ja' tem la' em baixo").
+
+            Este era so' a foto: nao abria nada. O do pe do trilho e' o que
+            tem o menu de perfil. Duas fotos iguais na mesma tela fazem quem
+            olha procurar a diferenca entre elas — e nao havia nenhuma, a
+            nao ser que uma funcionava e a outra nao. */}
       </div>
     </header>
   );
@@ -25075,7 +25080,7 @@ export default function App() {
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
-      <TopBar usuario={usuario} nome={eu?.nome} eu={eu}
+      <TopBar
         onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} />
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}

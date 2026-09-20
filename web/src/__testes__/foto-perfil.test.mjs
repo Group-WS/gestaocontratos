@@ -62,9 +62,14 @@ conf("sem nome nenhum também não", iniciaisDe(null), "?");
 conf("a fórmula de duas letras da Equipe saiu", app.includes('.slice(0, 2).toUpperCase()}</div>'), false);
 conf("o componente existe", app.includes("function Avatar({ pessoa, nome, classe"));
 conf("... e cai nas iniciais quando não há foto", /if \(url\) \{[\s\S]{0,400}return <div className=\{classe\}[^>]*>\{vazio \?\? iniciaisDe\(quem\)\}/.test(app));
-// os cinco pontos que antes calculavam iniciais sozinhos
+// os pontos que antes calculavam iniciais sozinhos
 conf("trilho usa o componente", app.includes('<Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />'));
-conf("topo da página usa", app.includes("<Avatar pessoa={eu} nome={nome || nomeDoEmail(usuario)}"));
+/* O TOPO NÃO TEM MAIS AVATAR. Pedido dela em 20/09/2026, olhando a tela:
+   "esse avatar aqui em cima pode retirar, já tem lá embaixo". Aquele era só a
+   foto — não abria nada; o do pé do trilho é o que tem o menu de perfil. Duas
+   fotos iguais na mesma tela fazem quem olha procurar a diferença entre elas,
+   e a única diferença era que uma funcionava e a outra não. */
+conf("o topo não repete a foto", /<div className="topbar-right">[\s\S]{0,900}<Avatar/.test(app), false);
 conf("equipe da obra usa", app.includes("classe={`equipe-avatar ${valor ? \"\" : \"vazio\"}`}"));
 conf("tela Equipe usa", app.includes("classe={`eq-avatar ${estaOnline(p) ? \"online\" : \"\"}`}"));
 conf("a foto é recortada, nunca esticada", app.includes(".avatar-foto { object-fit: cover;"));
