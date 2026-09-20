@@ -2043,7 +2043,9 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: var(--t-body); font-weight: 700; color: var(--ink); padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
 .ini-titulo-icone { color: var(--ink-3); flex-shrink: 0; }
 .ini-conta { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: var(--t-micro); }
-.ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-1); padding: 8px 12px; margin-bottom: 6px; font-size: var(--t-meta); color: var(--ink-2); line-height: 1.4; cursor: pointer; transition: border-color .12s ease; }
+/* Corpo: cada alerta e' uma frase que se le' inteira — "a compra de Loucas
+   venceu ha 29 dias" — e nao um rotulo que se reconhece de relance. */
+.ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-1); padding: 8px 12px; margin-bottom: 6px; font-size: var(--t-body); color: var(--ink-2); line-height: 1.4; cursor: pointer; transition: border-color .12s ease; }
 .ini-alerta:hover { border-color: var(--ink-3); }
 .ini-alerta span { flex: 1; }
 .ini-alerta.ruim { background: var(--red-bg); border-color: var(--danger-line); color: var(--text); }
@@ -2069,7 +2071,9 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .ini-obra { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: border-color .12s ease; }
 .ini-obra:hover { border-color: var(--ink-3); }
 .ini-obra-id { flex: 1; min-width: 0; }
-.ini-obra-nome { font-size: var(--t-meta); font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Corpo, nao etiqueta: e' o assunto da linha. Estava no mesmo degrau do
+   "Comet · entrega 20/11/2026" logo abaixo, que e' legenda dele. */
+.ini-obra-nome { font-size: var(--t-body); font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ini-obra-sub { font-size: var(--t-micro); color: var(--ink-3); margin-top: 2px; }
 .ini-obra-resumo { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; text-align: right; }
 .ini-obra-gc { font-size: var(--t-micro); color: var(--ink-3); }
