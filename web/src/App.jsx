@@ -17421,6 +17421,7 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
    ela existe em vez de a coordenação remarcar a lista a cada troca. */
 function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
   const [perfil, setPerfil] = useState(p.perfil || "");
+  const [canal, setCanal] = useState(p.canal || "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
   const [busca, setBusca] = useState("");
@@ -17445,7 +17446,11 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
   async function salvar() {
     setSalvando(true); setErro(null);
     try {
-      await onSalvar({ ...p, perfil: perfil || null }, perfil === "gc" ? [...minhas] : null);
+      /* O canal so' vai junto quando o perfil e' o de canal. Gravar canal
+         num Administrador guardaria uma escolha que nao decide nada e que
+         reapareceria se um dia o perfil mudasse. */
+      await onSalvar({ ...p, perfil: perfil || null, canal: perfil === "canal" ? (canal || null) : null },
+        perfil === "gc" ? [...minhas] : null);
       onFechar();
     } catch (e) {
       setErro(e.message || String(e));
@@ -17477,6 +17482,28 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
           </label>
         ))}
       </div>
+
+      {/* QUAL canal, quando o perfil é o de canal. O perfil diz que a pessoa
+          só vê o painel; isto diz de qual. Sem escolher, ela cai no primeiro
+          da lista — melhor uma tela útil que uma tela vazia. */}
+      {perfil === "canal" && (
+        <>
+          <div className="ac-sub">Canal que {p.nome.split(" ")[0]} acompanha</div>
+          <div className="canal-chips">
+            {CANAIS_COMPRA.map((c) => (
+              <button key={c.id} type="button"
+                className={`canal-chip ${canal === c.id ? "ativo" : ""}`}
+                onClick={() => setCanal(c.id)}
+                style={canal === c.id ? { color: c.cor, borderColor: c.cor, background: c.bg } : undefined}>
+                <b>{c.sigla}</b> {c.nome}
+              </button>
+            ))}
+          </div>
+          <div className="ac-nota">
+            Entra direto neste painel e não vê mais nada — nem a lista de obras, nem os outros canais.
+          </div>
+        </>
+      )}
 
       {/* Só o GC precisa da lista: os outros perfis não têm obra a
           escolher, e mostrá-la neles sugeriria que têm. */}
@@ -19399,7 +19426,7 @@ export default function App() {
      ter pedido. */
   const [filtroConferencia, setFiltroConferencia] = useState(null);
   /* Qual canal o Painel por canal esta' mostrando. Comeca no primeiro da
-     lista; quem tem canal proprio na ficha nao escolhe (ver o render). */
+     lista; quem esta' amarrado a um canal nao escolhe. */
   const [canalDoPainel, setCanalDoPainel] = useState(CANAIS_COMPRA[0].id);
 
   useEffect(() => {
@@ -19551,6 +19578,12 @@ export default function App() {
      cara. */
   // Administrador e Admin master: o contrato da obra e os compradores.
   const souAdmin = migracaoPendente || ehAdministrador(eu);
+  /* A PESSOA AMARRADA A UM CANAL.
+     O perfil diz que ela so' ve' o painel; a ficha diz QUAL canal. Sem canal
+     escolhido ela cairia num painel qualquer, entao vale o primeiro da lista
+     ate' alguem escolher — melhor uma tela util que uma tela vazia. */
+  const canalPreso = eu?.perfil === "canal" ? (eu.canal || CANAIS_COMPRA[0].id) : null;
+  const canalNaTela = canalPreso || canalDoPainel;
   // Equipe e acessos: só o Admin master (ou o Administrador, enquanto não há master).
   const cuidaDaEquipe = migracaoPendente || podeGerenciarPessoas(eu, pessoas);
   const nPendentes = useMemo(() => (cuidaDaEquipe ? pendentes(pessoas).length : 0), [pessoas, cuidaDaEquipe]);
@@ -24351,7 +24384,12 @@ export default function App() {
           {/* A ESCOLHA DO CANAL fica na propria tela, e nao numa arvore na
               barra lateral: aqui ela mostra QUANTO cada canal tem, que e' a
               informacao que faz escolher. Uma lista de nomes na lateral nao
-              diria isso. */}
+              diria isso.
+
+              Quem esta' AMARRADO a um canal nao ve' os chips: mostrar os
+              outros cinco pra quem nao pode abri-los so' criaria a pergunta
+              "por que nao funciona". */}
+          {!canalPreso && (
           <div className="canal-chips">
             {CANAIS_COMPRA.map((c) => (
               <button key={c.id} type="button"
@@ -24362,7 +24400,8 @@ export default function App() {
               </button>
             ))}
           </div>
-          <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId={canalDoPainel} />
+          )}
+          <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId={canalNaTela} />
           </>
           ) : modulo === "mehoo" ? (
           <>

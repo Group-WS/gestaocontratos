@@ -1,0 +1,31 @@
+-- ============================================================
+-- O CANAL DE COMPRA DE CADA PESSOA  ·  19/09/2026
+-- Como usar: Supabase -> SQL Editor -> cole tudo -> Run.
+--
+-- E' REAPLICAVEL e NAO altera dado nenhum: so' acrescenta uma coluna
+-- que nasce vazia em todo mundo.
+-- ============================================================
+--
+-- PRA QUE SERVE
+-- Pedido dela: "eu vou liberar uma visualizacao para cada tipo de
+-- usuario. Por exemplo, cortina persiana vai ser um usuario".
+--
+-- Ate' hoje isso so' existia pra Mehoo, que tem perfil proprio. Criar um
+-- perfil por canal daria seis perfis — e um setimo no dia em que
+-- nascesse outro canal. Em vez disso: UM perfil ("Canal de compra") e um
+-- campo dizendo QUAL canal. Canal novo funciona sozinho.
+--
+-- A coluna guarda o id do canal como o app o conhece: sienge, mehoo,
+-- automacao, cortinas, gc, estoque. Vazio = a pessoa nao esta' amarrada
+-- a canal nenhum, que e' o caso de todo mundo hoje.
+--
+-- SEM TRAVA DE VALOR de proposito: a lista de canais mora no app, e um
+-- `check` aqui exigiria vir ao banco a cada canal novo — trocando um
+-- problema de codigo por um de operacao.
+-- ============================================================
+
+alter table pessoa add column if not exists canal text;
+
+-- ---------- CONFERIR ----------
+-- Tem que devolver a coluna existindo e ninguem preenchido ainda:
+--   select count(*) as com_canal from pessoa where canal is not null;

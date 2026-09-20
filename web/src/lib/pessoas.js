@@ -19,6 +19,9 @@ const lista = (v) => (Array.isArray(v) ? v : []);
 const paraApp = (l) => ({
   email: l.email, nome: l.nome, cargo: l.cargo || "", ativo: l.ativo !== false,
   perfil: l.perfil || null,
+  /* O canal de compra que esta pessoa acompanha. So' vale com o perfil
+     "canal"; nos outros perfis fica guardado e nao decide nada. */
+  canal: l.canal || null,
   entrouEm: l.entrou_em || null, liberadoEm: l.liberado_em || null, liberadoPor: l.liberado_por || null,
   // undefined = a coluna ainda nao existe (falta o ultimo-acesso.sql); null = nunca acessou.
   ultimoAcesso: l.ultimo_acesso === undefined ? undefined : (l.ultimo_acesso || null),
@@ -82,7 +85,7 @@ export async function listarPessoas() {
   return (data || []).map(paraApp);
 }
 
-export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, perfil, modulos, obrasRegra, obras, por }) {
+export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, perfil, canal, modulos, obrasRegra, obras, por }) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado.");
   const e = String(email || "").trim().toLowerCase();
   if (!e) throw new Error("O e-mail é obrigatório.");
@@ -97,6 +100,9 @@ export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, pe
      apagaria o admin de alguem so' porque quem editou o nome nao mexeu
      nessa parte da tela. */
   if (admin !== undefined) campos.admin = !!admin;
+  /* O canal segue a mesma regra dos outros campos: so' viaja quando veio.
+     Mandar `null` sempre apagaria o canal de quem so' teve o nome corrigido. */
+  if (canal !== undefined) campos.canal = canal || null;
   if (perfil !== undefined) {
     campos.perfil = perfil || null;
     /* Quem liberou e quando. So' na hora de DAR o perfil — reescrever
@@ -176,6 +182,15 @@ export const PERFIS = [
        as obras com item do canal — e como o item so' e' conhecido depois
        que a obra carrega, o painel nascia vazio. */
     modulos: ["mehoo"], obras: "todas", edita: false, gerenciaPessoas: false, abreObras: false,
+  },
+  {
+    id: "canal", nome: "Canal de compra",
+    resumo: "Só o painel de UM canal de compra, com as informações de todas as obras. Não edita.",
+    /* Irmao do perfil Mehoo, e pelo mesmo motivo: a pessoa entra direto no
+       painel do canal dela e nao abre obra nenhuma. A diferenca e' que QUAL
+       canal vem da ficha (`pessoa.canal`), e nao do perfil — senao cada canal
+       novo exigiria um perfil novo, e sao seis hoje. */
+    modulos: ["painel_canal"], obras: "todas", edita: false, gerenciaPessoas: false, abreObras: false,
   },
 ];
 

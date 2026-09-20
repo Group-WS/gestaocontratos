@@ -144,12 +144,19 @@ conf("domínio parecido não entra", M.dominioPermitido("x@naogroupws.com.br"), 
 conf("vazio não entra", M.dominioPermitido(""), false);
 conf("indefinido não quebra", M.dominioPermitido(undefined), false);
 
-/* ---- 7. Os cinco, e só os cinco ---- */
-conf("existem cinco perfis", M.PERFIS.length, 5);
+/* ---- 7. Os seis, e só os seis ---- */
+/* Virou seis em 19/09/2026 com o "Canal de compra": um perfil só, e o CANAL
+   vem da ficha da pessoa. Um perfil por canal daria seis de uma vez e um
+   sétimo a cada canal novo. */
+conf("existem seis perfis", M.PERFIS.length, 6);
 conf("perfil inventado não vale", M.perfilDe({ perfil: "chefe" }), null);
 conf("só um perfil gerencia pessoas", M.PERFIS.filter((x) => x.gerenciaPessoas).length, 1);
 conf("dois perfis administram", M.PERFIS.filter((x) => x.administra).map((x) => x.id).join(), "master,admin");
-conf("só um perfil não edita", M.PERFIS.filter((x) => !x.edita).map((x) => x.id).join(), "mehoo");
+/* Os dois perfis de CONSULTA: Mehoo e Canal de compra. Nenhum dos dois edita
+   nem abre obra — entram direto no painel deles e é só isso que veem. */
+conf("dois perfis não editam", M.PERFIS.filter((x) => !x.edita).map((x) => x.id).join(), "mehoo,canal");
+conf("... e são os mesmos que não abrem obra",
+  M.PERFIS.filter((x) => !x.abreObras).map((x) => x.id).join(), "mehoo,canal");
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
