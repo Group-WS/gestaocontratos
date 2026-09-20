@@ -186,7 +186,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
               <Search size={14} className="dim" />
               <input value={termo} onChange={(e) => setTermo(e.target.value)}
                 placeholder="nome, código, fornecedor…" />
-              {termo && <button onClick={() => setTermo("")}><X size={13} /></button>}
+              {termo && <button aria-label="Limpar a busca" onClick={() => setTermo("")}><X size={13} /></button>}
             </label>
 
             <div className="cat-chips">
@@ -572,8 +572,8 @@ function Fornecedores({ lista, setLista, usuario, podeEditar, onErro, usoDe }) {
           <span className="cat-forn-uso">{usoDe(f.nome)} no catálogo</span>
           {podeEditar && (
             <span className="cat-acoes">
-              <button onClick={() => setNovo(f)}><Pencil size={12} /></button>
-              <button onClick={() => remover(f)}><Trash2 size={12} /></button>
+              <button aria-label="Editar" onClick={() => setNovo(f)}><Pencil size={12} /></button>
+              <button aria-label="Remover" onClick={() => remover(f)}><Trash2 size={12} /></button>
             </span>
           )}
         </div>

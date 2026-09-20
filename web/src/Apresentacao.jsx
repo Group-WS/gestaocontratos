@@ -946,7 +946,7 @@ function Produtos({ produtos, slide, idioma, onAdicionar, onMudarBloco, onAltern
               <input value={textoDoBloco(b, idioma)}
                 onChange={(e) => onMudarBloco(b.id,
                   (x) => (idioma === "en" ? { ...x, textoEn: e.target.value } : { ...x, texto: e.target.value }))} />
-              <button onClick={() => onRemover(b.id)}><Trash2 size={12} /></button>
+              <button aria-label="Remover este bloco" onClick={() => onRemover(b.id)}><Trash2 size={12} /></button>
             </div>
           ))}
           {idioma === "en" && (

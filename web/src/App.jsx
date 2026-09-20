@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import Dialogo from "./componentes/Dialogo.jsx";
 import Avisos, { avisar } from "./componentes/Aviso.jsx";
 import Esqueleto from "./componentes/Esqueleto.jsx";
+import Botao from "./componentes/Botao.jsx";
+import Selo from "./componentes/Selo.jsx";
 
 /* O "ver como" (so' em npm run dev): ?verComo=mehoo no endereco. Lido
    aqui, quando o modulo carrega, e nao na hora de montar o `eu`: o
@@ -805,7 +807,7 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
             <div className="recorte-titulo">Ajustar a foto</div>
             <div className="recorte-sub">Arraste para enquadrar o rosto</div>
           </div>
-          <button className="clear-btn" onClick={onCancelar} aria-label="Fechar"><X size={16} /></button>
+          <Botao variante="icone" onClick={onCancelar} rotulo="Fechar"><X size={16} /></Botao>
         </div>
 
         <div className="recorte-palco" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
@@ -2895,7 +2897,7 @@ function CampoBusca({ valor, aoMudar, dica, contador }) {
              onChange={(e) => aoMudar(e.target.value)} />
       {!!valor && !!contador && <span className="busca-conta">{contador}</span>}
       {!!valor && (
-        <button className="clear-btn" title="Limpar a busca" onClick={() => aoMudar("")}><X size={12} /></button>
+        <Botao variante="icone" title="Limpar a busca" onClick={() => aoMudar("")}><X size={12} /></Botao>
       )}
     </div>
   );
@@ -8181,7 +8183,7 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
           onChange={(e) => setTermo(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Escape") onCancelar(); }}
         />
-        <button aria-label="Cancelar" className="clear-btn" onClick={onCancelar}><X size={13} /></button>
+        <Botao variante="icone" rotulo="Cancelar" onClick={onCancelar}><X size={13} /></Botao>
       </div>
 
       {erro && <div className="busca-insumo-vazio">{erro}</div>}
@@ -8240,7 +8242,7 @@ function SugestoesPreco({ descricao, onUsar }) {
     <div className="sugestoes">
       <div className="sugestoes-titulo">
         Últimas compras parecidas
-        <button className="clear-btn" onClick={() => setAbertas(false)}><X size={11} /></button>
+        <Botao variante="icone" rotulo="Fechar as últimas compras parecidas" onClick={() => setAbertas(false)}><X size={11} /></Botao>
       </div>
       {erro && <div className="sugestoes-vazio">{erro}</div>}
       {!erro && lista === null && <div className="sugestoes-vazio">Buscando…</div>}
@@ -8512,7 +8514,7 @@ function DetalheTexto({ item, onFechar }) {
       fundo="detalhe-fundo" caixa="detalhe-caixa">
         <div className="detalhe-topo">
           <span>{item.rotulo}</span>
-          <button aria-label="Fechar" className="clear-btn" onClick={onFechar}><X size={14} /></button>
+          <Botao variante="icone" rotulo="Fechar" onClick={onFechar}><X size={14} /></Botao>
         </div>
         <textarea className="detalhe-texto" readOnly value={item.texto} onFocus={(e) => e.target.select()} />
         <div className="detalhe-acoes">
@@ -10154,7 +10156,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                 A lupa ao lado ja' diz que e' filtro; o que falta dizer e' POR
                 QUE se pode filtrar. */}
             <input placeholder="Nome, código ou cliente" value={search} onChange={(e) => setSearch(e.target.value)} />
-            {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
+            {search && <Botao variante="icone" rotulo="Limpar a busca" onClick={() => setSearch("")}><X size={12} /></Botao>}
           </div>
 
           <button className={`painel-minhas ${soMinhas ? "on" : ""}`} onClick={() => setSoMinhas((v) => !v)}
@@ -12347,7 +12349,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             <b>{resultado.certos}</b> {resultado.certos === 1 ? "associado" : "associados"} automaticamente
             {resultado.revisar > 0 && <> · <b>{resultado.revisar}</b> {resultado.revisar === 1 ? "ficou" : "ficaram"} pra escolher à mão, porque faltou casar alguma palavra</>}
           </span>
-          <button className="aviso-x" onClick={() => setResultado(null)} aria-label="Fechar"><X size={13} /></button>
+          <Botao variante="icone" onClick={() => setResultado(null)} rotulo="Fechar"><X size={13} /></Botao>
         </div>
       )}
 
@@ -12601,7 +12603,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               <textarea className="pipefy-texto" readOnly value={pipefy.texto} rows={6} onFocus={(e) => e.target.select()} />
             )}
           </div>
-          <button className="aviso-x" onClick={() => setPipefy(null)} aria-label="Fechar"><X size={13} /></button>
+          <Botao variante="icone" onClick={() => setPipefy(null)} rotulo="Fechar"><X size={13} /></Botao>
         </div>
       )}
 
@@ -13535,7 +13537,7 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
               Obra <b>#{obra.codigo}</b> · solicitante <b>VALENTINA</b>
             </div>
           </div>
-          <button aria-label="Fechar" className="clear-btn" onClick={onFechar} disabled={enviando}><X size={14} /></button>
+          <Botao variante="icone" rotulo="Fechar" onClick={onFechar} disabled={enviando}><X size={14} /></Botao>
         </div>
 
         <div className="sobreposto-corpo">
@@ -16750,8 +16752,8 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
             margem {fmtBRL(totalGrupo(g) - custoGrupo(g))}
           </span>
         )}
-        <button className="ad-icon" title="Mover para cima" onClick={() => onMover(-1)}>↑</button>
-        <button className="ad-icon" title="Mover para baixo" onClick={() => onMover(1)}>↓</button>
+        <Botao variante="icone" title="Mover para cima" onClick={() => onMover(-1)}>↑</Botao>
+        <Botao variante="icone" title="Mover para baixo" onClick={() => onMover(1)}>↓</Botao>
         <button className="ad-icon del" title="Excluir grupo" onClick={onRemover}><Trash2 size={12} /></button>
       </div>
 
@@ -16763,9 +16765,8 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
               <span className="ad-item-tot mono">{fmtBRL(totalItem(it))}</span>
               {/* Copiar pra outra seção é o gesto do dia: quase todo aditivo
                   suprime uma versão do móvel e adiciona outra, quase igual. */}
-              <button className="ad-icon" title={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`}
-                onClick={() => onOutraSecao(it)}><Copy size={11} /></button>
-              <button className="ad-icon" title="Duplicar item" onClick={() => dupI(it.id)}><Plus size={11} /></button>
+              <Botao variante="icone" title={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`} onClick={() => onOutraSecao(it)}><Copy size={11} /></Botao>
+              <Botao variante="icone" title="Duplicar item" onClick={() => dupI(it.id)}><Plus size={11} /></Botao>
               <button className="ad-icon del" title="Excluir item" onClick={() => delI(it.id)}><X size={11} /></button>
             </div>
             <textarea className="form-input ad-desc-in" rows={2}
@@ -17232,7 +17233,7 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
         </div>
       </td>
       <td className="center">
-        <button className="ad-icon" title="Abrir" onClick={onAbrir}><Search size={12} /></button>
+        <Botao variante="icone" title="Abrir" onClick={onAbrir}><Search size={12} /></Botao>
         {/* O botao fica a' vista e desabilitado, com o motivo na dica:
             esconder faria a pessoa procurar onde nao esta'. */}
         <button className="ad-icon del" disabled={!podeApagar} onClick={podeApagar ? onExcluir : undefined}
@@ -18144,9 +18145,10 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                     {/* O CONTADOR escrito. Com seis selos era preciso
                         CONTAR os verdes pra saber onde a obra esta'; "4 de
                         6" responde sem contar, e cabe numa palavra. */}
-                    <span className={`ini-esteira-conta ${feitos === esteira.passos.length ? "on" : atrasados.size ? "atrasado" : ""}`}>
+                    <Selo className="ini-esteira-conta"
+                      tom={feitos === esteira.passos.length ? "ok" : atrasados.size ? "risco" : "neutro"}>
                       {feitos} de {esteira.passos.length}
-                    </span>
+                    </Selo>
                     {esteira.passos.map((p) => {
                       /* TODO passo atrasado fica vermelho, nao so' o
                          Executivo. Ate' aqui a lista ao lado cobrava
@@ -19407,7 +19409,7 @@ function EapSiengeView({ usuario }) {
         </div>
         {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
         {aviso && <div className="import-erro" style={{ background: "var(--blue-bg)", color: "var(--blue)" }}>
-          <CheckCircle2 size={14} /> {aviso} <button className="clear-btn" onClick={() => setAviso(null)}><X size={12} /></button>
+          <CheckCircle2 size={14} /> {aviso} <Botao variante="icone" rotulo="Fechar aviso" onClick={() => setAviso(null)}><X size={12} /></Botao>
         </div>}
       </div>
 
@@ -19525,7 +19527,7 @@ function EapSiengeView({ usuario }) {
             <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
               <Search size={13} className="dim" />
               <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-              {busca && <button className="clear-btn" onClick={() => setBusca("")}><X size={12} /></button>}
+              {busca && <Botao variante="icone" rotulo="Limpar a busca" onClick={() => setBusca("")}><X size={12} /></Botao>}
             </div>
           </div>
           <div style={{ padding: "0 16px 16px" }}>
@@ -19700,7 +19702,7 @@ function BancoPrecosView({ usuario }) {
           <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
             <Search size={13} className="dim" />
             <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-            {busca && <button className="clear-btn" onClick={() => setBusca("")}><X size={12} /></button>}
+            {busca && <Botao variante="icone" rotulo="Limpar a busca" onClick={() => setBusca("")}><X size={12} /></Botao>}
           </div>
         </div>
 
@@ -19868,7 +19870,7 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
     <div className="cad-box">
       <div className="cad-h">
         <span>Cadastrar obra manualmente</span>
-        <button className="ad-icon" onClick={() => setAberto(false)}><X size={13} /></button>
+        <Botao variante="icone" rotulo="Fechar" onClick={() => setAberto(false)}><X size={13} /></Botao>
       </div>
       <div className="cad-campos">
         <label className="cad-largo">Nome da obra
@@ -19943,7 +19945,7 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
         <div className="obra-search obra-search-wide">
           <Search size={13} className="dim" />
           <input placeholder="Filtrar por nome, código, squad..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
+          {search && <Botao variante="icone" rotulo="Limpar a busca" onClick={() => setSearch("")}><X size={12} /></Botao>}
         </div>
       )}
 
@@ -22205,7 +22207,7 @@ export default function App() {
             <div className="aviso-migracao">
               <AlertTriangle size={14} />
               <span>{migracao}</span>
-              <button className="aviso-x" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></button>
+              <Botao variante="icone" onClick={() => setMigracao(null)} rotulo="Fechar aviso"><X size={13} /></Botao>
             </div>
           )}
           {/* Enquanto nao se sabe quem entrou, nenhuma tela: sem isto a

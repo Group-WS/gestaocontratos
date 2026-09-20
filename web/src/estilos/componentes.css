@@ -148,23 +148,23 @@
    primário = default do DS (brand) · contorno = outline ·
    tracejado = adicionar · fantasma = só ícone. O tamanho sm (30px)
    é o padrão aqui; o default (38px) fica para a ação principal. */
-:is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template) {
+:is(.btn-primario, .btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template) {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: var(--radius-md);
   font-family: var(--font-sans); font-size: var(--t-meta); font-weight: 600; line-height: 1.2; white-space: nowrap;
   background: var(--brand); color: var(--bg); border: 1px solid var(--brand); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
 }
-:is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
-:is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
-:is(.btn-start, .btn-import, .btn-aprovar, .btn-nova-solicitacao, .btn-avulsa, .btn-download, .btn-criar) { min-height: 38px; padding: 0 16px; border-radius: var(--radius-lg); font-size: var(--t-meta); }
+:is(.btn-primario, .btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
+:is(.btn-primario, .btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
+:is(.btn-primario, .btn-start, .btn-import, .btn-aprovar, .btn-nova-solicitacao, .btn-avulsa, .btn-download, .btn-criar) { min-height: 38px; padding: 0 16px; border-radius: var(--radius-lg); font-size: var(--t-meta); }
 .pf-box.compacto .btn-doc { min-height: 24px; }
 
-:is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel) {
+:is(.btn-contorno, .btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel) {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: var(--radius-md);
   font-family: var(--font-sans); font-size: var(--t-meta); font-weight: 600; line-height: 1.2; white-space: nowrap;
   background: transparent; color: var(--text); border: 1px solid var(--line-2); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-:is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo):hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-3); color: var(--text); }
-:is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel):disabled { opacity: 0.5; cursor: not-allowed; }
+:is(.btn-contorno, .btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo):hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-3); color: var(--text); }
+:is(.btn-contorno, .btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel):disabled { opacity: 0.5; cursor: not-allowed; }
 :is(.btn-lupa, .btn-copiar, .btn-apagar-escopo) { width: 30px; padding: 0; color: var(--text-mute); }
 .btn-cancelar { min-height: 38px; padding: 0 16px; border-radius: var(--radius-lg); font-size: var(--t-meta); }
 :is(.btn-limpar-import, .btn-cadastrar) { color: var(--danger); }
@@ -175,10 +175,22 @@
 :is(.btn-abrir-escopo, .btn-associar-sel) { background: var(--surface-1); border-color: transparent; color: var(--text); }
 :is(.btn-abrir-escopo, .btn-associar-sel):hover:not(:disabled) { background: var(--surface-2); border-color: transparent; color: var(--text); }
 
-:is(.ad-addbtn, .btn-add-item, .btn-separar) { border: 1px dashed var(--line-3); border-radius: var(--radius-md); background: transparent; color: var(--text-soft); font-family: var(--font-sans); transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease; }
-:is(.ad-addbtn, .btn-add-item, .btn-separar):hover { border-color: var(--brand); border-style: dashed; background: var(--brand-soft); color: var(--brand); }
+:is(.btn-tracejado, .ad-addbtn, .btn-add-item, .btn-separar) { border: 1px dashed var(--line-3); border-radius: var(--radius-md); background: transparent; color: var(--text-soft); font-family: var(--font-sans); transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease; }
+:is(.btn-tracejado, .ad-addbtn, .btn-add-item, .btn-separar):hover { border-color: var(--brand); border-style: dashed; background: var(--brand-soft); color: var(--brand); }
 
-:is(.btn-linha-excluir, .btn-linha-inserir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn, .gc-busca-limpar, .cf-doc-x) { border-radius: var(--radius-md); color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+:is(.btn-icone, .btn-linha-excluir, .btn-linha-inserir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn, .gc-busca-limpar, .cf-doc-x) { border-radius: var(--radius-md); color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+
+/* AS DUAS VARIANTES QUE A LISTA :is() NAO COMPLETA.
+   Ela da' a pele — raio, cor, hover — e cada classe antiga trazia a
+   propria geometria. As tracejadas sao o caso extremo: .ad-addbtn tem
+   padding 6px 12px e largura cheia, .btn-add-item tem 4px 12px com margem
+   de 32px a esquerda, .btn-separar tem 1px 6px e raio menor. Tres
+   tamanhos pra uma variante, e nenhum deles e' "o" tracejado.
+   Aqui ficam os valores canonicos, sem as manias de cada lugar. */
+.btn-icone { display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-mute); cursor: pointer; }
+.btn-tracejado { display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 6px 12px; font-family: inherit; font-size: var(--t-micro); font-weight: 600; cursor: pointer; }
 
 /* ---------- Campos (Input · Select · Textarea) ----------
    Padrão obrigatório do DS: fundo --field, borda --line-2, foco em
@@ -218,11 +230,26 @@ select.form-input, .form-select, .casa-sel { appearance: none; -webkit-appearanc
 .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
 /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
-:is(.pill, .sg-badge, .conf-badge, .gc-selo, .contrato-pill, .contrato-blocked, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-avulso, .tag-separado, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .vend-nao-vendido, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .ini-passo-chip, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: var(--t-micro); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: var(--radius-pill); }
+:is(.selo, .pill, .sg-badge, .conf-badge, .gc-selo, .contrato-pill, .contrato-blocked, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-avulso, .tag-separado, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .vend-nao-vendido, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .ini-passo-chip, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: var(--t-micro); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: var(--radius-pill); }
 :is(.vend-nao-vendido, .soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
 .ad-obra-n { background: var(--brand); color: var(--bg); }
 .ini-fase-pilula { padding: 2px 8px; border: 1px solid var(--line-1); border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-soft); font-size: var(--t-micro); font-weight: 600; }
 .ini-fase-pilula.azul { border-color: transparent; background: var(--brand-soft); color: var(--brand); }
+
+/* Os cinco tons do <Selo>. A FORMA vem da lista :is() acima — mono, caixa
+   alta, pilula —, e aqui so' mora a cor. Tom aqui e' ESTADO, nao enfeite:
+   por isso sao cinco e nao mais. O info e' indigo porque verde, ambar e
+   vermelho ja' significam estado do item nesta mesma tela. */
+/* A forma do <Selo>. A lista :is() acima da' so' a TIPOGRAFIA — mono,
+   caixa alta, pilula —, porque cada uma das 34 classes antigas trazia o
+   proprio display, padding e cor. Quem usa o componente nao tem classe
+   antiga nenhuma, entao a forma mora aqui. */
+.selo { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  color: var(--text-soft); background: var(--surface-2); border: 1px solid var(--line-2); }
+.selo-ok { color: var(--success); background: var(--success-soft); border-color: var(--success-line); }
+.selo-atencao { color: var(--warning); background: var(--warning-soft); border-color: var(--warning-line); }
+.selo-risco { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-line); }
+.selo-info { color: var(--obs); background: var(--obs-bg); border-color: var(--obs); }
 
 /* ---------- Cartões e números (Card · KPI) ---------- */
 :is(.ini-cel, .dobra-card, .dash-hero, .dash-card, .dash-atencao, .big-card, .gc-total, .flat-panel) { border-radius: var(--radius-xl); }
