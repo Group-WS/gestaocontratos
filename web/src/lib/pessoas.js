@@ -26,6 +26,10 @@ const paraApp = (l) => ({
   // undefined = a coluna ainda nao existe (falta o ultimo-acesso.sql); null = nunca acessou.
   ultimoAcesso: l.ultimo_acesso === undefined ? undefined : (l.ultimo_acesso || null),
   admin: !!l.admin,
+  /* Caminho da foto DENTRO do balde, nunca a URL — guardar a URL amarraria
+     o banco ao dominio do Storage, que nao e' nosso. undefined = a coluna
+     ainda nao existe (falta o foto-perfil.sql); null = sem foto, iniciais. */
+  foto: l.foto === undefined ? undefined : (l.foto || null),
   /* Lista VAZIA quer dizer TODOS, e nao "nenhum". Quem foi cadastrado
      antes destas colunas existirem perderia o app inteiro no instante em
      que a migracao rodasse. */
@@ -348,4 +352,116 @@ export function quandoFoi(iso, agora = new Date()) {
   if (dias === 0) return `hoje às ${hora}`;
   if (dias === 1) return `ontem às ${hora}`;
   return `${d.toLocaleDateString("pt-BR")} às ${hora}`;
+}
+
+/* ============================================================
+   FOTO DE PERFIL
+   ------------------------------------------------------------
+   A imagem vai pro balde publico `catalogo`, numa pasta propria — o
+   mesmo caminho que a Apresentacao ja escolheu pros ambientes: "um balde
+   so', um conjunto de permissoes so'". Balde novo seria o dobro de
+   politica pra manter e nenhuma vantagem.
+
+   Publico de proposito: avatar aparece em dezenas de lugares na mesma
+   tela, e link assinado expira — cada avatar viraria um pedido async com
+   estado proprio. O caminho tem carimbo de tempo, entao nao e'
+   adivinhavel, e o conteudo e' foto de cracha de equipe interna.
+   ============================================================ */
+
+const BALDE_FOTO = "catalogo";
+export const PASTA_FOTO = "pessoas";
+
+/* Um circulo de 40px nao precisa dos 4 MB da camera do celular.
+
+   Nenhum upload do app reduzia imagem ate' aqui, e o balde `catalogo` nao
+   tem limite de tamanho nem de tipo no SQL — a foto crua subia inteira e
+   era baixada inteira a cada tela. 256px cobre o maior avatar em tela
+   retina com folga. */
+const LADO_FOTO = 256;
+
+function quadradoDe(file, recorte) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      /* O RECORTE vem de quem enquadrou.
+
+         Antes daqui so' existia o quadrado central, e foto de corpo
+         inteiro — ou qualquer retrato com o rosto fora do meio — saia
+         cortada no lugar errado, sem o que fazer alem de trocar a foto e
+         torcer. Agora o recortador passa `sx`, `sy` e `lado`.
+
+         Sem recorte, segue o centro: e' o caminho de quando o recortador
+         nao pode rodar. Esticar pra caber um retrato em pe' num quadrado
+         nunca foi opcao — deforma a pessoa. */
+      const lado = recorte?.lado || Math.min(img.width, img.height);
+      const sx = recorte ? recorte.sx : (img.width - lado) / 2;
+      const sy = recorte ? recorte.sy : (img.height - lado) / 2;
+      const tela = document.createElement("canvas");
+      tela.width = LADO_FOTO;
+      tela.height = LADO_FOTO;
+      const ctx = tela.getContext("2d");
+      ctx.drawImage(img, sx, sy, lado, lado, 0, 0, LADO_FOTO, LADO_FOTO);
+      tela.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("Não consegui preparar a imagem."))),
+        "image/jpeg",
+        0.85,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Não consegui abrir essa imagem. Tente um JPG ou PNG."));
+    };
+    img.src = url;
+  });
+}
+
+/** Sobe a foto e devolve o CAMINHO dela no balde. Não grava na pessoa. */
+export async function subirFotoPerfil(file, email, recorte) {
+  if (!supabaseConfigurado) throw new Error("Banco não configurado — a foto não tem onde ficar guardada.");
+  if (!file?.type?.startsWith("image/")) throw new Error("Escolha uma imagem (JPG, PNG ou WEBP).");
+
+  const quadrado = await quadradoDe(file, recorte);
+  const quem = String(email || "").trim().toLowerCase().replace(/[^a-z0-9._-]/g, "-");
+  /* Carimbo de tempo no nome: reusar o caminho faria o navegador seguir
+     mostrando a foto velha do cache depois da troca. */
+  const caminho = `${PASTA_FOTO}/${quem}/${Date.now()}.jpg`;
+
+  const { error } = await supabase.storage
+    .from(BALDE_FOTO)
+    .upload(caminho, quadrado, { contentType: "image/jpeg", upsert: true });
+  if (error) throw new Error("Não consegui guardar a foto: " + (error.message || ""));
+  return caminho;
+}
+
+/** O endereço público da foto. Síncrona — entra direto no src do <img>. */
+export function urlDaFoto(caminho) {
+  if (!caminho || !supabaseConfigurado) return null;
+  return supabase.storage.from(BALDE_FOTO).getPublicUrl(caminho).data.publicUrl;
+}
+
+/**
+ * Grava a foto na PRÓPRIA linha, pela função do banco.
+ *
+ * Não passa por `salvarPessoa` de propósito: a foto é a única coisa que a
+ * pessoa muda em si mesma, e quando o RLS de perfis entrar (rls-perfis.sql)
+ * nem ela poderá escrever direto na linha. A função `definir_foto` é o
+ * mesmo desenho de `registrar_acesso`: mexe só nesta coluna, só na linha
+ * de quem chamou, e o e-mail vem do login.
+ *
+ * `caminho` vazio apaga a foto e devolve as iniciais.
+ */
+export async function definirFotoPerfil(caminho) {
+  if (!supabaseConfigurado) throw new Error("Banco não configurado.");
+  const { error } = await supabase.rpc("definir_foto", { caminho: caminho || "" });
+  if (!error) return true;
+  /* Sem o SQL rodado a funcao nao existe, e o erro do Postgres nao diz o
+     que fazer. Aqui vira instrucao, como no resto do arquivo. */
+  if (/function .*definir_foto.* does not exist|PGRST202/i.test(`${error.message} ${error.code || ""}`)) {
+    const e = new Error("Falta rodar supabase/foto-perfil.sql no Supabase (SQL Editor) — a foto ainda não tem onde ser guardada.");
+    e.migracao = true;
+    throw e;
+  }
+  throw new Error("Não consegui salvar a foto: " + (error.message || ""));
 }

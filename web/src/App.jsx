@@ -18,14 +18,15 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat
+  MessageSquare, HardHat, Camera, UserRound
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
   PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoGestor, nivelQueCuida, ehAdministrador,
-  podeAbrirObras, registrarAcesso, estaOnline, quandoFoi } from "./lib/pessoas";
+  podeAbrirObras, registrarAcesso, estaOnline, quandoFoi,
+  urlDaFoto, subirFotoPerfil, definirFotoPerfil } from "./lib/pessoas";
 import { listarVersoes, restaurarVersao } from "./lib/versoesObra";
 import { listarComentarios, criarComentario, apagarComentario } from "./lib/comentarios";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
@@ -611,12 +612,284 @@ function BarraFrente({ nome, pct }) {
   );
 }
 
+/* ============================================================
+   AVATAR — a cara da pessoa, ou as iniciais dela
+   ------------------------------------------------------------
+   Existia a mesma bolinha em quatro lugares, cada um recalculando as
+   iniciais por conta propria — e um deles calculava DIFERENTE: a tela
+   Equipe pegava as duas primeiras LETRAS ("Priscila Wayhs" virava "PR"),
+   os outros pegavam a inicial de cada palavra ("PW"). A mesma pessoa
+   tinha duas iniciais dependendo da tela.
+
+   Agora e' um componente so'. Foto quando a pessoa tem, iniciais quando
+   nao tem — e por isso a foto aparece em todo lugar de uma vez, que e' o
+   que faz reconhecer o GC pela cara em vez de por duas letras.
+
+   Cada chamada traz a PROPRIA classe: o azul da equipe da obra, o
+   pontinho de "online agora" da tela Equipe e o tamanho pequeno do
+   trilho continuam sendo de quem chama.
+   ============================================================ */
+function iniciaisDe(nome) {
+  return String(nome || "?").trim().split(/\s+/).slice(0, 2)
+    .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
+}
+
+/* ============================================================
+   RECORTADOR DA FOTO DE PERFIL
+   ------------------------------------------------------------
+   Ate' aqui o recorte era CEGO: `quadradoDe` pegava o quadrado do meio
+   da imagem e pronto. Foto de corpo inteiro, ou qualquer retrato com o
+   rosto fora do centro, saia cortada no lugar errado — e nao havia o que
+   fazer alem de trocar a foto e torcer.
+
+   A mascara e' REDONDA desde o primeiro quadro, e nao quadrada: o avatar
+   e' um circulo, e enquadrar num quadrado pra descobrir depois o que o
+   circulo comeu e' adivinhar duas vezes.
+
+   Escrito a mao, sem biblioteca. Nao ha' lib de crop instalada, o projeto
+   recusou dependencia de UI de proposito (ver estilos/design-system.css)
+   e o build standalone embute tudo num HTML so' — qualquer lib com worker
+   ou asset por URL quebraria naquele modo.
+   ============================================================ */
+
+// Comeca preenchendo o circulo (1) e vai ate' 4x. Passos discretos, na
+// mesma linguagem do zoom da Apresentacao — o app nunca teve barra
+// deslizante, e uma barra aqui seria um controle novo sem token nenhum.
+/* HEIC e' o formato padrao de foto do iPhone e da Fototeca do Mac, e
+   NENHUM navegador desenha HEIC num img — some tudo e sobra preto. O
+   balde do app aceita heic pra anexo de obra, o que torna facil supor que
+   aqui tambem vale; nao vale, e a mensagem precisa dizer a saida. */
+/* O QUE O ARQUIVO E', e nao o que o nome diz.
+
+   O tipo que o navegador informa (`file.type`) sai da EXTENSAO, nao do
+   conteudo: o macOS carimba "image/jpeg" em qualquer coisa chamada .jpg.
+   Foi assim que um HEIC da Fototeca chegou aqui como "IMG_0889-Edit.jpg
+   image/jpeg" e derrubou a janela sem ninguem entender.
+
+   Os primeiros bytes nao mentem. Ler 16 deles custa nada e transforma
+   "nao consegui abrir" em "isto aqui e' HEIC, faca assim". */
+async function formatoReal(file) {
+  try {
+    const b = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+    const txt = (i, n) => String.fromCharCode(...b.slice(i, i + n));
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpeg";
+    if (b[0] === 0x89 && txt(1, 3) === "PNG") return "png";
+    if (txt(0, 4) === "RIFF" && txt(8, 4) === "WEBP") return "webp";
+    /* Familia ISO-BMFF: heic, heif, avif e o "mif1" que o iPhone usa. */
+    if (txt(4, 4) === "ftyp") {
+      const marca = txt(8, 4).toLowerCase();
+      if (/^(hei|hev|mif1|msf1|avif|avis)/.test(marca)) return "heic";
+    }
+  } catch { /* nao deu pra ler: segue e deixa o navegador tentar */ }
+  return null;
+}
+
+const MSG_HEIC_DISFARCADO =
+  "Esse arquivo é HEIC por dentro, apesar do nome .jpg — é o que a Fototeca do Mac entrega. Abra a foto no Pré-Visualização, use Arquivo > Exportar e escolha JPEG.";
+const MSG_IMAGEM_ILEGIVEL =
+  "O navegador não consegue abrir essa imagem. Se for foto de iPhone (HEIC), exporte como JPEG e tente de novo.";
+const ZOOM_FOTO = [1, 1.25, 1.5, 2, 2.5, 3, 4];
+const LADO_MASCARA = 176;
+
+function RecortadorFoto({ file, onConfirmar, onCancelar }) {
+  /* O endereco do arquivo NAO e' revogado na limpeza do efeito.
+
+     Parece desleixo e nao e'. Em StrictMode o React monta, limpa e monta
+     de novo, e a limpeza revogava um endereco cuja LEITURA ainda estava
+     em curso. Com arquivo em memoria isso nao aparece — a leitura termina
+     na hora, e foi por isso que todos os meus testes passaram. Com
+     arquivo do DISCO, que e' o caso real, a leitura demora, o endereco
+     morre no meio e a janela abre preta.
+
+     Revogar e' higiene: libera memoria. Um endereco por troca de foto,
+     liberado sozinho quando a pagina fecha, custa nada perto de a funcao
+     simplesmente nao funcionar. */
+  const [img, setImg] = useState(null);
+  const [erro, setErro] = useState(null);
+  const imgRef = useRef(null);
+  const [passo, setPasso] = useState(0);
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    setErro(null);
+    setImg(null);
+    setUrl(URL.createObjectURL(file));
+  }, [file]);
+
+
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [pegando, setPegando] = useState(null);
+
+  useEffect(() => {
+    const esc = (e) => { if (e.key === "Escape") onCancelar(); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onCancelar]);
+
+  /* Carregou, mas carregou o QUE?
+
+     Formato que o navegador nao decodifica nao dispara onError em todo
+     navegador: em alguns ele "termina" com naturalWidth 0, e a janela
+     fica preta sem dizer nada. Medir aqui e' o unico jeito honesto. */
+  function aoCarregar(e) {
+    const { naturalWidth: w, naturalHeight: h } = e.target;
+    if (!w || !h) { falhou(); return; }
+    setImg({ width: w, height: h });
+  }
+
+  /* Falhou: diz o que o arquivo E', nao o que ele diz ser. */
+  function falhou() {
+    formatoReal(file).then((fmt) => setErro(fmt === "heic" ? MSG_HEIC_DISFARCADO : MSG_IMAGEM_ILEGIVEL));
+  }
+
+  /* Imagem em cache pode terminar ANTES de o React pendurar o onLoad, e
+     o evento se perde: fica a janela vazia com o arquivo carregado. */
+  useEffect(() => {
+    const el = imgRef.current;
+    if (!el || img || erro || !el.complete) return;
+    if (el.naturalWidth) setImg({ width: el.naturalWidth, height: el.naturalHeight });
+    else falhou();
+  }, [url, img, erro]);
+
+  const zoom = ZOOM_FOTO[passo];
+  /* A imagem entra preenchendo o circulo pelo lado menor: e' o unico
+     enquadramento inicial que nunca deixa buraco na mascara. */
+  const base = img ? LADO_MASCARA / Math.min(img.width, img.height) : 1;
+  const escala = base * zoom;
+  const larg = img ? img.width * escala : 0;
+  const alt = img ? img.height * escala : 0;
+
+  /* A imagem nunca descobre o circulo: o quanto ela pode correr e' o que
+     sobra dela pra fora da mascara, pra cada lado. */
+  const limitar = (p) => {
+    const folgaX = Math.max(0, (larg - LADO_MASCARA) / 2);
+    const folgaY = Math.max(0, (alt - LADO_MASCARA) / 2);
+    return {
+      x: Math.max(-folgaX, Math.min(folgaX, p.x)),
+      y: Math.max(-folgaY, Math.min(folgaY, p.y)),
+    };
+  };
+  useEffect(() => { setPos((p) => limitar(p)); /* eslint-disable-next-line */ }, [passo, img]);
+
+  /* Mesmo padrao do Palco da Apresentacao: um codigo serve pro mouse e
+     pro toque, e o setPointerCapture faz o arrasto continuar quando o
+     cursor sai da area — sem ele a imagem "cai" no meio do gesto. */
+  const iniciar = (e) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setPegando({ x0: e.clientX, y0: e.clientY, orig: pos });
+  };
+  const mover = (e) => {
+    if (!pegando) return;
+    setPos(limitar({
+      x: pegando.orig.x + (e.clientX - pegando.x0),
+      y: pegando.orig.y + (e.clientY - pegando.y0),
+    }));
+  };
+  const soltar = () => setPegando(null);
+
+  /* Da tela pro arquivo: o que o circulo mostra, em pixels da imagem
+     original. E' exatamente o que `quadradoDe` precisa pra parar de
+     chutar o centro. */
+  function recorteAtual() {
+    const lado = LADO_MASCARA / escala;
+    const cx = img.width / 2 - pos.x / escala;
+    const cy = img.height / 2 - pos.y / escala;
+    const cravar = (v, max) => Math.max(0, Math.min(max - lado, v - lado / 2));
+    return { sx: cravar(cx, img.width), sy: cravar(cy, img.height), lado };
+  }
+
+  return createPortal(
+    <div className="sobreposto-fundo" onClick={(e) => { if (e.target === e.currentTarget) onCancelar(); }}>
+      <div className="sobreposto-caixa recorte-caixa" role="dialog" aria-label="Ajustar a foto">
+        <div className="sobreposto-topo">
+          <div>
+            <div className="recorte-titulo">Ajustar a foto</div>
+            <div className="recorte-sub">Arraste para enquadrar o rosto</div>
+          </div>
+          <button className="clear-btn" onClick={onCancelar} aria-label="Fechar"><X size={16} /></button>
+        </div>
+
+        <div className="recorte-palco" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
+          {url && !erro && <img ref={imgRef} src={url} alt="" draggable={false} className="recorte-img"
+            onLoad={aoCarregar}
+            /* Sem isto, imagem que o navegador nao decodifica deixava a
+               janela PRETA e calada — foi o que aconteceu com ela. */
+            onError={falhou}
+            onPointerDown={iniciar}
+            style={img ? { width: larg, height: alt, transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))` } : { opacity: 0 }} />}
+          {erro
+            ? <div className="recorte-erro">
+                <AlertTriangle size={17} />
+                <span>{erro}</span>
+                {/* Qual arquivo era. Sem isto, "nao abriu" nao diz nada a
+                    quem for consertar — e ja' me fez chutar errado duas
+                    vezes o motivo de uma tela preta. */}
+                <span className="recorte-erro-arq mono">
+                  {file.name} · {file.type || "tipo desconhecido"} · {(file.size / 1024 / 1024).toFixed(1)} MB
+                </span>
+              </div>
+            /* O furo redondo e' a sombra gigante: tudo fora do circulo
+               escurece, e o circulo fica limpo. */
+            : <div className="recorte-mascara" />}
+        </div>
+
+        <div className="recorte-controles">
+          <button className="recorte-zoom" onClick={() => setPasso((p) => Math.max(0, p - 1))}
+            disabled={passo === 0} aria-label="Menos zoom"><Minus size={14} /></button>
+          <span className="recorte-pct mono">{Math.round(zoom * 100)}%</span>
+          <button className="recorte-zoom" onClick={() => setPasso((p) => Math.min(ZOOM_FOTO.length - 1, p + 1))}
+            disabled={passo === ZOOM_FOTO.length - 1} aria-label="Mais zoom"><Plus size={14} /></button>
+          {/* O desfazer de quem arrastou demais. */}
+          <button className="recorte-centralizar" onClick={() => { setPasso(0); setPos({ x: 0, y: 0 }); }}>
+            Centralizar
+          </button>
+        </div>
+
+        {/* A previa no tamanho real responde "vai ficar bom?" antes de
+            confirmar — sem ela a pessoa so' descobre depois de salvar. */}
+        <div className="recorte-previa">
+          <div className="recorte-previa-bolinha">
+            {img && url && (
+              <img src={url} alt="" draggable={false}
+                style={{
+                  width: larg * (40 / LADO_MASCARA), height: alt * (40 / LADO_MASCARA),
+                  transform: `translate(calc(-50% + ${pos.x * (40 / LADO_MASCARA)}px), calc(-50% + ${pos.y * (40 / LADO_MASCARA)}px))`,
+                }} />
+            )}
+          </div>
+          <span className="recorte-previa-txt">É assim que ela vai<br />aparecer no app</span>
+        </div>
+
+        <div className="sobreposto-rodape">
+          <button className="btn-secundario" onClick={onCancelar}>Cancelar</button>
+          <button className="btn-liberar" disabled={!img || !!erro}
+            onClick={() => onConfirmar(recorteAtual())}>Usar esta foto</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function Avatar({ pessoa, nome, classe = "avatar", titulo, vazio }) {
+  const url = urlDaFoto(pessoa?.foto);
+  const quem = nome || pessoa?.nome || nomeDoEmail(pessoa?.email || "");
+  if (url) {
+    /* alt vazio de proposito: o nome ja esta escrito ao lado em todos os
+       lugares onde o avatar aparece, e um leitor de tela repetindo o nome
+       duas vezes atrapalha mais do que ajuda. */
+    return <img className={`${classe} avatar-foto`} src={url} alt="" title={titulo} />;
+  }
+  return <div className={classe} title={titulo}>{vazio ?? iniciaisDe(quem)}</div>;
+}
+
 function LinhaEquipe({ rotulo, valor, equipe, podeEditar, prioridade, onDefinir, obraId, vazio }) {
   const nome = valor ? nomeNaEquipe(equipe, valor) : null;
-  const iniciais = (nome || "?").split(/\s+/).slice(0, 2).map((x) => x.charAt(0).toUpperCase()).join("") || "?";
+  const pessoa = valor ? (equipe || []).find((x) => x.email === String(valor).toLowerCase()) : null;
   return (
     <div className="equipe-linha">
-      <div className={`equipe-avatar ${valor ? "" : "vazio"}`}>{valor ? iniciais : "—"}</div>
+      <Avatar pessoa={pessoa} nome={nome} vazio={valor ? undefined : "—"}
+        classe={`equipe-avatar ${valor ? "" : "vazio"}`} />
       <div className="equipe-corpo">
         <div className="equipe-rotulo">{rotulo}</div>
         <PapelDaObra obraId={obraId} valor={valor} rotulo={rotulo} vazio={vazio} equipe={equipe}
@@ -9085,10 +9358,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
    TOPO / SIDEBAR
    ============================================================ */
 
-function TopBar({ onInicio, usuario, nome }) {
-  // As iniciais de quem esta logado. Eram "PW" fixo, pra qualquer pessoa.
-  const iniciais = (nome || nomeDoEmail(usuario) || "?").split(/\s+/).slice(0, 2)
-    .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
+function TopBar({ onInicio, usuario, nome, eu }) {
   return (
     <header className="topbar">
       {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
@@ -9112,7 +9382,8 @@ function TopBar({ onInicio, usuario, nome }) {
             passa a duvidar do resto dos botoes da tela. */}
         <AlternarTema />
         <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
-        <div className="avatar" title={[nome, usuario].filter(Boolean).join(" · ")}>{iniciais}</div>
+        <Avatar pessoa={eu} nome={nome || nomeDoEmail(usuario)}
+          titulo={[nome, usuario].filter(Boolean).join(" · ")} />
       </div>
     </header>
   );
@@ -9421,7 +9692,7 @@ const porCodigo = (a, b) => {
  * ela e' texto que se le' — nao moldura. Fica um espinho cinza, uma lista
  * branca, um campo cinza.
  */
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, onTrocarFoto, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null }) {
   /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
      quer reativar o filtro a cada F5. */
   const [soMinhas, setSoMinhas] = useState(() => {
@@ -9462,9 +9733,72 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
       document.removeEventListener("keydown", esc);
     };
   }, [menuPerfil]);
-  const meuNome = (equipe || []).find((p) => p.email === usuario)?.nome || nomeDoEmail(usuario);
-  const iniciais = (meuNome || usuario || "?").split(/\s+/).slice(0, 2)
-    .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
+  const euNaEquipe = (equipe || []).find((p) => p.email === usuario) || null;
+  const meuNome = euNaEquipe?.nome || nomeDoEmail(usuario);
+  const fotoRef = useRef(null);
+  const [subindoFoto, setSubindoFoto] = useState(false);
+  const [erroFoto, setErroFoto] = useState(null);
+  const [verDados, setVerDados] = useState(false);
+
+  /* Escolher ABRE O RECORTADOR; quem sobe e' o confirmar dele.
+
+     Ate' 19/09 escolher o arquivo ja' subia, e o motivo escrito aqui era
+     que "inventar um salvar so' pra foto seria o menu grande que ela nao
+     quis". O recortador inverteu isso, com o aval dela: sem um momento de
+     confirmar nao existe quando aplicar o enquadramento. O passo a mais
+     nao esta no menu — esta numa janela que so' aparece quando ha' uma
+     foto pra ajustar. */
+  const [fotoEscolhida, setFotoEscolhida] = useState(null);
+
+  function aoEscolherFoto(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file || !onTrocarFoto) return;
+    setErroFoto(null);
+    /* O menu sai de cena: o recortador ocupa a tela, e o menuzinho atras
+       dele seria ruido. Some tambem o problema de o "fecha ao clicar
+       fora" do menu contar cada clique DENTRO do recortador como fora. */
+    /* Barra antes de abrir a janela, olhando o CONTEUDO.
+
+       Checar so' o nome nao bastava: o caso real dela chegou como
+       "IMG_0889-Edit.jpg", tipo "image/jpeg", e era HEIC por dentro.
+       Abrir uma janela preta pra depois explicar e' pior do que nao
+       abrir. */
+    formatoReal(file).then((fmt) => {
+      if (fmt === "heic") {
+        setErroFoto(/\.hei[cf]$/i.test(file.name) ? MSG_IMAGEM_ILEGIVEL : MSG_HEIC_DISFARCADO);
+        return;
+      }
+      setMenuPerfil(false);
+      setFotoEscolhida(file);
+    });
+  }
+
+  async function confirmarRecorte(recorte) {
+    const file = fotoEscolhida;
+    setFotoEscolhida(null);
+    setSubindoFoto(true);
+    try {
+      await onTrocarFoto(file, recorte);
+    } catch (err) {
+      setErroFoto(err.message);
+      setMenuPerfil(true);
+    } finally {
+      setSubindoFoto(false);
+    }
+  }
+
+  async function removerFoto() {
+    setErroFoto(null);
+    setSubindoFoto(true);
+    try {
+      await onTrocarFoto(null);
+    } catch (err) {
+      setErroFoto(err.message);
+    } finally {
+      setSubindoFoto(false);
+    }
+  }
 
   /* Quais squads estao dobrados — so' vale no modo squad. Guardado, porque
      quem trabalha num squad so nao quer dobrar os outros a cada F5. */
@@ -9567,6 +9901,37 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   const naObra = modulo === "comparativo";
   const temPainel = naObra && mostrarObras && !painelEscondido;
 
+  /* Escolhida a obra, o primeiro clique fora da barra recolhe o painel.
+
+     A lista ja' cumpriu o papel dela: quem escolheu a obra vai trabalhar
+     na obra, e o painel fica ocupando 280px do que a pessoa foi ler.
+
+     "click", e NAO "mousedown". Os menus deste arquivo ouvem mousedown de
+     proposito — ali o clique atras nao deve acontecer. Aqui e' o
+     contrario: recolher no mousedown tirava o painel e jogava o conteudo
+     280px pra esquerda ANTES do mouseup, entao o alvo fugia de baixo do
+     cursor e o clique se perdia. Relato dela: "clico em Planejamento, ele
+     recolhe a tela e eu tenho que clicar em Planejamento novamente".
+     Ouvindo o click, o alvo resolve o dele primeiro e o painel recolhe
+     depois.
+
+     UMA VEZ POR OBRA, e nao a cada clique. Se ela reabrir a lista pelo
+     botao de dobrar, e' porque quer a lista aberta — recolher de novo no
+     proximo clique seria o app discutindo com ela. O recolher volta a
+     valer quando outra obra for escolhida. */
+  const recolhidoPor = useRef(null);
+  useEffect(() => {
+    if (!temPainel || !selected) return;
+    if (recolhidoPor.current === selected) return;
+    const fora = (e) => {
+      if (barraRef.current && barraRef.current.contains(e.target)) return;
+      recolhidoPor.current = selected;
+      setPainelEscondido(true);
+    };
+    document.addEventListener("click", fora);
+    return () => document.removeEventListener("click", fora);
+  }, [temPainel, selected]);
+
   const noTrilho = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
   const destinosTopo = noTrilho.filter((m) => !DESTINOS_NO_PE.has(m.id));
   const destinosPe = noTrilho.filter((m) => DESTINOS_NO_PE.has(m.id));
@@ -9662,7 +10027,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           {destinosPe.map(botaoDestino)}
           <button ref={perfilRef} className={`trilho-perfil ${menuPerfil ? "aberto" : ""}`}
             onClick={() => setMenuPerfil((v) => !v)} title={meuNome || usuario || "Não identificado"}>
-            <span className="avatar avatar-sm">{iniciais}</span>
+            <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
           </button>
         </div>
       </nav>
@@ -9670,17 +10035,58 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
       {menuPerfil && (
         <div className="perfil-menu perfil-menu-trilho" ref={menuRef}>
           <div className="perfil-cab">
-            <div className="avatar avatar-sm">{iniciais}</div>
+            {/* A propria foto e' o botao de trocar. Um terceiro item de
+                menu chamado "Trocar foto" diria o que a foto ali ja diz,
+                e o pedido era um menu pequeno. */}
+            <button className="perfil-foto" disabled={subindoFoto || !onTrocarFoto}
+              onClick={() => fotoRef.current && fotoRef.current.click()}
+              title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
+              <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-md" />
+              <span className="perfil-foto-capa"><Camera size={14} /></span>
+            </button>
+            {/* So' o que o navegador decodifica. Com image/* o seletor do
+                Mac oferecia HEIC, e HEIC vira tela preta. */}
+            <input ref={fotoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
+              onChange={aoEscolherFoto} />
             <div className="perfil-cab-txt">
               <div className="perfil-cab-nome">{meuNome || "Não identificado"}</div>
               <div className="perfil-cab-email">{usuario || "sem sessão"}</div>
             </div>
           </div>
+          {subindoFoto && <div className="perfil-aviso">Enviando a foto…</div>}
+          {erroFoto && <div className="perfil-aviso erro">{erroFoto}</div>}
           <div className="perfil-sep" />
+          <button className="perfil-item" onClick={() => setVerDados((v) => !v)} aria-expanded={verDados}>
+            <UserRound size={14} /> Meus dados
+            <ChevronDown size={13} className={`perfil-seta ${verDados ? "aberta" : ""}`} />
+          </button>
+          {/* Em LEITURA. Quem edita pessoa e' quem cuida da Equipe; a
+              unica coisa que a pessoa muda em si mesma e' a foto. */}
+          {verDados && (
+            <div className="perfil-dados">
+              {/* Sem cargo nem perfil: pedido dela em 19/09/2026. */}
+              <div><span>Nome</span><b>{meuNome || "—"}</b></div>
+              <div><span>E-mail</span><b>{usuario || "—"}</b></div>
+              {euNaEquipe?.foto && (
+                <button className="perfil-tirar-foto" onClick={removerFoto} disabled={subindoFoto}>
+                  <Trash2 size={12} /> Remover a foto
+                </button>
+              )}
+              <div className="perfil-dados-nota">
+                O nome é alterado por quem cuida da Equipe.
+              </div>
+            </div>
+          )}
           <button className="perfil-sair" onClick={onSair}>
             <LogOut size={14} /> Sair
           </button>
         </div>
+      )}
+
+      {fotoEscolhida && (
+        <RecortadorFoto file={fotoEscolhida}
+          onCancelar={() => { setFotoEscolhida(null); setMenuPerfil(true); }}
+          onConfirmar={confirmarRecorte} />
       )}
 
       {temPainel && (
@@ -17305,7 +17711,8 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
     () => new Map(r.linhas.map((L) => [L.codigo, L.atrasos.length > 0])),
     [r.linhas],
   );
-  const meuNome = (equipe || []).find((p) => p.email === usuario)?.nome || nomeDoEmail(usuario);
+  const euNaEquipe = (equipe || []).find((p) => p.email === usuario) || null;
+  const meuNome = euNaEquipe?.nome || nomeDoEmail(usuario);
   const meuCargo = (equipe || []).find((p) => p.email === usuario)?.cargo || "";
   /* Coordenação enxerga o painel inteiro, mesmo que por acaso também
      esteja marcada como GC de alguma obra — "Suas obras" é um recorte
@@ -17414,16 +17821,27 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
           menor. Sem avatar: num app onde so' existe uma pessoa logada, as
           iniciais nao dizem nada que o nome ao lado ja nao diga. */}
       <div className="ini-topo">
-        <div className="ini-nome-linha">
-          <span className="ini-nome">{meuNome || "Olá"}</span>
-          {/* So a PRIMEIRA letra: capitalize no CSS subia tambem os "de",
-              virando "Domingo, 30 De Agosto De 2026". */}
-          <span className="ini-data">{(() => {
-            const d = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
-            return d.charAt(0).toUpperCase() + d.slice(1);
-          })()}</span>
+        {/* A foto so' aparece quando existe.
+
+            O avatar foi tirado daqui de proposito um dia, e o motivo
+            escrito acima continua de pe': INICIAIS nao dizem nada que o
+            nome ao lado ja nao diga. Uma foto diz — e' a cara da pessoa,
+            nao uma abreviacao do que esta escrito do lado. Por isso a
+            bolinha entra quando ha foto e some quando nao ha, em vez de
+            virar duas letras roxas repetindo o nome. */}
+        {euNaEquipe?.foto && <Avatar pessoa={euNaEquipe} nome={meuNome} classe="ini-foto" />}
+        <div className="ini-topo-txt">
+          <div className="ini-nome-linha">
+            <span className="ini-nome">{meuNome || "Olá"}</span>
+            {/* So a PRIMEIRA letra: capitalize no CSS subia tambem os "de",
+                virando "Domingo, 30 De Agosto De 2026". */}
+            <span className="ini-data">{(() => {
+              const d = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+              return d.charAt(0).toUpperCase() + d.slice(1);
+            })()}</span>
+          </div>
+          <div className="ini-recado">{mensagemDoDia()}</div>
         </div>
-        <div className="ini-recado">{mensagemDoDia()}</div>
       </div>
 
       {carregando && <div className="empty-note">Carregando as obras…</div>}
@@ -17908,7 +18326,8 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
               const n = obrasDe(p.email);
               return (
                 <div key={p.email} className={`arq-linha ${p.ativo ? "" : "eq-inativo"}`}>
-                  <div className={`eq-avatar ${estaOnline(p) ? "online" : ""}`} title={estaOnline(p) ? "online agora" : undefined}>{(p.nome || p.email).slice(0, 2).toUpperCase()}</div>
+                  <Avatar pessoa={p} classe={`eq-avatar ${estaOnline(p) ? "online" : ""}`}
+                    titulo={estaOnline(p) ? "online agora" : undefined} />
                   <div className="arq-id">
                     <div className="arq-titulo">{p.nome}{!p.ativo && <span className="eq-tag-inativo">inativo</span>}</div>
                     <div className="arq-sub mono">{p.email}</div>
@@ -19955,6 +20374,22 @@ export default function App() {
   /* Sair de verdade: `scope: "local"` limpa a sessao deste navegador
      mesmo quando o token ja esta invalido e o servidor recusaria o
      signOut normal — sem isso, token podre virava um "Sair" que nao sai. */
+  /* Troca (ou remove) a MINHA foto.
+
+     A lista de pessoas e' uma so' no app, e o trilho, o Inicio e a Equipe
+     leem dela — atualizar aqui faz a foto nova aparecer nos tres no mesmo
+     instante, sem recarregar a equipe inteira do banco.
+
+     A ordem importa: sobe primeiro, grava depois. Gravar o caminho antes
+     de a imagem existir deixaria um avatar quebrado no lugar do rosto. */
+  async function trocarMinhaFoto(file, recorte) {
+    const caminho = file ? await subirFotoPerfil(file, usuario, recorte) : null;
+    await definirFotoPerfil(caminho);
+    setPessoas((antes) => antes.map((p) => (
+      p.email === String(usuario || "").toLowerCase() ? { ...p, foto: caminho } : p
+    )));
+  }
+
   async function sairDaConta() {
     try { await supabase.auth.signOut({ scope: "local" }); } catch { /* segue */ }
     window.location.reload();
@@ -21559,7 +21994,20 @@ export default function App() {
         .trilho-pe { margin-top: auto; width: 100%; padding-top: 8px; border-top: 1px solid var(--border-soft);
                      display: flex; flex-direction: column; align-items: center; gap: 4px; }
         .trilho-perfil { width: 100%; display: flex; justify-content: center; padding: 6px 0; background: none; border: none; cursor: pointer; }
-        .perfil-menu-trilho { left: 60px; bottom: 12px; top: auto; right: auto; }
+        /* O menu FLUTUA sobre a lista de obras.
+
+           Sem position, ele entrava como item flex da .barra (que e'
+           display:flex) e virava uma COLUNA de altura inteira, empurrando a
+           lista pro lado — os deslocamentos daqui ficavam inertes. A regra
+           que tinha o position era .sidebar.recolhida .perfil-menu, morta
+           desde que a barra virou .barra. A .barra e' sticky, e por isso
+           serve de referencia pro absolute.
+
+           Sem crase neste comentario: o bloco inteiro de estilo e' um
+           template literal, e uma crase aqui fecha a string e derruba o
+           build com um erro que aponta pra outro lugar. */
+        .perfil-menu-trilho { position: absolute; z-index: 40; width: 230px;
+                              left: 60px; bottom: 12px; top: auto; right: auto; }
 
         .painel { width: 232px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border-soft);
                   display: flex; flex-direction: column; min-height: 0; padding: 12px 12px 0; }
@@ -21730,11 +22178,66 @@ export default function App() {
         .perfil-cab-nome { font-size: 12.5px; font-weight: 700; color: var(--ink); }
         .perfil-cab-email { font-size: 10.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
         .perfil-sep { height: 1px; background: var(--border-soft); margin: 0 4px 5px; }
+        /* RECORTADOR DA FOTO — sem crase neste bloco: o estilo inteiro e'
+           um template literal, e uma crase aqui derruba o build. */
+        .recorte-caixa { width: min(360px, 100%); }
+        .recorte-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .recorte-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+        .recorte-palco { position: relative; height: 256px; overflow: hidden; background: #171717; touch-action: none; cursor: grab; }
+        .recorte-palco:active { cursor: grabbing; }
+        .recorte-img { position: absolute; left: 50%; top: 50%; max-width: none; user-select: none; }
+        /* O furo redondo e' uma sombra gigante: tudo fora do circulo
+           escurece e o circulo fica limpo, sem precisar de svg nem mask. */
+        .recorte-mascara { position: absolute; left: 50%; top: 50%; width: 176px; height: 176px; margin: -88px 0 0 -88px;
+                           border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.58); border: 2px solid rgba(255, 255, 255, 0.9);
+                           pointer-events: none; }
+        .recorte-controles { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 12px 16px 4px; }
+        .recorte-zoom { width: 30px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+                        background: none; border: 1px solid var(--line-2); border-radius: 7px; color: var(--ink-2); cursor: pointer; }
+        .recorte-zoom:hover:not(:disabled) { background: var(--panel); }
+        .recorte-zoom:disabled { opacity: 0.4; cursor: default; }
+        .recorte-pct { font-size: 12px; color: var(--ink-3); min-width: 48px; text-align: center; }
+        .recorte-centralizar { margin-left: 8px; background: none; border: 1px solid var(--line-2); border-radius: 7px;
+                               padding: 5px 10px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
+        .recorte-centralizar:hover { background: var(--panel); }
+        .recorte-erro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+                        justify-content: center; gap: 9px; padding: 24px; text-align: center; color: var(--bg);
+                        font-size: 12.5px; line-height: 1.45; }
+        .recorte-erro-arq { font-size: 10.5px; opacity: 0.7; margin-top: 2px; word-break: break-all; }
+        .recorte-previa { display: flex; align-items: center; gap: 10px; padding: 8px 20px 14px; }
+        .recorte-previa-bolinha { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; position: relative;
+                                  flex-shrink: 0; background: var(--panel); }
+        .recorte-previa-bolinha img { position: absolute; left: 50%; top: 50%; max-width: none; }
+        .recorte-previa-txt { font-size: 11px; color: var(--ink-3); line-height: 1.35; }
+        .avatar-md { width: 40px; height: 40px; font-size: 13px; }
+        /* A capa da camera so' aparece no hover: ela cobre a foto, e uma
+           camera permanente em cima do rosto da pessoa nao e' um retrato. */
+        .perfil-foto { position: relative; background: none; border: none; padding: 0; cursor: pointer; border-radius: 50%; flex-shrink: 0; line-height: 0; }
+        .perfil-foto:disabled { cursor: default; }
+        .perfil-foto-capa { position: absolute; inset: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); color: #fff; opacity: 0; transition: opacity 0.12s ease; }
+        .perfil-foto:hover .perfil-foto-capa, .perfil-foto:focus-visible .perfil-foto-capa { opacity: 1; }
+        .perfil-aviso { font-size: 11px; color: var(--ink-3); padding: 0 9px 7px; }
+        .perfil-aviso.erro { color: var(--red); }
+        .perfil-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; text-align: left; }
+        .perfil-item:hover { background: var(--panel); }
+        .perfil-seta { margin-left: auto; transition: transform 0.12s ease; }
+        .perfil-seta.aberta { transform: rotate(180deg); }
+        .perfil-dados { padding: 2px 9px 8px; }
+        .perfil-dados > div { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; padding: 3px 0; }
+        .perfil-dados span { color: var(--ink-3); flex-shrink: 0; }
+        .perfil-dados b { color: var(--ink); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+        .perfil-dados-nota { display: block !important; font-size: 10.5px; color: var(--ink-3); font-style: italic; margin-top: 5px; line-height: 1.35; text-align: left; }
+        .perfil-tirar-foto { display: flex !important; align-items: center; gap: 5px; background: none; border: none; padding: 5px 0 0; font-family: inherit; font-size: 11px; color: var(--red); cursor: pointer; }
         .perfil-sair { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
         .perfil-sair:hover { background: var(--red-bg); color: var(--red); }
 
         .profile:hover { background: var(--panel); }
         .avatar-sm { width: 28px; height: 28px; font-size: 10.5px; }
+        /* A foto preenche o circulo e e' recortada, nunca esticada —
+           esticar um retrato pra caber num quadrado deforma a pessoa.
+           O tamanho vem da classe de quem chama, entao aqui so' entram o
+           recorte e a limpeza do que era estilo de letra. */
+        .avatar-foto { object-fit: cover; background: none; padding: 0; }
         .profile-text { flex: 1; min-width: 0; }
         .profile-name { font-size: 12px; font-weight: 600; }
         .profile-email { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -21769,7 +22272,6 @@ export default function App() {
         .sidebar.recolhida .nav-tira-item { width: 44px; flex: none; }
         .sidebar.recolhida .sidebar-toggle { justify-content: center; }
         /* O menu de sair nao cabe em 62px: ele salta pra fora da barra. */
-        .sidebar.recolhida .perfil-menu { position: absolute; bottom: 58px; left: 8px; width: 210px; z-index: 30; }
         .sidebar.recolhida .sidebar-footer { position: relative; }
         .sidebar.recolhida .nav-group-toggle,
         .sidebar.recolhida .nav-group-label,
@@ -23799,7 +24301,13 @@ export default function App() {
            brancas iguais nao dizem qual delas pede acao. Entre duas
            linhas e separados por filete, eles viram referencia — que e'
            o que sao. */
-        .ini-topo { margin: 6px 0 18px; }
+        /* A bolinha fica centrada no bloco INTEIRO, e nome e recado se
+           alinham a direita dela — o recado recua junto, em vez de ficar
+           colado na margem com o nome recuado. Borda esquerda do texto
+           reta, que e' o que se ve antes de ler qualquer coisa. */
+        .ini-topo { margin: 6px 0 18px; display: flex; align-items: center; gap: 14px; }
+        .ini-topo-txt { min-width: 0; }
+        .ini-foto { width: 54px; height: 54px; border-radius: 50%; flex-shrink: 0; }
         .ini-nome-linha { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
         .ini-nome { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.2; }
         .ini-data { font-size: 11px; color: var(--ink-3); }
@@ -24547,10 +25055,11 @@ export default function App() {
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
-      <TopBar usuario={usuario} nome={eu?.nome}
+      <TopBar usuario={usuario} nome={eu?.nome} eu={eu}
         onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} />
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
+          onTrocarFoto={trocarMinhaFoto}
           equipe={pessoas} onSair={sairDaConta} modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas}
