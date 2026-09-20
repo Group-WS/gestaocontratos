@@ -52,7 +52,13 @@ conf("o estado nasce ANTES do useMemo que o le'",
 conf("... e a lista depende dele", /\}, \[minhas, obras, temAtrasoPorCodigo, filtroTaylor\]\)/.test(app));
 conf("o titulo diz qual recorte esta' na tela", app.includes('filtroTaylor ? "Obras da Taylor"'));
 
-console.log("\n=== o SQL, que e' o passo que nao pode faltar ===");
+/* O SQL nao pode ASSUMIR o que nao foi rodado. Na primeira versao ele
+   quebrou no Supabase com "function public.meu_perfil() does not exist":
+   o rls-perfis.sql nunca foi aplicado, entao o corte por perfil nao
+   existe no banco — a politica em vigor e' a do schema.sql, "to
+   authenticated using (true)", e quem recorta por perfil hoje e' so' a
+   tela. A parte que depende disso passou a se proteger sozinha. */
+console.log("\n=== o SQL ===");
 conf("o arquivo existe no repo", sql.length > 0);
 conf("o perfil taylor entra na trava da coluna", /perfil in \([^)]*'taylor'\)/.test(sql));
 conf("... e o canal, que nunca tinha entrado", /perfil in \([^)]*'canal'/.test(sql));
@@ -60,6 +66,11 @@ conf("minhas_obras passa a olhar tailor_made", sql.includes("lower(o.tailor_made
 conf("... e responsavel_executivo", sql.includes("lower(o.responsavel_executivo)"));
 conf("o perfil taylor entra no recorte", /when 'taylor'/.test(sql));
 conf("'obra sem GC todo mundo ve' continua valendo", sql.includes("o.gc is null"));
+conf("a parte que depende do rls-perfis se protege sozinha",
+  sql.includes("to_regprocedure('public.meu_perfil()') is null"));
+conf("... e avisa em vez de quebrar o arquivo", sql.includes("raise notice"));
+conf("a trava da coluna NAO depende disso e roda sempre",
+  sql.indexOf("add constraint pessoa_perfil_check") < sql.indexOf("do $migra$"));
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
