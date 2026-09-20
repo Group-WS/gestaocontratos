@@ -16,8 +16,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { tudo as fonteDoApp } from "./fonte.mjs";
 
-const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "App.jsx"), "utf8");
+/* O CSS saiu do App.jsx e virou folha .css — `fonteDoApp` e os dois juntos,
+
+   na ordem do main.jsx. Ver fonte.mjs. */
+
+const src = fonteDoApp;
 const trecho = (de, ate) => {
   const i = src.indexOf(de), f = src.indexOf(ate);
   if (i === -1 || f === -1) throw new Error(`não achei o intervalo: ${de} .. ${ate}`);

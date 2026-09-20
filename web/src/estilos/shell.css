@@ -1,0 +1,361 @@
+/* ============================================================================
+   Group WS · A casca: trilho, painel e cabecalho de pagina
+   ============================================================================
+
+   A barra da esquerda (trilho de destinos + painel da obra), o menu de
+   perfil, a dica no hover e o cabecalho de pagina.
+
+   Saiu do template literal <style>{`...`}</style> que vivia dentro do
+   App.jsx (20/09/2026). O conteudo veio byte a byte, so' tirando os 8
+   espacos de indentacao que existiam por estar dentro do JSX.
+
+   A CASCATA DEPENDE DA ORDEM, nao de !important — e' o que os banners
+   internos sempre disseram. A ordem de import no main.jsx e':
+
+     design-system.css -> base.css -> shell.css -> telas.css
+     -> componentes.css -> celular.css
+
+   Mexer nessa ordem muda a aparencia do app sem dar nenhum erro.
+   ============================================================================ */
+
+/* ============================================================
+   A BARRA: TRILHO + PAINEL  (19/09/2026)
+
+   Tres planos claros, e a ordem e' o contrario do costume: quase todo
+   app poe a barra em cinza e o conteudo em branco. Aqui o BRANCO E' A
+   LISTA de obras, porque ela e' texto que se le' — nao moldura.
+   Espinho cinza, lista branca, campo cinza.
+   ============================================================ */
+.barra { display: flex; flex-shrink: 0; height: calc(100vh - 64px); position: sticky; top: 64px; }
+
+.trilho { width: 56px; flex-shrink: 0; background: var(--surface-3); border-right: 1px solid var(--border-soft);
+          display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
+.trilho-item { position: relative; width: 100%; height: 40px; display: flex; align-items: center; justify-content: center;
+               background: none; border: none; border-left: 2px solid transparent; color: var(--ink-3); cursor: pointer; }
+.trilho-item:hover { color: var(--ink-1); }
+.trilho-item:disabled { opacity: .35; cursor: default; }
+/* O destino ativo veste a cor do que abriu a' direita: com painel ele
+   fica branco e se funde com a lista; sem painel, veste o campo. Em
+   vez de pintar a selecao, ela encosta no que abriu. */
+.trilho-item.ativo { color: var(--brand); border-left-color: var(--brand); background: var(--card); }
+.barra.sem-painel .trilho-item.ativo { background: var(--page); }
+.trilho-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.trilho-badge { position: absolute; top: 5px; right: 8px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+                background: var(--brand); color: #fff; font-size: 9.5px; font-weight: 600;
+                display: flex; align-items: center; justify-content: center; }
+.trilho-badge.espera { background: var(--amber); color: #3a2c00; }
+.trilho-badge.neutro { background: var(--surface-4); color: var(--ink-2); }
+.trilho-pe { margin-top: auto; width: 100%; padding-top: 8px; border-top: 1px solid var(--border-soft);
+             display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.trilho-perfil { width: 100%; display: flex; justify-content: center; padding: 6px 0; background: none; border: none; cursor: pointer; }
+/* O menu FLUTUA sobre a lista de obras.
+
+   Sem position, ele entrava como item flex da .barra (que e'
+   display:flex) e virava uma COLUNA de altura inteira, empurrando a
+   lista pro lado — os deslocamentos daqui ficavam inertes. A regra
+   que tinha o position era .sidebar.recolhida .perfil-menu, morta
+   desde que a barra virou .barra. A .barra e' sticky, e por isso
+   serve de referencia pro absolute.
+
+   Sem crase neste comentario: o bloco inteiro de estilo e' um
+   template literal, e uma crase aqui fecha a string e derruba o
+   build com um erro que aponta pra outro lugar. */
+.perfil-menu-trilho { position: absolute; z-index: 40; width: 230px;
+                      left: 60px; bottom: 12px; top: auto; right: auto; }
+
+.painel { width: 232px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border-soft);
+          display: flex; flex-direction: column; min-height: 0; padding: 12px 12px 0; }
+.painel-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.painel-nome { font-size: 13.5px; color: var(--ink); }
+.painel-conta { font-size: 11px; color: var(--ink-3); margin-left: 3px; }
+.painel-modos { display: inline-flex; align-items: center; gap: 5px; }
+.painel-modos button { background: none; border: none; padding: 0; font-family: inherit; font-size: 11px; color: var(--ink-3); cursor: pointer; }
+.painel-modos button:hover { color: var(--ink-1); }
+.painel-modos button.on { color: var(--brand); }
+.painel-modos-sep { color: var(--border); font-size: 11px; }
+.painel-busca { margin-bottom: 8px; }
+.painel-minhas { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 8px;
+                 background: none; border: 1px solid var(--border-soft); border-radius: 20px; padding: 3px 9px;
+                 font-family: inherit; font-size: 11px; color: var(--ink-3); cursor: pointer; }
+.painel-minhas:hover { color: var(--ink-1); border-color: var(--border); }
+.painel-minhas.on { color: var(--brand); border-color: var(--brand); background: var(--brand-soft); }
+.painel-lista { flex: 1; overflow-y: auto; min-height: 0; margin: 0 -6px; padding: 0 6px 12px; }
+
+/* O NOME DA OBRA NUNCA CORTA — pedido dela em 19/09/2026: "nunca corte
+   o nome da obra, sempre mostre tudo". Mesma regra do alerta da Conf.
+   Executivo: quem cede e' a ALTURA, nao o texto. Por isso o alinhamento
+   vai pro topo: o codigo fica na primeira linha e o nome desce. */
+.obra-linha { width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 6px 7px; margin: 0 -7px;
+              background: none; border: none; border-left: 2px solid transparent; border-radius: 6px;
+              font-family: inherit; text-align: left; cursor: pointer; }
+.obra-linha:hover { background: var(--panel); }
+.obra-linha.ativa { background: var(--brand-soft); border-left-color: var(--brand); }
+.obra-linha:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.obra-squad { flex-shrink: 0; width: 13px; height: 17px; color: var(--ink-3); display: flex; align-items: center; }
+.obra-linha.ativa .obra-squad { color: var(--brand); }
+/* O codigo e' a voz da linha: e' por ele que a obra e' chamada. */
+.obra-cod { flex-shrink: 0; font-size: 12.5px; line-height: 1.38; color: var(--ink); }
+.obra-linha.ativa .obra-cod { color: var(--brand); }
+.obra-nome { min-width: 0; font-size: 11.5px; line-height: 1.38; color: var(--ink-2); overflow-wrap: anywhere; }
+.obra-linha.ativa .obra-nome { color: var(--ink); }
+.obra-linha.sem-simbolo { padding-left: 25px; }
+.obra-trava { flex-shrink: 0; margin-left: auto; margin-top: 2px; color: var(--amber); }
+.obra-badge { flex-shrink: 0; margin-left: auto; margin-top: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+              background: var(--red); color: #fff; font-size: 9.5px; font-weight: 600;
+              display: flex; align-items: center; justify-content: center; }
+.obra-trava + .obra-badge { margin-left: 4px; }
+
+.painel-novas { display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 8px;
+                padding: 5px 8px; border: 1px solid var(--brand); border-radius: 6px;
+                background: var(--brand-soft); color: var(--brand);
+                font-family: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+.painel-novas:hover { background: var(--brand-bg, var(--brand-soft)); border-color: var(--brand-h); }
+.painel-novas-n { font-size: 11.5px; }
+.painel-novas:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+.painel-pe { flex-shrink: 0; border-top: 1px solid var(--border-soft); margin: 0 -12px; padding: 6px 12px 8px; }
+.painel-pe-item { width: 100%; display: flex; align-items: center; gap: 7px; padding: 5px 6px; margin: 0 -6px;
+                  background: none; border: none; border-radius: 6px; font-family: inherit; font-size: 11.5px;
+                  color: var(--ink-2); text-align: left; cursor: pointer; }
+.painel-pe-item:hover { background: var(--panel); color: var(--ink-1); }
+.painel-pe-item.ativo { color: var(--brand); background: var(--brand-soft); }
+.painel-pe-conta { margin-left: auto; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+                   background: var(--brand); color: #fff; font-size: 9.5px; font-weight: 600;
+                   display: flex; align-items: center; justify-content: center; }
+.painel-pe-conta.neutro { background: var(--surface-4); color: var(--ink-2); }
+
+.squad-bloco { margin-bottom: 6px; }
+.squad-cab { width: 100%; display: flex; align-items: center; gap: 6px; padding: 6px 0 4px; background: none; border: none;
+             font-family: inherit; font-size: 11px; color: var(--ink-2); cursor: pointer; text-align: left; }
+.squad-cab:hover { color: var(--ink-1); }
+.squad-cab-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.squad-cab-conta { font-size: 10px; color: var(--ink-3); }
+
+.sidebar { width: 288px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
+.sidebar-scroll { flex: 1; padding: 6px 14px 16px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
+.nav-group-label { font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; }
+.nav-group-label:first-child { margin-top: 0; }
+.obra-search { display: flex; align-items: center; gap: 7px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; margin-bottom: 8px; }
+.obra-search input { flex: 1; border: none; outline: none; background: transparent; font-size: 12px; color: var(--ink); }
+.obra-search input::placeholder { color: var(--ink-3); }
+.clear-btn { border: none; background: transparent; color: var(--ink-3); cursor: pointer; display: flex; }
+.alert-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 11px; color: var(--ink-2); cursor: pointer; margin-bottom: 10px; }
+.alert-toggle.active { background: var(--red-bg); border-color: var(--red); color: var(--red); font-weight: 600; }
+/* Nos 62px o codigo E' o icone. */
+.nav-cod { display: none; font-size: 11px; font-weight: 700; color: var(--ink-2); letter-spacing: -.02em; }
+.sidebar.recolhida .nav-cod { display: block; }
+.sidebar.recolhida .nav-item > .nav-icon { display: none; }
+.sidebar.recolhida .nav-item.active .nav-cod { color: var(--blue); }
+.chip-sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 3px; }
+.squad-chip.neutro { background: none; border-color: var(--border); color: var(--ink-3); }
+.squad-chip.neutro.on { color: var(--ink); border-color: var(--ink-3); font-weight: 600; }
+.squad-chip.active.alerta { background: var(--red); border-color: var(--red); }
+.alert-toggle.escondido { display: none; }
+.squad-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.squad-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; font-size: 10.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+.squad-chip:hover { border-color: var(--blue); }
+.squad-chip.active { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
+.squad-group { margin-bottom: 10px; }
+.squad-group-label { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: none; font-family: inherit; cursor: pointer; }
+.squad-group-label:hover { color: var(--ink-2); }
+/* ---- Rotulo no hover, na barra recolhida ----
+
+   Primeiro tentei ::after com content: attr(title). Nao funciona:
+   ele nasce DENTRO da lista de obras, que rola, e tudo que passa
+   da borda da caixa e' recortado — o rotulo existia e ficava
+   invisivel do lado de fora.
+
+   Este e' um elemento so', em position: fixed, posicionado pelo
+   retangulo do botao sob o mouse. Fixed nao e' recortado por
+   ancestral nenhum, que e' exatamente o problema a resolver. */
+.dica-lateral { position: fixed; z-index: 200; background: var(--ink); color: var(--bg); border-radius: 7px; padding: 7px 11px; font-size: 11.5px; font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-2); }
+.dica-lateral::before { content: ""; position: absolute; left: -4px; top: 50%; margin-top: -4px; width: 8px; height: 8px; background: var(--ink); transform: rotate(45deg); }
+
+/* O simbolo do squad so' existe recolhida: aberta, o nome basta. */
+.squad-simbolo { display: none; }
+.sidebar.recolhida .squad-group-label { display: flex; justify-content: center; padding: 6px 0 4px; color: var(--ink-3); }
+/* So' o simbolo. O nome quebrava em tres linhas dentro dos 62px e
+   encavalava com as obras logo abaixo. */
+.sidebar.recolhida .squad-group-label > .lucide,
+.sidebar.recolhida .squad-group-label > span:not(.squad-simbolo) { display: none; }
+.sidebar.recolhida .squad-simbolo { display: block; }
+.squad-tem-aberta { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
+
+.squad-group-label span { text-align: left; }
+
+.squad-group-label { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px; }
+/* A lista come o espaco que sobra pra empurrar os modulos pro pe
+   da barra; sem isso eles paravam onde a lista acabasse. */
+.scroll-list { flex: 1; min-height: 90px; overflow-y: auto; padding-right: 2px; }
+/* Grudado embaixo mesmo com a barra rolando: com quarenta obras a
+   lista rola, e o modulo tem que continuar a um clique. */
+.nav-modulos { margin-top: auto; position: sticky; bottom: 0; background: var(--surface-1); padding-bottom: 2px; }
+.nav-modulos::before { content: ""; display: block; height: 10px; margin: 0 -14px; background: linear-gradient(to bottom, transparent, var(--surface-1)); }
+.no-results { font-size: 11.5px; color: var(--ink-3); padding: 10px 6px; }
+.nav-group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; cursor: pointer; }
+.nav-group-toggle:hover { color: var(--ink-2); }
+.nav-group-toggle span:first-child { flex: 1; text-align: left; }
+.nav-tira { display: flex; align-items: center; gap: 4px; padding: 0 4px; }
+.nav-tira-item { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; height: 34px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--ink-3); cursor: pointer; }
+.nav-tira-item:hover { background: var(--panel); color: var(--ink); }
+.nav-tira-item.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+.nav-tira-badge { position: absolute; top: 1px; right: 1px; background: var(--blue); color: var(--bg); font-size: 8.5px; font-weight: 700; border-radius: 20px; padding: 0 4px; line-height: 13px; }
+.sidebar.recolhida .nav-tira { flex-direction: column; }
+.nav-list { display: flex; flex-direction: column; gap: 2px; }
+.nav-list-topo { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-soft); }
+.nav-item { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; border-radius: 8px; padding: 9px 8px; cursor: pointer; text-align: left; transition: background 0.12s ease; }
+.nav-item:hover { background: var(--panel); }
+.nav-item.active { background: var(--blue-bg); }
+.nav-item.static { cursor: default; }
+.nav-item.disabled { opacity: 0.55; cursor: default; }
+.nav-item.disabled:hover { background: transparent; }
+.nav-icon { color: var(--ink-2); flex-shrink: 0; }
+.nav-item.active .nav-icon { color: var(--blue); }
+.nav-item-text { flex: 1; min-width: 0; }
+.nav-item-name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
+.nav-badge { background: var(--red); color: var(--bg); font-size: 10px; font-weight: 700; border-radius: 20px; padding: 1px 6px; font-family: var(--font-mono); flex-shrink: 0; }
+.soon { font-size: 9.5px; color: var(--ink-3); background: var(--panel); padding: 2px 6px; border-radius: 20px; flex-shrink: 0; }
+.sidebar-footer { border-top: 1px solid var(--border); padding: 12px 14px; flex-shrink: 0; }
+.profile { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
+.profile { width: 100%; background: none; border: none; font-family: inherit; text-align: left; }
+.profile.aberto { background: var(--panel); }
+.profile-name { color: var(--ink); }
+/* O menu era um e-mail quebrando em duas linhas e um "Sair desta
+   conta" vermelho gritando. Agora ele se parece com o cartao de
+   conta de qualquer ferramenta: quem esta logado em cima, uma
+   linha, e a saida discreta embaixo. Vermelho so' no hover — sair
+   nao e' perigoso, e' so' sair. */
+.perfil-menu { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow-3); padding: 6px; margin-bottom: 8px; }
+.perfil-cab { display: flex; align-items: center; gap: 10px; padding: 9px 9px 10px; }
+.perfil-cab-txt { min-width: 0; }
+.perfil-cab-nome { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.perfil-cab-email { font-size: 10.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.perfil-sep { height: 1px; background: var(--border-soft); margin: 0 4px 5px; }
+/* RECORTADOR DA FOTO — sem crase neste bloco: o estilo inteiro e'
+   um template literal, e uma crase aqui derruba o build. */
+.recorte-caixa { width: min(360px, 100%); }
+.recorte-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
+.recorte-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+.recorte-palco { position: relative; height: 256px; overflow: hidden; background: #171717; touch-action: none; cursor: grab; }
+.recorte-palco:active { cursor: grabbing; }
+.recorte-img { position: absolute; left: 50%; top: 50%; max-width: none; user-select: none; }
+/* O furo redondo e' uma sombra gigante: tudo fora do circulo
+   escurece e o circulo fica limpo, sem precisar de svg nem mask. */
+.recorte-mascara { position: absolute; left: 50%; top: 50%; width: 176px; height: 176px; margin: -88px 0 0 -88px;
+                   border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.58); border: 2px solid rgba(255, 255, 255, 0.9);
+                   pointer-events: none; }
+.recorte-controles { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 12px 16px 4px; }
+.recorte-zoom { width: 30px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+                background: none; border: 1px solid var(--line-2); border-radius: 7px; color: var(--ink-2); cursor: pointer; }
+.recorte-zoom:hover:not(:disabled) { background: var(--panel); }
+.recorte-zoom:disabled { opacity: 0.4; cursor: default; }
+.recorte-pct { font-size: 12px; color: var(--ink-3); min-width: 48px; text-align: center; }
+.recorte-centralizar { margin-left: 8px; background: none; border: 1px solid var(--line-2); border-radius: 7px;
+                       padding: 5px 10px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
+.recorte-centralizar:hover { background: var(--panel); }
+.recorte-erro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+                justify-content: center; gap: 9px; padding: 24px; text-align: center; color: var(--bg);
+                font-size: 12.5px; line-height: 1.45; }
+.recorte-erro-arq { font-size: 10.5px; opacity: 0.7; margin-top: 2px; word-break: break-all; }
+.recorte-previa { display: flex; align-items: center; gap: 10px; padding: 8px 20px 14px; }
+.recorte-previa-bolinha { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; position: relative;
+                          flex-shrink: 0; background: var(--panel); }
+.recorte-previa-bolinha img { position: absolute; left: 50%; top: 50%; max-width: none; }
+.recorte-previa-txt { font-size: 11px; color: var(--ink-3); line-height: 1.35; }
+.avatar-md { width: 40px; height: 40px; font-size: 13px; }
+/* A capa da camera so' aparece no hover: ela cobre a foto, e uma
+   camera permanente em cima do rosto da pessoa nao e' um retrato. */
+.perfil-foto { position: relative; background: none; border: none; padding: 0; cursor: pointer; border-radius: 50%; flex-shrink: 0; line-height: 0; }
+.perfil-foto:disabled { cursor: default; }
+.perfil-foto-capa { position: absolute; inset: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); color: #fff; opacity: 0; transition: opacity 0.12s ease; }
+.perfil-foto:hover .perfil-foto-capa, .perfil-foto:focus-visible .perfil-foto-capa { opacity: 1; }
+.perfil-aviso { font-size: 11px; color: var(--ink-3); padding: 0 9px 7px; }
+.perfil-aviso.erro { color: var(--red); }
+.perfil-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; text-align: left; }
+.perfil-item:hover { background: var(--panel); }
+.perfil-seta { margin-left: auto; transition: transform 0.12s ease; }
+.perfil-seta.aberta { transform: rotate(180deg); }
+.perfil-dados { padding: 2px 9px 8px; }
+.perfil-dados > div { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; padding: 3px 0; }
+.perfil-dados span { color: var(--ink-3); flex-shrink: 0; }
+.perfil-dados b { color: var(--ink); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.perfil-dados-nota { display: block !important; font-size: 10.5px; color: var(--ink-3); font-style: italic; margin-top: 5px; line-height: 1.35; text-align: left; }
+.perfil-tirar-foto { display: flex !important; align-items: center; gap: 5px; background: none; border: none; padding: 5px 0 0; font-family: inherit; font-size: 11px; color: var(--red); cursor: pointer; }
+.perfil-sair { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.perfil-sair:hover { background: var(--red-bg); color: var(--red); }
+
+.profile:hover { background: var(--panel); }
+.avatar-sm { width: 28px; height: 28px; font-size: 10.5px; }
+/* A foto preenche o circulo e e' recortada, nunca esticada —
+   esticar um retrato pra caber num quadrado deforma a pessoa.
+   O tamanho vem da classe de quem chama, entao aqui so' entram o
+   recorte e a limpeza do que era estilo de letra. */
+.avatar-foto { object-fit: cover; background: none; padding: 0; }
+.profile-text { flex: 1; min-width: 0; }
+.profile-name { font-size: 12px; font-weight: 600; }
+.profile-email { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Discreto: é um controle da barra, não um título. Antes vinha em
+   caixa alta ocupando a largura toda, e competia com o nome da
+   obra logo abaixo. */
+.sidebar-toggle { display: flex; align-items: center; justify-content: flex-start; gap: 5px; width: auto; margin: 10px 8px 2px; font-size: 11.5px; font-weight: 500; color: var(--ink-3); background: transparent; border: none; border-radius: 6px; padding: 5px 8px; cursor: pointer; flex-shrink: 0; }
+.sidebar-toggle:hover { color: var(--ink-1); background: var(--panel); }
+.sidebar.recolhida .sidebar-toggle { justify-content: center; margin: 10px auto 2px; }
+
+/* RECOLHIDA — só os símbolos.
+   Some tudo que é texto e filtro; ficam os ícones, que já existiam
+   em cada item. O atributo title de cada botão vira o rótulo no
+   hover, e é
+   por isso que ele foi adicionado em todos: sem ele, quatro ícones
+   iguais não dizem nada. */
+/* RECOLHIDA.
+
+   Ela virava uma coluna de icones sem hierarquia: obra e modulo
+   com o mesmo peso, a tira de modulos deitada de lado, e o
+   perfil com um chevron apontando pro nada. Agora as obras ficam
+   numa coluna alinhada, os modulos numa faixa separada por uma
+   linha, e o perfil e' so' o avatar — que continua abrindo o
+   menu de sair. O atributo title de cada botao e' o rotulo no
+   hover. */
+.sidebar.recolhida { width: 62px; }
+.sidebar.recolhida .sidebar-scroll { padding: 12px 6px; align-items: center; gap: 2px; }
+.sidebar.recolhida .squad-group { margin-bottom: 4px; }
+.sidebar.recolhida .nav-modulos { border-top: 1px solid var(--border); padding-top: 8px; margin-top: auto; width: 100%; }
+.sidebar.recolhida .nav-modulos::before { display: none; }
+.sidebar.recolhida .nav-tira { flex-direction: column; gap: 2px; }
+.sidebar.recolhida .nav-tira-item { width: 44px; flex: none; }
+.sidebar.recolhida .sidebar-toggle { justify-content: center; }
+/* O menu de sair nao cabe em 62px: ele salta pra fora da barra. */
+.sidebar.recolhida .sidebar-footer { position: relative; }
+.sidebar.recolhida .nav-group-toggle,
+.sidebar.recolhida .nav-group-label,
+.sidebar.recolhida .obra-search,
+.sidebar.recolhida .squad-filter,
+.sidebar.recolhida .alert-toggle,
+.sidebar.recolhida .nav-item-text,
+.sidebar.recolhida .nav-item-chevron,
+.sidebar.recolhida .no-results,
+.sidebar.recolhida .profile-text,
+.sidebar.recolhida .profile > .lucide-chevron-right { display: none; }
+.sidebar.recolhida .nav-item { justify-content: center; padding: 10px 0; width: 44px; }
+.sidebar.recolhida .nav-list { align-items: center; }
+.sidebar.recolhida .squad-group { width: 100%; }
+.sidebar.recolhida .sidebar-footer { padding: 10px 8px; }
+.sidebar.recolhida .profile { justify-content: center; gap: 0; padding: 7px 0; }
+.sidebar.recolhida .profile > .lucide-chevron-down { display: none; }
+/* badge vira ponto: o número não cabe, mas "tem alerta" precisa aparecer */
+.sidebar.recolhida .nav-badge, .sidebar.recolhida .nav-count { position: absolute; top: 4px; right: 2px; min-width: 7px; height: 7px; padding: 0; font-size: 0; border-radius: 50%; }
+.sidebar.recolhida .nav-item { position: relative; }
+
+/* min-width: 0 — sem ele o flex deixa o main crescer até caber a
+   tabela mais larga, e a tela inteira ganha rolagem de lado. As
+   tabelas largas rolam dentro do próprio bloco. */
+.main { flex: 1; min-width: 0; padding: 32px 40px 60px; max-width: 1260px; }
+/* Nas telas de planilha a largura é o próprio conteúdo: são 13
+   colunas, e limitar em 1260px obrigava a rolar de lado pra ver
+   o custo total — justamente a coluna que mais importa. */
+.main.larga { max-width: none; }
+.eyebrow { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.obra-fictitious { margin-left: 8px; font-size: 10px; background: var(--panel); color: var(--ink-3); padding: 2px 8px; border-radius: 20px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.title-row { font-size: 30px; line-height: 1.15; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.title-plain { font-weight: 700; color: var(--ink); }

@@ -1,0 +1,45 @@
+/* ============================================================================
+   Group WS · Base do app
+   ============================================================================
+
+   Reset, .app, .mono, .dim, a barra do topo, o avatar e o .body-layout.
+
+   Saiu do template literal <style>{`...`}</style> que vivia dentro do
+   App.jsx (20/09/2026). O conteudo veio byte a byte, so' tirando os 8
+   espacos de indentacao que existiam por estar dentro do JSX.
+
+   A CASCATA DEPENDE DA ORDEM, nao de !important — e' o que os banners
+   internos sempre disseram. A ordem de import no main.jsx e':
+
+     design-system.css -> base.css -> shell.css -> telas.css
+     -> componentes.css -> celular.css
+
+   Mexer nessa ordem muda a aparencia do app sem dar nenhum erro.
+   ============================================================================ */
+
+* { box-sizing: border-box; }
+.app { min-height: 100vh; background: var(--page); color: var(--ink); font-family: var(--font-sans); font-size: 13.5px; }
+.mono { font-family: var(--font-mono); }
+.dim { color: var(--ink-3); }
+.center { text-align: center; }
+.right { text-align: right; }
+
+.topbar { height: 64px; display: flex; align-items: center; gap: 24px; padding: 0 24px; background: var(--surface-1); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+.topbar-brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; background: none; border: none; font-family: inherit; padding: 4px 6px; margin-left: -6px; border-radius: 9px; cursor: pointer; }
+.topbar-brand:hover { background: var(--panel); }
+.aviso-monday { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
+/* O margin-left auto porque quem empurrava esse bloco pra
+   direita era a busca do meio, que tinha flex 1. Tirando a busca,
+   ele foi junto encostar na marca. */
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
+.icon-btn { width: 34px; height: 34px; border-radius: 8px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; color: var(--ink-2); cursor: pointer; position: relative; }
+.icon-btn:hover { background: var(--panel); }
+.notif-dot { position: absolute; top: 3px; right: 3px; background: var(--red); color: var(--bg); font-size: 9px; font-weight: 700; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--purple); color: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; }
+
+.body-layout { display: flex; }
+/* Sem space-between: ele funcionava com dois filhos (lista e
+   rodapé), mas o botão de recolher virou um terceiro — e aí o
+   espaçamento automático empurrava a lista pro meio da tela,
+   deixando um vazio enorme embaixo do botão.
+   Agora quem ocupa a sobra é a lista, explicitamente. */

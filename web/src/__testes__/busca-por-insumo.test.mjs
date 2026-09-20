@@ -16,8 +16,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { norm as normSienge } from "../lib/sienge.js";
+import { tudo as fonteDoApp, css as folhas } from "./fonte.mjs";
 
-const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "App.jsx"), "utf8");
+/* O CSS saiu do App.jsx e virou folha .css — `fonteDoApp` e os dois juntos,
+
+   na ordem do main.jsx. Ver fonte.mjs. */
+
+const src = fonteDoApp;
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = src.indexOf(assinatura);
   if (i === -1) throw new Error(`não achei no App.jsx: ${assinatura}`);
@@ -112,7 +117,9 @@ conf("Executivo NÃO filtra o array de itens", /itensPlanilhaExecutivo \|\| \[\]
 /* ---- 8. Trava de CSS ----
    O CSS vive num template literal; a regra precisa existir e vir depois do
    restyle do design system, senão o campo desalinha dentro da barra. */
-const css = src.slice(src.indexOf("<style>{`"), src.indexOf("`}</style>"));
+/* Antes o CSS era uma fatia do App.jsx entre <style>{` e `}</style>.
+   Agora sao folhas .css — vem prontas do fonte.mjs. */
+const css = folhas;
 conf(".busca-lista existe no CSS", css.includes(".busca-lista {"), true);
 conf(".busca-conta existe no CSS", css.includes(".busca-conta {"), true);
 

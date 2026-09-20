@@ -25,7 +25,10 @@
  *      deixaria um avatar quebrado no lugar do rosto.
  */
 import { readFileSync } from "fs";
-const app = readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
+import { tudo as fonteDoApp } from "./fonte.mjs";
+/* O CSS saiu do App.jsx e virou folha .css — `fonteDoApp` e os dois
+   juntos, na ordem do main.jsx. Ver fonte.mjs. */
+const app = fonteDoApp;
 const lib = readFileSync(new URL("../lib/pessoas.js", import.meta.url), "utf8");
 const sql = readFileSync(new URL("../../../supabase/foto-perfil.sql", import.meta.url), "utf8");
 

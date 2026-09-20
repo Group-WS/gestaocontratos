@@ -67,7 +67,9 @@ contem("erro desconhecido não some", explicar({ message: "network timeout" }), 
  * O congelamento existe para proteger o que FOI MANDADO ao fornecedor: trocar
  * o caderno depois apaga a prova. Slot vazio não tem prova para apagar.
  */
-const app = (await import("fs")).readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
+/* O CSS saiu do App.jsx e virou folha .css — `fonteDoApp` e os dois
+   juntos, na ordem do main.jsx. Ver fonte.mjs. */
+const app = (await import("./fonte.mjs")).tudo;
 conf("slot vazio aceita anexo mesmo congelado",
   app.includes("{podeEditar && (!congelado || !arquivo) && ("), true);
 conf("... e modo leitura continua sem anexar nada",

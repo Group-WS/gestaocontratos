@@ -18,8 +18,13 @@
  * item novo.
  */
 import fs from "node:fs";
+import { tudo as fonteDoApp } from "./fonte.mjs";
 
-const src = fs.readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
+/* O CSS saiu do App.jsx e virou folha .css — `fonteDoApp` e os dois juntos,
+
+   na ordem do main.jsx. Ver fonte.mjs. */
+
+const src = fonteDoApp;
 const bloco = (a, fim = "\n}\n") => {
   const i = src.indexOf(a);
   if (i === -1) throw new Error(`não achei no App.jsx: ${a}`);

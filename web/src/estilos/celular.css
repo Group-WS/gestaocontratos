@@ -1,0 +1,117 @@
+/* ============================================================================
+   Group WS · Celular
+   ============================================================================
+
+   @media (max-width: 760px). Fica por ULTIMO porque disputa especificidade
+   igual com as regras acima; quem ganha e' a ordem.
+
+   Saiu do template literal <style>{`...`}</style> que vivia dentro do
+   App.jsx (20/09/2026). O conteudo veio byte a byte, so' tirando os 8
+   espacos de indentacao que existiam por estar dentro do JSX.
+
+   A CASCATA DEPENDE DA ORDEM, nao de !important — e' o que os banners
+   internos sempre disseram. A ordem de import no main.jsx e':
+
+     design-system.css -> base.css -> shell.css -> telas.css
+     -> componentes.css -> celular.css
+
+   Mexer nessa ordem muda a aparencia do app sem dar nenhum erro.
+   ============================================================================ */
+
+/* ==================================================================
+   CELULAR
+
+   Pedido dela em 17/09/2026, com o escopo que ela escolheu: piso de
+   qualidade — nada estoura pra fora, nada se sobrepoe, e tabela larga
+   rola dentro do proprio bloco em vez de arrastar a pagina junto.
+
+   UMA CAUSA SOZINHA RESPONDIA PELA MAIOR PARTE: o .nav-grupos media
+   558px sem quebrar nem rolar, e levava a pagina inteira a 658px numa
+   tela de 375. Com isso TODO cartao aparecia cortado na direita, e
+   parecia defeito de cada cartao — nao era.
+
+   Este bloco fica no fim porque disputa especificidade igual com as
+   regras acima; quem ganha e' a ordem.
+   ================================================================== */
+@media (max-width: 760px) {
+  .main { padding: 18px 14px 48px; }
+  .topbar { gap: 10px; padding: 0 12px; }
+  .topbar-right { min-width: 0; gap: 4px; }
+  /* A marca media 320px e o lado direito 196px: 516px numa tela de
+     375, e os dois com flex-shrink zero. O seletor de tema, o sino e
+     o avatar ficavam FORA da tela, e a pagina inteira ganhava 155px
+     de rolagem lateral so' por isso. O logo fica; o nome do produto
+     sai, que ja' esta' no titulo da aba. */
+  .topbar-brand { flex-shrink: 1; min-width: 0; }
+  .brand-produto { display: none; }
+
+  /* Fileiras que nao cabem quebram, em vez de empurrar a pagina. */
+  .barra-etapa { flex-wrap: wrap; gap: 8px 12px; }
+  .be-dir { flex-wrap: wrap; flex-shrink: 1; min-width: 0; }
+  .title-row { flex-wrap: wrap; gap: 8px; }
+  .sel-barra-topo, .dash-atalhos, .filter-bar { flex-wrap: wrap; }
+
+  /* Os grupos da obra rolam dentro da propria faixa, como as abas ja'
+     faziam. Quebrar em duas linhas partiria a pastilha no meio. */
+  .nav-obra { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nav-obra::-webkit-scrollbar { height: 0; }
+  .nav-grupos { flex-shrink: 0; }
+
+  /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
+     sao duas colunas: sao duas fitas de uma palavra por linha. */
+  .dobra-colunas, .dobra-regua, .dash, .ad-wrap, .ad-cab, .conf-cols,
+  .escopo-conta, .escopo-campos, .confronto-placar, .ger-placar,
+  .sol-campos, .assinatura-campos, .form-row-3, .cad-campos,
+  .ad-item-campos, .ad-item-campos.com-custo, .import-row,
+  .ini-colunas, .ini-regua {
+    /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
+       min-width auto, e com isso se RECUSA a encolher abaixo do
+       proprio conteudo. Na Inicio, as duas colunas viravam uma so'
+       mas continuavam com 300px de largura numa caixa de 279 —
+       a pagina seguia rolando de lado por 7px. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Painel Mehoo: era uma fileira horizontal de blocos espremida em
+     241px — o nome da obra saia uma palavra por linha e o endereco
+     virava uma fita vertical. Empilhado, cada numero fica numa linha
+     legivel. */
+  .mh-obra-head { flex-wrap: wrap; gap: 10px; }
+  .mh-obra-id { flex: 1 1 100%; }
+  .mh-entrega, .mh-num { flex: 0 0 auto; text-align: left; }
+  .mh-num-larga { width: auto; min-width: 120px; }
+
+  /* Tabela larga rola dentro do bloco dela; a pagina fica parada. */
+  .grp-itens, .vend-itens-wrap, .exec-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Alvo de toque: 16px de fonte no campo impede o zoom automatico do
+     iPhone ao focar, que e' o que faz a pagina "pular" ao digitar. */
+  input, select, textarea { font-size: 16px; }
+  .busca-lista { flex: 1 1 100%; }
+
+  /* Linha de caderno: titulo em cima, arquivo e botoes embaixo.
+
+     O .mh-caderno-tit tem largura FIXA de 210px e flex-shrink zero.
+     Numa caixa de 245px sobravam 35px pro nome do arquivo e pros dois
+     botoes juntos — "Ver" e "Baixar" eram cortados pela borda do
+     cartao. Soltando a largura e deixando o titulo ocupar a propria
+     linha, a de baixo fica so' com arquivo e acoes. */
+  .mh-caderno, .caderno-slot { flex-wrap: wrap; }
+  /* Tres linhas, nesta ordem: [icone + nome do caderno] / [arquivo] /
+     [Ver Baixar]. O titulo fica ao lado do icone (flex auto, nao
+     100%), senao o livrinho ganha uma linha so' pra ele. */
+  /* flex-basis ZERO, nao auto: com base automatica o titulo pede a
+     largura do proprio texto e, nao cabendo, pula pra linha de baixo
+     deixando o livrinho sozinho em cima. Com base zero ele divide a
+     linha com o icone e quebra o texto dentro dele mesmo. */
+  .mh-caderno-tit, .caderno-slot-titulo { width: auto; flex: 1 1 0; min-width: 0; white-space: normal; }
+  .mh-caderno-arq, .mh-caderno-vazio, .caderno-slot-arquivo { flex: 1 1 100%; }
+  .mh-caderno .caderno-acao:first-of-type, .caderno-slot .caderno-acao:first-of-type { margin-left: -8px; }
+
+  /* Alvo de toque: 11px de fonte num link de 2px de padding e' pequeno
+     demais pro polegar. */
+  .caderno-acao { min-height: 32px; padding: 2px 8px; }
+
+  /* A tabela de itens do Mehoo rola dentro do bloco, como as outras. */
+  .mh-tabela { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}

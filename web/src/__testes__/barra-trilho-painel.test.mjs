@@ -22,10 +22,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { tudo as fonteDoApp } from "./fonte.mjs";
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
-const src = fs.readFileSync(path.join(aqui, "..", "App.jsx"), "utf8");
-
+/* O CSS saiu do App.jsx e virou folha .css — `fonteDoApp` e os dois juntos,
+   na ordem do main.jsx. Ver fonte.mjs. */
+const src = fonteDoApp;
 const bloco = (assinatura, fim = "\n};\n") => {
   const i = src.indexOf(assinatura);
   if (i === -1) throw new Error(`não achei em App.jsx: ${assinatura}`);
