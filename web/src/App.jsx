@@ -18,7 +18,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare
+  MessageSquare, HardHat
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -62,7 +62,7 @@ import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, ac
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos, carregarCadastroSienge, salvarCadastroSienge } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
+import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, listarTravas, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
 
 // O backend mora no mesmo domínio do site (função serverless da Vercel,
@@ -769,12 +769,22 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   const sujo = rascunho !== (obra.dataEntrega || "");
 
   const vendido = obra.valorVendido || totals.totalVendido || 0;
-  const exec = totals.totalExecutivo || 0;
-  const acimaDoVendido = exec > vendido;
 
   const faltamEntrega = obra.dataEntrega ? diasAte(new Date(`${obra.dataEntrega}T12:00:00`)) : null;
 
   const contratos = useMemo(() => obraContratosStats(obra), [obra]);
+
+  /* O CUSTO da obra segundo o executivo.
+
+     `totals.totalExecutivo` soma o rollup `c.executivo` de cada verba, e
+     em obra vinda do banco esse rollup chega vazio mesmo com a planilha
+     inteira carregada — foi o que apareceu na #2498: orçamento e custo
+     zerados ao lado de R$ 2,18 mi em material e mão de obra na mesma
+     régua. Quando o rollup não veio, o custo sai de onde os outros
+     números desta tela já saem: material a comprar mais mão de obra a
+     contratar, que juntos SÃO o custo do executivo. */
+  const exec = totals.totalExecutivo
+    || ((totals.totalProdutos || 0) + (contratos.totalServicos || 0));
   const jornada = useMemo(() => jornadaDaObra(obra), [obra]);
   // Fechada por padrão: a jornada responde "onde a obra está"; os arquivos
   // de cada fase são consulta, e abrem quando alguém pede.
@@ -793,6 +803,16 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
      dentro do proprio modulo — quem abria o Dashboard via o orcamento
      original e nao sabia que tinha mudado. */
   const adit = useMemo(() => resumoAditivos(obra.aditivos), [obra.aditivos]);
+
+  /* O tamanho DE HOJE da obra: contrato mais o que os aditivos aprovados
+     somaram ou tiraram. É contra este número que o custo é comparado —
+     comparar com o contrato original acusaria estouro em obra que foi
+     legitimamente ampliada por aditivo assinado. */
+  const vigente = vendido + adit.saldo;
+  /* Só há estouro quando existe régua. Sem contrato lançado, `vigente`
+     é zero e QUALQUER custo pareceria estouro — a #2498 passou a acusar
+     R$ 2,2 mi acima de um orçamento que ninguém registrou. */
+  const acimaDoVendido = vigente > 0 && exec > vigente;
 
   const avulsas = useMemo(() => (obra.categorias || [])
     .flatMap((c) => (c.itens || []).filter((it) => it.avulso)), [obra.categorias]);
@@ -830,8 +850,14 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
       txt: <>Entrega próxima e ainda não está em execução — {nomes} precisa{criticosAtrasados.length === 1 ? "" : "m"} estar pronto{criticosAtrasados.length === 1 ? "" : "s"}</>,
     });
   }
+  /* Contra o VIGENTE, e o texto diz qual é a régua: com aditivo
+     aprovado, acusar estouro contra o contrato original seria acusar
+     obra que foi legitimamente ampliada. */
   if (acimaDoVendido) pendencias.push({
-    tom: "ruim", txt: <>O executivo já passou do valor vendido em contrato em {fmtBRL(exec - vendido)}</>,
+    tom: "ruim",
+    txt: adit.saldo
+      ? <>O executivo passou do orçamento vigente em {fmtBRL(exec - vigente)} <span className="dim">(contrato {fmtBRL(vendido)} + {fmtBRL(adit.saldo)} de aditivo)</span></>
+      : <>O executivo já passou do valor vendido em contrato em {fmtBRL(exec - vendido)}</>,
   });
   if (totals.criticos > 0) pendencias.push({
     tom: "ruim", txt: `${totals.criticos} ${totals.criticos === 1 ? "categoria em estouro crítico" : "categorias em estouro crítico"}`,
@@ -858,8 +884,36 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           sub={obra.dataEntrega ? `entrega em ${fmtData(new Date(`${obra.dataEntrega}T12:00:00`))}` : "sem data de entrega"} />
         <InicioNum rot="PENDÊNCIAS" cor={pendencias.length ? "var(--red)" : undefined} valor={pendencias.length}
           sub={pendencias.length ? "pedindo atenção" : "nada pedindo atenção"} />
-        <InicioNum rot="ORÇAMENTO CONTRATADO" valor={fmtCompactBRL(vendido)}
-          sub="conforme contrato" />
+        {/* ORÇAMENTO VIGENTE, não o original.
+
+            O card de Aditivos logo abaixo já mostrava "+R$ X aprovado"
+            enquanto esta manchete continuava no valor de contrato — dois
+            números na mesma tela contando histórias diferentes, e o de
+            cima é o que a pessoa lê de relance. Aditivo aprovado MUDA o
+            tamanho da obra; rascunho e "aguardando cliente" não entram,
+            que é a mesma regra do resto do app. */}
+        <InicioNum rot="ORÇAMENTO VIGENTE" valor={fmtCompactBRL(vigente)}
+          sub={adit.saldo
+            ? <>contrato {fmtBRL(vendido)}<br />{adit.saldo > 0 ? "+" : ""}{fmtBRL(adit.saldo)} de aditivo aprovado</>
+            /* Zero aqui nao e' "a obra vale zero": e' valor de contrato
+               que nunca foi lancado. Dizer "conforme contrato" sobre um
+               R$ 0,00 e' o painel afirmando o que nao sabe. */
+            : vigente > 0 ? "conforme contrato" : "sem valor de contrato lançado"} />
+        {/* O CUSTO ao lado do orçamento.
+
+            Ele já era calculado aqui e só servia pra disparar o alerta de
+            "passou do vendido": a tela dizia quanto a obra valia e nunca
+            quanto ela estava custando. Vermelho só quando passa — o resto
+            do tempo é número de acompanhamento, não de susto. */}
+        <InicioNum rot="CUSTO EXECUTIVO" cor={acimaDoVendido ? "var(--red)" : undefined}
+          valor={exec ? fmtCompactBRL(exec) : "—"}
+          sub={!exec ? "executivo ainda não carregado"
+            /* Sem contrato lançado não há régua pra comparar — mostrar
+               "R$ X acima" contra um zero acusaria estouro em toda obra
+               que ainda não teve o contrato registrado. */
+            : vigente <= 0 ? "custo do executivo — sem contrato pra comparar"
+            : exec > vigente ? `${fmtBRL(exec - vigente)} acima do vigente`
+            : `${fmtBRL(vigente - exec)} abaixo do vigente`} />
         {/* Os mesmos números das barras de Suprimentos e Execução, agora
             com o dinheiro: quanto já foi e quanto falta. */}
         <InicioNum rot="MATERIAL COMPRADO" valor={`${Math.round(totals.pct || 0)}%`}
@@ -1046,8 +1100,6 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   );
 }
 
-// Seta discreta entre os dois numeros do topo — o vendido VIRA o executivo.
-const ArrowRightIcon = () => <span className="dash-seta" aria-hidden="true">→</span>;
 
 
 
@@ -1574,7 +1626,15 @@ function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
   let matTotal = 0, matFeito = 0, moTotal = 0, moFeito = 0;
   let matFaltaReal = 0, matFaltaEstimativa = 0;
 
-  (o.categorias || []).forEach((cat) => {
+  /* COM os aditivos aprovados dentro.
+
+     `obraComprasStats` e `obraContratosStats` — que alimentam a Visao
+     geral da obra — ja usavam `categoriasComAditivos`; este resumo, que
+     alimenta o A COMPRAR e o A CONTRATAR do Inicio, usava a categoria
+     crua. O material e a mao de obra de um aditivo aprovado apareciam
+     numa tela e sumiam na outra, e a mesma pergunta tinha duas respostas
+     dependendo de onde se olhava. */
+  categoriasComAditivos(o.categorias, o.aditivos).forEach((cat) => {
     const itens = cat.itens || [];
     itens.forEach((it) => {
       if (it.ehTitulo) return;
@@ -1657,6 +1717,24 @@ function resumoDaObra(o, hoje = new Date(), filtroItem = null) {
  * data de entrega nao tem como ser recortada: ela fica de fora do
  * recorte e e' contada a parte, em vez de sumir calada.
  */
+/* A ordem em que as obras doem: atrasada primeiro, depois quem entrega
+   antes, e sem data de entrega por ultimo — obra sem data nao tem prazo
+   a cobrar, entao nao pode empurrar pra baixo quem tem.
+
+   Mora FORA do `resumoGeral` porque a lista do Inicio precisa da mesma
+   ordem e nem toda obra dela aparece em `linhas`: obra sem planilha fica
+   de fora do resumo e continua na tela. Duas ordens pra mesma pergunta e'
+   o painel discordando de si mesmo — e foi o que aconteceu ate' aqui, com
+   a lista saindo na ordem de carregamento enquanto o resumo ja vinha
+   ordenado. */
+function ordemDeUrgencia(a, b) {
+  const peso = (x) => (x.temAtraso ? 1 : 0);
+  if (peso(b) - peso(a)) return peso(b) - peso(a);
+  if (!a.dataEntrega) return 1;
+  if (!b.dataEntrega) return -1;
+  return a.dataEntrega < b.dataEntrega ? -1 : 1;
+}
+
 function resumoGeral(obras, { hoje = new Date(), horizonteDias = null, filtroItem = null, status = "pendente" } = {}) {
   const linhas = (obras || []).map((o) => resumoDaObra(o, hoje, filtroItem)).filter((L) => !L.semDados);
   const limite = horizonteDias == null ? null
@@ -1701,13 +1779,10 @@ function resumoGeral(obras, { hoje = new Date(), horizonteDias = null, filtroIte
   const ordena = (m) => [...m.values()].sort((a, b) => b.total - a.total);
   const somar = (f) => linhas.reduce((a, L) => a + f(L), 0);
   return {
-    linhas: linhas.sort((a, b) => {
-      // Atrasada primeiro; depois quem entrega antes; sem data por ultimo.
-      if ((b.atrasos.length > 0) - (a.atrasos.length > 0)) return (b.atrasos.length > 0) - (a.atrasos.length > 0);
-      if (!a.dataEntrega) return 1;
-      if (!b.dataEntrega) return -1;
-      return a.dataEntrega < b.dataEntrega ? -1 : 1;
-    }),
+    linhas: linhas.sort((a, b) => ordemDeUrgencia(
+      { temAtraso: a.atrasos.length > 0, dataEntrega: a.dataEntrega },
+      { temAtraso: b.atrasos.length > 0, dataEntrega: b.dataEntrega },
+    )),
     aComprar: ordena(mat),
     aContratar: ordena(mo),
     semData,
@@ -9047,6 +9122,9 @@ const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
 const CHAVE_MINHAS = "tkws.so.minhas";
 const CHAVE_SQUADS = "tkws.squads.fechados";
 const CHAVE_OBRAS_ABERTAS = "confere:obras-abertas";
+/* Como a lista de obras e' ordenada: "numero" (crescente, o padrao) ou
+   "squad" (agrupada). Pedido dela em 19/09/2026. */
+const CHAVE_MODO_OBRAS = "confere:obras-modo";
 
 /* A obra: tres volumes e a linha do chao.
 
@@ -9163,6 +9241,9 @@ const SLUG_MODULO = {
   a_contratar: "gestao",
   aditivos: "aditivos",
   mehoo: "mehoo",
+  /* Faltava, e sem slug o modulo caia em "/" e nao sobrevivia a um F5 —
+     justo o unico que o perfil "Canal de compra" enxerga. */
+  painel_canal: "painel-canal",
   equipe: "equipe",
   catalogo: "catalogo",
   gerador: "gerador",
@@ -9254,7 +9335,10 @@ const MODULOS = [
   { id: "eap", nome: "EAP Sienge", sub: "apropriação do orçamento", Icone: Calculator },
   // Por ultimo: e' o que se abre com menos frequencia — obra concluida
   // ja saiu do dia a dia, e ela estava no meio do caminho do que nao saiu.
-  { id: "arquivo", nome: "Arquivo", sub: "obras concluídas", Icone: Archive },
+  /* "Finalizadas", e nao "Arquivo" (pedido dela, 19/09/2026): arquivo e'
+     palavra de sistema, nao diz o que tem dentro. O `id` e o endereco
+     continuam "arquivo" — trocar o endereco quebraria link salvo. */
+  { id: "arquivo", nome: "Finalizadas", sub: "obras que ja' terminaram", Icone: Archive },
 ];
 
 /* Um simbolo por squad, pra barra recolhida.
@@ -9285,12 +9369,59 @@ function IconeSquad({ nome, size = 13 }) {
   return <Building2 size={size} />;
 }
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS, pendentesCount = 0, mostrarObras = true }) {
-  /* Início sai da lista dobrável de módulos e vira botão fixo no topo —
-     o resto de `modulos` (permissão já aplicada por quem chama) segue
-     exatamente como antes, só sem o Início duplicado dentro dele. */
-  const inicioModulo = modulos.find((m) => m.id === "inicio");
-  const outrosModulos = modulos.filter((m) => m.id !== "inicio");
+/* Novas obras e Finalizadas NAO sao destinos do trilho: sao OBRAS.
+ *
+ * Pedido dela em 19/09/2026 — "o botao de novas obras, sera que eu nao deixo
+ * dentro de obras?" — e o mesmo vale pras finalizadas. Ter destino proprio no
+ * trilho separava as duas do lugar onde se pensa em obra. Elas descem pro pe
+ * do painel, e o par "as que ainda nao comecaram / as que ja' terminaram"
+ * emoldura a lista das que estao em andamento.
+ *
+ * A TELA das duas continua inteira: comecar uma obra e consultar as
+ * finalizadas sao listas com acao, nao cabem em 232px. Muda de onde se entra.
+ *
+ * Com isso o trilho fica so' com ferramenta e area — tudo que tem forma de
+ * obra vive no painel. */
+const DESTINOS_NO_PAINEL = new Set(["novas", "arquivo"]);
+
+/* Equipe fica no pe do trilho, separada por um fio: e' cadastro, nao trabalho
+   do dia. */
+const DESTINOS_NO_PE = new Set(["equipe"]);
+
+/* A ordem da lista: pelo CODIGO, crescente.
+
+   Pedido dela em 19/09/2026, e e' a ordem que nao depende de nada: nao muda
+   quando a obra troca de squad nem quando alguem renomeia. O codigo e' texto
+   no banco, entao compara como numero quando os dois forem numero — senao
+   "2450" viria antes de "999". */
+const porCodigo = (a, b) => {
+  const x = Number(a.codigo), y = Number(b.codigo);
+  if (Number.isFinite(x) && Number.isFinite(y)) return x - y;
+  return String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true });
+};
+
+/* A BARRA LATERAL: um trilho de destinos e um painel do lugar.
+ *
+ * Reescrita em 19/09/2026. A barra anterior empilhava tres coisas numa coluna
+ * so': os 12 destinos (reduzidos a uma tira de glifos de 16px SEM ROTULO, no
+ * rodape, abaixo de tudo), a lista de obras com quatro filtros, e o usuario.
+ * Recolhida a 62px ela virava outro app — os nomes sumiam e apareciam codigos
+ * soltos misturados a simbolos de squad e a icones de modulo.
+ *
+ * Agora sao duas colunas com uma pergunta cada:
+ *   TRILHO (56px, sempre) — "onde posso ir". Os destinos, com o nome no hover.
+ *   PAINEL (232px, condicional) — "o que tem aqui dentro". Hoje, a lista de
+ *     obras; depois, os grupos do Catalogo e os canais do Painel por canal.
+ *
+ * O painel SO' existe onde ha' o que percorrer. Em Inicio, Equipe, Banco de
+ * Precos e EAP nao ha' lista, entao ele nao aparece e a tela e' do conteudo.
+ *
+ * Tres planos claros, e a ordem e' o contrario do costume: quase todo app poe
+ * a barra em cinza e o conteudo em branco. Aqui o BRANCO E' A LISTA, porque
+ * ela e' texto que se le' — nao moldura. Fica um espinho cinza, uma lista
+ * branca, um campo cinza.
+ */
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null }) {
   /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
      quer reativar o filtro a cada F5. */
   const [soMinhas, setSoMinhas] = useState(() => {
@@ -9299,6 +9430,15 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   useEffect(() => {
     try { localStorage.setItem(CHAVE_MINHAS, soMinhas ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [soMinhas]);
+
+  /* Por numero ou por squad (pedido dela, 19/09/2026). O padrao e' numero:
+     e' a ordem estavel, e casa com o codigo sendo a voz da linha. */
+  const [modo, setModo] = useState(() => {
+    try { return localStorage.getItem(CHAVE_MODO_OBRAS) === "squad" ? "squad" : "numero"; } catch { return "numero"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(CHAVE_MODO_OBRAS, modo); } catch { /* modo anonimo */ }
+  }, [modo]);
 
   const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
 
@@ -9326,8 +9466,8 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   const iniciais = (meuNome || usuario || "?").split(/\s+/).slice(0, 2)
     .map((x) => x.charAt(0).toUpperCase()).join("") || "?";
 
-  /* Quais squads estao dobrados. Guardado, porque quem trabalha num squad
-     so nao quer dobrar os outros a cada F5. */
+  /* Quais squads estao dobrados — so' vale no modo squad. Guardado, porque
+     quem trabalha num squad so nao quer dobrar os outros a cada F5. */
   const [fechados, setFechados] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(CHAVE_SQUADS) || "[]")); } catch { return new Set(); }
   });
@@ -9337,43 +9477,28 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_SQUADS, JSON.stringify([...n])); } catch { /* modo anonimo */ }
     return n;
   });
-  // Guarda a escolha: quem recolhe quer a tela larga, e ter que recolher
-  // de novo a cada F5 e o tipo de atrito que faz a pessoa desistir do
-  // recurso.
-  const [recolhida, setRecolhida] = useState(() => {
+
+  /* Recolher deixou de encolher a barra inteira: agora esconde so' o PAINEL,
+     e o trilho nunca some. Era o encolhimento que fazia a barra virar outro
+     app a 62px. A chave continua a mesma, com sentido novo. */
+  const [painelEscondido, setPainelEscondido] = useState(() => {
     try { return localStorage.getItem(CHAVE_SIDEBAR) === "1"; } catch { return false; }
   });
   useEffect(() => {
-    try { localStorage.setItem(CHAVE_SIDEBAR, recolhida ? "1" : "0"); } catch { /* modo anonimo */ }
-  }, [recolhida]);
+    try { localStorage.setItem(CHAVE_SIDEBAR, painelEscondido ? "1" : "0"); } catch { /* modo anonimo */ }
+  }, [painelEscondido]);
 
-  /* "Obras" dobra dentro da propria barra — nasce ABERTA (o oposto dos
-     modulos, de proposito: obra e' o que se abre o dia inteiro, modulo e'
-     o que se abre de vez em quando, mesma razao de `modulosAbertos` mais
-     abaixo). Guardado, pra quem prefere a barra mais enxuta nao ter que
-     fechar de novo a cada F5. */
-  const [obrasAbertas, setObrasAbertas] = useState(() => {
-    try { return localStorage.getItem(CHAVE_OBRAS_ABERTAS) !== "0"; } catch { return true; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(CHAVE_OBRAS_ABERTAS, obrasAbertas ? "1" : "0"); } catch { /* modo anonimo */ }
-  }, [obrasAbertas]);
+  /* O rotulo do hover no trilho.
 
-  /* Modulos nascem SEMPRE fechados, e essa escolha nao e' guardada.
+     Um listener so', delegado, em vez de handler em cada botao. Ele le o
+     proprio `title` — que ja existe e ja esta certo em todos — e tira o
+     atributo enquanto o mouse esta em cima, pra nao aparecerem dois rotulos:
+     o meu e o do navegador, que demora um segundo e fica por cima.
 
-     E' o contrario do resto da barra de proposito: modulo se abre pra ir
-     a um lugar e nao se volta pra ele, entao deixar aberto de ontem so
-     rouba as linhas que a lista de obras usa hoje. Abrir e' um clique. */
-  const [modulosAbertos, setModulosAbertos] = useState(false);
-  const alternarModulos = () => setModulosAbertos((v) => !v);
-
-  /* O rotulo do hover, quando a barra esta recolhida.
-
-     Um listener so', delegado na barra inteira, em vez de handler em cada
-     um dos vinte botoes. Ele le o proprio `title` do botao — que ja
-     existe e ja esta certo em todos — e tira o atributo enquanto o mouse
-     esta em cima, pra nao aparecerem dois rotulos: o meu e o do
-     navegador, que demora um segundo e fica por cima. */
+     Agora vale pro trilho inteiro, e nao so' pra barra recolhida: no trilho
+     TODO destino e' icone sem rotulo. Foi assim que a Equipe ficou impossivel
+     de achar na versao antiga — existia, no sexto icone, sem nome em lugar
+     nenhum ate' alguem abrir o grupo. */
   const [dica, setDica] = useState(null);
   const barraRef = useRef(null);
 
@@ -9382,16 +9507,10 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     if (!el) { setDica(null); return; }
     let alvo = null;
 
-    /* A dica valia SO' com a barra recolhida. Mas a tira de modulos e'
-       de icones tambem com a barra aberta — nove escudos, caixas e
-       cifroes sem rotulo — e ali a pessoa ficava com o `title` do
-       navegador, que demora quase um segundo. Foi assim que a Equipe
-       ficou impossivel de achar: ela existia, no sexto icone, sem nome
-       em lugar nenhum ate alguem abrir o grupo. */
     const entrar = (e) => {
       const b = e.target.closest("[title]");
       if (!b || !el.contains(b) || b === alvo) return;
-      if (!recolhida && !b.closest(".nav-tira")) return;
+      if (!b.closest(".trilho")) return;
       sair();
       const t = b.getAttribute("title");
       if (!t) return;
@@ -9419,274 +9538,244 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
       window.removeEventListener("scroll", sair, true);
       sair();
     };
-    /* `[recolhida]`, e nao sem lista.
-
-       Sem lista, o efeito se reinstala a cada render — e mostrar a dica
-       E' um render. A limpeza rodava logo em seguida e apagava a dica que
-       tinha acabado de aparecer: o listener funcionava (chegava a tirar o
-       title do botao) e nada aparecia na tela.
-
-       `modulosAbertos` entra junto porque abrir o grupo troca a tira de
-       icones por lista com nome: os botoes sao outros, e o listener
-       precisa reinstalar pra alcancar os novos. */
-  }, [recolhida, modulosAbertos]);
-
-
+    /* Lista vazia NAO serve: sem ela o efeito se reinstala a cada render — e
+       mostrar a dica E' um render. A limpeza rodava logo em seguida e apagava
+       a dica que tinha acabado de aparecer. */
+  }, []);
 
   const [search, setSearch] = useState("");
-  const [onlyAlert, setOnlyAlert] = useState(false);
-  const [squadFilter, setSquadFilter] = useState("todos");
 
-  const squads = Array.from(new Set(obras.map((o) => o.squad || "Outras obras"))).sort();
-
-  const filtered = obras.filter((o) => {
+  const filtradas = obras.filter((o) => {
     const q = search.trim().toLowerCase();
-    const matchesSearch = !q || `${o.nome} ${o.codigo} ${o.cliente}`.toLowerCase().includes(q);
-    const matchesAlert = !onlyAlert || obraAlertCount(o) > 0;
-    const matchesSquad = squadFilter === "todos" || (o.squad || "Outras obras") === squadFilter;
+    const casaBusca = !q || `${o.nome} ${o.codigo} ${o.cliente}`.toLowerCase().includes(q);
     /* Obra SEM GC passa no filtro de propósito: enquanto os vínculos não
        estiverem todos feitos, esconder o que não tem dono deixaria obra
        viva fora da tela de todo mundo. */
-    const matchesGC = !soMinhas || !usuario || !o.gc || obraDoGC(o, usuario);
-    return matchesSearch && matchesAlert && matchesSquad && matchesGC;
-  });
+    const casaGC = !soMinhas || !usuario || !o.gc || obraDoGC(o, usuario);
+    return casaBusca && casaGC;
+  }).sort(porCodigo);
 
-  const groups = {};
-  filtered.forEach((o) => {
-    const key = o.squad || "Outras obras";
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(o);
+  const porSquad = {};
+  filtradas.forEach((o) => {
+    const k = o.squad || "Outras obras";
+    (porSquad[k] = porSquad[k] || []).push(o);
   });
-  const groupNames = Object.keys(groups).sort();
+  const squadsNaTela = Object.keys(porSquad).sort();
+
+  /* O painel so' existe onde ha' o que percorrer — hoje, so' dentro da obra.
+     Catalogo, Aditivos e Painel por canal entram depois. */
+  const naObra = modulo === "comparativo";
+  const temPainel = naObra && mostrarObras && !painelEscondido;
+
+  const noTrilho = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
+  const destinosTopo = noTrilho.filter((m) => !DESTINOS_NO_PE.has(m.id));
+  const destinosPe = noTrilho.filter((m) => DESTINOS_NO_PE.has(m.id));
+  /* Os dois do pe do painel, na ordem da vida da obra: as que vao comecar, e
+     depois as que terminaram. So' aparecem pra quem tem o modulo. */
+  const novasNoPainel = modulos.find((m) => m.id === "novas");
+  const finalizadasNoPainel = modulos.find((m) => m.id === "arquivo");
+
+  const badgeDoDestino = (m) => (m.id === "equipe" && pendentesCount > 0
+    ? <span className="trilho-badge espera">{pendentesCount}</span>
+    : null);
+
+  const botaoDestino = (m) => (
+    <button key={m.id} className={`trilho-item ${modulo === m.id ? "ativo" : ""}`}
+      onClick={() => onModulo(m.id)} title={m.nome}>
+      <m.Icone size={18} />
+      {badgeDoDestino(m)}
+    </button>
+  );
+
+  const linhaDaObra = (o, comSimbolo) => {
+    const alertas = obraAlertCount(o);
+    const trava = travas?.get?.(String(o.codigo)) || null;
+    return (
+      <button key={o.id} className={`obra-linha ${selected === o.id ? "ativa" : ""} ${comSimbolo ? "" : "sem-simbolo"}`}
+        onClick={() => onSelect(o.id)} title={`#${o.codigo} · ${o.nome}`}>
+        {/* O simbolo do squad so' na lista por numero: no modo squad ele ja'
+            esta' no cabecalho do grupo, e dize-lo duas vezes por obra era um
+            dos defeitos da barra antiga. */}
+        {comSimbolo && <span className="obra-squad"><IconeSquad nome={o.squad || "Outras obras"} size={13} /></span>}
+        {/* O CODIGO PRIMEIRO. E' assim que a equipe fala — ninguem diz "Ed.
+            Sixteen, 502", todo mundo diz "a 2597" — e e' o numero que aparece
+            em pedido, contrato, Sienge e aditivo. */}
+        <span className="obra-cod mono">{o.codigo}</span>
+        <span className="obra-nome">{o.nome}</span>
+        {trava && <Lock size={11} className="obra-trava" />}
+        {alertas > 0 && <span className="obra-badge">{alertas}</span>}
+      </button>
+    );
+  };
 
   return (
-    <aside className={`sidebar ${recolhida ? "recolhida" : ""}`} ref={barraRef}>
+    <aside className={`barra ${temPainel ? "" : "sem-painel"}`} ref={barraRef}>
       {dica && (
         <div className="dica-lateral" style={{ left: dica.x, top: dica.y, transform: "translateY(-50%)" }}>
           {dica.texto}
         </div>
       )}
-      {/* No TOPO, não no rodapé: recolher é uma decisão que se toma ao
-          chegar, e no pé da lista o botão ficava abaixo da dobra em tela
-          pequena — existia e ninguém achava. */}
-      <button
-        className="sidebar-toggle"
-        onClick={() => setRecolhida((v) => !v)}
-        title={recolhida ? "Expandir menu" : "Recolher menu"}
-      >
-        {recolhida ? <ChevronRight size={15} /> : <><ChevronLeft size={14} /> <span>Recolher</span></>}
-      </button>
 
-      <div className="sidebar-scroll">
-        {/* Início e Obras SEMPRE visíveis, no topo — é o que se abre o dia
-            inteiro. O resto dos módulos continua dobrado lá embaixo, sem
-            mudar em nada (ver `nav-modulos` mais abaixo). */}
-        <div className="nav-list nav-list-topo">
-          {inicioModulo && (
-            <button className={`nav-item ${modulo === "inicio" ? "active" : ""}`}
-              onClick={() => onModulo("inicio")} title={inicioModulo.nome}>
-              <inicioModulo.Icone size={16} className="nav-icon" />
-              <div className="nav-item-text">
-                <div className="nav-item-name">{inicioModulo.nome}</div>
-              </div>
+      <nav className="trilho">
+        {destinosTopo.map((m) => (
+          m.id === "inicio" ? (
+            <React.Fragment key={m.id}>
+              {botaoDestino(m)}
+              {/* Quem nao abre obra (Mehoo, Canal de compra) nao tem este
+                  destino: a tela dele e' o painel proprio, inteiro. */}
+              {mostrarObras && (
+                /* CLICAR EM "OBRAS" SO' MOSTRA — nunca esconde.
+                   Relato dela em 19/09/2026 sobre a barra antiga: "depois que
+                   eu entrar na obra, no primeiro clique dentro a barra da
+                   sidebar recolhe". Era o botao "Obras" dobrando a lista: a
+                   pessoa clica em Obras esperando VER as obras, e some tudo.
+                   Eu tinha repetido a armadilha aqui, com o padrao de
+                   "clicar no ativo alterna". Esconder tem botao proprio, no
+                   pe do trilho. */
+                <button className={`trilho-item ${naObra ? "ativo" : ""}`} title="Obras"
+                  onClick={() => {
+                    setPainelEscondido(false);
+                    if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id);
+                  }}
+                  disabled={!obras.length}>
+                  {/* CAPACETE, e nao predio (escolha dela, 19/09/2026): num app
+                      de obra tudo e' predio, entao o predio nao distinguia
+                      nada. Em portugues, capacete quer dizer obra sem precisar
+                      pensar, e nenhuma outra tela usa esse simbolo. */}
+                  <HardHat size={18} />
+                </button>
+              )}
+            </React.Fragment>
+          ) : botaoDestino(m)
+        ))}
+
+        <div className="trilho-pe">
+          {/* Esconder o painel e' decisao sobre a BARRA, entao mora na barra —
+              e e' o unico jeito de esconder, pra clicar num destino nunca
+              tirar nada da tela. So' aparece quando ha' painel pra esconder. */}
+          {mostrarObras && naObra && (
+            <button className="trilho-item trilho-dobrar" title={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}
+              onClick={() => setPainelEscondido((v) => !v)}>
+              {painelEscondido ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
             </button>
           )}
-          {/* Quem nao abre obra (Mehoo) nao tem a lista: o painel dela e' a tela inteira. */}
-          {mostrarObras && <button className="nav-item nav-item-obras" onClick={() => setObrasAbertas((v) => !v)}
-            title={obrasAbertas ? "Recolher Obras" : "Abrir Obras"}>
-            <Building2 size={16} className="nav-icon" />
-            <div className="nav-item-text">
-              <div className="nav-item-name">Obras</div>
-            </div>
-            <span className="nav-count">{obras.length}</span>
-            {obrasAbertas
-              ? <ChevronDown size={13} className="dim nav-item-chevron" />
-              : <ChevronRight size={13} className="dim nav-item-chevron" />}
-          </button>}
-        </div>
-        {mostrarObras && obrasAbertas && <>
-        <div className="obra-search">
-          <Search size={13} className="dim" />
-          <input placeholder="Filtrar por nome, código, cliente..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
-        </div>
-
-        {/* OS TRES FILTROS NUMA LINHA SO.
-
-            Eram tres formas diferentes pra mesma funcao — chip solto,
-            linha de chips, botao de largura inteira com borda — e juntos
-            comiam 260px antes da primeira obra aparecer. Numa lista de
-            quarenta obras, isso e' a lista inteira empurrada pra fora da
-            tela por controles que quase sempre estao no padrao. */}
-        <div className="squad-filter">
-          <button className={`squad-chip ${soMinhas ? "active" : ""}`}
-            onClick={() => setSoMinhas((v) => !v)}
-            title={usuario ? `Obras em que ${nomeDoEmail(usuario)} é o GC` : "Entre para filtrar pelas suas obras"}>
-            <ShieldCheck size={11} /> Minhas{nMinhas > 0 ? ` · ${nMinhas}` : ""}
+          {destinosPe.map(botaoDestino)}
+          <button ref={perfilRef} className={`trilho-perfil ${menuPerfil ? "aberto" : ""}`}
+            onClick={() => setMenuPerfil((v) => !v)} title={meuNome || usuario || "Não identificado"}>
+            <span className="avatar avatar-sm">{iniciais}</span>
           </button>
-          <button className={`squad-chip ${onlyAlert ? "active alerta" : ""}`} onClick={() => setOnlyAlert((v) => !v)}
-            title="Só as obras com alerta">
-            <AlertTriangle size={11} /> Alertas
-          </button>
-          <span className="chip-sep" />
-          {/* "Todos" e' o estado PADRAO — ele deixou de ser o elemento
-              mais escuro da barra. Preto so' quando alguem escolheu
-              alguma coisa; senao o que grita e' "nada esta filtrado". */}
-          <button className={`squad-chip neutro ${squadFilter === "todos" ? "on" : ""}`} onClick={() => setSquadFilter("todos")}>Todos</button>
-          {squads.map((s) => (
-            <button key={s} className={`squad-chip ${squadFilter === s ? "active" : ""}`} onClick={() => setSquadFilter(s)}
-              title={s}>{s.replace(/^Squad\s+/i, "")}</button>
-          ))}
         </div>
+      </nav>
 
-        <button className={`alert-toggle escondido ${onlyAlert ? "active" : ""}`} onClick={() => setOnlyAlert((v) => !v)}>
-          <AlertTriangle size={12} /> Somente com alertas
-        </button>
-
-        <div className="scroll-list">
-          {obras.length === 0 && (
-            <div className="no-results">
-              Nenhuma obra iniciada ainda.
-              {novasCount > 0 && <> Veja <button className="link-inline" onClick={() => onModulo("novas")}>Novas obras</button>.</>}
+      {menuPerfil && (
+        <div className="perfil-menu perfil-menu-trilho" ref={menuRef}>
+          <div className="perfil-cab">
+            <div className="avatar avatar-sm">{iniciais}</div>
+            <div className="perfil-cab-txt">
+              <div className="perfil-cab-nome">{meuNome || "Não identificado"}</div>
+              <div className="perfil-cab-email">{usuario || "sem sessão"}</div>
             </div>
+          </div>
+          <div className="perfil-sep" />
+          <button className="perfil-sair" onClick={onSair}>
+            <LogOut size={14} /> Sair
+          </button>
+        </div>
+      )}
+
+      {temPainel && (
+        <div className="painel">
+          <div className="painel-cab">
+            <span className="painel-nome">Obras <span className="painel-conta mono">{obras.length}</span></span>
+            {/* Dois modos, dois links. Nao e' um filtro: os dois mostram a
+                lista inteira, muda so' a ordem de leitura. */}
+            <span className="painel-modos">
+              <button className={modo === "numero" ? "on" : ""} onClick={() => setModo("numero")}
+                title="Todas as obras em ordem de número">número</button>
+              <span className="painel-modos-sep">|</span>
+              <button className={modo === "squad" ? "on" : ""} onClick={() => setModo("squad")}
+                title="As obras agrupadas por squad">squad</button>
+            </span>
+          </div>
+
+          {/* AS NOVAS OBRAS NO TOPO, antes da busca.
+              Estavam no pe' e ela reparou: "achei muito pequeno no final da
+              tela, pode passar despercebido". O problema era POSICAO, nao
+              tamanho — o fim de uma lista e' onde as coisas vao pra ser
+              ignoradas. Fonte normal, escolha dela: o destaque vem do lugar e
+              do fundo, nao do corpo da letra.
+
+              O numero vem antes do rotulo porque e' ele que faz reparar. E so'
+              aparece quando ha' novas: zero obra esperando nao ocupa o topo de
+              nada.
+
+              Com isto o painel le' na ordem da vida de uma obra: as que vao
+              comecar, as que estao em andamento, as que terminaram. */}
+          {novasNoPainel && novasCount > 0 && (
+            <button className={`painel-novas ${modulo === "novas" ? "ativo" : ""}`}
+              onClick={() => onModulo("novas")} title={novasNoPainel.sub}>
+              <novasNoPainel.Icone size={13} />
+              <span className="painel-novas-n mono">{novasCount}</span>
+              <span>{novasCount === 1 ? "nova obra" : "novas obras"}</span>
+            </button>
           )}
-          {obras.length > 0 && filtered.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
-          {groupNames.map((squadName) => (
-            <div key={squadName} className="squad-group">
-              {/* O rotulo do squad virou botao: dobrar o que nao se esta
-                  tocando e' o jeito mais curto de caber quarenta obras
-                  numa coluna. A obra ABERTA nunca fica escondida — dobrar
-                  o squad dela faria a barra parar de dizer onde voce
-                  esta. */}
-              {/* Fecha qualquer um, inclusive o da obra aberta. Tentei
-                  segurar o squad da obra atual aberto pra barra nunca
-                  parar de dizer onde a pessoa esta — mas isso virou um
-                  squad que nao fecha, e um botao que nao faz o que diz e'
-                  pior que a informacao que ele protegia. */}
-              <button className="squad-group-label" onClick={() => alternarSquad(squadName)}
-                title={fechados.has(squadName) ? `Abrir ${squadName}` : `Recolher ${squadName}`}>
-                {fechados.has(squadName) ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
-                {/* Só aparece na barra recolhida, onde o nome não cabe. */}
-                <span className="squad-simbolo"><IconeSquad nome={squadName} /></span>
-                <span>{squadName} · {groups[squadName].length}</span>
-                {/* O ponto avisa que a obra aberta esta ai dentro. */}
-                {fechados.has(squadName) && (groups[squadName] || []).some((o) => o.id === selected) && (
-                  <span className="squad-tem-aberta" title="A obra aberta está neste squad" />
-                )}
-              </button>
-              {!fechados.has(squadName) && (
-              <div className="nav-list">
-                {groups[squadName].map((o) => {
-                  const alertCount = obraAlertCount(o);
-                  const active = selected === o.id;
-                  return (
-                    <button key={o.id} className={`nav-item ${active ? "active" : ""}`} onClick={() => onSelect(o.id)}
-                      /* O numero na frente: e' por ele que a obra e'
-                         chamada em pedido, contrato e Sienge, e e' o que a
-                         pessoa esta procurando quando passa o mouse. */
-                      title={`#${o.codigo} · ${o.nome}`}>
-                      <IconeObra size={16} className="nav-icon" />
-                      {/* Recolhida, o predio nao informa nada: num app de
-                          obra tudo e' predio, e seis linhas viravam seis
-                          icones iguais. O CENTRO DE CUSTO e' como a obra
-                          e' chamada em pedido, contrato, Sienge e aditivo
-                          — quatro digitos cabem nos 62px e dispensam o
-                          hover. */}
-                      <span className="nav-cod mono">{o.codigo}</span>
-                      <div className="nav-item-text">
-                        <div className="nav-item-name">{o.nome}</div>
-                        {/* A area nunca vem preenchida do Monday, e o "m²"
-                            sozinho parecia dado faltando. O squad existe
-                            sempre. */}
-                        <div className="nav-item-sub mono">#{o.codigo} · {o.squad || "sem squad"}</div>
-                      </div>
-                      {alertCount > 0 && <span className="nav-badge">{alertCount}</span>}
-                    </button>
-                  );
-                })}
+
+          <div className="obra-search painel-busca">
+            <Search size={13} className="dim" />
+            <input placeholder="Filtrar por nome, código, cliente..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
+          </div>
+
+          <button className={`painel-minhas ${soMinhas ? "on" : ""}`} onClick={() => setSoMinhas((v) => !v)}
+            title={usuario ? `Obras em que ${nomeDoEmail(usuario)} é o GC` : "Entre para filtrar pelas suas obras"}>
+            <ShieldCheck size={11} /> Minhas{nMinhas > 0 ? ` ${nMinhas}` : ""}
+          </button>
+
+          <div className="painel-lista">
+            {obras.length === 0 && (
+              <div className="no-results">
+                Nenhuma obra iniciada ainda.
+                {novasCount > 0 && <> Veja <button className="link-inline" onClick={() => onModulo("novas")}>Novas obras</button>.</>}
               </div>
+            )}
+            {obras.length > 0 && filtradas.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
+
+            {modo === "numero"
+              ? filtradas.map((o) => linhaDaObra(o, true))
+              : squadsNaTela.map((nome) => (
+                <div key={nome} className="squad-bloco">
+                  <button className="squad-cab" onClick={() => alternarSquad(nome)}
+                    title={fechados.has(nome) ? `Abrir ${nome}` : `Recolher ${nome}`}>
+                    <IconeSquad nome={nome} size={13} />
+                    <span className="squad-cab-nome">{nome.replace(/^Squad\s+/i, "")}</span>
+                    <span className="squad-cab-conta mono">{porSquad[nome].length}</span>
+                    {/* O ponto avisa que a obra aberta esta' ai dentro. */}
+                    {fechados.has(nome) && porSquad[nome].some((o) => o.id === selected) && (
+                      <span className="squad-tem-aberta" title="A obra aberta está neste squad" />
+                    )}
+                  </button>
+                  {!fechados.has(nome) && porSquad[nome].map((o) => linhaDaObra(o, false))}
+                </div>
+              ))}
+          </div>
+
+          {/* O PE DO PAINEL, na ordem da vida da obra: as que ainda nao
+              comecaram, e as que ja' terminaram. Sao obras, entao moram aqui
+              e nao no trilho (pedido dela, 19/09/2026). */}
+          {finalizadasNoPainel && (
+            <div className="painel-pe">
+              {finalizadasNoPainel && (
+                <button className={`painel-pe-item ${modulo === "arquivo" ? "ativo" : ""}`}
+                  onClick={() => onModulo("arquivo")} title={finalizadasNoPainel.sub}>
+                  <finalizadasNoPainel.Icone size={14} />
+                  <span>{finalizadasNoPainel.nome}</span>
+                  {arquivoCount > 0 && <span className="painel-pe-conta neutro">{arquivoCount}</span>}
+                </button>
               )}
             </div>
-          ))}
+          )}
         </div>
-        </>}
-
-        {/* Os modulos ocupavam dez linhas — cinco itens de duas linhas cada
-            — e empurravam a lista de obras pra fora da tela. Obra e' o
-            que se abre o dia inteiro; modulo e' o que se abre de vez em
-            quando. Recolhido eles viram uma tira de icones: uma linha, e
-            tudo continua a um clique. */}
-        {/* Os modulos moram no PE da barra, colados embaixo. Antes eles
-            vinham logo depois da lista de obras e sobrava um vazio grande
-            embaixo deles — pareciam soltos no meio da coluna. */}
-        <div className="nav-modulos">
-        <button className="nav-group-toggle" onClick={alternarModulos}
-          title={modulosAbertos ? "Recolher módulos" : "Abrir módulos"}>
-          <span>MÓDULOS</span>
-          {!modulosAbertos && novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
-          {modulosAbertos ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </button>
-
-        {modulosAbertos ? (
-          <div className="nav-list">
-            {outrosModulos.map((m) => (
-              <button key={m.id} className={`nav-item ${modulo === m.id ? "active" : ""}`}
-                onClick={() => onModulo(m.id)} title={m.nome}>
-                <m.Icone size={16} className="nav-icon" />
-                <div className="nav-item-text">
-                  <div className="nav-item-name">{m.nome}</div>
-                  <div className="nav-item-sub">{m.sub}</div>
-                </div>
-                {m.id === "novas" && novasCount > 0 && <span className="nav-badge nav-badge-novo">{novasCount}</span>}
-                {m.id === "equipe" && pendentesCount > 0 && <span className="nav-badge nav-badge-espera">{pendentesCount}</span>}
-                {m.id === "arquivo" && arquivoCount > 0 && <span className="nav-count">{arquivoCount}</span>}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="nav-tira">
-            {outrosModulos.map((m) => (
-              <button key={m.id} className={`nav-tira-item ${modulo === m.id ? "active" : ""}`}
-                onClick={() => onModulo(m.id)} title={m.nome}>
-                <m.Icone size={16} />
-                {m.id === "novas" && novasCount > 0 && <span className="nav-tira-badge">{novasCount}</span>}
-                {m.id === "equipe" && pendentesCount > 0 && <span className="nav-tira-badge espera">{pendentesCount}</span>}
-              </button>
-            ))}
-          </div>
-        )}
-        </div>
-      </div>
-
-      {/* Era um retrato: nome e e-mail escritos no codigo, e um chevron
-          que nao abria nada. Quem entrasse com outra conta via "Priscila
-          Wayhs" ali — e nao tinha como sair. */}
-      <div className="sidebar-footer">
-        {menuPerfil && (
-          <div className="perfil-menu" ref={menuRef}>
-            <div className="perfil-cab">
-              <div className="avatar avatar-sm">{iniciais}</div>
-              <div className="perfil-cab-txt">
-                <div className="perfil-cab-nome">{meuNome || "Não identificado"}</div>
-                <div className="perfil-cab-email">{usuario || "sem sessão"}</div>
-              </div>
-            </div>
-            <div className="perfil-sep" />
-            <button className="perfil-sair" onClick={onSair}>
-              <LogOut size={14} /> Sair
-            </button>
-          </div>
-        )}
-        <button ref={perfilRef} className={`profile ${menuPerfil ? "aberto" : ""}`} onClick={() => setMenuPerfil((v) => !v)}
-          title={usuario || "Não identificado"}>
-          <div className="avatar avatar-sm">{iniciais}</div>
-          <div className="profile-text">
-            <div className="profile-name">{meuNome || "Não identificado"}</div>
-            <div className="profile-email">{usuario || "sem sessão"}</div>
-          </div>
-          {menuPerfil ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
-        </button>
-      </div>
+      )}
     </aside>
   );
 }
@@ -17203,6 +17292,19 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
   const t = r.totais;
 
   const semEntrega = obras.filter((o) => !o.dataEntrega && (o.categorias || []).some((c) => (c.itens || []).length));
+
+  /* A lista sai na ordem de quem doi primeiro, a MESMA do resumo.
+
+     Ate' aqui ela saia na ordem de carregamento: a obra atrasada que
+     entrega semana que vem podia estar no fim, embaixo de quatro que
+     entregam ano que vem. O `resumoGeral` ja ordenava — a lista so' nao
+     usava. O atraso vem de `r.linhas`, que e' quem sabe dele; obra sem
+     planilha nao esta la' e conta como sem atraso, que e' verdade: sem
+     planilha nao ha compra com prazo vencido. */
+  const temAtrasoPorCodigo = useMemo(
+    () => new Map(r.linhas.map((L) => [L.codigo, L.atrasos.length > 0])),
+    [r.linhas],
+  );
   const meuNome = (equipe || []).find((p) => p.email === usuario)?.nome || nomeDoEmail(usuario);
   const meuCargo = (equipe || []).find((p) => p.email === usuario)?.cargo || "";
   /* Coordenação enxerga o painel inteiro, mesmo que por acaso também
@@ -17210,6 +17312,27 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
      pra quem acompanha só a própria carteira, não pra quem coordena
      todo mundo. */
   const minhas = meuCargo === "Coordenação" ? [] : obras.filter((o) => obraDoGC(o, usuario));
+  /* ENTREGAS DO TRIMESTRE — a pergunta de segunda-feira de manhã.
+
+     A data de cada obra já existia e o alerta dos 90 dias já falava do
+     prazo, mas nada respondia "o que entrega nos próximos meses" sem ler
+     obra por obra. Aqui é leitura de calendário, não de pendência: entra
+     obra em dia também, porque saber que três entregam em outubro é
+     planejamento, não alarme.
+
+     Só obra com data: sem data não há o que colocar no calendário — e
+     essa ausência já tem alerta próprio na lista ao lado. */
+  const entregasProximas = useMemo(() => obras
+    .filter((o) => o.dataEntrega)
+    .map((o) => ({ o, dias: diasAte(new Date(`${o.dataEntrega}T12:00:00`)) }))
+    .filter(({ dias }) => dias <= 90)
+    .sort((a, b) => a.dias - b.dias), [obras]);
+
+  const listaObras = useMemo(() => {
+    const base = minhas.length ? minhas : obras;
+    const chave = (o) => ({ temAtraso: temAtrasoPorCodigo.get(o.codigo) || false, dataEntrega: o.dataEntrega });
+    return [...base].sort((x, y) => ordemDeUrgencia(chave(x), chave(y)));
+  }, [minhas, obras, temAtrasoPorCodigo]);
   const semGC = obras.filter((o) => !o.gc);
 
   /* Aditivo aprovado sem o card do Pipefy: e' compromisso assumido que o
@@ -17319,6 +17442,30 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
           sub={minhas.length ? "onde você é o GC" : "nenhuma atribuída a você"} />
       </div>
 
+      {entregasProximas.length > 0 && (
+        <div className="ini-entregas">
+          <div className="ini-titulo">
+            <Clock size={14} className="ini-titulo-icone" />
+            Entregas nos próximos 90 dias
+            <span className="ini-conta">{entregasProximas.length}</span>
+          </div>
+          <div className="ini-entregas-lista">
+            {entregasProximas.map(({ o, dias }) => (
+              <button key={o.id} type="button" className={`ini-entrega ${dias < 0 ? "vencida" : dias <= 30 ? "perto" : ""}`}
+                onClick={() => onAbrirObra(o.id)}>
+                <span className="ini-entrega-quando mono">
+                  {dias < 0 ? `${-dias}d atrás` : dias === 0 ? "hoje" : `${dias}d`}
+                </span>
+                <span className="ini-entrega-nome"><span className="mono dim">#{o.codigo}</span> {o.nome}</span>
+                <span className="ini-entrega-data">
+                  {new Date(`${o.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="ini-colunas">
         <div>
           <div className="ini-titulo">
@@ -17342,13 +17489,13 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
             <span className="ini-titulo-esq">
               <Building2 size={14} className="ini-titulo-icone" />
               {minhas.length ? "Suas obras" : "Obras ativas"}
-              <span className="ini-conta">{(minhas.length ? minhas : obras).length}</span>
+              <span className="ini-conta">{listaObras.length}</span>
             </span>
             <button type="button" className="ini-link-finalizadas" onClick={() => onModulo("arquivo")}>
               Finalizadas <ChevronRight size={12} />
             </button>
           </div>
-          {(minhas.length ? minhas : obras).map((o) => {
+          {listaObras.map((o) => {
             const L = r.linhas.find((x) => x.codigo === o.codigo);
             const esteira = esteiraDaObra(o);
             const executivoAtrasado = passosCriticosAtrasados(o).passos.some((p) => p.chave === "projeto");
@@ -19429,6 +19576,24 @@ export default function App() {
      lista; quem esta' amarrado a um canal nao escolhe. */
   const [canalDoPainel, setCanalDoPainel] = useState(CANAIS_COMPRA[0].id);
 
+  /* QUEM ESTA EDITANDO CADA OBRA, pra barra mostrar o cadeado.
+   *
+   * `listarTravas` existe desde sempre com esse comentario na propria funcao
+   * e nunca tinha sido chamada: a informacao so' aparecia DEPOIS de abrir a
+   * obra, quando ja' era tarde pra escolher outra. Agora aparece na lista.
+   *
+   * De 30 em 30 segundos, o mesmo relogio que a tela ja' usa pra vencer a
+   * trava alheia. A consulta le' tres colunas e ja' filtra trava vencida no
+   * banco. */
+  const [travas, setTravas] = useState(() => new Map());
+  useEffect(() => {
+    let vivo = true;
+    const buscar = () => listarTravas().then((m) => { if (vivo) setTravas(m); }).catch(() => { /* cadeado nao pode derrubar a barra */ });
+    buscar();
+    const t = setInterval(buscar, 30_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, []);
+
   useEffect(() => {
     if (!supabaseConfigurado) { setUsuario("local"); return; }
     supabase.auth.getUser().then(({ data }) => setUsuario(data?.user?.email || null));
@@ -21364,6 +21529,106 @@ export default function App() {
            espaçamento automático empurrava a lista pro meio da tela,
            deixando um vazio enorme embaixo do botão.
            Agora quem ocupa a sobra é a lista, explicitamente. */
+        /* ============================================================
+           A BARRA: TRILHO + PAINEL  (19/09/2026)
+
+           Tres planos claros, e a ordem e' o contrario do costume: quase todo
+           app poe a barra em cinza e o conteudo em branco. Aqui o BRANCO E' A
+           LISTA de obras, porque ela e' texto que se le' — nao moldura.
+           Espinho cinza, lista branca, campo cinza.
+           ============================================================ */
+        .barra { display: flex; flex-shrink: 0; height: calc(100vh - 64px); position: sticky; top: 64px; }
+
+        .trilho { width: 56px; flex-shrink: 0; background: var(--surface-3); border-right: 1px solid var(--border-soft);
+                  display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
+        .trilho-item { position: relative; width: 100%; height: 40px; display: flex; align-items: center; justify-content: center;
+                       background: none; border: none; border-left: 2px solid transparent; color: var(--ink-3); cursor: pointer; }
+        .trilho-item:hover { color: var(--ink-1); }
+        .trilho-item:disabled { opacity: .35; cursor: default; }
+        /* O destino ativo veste a cor do que abriu a' direita: com painel ele
+           fica branco e se funde com a lista; sem painel, veste o campo. Em
+           vez de pintar a selecao, ela encosta no que abriu. */
+        .trilho-item.ativo { color: var(--brand); border-left-color: var(--brand); background: var(--card); }
+        .barra.sem-painel .trilho-item.ativo { background: var(--page); }
+        .trilho-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+        .trilho-badge { position: absolute; top: 5px; right: 8px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+                        background: var(--brand); color: #fff; font-size: 9.5px; font-weight: 600;
+                        display: flex; align-items: center; justify-content: center; }
+        .trilho-badge.espera { background: var(--amber); color: #3a2c00; }
+        .trilho-badge.neutro { background: var(--surface-4); color: var(--ink-2); }
+        .trilho-pe { margin-top: auto; width: 100%; padding-top: 8px; border-top: 1px solid var(--border-soft);
+                     display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .trilho-perfil { width: 100%; display: flex; justify-content: center; padding: 6px 0; background: none; border: none; cursor: pointer; }
+        .perfil-menu-trilho { left: 60px; bottom: 12px; top: auto; right: auto; }
+
+        .painel { width: 232px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border-soft);
+                  display: flex; flex-direction: column; min-height: 0; padding: 12px 12px 0; }
+        .painel-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+        .painel-nome { font-size: 13.5px; color: var(--ink); }
+        .painel-conta { font-size: 11px; color: var(--ink-3); margin-left: 3px; }
+        .painel-modos { display: inline-flex; align-items: center; gap: 5px; }
+        .painel-modos button { background: none; border: none; padding: 0; font-family: inherit; font-size: 11px; color: var(--ink-3); cursor: pointer; }
+        .painel-modos button:hover { color: var(--ink-1); }
+        .painel-modos button.on { color: var(--brand); }
+        .painel-modos-sep { color: var(--border); font-size: 11px; }
+        .painel-busca { margin-bottom: 8px; }
+        .painel-minhas { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 8px;
+                         background: none; border: 1px solid var(--border-soft); border-radius: 20px; padding: 3px 9px;
+                         font-family: inherit; font-size: 11px; color: var(--ink-3); cursor: pointer; }
+        .painel-minhas:hover { color: var(--ink-1); border-color: var(--border); }
+        .painel-minhas.on { color: var(--brand); border-color: var(--brand); background: var(--brand-soft); }
+        .painel-lista { flex: 1; overflow-y: auto; min-height: 0; margin: 0 -6px; padding: 0 6px 12px; }
+
+        /* O NOME DA OBRA NUNCA CORTA — pedido dela em 19/09/2026: "nunca corte
+           o nome da obra, sempre mostre tudo". Mesma regra do alerta da Conf.
+           Executivo: quem cede e' a ALTURA, nao o texto. Por isso o alinhamento
+           vai pro topo: o codigo fica na primeira linha e o nome desce. */
+        .obra-linha { width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 6px 7px; margin: 0 -7px;
+                      background: none; border: none; border-left: 2px solid transparent; border-radius: 6px;
+                      font-family: inherit; text-align: left; cursor: pointer; }
+        .obra-linha:hover { background: var(--panel); }
+        .obra-linha.ativa { background: var(--brand-soft); border-left-color: var(--brand); }
+        .obra-linha:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+        .obra-squad { flex-shrink: 0; width: 13px; height: 17px; color: var(--ink-3); display: flex; align-items: center; }
+        .obra-linha.ativa .obra-squad { color: var(--brand); }
+        /* O codigo e' a voz da linha: e' por ele que a obra e' chamada. */
+        .obra-cod { flex-shrink: 0; font-size: 12.5px; line-height: 1.38; color: var(--ink); }
+        .obra-linha.ativa .obra-cod { color: var(--brand); }
+        .obra-nome { min-width: 0; font-size: 11.5px; line-height: 1.38; color: var(--ink-2); overflow-wrap: anywhere; }
+        .obra-linha.ativa .obra-nome { color: var(--ink); }
+        .obra-linha.sem-simbolo { padding-left: 25px; }
+        .obra-trava { flex-shrink: 0; margin-left: auto; margin-top: 2px; color: var(--amber); }
+        .obra-badge { flex-shrink: 0; margin-left: auto; margin-top: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+                      background: var(--red); color: #fff; font-size: 9.5px; font-weight: 600;
+                      display: flex; align-items: center; justify-content: center; }
+        .obra-trava + .obra-badge { margin-left: 4px; }
+
+        .painel-novas { display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 8px;
+                        padding: 5px 8px; border: 1px solid var(--brand); border-radius: 6px;
+                        background: var(--brand-soft); color: var(--brand);
+                        font-family: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
+        .painel-novas:hover { background: var(--brand-bg, var(--brand-soft)); border-color: var(--brand-h); }
+        .painel-novas-n { font-size: 11.5px; }
+        .painel-novas:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+        .painel-pe { flex-shrink: 0; border-top: 1px solid var(--border-soft); margin: 0 -12px; padding: 6px 12px 8px; }
+        .painel-pe-item { width: 100%; display: flex; align-items: center; gap: 7px; padding: 5px 6px; margin: 0 -6px;
+                          background: none; border: none; border-radius: 6px; font-family: inherit; font-size: 11.5px;
+                          color: var(--ink-2); text-align: left; cursor: pointer; }
+        .painel-pe-item:hover { background: var(--panel); color: var(--ink-1); }
+        .painel-pe-item.ativo { color: var(--brand); background: var(--brand-soft); }
+        .painel-pe-conta { margin-left: auto; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+                           background: var(--brand); color: #fff; font-size: 9.5px; font-weight: 600;
+                           display: flex; align-items: center; justify-content: center; }
+        .painel-pe-conta.neutro { background: var(--surface-4); color: var(--ink-2); }
+
+        .squad-bloco { margin-bottom: 6px; }
+        .squad-cab { width: 100%; display: flex; align-items: center; gap: 6px; padding: 6px 0 4px; background: none; border: none;
+                     font-family: inherit; font-size: 11px; color: var(--ink-2); cursor: pointer; text-align: left; }
+        .squad-cab:hover { color: var(--ink-1); }
+        .squad-cab-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .squad-cab-conta { font-size: 10px; color: var(--ink-3); }
+
         .sidebar { width: 288px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
         .sidebar-scroll { flex: 1; padding: 6px 14px 16px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
         .nav-group-label { font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; }
@@ -23539,6 +23804,18 @@ export default function App() {
         .ini-nome { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.2; }
         .ini-data { font-size: 11px; color: var(--ink-3); }
         .ini-recado { font-size: 16px; color: var(--ink-2); line-height: 1.45; max-width: 720px; margin-top: 5px; }
+        /* ENTREGAS PRÓXIMAS — fila horizontal, não mais uma coluna.
+           É leitura de calendário: o olho corre da esquerda (o que vence
+           antes) pra direita, e o que já venceu fica em vermelho. */
+        .ini-entregas { margin-bottom: 16px; }
+        .ini-entregas-lista { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+        .ini-entrega { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; flex: 0 0 auto; min-width: 168px; max-width: 230px; text-align: left; background: var(--card); border: 1px solid var(--linha); border-radius: 8px; padding: 9px 12px; cursor: pointer; font-family: inherit; }
+        .ini-entrega:hover { border-color: var(--blue); }
+        .ini-entrega-quando { font-size: 15px; font-weight: 700; }
+        .ini-entrega.perto .ini-entrega-quando { color: #B54708; }
+        .ini-entrega.vencida .ini-entrega-quando { color: var(--red); }
+        .ini-entrega-nome { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+        .ini-entrega-data { font-size: 11px; color: var(--ink-3); }
         .ini-regua { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
         .ini-cel { display: block; padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-1); text-align: left; font-family: inherit; box-shadow: none; transition: border-color .12s ease; min-width: 0; }
         .ini-cel.clicavel { cursor: pointer; }
@@ -24276,7 +24553,7 @@ export default function App() {
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           equipe={pessoas} onSair={sairDaConta} modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
-          novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length}
+          novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
@@ -24330,7 +24607,7 @@ export default function App() {
           ) : modulo === "arquivo" ? (
           <>
           <div className="eyebrow">CONCLUÍDAS · {obrasConcluidas.length}</div>
-          <div className="title-row"><span className="title-accent">Arquivo</span></div>
+          <div className="title-row"><span className="title-accent">Finalizadas</span></div>
           <div className="obra-meta">Obras encerradas, mantidas para consulta</div>
           <ArquivoView obras={obrasConcluidas} onReabrir={marcarAtiva} salvando={salvandoObra} />
           </>
