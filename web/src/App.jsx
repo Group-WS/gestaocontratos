@@ -10273,6 +10273,26 @@ function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } =
    (as duas listas viram copias diferentes ao salvar). */
 const chaveDescricao = (d) => String(d || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
+/* O QUE IDENTIFICA O PRODUTO, e nao quanto ele custa.
+ *
+ * Quando um item esta' partido em material e mao de obra, editar no
+ * Executivo tem que valer nas DUAS linhas para isto — sao o mesmo produto.
+ * O resto (custo, total, quantidade comprada) fica so' na linha dona do
+ * valor: dinheiro de material nao pode vazar pra linha de contrato.
+ *
+ * `codigo` fica de fora de proposito: a linha de mao de obra ganha codigo
+ * PROPRIO na separacao (ver `partirMaoDeObra`), e sobrescrever isso juntaria
+ * as duas de volta no Sienge.
+ *
+ * Regra confirmada por ela em 19/09/2026.
+ */
+const CAMPOS_DO_PRODUTO = new Set([
+  "desc", "marca", "ambiente", "especificacao", "un",
+  "excluido", "excluidoMotivo", "excluidoPor", "excluidoEm",
+]);
+const somenteIdentidade = (patch) => Object.fromEntries(
+  Object.entries(patch || {}).filter(([campo]) => CAMPOS_DO_PRODUTO.has(campo)));
+
 function produtosMAT(obra) {
   const out = [];
   (obra.categorias || []).forEach((cat, catIdx) => {
@@ -20431,10 +20451,44 @@ export default function App() {
       if (o.id !== selectedId) return o;
       const categorias = o.categorias.map((c) => {
         if (c.num !== catNum) return c;
-        const aplicar = (lista) => (lista || []).map((it, i) => (i === idx
-          ? { ...recalcularCustos({ ...it, ...patch }, patch), ...(limpeza || {}) }
-          : it));
-        return { ...c, itensPlanilhaExecutivo: aplicar(c.itensPlanilhaExecutivo), itens: aplicar(c.itens) };
+
+        /* CASA POR PRODUTO, NAO POR POSICAO.
+         *
+         * Aqui morava o defeito mais caro do app (achado em 19/09/2026, a
+         * partir do relato de um usuario): a mesma POSICAO `idx` era aplicada
+         * nas duas listas. So' que elas tem tamanhos diferentes —
+         * `itensPlanilhaExecutivo` e' a planilha como veio, e `itens` e' a
+         * lista de trabalho, onde as verbas de contrato (05, 20, 24, 27, 28)
+         * partem cada produto em MATERIAL e MAO DE OBRA.
+         *
+         * Da primeira linha partida em diante, as posicoes deixavam de falar
+         * do mesmo produto: editar "Spot de Embutir LOYO" na 2498 gravava em
+         * "Downlight Led Powerus". Medido nas quatro obras vivas: 470 itens
+         * expostos. A Conf. Executivo seguia mostrando a planilha certa e a
+         * COMPRA saia com o produto errado — ninguem via acontecer.
+         *
+         * Agora o alvo em `itens` e' procurado pela descricao do item que a
+         * tela editou. Se o produto nao existir la', nada e' tocado: melhor
+         * nao gravar do que gravar no vizinho.
+         */
+        const base = (c.itensPlanilhaExecutivo || [])[idx];
+        const chaveBase = base ? chaveDescricao(base.desc) : null;
+
+        const mexer = (it, soIdentidade) => {
+          const efetivo = soIdentidade ? somenteIdentidade(patch) : patch;
+          if (!Object.keys(efetivo).length) return it;
+          return { ...recalcularCustos({ ...it, ...efetivo }, efetivo), ...(soIdentidade ? {} : (limpeza || {})) };
+        };
+
+        return {
+          ...c,
+          // A planilha e' o que a tela mostra: ali a posicao e' a verdade.
+          itensPlanilhaExecutivo: (c.itensPlanilhaExecutivo || []).map((it, i) => (i === idx ? mexer(it, false) : it)),
+          // Na lista de trabalho, quem manda e' o produto. `separadoDe`
+          // marca a linha de mao de obra, que so' recebe a identidade.
+          itens: chaveBase == null ? (c.itens || [])
+            : (c.itens || []).map((it) => (chaveDescricao(it.desc) === chaveBase ? mexer(it, !!it.separadoDe) : it)),
+        };
       });
       return { ...o, categorias };
     }));
