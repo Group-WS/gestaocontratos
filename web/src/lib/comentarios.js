@@ -55,7 +55,7 @@ export async function listarComentarios(obraCodigo) {
 export async function criarComentario({ obraCodigo, verbaNum, itemChave = null, texto, autor }) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
   const limpo = String(texto || "").trim();
-  if (!limpo) throw new Error("Escreva a observação antes de salvar.");
+  if (!limpo) throw new Error("Escreva a observação interna antes de salvar.");
   if (!autor) throw new Error("Não consegui identificar quem está escrevendo.");
 
   const { data, error } = await supabase
@@ -71,7 +71,7 @@ export async function criarComentario({ obraCodigo, verbaNum, itemChave = null, 
     .single();
 
   if (error) {
-    if (semTabela(error)) throw new Error("As observações ainda não foram criadas no banco — falta rodar supabase/obra-comentario.sql.");
+    if (semTabela(error)) throw new Error("As observações internas ainda não foram criadas no banco — falta rodar supabase/obra-comentario.sql.");
     throw error;
   }
   return data;

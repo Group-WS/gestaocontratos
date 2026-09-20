@@ -11792,8 +11792,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         {obs.length > 0 && (
           <button type="button" className={`filter-chip ${soComObs ? "active" : ""} chip-obs`}
             onClick={() => setSoComObs((v) => !v)}
-            title="Mostrar só as verbas e produtos com observação">
-            <MessageSquare size={11} /> com observação ({obs.length})
+            title="Mostrar só as verbas e produtos com observação interna">
+            <MessageSquare size={11} /> com observação interna ({obs.length})
           </button>
         )}
         <div className="cmp-filtro-forn">
@@ -13639,7 +13639,7 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
           {/* Apagar aparece pra quem pode — o banco confere de novo na
               politica de delete, entao a tela nao e' a unica barreira. */}
           {(meu(c) || souAdmin) && onApagar && (
-            <button type="button" className="obs-apagar" title="Apagar esta observação"
+            <button type="button" className="obs-apagar" title="Apagar esta observação interna"
               onClick={() => onApagar(c.id)}><X size={9} /></button>
           )}
         </div>
@@ -13660,8 +13660,8 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
       ) : (
         onAdicionar && (
           <button type="button" className="obs-mais" onClick={() => setEscrevendo(true)}
-            title={ondeFica === "item" ? "Deixar uma observação neste produto" : "Deixar uma observação nesta verba"}>
-            <Plus size={10} /> observação
+            title={ondeFica === "item" ? "Deixar uma observação interna neste produto" : "Deixar uma observação interna nesta verba"}>
+            <Plus size={10} /> observação interna
           </button>
         )
       )}

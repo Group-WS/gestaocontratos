@@ -146,6 +146,22 @@ conf("a busca e o filtro peneiram a mesma lista",
 conf("sem a tabela, não aparece nada de observação",
   app.includes("if (semTabela && !lista.length) return null;"), true);
 
+/* O NOME É "OBSERVAÇÃO INTERNA" (pedido dela, 19/09/2026), e é o mesmo em
+   todo lugar: botão, filtro e dica. Campo com dois nomes é campo que a
+   equipe acha que são dois. "Interna" também diz o que ela é — recado da
+   casa, não algo que sai para cliente ou fornecedor. */
+conf("o botão de criar diz observação interna", app.includes("<Plus size={10} /> observação interna"), true);
+conf("o filtro também", app.includes("com observação interna ({obs.length})"), true);
+conf("a dica do item também", app.includes('"Deixar uma observação interna neste produto"'), true);
+conf("a dica da verba também", app.includes('"Deixar uma observação interna nesta verba"'), true);
+conf("e a de apagar", app.includes('title="Apagar esta observação interna"'), true);
+conf("as mensagens da biblioteca falam o mesmo nome",
+  src.includes("Escreva a observação interna antes de salvar."), true);
+/* Nenhum "observação" solto sobrou nesta tela — é o que impede o nome de
+   voltar pela metade num ajuste futuro. */
+conf("não sobrou nenhum rótulo pela metade",
+  /observação(?! interna)(?![\w])/.test(app.slice(app.indexOf("function Observacoes("), app.indexOf("function LinhaCompra("))), false);
+
 /* A cor é própria: laranja, verde e vermelho já significam estado do item. */
 const ds = fs.readFileSync(path.join(aqui, "..", "estilos", "design-system.css"), "utf8");
 conf("a observação tem cor própria no design system", ds.includes("--obs: #5b5bd6;"), true);
