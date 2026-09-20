@@ -97,8 +97,16 @@ returns integer language sql immutable as $$
            jsonb_array_elements(case when jsonb_typeof(c -> 'itens') = 'array'
                                      then c -> 'itens' else '[]'::jsonb end) as it
      where jsonb_typeof(cats) = 'array'
-       and coalesce((it ->> 'liberadoCompra')::boolean, false)
-       and not coalesce((it ->> 'excluido')::boolean, false)
+       -- NAO CONVERTER. `liberadoCompra` guarda um CARIMBO desde 19/09
+       -- ({em, por}: quem liberou e quando), e nao mais true/false. O
+       -- `->>` devolvia o objeto como texto, `::boolean` derrubava a
+       -- instrucao, e como esta conta roda dentro do gatilho quem caia
+       -- era o UPDATE: em 20/09 toda obra com item liberado parou de
+       -- salvar. Comparar sem converter vale para as duas formas — e nao
+       -- quebra de novo quando o campo mudar de formato outra vez.
+       and coalesce(it -> 'liberadoCompra', 'null'::jsonb)
+             not in ('null'::jsonb, 'false'::jsonb)
+       and coalesce(it ->> 'excluido', 'false') <> 'true'
   ), 0)::integer;
 $$;
 
