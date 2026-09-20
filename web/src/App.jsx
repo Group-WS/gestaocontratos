@@ -9843,8 +9843,13 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
     const entrar = (e) => {
       const b = e.target.closest("[title]");
-      if (!b || !el.contains(b) || b === alvo) return;
-      if (!b.closest(".trilho")) return;
+      /* SAIR DO TRILHO PRO PAINEL NAO E' SAIR DA BARRA: o painel e' filho
+         dela, entao o `mouseleave` la' de baixo nunca chega. Sem limpar
+         aqui, a dica ficava colada sobre a lista de obras — e o caminho que
+         faz isso e' o de todo dia: clicar em Obras e escorregar pra direita
+         pra escolher uma. Ela parava bem em cima do bloco de novas obras. */
+      if (!b || !el.contains(b) || !b.closest(".trilho")) { if (alvo) sair(); return; }
+      if (b === alvo) return;
       sair();
       const t = b.getAttribute("title");
       if (!t) return;
@@ -10128,7 +10133,11 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
           <div className="obra-search painel-busca">
             <Search size={13} className="dim" />
-            <input placeholder="Filtrar por nome, código, cliente..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            {/* Curto de proposito: o painel tem 232px, e "Filtrar por nome,
+                código, cliente..." era cortado no meio da palavra — "clie".
+                A lupa ao lado ja' diz que e' filtro; o que falta dizer e' POR
+                QUE se pode filtrar. */}
+            <input placeholder="Nome, código ou cliente" value={search} onChange={(e) => setSearch(e.target.value)} />
             {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
           </div>
 

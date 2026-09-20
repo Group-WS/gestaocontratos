@@ -69,7 +69,14 @@ conf("o trilho é filtrado por eles",
   src.includes("const noTrilho = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));"), true);
 /* No trilho TODO destino é ícone sem rótulo — sem a dica de hover, a Equipe
    volta a ser impossível de achar, que era o defeito da barra antiga. */
-conf("a dica de hover vale pro trilho inteiro", src.includes('if (!b.closest(".trilho")) return;'), true);
+conf("a dica de hover vale pro trilho inteiro", src.includes('!b.closest(".trilho")'), true);
+/* E ELA PRECISA SUMIR SOZINHA. Sair do trilho pro painel não é sair da barra
+   — o painel é filho dela, então o `mouseleave` de baixo nunca chega. A dica
+   "Obras" ficava colada em cima da lista, bem no bloco de novas obras, e o
+   caminho que fazia isso era o de todo dia: clicar em Obras e escorregar pra
+   direita pra escolher uma. Visto na tela em 20/09/2026. */
+conf("... e some ao entrar no painel",
+  src.includes('if (!b || !el.contains(b) || !b.closest(".trilho")) { if (alvo) sair(); return; }'), true);
 
 /* CLICAR EM "OBRAS" SÓ MOSTRA. Relato dela: "depois que eu entrar na obra, no
    primeiro clique dentro a barra da sidebar recolhe" — era o botão Obras
@@ -111,6 +118,10 @@ conf("em fonte normal, não maior", /\.painel-novas \{[^}]*font-size: 11\.5px/.t
 conf("o número vem antes do rótulo",
   src.includes('<span className="painel-novas-n mono">{novasCount}</span>'), true);
 conf("as Finalizadas ficam no pé", src.includes('<div className="painel-pe">'), true);
+/* O painel tem 232px, e a barra antiga tinha 288: o texto da busca era
+   cortado no meio da palavra ("...cód, clie"). */
+conf("o texto da busca cabe no painel",
+  src.includes('placeholder="Nome, código ou cliente"'), true);
 
 /* O CAPACETE no lugar do prédio (escolha dela): num app de obra tudo é
    prédio, então o prédio não distinguia nada. */
