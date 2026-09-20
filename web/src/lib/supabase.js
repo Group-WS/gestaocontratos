@@ -6,8 +6,19 @@ import { createClient } from "@supabase/supabase-js";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Se ainda não estiver configurado, o app segue funcionando sem login
-// (modo local). Assim nada quebra durante a transição.
+// Sem URL e chave, o app NÃO abre — e isso é de propósito.
+//
+// Antes havia um "modo local": faltando o .env, o app liberava tudo sem
+// login. Serviu na transição, mas é uma porta destrancada por descuido de
+// configuração: um build publicado sem as variáveis entregava o sistema
+// inteiro aberto. Em desenvolvimento o atalho continua valendo, porque lá
+// não há dado de ninguém.
+// Regra: .quality/regras/03-seguranca-e-acesso.md (SEG-10, negar por padrão).
 export const supabaseConfigurado = Boolean(url && anonKey);
+
+export const modoLocalPermitido = import.meta.env.DEV;
+
+/** Publicado sem configuração: não há como autenticar ninguém. */
+export const configuracaoAusente = !supabaseConfigurado && !modoLocalPermitido;
 
 export const supabase = supabaseConfigurado ? createClient(url, anonKey) : null;

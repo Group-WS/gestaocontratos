@@ -15,6 +15,7 @@
 
 const express = require("express");
 const cors = require("cors");
+const { exigirLogin, exigirObra } = require("./auth.js");
 
 // Importa o miolo do pdf-parse em vez do index.js. O index tem um
 // bloco "modo debug" que dispara quando `module.parent` é vazio: ele
@@ -25,7 +26,38 @@ const cors = require("cors");
 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 const app = express();
-app.use(cors());
+
+/* Quem pode chamar este backend, de qual endereco.
+   `cors()` puro liberava QUALQUER site do mundo a chamar estas rotas com
+   o token do Monday e a credencial do Sienge do servidor. A lista vem do
+   ambiente (ALLOWED_ORIGINS, separada por virgula) porque dominio de
+   producao nao se escreve em codigo. Em dev, localhost entra sozinho.
+   Regra: .quality/regras/03-seguranca-e-acesso.md (SEG-36). */
+const ORIGENS_PERMITIDAS = [
+  ...String(process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean),
+  ...(process.env.NODE_ENV === "production"
+    ? []
+    : ["http://localhost:5173", "http://127.0.0.1:5173"]),
+];
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      // Sem Origin = mesma origem ou chamada fora do navegador (curl, Vercel
+      // servindo /api no proprio dominio). Quem barra esses e' o login.
+      if (!origin) return cb(null, true);
+      cb(null, ORIGENS_PERMITIDAS.includes(origin));
+    },
+  })
+);
+
+/* Daqui pra baixo, tudo exige usuario logado. Vem ANTES das rotas de
+   proposito: rota nova nasce protegida, sem ninguem precisar lembrar. */
+app.use(exigirLogin);
+
 app.use(express.json());
 
 const MONDAY_API_URL = "https://api.monday.com/v2";
@@ -864,7 +896,7 @@ async function referenciasDoOrcamento(buildingId, unidadeId) {
   return refs;
 }
 
-app.post("/api/sienge/solicitacao", async (req, res) => {
+app.post("/api/sienge/solicitacao", exigirObra((req) => req.body?.buildingId), async (req, res) => {
   if (!siengeConfigurado()) {
     return res.status(503).json({
       error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
@@ -1048,7 +1080,7 @@ async function carregarInsumosDaObra(buildingId) {
   return porId;
 }
 
-app.get("/api/sienge/insumos/:buildingId", async (req, res) => {
+app.get("/api/sienge/insumos/:buildingId", exigirObra((req) => req.params.buildingId), async (req, res) => {
   if (!siengeConfigurado()) {
     return res.status(503).json({
       error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
@@ -1094,7 +1126,7 @@ app.get("/api/sienge/insumos/:buildingId", async (req, res) => {
  * Por isso a unidade passou a vir DAQUI, da obra de destino, e não do
  * cadastro.
  */
-app.get("/api/sienge/obra/:buildingId/unidades", async (req, res) => {
+app.get("/api/sienge/obra/:buildingId/unidades", exigirObra((req) => req.params.buildingId), async (req, res) => {
   if (!siengeConfigurado()) {
     return res.status(503).json({
       error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",

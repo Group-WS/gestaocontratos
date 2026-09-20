@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Lock } from "lucide-react";
-import { supabase, supabaseConfigurado } from "./lib/supabase";
+import { supabase, supabaseConfigurado, configuracaoAusente } from "./lib/supabase";
 import { LogoGroupWS } from "./marca.jsx";
 import capa from "./assets/login-capa.jpg";
 import capaPequena from "./assets/login-capa-1000.jpg";
@@ -50,7 +50,9 @@ async function limparSessao() {
 
 export default function AuthGate({ children }) {
   // undefined = carregando ; null = deslogado ; objeto = logado
-  const [session, setSession] = useState(supabaseConfigurado ? undefined : "local");
+  const [session, setSession] = useState(
+    supabaseConfigurado ? undefined : (configuracaoAusente ? null : "local")
+  );
   const [derrubada, setDerrubada] = useState(false);
 
   useEffect(() => {
@@ -86,6 +88,17 @@ export default function AuthGate({ children }) {
     });
     return () => { vivo = false; sub.subscription.unsubscribe(); };
   }, []);
+
+  /* Publicado sem as variáveis do Supabase: ninguém entra, e a tela diz
+     por quê. Liberar aqui seria abrir o sistema por erro de configuração. */
+  if (configuracaoAusente) {
+    return (
+      <Centro>
+        Este ambiente está sem configuração de acesso. Avise quem cuida do sistema — ninguém
+        consegue entrar até que ela seja definida.
+      </Centro>
+    );
+  }
 
   if (PREVIA_LOGIN !== null) return <LoginScreen derrubada={PREVIA_LOGIN === "aviso"} />;
   if (session === undefined) {

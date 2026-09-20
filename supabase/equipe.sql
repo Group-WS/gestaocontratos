@@ -26,6 +26,12 @@ create index if not exists pessoa_cargo_idx on pessoa (cargo) where ativo;
 
 alter table pessoa enable row level security;
 
+-- ATENCAO: a politica abaixo deixava QUALQUER pessoa logada escrever nesta
+-- tabela — inclusive se promover a 'master'. Ela foi substituida por
+-- supabase/pessoa-escrita-restrita.sql, que e' quem vale hoje. Este bloco
+-- fica aqui so' pra historia de quem le o arquivo de cima a baixo: rodar
+-- este arquivo sozinho num banco novo reabre o buraco, entao rode o
+-- pessoa-escrita-restrita.sql logo em seguida.
 drop policy if exists "acesso time (autenticados)" on pessoa;
 create policy "acesso time (autenticados)" on pessoa
   for all

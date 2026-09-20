@@ -64,14 +64,10 @@ import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos, carregarCadastroSienge, salvarCadastroSienge } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, listarTravas, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
+import { apiFetch } from "./lib/api";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
 
-// O backend mora no mesmo domínio do site (função serverless da Vercel,
-// em web/api/), então "/api/..." resolve sozinho — em dev pelo proxy do
-// Vite, publicado pela própria Vercel. VITE_API_BASE só é necessária no
-// caso raro de apontar pra um backend em outro domínio.
-const API_BASE = import.meta.env.VITE_API_BASE || "";
-const api = (path) => API_BASE + path;
+
 
 /* ============================================================
    EAP PADRÃO
@@ -226,7 +222,7 @@ async function fetchSquadObras(squad) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 25_000);
   try {
-    const res = await fetch(api(`/api/monday/obras-execucao?workspaceId=${squad.workspaceId}`), { signal: ctrl.signal });
+    const res = await apiFetch(`/api/monday/obras-execucao?workspaceId=${squad.workspaceId}`, { signal: ctrl.signal });
     if (!res.ok) throw new Error(`Squad ${squad.nome}: HTTP ${res.status}`);
     const lista = await res.json();
     return lista.map((mo) => mondayObraParaApp(mo, squad.nome));
@@ -394,7 +390,7 @@ function matchesFilter(it, filter, cat) {
  * texto, ao custo de 33% a mais de bytes — por isso ele e' a segunda
  * tentativa, e nao a primeira. */
 async function textoDoPDF(buf) {
-  const cru = await fetch(api("/api/sienge/texto"), {
+  const cru = await apiFetch("/api/sienge/texto", {
     method: "POST", headers: { "Content-Type": "application/pdf" }, body: buf,
   });
   if (cru.ok) return (await cru.json()).texto;
@@ -403,7 +399,7 @@ async function textoDoPDF(buf) {
   if (!erro.podeBase64) throw new Error(erro.error || `HTTP ${cru.status}`);
 
   const b64 = btoa(Array.from(new Uint8Array(buf), (b) => String.fromCharCode(b)).join(""));
-  const res = await fetch(api("/api/sienge/texto"), {
+  const res = await apiFetch("/api/sienge/texto", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pdfBase64: b64 }),
   });
@@ -4191,7 +4187,7 @@ function extrairVerbasValor(linhas) {
 // nunca valor por item (o contrato é fechado por verba, não por item).
 async function lerContratoPDF(file) {
   const buf = await file.arrayBuffer();
-  const res = await fetch(api("/api/vendido/parse"), {
+  const res = await apiFetch("/api/vendido/parse", {
     method: "POST",
     headers: { "Content-Type": "application/pdf" },
     body: buf,
@@ -4238,7 +4234,7 @@ function mapearVerbasPeloNome(verbas) {
 // Marca não dá pra extrair de PDF de forma confiável — fica só no Excel.
 async function lerPlanilhaPDF(file) {
   const buf = await file.arrayBuffer();
-  const res = await fetch(api("/api/executivo/parse"), {
+  const res = await apiFetch("/api/executivo/parse", {
     method: "POST",
     headers: { "Content-Type": "application/pdf" },
     body: buf,
@@ -4268,7 +4264,7 @@ async function lerPlanilhaPDF(file) {
 // material, é PRODUTO (→ Compras/Sienge); senão é SERVIÇO (→ Contratos).
 async function lerExecutivoPDF(file) {
   const buf = await file.arrayBuffer();
-  const res = await fetch(api("/api/executivo/parse"), {
+  const res = await apiFetch("/api/executivo/parse", {
     method: "POST",
     headers: { "Content-Type": "application/pdf" },
     body: buf,
@@ -11936,7 +11932,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         p = { ...p, solicitacao_id: Number(num.trim()) };
       }
 
-      const res = await fetch(api(`/api/sienge/solicitacao/${p.solicitacao_id}`));
+      const res = await apiFetch(`/api/sienge/solicitacao/${p.solicitacao_id}`);
       const texto = await res.text();
       let dados = null;
       if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
@@ -13253,7 +13249,7 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
     let vivo = true;
     (async () => {
       try {
-        const res = await fetch(api(`/api/sienge/insumos/${obra.codigo}?ids=${ids.join(",")}`));
+        const res = await apiFetch(`/api/sienge/insumos/${obra.codigo}?ids=${ids.join(",")}`);
         const texto = await res.text();
         let dados = null;
         if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
@@ -13287,7 +13283,7 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
     let vivo = true;
     (async () => {
       try {
-        const res = await fetch(api(`/api/sienge/obra/${obra.codigo}/unidades`));
+        const res = await apiFetch(`/api/sienge/obra/${obra.codigo}/unidades`);
         const texto = await res.text();
         let dados = null;
         if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
@@ -13367,7 +13363,7 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
     setVendoAnterior(true);
     setAnterior(null);
     try {
-      const res = await fetch(api(`/api/sienge/solicitacao/${id}`));
+      const res = await apiFetch(`/api/sienge/solicitacao/${id}`);
       const texto = await res.text();
       let dados = null;
       if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
@@ -13444,7 +13440,7 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
     }
 
     try {
-      const res = await fetch(api("/api/sienge/solicitacao"), {
+      const res = await apiFetch("/api/sienge/solicitacao", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(corpo),
