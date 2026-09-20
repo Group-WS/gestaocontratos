@@ -492,7 +492,12 @@ conf("... e diz quando não tem", src.includes("sem justificativa registrada"), 
 
 /* "quando eu clico em conf executivo quero ver a listagem geral como esta
    nessa tela": a planilha é o trabalho; o depara lado a lado virou consulta. */
-conf("a tela abre na listagem geral", src.includes(`const [filtro, setFiltro] = useState(() => telaExtra?.id || "todos");`), true);
+/* Em 19/09/2026 entrou um atalho da Visão geral que abre esta tela já
+   filtrada em "falta aprovar p/ compra". Ele é EXPLÍCITO e vale uma vez: sem
+   pedido, a tela continua abrindo em "todos", que é o que ela pediu. */
+conf("a tela abre na listagem geral quando ninguém pede outra coisa",
+  src.includes(`const [filtro, setFiltro] = useState(() => filtroInicial || telaExtra?.id || "todos");`), true);
+conf("... e o padrão continua sendo 'todos'", /useState\(\(\) => [^)]*\|\| "todos"\);/.test(src), true);
 
 /* "apresentar a linha mais fina": com 443 linhas, cada pixel custa rolagem.
    Medido na 2498 depois do ajuste: 54 px sem alerta, 71 px com (era 102). */

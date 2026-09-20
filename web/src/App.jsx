@@ -758,7 +758,7 @@ function AnexarAvulso({ obra, usuario, fase, onArquivos, rotulo = "Anexar arquiv
   );
 }
 
-function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos,
+function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompras, onIrParaAditivos, onIrParaLiberacao,
   onDefinirGC, onDefinirTailorMade, onDefinirExecutivo, tailorMade, responsavelExecutivo, equipe,
   souAdmin, usuario, onImportCaderno, onArquivos }) {
   // A data digitada so vale quando ela manda salvar. Campo de data que
@@ -815,6 +815,9 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   /* Pendências e alertas: as MESMAS regras que o painel geral usa —
      recortadas pra esta obra só, sem inventar regra nova nenhuma, e
      sem dono por linha (não temos esse controle hoje). */
+  /* Sai da MESMA regua do chip da Conf. Executivo. */
+  const faltaAprovar = useMemo(() => faltaAprovarParaCompra(obra), [obra]);
+
   const pendencias = [];
   resumo.atrasos.forEach((v) => pendencias.push({
     tom: "ruim",
@@ -911,7 +914,27 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           <div className="ini-titulo"><AlertTriangle size={14} className="ini-titulo-icone" /> Pendências e alertas
             {pendencias.length > 0 && <span className="ini-conta">{pendencias.length}</span>}
           </div>
-          {pendencias.length === 0 ? (
+          {/* FALTA APROVAR PRA COMPRA — pedido dela em 19/09/2026: "tem que
+              trazer ali no resuminho que faltam, por exemplo, 7 itens para ser
+              liberados para compra... quando a pessoa clica, vai direto lá
+              para a conferência do Executivo... já aparece filtrado".
+
+              Fica ACIMA dos outros alertas porque e' o unico aqui que a pessoa
+              resolve clicando: os demais contam o que aconteceu, este abre a
+              tela onde se age. O numero sai da mesma regua do chip da Conf.
+              Executivo (`faltaAprovarNosGrupos`) — numero que discorda da
+              lista e' pior que numero nenhum. */}
+          {faltaAprovar > 0 && onIrParaLiberacao && (
+            <button type="button" className="ini-alerta aviso dash-falta-aprovar" onClick={onIrParaLiberacao}
+              title="Abre a Conf. Executivo já filtrada em 'Falta aprovar p/ compra'">
+              <ShoppingCart size={13} />
+              <span>
+                <b>{faltaAprovar}</b> {faltaAprovar === 1 ? "item espera" : "itens esperam"} aprovação para compra
+              </span>
+              <ArrowUpRight size={13} className="ini-seta" />
+            </button>
+          )}
+          {pendencias.length === 0 && faltaAprovar === 0 ? (
             <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção nesta obra.</div>
           ) : pendencias.map((a, i) => (a.detalhe?.length ? (
             /* O alerta que abre: mostra quais são, sem sair do Dashboard. */
@@ -5995,13 +6018,18 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   );
 }
 
-function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null, telaExtra = null }) {
+function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null, telaExtra = null, filtroInicial = null, onFiltroUsado }) {
   /* ABRE NA LISTAGEM GERAL (pedido dela, 18/09/2026): "quando eu clico em conf
      executivo quero ver a listagem geral como esta nessa tela".
 
      A planilha e' o trabalho; o depara lado a lado virou consulta, e continua
      a um clique no chip "Todos". */
-  const [filtro, setFiltro] = useState(() => telaExtra?.id || "todos");
+  /* `filtroInicial` vem de quem trouxe a pessoa ate' aqui por um atalho —
+     hoje, a Visao geral com o "N itens esperam aprovacao". Vale so' na
+     montagem: depois disso quem manda e' o clique nos chips. */
+  const [filtro, setFiltro] = useState(() => filtroInicial || telaExtra?.id || "todos");
+  // Avisa que consumiu, pra nao abrir filtrado de novo numa proxima visita.
+  useEffect(() => { if (filtroInicial) onFiltroUsado?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [selecionados, setSelecionados] = useState(() => new Set());
   // Tudo começa recolhido: com 185 linhas, abrir sozinho enterra a visão
   // geral e a pessoa perde a noção de quanto falta. O contador de
@@ -7564,7 +7592,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
   );
 }
 
-function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, souAdmin = false, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente, onConcluirExecutivo,
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, souAdmin = false, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente, onConcluirExecutivo, filtroInicial = null, onFiltroUsado,
   usuario, onRegistrarAssinatura, onRemoverAssinatura, onAprovarCliente, obraComAditivos }) {
   /* A aprovacao do cliente mudou de casa (18/09/2026). Os dois blocos nascem
      FECHADOS: o trabalho do dia e' a planilha, e a assinatura e' um evento que
@@ -7662,6 +7690,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
           assinatura do cliente continua podendo ser anexada em Documentos, e
           os carimbos que ja' existem nos itens continuam gravados. */}
     <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
+      filtroInicial={filtroInicial} onFiltroUsado={onFiltroUsado}
       alertasPorVerba={alertasPorVerba}
       colALabel="Planilha (vendido)" colBLabel="Planilha (executivo)"
       vazioALabel="não está na planilha vendida" vazioBLabel="não está na planilha executivo"
@@ -7691,7 +7720,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
           {
             id: "falta_liberar",
             label: "Falta aprovar p/ compra",
-            contador: gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => !x.liberado).length, 0),
+            contador: faltaAprovarNosGrupos(gruposParaLiberar),
           },
         ],
         cartoes: [
@@ -10189,6 +10218,24 @@ function podeLiberarItem(it, ctx) {
      tudo" (17/09/2026). O cliente aprova o escopo inteiro, e a mao de obra
      e' parte do que ele paga; a verba 03 Civil da 2498, que e' 100% mao de
      obra, sumia da tela e ninguem tinha como aprovar. */
+/* QUANTOS ITENS AINDA ESPERAM A APROVACAO PRA COMPRA.
+ *
+ * UMA REGUA SO': o numero da Visao geral e o do chip da Conf. Executivo saem
+ * daqui. Dois lugares contando por conta propria foi como a tela chegou a
+ * dizer "13 de 8 liberados" em 17/09 — e quem le' nao tem como saber qual dos
+ * dois numeros e' o verdadeiro.
+ *
+ * `compraveisDoGrupo` e' quem decide quem passa pela aprovacao: desde o
+ * ADR-005, todo item passa, independente da alocacao. */
+const faltaAprovarNosGrupos = (grupos) => (grupos || [])
+  .reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => !x.liberado).length, 0);
+
+/* A mesma conta a partir da obra, pra quem nao tem os grupos na mao.
+   `entrouPorDesc` fica de fora de proposito: ele marca pendencia de
+   conferencia, e nao muda quem esta' liberado. */
+const faltaAprovarParaCompra = (obra) =>
+  faltaAprovarNosGrupos(itensParaLiberar(obra, null, { comMaoDeObra: true }));
+
 function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } = {}) {
   const grupos = [];
   (obra?.categorias || []).forEach((cat, catIdx) => {
@@ -19330,6 +19377,11 @@ export default function App() {
    * uma falha na 2450 nao pode trancar a 2498. Enquanto ele apontar pra obra
    * aberta, a edicao fica fechada — ver a BarraEtapa. */
   const [falhaAoCarregar, setFalhaAoCarregar] = useState(null);
+  /* O filtro que a Conf. Executivo deve abrir mostrando, quando alguem chega
+     nela por um atalho. Vale uma vez: a tela avisa que usou e isto volta a
+     null, senao voltar na aba depois abriria filtrado de novo, sem ninguem
+     ter pedido. */
+  const [filtroConferencia, setFiltroConferencia] = useState(null);
 
   useEffect(() => {
     if (!supabaseConfigurado) { setUsuario("local"); return; }
@@ -23429,6 +23481,11 @@ export default function App() {
         .ini-alerta span { flex: 1; }
         .ini-alerta.ruim { background: var(--red-bg); border-color: var(--danger-line); color: var(--text); }
         .ini-alerta.aviso { background: var(--amber-bg); border-color: var(--warning-line); color: var(--text); }
+        /* "N itens esperam aprovacao" e' o unico alerta daqui que ABRE outra
+           tela; os demais so' expandem no lugar. Por isso a seta aponta pra
+           fora, e nao pra baixo. */
+        .dash-falta-aprovar .ini-seta { margin-left: auto; flex-shrink: 0; opacity: .7; }
+        .dash-falta-aprovar b { font-variant-numeric: tabular-nums; }
         .ini-seta { flex-shrink: 0; opacity: .5; margin-top: 2px; }
         .ini-seta.aberta { transform: rotate(180deg); }
         .ini-detalhe { margin: -4px 0 8px; padding: 6px 12px 8px; border: 1px solid var(--danger-line); border-top: 0; border-radius: 0 0 8px 8px; background: var(--surface-1); }
@@ -24339,6 +24396,10 @@ export default function App() {
             souAdmin={souAdmin} usuario={usuario} onImportCaderno={importCaderno} onArquivos={trocarArquivosDaObra}
             onDataEntrega={definirDataEntrega}
             onIrParaCompras={() => { setGrupo("planejamento"); setTab("comparativo"); }}
+            /* Abre a Conf. Executivo JA' FILTRADA no que falta aprovar: quem
+               clica ja' disse o que quer ver, e fazer a pessoa achar o chip
+               depois seria pedir duas vezes a mesma coisa. */
+            onIrParaLiberacao={() => { setFiltroConferencia("falta_liberar"); setGrupo("planejamento"); setTab("executivo_conferencia"); }}
             onIrParaAditivos={() => setModulo("aditivos")}
             onDefinirGC={definirGCdaObra} onDefinirTailorMade={definirTailorMadeDaObra}
             onDefinirExecutivo={definirResponsavelExecutivoDaObra}
@@ -24360,6 +24421,7 @@ export default function App() {
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} souAdmin={souAdmin} onConcluirExecutivo={concluirItensExecutivo}
+            filtroInicial={filtroConferencia} onFiltroUsado={() => setFiltroConferencia(null)}
               usuario={usuario} obraComAditivos={obraComAditivos}
               onRegistrarAssinatura={registrarAssinaturaCliente} onRemoverAssinatura={removerAssinaturaCliente}
               onAprovarCliente={aprovarItensPeloCliente} /> : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")} />)}
