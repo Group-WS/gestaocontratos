@@ -230,6 +230,20 @@
   --amber-bg: var(--warning-soft);
   --red: var(--danger);
   --red-bg: var(--danger-soft);
+
+  /* OBSERVAÇÃO — o recado que alguém deixa para quem executa depois
+     (19/09/2026). Índigo de propósito: laranja, verde e vermelho já
+     significam estado do item no app (conferir, concluído, erro), e recado
+     não é estado do item. */
+  --obs: #5b5bd6;
+  --obs-bg: rgba(91, 91, 214, 0.08);
+}
+
+/* No tema escuro o índigo cheio afunda no fundo: sobe o brilho e mantém o
+   mesmo lugar na paleta. */
+[data-theme='dark'] {
+  --obs: #a5a5f5;
+  --obs-bg: rgba(165, 165, 245, 0.12);
 }
 
 /* ---------- Base (base.css do DS) ----------

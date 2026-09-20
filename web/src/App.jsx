@@ -17,7 +17,8 @@ import {
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
-  MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil
+  MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
+  MessageSquare
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -26,6 +27,7 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoGestor, nivelQueCuida, ehAdministrador,
   podeAbrirObras, registrarAcesso, estaOnline, quandoFoi } from "./lib/pessoas";
 import { listarVersoes, restaurarVersao } from "./lib/versoesObra";
+import { listarComentarios, criarComentario, apagarComentario } from "./lib/comentarios";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
@@ -11154,7 +11156,7 @@ function dataCurta(iso) {
 }
 
 // As props de troca de produto vêm da main; as de solicitação, daqui.
-function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, podeEditar, onHabilitar, editandoPor, onTrocar, onDesfazerTroca, equipe = [] }) {
+function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, podeEditar, onHabilitar, editandoPor, onTrocar, onDesfazerTroca, equipe = [], souAdmin = false }) {
   /* A obra COM os itens de aditivo aprovado, como o Plano de Compras ja'
      fazia. Sem isto o item de aditivo aparecia no Plano e nunca chegava
      aqui — relato dela em 17/09/2026, com o 2450/1 (alocacao MAT) que
@@ -11169,6 +11171,51 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   const [etapa, setEtapa] = useState("todos");
   const [fornecedor, setFornecedor] = useState("");   // "" = todos
   const [orcamento, setOrcamento] = useState(null);   // o pedido aberto pra imprimir
+
+  /* AS OBSERVACOES DA OBRA (19/09/2026).
+   *
+   * Vem todas de uma vez e a tela separa por verba e por produto: sao poucas
+   * linhas por obra, e consultar a cada verba aberta seriam dezenas de idas
+   * ao banco na mesma pagina.
+   *
+   * Estado proprio, fora de `obra`: observacao nao e' conteudo da obra, nao
+   * passa pelo salvamento dela e nao precisa da trava de edicao. Gravar aqui
+   * nunca pode arrastar a obra junto. */
+  const [obs, setObs] = useState([]);
+  const [obsSemTabela, setObsSemTabela] = useState(false);
+  const [soComObs, setSoComObs] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    listarComentarios(obra.codigo)
+      .then((r) => { if (!vivo) return; setObs(r.comentarios || []); setObsSemTabela(!!r.semTabela); })
+      .catch(() => { /* observacao indisponivel nao pode derrubar a tela de compras */ });
+    return () => { vivo = false; };
+  }, [obra.codigo]);
+
+  const obsDaVerba = (num) => obs.filter((c) => c.verba_num === String(num) && !c.item_chave);
+  const obsDoItem = (num, desc) => {
+    const chave = chaveDescricao(desc);
+    return obs.filter((c) => c.verba_num === String(num) && c.item_chave === chave);
+  };
+  /* Verbas e produtos que TEM observacao — e' o que o filtro usa, e o que
+     o contador da barra mostra. */
+  const verbasComObs = useMemo(() => new Set(obs.map((c) => String(c.verba_num))), [obs]);
+
+  async function adicionarObs(verbaNum, desc, texto) {
+    const novo = await criarComentario({
+      obraCodigo: obra.codigo, verbaNum,
+      itemChave: desc ? chaveDescricao(desc) : null,
+      texto, autor: usuario,
+    });
+    setObs((prev) => [...prev, novo]);
+  }
+  async function apagarObs(id) {
+    /* Some da tela primeiro e volta se o banco recusar: sem isso o clique
+       fica sem resposta enquanto a viagem acontece. */
+    const antes = obs;
+    setObs((prev) => prev.filter((c) => c.id !== id));
+    try { await apagarComentario(id); } catch { setObs(antes); }
+  }
   const [nomeNoPdf, setNomeNoPdf] = useState(true);   // às vezes o pedido sai sem dizer pra quem
   const [pipefy, setPipefy] = useState(null);   // o aviso depois de abrir a solicitação no Pipefy
   const [sel, setSel] = useState(() => new Set());
@@ -11720,6 +11767,15 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         {sel.size > 0 && <button className="btn-limpar-sel-claro" onClick={() => setSel(new Set())}>Limpar seleção</button>}
         <CampoBusca valor={busca} aoMudar={setBusca}
           contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
+        {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
+            obra: filtro que nunca filtra nada é ruído na barra. */}
+        {obs.length > 0 && (
+          <button type="button" className={`filter-chip ${soComObs ? "active" : ""} chip-obs`}
+            onClick={() => setSoComObs((v) => !v)}
+            title="Mostrar só as verbas e produtos com observação">
+            <MessageSquare size={11} /> com observação ({obs.length})
+          </button>
+        )}
         <div className="cmp-filtro-forn">
           <select className="cmp-forn-sel" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
             aria-label="Filtrar por fornecedor">
@@ -11762,8 +11818,14 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         /* O que a busca deixa aparecer NESTE grupo. Tudo o que vem depois —
            `nItens`, `nComprados`, `g.total`, os auxiliares e o template do
            Sienge — continua lendo `g.itens`, a verba inteira. */
-        const naTela = buscando ? g.itens.filter(casaRow) : g.itens;
-        if (buscando && naTela.length === 0) return null;
+        /* A BUSCA e o filtro de observacao peneiram a MESMA lista. Com o
+           filtro ligado, a verba so' aparece se ela mesma tiver observacao
+           ou se algum produto dela tiver — e, dentro, ficam so' os produtos
+           que tem. */
+        const comBusca = buscando ? g.itens.filter(casaRow) : g.itens;
+        const naTela = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;
+        if (buscando && comBusca.length === 0) return null;
+        if (soComObs && naTela.length === 0 && obsDaVerba(g.num).length === 0) return null;
         const aberto = abreNaBusca.aberto(g.num, abertos.has(g.num));
         /* A LINHA TROCADA NAO CONTA EM NADA — e' historico (18/09/2026).
 
@@ -11864,6 +11926,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 </div>
               </div>
             </div>
+            {/* A OBSERVACAO DA VERBA fica embaixo do nome, FORA do botao
+                que abre o grupo: dentro dele cada clique no campo fecharia a
+                verba, e form dentro de button nem e' HTML valido. */}
+            <Observacoes lista={obsDaVerba(g.num)} semTabela={obsSemTabela}
+              usuario={usuario} souAdmin={souAdmin} ondeFica="verba"
+              onAdicionar={(t) => adicionarObs(g.num, null, t)} onApagar={apagarObs} />
             {aberto && (
               <div className="grp-itens">
                 <table className="tab-compras">
@@ -11889,6 +11957,13 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   <tbody>
                     {naTela.map((r) => (
                       <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)} noSienge={noSienge}
+                        /* A observacao segue a DESCRICAO do produto, nao a
+                           posicao da linha: posicao desgruda na primeira
+                           insercao e o recado passa pro produto errado. */
+                        obs={obsDoItem(g.num, r.it.desc)} obsSemTabela={obsSemTabela}
+                        usuario={usuario} souAdmin={souAdmin}
+                        onAdicionarObs={(t) => adicionarObs(g.num, r.it.desc, t)}
+                        onApagarObs={apagarObs}
                         onSelecionar={() => alternar(r.chave)}
                         casamento={casamentos.get(r.chave)}
                         grupos={grupos} aux={auxiliares ? auxiliares.get(r.chave) : null}
@@ -13490,8 +13565,94 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
   );
 }
 
+/* OBSERVACOES — o recado pra quem executa depois.
+ *
+ * Pedido dela em 19/09/2026: "outras pessoas podem criar alertas para aquelas
+ * que vao executar essa tarefa" — "falta comprar divisor de talher", "nao pode
+ * esquecer de ver o tapetinho das gavetas".
+ *
+ * E' a primeira coisa no app que NAO e' decisao registrada. Justificativa de
+ * remocao, conferencia de alerta e liberacao sao carimbos de quem decidiu.
+ * Isto e' aviso de quem passou pela obra pra quem vem depois — e por isso
+ * QUALQUER pessoa escreve, inclusive em modo leitura (decisao dela): exigir a
+ * trava de edicao pra deixar um recado mataria o uso.
+ *
+ * Cor propria, nem laranja nem verde nem vermelho: no app essas tres ja'
+ * significam estado do item (conferir, concluido, erro). Recado e' recado.
+ *
+ * `ondeFica` muda so' o tamanho e o espacamento — na verba a observacao fica
+ * embaixo do nome; no item, na propria linha.
+ */
+function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = false, ondeFica = "verba", semTabela = false }) {
+  const [escrevendo, setEscrevendo] = useState(false);
+  const [texto, setTexto] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  async function salvar(e) {
+    e.preventDefault(); e.stopPropagation();
+    const limpo = texto.trim();
+    if (!limpo || salvando) return;
+    setSalvando(true); setErro(null);
+    try {
+      await onAdicionar(limpo);
+      setTexto(""); setEscrevendo(false);
+    } catch (err) { setErro(err.message || String(err)); }
+    finally { setSalvando(false); }
+  }
+
+  const meu = (c) => String(c.autor || "").toLowerCase() === String(usuario || "").toLowerCase();
+  const quando = (em) => {
+    const d = new Date(em);
+    return Number.isFinite(d.getTime()) ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "";
+  };
+
+  if (semTabela && !lista.length) return null;
+
+  return (
+    <div className={`obs obs-${ondeFica}`} onClick={(e) => e.stopPropagation()}>
+      {lista.map((c) => (
+        <div key={c.id} className="obs-linha">
+          <MessageSquare size={10} className="obs-icone" />
+          <span className="obs-texto"><b>{nomeDoEmail(c.autor)}</b> · {c.texto}</span>
+          <span className="obs-quando">{quando(c.criado_em)}</span>
+          {/* Apagar aparece pra quem pode — o banco confere de novo na
+              politica de delete, entao a tela nao e' a unica barreira. */}
+          {(meu(c) || souAdmin) && onApagar && (
+            <button type="button" className="obs-apagar" title="Apagar esta observação"
+              onClick={() => onApagar(c.id)}><X size={9} /></button>
+          )}
+        </div>
+      ))}
+
+      {escrevendo ? (
+        <form className="obs-form" onSubmit={salvar}>
+          <input autoFocus value={texto} onChange={(e) => setTexto(e.target.value)}
+            placeholder={ondeFica === "item" ? "Ex.: conferir o tapetinho das gavetas" : "Ex.: falta comprar o divisor de talher"}
+            maxLength={280} />
+          <button type="submit" className="obs-salvar" disabled={!texto.trim() || salvando}>
+            {salvando ? "salvando…" : "salvar"}
+          </button>
+          <button type="button" className="obs-cancelar" onClick={() => { setEscrevendo(false); setTexto(""); setErro(null); }}>
+            cancelar
+          </button>
+        </form>
+      ) : (
+        onAdicionar && (
+          <button type="button" className="obs-mais" onClick={() => setEscrevendo(true)}
+            title={ondeFica === "item" ? "Deixar uma observação neste produto" : "Deixar uma observação nesta verba"}>
+            <Plus size={10} /> observação
+          </button>
+        )
+      )}
+      {erro && <div className="obs-erro">{erro}</div>}
+    </div>
+  );
+}
+
 function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false,
-  trocando = false, equipe = [], executivo, onAbrirTroca, onFecharTroca, onRegistrarTroca, onDesfazerTroca, troca = null }) {
+  trocando = false, equipe = [], executivo, onAbrirTroca, onFecharTroca, onRegistrarTroca, onDesfazerTroca, troca = null,
+  obs = [], obsSemTabela = false, onAdicionarObs, onApagarObs, usuario, souAdmin = false }) {
   const { it, material } = row;
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
   const quando = (rot, em) => `${rot}${em ? ` em ${new Date(em).toLocaleDateString("pt-BR")}` : ""}`;
@@ -13579,6 +13740,10 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
             "Cuba de apoio" e todas as cubas de apoio que existem. */}
         {it.especificacao && <div className="det-espec">{it.especificacao}</div>}
+        {/* A OBSERVACAO DO PRODUTO, na propria linha — e' aqui que quem vai
+            comprar esta' olhando. */}
+        <Observacoes lista={obs} semTabela={obsSemTabela} usuario={usuario} souAdmin={souAdmin}
+          ondeFica="item" onAdicionar={onAdicionarObs} onApagar={onApagarObs} />
       </td>
       <td className="mono center">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
       <td className="mono right">{fmtBRL(material)}</td>
@@ -22260,6 +22425,29 @@ export default function App() {
         .grp-esq > svg { flex-shrink: 0; }
         .grp-num { font-size: 11.5px; color: var(--ink-3); width: 20px; flex-shrink: 0; }
         .grp-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 10ch; }
+        /* OBSERVACOES — o recado pra quem executa depois. Cor propria
+           (indigo): laranja, verde e vermelho ja' significam estado do item
+           no app, e recado nao e' estado. */
+        .obs { display: flex; flex-direction: column; gap: 3px; }
+        .obs-verba { padding: 0 16px 10px 41px; }
+        .obs-item { margin-top: 4px; }
+        .obs-linha { display: flex; align-items: baseline; gap: 5px; font-size: 11px; color: var(--obs); line-height: 1.45; }
+        .obs-icone { flex-shrink: 0; opacity: .75; align-self: center; }
+        .obs-texto { min-width: 0; }
+        .obs-quando { flex-shrink: 0; font-size: 10px; opacity: .7; font-variant-numeric: tabular-nums; }
+        .obs-apagar { background: none; border: none; padding: 0 2px; cursor: pointer; color: inherit; opacity: .45; display: inline-flex; align-items: center; }
+        .obs-apagar:hover { opacity: 1; color: var(--red); }
+        .obs-mais { align-self: flex-start; display: inline-flex; align-items: center; gap: 3px; background: none; border: none; padding: 0;
+                    font-family: inherit; font-size: 10.5px; color: var(--obs); opacity: .6; cursor: pointer; }
+        .obs-mais:hover { opacity: 1; text-decoration: underline; }
+        .obs-form { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+        .obs-form input { flex: 1; min-width: 190px; font-family: inherit; font-size: 11.5px; padding: 4px 8px;
+                          border: 1px solid var(--obs); border-radius: 6px; background: var(--obs-bg); color: var(--ink); }
+        .obs-salvar, .obs-cancelar { background: none; border: none; padding: 0; font-family: inherit; font-size: 11px; cursor: pointer; }
+        .obs-salvar { color: var(--obs); font-weight: 600; }
+        .obs-salvar:disabled { opacity: .4; cursor: default; }
+        .obs-cancelar { color: var(--ink-3); }
+        .obs-erro { font-size: 10.5px; color: var(--red); }
         .grp-conta { font-size: 10.5px; color: var(--ink-3); background: var(--panel); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         .grp-avulsos { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--purple); background: var(--purple-soft); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         /* MAT e MO em colunas de largura fixa: com valores alinhados da
@@ -24137,7 +24325,7 @@ export default function App() {
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} onCompraAditivo={atualizarCompraDeAditivo} usuario={usuario}
             podeEditar={edicao.minha} onHabilitar={perfilPermiteEditar ? habilitarEdicao : undefined} editandoPor={edicao.por}
-            onTrocar={trocarProduto} onDesfazerTroca={desfazerTroca} equipe={pessoas} />}
+            onTrocar={trocarProduto} onDesfazerTroca={desfazerTroca} equipe={pessoas} souAdmin={souAdmin} />}
           {grupo === "arquivos" && (
             <ArquivosObraView obra={obra} usuario={usuario} podeEditar={edicao.minha} souAdmin={souAdmin}
               onArquivos={trocarArquivosDaObra} />
