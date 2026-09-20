@@ -154,6 +154,50 @@ export async function excluirPessoa(email) {
    `modulos: null` quer dizer TODOS. Lista explicita quer dizer
    exatamente esses -- e lista VAZIA quer dizer nenhum, que e' o
    pendente. Sao tres estados diferentes de proposito. */
+/* OS TRES PAPEIS DE UMA OBRA.
+ *
+ * `gc` existe desde sempre; `tailor_made` e `responsavel_executivo` foram
+ * criados em supabase/equipe-da-obra.sql com o comentario certo: "mesma
+ * ideia de gc, guarda o e-mail de quem responde". Cada um em coluna
+ * propria porque uma obra pode ter os tres ao mesmo tempo, e nenhum e'
+ * obrigatorio.
+ *
+ * So' que "minhas obras" nunca soube deles: ela testava `o.gc` e mais
+ * nada, entao uma Taylor Made jamais caia no recorte das proprias obras.
+ * Daqui pra frente os tres contam.
+ *
+ * A grafia: a coluna do banco e' `tailor_made`, em ingles. Na tela e'
+ * "Taylor Made", que e' como a casa escreve. Renomear coluna e' migracao;
+ * o rotulo fica aqui, num lugar so'. */
+export const PAPEIS_DA_OBRA = [
+  { chave: "gc", campos: ["gc"], rotulo: "GC" },
+  { chave: "tailorMade", campos: ["tailorMade", "tailor_made"], rotulo: "Taylor Made" },
+  { chave: "executivo", campos: ["responsavelExecutivo", "responsavel_executivo"], rotulo: "Executivo" },
+];
+
+const mesmo = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
+
+/* QUAL papel a pessoa ocupa na obra, ou null. Aceita as duas grafias do
+   campo porque a obra chega ora do estado do app (tailorMade), ora crua
+   do banco (tailor_made). */
+export function papelNaObra(obra, email) {
+  if (!obra || !email) return null;
+  return PAPEIS_DA_OBRA.find((p) => p.campos.some((c) => mesmo(obra[c], email))) || null;
+}
+
+/* A obra e' dela, em qualquer um dos tres papeis. */
+export const obraDaPessoa = (obra, email) => !!papelNaObra(obra, email);
+
+/* Quem responde pela obra, com papel e e-mail — para a coluna Equipe.
+   Papel vago entra como `email: null`, porque vaga vazia e' informacao:
+   obra sem responsavel hoje so' aparece como alerta solto. */
+export const equipeDaObra = (obra) =>
+  PAPEIS_DA_OBRA.map((p) => ({
+    chave: p.chave,
+    rotulo: p.rotulo,
+    email: p.campos.map((c) => obra?.[c]).find(Boolean) || null,
+  }));
+
 export const PERFIS = [
   /* Admin master (pedido de 15/09/2026): so' ele ve e mexe na Equipe e nos
      acessos. O Administrador continua com todo o resto -- contrato da obra
@@ -177,6 +221,14 @@ export const PERFIS = [
     id: "gc", nome: "GC",
     resumo: "Trabalha normalmente, só nas obras em que é o responsável.",
     modulos: null, obras: "minhas", edita: true, gerenciaPessoas: false, abreObras: true,
+  },
+  {
+    id: "taylor", nome: "Taylor Made",
+    resumo: "Acompanha as obras em que é a Taylor Made. Vê tudo delas, e não altera nada.",
+    /* Irmao do GC: mesmo recorte de obras, sem a edicao. A Taylor acompanha
+       o andamento e cobra quem executa — nao libera compra nem fecha
+       caderno, e por isso `edita: false`. */
+    modulos: null, obras: "minhas", edita: false, gerenciaPessoas: false, abreObras: true,
   },
   {
     id: "mehoo", nome: "Mehoo",
@@ -259,8 +311,16 @@ export function obrasPermitidas(pessoa, obras) {
   if (!perfil || pessoa?.ativo === false) return [];
   if (perfil.obras === "todas") return todas;
   if (perfil.obras === "minhas") {
-    const meu = String(pessoa.email || "").toLowerCase();
-    return todas.filter((o) => !o.gc || String(o.gc).toLowerCase() === meu);
+    /* Os TRES papeis contam, nao so' o GC: quem e' Taylor Made de uma obra
+       precisa ver essa obra sem depender de quem e' o GC dela.
+
+       A regra e' ESTRITAMENTE ADITIVA — "obra sem GC todo mundo ve"
+       continua valendo, palavra por palavra. Cheguei a trocar por "obra
+       sem nenhum dos tres responsaveis", que le' melhor, e estava errado:
+       uma obra com Taylor e sem GC sumiria da tela de todos os GCs, e
+       ninguem poderia trabalhar nela. Mudanca de permissao que TIRA acesso
+       precisa ser pedida, nao cair de bonus. */
+    return todas.filter((o) => !o.gc || obraDaPessoa(o, pessoa.email));
   }
   return [];
 }

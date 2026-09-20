@@ -2111,6 +2111,17 @@ table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font
 .ini-fase-pilula.azul { color: var(--brand); background: var(--blue-bg); }
 .ini-titulo-linha { justify-content: space-between; }
 .ini-titulo-esq { display: inline-flex; align-items: center; gap: 8px; }
+/* QUEM RESPONDE PELA OBRA — os tres papeis, com o rotulo escrito.
+   O rotulo em negrito e o nome em peso normal: a pergunta e' "quem e' o
+   Executivo daqui", entao o papel ancora e o nome responde. A vaga vazia
+   fica em italico e apagada — se le' como lacuna, nao como nome. */
+.ini-equipe { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: var(--t-micro); color: var(--ink-3); }
+.ini-papel b { font-weight: 600; color: var(--ink-2); }
+.ini-papel.vago { font-style: italic; opacity: .75; }
+.ini-titulo-dir { display: inline-flex; align-items: center; gap: 12px; }
+.ini-filtro-taylor { display: inline-flex; align-items: center; gap: 6px; }
+.ini-filtro-rot { font-size: var(--t-micro); color: var(--ink-3); }
+.ini-filtro-taylor .form-select { font-size: var(--t-meta); padding: 4px 24px 4px 8px; height: auto; }
 .ini-link-finalizadas { display: inline-flex; align-items: center; gap: 2px; background: none; border: none; font-family: inherit; font-size: var(--t-micro); font-weight: 600; color: var(--ink-3); cursor: pointer; padding: 2px 0; }
 .ini-link-finalizadas:hover { color: var(--ink); }
 /* .ini-numeros saiu daqui: a regua do Inicio virou .ini-regua ha' muito, e a

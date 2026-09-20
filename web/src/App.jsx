@@ -25,6 +25,7 @@ import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definir
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
 import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail, CARGOS,
   PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
+  PAPEIS_DA_OBRA, papelNaObra, obraDaPessoa, equipeDaObra,
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoGestor, nivelQueCuida, ehAdministrador,
   podeAbrirObras, registrarAcesso, estaOnline, quandoFoi,
   urlDaFoto, subirFotoPerfil, definirFotoPerfil } from "./lib/pessoas";
@@ -1846,7 +1847,11 @@ const contratoEtapa = (it) => it.statusContrato || "nao_solicitado";
 
 /* A obra e' minha quando o GC dela sou eu. Sem GC ela nao e' de ninguem —
    e aparece pra todo mundo, que e' melhor do que sumir pra todo mundo. */
-const obraDoGC = (o, email) => !!email && String(o.gc || "").toLowerCase() === String(email).toLowerCase();
+/* "Minhas obras" mora em lib/pessoas.js agora, e conta os TRES papeis —
+   GC, Taylor Made e Executivo. Aqui existia um obraDoGC que olhava so' o
+   campo `gc`, e era a unica coisa que os tres pontos de "minhas" chamavam:
+   uma Taylor Made jamais caia no recorte das proprias obras. */
+const temResponsavel = (o) => PAPEIS_DA_OBRA.some((p) => p.campos.some((c) => o?.[c]));
 
 /* ============================================================
    PAINEL GERAL DE COMPRAS E CONTRATACOES
@@ -9708,7 +9713,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_MODO_OBRAS, modo); } catch { /* modo anonimo */ }
   }, [modo]);
 
-  const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
+  const nMinhas = obras.filter((o) => obraDaPessoa(o, usuario)).length;
 
   const [menuPerfil, setMenuPerfil] = useState(false);
   /* Fecha clicando em QUALQUER lugar, e com Esc. Antes so' fechava
@@ -9898,7 +9903,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     /* Obra SEM GC passa no filtro de propósito: enquanto os vínculos não
        estiverem todos feitos, esconder o que não tem dono deixaria obra
        viva fora da tela de todo mundo. */
-    const casaGC = !soMinhas || !usuario || !o.gc || obraDoGC(o, usuario);
+    const casaGC = !soMinhas || !usuario || !temResponsavel(o) || obraDaPessoa(o, usuario);
     return casaBusca && casaGC;
   }).sort(porCodigo);
 
@@ -17701,6 +17706,33 @@ function MarcosDaObra({ obra }) {
   );
 }
 
+/* Quem responde pela obra: os tres papeis, cada um com o rotulo escrito.
+ *
+ * A vaga VAZIA aparece. Ate' aqui o Inicio mostrava so' "GC Fulano", e
+ * quando nao havia GC nao mostrava nada — obra sem responsavel virava uma
+ * linha de alerta la' embaixo, longe da obra a que se refere. Escrita ao
+ * lado das outras duas, a lacuna se le' de relance e no lugar certo.
+ *
+ * O rotulo sai de PAPEIS_DA_OBRA, que e' onde a grafia mora: a coluna do
+ * banco e' `tailor_made`, e o que se le' na tela e' "Taylor Made". */
+function EquipeDaObra({ obra, equipe }) {
+  const nomes = equipeDaObra(obra).map((papel) => ({
+    ...papel,
+    nome: papel.email
+      ? ((equipe || []).find((p) => p.email === papel.email)?.nome || nomeDoEmail(papel.email))
+      : null,
+  }));
+  return (
+    <div className="ini-equipe">
+      {nomes.map((p) => (
+        <span key={p.chave} className={`ini-papel ${p.nome ? "" : "vago"}`} title={p.rotulo}>
+          <b>{p.rotulo}</b> {p.nome || "a definir"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0, onAbrirObra, onModulo, dadosLocalizacao = [], localizacaoCarregando = false, onToggleLocalizacao }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const t = r.totais;
@@ -17726,7 +17758,7 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
      esteja marcada como GC de alguma obra — "Suas obras" é um recorte
      pra quem acompanha só a própria carteira, não pra quem coordena
      todo mundo. */
-  const minhas = meuCargo === "Coordenação" ? [] : obras.filter((o) => obraDoGC(o, usuario));
+  const minhas = meuCargo === "Coordenação" ? [] : obras.filter((o) => obraDaPessoa(o, usuario));
   /* ENTREGAS DO TRIMESTRE — a pergunta de segunda-feira de manhã.
 
      A data de cada obra já existia e o alerta dos 90 dias já falava do
@@ -17743,12 +17775,34 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
     .filter(({ dias }) => dias <= 90)
     .sort((a, b) => a.dias - b.dias), [obras]);
 
+  /* FILTRO POR TAYLOR MADE.
+     A lista sai das proprias obras, nao da Equipe inteira: so' aparece
+     quem de fato e' Taylor de alguma coisa, entao o menu nao enche de
+     gente que nao tem obra. Some quando nenhuma obra tem Taylor — filtro
+     com uma opcao so' e' enfeite. */
+  const [filtroTaylor, setFiltroTaylor] = useState("");
+  const taylors = useMemo(() => {
+    const vistos = new Map();
+    obras.forEach((o) => {
+      if (!o.tailorMade) return;
+      const email = String(o.tailorMade).toLowerCase();
+      if (!vistos.has(email)) {
+        vistos.set(email, (equipe || []).find((p) => p.email === o.tailorMade)?.nome || nomeDoEmail(o.tailorMade));
+      }
+    });
+    return [...vistos].map(([email, nome]) => ({ email, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [obras, equipe]);
+
   const listaObras = useMemo(() => {
-    const base = minhas.length ? minhas : obras;
+    const comFiltro = filtroTaylor
+      ? obras.filter((o) => String(o.tailorMade || "").toLowerCase() === filtroTaylor)
+      : null;
+    const base = comFiltro || (minhas.length ? minhas : obras);
     const chave = (o) => ({ temAtraso: temAtrasoPorCodigo.get(o.codigo) || false, dataEntrega: o.dataEntrega });
     return [...base].sort((x, y) => ordemDeUrgencia(chave(x), chave(y)));
-  }, [minhas, obras, temAtrasoPorCodigo]);
+  }, [minhas, obras, temAtrasoPorCodigo, filtroTaylor]);
   const semGC = obras.filter((o) => !o.gc);
+
 
   /* Aditivo aprovado sem o card do Pipefy: e' compromisso assumido que o
      comercial ainda nao viu. */
@@ -17914,18 +17968,30 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
           <div className="ini-titulo ini-titulo-linha">
             <span className="ini-titulo-esq">
               <Building2 size={14} className="ini-titulo-icone" />
-              {minhas.length ? "Suas obras" : "Obras ativas"}
+              {filtroTaylor ? "Obras da Taylor" : minhas.length ? "Suas obras" : "Obras ativas"}
               <span className="ini-conta">{listaObras.length}</span>
             </span>
-            <button type="button" className="ini-link-finalizadas" onClick={() => onModulo("arquivo")}>
-              Finalizadas <ChevronRight size={12} />
-            </button>
+            <span className="ini-titulo-dir">
+              {taylors.length > 0 && (
+                <label className="ini-filtro-taylor">
+                  <span className="ini-filtro-rot">Taylor Made</span>
+                  <select className="form-select" value={filtroTaylor}
+                    onChange={(e) => setFiltroTaylor(e.target.value)}>
+                    <option value="">Todas</option>
+                    {taylors.map((tm) => <option key={tm.email} value={tm.email}>{tm.nome}</option>)}
+                  </select>
+                </label>
+              )}
+              <button type="button" className="ini-link-finalizadas" onClick={() => onModulo("arquivo")}>
+                Finalizadas <ChevronRight size={12} />
+              </button>
+            </span>
           </div>
           {listaObras.map((o) => {
             const L = r.linhas.find((x) => x.codigo === o.codigo);
             const esteira = esteiraDaObra(o);
             const executivoAtrasado = passosCriticosAtrasados(o).passos.some((p) => p.chave === "projeto");
-            const nomeGC = o.gc ? ((equipe || []).find((p) => p.email === o.gc)?.nome || nomeDoEmail(o.gc)) : null;
+
             return (
               <button key={o.id} className="ini-obra" onClick={() => onAbrirObra(o.id)}>
                 <div className="ini-obra-id">
@@ -17936,6 +18002,7 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                       ? ` · entrega ${new Date(`${o.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}`
                       : " · sem data de entrega"}
                   </div>
+                  <EquipeDaObra obra={o} equipe={equipe} />
                   <div className="ini-esteira">
                     {esteira.passos.map((p) => {
                       const alerta = p.chave === "projeto" && executivoAtrasado;
@@ -17958,12 +18025,10 @@ function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0,
                     de apoio, não o que a linha existe pra responder. */}
                 {L ? (
                   <div className="ini-obra-resumo">
-                    {nomeGC && <div className="ini-obra-gc">GC {nomeGC}</div>}
                     <div className="ini-obra-pct">{Math.round(L.mat.pct)}% comprado</div>
                   </div>
                 ) : (
                   <div className="ini-obra-resumo">
-                    {nomeGC && <div className="ini-obra-gc">GC {nomeGC}</div>}
                     <span className="ini-obra-vazia">sem planilha</span>
                   </div>
                 )}
