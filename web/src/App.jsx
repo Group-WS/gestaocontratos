@@ -50,6 +50,7 @@ import { montarSolicitacaoSienge, corpoDoEnvio, casarDetalhes } from "./lib/sien
 import { abrirEnvio, fecharEnvio, enviosPendentes, envioComMesmoConteudo, reconciliarEnvio,
   listarEnviosSienge, assinaturaDoEnvio, novaChaveIdempotencia } from "./lib/siengeSolicitacoes.js";
 import Catalogo from "./Catalogo";
+import { confirmar } from "./lib/confirmar.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -917,7 +918,7 @@ function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno,
   const outros = avulsosDaObra(obra).filter((a) => (a.fase || "outros") === "outros");
 
   async function excluir(a) {
-    if (!window.confirm(`Excluir "${a.titulo || a.nome}"? Isso não pode ser desfeito.`)) return;
+    if (!(await confirmar({ titulo: "Excluir arquivo", mensagem: `Excluir "${a.titulo || a.nome}"? Isso não pode ser desfeito.`, confirmar: "Excluir" }))) return;
     setErro(null);
     try {
       onArquivos(await excluirAvulso(obra, a));
@@ -4845,8 +4846,8 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
                   ? "O Plano de Compras já foi liberado e congelou esta etapa. Use \"Reabrir etapas\" antes de remover."
                   : "Habilite a edição desta obra (no alto da página) para remover.")
               : `Remover ${oQueLimpa || "os dados importados"} desta obra`}
-            onClick={() => {
-            if (window.confirm(
+            onClick={async () => {
+            if (await confirmar(
               `Remover ${oQueLimpa || "os dados importados"}?\n\n` +
               "Some tudo que veio deste documento nesta obra. As outras etapas não são tocadas.\n\n" +
               "Não dá pra desfazer — depois é só subir o arquivo de novo."
@@ -7339,11 +7340,11 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                   {podeEditar && aprovados.length > 0 && (
                     <button className="btn-desaprovar"
                       title="Tira a aprovação do cliente destes produtos — eles voltam a esperar"
-                      onClick={() => {
-                        if (!window.confirm(
+                      onClick={async () => {
+                        if (!(await confirmar(
                           `Desfazer a aprovação do cliente em ${aprovados.length} ${aprovados.length === 1 ? "produto" : "produtos"} da verba ${g.num}?\n\n` +
                           "Eles voltam a esperar a aprovação e não podem ser liberados para compra."
-                        )) return;
+                        ))) return;
                         onAprovar(aprovados.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), false);
                       }}>
                       <X size={12} /> Desfazer {aprovados.length}
@@ -8898,14 +8899,14 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                 )}
               </span>
             </div>
-            <button className="btn-import" onClick={() => {
+            <button className="btn-import" onClick={async () => {
               // Recomeçar joga fora o que já foi lançado aqui. Perguntar
               // custa um clique; refazer custa a tarde.
-              if (temExecutivo && !window.confirm(
+              if (temExecutivo && !(await confirmar(
                 "Puxar a planilha do criativo de novo?\n\n" +
                 "Tudo que já foi lançado ou editado no Executivo desta obra será trocado pelos itens originais do criativo.\n\n" +
                 "Não dá para desfazer."
-              )) return;
+              ))) return;
               onPuxarDoCriativo();
             }}>
               <Copy size={13} /> {temExecutivo ? "Recomeçar do criativo" : "Puxar do criativo"}
@@ -9790,6 +9791,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   }
 
   async function removerFoto() {
+    if (!(await confirmar("Remover a sua foto de perfil?"))) return;
     setErroFoto(null);
     setSubindoFoto(true);
     try {
@@ -10323,8 +10325,8 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
           {erroArq && <div className="assinatura-sem-arq"><AlertTriangle size={13} /> {erroArq}</div>}
         </div>
         {!congelado && (
-          <button className="btn-limpar-import" onClick={() => {
-            if (window.confirm(
+          <button className="btn-limpar-import" onClick={async () => {
+            if (await confirmar(
               "Remover o registro de aprovação do cliente?\n\n" +
               "O Plano de Compras volta a ficar bloqueado até um novo registro."
             )) onRemover();
@@ -11794,6 +11796,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     setObs((prev) => [...prev, novo]);
   }
   async function apagarObs(id) {
+    if (!(await confirmar({ mensagem: "Apagar esta observação interna?", confirmar: "Apagar" }))) return;
     /* Some da tela primeiro e volta se o banco recusar: sem isso o clique
        fica sem resposta enquanto a viagem acontece. */
     const antes = obs;
@@ -11864,9 +11867,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     // As chaves das linhas de baixo mudam com a linha nova: seleção e sugestões recomeçam.
     setTrocando(null); setSel(new Set()); setCasamentos(new Map());
   };
-  const desfazerTroca = (r, t) => () => {
+  const desfazerTroca = (r, t) => async () => {
     if (!podeEditar || !onDesfazerTroca) return;
-    if (!window.confirm(`Desfazer a troca de ${t.rotulo}? A linha nova sai e o produto original volta a valer.`)) return;
+    if (!(await confirmar(`Desfazer a troca de ${t.rotulo}? A linha nova sai e o produto original volta a valer.`))) return;
     onDesfazerTroca(r.catIdx, t.em);
     setSel(new Set()); setCasamentos(new Map());
   };
@@ -12277,7 +12280,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   {/* Tirar um arquivo sem recomecar: as vezes so um deles
                       estava errado, e refazer a selecao inteira e caro. */}
                   <button className="cf-doc-x" title="Tirar este arquivo da conferência"
-                    onClick={() => setDoSienge((a2) => {
+                    onClick={async () => !(await confirmar(`Tirar "${d.nome}" da conferência?`)) ? null : setDoSienge((a2) => {
                       const docs = a2.docs.filter((x) => x.nome !== d.nome);
                       return docs.length
                         ? { docs, itens: a2.itens.filter((i) => i.arquivo !== d.nome) }
@@ -13329,7 +13332,10 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
     .filter((r) => !r.ok && !descartados.has(chaveDoResultado(r)));
 
   const editar = (id, patch) => setEdicoes((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
-  const descartar = (id) => setDescartados((d) => new Set(d).add(id));
+  const descartar = async (id) => {
+    if (!(await confirmar("Tirar esta linha do envio?\n\nEla continua pendente nas Compras."))) return;
+    setDescartados((d) => new Set(d).add(id));
+  };
 
   /* Reenviar é mandar os mesmos itens para a solicitação que JÁ existe.
      A quantidade e a observação saem da edição, quando houve. */
@@ -14122,7 +14128,7 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
           <span className="troca-total">{fmtBRL(totalDe(l))}</span>
           {i > 0 ? (
             <button type="button" className="troca-tirar" title="Tirar esta linha" aria-label="Tirar esta linha"
-              onClick={() => setLinhas((ls) => ls.filter((_, k) => k !== i))}><X size={11} /></button>
+              onClick={async () => { if (await confirmar("Tirar esta linha da troca?")) setLinhas((ls) => ls.filter((_, k) => k !== i)); }}><X size={11} /></button>
           ) : <span />}
         </div>
       ))}
@@ -15003,8 +15009,8 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
     return <EscopoAberto escopo={e} obra={obra} podeEditar={podeEditar}
       onMudar={(patch) => onMudarEscopo(e.id, patch)}
       onVoltar={() => setEscopoAberto(null)}
-      onApagar={() => {
-        if (window.confirm(`Apagar o escopo "${e.nome}"?\n\nOs serviços continuam na obra — some só o documento.`)) {
+      onApagar={async () => {
+        if (await confirmar(`Apagar o escopo "${e.nome}"?\n\nOs serviços continuam na obra — some só o documento.`)) {
           onApagarEscopo(e.id);
           setEscopoAberto(null);
         }
@@ -16120,7 +16126,7 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
     }
   }
   async function tirar(p) {
-    if (!window.confirm(`Tirar ${p.nome || p.funcao} da equipe interna?`)) return;
+    if (!(await confirmar(`Tirar ${p.nome || p.funcao} da equipe interna?`))) return;
     setSalvando(p.id); setErro(null);
     try {
       await excluirPrestador(p.id);
@@ -16723,7 +16729,10 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
     });
   };
   const addItem = () => onMudar({ ...g, itens: [...g.itens, novoItem()] });
-  const delI = (iid) => onMudar({ ...g, itens: g.itens.filter((i) => i.id !== iid) });
+  const delI = async (iid) => {
+    if (!(await confirmar({ mensagem: "Excluir este item do aditivo?", confirmar: "Excluir" }))) return;
+    onMudar({ ...g, itens: g.itens.filter((i) => i.id !== iid) });
+  };
   const dupI = (iid) => {
     const k = g.itens.findIndex((i) => i.id === iid);
     const copia = { ...g.itens[k], id: Math.random().toString(36).slice(2, 9) };
@@ -16833,7 +16842,10 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
 
 function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara, doExecutivo }) {
   const trocar = (gid, novo) => onMudar(grupos.map((g) => (g.id === gid ? novo : g)));
-  const remover = (gid) => onMudar(grupos.filter((g) => g.id !== gid));
+  const remover = async (gid) => {
+    if (!(await confirmar({ mensagem: "Excluir este grupo e todos os itens dele?", confirmar: "Excluir" }))) return;
+    onMudar(grupos.filter((g) => g.id !== gid));
+  };
   const mover = (gid, d) => {
     const i = grupos.findIndex((g) => g.id === gid), j = i + d;
     if (j < 0 || j >= grupos.length) return;
@@ -17330,7 +17342,7 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
       setErro(`O aditivo ${a.numero} só pode ser excluído por quem o criou${a.criadoPor ? ` (${nomeDoEmail(a.criadoPor)})` : ""} ou por um administrador.`);
       return;
     }
-    if (!window.confirm(`Excluir o aditivo ${a.numero}? Isso não pode ser desfeito.`)) return;
+    if (!(await confirmar({ titulo: "Excluir aditivo", mensagem: `Excluir o aditivo ${a.numero}? Isso não pode ser desfeito.`, confirmar: "Excluir" }))) return;
     try {
       await excluirAditivo(a.id);
       setLista((l) => l.filter((x) => x.id !== a.id));
@@ -18214,7 +18226,7 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
       setAviso(`${p.nome} é GC de ${n} ${n === 1 ? "obra" : "obras"}. Troque o GC dessas obras antes de excluir, ou marque como inativo.`);
       return;
     }
-    if (!window.confirm(`Excluir ${p.nome} da equipe?`)) return;
+    if (!(await confirmar({ mensagem: `Excluir ${p.nome} da equipe?`, confirmar: "Excluir" }))) return;
     try {
       await onExcluir(p.email);
     } catch (e) {
@@ -18580,7 +18592,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, souAdmin, onArquivos }) {
   }
 
   async function excluir(a) {
-    if (!window.confirm(`Excluir "${a.titulo || a.nome}"? Isso não pode ser desfeito.`)) return;
+    if (!(await confirmar({ titulo: "Excluir arquivo", mensagem: `Excluir "${a.titulo || a.nome}"? Isso não pode ser desfeito.`, confirmar: "Excluir" }))) return;
     setErro(null);
     try {
       onArquivos(await excluirAvulso(obra, a));

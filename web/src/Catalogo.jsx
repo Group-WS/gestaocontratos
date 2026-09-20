@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { confirmar } from "./lib/confirmar.jsx";
 import {
   Search, Plus, Image as ImageIcon, Trash2, Pencil, X, Store,
   AlertTriangle, Check, ArrowRight, Upload, Presentation,
@@ -116,7 +117,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
   }
 
   async function remover(p) {
-    if (!window.confirm(`Tirar "${p.descricao}" do catálogo? Isso não pode ser desfeito.`)) return;
+    if (!(await confirmar({ mensagem: `Tirar "${p.descricao}" do catálogo? Isso não pode ser desfeito.`, confirmar: "Tirar do catálogo" }))) return;
     try {
       await excluirProduto(p.id);
       setProdutos((l) => l.filter((x) => x.id !== p.id));
@@ -500,7 +501,7 @@ function FormProduto({ p, produtos, fornecedores, verbas, onFechar, onSalvar, on
                 <div className="cat-foto-prev">
                   <img alt="" src={arquivo ? URL.createObjectURL(arquivo) : urlDaImagem(f.imagem)} />
                   <button type="button" className="cat-foto-x" title="Remover foto"
-                    onClick={() => { setArquivo(null); set("imagem", null); }}>
+                    onClick={async () => { if (await confirmar("Remover a foto deste produto?")) { setArquivo(null); set("imagem", null); } }}>
                     <X size={13} />
                   </button>
                 </div>
@@ -545,7 +546,7 @@ function Fornecedores({ lista, setLista, usuario, podeEditar, onErro, usoDe }) {
       onErro(`${f.nome} está em ${n} ${n === 1 ? "produto" : "produtos"} do catálogo. Troque o fornecedor deles primeiro.`);
       return;
     }
-    if (!window.confirm(`Excluir ${f.nome}?`)) return;
+    if (!(await confirmar({ mensagem: `Excluir o fornecedor ${f.nome}?`, confirmar: "Excluir" }))) return;
     try {
       await excluirFornecedor(f.id);
       setLista((l) => l.filter((x) => x.id !== f.id));

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { confirmar } from "./lib/confirmar.jsx";
 import {
   X, Plus, Trash2, Upload, Save, FileDown, Image as ImageIcon,
   AlertTriangle, Check, Search, GripVertical, History, FileCheck,
@@ -337,8 +338,8 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
               });
               setPagina(i + 1);
             }}
-            onExcluir={(i) => {
-              if (!window.confirm("Excluir este ambiente da apresentação?")) return;
+            onExcluir={async (i) => {
+              if (!(await confirmar({ mensagem: "Excluir este ambiente da apresentação?", confirmar: "Excluir" }))) return;
               setDoc((d) => ({ ...d, slides: d.slides.filter((_, k) => k !== i) }));
               setPagina("dados");
             }}
@@ -419,8 +420,10 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
                 onMudarBloco={(id, f) => mudarSlide((s) => ({
                   ...s, blocos: s.blocos.map((b) => (b.id === id ? f(b) : b)) }))}
                 onAlternarModo={(id) => mudarSlide((s) => alternarModoBloco(s, id))}
-                onRemover={(id) => mudarSlide((s) => ({
-                  ...s, blocos: s.blocos.filter((b) => b.id !== id) }))} />
+                onRemover={async (id) => {
+                  if (!(await confirmar("Remover este produto do ambiente?"))) return;
+                  mudarSlide((s) => ({ ...s, blocos: s.blocos.filter((b) => b.id !== id) }));
+                }} />
             ) : null}
           </div>
         </div>
