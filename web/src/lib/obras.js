@@ -153,7 +153,7 @@ export async function definirTailorMade(codigo, email) {
     .select(`${COLUNAS_OBRA}, tailor_made, responsavel_executivo`)
     .single();
   if (error) {
-    if (faltaColuna(error)) throw new Error("Falta rodar supabase/equipe-da-obra.sql — a coluna de Tailor Made ainda não existe.");
+    if (faltaColuna(error)) throw new Error("Falta rodar supabase/equipe-da-obra.sql — a coluna de Taylor Made ainda não existe.");
     throw error;
   }
   return data;

@@ -35,6 +35,13 @@ console.log("\n=== a grafia, num lugar so' ===");
 conf("o rotulo da tela e' 'Taylor Made'", /rotulo: "Taylor Made"/.test(pessoas));
 conf("a coluna do banco segue 'tailor_made'", pessoas.includes('"tailor_made"'));
 conf("o perfil novo existe", /id: "taylor", nome: "Taylor Made"/.test(pessoas));
+/* Uma grafia so' na tela inteira. Dentro da obra o rotulo estava escrito
+   a mao como "Tailor Made" (ingles) enquanto o filtro do Inicio dizia
+   "Taylor Made" — a mesma pessoa, dois nomes, na mesma sessao. */
+conf("nenhum rotulo com a grafia inglesa sobrou na tela",
+  /rotulo="Tailor Made"/.test(app), false);
+conf("o rotulo da obra sai de PAPEIS_DA_OBRA",
+  app.includes('PAPEIS_DA_OBRA.find((x) => x.chave === "tailorMade").rotulo'));
 
 console.log("\n=== a coluna Equipe ===");
 conf("o componente existe", app.includes("function EquipeDaObra("));

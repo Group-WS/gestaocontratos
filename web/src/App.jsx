@@ -476,7 +476,7 @@ function nomeNaEquipe(equipe, email) {
   return p?.nome || nomeDoEmail(email);
 }
 
-/* Quem responde por UM papel da obra (GC, Tailor Made, Executivo...).
+/* Quem responde por UM papel da obra (GC, Taylor Made, Executivo...).
    Guarda o e-mail; mostra o nome. Generalizado a partir do que era só
    `GcDaObra` — os três papéis de "Equipe da obra" usam o mesmo
    componente, só trocando rótulo, valor e o que salvar.
@@ -1313,7 +1313,12 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           <LinhaEquipe obraId={obra.id} rotulo="GC responsável" valor={obra.gc} equipe={equipe} podeEditar={podeEditar}
             prioridade={/gc/i} vazio="sem GC — esta obra aparece para todo mundo"
             onDefinir={(email) => onDefinirGC(obra.codigo, email)} />
-          <LinhaEquipe obraId={obra.id} rotulo="Tailor Made" valor={tailorMade} equipe={equipe} podeEditar={podeEditar}
+          {/* O rotulo sai de PAPEIS_DA_OBRA, que e' onde a grafia mora. Aqui
+              estava "Tailor Made" escrito a mao, enquanto o filtro do
+              Inicio dizia "Taylor Made" — duas grafias pra mesma pessoa,
+              na mesma sessao. A coluna do banco continua `tailor_made`. */}
+          <LinhaEquipe obraId={obra.id} valor={tailorMade} equipe={equipe} podeEditar={podeEditar}
+            rotulo={PAPEIS_DA_OBRA.find((x) => x.chave === "tailorMade").rotulo}
             vazio="ainda não atribuído" onDefinir={(email) => onDefinirTailorMade(obra.codigo, email)} />
           <LinhaEquipe obraId={obra.id} rotulo="Executivo" valor={responsavelExecutivo} equipe={equipe} podeEditar={podeEditar}
             vazio="ainda não atribuído" onDefinir={(email) => onDefinirExecutivo(obra.codigo, email)} />
