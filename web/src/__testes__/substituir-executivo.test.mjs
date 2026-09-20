@@ -130,7 +130,28 @@ conf("... e que dá para voltar atrás", src.includes("O histórico de versões 
    planilha o número quase não muda — some o ESTADO. Sem isto, a gravação
    mais perigosa do app passaria pelo filtro de uma hora sem deixar cópia. */
 conf("o banco sabe contar aprovados", sql.includes("create or replace function obra_conta_liberados("), true);
-conf("... ignorando item removido", sql.includes("and not coalesce((it ->> 'excluido')::boolean, false)"), true);
+
+/* Item removido não conta.
+ *
+ * Este teste já cobrou a grafia exata da linha
+ * (`and not coalesce((it ->> 'excluido')::boolean, false)`) e ficou vermelho
+ * quando 456d8a1 a reescreveu — sem que nada tivesse quebrado. Cobrar texto
+ * literal de SQL é assim: quem conserta o código é que leva o erro.
+ *
+ * Agora ele cobra as duas coisas que importam de verdade, e nenhuma delas é
+ * a redação: que a conta olha `excluido`, e que NÃO usa `::boolean` nele.
+ * O `::boolean` é o bug de 20/09 — `liberadoCompra` virou carimbo, a
+ * conversão derrubou a instrução, e como esta conta roda dentro do gatilho,
+ * quem caiu foi o UPDATE: toda obra com item liberado parou de salvar. */
+/* Sem os comentários: o da própria função conta a história do `::boolean`,
+   e cobrar a palavra no comentário acusaria justamente quem a documentou. */
+const conta = sql.slice(
+  sql.indexOf("create or replace function obra_conta_liberados("),
+  sql.indexOf("$$;", sql.indexOf("create or replace function obra_conta_liberados("))
+).replace(/--.*$/gm, "");
+conf("... ignorando item removido", /excluido/.test(conta), true);
+conf("... sem converter com ::boolean (foi o bug de 20/09)",
+  /::boolean/.test(conta), false);
 conf("perder aprovação conta como queda",
   sql.includes("or (case when apagando then 0 else obra_conta_liberados(NEW.categorias) end)"), true);
 

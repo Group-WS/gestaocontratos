@@ -1,0 +1,12 @@
+{
+  "name": "confere-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Testes de ponta a ponta do Confere, no navegador. Pacote separado de web/ para o Playwright nao pesar na instalacao do app.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

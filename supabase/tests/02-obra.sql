@@ -48,5 +48,5 @@ select is_empty(
   'quem esta na fila nao ve obra nenhuma'
 );
 
-select * from finish();
+select * from finish(true);
 rollback;

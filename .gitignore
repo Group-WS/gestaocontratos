@@ -7,3 +7,13 @@ dist/
 
 # arquivos reais de obra pra calibrar os leitores — nunca vão pro GitHub
 arquivos-teste/
+
+# builds dos testes de ponta a ponta (e2e/playwright.config.mjs)
+dist-e2e-*/
+
+# relatorios do Playwright
+e2e/test-results/
+e2e/playwright-report/
+
+# estado local do Supabase CLI (supabase link) — muda por maquina
+supabase/.temp/

@@ -52,5 +52,5 @@ select isnt_empty(
   'o admin master le a equipe inteira'
 );
 
-select * from finish();
+select * from finish(true);
 rollback;

@@ -63,7 +63,12 @@ conf("o App entrega quem é administrador", /<AditivosView [^>]*souAdmin=\{souAd
 /* ---- 5. O banco ----
    Sem a política, o botão desabilitado é decoração: uma chamada direta à API
    apagaria o aditivo de qualquer um. */
-const sql = fs.readFileSync(path.join(raiz, "supabase", "aditivo-exclusao.sql"), "utf8");
+/* `(select auth.jwt())` e `auth.jwt()` sao a MESMA regra: o primeiro so'
+   avalia uma vez por consulta em vez de uma vez por linha (regra SQL-12 do
+   padrao Group WS). Normalizar antes de comparar mantem as conferencias
+   abaixo cobrando a regra — e nao a grafia, que muda quando alguem otimiza. */
+const sql = fs.readFileSync(path.join(raiz, "supabase", "aditivo-exclusao.sql"), "utf8")
+  .replaceAll("(select auth.jwt())", "auth.jwt()");
 conf("o SQL cria a política de exclusão", sql.includes('create policy "aditivo: excluir (criador ou admin)" on aditivo'), true);
 conf("e ela é só pra excluir", /for delete to authenticated/.test(sql), true);
 conf("compara o criador com quem chamou", sql.includes(`lower(criado_por) = lower(auth.jwt() ->> 'email')`), true);

@@ -24,7 +24,12 @@ import { fileURLToPath } from "node:url";
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const src = fs.readFileSync(path.join(aqui, "..", "lib", "comentarios.js"), "utf8");
 const app = fs.readFileSync(path.join(aqui, "..", "App.jsx"), "utf8");
-const sql = fs.readFileSync(path.join(aqui, "..", "..", "..", "supabase", "obra-comentario.sql"), "utf8");
+/* `(select auth.jwt())` e `auth.jwt()` sao a MESMA regra: o primeiro so'
+   avalia uma vez por consulta em vez de uma vez por linha (regra SQL-12 do
+   padrao Group WS). Normalizar antes de comparar mantem as conferencias
+   abaixo cobrando a regra — e nao a grafia, que muda quando alguem otimiza. */
+const sql = fs.readFileSync(path.join(aqui, "..", "..", "..", "supabase", "obra-comentario.sql"), "utf8")
+  .replaceAll("(select auth.jwt())", "auth.jwt()");
 
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = src.indexOf(assinatura);

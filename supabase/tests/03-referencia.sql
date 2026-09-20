@@ -30,5 +30,5 @@ select lives_ok(
   'a Mehoo enxerga as obras, pro painel dela'
 );
 
-select * from finish();
+select * from finish(true);
 rollback;
