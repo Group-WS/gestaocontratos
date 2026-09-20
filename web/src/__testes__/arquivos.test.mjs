@@ -112,7 +112,9 @@ conf("... e manda o título junto do arquivo",
 conf("... limpando o campo depois", /setTitulo\(""\);/.test(app), true);
 conf("sem descrição continua valendo o nome do arquivo",
   app.includes(`titulo: (titulo || "").trim() || file.name,`), true);
-conf("a linha mostra o título em negrito", app.includes(".arq-titulo { font-size: 13px; font-weight: 600;"), true);
+/* O negrito e' o ponto; o tamanho vem do token e pode mudar de degrau
+   sem mudar o que esta regra quer dizer. */
+conf("a linha mostra o título em negrito", /\.arq-titulo \{[^}]*font-weight: 600/.test(app), true);
 
 console.log(falhas === 0 ? "\nTUDO OK" : `\n${falhas} FALHA(S)`);
 process.exit(falhas === 0 ? 0 : 1);

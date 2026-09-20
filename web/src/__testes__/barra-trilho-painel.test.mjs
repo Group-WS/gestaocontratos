@@ -128,7 +128,9 @@ conf("... antes da busca",
 conf("... e só quando existe alguma", /novasNoPainel && novasCount > 0/.test(src), true);
 /* Fonte normal, escolha dela: o destaque vem do lugar e do fundo. O 11.5px é
    o mesmo do nome da obra — se alguém aumentar aqui, a decisão se perde. */
-conf("em fonte normal, não maior", /\.painel-novas \{[^}]*font-size: 11\.5px/.test(src), true);
+/* "Nao maior" quer dizer que fica num dos dois degraus pequenos da escala
+   — nao num valor especifico, que o token pode ajustar. */
+conf("em fonte normal, não maior", /\.painel-novas \{[^}]*font-size: var\(--t-(micro|meta)\)/.test(src), true);
 /* O número antes do rótulo: é ele que faz reparar. */
 conf("o número vem antes do rótulo",
   src.includes('<span className="painel-novas-n mono">{novasCount}</span>'), true);

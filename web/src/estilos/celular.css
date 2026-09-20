@@ -86,7 +86,7 @@
 
   /* Alvo de toque: 16px de fonte no campo impede o zoom automatico do
      iPhone ao focar, que e' o que faz a pagina "pular" ao digitar. */
-  input, select, textarea { font-size: 16px; }
+  input, select, textarea { font-size: var(--t-section); }
   .busca-lista { flex: 1 1 100%; }
 
   /* Linha de caderno: titulo em cima, arquivo e botoes embaixo.

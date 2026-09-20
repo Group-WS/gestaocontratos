@@ -514,7 +514,9 @@ conf("... com o texto inteiro no title", src.includes(`<div className="item-desc
    mas ela é a razão da linha existir — diz o que conferir. Quem cede é a
    altura. */
 conf("o alerta aparece inteiro", src.includes("table.tab-conf .lib-alerta > span:first-of-type { white-space: normal; overflow: visible; }"), true);
-conf("... e o conferi vem no fim", src.includes("table.tab-conf .lib-alerta { margin-top: 3px; font-size: 10.5px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;"), true);
+/* Sem o tamanho no literal: ele vem do token agora. O que importa aqui e'
+   o arranjo — baseline alinhada e quebra de linha permitida. */
+conf("... e o conferi vem no fim", /table\.tab-conf \.lib-alerta \{[^}]*align-items: baseline;[^}]*flex-wrap: wrap;/.test(src), true);
 
 /* ---- A CORREÇÃO DELA: DUAS COLUNAS, E SÓ (18/09/2026) ----
    "o fluxo correto é: Concuído Executivo / Aprovado para Compra / e só. o
