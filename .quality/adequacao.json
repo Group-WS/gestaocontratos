@@ -1349,13 +1349,6 @@
     {
       "regra": "DS-07",
       "arquivo": "web/src/App.jsx",
-      "linha": 19598,
-      "trecho": "<input className=\"form-input\" autoFocus value={valor} aria-label=\"Endereço da obra\"",
-      "impressao": "c43266d630c06496"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
       "linha": 19674,
       "trecho": "<input className=\"form-input\" value={nome} placeholder=\"ex: Ed. Meraki, 602\"",
       "impressao": "59d1ba2e07f01fcc"

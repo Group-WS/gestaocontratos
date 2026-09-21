@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useId } from "react";
 import { confirmar, avisar } from "./lib/confirmar.jsx";
-import { SeletorDeArquivo } from "./lib/ui.jsx";
+import { SeletorDeArquivo, BotaoIcone } from "./lib/ui.jsx";
 import {
   Alert, AlertTitle, AlertDescription, Badge, BulkActionBar, Button,
   Card, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -147,7 +147,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
         <Alert tone="danger">
           <AlertTitle>Não foi possível concluir a ação</AlertTitle>
           <AlertDescription>{erro}</AlertDescription>
-          <Button variant="ghost" size="icon" aria-label="Fechar aviso" onClick={() => setErro(null)}><X size={16} /></Button>
+          <BotaoIcone rotulo="Fechar aviso" variant="ghost" onClick={() => setErro(null)}><X size={16} /></BotaoIcone>
         </Alert>
       )}
 
@@ -213,9 +213,9 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
               <Input icon={<Search size={16} />} value={termo} onChange={(e) => setTermo(e.target.value)}
                 placeholder="nome, código, fornecedor…" aria-label="Buscar no catálogo" />
               {termo && (
-                <Button variant="ghost" size="icon" aria-label="Limpar busca" onClick={() => setTermo("")}>
+                <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => setTermo("")}>
                   <X size={16} />
-                </Button>
+                </BotaoIcone>
               )}
             </div>
 
@@ -406,8 +406,8 @@ function Cartao({ p, escolhido, onEscolher, podeEditar, onEditar, onExcluir }) {
             : <span className="text-xs text-text-mute">sem preço</span>}
           {podeEditar && (
             <span className="ml-auto flex">
-              <Button variant="ghost" size="icon" onClick={onEditar} aria-label="Editar" title="Editar"><Pencil size={14} /></Button>
-              <Button variant="ghost" size="icon" onClick={onExcluir} aria-label="Tirar do catálogo" title="Tirar do catálogo" className="text-danger"><Trash2 size={14} /></Button>
+              <BotaoIcone rotulo="Editar" variant="ghost" onClick={onEditar}><Pencil size={14} /></BotaoIcone>
+              <BotaoIcone rotulo="Tirar do catálogo" variant="ghost" onClick={onExcluir} className="text-danger"><Trash2 size={14} /></BotaoIcone>
             </span>
           )}
         </div>
@@ -584,11 +584,11 @@ function FormProduto({ p, produtos, fornecedores, verbas, onFechar, onSalvar, on
                 <div className="relative">
                   <img alt="" src={arquivo ? URL.createObjectURL(arquivo) : urlDaImagem(f.imagem)}
                     className="h-16 w-20 rounded-lg bg-surface-2 object-contain" />
-                  <Button type="button" variant="danger" size="icon" aria-label="Remover foto" title="Remover foto"
-                    className="absolute -right-2 -top-2 h-6 w-6 rounded-full"
-                    onClick={async () => { if (await confirmar("Remover a foto deste produto?")) { setArquivo(null); set("imagem", null); } }}>
+                  <BotaoIcone rotulo="Remover foto" type="button" variant="danger" 
+ className="absolute -right-2 -top-2 h-6 w-6 rounded-full"
+ onClick={async () => { if (await confirmar("Remover a foto deste produto?")) { setArquivo(null); set("imagem", null); } }}>
                     <X size={12} />
-                  </Button>
+                  </BotaoIcone>
                 </div>
               )}
               <Button asChild variant="outline" size="sm">
@@ -680,8 +680,8 @@ function Fornecedores({ lista, setLista, usuario, podeEditar, onErro, usoDe }) {
                     {podeEditar && (
                       <TableCell className="text-right">
                         <span className="inline-flex">
-                          <Button variant="ghost" size="icon" aria-label={`Editar ${f.nome}`} onClick={() => setNovo(f)}><Pencil size={14} /></Button>
-                          <Button variant="ghost" size="icon" aria-label={`Excluir ${f.nome}`} className="text-danger" onClick={() => remover(f)}><Trash2 size={14} /></Button>
+                          <BotaoIcone rotulo={`Editar ${f.nome}`} variant="ghost" onClick={() => setNovo(f)}><Pencil size={14} /></BotaoIcone>
+                          <BotaoIcone rotulo={`Excluir ${f.nome}`} variant="ghost" className="text-danger" onClick={() => remover(f)}><Trash2 size={14} /></BotaoIcone>
                         </span>
                       </TableCell>
                     )}

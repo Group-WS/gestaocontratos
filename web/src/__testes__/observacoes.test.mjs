@@ -159,7 +159,7 @@ conf("o botão de criar diz observação interna", app.includes("<Plus size={10}
 conf("o filtro também", app.includes("com observação interna ({obs.length})"), true);
 conf("a dica do item também", app.includes('"Deixar uma observação interna neste produto"'), true);
 conf("a dica da verba também", app.includes('"Deixar uma observação interna nesta verba"'), true);
-conf("e a de apagar", app.includes('title="Apagar esta observação interna"'), true);
+conf("e a de apagar", app.includes('rotulo="Apagar esta observação interna"'), true);
 conf("as mensagens da biblioteca falam o mesmo nome",
   src.includes("Escreva a observação interna antes de salvar."), true);
 /* Nenhum "observação" solto sobrou nesta tela — é o que impede o nome de

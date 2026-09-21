@@ -5,6 +5,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@group-ws/ws-ui";
+import { BotaoIcone } from "../../lib/ui.jsx";
 import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, Search } from "lucide-react";
 
 const money = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -169,7 +170,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
           <CardContent className="flex h-full flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <Badge tone={kpi.tone} className="p-2"><Icon size={18} aria-hidden="true" /></Badge>
-              <Button variant="ghost" size="icon" disabled={unavailable} onClick={kpi.action} aria-label={`Ver ${kpi.label.toLowerCase()}`}><ChevronRight size={16} aria-hidden="true" /></Button>
+              <BotaoIcone rotulo={`Ver ${kpi.label.toLowerCase()}`} variant="ghost" disabled={unavailable} onClick={kpi.action}><ChevronRight size={16} aria-hidden="true" /></BotaoIcone>
             </div>
             <div className="label-mono text-text-mute">{kpi.label}</div>
             {unavailable ? <Skeleton className="h-8 w-20" /> : <><div className="text-2xl font-semibold text-text-strong">{kpi.value}</div><div className="text-xs text-text-mute">{kpi.hint}</div></>}

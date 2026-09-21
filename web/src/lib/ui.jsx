@@ -1,5 +1,5 @@
-import { useEffect, useId, useState } from "react";
-import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
+import React, { useEffect, useId, useState } from "react";
+import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@group-ws/ws-ui";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 
 /* Breakpoint `lg` do Tailwind: acima dele a barra lateral fica fixa na
@@ -43,6 +43,23 @@ export function Contador({ tom = "brand", className = "", children }) {
 export function SeletorDeArquivo({ ref, accept, disabled, onChange, multiple }) {
   // gate-allow DS-07: o DS não tem seletor de arquivo em botão; input sr-only é a exceção do padrão de upload
   return <input ref={ref} type="file" accept={accept} disabled={disabled} multiple={multiple} className="sr-only" onChange={onChange} />;
+}
+
+/* BOTAO SO' DE ICONE, sempre com nome que se le' (21/09/2026). Um icone
+   sozinho nao diz o que faz: o `rotulo` e' obrigatorio, vira o aria-label
+   (leitor de tela) e o Tooltip do DS (mouse e teclado). O tamanho do icone
+   acompanha o tamanho do botao pelo proprio Button do DS. */
+export function BotaoIcone({ rotulo, lado = "top", children, ...props }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button size="icon" {...props} aria-label={rotulo}>{children}</Button>
+        </TooltipTrigger>
+        <TooltipContent side={lado}>{rotulo}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 export function Choice({ label, value, opcoes, onChange, placeholder, required, disabled, className = "" }) {

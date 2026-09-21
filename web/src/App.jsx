@@ -65,7 +65,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, SeletorDeArquivo, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, SeletorDeArquivo, BotaoIcone, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -811,7 +811,7 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
             <div className="recorte-titulo">Ajustar a foto</div>
             <div className="recorte-sub">Arraste para enquadrar o rosto</div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onCancelar} aria-label="Fechar"><X size={16} /></Button>
+          <BotaoIcone rotulo="Fechar" variant="ghost" onClick={onCancelar}><X size={16} /></BotaoIcone>
         </div>
 
         <div className="recorte-palco" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
@@ -839,11 +839,11 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
         </div>
 
         <div className="recorte-controles">
-          <Button variant="ghost" size="icon" onClick={() => setPasso((p) => Math.max(0, p - 1))}
-            disabled={passo === 0} aria-label="Menos zoom"><Minus size={14} /></Button>
+          <BotaoIcone rotulo="Menos zoom" variant="ghost" onClick={() => setPasso((p) => Math.max(0, p - 1))}
+ disabled={passo === 0}><Minus size={14} /></BotaoIcone>
           <span className="recorte-pct mono">{Math.round(zoom * 100)}%</span>
-          <Button variant="ghost" size="icon" onClick={() => setPasso((p) => Math.min(ZOOM_FOTO.length - 1, p + 1))}
-            disabled={passo === ZOOM_FOTO.length - 1} aria-label="Mais zoom"><Plus size={14} /></Button>
+          <BotaoIcone rotulo="Mais zoom" variant="ghost" onClick={() => setPasso((p) => Math.min(ZOOM_FOTO.length - 1, p + 1))}
+ disabled={passo === ZOOM_FOTO.length - 1}><Plus size={14} /></BotaoIcone>
           {/* O desfazer de quem arrastou demais. */}
           <Button variant="ghost" size="sm" onClick={() => { setPasso(0); setPos({ x: 0, y: 0 }); }}>
             Centralizar
@@ -1227,68 +1227,10 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           className={cn(i < 4 ? "lg:col-span-3" : "lg:col-span-4", i === kpis.length - 1 && kpis.length % 2 && "col-span-2 lg:col-span-4")} />)}
       </div>
 
-      {/* Data de entrega — editável aqui, é dela que sai todo prazo de
-          compra da obra. Compacta de propósito: é ajuste raro, não é o
-          motivo de alguém abrir esta tela. */}
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-2">
-          <Clock size={14} className="text-text-mute" aria-hidden="true" />
-          <Label htmlFor={entregaId}>Entrega prevista</Label>
-          <Input id={entregaId} type="date" className="w-auto" value={rascunho} disabled={!podeEditar}
-            onChange={(e) => setRascunho(e.target.value)} />
-          {podeEditar && sujo && (
-            <Button size="sm" onClick={() => onDataEntrega(rascunho || null)}>Salvar data</Button>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <Collapsible open={jornadaAberta} onOpenChange={setJornadaAberta}>
-          <CardHeader>
-            <div className="min-w-0">
-              <CardTitle className="flex items-center gap-2">
-                <LayoutGrid size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Jornada da obra
-              </CardTitle>
-              <CardDescription>
-                {jornadaAberta
-                  ? "Os arquivos de cada fase da obra — guardados também em Documentos."
-                  : "Acompanhe as principais fases e o status atual da obra."}
-              </CardDescription>
-            </div>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" type="button">
-                {jornadaAberta ? "Recolher" : "Expandir"}
-                <ChevronDown size={14} className={cn("transition-transform", jornadaAberta && "rotate-180")} aria-hidden="true" />
-              </Button>
-            </CollapsibleTrigger>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <JornadaStepper passos={jornada.passos} atualIndex={jornada.atualIndex} />
-            <CollapsibleContent>
-              <AnexosDaJornada obra={obra} usuario={usuario} podeEditar={podeEditar} souAdmin={souAdmin}
-                onImportCaderno={onImportCaderno} onArquivos={onArquivos} />
-            </CollapsibleContent>
-          </CardContent>
-        </Collapsible>
-      </Card>
-
+      {/* O QUE SE RESOLVE HOJE vem logo depois dos numeros: pendencias,
+          equipe e progresso. A data de entrega (ajuste raro) e a jornada
+          (consulta) descem. */}
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <div className="min-w-0">
-              <CardTitle className="flex items-center gap-2">
-                <ArrowUpRight size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Progresso por frente
-              </CardTitle>
-              <CardDescription>Avanço por frente de trabalho.</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <BarraFrente nome="Projetos" pct={pctProjetos} />
-            <BarraFrente nome="Suprimentos" pct={totals.pct || 0} />
-            <BarraFrente nome="Execução" pct={contratos.pct || 0} />
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1378,6 +1320,22 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           <CardHeader>
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2">
+                <ArrowUpRight size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Progresso por frente
+              </CardTitle>
+              <CardDescription>Avanço por frente de trabalho.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <BarraFrente nome="Projetos" pct={pctProjetos} />
+            <BarraFrente nome="Suprimentos" pct={totals.pct || 0} />
+            <BarraFrente nome="Execução" pct={contratos.pct || 0} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2">
                 <ShieldCheck size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Equipe da obra
               </CardTitle>
               <CardDescription>Principais responsáveis.</CardDescription>
@@ -1396,6 +1354,52 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           </CardContent>
         </Card>
       </div>
+
+      {/* Data de entrega — editável aqui, é dela que sai todo prazo de
+          compra da obra. Compacta de propósito: é ajuste raro, não é o
+          motivo de alguém abrir esta tela. */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-2">
+          <Clock size={14} className="text-text-mute" aria-hidden="true" />
+          <Label htmlFor={entregaId}>Entrega prevista</Label>
+          <Input id={entregaId} type="date" className="w-auto" value={rascunho} disabled={!podeEditar}
+            onChange={(e) => setRascunho(e.target.value)} />
+          {podeEditar && sujo && (
+            <Button size="sm" onClick={() => onDataEntrega(rascunho || null)}>Salvar data</Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <Collapsible open={jornadaAberta} onOpenChange={setJornadaAberta}>
+          <CardHeader>
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2">
+                <LayoutGrid size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Jornada da obra
+              </CardTitle>
+              <CardDescription>
+                {jornadaAberta
+                  ? "Os arquivos de cada fase da obra — guardados também em Documentos."
+                  : "Acompanhe as principais fases e o status atual da obra."}
+              </CardDescription>
+            </div>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" type="button">
+                {jornadaAberta ? "Recolher" : "Expandir"}
+                <ChevronDown size={14} className={cn("transition-transform", jornadaAberta && "rotate-180")} aria-hidden="true" />
+              </Button>
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <JornadaStepper passos={jornada.passos} atualIndex={jornada.atualIndex} />
+            <CollapsibleContent>
+              <AnexosDaJornada obra={obra} usuario={usuario} podeEditar={podeEditar} souAdmin={souAdmin}
+                onImportCaderno={onImportCaderno} onArquivos={onArquivos} />
+            </CollapsibleContent>
+          </CardContent>
+        </Collapsible>
+      </Card>
+
 
       {(adit.aprovados.length > 0 || adit.pendentes.length > 0) && (
         <Card>
@@ -8276,7 +8280,7 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
             onChange={(e) => setTermo(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") onCancelar(); }}
           />
-          <Button variant="ghost" size="icon" onClick={onCancelar} aria-label="Fechar"><X size={16} /></Button>
+          <BotaoIcone rotulo="Fechar" variant="ghost" onClick={onCancelar}><X size={16} /></BotaoIcone>
         </div>
 
         {erro && (
@@ -8349,7 +8353,7 @@ function SugestoesPreco({ descricao, onUsar }) {
       <CardContent className="flex flex-col gap-2 p-2">
         <div className="flex items-center justify-between gap-2">
           <span className="label-mono text-text-mute">Últimas compras parecidas</span>
-          <Button variant="ghost" size="icon" onClick={() => setAbertas(false)} aria-label="Fechar"><X size={14} /></Button>
+          <BotaoIcone rotulo="Fechar" variant="ghost" onClick={() => setAbertas(false)}><X size={14} /></BotaoIcone>
         </div>
         {erro && (
           <Alert tone="danger">
@@ -8637,7 +8641,7 @@ function DetalheTexto({ item, onFechar }) {
       <div className="detalhe-caixa" onClick={(e) => e.stopPropagation()}>
         <div className="detalhe-topo">
           <span>{item.rotulo}</span>
-          <Button variant="ghost" size="icon" onClick={onFechar} aria-label="Fechar"><X size={14} /></Button>
+          <BotaoIcone rotulo="Fechar" variant="ghost" onClick={onFechar}><X size={14} /></BotaoIcone>
         </div>
         <textarea className="detalhe-texto" readOnly value={item.texto} onFocus={(e) => e.target.select()} />
         <div className="detalhe-acoes">
@@ -9777,9 +9781,9 @@ function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modul
   return (
     <header className="naoimprime sticky top-0 z-20 flex h-15 shrink-0 items-center justify-between gap-4 border-b border-line-1 bg-surface-1 px-4 md:px-5">
       {/* Abaixo de lg a barra lateral vive num Sheet, e este e' o botao que a abre. */}
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Abrir menu">
+      <BotaoIcone rotulo="Abrir menu" variant="ghost" className="lg:hidden" onClick={onMenu}>
         <Menu size={18} />
-      </Button>
+      </BotaoIcone>
       <div className="flex min-w-0 flex-1 items-center gap-4">
         <BuscaGlobal modulos={modulos} obras={obras} onModulo={onModulo} onObra={onObra} />
       </div>
@@ -10361,7 +10365,7 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
             diz que e' filtro; o que falta dizer e' POR QUE se pode filtrar. */}
         <Input icon={<Search size={14} />} placeholder="Nome, código ou cliente" aria-label="Buscar obra"
           className="h-8 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} />
-        {search && <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setSearch("")} aria-label="Limpar busca"><X size={12} /></Button>}
+        {search && <BotaoIcone rotulo="Limpar busca" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => setSearch("")}><X size={12} /></BotaoIcone>}
       </div>
 
       <Toggle size="sm" pressed={soMinhas} onPressedChange={setSoMinhas} className="mb-2 gap-1 self-start text-xs"
@@ -10776,7 +10780,7 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
   /* activationMode manual: a aba so' muda no clique (ou Enter), nunca ao
      passar o foco com as setas — e' assim que o app sempre se comportou. */
   return (
-    <div className="naoimprime mb-4 space-y-3">
+    <div className="naoimprime w-full space-y-3">
       <Tabs value={grupo} onValueChange={onGrupo} activationMode="manual">
         <div className="overflow-x-auto">
           <TabsList variant="underline" className="w-max min-w-full" aria-label="Áreas da obra">
@@ -11833,11 +11837,11 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
               spellCheck={false} aria-label="Descrição do detalhe no Sienge" readOnly={somenteLeitura}
               onSalvar={onDescrito} aoSair={aoSair} />
             <div className="padrao-acoes">
-              <Button variant="ghost" size="icon" title="Copiar pra colar no cadastro do Sienge"
-                onClick={() => navigator.clipboard?.writeText(descrito)} aria-label="Copiar pra colar no cadastro do Sienge"><Copy size={11} /></Button>
+              <BotaoIcone rotulo="Copiar pra colar no cadastro do Sienge" variant="ghost" 
+ onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></BotaoIcone>
               {editado && !somenteLeitura && (
-                <Button variant="ghost" size="icon" title="Voltar ao descritivo gerado"
-                  onClick={() => onDescrito(null)} aria-label="Voltar ao descritivo gerado"><RotateCcw size={11} /></Button>
+                <BotaoIcone rotulo="Voltar ao descritivo gerado" variant="ghost" 
+ onClick={() => onDescrito(null)}><RotateCcw size={11} /></BotaoIcone>
               )}
             </div>
           </div>
@@ -12630,13 +12634,13 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                     {d.nome} <b>{d.n}</b>{d.numero ? ` · nº ${d.numero}` : ""}
                     {/* Tirar um arquivo sem recomecar: as vezes so um deles
                         estava errado, e refazer a selecao inteira e caro. */}
-                    <Button variant="ghost" size="icon" className="h-5 w-5 text-danger" title="Tirar este arquivo da conferência"
-                      onClick={async () => !(await confirmar(`Tirar "${d.nome}" da conferência?`)) ? null : setDoSienge((a2) => {
-                        const docs = a2.docs.filter((x) => x.nome !== d.nome);
-                        return docs.length
-                          ? { docs, itens: a2.itens.filter((i) => i.arquivo !== d.nome) }
-                          : null;
-                      })} aria-label="Tirar este arquivo da conferência"><X size={12} /></Button>
+                    <BotaoIcone rotulo="Tirar este arquivo da conferência" variant="ghost" className="h-5 w-5 text-danger"
+ onClick={async () => !(await confirmar(`Tirar "${d.nome}" da conferência?`)) ? null : setDoSienge((a2) => {
+ const docs = a2.docs.filter((x) => x.nome !== d.nome);
+ return docs.length
+ ? { docs, itens: a2.itens.filter((i) => i.arquivo !== d.nome) }
+ : null;
+ })}><X size={12} /></BotaoIcone>
                   </Badge>
                 ))}
               </CardDescription>
@@ -12700,7 +12704,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               <b>{resultado.certos}</b> {resultado.certos === 1 ? "associado" : "associados"} automaticamente
               {resultado.revisar > 0 && <> · <b>{resultado.revisar}</b> {resultado.revisar === 1 ? "ficou" : "ficaram"} pra escolher à mão, porque faltou casar alguma palavra</>}
             </span>
-            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setResultado(null)} aria-label="Fechar"><X size={16} /></Button>
+            <BotaoIcone rotulo="Fechar" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setResultado(null)}><X size={16} /></BotaoIcone>
           </AlertDescription>
         </Alert>
       )}
@@ -12915,7 +12919,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 <Textarea className="mono text-xs" readOnly value={pipefy.texto} rows={6} onFocus={(e) => e.target.select()} aria-label="Lista dos itens para o Pipefy" />
               )}
             </div>
-            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setPipefy(null)} aria-label="Fechar"><X size={16} /></Button>
+            <BotaoIcone rotulo="Fechar" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setPipefy(null)}><X size={16} /></BotaoIcone>
           </AlertDescription>
         </Alert>
       )}
@@ -13962,11 +13966,11 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                                     onClick={() => reenviar([r])} title="Reenviar só este item">
                                     Reenviar
                                   </Button>
-                                  <Button variant="outline" size="icon" disabled={enviando}
-                                    onClick={() => descartar(id)}
-                                    title="Tirar do envio — continua pendente nas Compras" aria-label="Tirar do envio — continua pendente nas Compras">
+                                  <BotaoIcone rotulo="Tirar do envio — continua pendente nas Compras" variant="outline" disabled={enviando}
+ onClick={() => descartar(id)}
+ >
                                     <X size={12} />
-                                  </Button>
+                                  </BotaoIcone>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -14437,8 +14441,8 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
             <div className="flex h-10 items-center justify-between gap-2 md:justify-end">
               <span className="mono num-tabular text-sm text-text-soft">{fmtBRL(totalDe(l))}</span>
               {i > 0 && (
-                <Button variant="ghost" size="icon" type="button" title="Tirar esta linha" aria-label="Tirar esta linha"
-                  onClick={async () => { if (await confirmar("Tirar esta linha da troca?")) setLinhas((ls) => ls.filter((_, k) => k !== i)); }}><X size={16} /></Button>
+                <BotaoIcone rotulo="Tirar esta linha" variant="ghost" type="button"
+ onClick={async () => { if (await confirmar("Tirar esta linha da troca?")) setLinhas((ls) => ls.filter((_, k) => k !== i)); }}><X size={16} /></BotaoIcone>
               )}
             </div>
           </div>
@@ -14525,8 +14529,8 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
           {/* Apagar aparece pra quem pode — o banco confere de novo na
               politica de delete, entao a tela nao e' a unica barreira. */}
           {(meu(c) || souAdmin) && onApagar && (
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-danger" type="button" title="Apagar esta observação interna"
-              onClick={() => onApagar(c.id)} aria-label="Apagar esta observação interna"><X size={12} /></Button>
+            <BotaoIcone rotulo="Apagar esta observação interna" variant="ghost" className="h-6 w-6 text-danger" type="button"
+ onClick={() => onApagar(c.id)}><X size={12} /></BotaoIcone>
           )}
         </div>
       ))}
@@ -15010,9 +15014,9 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
           <FileText size={13} /> PDF
         </Button>
         {podeEditar && (
-          <Button variant="danger" size="icon" onClick={onApagar} title="Apagar este escopo" aria-label="Apagar este escopo">
+          <BotaoIcone rotulo="Apagar este escopo" variant="danger" onClick={onApagar}>
             <Trash2 size={13} />
-          </Button>
+          </BotaoIcone>
         )}
       </div>
 
@@ -15429,10 +15433,10 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
                           </div>
                           <div className="mono w-28 shrink-0 text-right text-sm font-semibold tabular-nums">{fmtBRL(r.mo)}</div>
                           {esc ? (
-                            <Button variant="ghost" size="icon" aria-label="Ver o escopo" onClick={() => setEscopoAberto(esc.id)}
-                              title={`Ver o escopo "${esc.nome}"${esc.fornecedor ? ` — ${esc.fornecedor}` : ""}`}>
+                            <BotaoIcone rotulo="Ver o escopo" variant="ghost" onClick={() => setEscopoAberto(esc.id)}
+ >
                               <Search size={14} />
-                            </Button>
+                            </BotaoIcone>
                           ) : <span className="w-8 shrink-0" aria-hidden="true" />}
                         </li>
                       );
@@ -15543,7 +15547,7 @@ function GcPorVerba({ titulo, Icone, tipo, grupos, vazio, busca, onBusca, buscaP
             <Input icon={<Search size={14} />} value={busca} onChange={(e) => onBusca(e.target.value)}
               placeholder={buscaPlaceholder || "Buscar…"} aria-label={buscaPlaceholder || "Buscar"} />
             {busca && (
-              <Button variant="ghost" size="icon" onClick={() => onBusca("")} aria-label="Limpar busca"><X size={14} /></Button>
+              <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => onBusca("")}><X size={14} /></BotaoIcone>
             )}
           </div>
         )}
@@ -16540,10 +16544,10 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
                     </TableCell>
                     <TableCell>
                       {!trava && p.id && (
-                        <Button variant="danger" size="icon" title="Tirar da equipe interna" disabled={salvando === p.id} onClick={() => tirar(p)}
-                          aria-label={`Tirar ${p.nome || p.funcao} da equipe interna`}>
+                        <BotaoIcone rotulo={`Tirar ${p.nome || p.funcao} da equipe interna`} variant="danger" disabled={salvando === p.id} onClick={() => tirar(p)}
+ >
                           <Trash2 size={14} />
-                        </Button>
+                        </BotaoIcone>
                       )}
                     </TableCell>
                   </TableRow>
@@ -17192,9 +17196,9 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
             margem {fmtBRL(totalGrupo(g) - custoGrupo(g))}
           </span>
         )}
-        <Button variant="ghost" size="icon" title="Mover para cima" onClick={() => onMover(-1)} aria-label="Mover para cima">↑</Button>
-        <Button variant="ghost" size="icon" title="Mover para baixo" onClick={() => onMover(1)} aria-label="Mover para baixo">↓</Button>
-        <Button variant="ghost" size="icon" className="text-danger" title="Excluir grupo" onClick={onRemover} aria-label="Excluir grupo"><Trash2 size={12} /></Button>
+        <BotaoIcone rotulo="Mover para cima" variant="ghost" onClick={() => onMover(-1)}>↑</BotaoIcone>
+        <BotaoIcone rotulo="Mover para baixo" variant="ghost" onClick={() => onMover(1)}>↓</BotaoIcone>
+        <BotaoIcone rotulo="Excluir grupo" variant="ghost" className="text-danger" onClick={onRemover}><Trash2 size={12} /></BotaoIcone>
       </div>
 
       <div className="ad-itens">
@@ -17205,10 +17209,10 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
               <span className="ad-item-tot mono">{fmtBRL(totalItem(it))}</span>
               {/* Copiar pra outra seção é o gesto do dia: quase todo aditivo
                   suprime uma versão do móvel e adiciona outra, quase igual. */}
-              <Button variant="ghost" size="icon" title={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`}
-                onClick={() => onOutraSecao(it)} aria-label={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`}><Copy size={11} /></Button>
-              <Button variant="ghost" size="icon" title="Duplicar item" onClick={() => dupI(it.id)} aria-label="Duplicar item"><Plus size={11} /></Button>
-              <Button variant="ghost" size="icon" className="text-danger" title="Excluir item" onClick={() => delI(it.id)} aria-label="Excluir item"><X size={11} /></Button>
+              <BotaoIcone rotulo={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`} variant="ghost" 
+ onClick={() => onOutraSecao(it)}><Copy size={11} /></BotaoIcone>
+              <BotaoIcone rotulo="Duplicar item" variant="ghost" onClick={() => dupI(it.id)}><Plus size={11} /></BotaoIcone>
+              <BotaoIcone rotulo="Excluir item" variant="ghost" className="text-danger" onClick={() => delI(it.id)}><X size={11} /></BotaoIcone>
             </div>
             <textarea className="form-input ad-desc-in" rows={2}
               placeholder={doExecutivo?.length ? "Descrição — ou digite pra buscar no executivo" : "Descrição do item"}
@@ -17623,8 +17627,8 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
         {!compacto && (
           <div className="flex items-start gap-2">
             <pre className="mono min-w-0 flex-1 whitespace-pre-wrap rounded-lg bg-surface-1 p-2 text-xs">{resumo}</pre>
-            <Button variant="ghost" size="icon" title="Copiar pra colar no formulário"
-              onClick={() => navigator.clipboard?.writeText(resumo)} aria-label="Copiar pra colar no formulário"><Copy size={16} /></Button>
+            <BotaoIcone rotulo="Copiar pra colar no formulário" variant="ghost" 
+ onClick={() => navigator.clipboard?.writeText(resumo)}><Copy size={16} /></BotaoIcone>
           </div>
         )}
         <div className="flex flex-wrap gap-2">
@@ -17718,14 +17722,13 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
             ? <Badge tone="warning" title="Falta a Solicitação de contrato no Pipefy">Pipefy pendente</Badge> : null} />
       </TableCell>
       <TableCell className="whitespace-nowrap text-center">
-        <Button variant="ghost" size="icon" title="Abrir" onClick={onAbrir} aria-label="Abrir"><Search size={16} /></Button>
+        <BotaoIcone rotulo="Abrir" variant="ghost" onClick={onAbrir}><Search size={16} /></BotaoIcone>
         {/* O botao fica a' vista e desabilitado, com o motivo na dica:
             esconder faria a pessoa procurar onde nao esta'. */}
-        <Button variant="ghost" size="icon" className="text-danger" aria-label="Excluir" disabled={!podeApagar} onClick={podeApagar ? onExcluir : undefined}
-          title={podeApagar ? "Excluir"
-            : `Só quem criou o aditivo${a.criadoPor ? ` (${nomeDoEmail(a.criadoPor)})` : ""} ou um administrador pode excluir`}>
+        <BotaoIcone rotulo="Excluir" variant="ghost" className="text-danger" disabled={!podeApagar} onClick={podeApagar ? onExcluir : undefined}
+ >
           <Trash2 size={16} />
-        </Button>
+        </BotaoIcone>
       </TableCell>
     </TableRow>
   );
@@ -18620,7 +18623,7 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
                     <Button variant="outline" size="sm" onClick={() => alternarAtivo(p)}>
                       {p.ativo ? "desativar" : "reativar"}
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-danger" title="Excluir" onClick={() => remover(p)} aria-label="Excluir"><Trash2 size={13} /></Button>
+                    <BotaoIcone rotulo="Excluir" variant="ghost" className="text-danger" onClick={() => remover(p)}><Trash2 size={13} /></BotaoIcone>
                   </div>
                 </div>
               );
@@ -18782,7 +18785,7 @@ function ArquivoLinha({ a, podeEditar, onExcluir, semFase = false }) {
               esteira, e sumir com eles por esta tela deixaria a etapa de
               lá dizendo que tem anexo quando não tem mais. */}
           {podeEditar && !a.fixo && (
-            <Button variant="ghost" size="icon" className="text-danger" title="Excluir arquivo" onClick={() => onExcluir(a)} aria-label="Excluir arquivo"><Trash2 size={13} /></Button>
+            <BotaoIcone rotulo="Excluir arquivo" variant="ghost" className="text-danger" onClick={() => onExcluir(a)}><Trash2 size={13} /></BotaoIcone>
           )}
         </div>
       )}
@@ -19436,7 +19439,7 @@ function EapSiengeView({ usuario }) {
         </div>
         {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
         {aviso && <div className="import-erro" style={{ background: "var(--blue-bg)", color: "var(--blue)" }}>
-          <CheckCircle2 size={14} /> {aviso} <Button variant="ghost" size="icon" onClick={() => setAviso(null)} aria-label="Fechar"><X size={12} /></Button>
+          <CheckCircle2 size={14} /> {aviso} <BotaoIcone rotulo="Fechar" variant="ghost" onClick={() => setAviso(null)}><X size={12} /></BotaoIcone>
         </div>}
       </div>
 
@@ -19554,7 +19557,7 @@ function EapSiengeView({ usuario }) {
             <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
               <Search size={13} className="dim" />
               <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-              {busca && <Button variant="ghost" size="icon" onClick={() => setBusca("")} aria-label="Limpar busca"><X size={12} /></Button>}
+              {busca && <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => setBusca("")}><X size={12} /></BotaoIcone>}
             </div>
           </div>
           <div style={{ padding: "0 16px 16px" }}>
@@ -19732,7 +19735,7 @@ function BancoPrecosView({ usuario }) {
           <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
             <Search size={13} className="dim" />
             <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-            {busca && <Button variant="ghost" size="icon" onClick={() => setBusca("")} aria-label="Limpar busca"><X size={12} /></Button>}
+            {busca && <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => setBusca("")}><X size={12} /></BotaoIcone>}
           </div>
         </div>
 
@@ -19828,28 +19831,40 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
 
   if (editando) {
     return (
-      <div className="obra-endereco-edita">
-        <input className="form-input" autoFocus value={valor} aria-label="Endereço da obra"
+      <span className="flex w-full flex-wrap items-center gap-2">
+        <Input autoFocus value={valor} aria-label="Endereço da obra" className="w-full max-w-xl"
           placeholder="Rua, número - complemento - bairro - cidade - UF - CEP"
           onChange={(e) => setValor(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") setEditando(false); }} />
-        <Button disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</Button>
-        <Button disabled={salvando} onClick={() => setEditando(false)}>cancelar</Button>
-        <span className="cad-nota">Em branco, volta o endereço do cadastro do Sienge.</span>
-        {erro && <span className="cad-erro">{erro}</span>}
-      </div>
+        <Button size="sm" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar endereço"}</Button>
+        <Button size="sm" variant="outline" disabled={salvando} onClick={() => setEditando(false)}>Cancelar</Button>
+        <span className="w-full text-xs text-text-mute">Em branco, volta o endereço do cadastro do Sienge.</span>
+        {erro && <span className="w-full text-xs text-danger">{erro}</span>}
+      </span>
     );
   }
   return (
-    <div className="eyebrow obra-endereco">
-      {atual || "Endereço não informado"}
-      {podeEditar && (
-        <Button variant="ghost" size="icon" type="button" onClick={() => { setValor(atual); setEditando(true); }}
-          title="Corrigir o endereço da obra" aria-label="Editar endereço">
-          <Pencil size={11} />
+    <span className="flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      <MapPin size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
+      <span className="sr-only">Endereço:</span>
+      <span className={atual ? "text-text-soft" : "italic text-text-mute"}>{atual || "Endereço não informado"}</span>
+      {/* Copiar e' o que se faz com endereco no dia a dia: mandar pro
+          fornecedor, pro frete, pro mapa. */}
+      {atual && (
+        <Button variant="ghost" size="sm" onClick={async () => {
+          try { await navigator.clipboard.writeText(atual); avisar.ok("Endereço copiado."); }
+          catch { avisar.erro("Não foi possível copiar o endereço.", "Selecione o texto e copie manualmente."); }
+        }}>
+          <Copy size={14} aria-hidden="true" /> Copiar endereço
         </Button>
       )}
-    </div>
+      {/* A acao tem NOME escrito: um lapis sozinho nao diz o que faz. */}
+      {podeEditar && (
+        <Button variant="ghost" size="sm" onClick={() => { setValor(atual); setEditando(true); }} title="Corrigir o endereço da obra">
+          <Pencil size={14} aria-hidden="true" /> Editar endereço
+        </Button>
+      )}
+    </span>
   );
 }
 
@@ -19901,7 +19916,7 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
     <div className="cad-box">
       <div className="cad-h">
         <span>Cadastrar obra manualmente</span>
-        <Button variant="ghost" size="icon" aria-label="Fechar" onClick={() => setAberto(false)}><X size={13} /></Button>
+        <BotaoIcone rotulo="Fechar" variant="ghost" onClick={() => setAberto(false)}><X size={13} /></BotaoIcone>
       </div>
       <div className="cad-campos">
         <label className="cad-largo">Nome da obra
@@ -20075,7 +20090,7 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
 
   let estado;
   if (carregando) {
-    estado = <span className="be-estado"><span className="be-ponto carregando" /> Carregando…</span>;
+    estado = <span className="flex items-center gap-2 text-sm text-text-mute"><Badge tone="neutral">Carregando…</Badge></span>;
   } else if (falhouCarregar) {
     /* O CONTEUDO NAO CHEGOU — E POR ISSO NINGUEM EDITA.
      *
@@ -20087,58 +20102,63 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
      * A frase diz o que fazer (F5), porque quem esta' na tela nao tem como
      * saber que a obra que ele ve' nao e' a obra que esta' no banco. */
     estado = (
-      <span className="be-estado be-falhou">
-        <AlertTriangle size={13} /> Não consegui carregar esta obra — recarregue a página (F5) antes de mexer.
+      <span className="flex items-center gap-2 text-sm text-danger">
+        <AlertTriangle size={16} aria-hidden="true" /> Não consegui carregar esta obra — recarregue a página (F5) antes de mexer.
       </span>
     );
   } else if (edicao.por) {
     const desde = edicao.desde ? new Date(edicao.desde).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
     estado = (
-      <span className="be-estado" title={`Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração`}>
-        <Lock size={13} /> <b>{edicao.por}</b> está editando{desde ? ` desde ${desde}` : ""}
+      <span className="flex items-center gap-2 text-sm" title={`Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração`}>
+        <Badge tone="warning"><Lock size={12} aria-hidden="true" /> Em edição por outra pessoa</Badge>
+        <span className="text-text-soft"><b>{edicao.por}</b> está editando{desde ? ` desde ${desde}` : ""}</span>
       </span>
     );
   } else if (edicao.minha) {
     estado = (
-      <span className="be-estado">
-        <span className="be-ponto editando" /> Editando
+      <span className="flex items-center gap-2 text-sm">
+        <Badge tone="brand">Editando</Badge>
         {/* "salvo" so quando salvou INTEIRO. Enquanto falta coluna no
             banco a palavra vira "salvo em parte", senao a tela garante
             uma coisa que nao aconteceu. */}
-        <span className={`be-salvo ${salvando === "parcial" ? "be-parcial" : ""}`}>
+        <span className={cn("text-xs", salvando === "parcial" ? "text-warning" : "text-text-mute")}>
           {salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo" : salvando === "parcial" ? "salvo em parte" : ""}
         </span>
-        <Button variant="ghost" size="sm" onClick={onFinalizar} disabled={salvando === "salvando"}>finalizar</Button>
+        <Button variant="outline" size="sm" onClick={onFinalizar} disabled={salvando === "salvando"}>
+          <Check size={16} aria-hidden="true" /> Finalizar edição
+        </Button>
       </span>
     );
   } else {
     estado = (
-      <span className="be-estado">
-        <span className="be-ponto" /> Modo leitura
-        <Button variant="ghost" size="sm" onClick={onHabilitar}>habilitar edição</Button>
+      <span className="flex items-center gap-2 text-sm">
+        <Badge tone="neutral">Modo leitura</Badge>
+        <Button variant="outline" size="sm" onClick={onHabilitar}>
+          <Pencil size={16} aria-hidden="true" /> Habilitar edição
+        </Button>
       </span>
     );
   }
 
   return (
-    <div className={`barra-etapa ${feita ? "feita" : ""}`}>
+    <div className="naoimprime flex flex-wrap items-center gap-2">
       {estado}
-      <div className="be-dir">
+      <div className="flex flex-wrap items-center gap-2">
         {mostraEtapa && (feita ? (
           <>
-            <span className="be-feita">
-              <CheckCircle2 size={14} /> Concluída
-              {porQuem && <> por <b>{porQuem}</b></>}
+            <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Etapa concluída</Badge>
+            <span className="text-xs text-text-mute">
+              {porQuem && <>por <b>{porQuem}</b></>}
               {em && <> · {new Date(em).toLocaleDateString("pt-BR")}</>}
             </span>
-            {!congelado && <Button variant="ghost" size="sm" onClick={() => onReabrirEtapa(etapaId)}>reabrir</Button>}
+            {!congelado && <Button variant="ghost" size="sm" onClick={() => onReabrirEtapa(etapaId)}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>}
           </>
         ) : (
           <>
-            {bloqueio && <span className="be-bloqueio"><AlertTriangle size={13} /> {bloqueio}</span>}
+            {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
             <Button disabled={congelado || !!bloqueio} onClick={() => onConcluir(etapaId)}
               title={bloqueio ? "Aprove as pendências para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
-              <Play size={13} /> Concluir etapa
+              <Play size={16} aria-hidden="true" /> Concluir etapa
             </Button>
           </>
         ))}
@@ -24143,7 +24163,7 @@ export default function App() {
             <div className="aviso-migracao">
               <AlertTriangle size={14} />
               <span>{migracao}</span>
-              <Button variant="ghost" size="icon" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></Button>
+              <BotaoIcone rotulo="Fechar aviso" variant="ghost" onClick={() => setMigracao(null)}><X size={13} /></BotaoIcone>
             </div>
           )}
         </div>
@@ -24264,55 +24284,69 @@ export default function App() {
             const executivo = obra.responsavelExecutivo ?? registro.get(String(obra.codigo))?.responsavel_executivo ?? null;
             const squad = obra.squad || "Sem squad";
             return (
-              <div className="mb-4 space-y-3">
-                <Breadcrumb>
-                  <BreadcrumbList>
-                    <BreadcrumbItem>
-                      <BreadcrumbLink href="/" onClick={(e) => { e.preventDefault(); setModulo("inicio"); }}>Início</BreadcrumbLink>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>{/^squad\b/i.test(squad) ? squad : `Squad ${squad}`}</BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem><BreadcrumbPage>#{obra.codigo} {obra.nome}</BreadcrumbPage></BreadcrumbItem>
-                  </BreadcrumbList>
-                </Breadcrumb>
-                {/* COMPACTO: a proporcao do cabecalho de pagina do DS (titulo
-                    de 24px), sem capa. O DetailHero e' o topo de apresentacao
-                    de um registro — capa de 160px e titulo de 40px — e numa
-                    tela de trabalho, aberta o dia todo, empurrava o conteudo
-                    para baixo da dobra. */}
-                {/* COMPACTO, com o Header do DS (TkwsHeader): crumb, titulo e a
-                    acao — sem a capa de 160px e o titulo de 40px do DetailHero,
-                    que numa tela de trabalho empurravam o conteudo para baixo.
-                    A equipe e a entrega vao numa linha so', logo abaixo. */}
-                <div>
-                  <TkwsHeader className="mb-0 pb-2"
-                    crumb={`Obra #${obra.codigo} · ${/^squad\b/i.test(squad) ? squad : `Squad ${squad}`}`}
-                    title={obra.nome}
-                    description={obra.semDetalhe ? "Sem detalhe de executivo — só o cadastro do Monday" : undefined}
-                    actions={<div className="flex flex-wrap gap-2">
-                      {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
-                        && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
-                        <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
-                      )}
-                      {grupo === "dashboard" && (
-                        <Button variant="outline" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
-                          {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={16} /> Concluir obra</>}
-                        </Button>
-                      )}
-                    </div>} />
-                  <dl className="m-0 flex flex-wrap gap-x-6 gap-y-1 border-b border-line-1 pb-3 text-sm">
-                    {[["GC", nomeDe(obra.gc)], ["Taylor Made", nomeDe(tailor)], ["Executivo", nomeDe(executivo)],
-                      ["Entrega", obra.dataEntrega ? new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR") : "sem data"]]
-                      .map(([rot, val]) => (
-                        <div key={rot} className="flex items-baseline gap-2">
-                          <dt className="label-mono text-text-mute">{rot}</dt>
-                          <dd className={cn("m-0", val === "a definir" || val === "sem data" ? "italic text-text-mute" : "text-text")}>{val}</dd>
-                        </div>
-                      ))}
-                  </dl>
-                </div>
-              </div>
+              /* O TOPO DA OBRA no padrao do cabecalho da Gestao (PageShell):
+                 breadcrumb, titulo, a equipe e a entrega na descricao, as
+                 acoes a' direita (modo de edicao primeiro, concluir depois), as
+                 abas na toolbar e o endereco na linha secundaria. So' o topo:
+                 o conteudo de cada aba segue abaixo, cada um com o seu. */
+              <>
+              <PageShell className="!mb-0" contentPadding={false}
+                breadcrumbs={[
+                  { label: <a href="/" className="transition-colors hover:text-brand" onClick={(e) => { e.preventDefault(); setModulo("inicio"); }}>Início</a> },
+                  { label: /^squad\b/i.test(squad) ? squad : `Squad ${squad}` },
+                  { label: `Obra #${obra.codigo}`, current: true },
+                ]}
+                title={obra.nome}
+                description={(
+                  <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    {[["GC", nomeDe(obra.gc)], ["Taylor Made", nomeDe(tailor)], ["Executivo", nomeDe(executivo)]].map(([rot, val]) => (
+                      <span key={rot} className="inline-flex items-baseline gap-1">
+                        <span className="label-mono text-text-mute">{rot}</span>
+                        <span className={val === "a definir" ? "italic text-text-mute" : "text-text"}>{val}</span>
+                      </span>
+                    ))}
+                    <span className="inline-flex items-baseline gap-1">
+                      <span className="label-mono text-text-mute">Entrega</span>
+                      {obra.dataEntrega ? (() => {
+                        const dias = diasAte(new Date(`${obra.dataEntrega}T12:00:00`));
+                        return <>
+                          <span className="text-text">{new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}</span>
+                          <Badge tone={dias < 0 ? "danger" : dias <= 30 ? "warning" : "neutral"}>
+                            {dias < 0 ? `${-dias} ${-dias === 1 ? "dia" : "dias"} atrasada` : dias === 0 ? "hoje" : `em ${dias} ${dias === 1 ? "dia" : "dias"}`}
+                          </Badge>
+                        </>;
+                      })() : <span className="italic text-text-mute">sem data</span>}
+                    </span>
+                    {obra.semDetalhe && <Badge tone="warning">Sem detalhe de executivo</Badge>}
+                    {/* O endereco fica logo abaixo das informacoes da obra,
+                        com os botoes de copiar e de editar. */}
+                    <EnderecoDaObra obra={obra} podeEditar={souAdmin} onSalvar={(v) => definirEnderecoDaObra(obra.codigo, v)} />
+                  </span>
+                )}
+                actions={(
+                  <div className="flex flex-wrap items-center gap-2">
+                    <BarraEtapa
+                      edicao={edicao} salvando={salvando} carregando={carregandoDados}
+                      falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
+                      onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao}
+                      etapaId={ETAPAS_COM_CONCLUSAO.has(tab) ? tab : null} obra={obra}
+                      onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
+                    {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
+                      && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
+                      <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
+                    )}
+                    {grupo === "dashboard" && (
+                      <Button variant="ghost" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
+                        {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={16} aria-hidden="true" /> Concluir obra</>}
+                      </Button>
+                    )}
+                  </div>
+                )}
+                toolbar={<TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />}>
+                <></>
+              </PageShell>
+              <div className="h-6" aria-hidden="true" />
+              </>
             );
           })()}
           {apresAberta && (produtosApres ? (
@@ -24320,19 +24354,7 @@ export default function App() {
               obras={obrasAtivas.some((o) => String(o.codigo) === String(obra.codigo)) ? obrasAtivas : [obra, ...obrasAtivas]}
               onFechar={() => setApresAberta(false)} />
           ) : <div className="apres-abrindo">Abrindo a apresentação…</div>)}
-          {/* O endereço completo, no mesmo tom da linha "OBRA #..." de cima: o da
-              obra ou, sem ele, o do cadastro do Sienge. Só administrador e
-              admin master corrigem. */}
-          <EnderecoDaObra obra={obra} podeEditar={souAdmin} onSalvar={(v) => definirEnderecoDaObra(obra.codigo, v)} />
 
-          <BarraEtapa
-            edicao={edicao} salvando={salvando} carregando={carregandoDados}
-            falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
-            onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao}
-            etapaId={ETAPAS_COM_CONCLUSAO.has(tab) ? tab : null} obra={obra}
-            onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
-
-          <TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />
 
           {/* Só no Dashboard. Antes ficava acima de todas as abas, ocupando
               o topo mesmo quando a pessoa estava conferindo item a item —

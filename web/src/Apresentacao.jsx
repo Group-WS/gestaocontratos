@@ -4,6 +4,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Tabs, TabsList, TabsTrigger, Textarea, Toggle, ToggleGroup, ToggleGroupItem,
 } from "@group-ws/ws-ui";
+import { BotaoIcone } from "./lib/ui.jsx";
 import { confirmar } from "./lib/confirmar.jsx";
 import {
   X, Plus, Trash2, Upload, Save, FileDown, Image as ImageIcon,
@@ -312,9 +313,9 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
         title={conf.pronto ? "" : "Todo ambiente precisa de nome e de imagem"}>
         <FileDown size={16} /> {gerando || "Gerar PDF"}
       </Button>
-      <Button variant="ghost" size="icon" aria-label="Fechar apresentação" title="Fechar" onClick={onFechar}>
+      <BotaoIcone rotulo="Fechar apresentação" variant="ghost" onClick={onFechar}>
         <X size={16} />
-      </Button>
+      </BotaoIcone>
     </div>
   );
 
@@ -683,13 +684,13 @@ function Zoom({ zoom, escala, onMudar }) {
   };
   return (
     <div className="mt-2 inline-flex items-center gap-1" role="group" aria-label="Zoom do slide">
-      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Diminuir" title="Diminuir"
-        onClick={() => vizinho(-1)}><Minus size={14} /></Button>
+      <BotaoIcone rotulo="Diminuir" variant="ghost" className="h-8 w-8"
+ onClick={() => vizinho(-1)}><Minus size={14} /></BotaoIcone>
       <span className="mono num-tabular min-w-12 text-center text-xs font-semibold text-text-soft" aria-live="polite">
         {Math.round(atual * 100)}%
       </span>
-      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Aumentar" title="Aumentar"
-        onClick={() => vizinho(1)}><Plus size={14} /></Button>
+      <BotaoIcone rotulo="Aumentar" variant="ghost" className="h-8 w-8"
+ onClick={() => vizinho(1)}><Plus size={14} /></BotaoIcone>
       <Toggle size="sm" pressed={zoom === null} onPressedChange={(p) => { if (p) onMudar(null); }}
         aria-label="Ajustar à largura" title="Ajustar à largura"><Maximize2 size={14} /></Toggle>
     </div>
@@ -756,12 +757,12 @@ function ListaDeSlides({ doc, pagina, idioma, onIr, onNovo, onInserirApos, onExc
             <span className="truncate">{s.ambiente ? ambienteEm(s.ambiente, idioma) : <em>sem nome</em>}</span>
             <span className="text-xs text-text-mute">{(s.blocos || []).length} produtos{s.render?.imagem ? "" : " · sem imagem"}</span>
           </span>
-          <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-            aria-label="Novo ambiente logo abaixo deste" title="Novo ambiente logo abaixo deste"
-            onClick={(e) => { e.stopPropagation(); onInserirApos(i); }}><Plus size={12} /></Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-danger opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-            aria-label="Excluir ambiente" title="Excluir"
-            onClick={(e) => { e.stopPropagation(); onExcluir(i); }}><Trash2 size={12} /></Button>
+          <BotaoIcone rotulo="Novo ambiente logo abaixo deste" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+ 
+ onClick={(e) => { e.stopPropagation(); onInserirApos(i); }}><Plus size={12} /></BotaoIcone>
+          <BotaoIcone rotulo="Excluir ambiente" variant="ghost" className="h-6 w-6 text-danger opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+ 
+ onClick={(e) => { e.stopPropagation(); onExcluir(i); }}><Trash2 size={12} /></BotaoIcone>
         </div>
       ))}
       <Button variant="outline" size="sm" className="mt-2 w-full border-dashed" onClick={onNovo}>
@@ -1064,8 +1065,8 @@ function Produtos({ produtos, slide, idioma, onAdicionar, onMudarBloco, onAltern
                 value={textoDoBloco(b, idioma)}
                 onChange={(e) => onMudarBloco(b.id,
                   (x) => (idioma === "en" ? { ...x, textoEn: e.target.value } : { ...x, texto: e.target.value }))} />
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-danger" aria-label="Remover produto do ambiente"
-                onClick={() => onRemover(b.id)}><Trash2 size={14} /></Button>
+              <BotaoIcone rotulo="Remover produto do ambiente" variant="ghost" className="h-8 w-8 shrink-0 text-danger"
+ onClick={() => onRemover(b.id)}><Trash2 size={14} /></BotaoIcone>
             </div>
           ))}
           {idioma === "en" && (

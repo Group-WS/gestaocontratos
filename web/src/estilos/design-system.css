@@ -129,6 +129,12 @@
     padding: 0;
     list-style: none;
   }
+  /* Link com classe (componente do DS) herda a cor e não sublinha: sem
+     isso o breadcrumb aparecia azul e sublinhado, no estilo do navegador. */
+  :where(a)[class] {
+    color: inherit;
+    text-decoration: none;
+  }
   /* O botão do navegador vem com borda de 2px nos quatro lados, fundo cinza
      e fonte própria. A aba sublinhada do DS só declara a borda de baixo, e
      herdava a moldura inteira. Mesma regra: só com classe, só na camada. */
