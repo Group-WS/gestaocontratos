@@ -11473,7 +11473,7 @@ function GeradorSiengeView() {
   );
 
   return (
-    <PageShell title="Gerador de códigos Sienge"
+    <PageShell crumb="Ferramenta avulsa" title="Gerador de códigos Sienge"
       description="Detalhes de insumos: associa cada produto do arquivo a um insumo que já existe no Sienge e gera o template de cadastro do que falta."
       contentClassName="flex flex-col gap-6"
       actions={(
@@ -11527,6 +11527,19 @@ function GeradorSiengeView() {
           </span>
         </div>
       )}>
+      {/* O ESCOPO, em tres colunas e nao tres paragrafos empilhados: o texto
+          e' curto e a tela e' larga. Vinha do cabecalho de fora da tela. */}
+      <Card>
+        <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
+          <p className="text-sm"><b>Associa</b> cada produto a um insumo que já existe no Sienge.</p>
+          <p className="text-sm"><b>Compara</b> com os detalhes já cadastrados, pra não duplicar.</p>
+          <p className="text-sm"><b>Sugere</b> código e descrição quando não acha nenhum compatível.</p>
+          <p className="text-xs text-text-mute md:col-span-3">
+            Não cria insumos novos. A importação/cadastro no Sienge continua restrita a quem tem permissão lá dentro:
+            esta ferramenta padroniza e gera os detalhes, não concede nem substitui esse acesso.
+          </p>
+        </CardContent>
+      </Card>
 
       {!linhas && (
         <Card>
@@ -17794,7 +17807,7 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
   }
 
   return (
-    <PageShell title="Aditivos" description="Supressão e adição por obra." contentClassName="flex flex-col gap-6"
+    <PageShell crumb="Documento de obra" title="Aditivos" description="Supressão e adição por obra, numeradas a partir do centro de custo — o documento aparece do lado enquanto você preenche." contentClassName="flex flex-col gap-6"
       actions={(
         /* O botao existe SEMPRE. Criar exige uma obra — o numero sai do
            centro de custo dela — mas exigir que ela adivinhasse isso no
@@ -24146,100 +24159,63 @@ export default function App() {
           </>
           ) : modulo === "gerador" ? (
           <>
-          <div className="eyebrow">FERRAMENTA AVULSA</div>
-          <div className="title-row"><span className="title-accent">Gerador de códigos Sienge</span></div>
-          <div className="sg-sub">Detalhes de Insumos</div>
-
-          {/* Tres colunas, nao tres paragrafos empilhados: o texto e'
-              curto e a tela e' larga: empilhar desperdiça a largura e
-              faz parecer mais texto do que e'. */}
-          <div className="sg-escopo">
-            <p>
-              Gera e associa <b>detalhes</b> de insumos no Sienge. Não cria insumos novos.
-            </p>
-            <div className="sg-passos">
-              <div><b>Associa</b> cada produto a um insumo que já existe no Sienge.</div>
-              <div><b>Compara</b> com os detalhes já cadastrados, pra não duplicar.</div>
-              <div><b>Sugere</b> código e descrição quando não acha nenhum compatível.</div>
-            </div>
-            <p className="sg-escopo-nota">
-              A importação/cadastro no Sienge continua restrita a quem tem permissão lá dentro:
-              esta ferramenta padroniza e gera os detalhes, não concede nem substitui esse acesso.
-            </p>
-          </div>
-          <div className="sg-col"><GeradorSiengeView /></div>
+          <GeradorSiengeView />
           </>
           ) : modulo === "catalogo" ? (
           <>
-          <div className="eyebrow">PADRÃO DA CASA</div>
-          <div className="title-row"><span className="title-accent">Catálogo TKWS</span></div>
-          <div className="obra-meta">O que a gente especifica, por grupo e subgrupo — escolha os produtos e eles vão direto para o Executivo da obra</div>
-          <Catalogo usuario={usuario} obras={obrasAtivas} podeEditar={perfilPermiteEditar} />
+          <PageShell crumb="Padrão da casa" title="Catálogo TKWS" description="O que a gente especifica, por grupo e subgrupo — escolha os produtos e eles vão direto para o Executivo da obra." contentClassName="flex flex-col gap-6">
+            <Catalogo usuario={usuario} obras={obrasAtivas} podeEditar={perfilPermiteEditar} />
+          </PageShell>
           </>
           ) : modulo === "equipe" && cuidaDaEquipe ? (
           <>
-          <div className="eyebrow">CADASTRO · {pessoas.length}</div>
-          <div className="title-row"><span className="title-accent">Equipe</span></div>
-          <div className="obra-meta">Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra</div>
-          <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
-            usuario={usuario} migracaoPendente={migracaoPendente}
-            onSalvar={salvarPessoaNoTime} onSalvarAcesso={salvarAcessoDaPessoa}
-            onExcluir={excluirPessoaDoTime} />
+          <PageShell crumb={`Cadastro · ${pessoas.length}`} title="Equipe" description="Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra." contentClassName="flex flex-col gap-6">
+            <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
+              usuario={usuario} migracaoPendente={migracaoPendente}
+              onSalvar={salvarPessoaNoTime} onSalvarAcesso={salvarAcessoDaPessoa}
+              onExcluir={excluirPessoaDoTime} />
+          </PageShell>
           </>
           ) : modulo === "painel_canal" ? (
           <>
-          <div className="eyebrow">CANAIS DE COMPRA</div>
-          <div className="title-row"><span className="title-accent">Painel por canal</span></div>
-          <div className="obra-meta">Cada obra com item do canal escolhido: quando ela entrega, quem é o GC, os cadernos pra baixar e o que já foi comprado</div>
           {/* A ESCOLHA DO CANAL fica na propria tela, e nao numa arvore na
-              barra lateral: aqui ela mostra QUANTO cada canal tem, que e' a
-              informacao que faz escolher. Uma lista de nomes na lateral nao
-              diria isso.
-
-              Quem esta' AMARRADO a um canal nao ve' os chips: mostrar os
-              outros cinco pra quem nao pode abri-los so' criaria a pergunta
-              "por que nao funciona". */}
-          {!canalPreso && (
-          <div className="canal-chips">
-            {CANAIS_COMPRA.map((c) => (
-              <Button variant="ghost" key={c.id} type="button"
-                className={`canal-chip ${canalDoPainel === c.id ? "ativo" : ""}`}
-                onClick={() => setCanalDoPainel(c.id)}
-                style={canalDoPainel === c.id ? { color: c.cor, borderColor: c.cor, background: c.bg } : undefined}>
-                <b>{c.sigla}</b> {c.nome}
-              </Button>
-            ))}
-          </div>
-          )}
-          <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId={canalNaTela} />
+              barra lateral. Quem esta' AMARRADO a um canal nao ve' a escolha:
+              mostrar os outros cinco pra quem nao pode abri-los so' criaria a
+              pergunta "por que nao funciona". */}
+          <PageShell crumb="Canais de compra" title="Painel por canal"
+            description="Cada obra com item do canal escolhido: quando ela entrega, quem é o GC, os cadernos pra baixar e o que já foi comprado."
+            toolbar={!canalPreso && (
+              <ToggleGroup type="single" value={canalDoPainel} onValueChange={(v) => { if (v) setCanalDoPainel(v); }} aria-label="Canal de compra" className="flex-wrap">
+                {CANAIS_COMPRA.map((c) => (
+                  <ToggleGroupItem key={c.id} value={c.id} size="sm" className="gap-1"><b>{c.sigla}</b> {c.nome}</ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            )}
+            contentClassName="flex flex-col gap-6">
+            <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId={canalNaTela} />
+          </PageShell>
           </>
           ) : modulo === "mehoo" ? (
           <>
-          <div className="eyebrow">CANAL DE COMPRA</div>
-          <div className="title-row"><span className="title-accent">Mehoo</span></div>
-          <div className="obra-meta">Cada obra com item da Mehoo: quando ela entrega, os cadernos do executivo pra baixar, e o que foi mandado pra eles</div>
-          <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId="mehoo" />
+          <PageShell crumb="Canal de compra" title="Mehoo" description="Cada obra com item da Mehoo: quando ela entrega, os cadernos do executivo pra baixar, e o que foi mandado pra eles." contentClassName="flex flex-col gap-6">
+            <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId="mehoo" />
+          </PageShell>
           </>
           ) : modulo === "aditivos" ? (
           <>
-          <div className="eyebrow">DOCUMENTO DE OBRA</div>
-          <div className="title-row"><span className="title-accent">Aditivos</span></div>
-          <div className="obra-meta">Supressão e adição por obra, numeradas a partir do centro de custo — o documento aparece do lado enquanto você preenche</div>
           <AditivosView obras={obrasAtivas} usuario={usuario} souAdmin={souAdmin} />
           </>
           ) : modulo === "precos" ? (
           <>
-          <div className="eyebrow">REFERÊNCIA DE CUSTO</div>
-          <div className="title-row"><span className="title-accent">Banco de Preços</span></div>
-          <div className="obra-meta">Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge</div>
-          <BancoPrecosView usuario={usuario} />
+          <PageShell crumb="Referência de custo" title="Banco de Preços" description="Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge." contentClassName="flex flex-col gap-6">
+            <BancoPrecosView usuario={usuario} />
+          </PageShell>
           </>
           ) : modulo === "eap" ? (
           <>
-          <div className="eyebrow">INTEGRAÇÃO SIENGE</div>
-          <div className="title-row"><span className="title-accent">EAP Sienge</span></div>
-          <div className="obra-meta">Onde cada produto é apropriado no orçamento — o que a solicitação de compra exige</div>
-          <EapSiengeView usuario={usuario} />
+          <PageShell crumb="Integração Sienge" title="EAP Sienge" description="Onde cada produto é apropriado no orçamento — o que a solicitação de compra exige." contentClassName="flex flex-col gap-6">
+            <EapSiengeView usuario={usuario} />
+          </PageShell>
           </>
           ) : modulo === "a_contratar" ? (
           <>

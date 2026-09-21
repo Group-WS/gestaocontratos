@@ -920,13 +920,6 @@
       "impressao": "b8ec53e5e09d9d9f"
     },
     {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 25217,
-      "trecho": "style={canalDoPainel === c.id ? { color: c.cor, borderColor: c.cor, background: c.bg } : undefined}>",
-      "impressao": "e7870ea2fd32528d"
-    },
-    {
       "regra": "DS-07",
       "arquivo": "web/src/App.jsx",
       "linha": 536,
