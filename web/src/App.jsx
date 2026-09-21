@@ -3560,7 +3560,7 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
   // Celula vazia, e nao ausente: sem ela as colunas MAT e MO dos grupos
   // sem regra deslizariam pra esquerda e a lista deixaria de ser lida
   // como coluna.
-  if (!prazo) return <span className="block w-36 shrink-0" aria-hidden="true" />;
+  if (!prazo) return <span className="hidden sm:block sm:w-36 sm:shrink-0" aria-hidden="true" />;
 
   const limite = dataLimiteCompra(dataEntrega, prazo.dias);
   const faltam = diasAte(limite);
@@ -3577,7 +3577,7 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
       : `${prazo.dias} dias antes da entrega`;
 
   return (
-    <span className="block w-36 shrink-0 text-center" title={porque}>
+    <span className="col-span-2 block text-center sm:col-span-1 sm:w-36 sm:shrink-0" title={porque}>
       <span className="label-mono block text-center text-text-mute">
         COMPRAR ATÉ
         {prazo.incerto && <Badge tone="warning" className="ml-1" title={porque}>?</Badge>}
@@ -3640,13 +3640,15 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
             )}
           </span>
         </span>
-        <span className="flex w-full shrink-0 items-start justify-between gap-4 sm:w-auto sm:justify-end">
+        {/* No celular o prazo ocupa a fila de cima e MAT/MO dividem a de
+            baixo: as tres colunas lado a lado passam de 375px. */}
+        <span className="grid w-full shrink-0 grid-cols-2 gap-x-4 gap-y-2 sm:flex sm:w-auto sm:items-start sm:justify-end sm:gap-4">
           <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega} />
-          <span className="w-32 shrink-0">
+          <span className="min-w-0 sm:w-32 sm:shrink-0">
             <span className="label-mono block text-center text-text-mute">MAT</span>
             <span className={cn("mono block text-right text-sm font-semibold tabular-nums", mat > 0 ? "text-text" : "text-text-mute")}>{mat > 0 ? fmtBRL(mat) : "—"}</span>
           </span>
-          <span className="w-32 shrink-0">
+          <span className="min-w-0 sm:w-32 sm:shrink-0">
             <span className="label-mono block text-center text-text-mute">MO</span>
             <span className={cn("mono block text-right text-sm font-semibold tabular-nums", mo > 0 ? "text-text" : "text-text-mute")}>{mo > 0 ? fmtBRL(mo) : "—"}</span>
           </span>
@@ -4114,9 +4116,10 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
         <div className="flex flex-wrap items-center gap-2">
           <CampoBusca valor={busca} aoMudar={setBusca} dica="Buscar insumo, código ou fornecedor…"
             contador={`${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens`} />
-          <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => { if (v) setTipoFilter(v); }} aria-label="Alocação de recurso">
+          <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => { if (v) setTipoFilter(v); }} aria-label="Alocação de recurso"
+            className="max-w-full overflow-x-auto">
             {FILTROS_ALOC.map((t) => (
-              <ToggleGroupItem key={t.id} value={t.id} title={t.destino ? `Estes ${t.destino}` : undefined}>
+              <ToggleGroupItem key={t.id} value={t.id} className="shrink-0 whitespace-nowrap" title={t.destino ? `Estes ${t.destino}` : undefined}>
                 {t.label}
                 <Contador tom="neutral" className="ml-1">{contaPorAloc[t.id]}</Contador>
               </ToggleGroupItem>
@@ -4903,8 +4906,11 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
   /* Desenhado pra morar no `actions` do PageShell: a fila de botoes com o
      importar como primario, a dica embaixo, e o retorno da leitura logo
      abaixo — sem sair do lugar em que a pessoa clicou. */
+  /* max-w-xs no celular: o contêiner de ações do PageShell é shrink-0 e
+     mede pelo conteúdo — sem teto, a dica pedia a largura da frase inteira
+     e a página rolava de lado a 375px. */
   return (
-    <div className="flex w-full flex-col gap-2 sm:w-auto sm:max-w-md">
+    <div className="flex w-full max-w-xs flex-col gap-2 sm:w-auto sm:max-w-md">
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
         {/* Subir o arquivo errado tem que ter volta. Sem isto, o unico
             jeito de desfazer era subir outro por cima — e se o certo
@@ -5264,9 +5270,10 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
            mesma nos três estados. */
         toolbar={(
           <div className="flex flex-wrap items-center gap-2">
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
+            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
+              className="max-w-full overflow-x-auto">
               {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id}>
+                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
                   {f.label}
                   <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
                 </ToggleGroupItem>
@@ -5283,10 +5290,10 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
             const semVenda = itens.filter((it) => !itemFoiVendido(it)).length;
             return (
               <Colapsavel key={c.num} aberto={aberto} podeAbrir={temItens} onAbrir={() => toggle(c.num)}
-                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
                   <span className="mono w-6 shrink-0 text-xs text-text-mute">{c.num}</span>
-                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{c.nome}</span>
-                  <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-44">
+                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text lg:truncate" title={c.nome}>{c.nome}</span>
+                  <span className="flex flex-wrap justify-end gap-2 sm:w-44 sm:shrink-0 lg:w-auto lg:min-w-80 lg:flex-nowrap">
                     {temItens && <Badge tone="neutral">{itens.length} {itens.length === 1 ? "item" : "itens"}</Badge>}
                     {/* Grupo da EAP em que esta obra não vendeu nada. Não é
                         falha nem dado faltando — é o escopo da obra. */}
@@ -5459,9 +5466,10 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
                 os filtros no tamanho padrao do DS — mesma altura da busca. */}
             <CampoBusca valor={busca} aoMudar={setBusca}
               contador={`${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens`} />
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
+            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
+              className="max-w-full overflow-x-auto">
               {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id}>
+                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
                   {f.label}
                   <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
                 </ToggleGroupItem>
@@ -5488,10 +5496,10 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             return (
               <Colapsavel key={c.num} aberto={aberto} podeAbrir={temItens}
                 onAbrir={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}
-                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
                   <span className="mono w-6 shrink-0 text-xs text-text-mute">{c.num}</span>
-                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{c.nome}</span>
-                  <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-44">
+                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text lg:truncate" title={c.nome}>{c.nome}</span>
+                  <span className="flex flex-wrap justify-end gap-2 sm:w-44 sm:shrink-0 lg:w-auto lg:min-w-80 lg:flex-nowrap">
                     {temItens && <Badge tone="neutral">{buscando ? `${naTela.length} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</Badge>}
                     {!grupoFoiVendido(itens) && <Badge tone="outline">não vendido</Badge>}
                     {temItens && semVenda > 0 && (
@@ -7780,14 +7788,16 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           return (
             <Collapsible key={g.num} open={aberto} onOpenChange={() => abreNaBusca.alternar(g.num, () => alternar(g.num))}
               className="border-b border-line-1 last:border-b-0">
-              <div className="flex flex-col gap-2 px-4 py-3 md:flex-row md:items-start">
+              <div className="flex flex-col gap-2 px-4 py-3 md:flex-row md:items-center">
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal p-0 text-left font-normal hover:bg-transparent">
                     {aberto ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />}
-                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
                       <span className="mono w-6 shrink-0 text-xs text-text-mute">{g.num}</span>
-                      <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{g.nome}</span>
-                      <span className="flex shrink-0 flex-wrap justify-end gap-2 lg:w-96">
+                      <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text lg:truncate" title={g.nome}>{g.nome}</span>
+                      {/* Sem shrink-0 no celular: com ele os selos pediam a
+                          largura de todos numa fila so e estouravam os 375px. */}
+                      <span className="flex min-w-0 flex-wrap justify-end gap-2 lg:shrink-0 lg:flex-nowrap">
                       {/* O CONTADOR E' DO GRUPO, sempre — nao do recorte na tela.
 
                           Com o filtro de travados ligado ela leu "13 de 8
@@ -7816,7 +7826,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                   </Button>
                 </CollapsibleTrigger>
                 <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                  <span className="mono shrink-0 text-right text-xs tabular-nums text-text-mute md:w-48">{fmtBRL(g.liberado)} de {fmtBRL(g.total)}</span>
+                  <span className="mono shrink-0 whitespace-nowrap text-right text-sm tabular-nums text-text md:w-64">{fmtBRL(g.liberado)} de {fmtBRL(g.total)}</span>
                   {podeEditar && onConcluir && aConcluir.length > 0 && (
                     <Button variant="outline" size="sm"
                       title="Marca a verba inteira como concluída pelo executivo"
@@ -9108,9 +9118,10 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                 de referencia sumiria por baixo da busca. */}
             <CampoBusca valor={busca} aoMudar={(v) => { setBusca(v); setBuscandoEm(null); }}
               contador={`${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens`} />
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
+            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
+              className="max-w-full overflow-x-auto">
               {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id}>
+                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
                   {f.label}
                   <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
                 </ToggleGroupItem>
@@ -9184,9 +9195,9 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
               /* abre mesmo sem itens: é onde se lança item manual */
               <Colapsavel key={c.num} aberto={aberto} podeAbrir
                 onAbrir={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}
-                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
                   <span className="mono w-6 shrink-0 text-xs text-text-mute">{c.num}</span>
-                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{c.nome}</span>
+                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text lg:truncate" title={c.nome}>{c.nome}</span>
                   {/* O vendido fica à vista: sem ele, "acima" e "abaixo" são
                       afirmações sem referência na tela. Sem vendido, a coluna
                       continua ali vazia, pra as outras não deslizarem. */}
@@ -9198,7 +9209,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                       <TooltipContent className="max-w-xs whitespace-normal">Valor vendido deste grupo no criativo — a referência da comparação</TooltipContent>
                     </Tooltip>
                   ) : <span className="hidden w-36 shrink-0 sm:block" aria-hidden="true" />}
-                  <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-44">
+                  <span className="flex flex-wrap justify-end gap-2 sm:w-44 sm:shrink-0 lg:w-auto lg:min-w-80 lg:flex-nowrap">
                     {temItens && <Badge tone="neutral">{buscando ? `${nNaBusca} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</Badge>}
                     {delta && (
                       <Tooltip>
@@ -12531,8 +12542,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     ...fornecedores.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` })),
   ];
 
+  /* w-full: sem ele a barra mede pelo conteudo e o lg:ml-auto do grupo de
+     acoes nao tem sobra pra empurrar — os botoes ficavam colados no filtro. */
   const toolbar = (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex w-full flex-wrap items-center gap-2">
       <CampoBusca valor={busca} aoMudar={setBusca}
         contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
       {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
@@ -12549,10 +12562,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
       <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
         onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-full sm:w-72" />
       <div className="flex w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto">
-        <Button variant="outline" onClick={selecionarTudo}>
+        <Button variant="outline" className="h-10" onClick={selecionarTudo}>
           <Check size={16} aria-hidden="true" /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
         </Button>
-        {sel.size > 0 && <Button variant="ghost" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
+        {sel.size > 0 && <Button variant="ghost" className="h-10" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
         {fornecedor && fornecedor !== SEM_FORNECEDOR && (
           <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
             <Checkbox id={idNomeNoPdf} checked={nomeNoPdf} onCheckedChange={(v) => setNomeNoPdf(v === true)} />
@@ -12563,7 +12576,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
             tela mostrando tres linhas enquanto o pedido leva sessenta e' a
             pagina afirmando duas coisas. */}
-        <Button onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+        <Button className="h-10" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
           title={buscando
             ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
             : !fornecedor || fornecedor === SEM_FORNECEDOR
@@ -15665,7 +15678,9 @@ function GcLinhaVerba({ g, max, onAbrir, onImprimir, onSimular }) {
           <span className="min-w-0 flex-1 whitespace-normal text-left text-sm text-text md:w-64 md:flex-none">{g.nome}</span>
           <span className="hidden w-16 shrink-0 text-left text-xs text-text-mute md:inline">{nObras}</span>
           <Progress className="hidden min-w-16 flex-1 md:block" value={Math.min(100, (g.total / max) * 100)} aria-label={`Peso de ${g.nome} no total`} />
-          <span className="hidden w-32 shrink-0 text-right font-mono text-xs tabular-nums text-text-mute lg:inline">{qtdTxt || ""}</span>
+          {/* "Sem categoria" soma varias unidades ("12 m² · 3 un · 40 m"): sem
+              truncar, o texto invadia a coluna do valor. O inteiro fica no title. */}
+          <span className="hidden w-32 shrink-0 truncate text-right font-mono text-xs tabular-nums text-text-mute lg:block" title={qtdTxt || undefined}>{qtdTxt || ""}</span>
           <span className="w-32 shrink-0 text-right font-mono text-sm tabular-nums text-text">{fmtBRL(g.total)}</span>
         </Button>
         {/* A calculadora: quanto custaria esta verba com a equipe interna. */}
@@ -15684,7 +15699,7 @@ function GcLinhaVerba({ g, max, onAbrir, onImprimir, onSimular }) {
               onClick={() => onAbrir && onAbrir(o.id)} disabled={!onAbrir}>
               <span className="w-12 shrink-0 font-mono text-xs text-text-mute">#{o.codigo}</span>
               <span className="min-w-0 flex-1 whitespace-normal text-left text-sm">{o.nome}</span>
-              {o.qtds && <span className="w-32 shrink-0 text-right font-mono text-xs tabular-nums text-text-mute">{fmtQtds(o.qtds)}</span>}
+              {o.qtds && <span className="w-32 shrink-0 truncate text-right font-mono text-xs tabular-nums text-text-mute" title={fmtQtds(o.qtds)}>{fmtQtds(o.qtds)}</span>}
               <span className="w-32 shrink-0 text-right font-mono text-sm tabular-nums">{fmtBRL(o.valor)}</span>
             </Button>
           ))}
@@ -15886,7 +15901,7 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
           listeners no document. */}
       <Popover open={aberto} onOpenChange={setAberto}>
         <PopoverTrigger asChild>
-          <Button variant={escolhidas.size ? "secondary" : "outline"} aria-label={`Filtrar obras: ${rotulo}`}>
+          <Button variant={escolhidas.size ? "secondary" : "outline"} className="h-10" aria-label={`Filtrar obras: ${rotulo}`}>
             <Building2 size={16} aria-hidden="true" />
             <span className="max-w-60 truncate">{rotulo}</span>
             <ChevronDown size={16} aria-hidden="true" />
@@ -15932,7 +15947,7 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
         <FilterChip key={o.codigo} label="Obra" value={<span className="mono">#{o.codigo}</span>} onClear={() => alternar(o.codigo)} />
       ))}
       {escolhidas.size > 6 && (
-        <Button variant="ghost" onClick={() => onMudar(new Set())}>Limpar filtro</Button>
+        <Button variant="ghost" className="h-10" onClick={() => onMudar(new Set())}>Limpar filtro</Button>
       )}
     </div>
   );

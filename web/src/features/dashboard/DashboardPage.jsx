@@ -14,9 +14,11 @@ const date = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString
 const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const options = (rows, key) => [...new Set(rows.map((row) => row[key]))].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
-function Choice({ label, value, values, onChange, disabled = false, allLabel = "Todas" }) {
+/* A opcao vazia diz o campo ("Todas as unidades"): o rotulo e' so' para
+   leitor de tela, e um "Todas" solto na barra nao dizia de que filtro era. */
+function Choice({ label, value, values, onChange, disabled = false, allLabel }) {
   const id = React.useId();
-  return <div className="flex w-full min-w-0 flex-col gap-1 sm:w-40">
+  return <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48">
     <Label htmlFor={id} className="sr-only">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={label}><SelectValue /></SelectTrigger>
@@ -134,10 +136,10 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
      do titulo e' das acoes (App Shell do DS, nivel 6). */
   const controls = <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Filtros do dashboard">
     <div className="flex w-full min-w-0 flex-col gap-1 sm:w-72"><Label htmlFor="dashboard-search" className="sr-only">Buscar obra</Label><Input icon={<Search size={16} aria-hidden="true" />} id="dashboard-search" placeholder="Código ou nome" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div>
-    <Choice label="Unidade" disabled={!rows.some((row) => row.unit !== "Não informada")} value={filters.unit} values={options(rows, "unit")} onChange={(value) => update("unit", value)} />
-    <Choice label="Squad" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} />
-    <Choice label="GC" allLabel="Todos" value={filters.gc} values={options(rows, "gc")} onChange={(value) => update("gc", value)} />
-    <Choice label="Taylor Made" allLabel="Todas" value={filters.taylor || "all"} values={options(rows, "taylor")} onChange={(value) => update("taylor", value)} />
+    <Choice label="Unidade" allLabel="Todas as unidades" disabled={!rows.some((row) => row.unit !== "Não informada")} value={filters.unit} values={options(rows, "unit")} onChange={(value) => update("unit", value)} />
+    <Choice label="Squad" allLabel="Todos os squads" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} />
+    <Choice label="GC" allLabel="Todos os GCs" value={filters.gc} values={options(rows, "gc")} onChange={(value) => update("gc", value)} />
+    <Choice label="Taylor Made" allLabel="Todas as Taylor Made" value={filters.taylor || "all"} values={options(rows, "taylor")} onChange={(value) => update("taylor", value)} />
   </div>;
   const filtrosAtivos = active ? <ActiveFilters count={filtered.length} noun="obra" hasFilters onClearAll={clear}>
     {filters.unit !== "all" && <FilterChip label="Unidade" value={filters.unit} onClear={() => update("unit", "all")} />}
