@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
 
 /* Breakpoint `lg` do Tailwind: acima dele a barra lateral fica fixa na
    tela; abaixo, ela abre num Sheet pelo botão de menu do topo. */
@@ -28,5 +29,23 @@ export function Contador({ tom = "brand", className = "", children }) {
     <span className={`flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-xs font-semibold leading-none ${cor} ${className}`}>
       {children}
     </span>
+  );
+}
+
+/* Escolha única num Select do DS, com o rótulo em cima — o mesmo desenho
+   do `Choice` do Dashboard, só que as opções vêm prontas ({ value, label })
+   e não há "Todas" implícito. Substitui o <select className="form-select">. */
+export function Choice({ label, value, opcoes, onChange, placeholder, required, disabled, className = "" }) {
+  const id = useId();
+  return (
+    <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
+      <Label htmlFor={id} required={required}>{label}</Label>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger id={id} aria-label={label}><SelectValue placeholder={placeholder} /></SelectTrigger>
+        <SelectContent>
+          {opcoes.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

@@ -57,8 +57,10 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
-  Alert, AlertDescription, EmptyState, Progress, Checkbox, PageShell } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador } from "./lib/ui.jsx";
+  Alert, AlertDescription, EmptyState, Progress, Checkbox, PageShell,
+  TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@group-ws/ws-ui";
+import { useMediaQuery, LARGO, Contador, Choice } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -282,20 +284,20 @@ function itemAlertas(it) {
 }
 
 const CONTRATO_STAGES = {
-  solicitacao: { label: "Solicitação de contrato enviada", color: "var(--ink-3)", bg: "var(--panel)" },
-  aprovacao: { label: "Aguardando aprovação do contrato", color: "var(--amber)", bg: "var(--amber-bg)" },
-  contrato_gerado: { label: "Contrato gerado", color: "var(--blue)", bg: "var(--blue-bg)" },
-  previsao_medicao: { label: "Previsão de medição lançada", color: "var(--blue)", bg: "var(--blue-bg)" },
-  medicao_liberada: { label: "Medição liberada — NF anexada", color: "var(--green)", bg: "var(--green-bg)" },
+  solicitacao: { label: "Solicitação de contrato enviada", tone: "neutral" },
+  aprovacao: { label: "Aguardando aprovação do contrato", tone: "warning" },
+  contrato_gerado: { label: "Contrato gerado", tone: "brand" },
+  previsao_medicao: { label: "Previsão de medição lançada", tone: "brand" },
+  medicao_liberada: { label: "Medição liberada — NF anexada", tone: "success" },
 };
 
 function ContratoStatus({ item }) {
   if (item.foraDeEscopo && item.statusEscopo !== "aprovado") {
-    return <span className="contrato-blocked">Bloqueado — aguardando aprovação de escopo</span>;
+    return <Badge tone="danger">Bloqueado — aguardando aprovação de escopo</Badge>;
   }
-  if (!item.statusContrato) return <span className="dim">Contrato ainda não solicitado</span>;
+  if (!item.statusContrato) return <span className="text-xs text-text-mute">Contrato ainda não solicitado</span>;
   const s = CONTRATO_STAGES[item.statusContrato];
-  return <span className="contrato-pill" style={{ color: s.color, background: s.bg }}>{s.label}</span>;
+  return <Badge tone={s.tone}>{s.label}</Badge>;
 }
 
 const STATUS_META = {
@@ -1497,11 +1499,11 @@ function SiengeMatch({ sienge }) {
 // tags/alertas comuns às duas linhas (produto e serviço)
 function ItemTags({ item, alertas }) {
   return (
-    <div className="item-tags">
-      {alertas.includes("escopo") && <span className="chip chip-red"><XCircle size={11} /> Fora do escopo vendido</span>}
-      {alertas.includes("qtd") && <span className="chip chip-red"><AlertTriangle size={11} /> Quantidade excede o vendido</span>}
-      {alertas.includes("novo") && <span className="chip chip-blue">Novo item — sem código no vendido</span>}
-      {item.foraDeEscopo && item.statusEscopo === "aprovado" && <span className="chip chip-green"><CheckCircle2 size={11} /> Aprovado — incluído no escopo</span>}
+    <div className="mt-1 flex flex-wrap gap-1">
+      {alertas.includes("escopo") && <Badge tone="danger"><XCircle size={11} /> Fora do escopo vendido</Badge>}
+      {alertas.includes("qtd") && <Badge tone="danger"><AlertTriangle size={11} /> Quantidade excede o vendido</Badge>}
+      {alertas.includes("novo") && <Badge tone="brand">Novo item — sem código no vendido</Badge>}
+      {item.foraDeEscopo && item.statusEscopo === "aprovado" && <Badge tone="success"><CheckCircle2 size={11} /> Aprovado — incluído no escopo</Badge>}
     </div>
   );
 }
@@ -3340,7 +3342,7 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
 
        Alerta e avulso ganham da cor de status: um problema de escopo
        importa mais que o andamento da compra. */
-    <tr className={
+    <TableRow className={
       item.aditivo ? "row-aditivo"
       : item.avulso ? "row-avulso"
       : alertas.length ? "row-alert"
@@ -3360,21 +3362,21 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
           alerta. Duas colunas pra mesma informacao, uma parecendo erro.
 
           O controle nao se perdeu: a propria situacao virou o botao. */}
-      <td className="mono dim">{codigoVisivel(item)}</td>
-      <td>
-        <div className={`item-desc ${item.troca ? "item-trocado" : ""}`}>{item.desc}</div>
+      <TableCell className="mono text-text-mute">{codigoVisivel(item)}</TableCell>
+      <TableCell>
+        <div className={cn("item-desc", item.troca && "line-through text-text-mute")}>{item.desc}</div>
         {item.troca && (
-          <span className="troca-tag troca-tag-plano">
+          <Badge tone="neutral" className="mr-1 mt-1">
             trocado{linhasDaTroca(cat.itens, item).length ? ` por ${linhasDaTroca(cat.itens, item).map((n) => n.desc).join(" + ")}` : ""}
             {item.troca.aprovadoPor?.nome ? ` · aprovado por ${item.troca.aprovadoPor.nome}` : ""}
-          </span>
+          </Badge>
         )}
-        {item.trocaEm && <span className="troca-tag troca-tag-plano">troca de {rotuloDoItem(origemDaTroca(cat.itens, item) || { codigo: item.trocaDe })}</span>}
+        {item.trocaEm && <Badge tone="neutral" className="mr-1 mt-1">troca de {rotuloDoItem(origemDaTroca(cat.itens, item) || { codigo: item.trocaDe })}</Badge>}
         {item.aditivo
           ? <>
-              <span className="tag-aditivo" title={item.descCompleta ? `Texto do cliente: ${item.descCompleta}` : undefined}>
+              <Badge tone="purple" className="mt-1" title={item.descCompleta ? `Texto do cliente: ${item.descCompleta}` : undefined}>
                 <FileText size={9} /> aditivo {item.aditivo}{item.ambiente ? ` · ${item.ambiente}` : ""}
-              </span>
+              </Badge>
               {/* A ESPECIFICACAO INTERNA, a que vai pra quem compra.
 
                   O nome da linha vem da descricao do documento do cliente;
@@ -3385,38 +3387,38 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
               {item.especificacao && <div className="det-espec">{item.especificacao}</div>}
             </>
           : item.avulso
-          ? <span className="tag-avulso" title={item.avulsoEm ? `Pedido em ${new Date(item.avulsoEm).toLocaleDateString("pt-BR")}` : undefined}>
+          ? <Badge tone="purple" className="mt-1" title={item.avulsoEm ? `Pedido em ${new Date(item.avulsoEm).toLocaleDateString("pt-BR")}` : undefined}>
               <Plus size={9} /> compra avulsa{item.avulsoPor ? ` · ${item.avulsoPor}` : ""}
-            </span>
+            </Badge>
           : <ItemTags item={item} alertas={alertas} />}
-        {item.avulso && item.avulsoObs && <div className="avulso-obs">{item.avulsoObs}</div>}
+        {item.avulso && item.avulsoObs && <div className="mt-1 text-xs text-text-mute">{item.avulsoObs}</div>}
         {/* As duas pontas do vinculo aparecem, cada uma na sua linha.
             Item que se parte em dois e onde a conferencia de meses depois
             trava: sem a seta, sao duas linhas iguais em verbas diferentes
             e ninguem lembra se e separacao ou duplicata. */}
         {item.moSeparada && (
-          <span className="tag-separado">
+          <div className="mt-1 flex flex-wrap items-center gap-1">
             {/* A linha separada esta logo abaixo, na mesma verba — nao ha
                 mais pra onde mandar a pessoa. */}
-            <CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo
+            <Badge tone="purple"><CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo</Badge>
             {onJuntarMO && podeEditar && <Button variant="ghost" size="sm" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</Button>}
-          </span>
+          </div>
         )}
         {item.separadoDe && (
-          <span className="tag-separado">
+          <Badge tone="purple" className="mt-1">
             <CornerDownRight size={10} /> mão de obra do item {item.separadoDe.codigo}
-          </span>
+          </Badge>
         )}
         {item.contavel && <SiengeMatch sienge={item.sienge} />}
-      </td>
-      <td className="mono center dim">{item.ambiente}</td>
-      <td className="mono center">
+      </TableCell>
+      <TableCell className="mono center text-text-mute">{item.ambiente}</TableCell>
+      <TableCell className="mono center">
         {/* `qtdVendida` entra na conta: o leitor do executivo grava a
             quantidade nesse campo, e a tela so olhava `qtdExecutivo` — o
             numero vinha certo do arquivo e virava travessao na tabela. */}
-        <span className={item.excedeQtd ? "qtd-bad" : ""}>{item.qtdExecutivo ?? item.qtdVendida ?? item.qtd ?? "—"}</span> <span className="unit">{item.un}</span>
-      </td>
-      <td className="center">
+        <span className={item.excedeQtd ? "font-bold text-danger" : ""}>{item.qtdExecutivo ?? item.qtdVendida ?? item.qtd ?? "—"}</span> <span className="unit">{item.un}</span>
+      </TableCell>
+      <TableCell className="center">
         <TagAloc aloc={aloc} manual={!!item.alocacaoManual} onChange={onAlocar} podeEditar={podeEditar} />
         {/* So faz sentido separar o que TEM as duas parcelas, e so uma
             vez. Item que ja mora na propria verba de mao de obra nao tem
@@ -3427,15 +3429,15 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
             <GitCompare size={9} /> separar MO
           </Button>
         )}
-      </td>
-      <td className="mono right">
-        {material > 0 ? fmtBRL(material) : <span className="dim">—</span>}
-        {estimado && !manual && material > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
-      </td>
-      <td className="mono right">
-        {mo > 0 ? fmtBRL(mo) : <span className="dim">—</span>}
-        {estimado && !manual && mo > 0 && <span className="dim est-tag" title="A planilha não trouxe a coluna de mão de obra — assumido o custo total">est.</span>}
-      </td>
+      </TableCell>
+      <TableCell className="mono right">
+        {material > 0 ? fmtBRL(material) : <span className="text-text-mute">—</span>}
+        {estimado && !manual && material > 0 && <span className="ml-1 text-xs italic text-text-mute" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
+      </TableCell>
+      <TableCell className="mono right">
+        {mo > 0 ? fmtBRL(mo) : <span className="text-text-mute">—</span>}
+        {estimado && !manual && mo > 0 && <span className="ml-1 text-xs italic text-text-mute" title="A planilha não trouxe a coluna de mão de obra — assumido o custo total">est.</span>}
+      </TableCell>
       {/* O total sai da SOMA das duas colunas ao lado, nao de `item.custo`.
 
           Custo e o numero que veio da planilha e ele nao acompanha o que
@@ -3444,18 +3446,18 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
           pra outra verba continuavam somando ali. Tres colunas na mesma
           linha que nao fecham entre si e o tipo de erro que faz a pessoa
           parar de confiar na tela inteira. */}
-      <td className="mono right">
+      <TableCell className="mono right">
         {item.custo == null && material + mo === 0
-          ? <span className="dim">a orçar</span>
+          ? <span className="text-text-mute">a orçar</span>
           : fmtBRL(material + mo)}
-      </td>
-      <td className="center">
+      </TableCell>
+      <TableCell className="center">
         {bloqueado
-          ? <Button onClick={onAprovar} disabled={!podeEditar}
+          ? <Button size="sm" onClick={onAprovar} disabled={!podeEditar}
               title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={12} /> Aprovar p/ compra</Button>
           : <DestinoCompra item={item} aloc={aloc} />}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -3714,6 +3716,7 @@ function FormAvulsa({ obra, onCriar }) {
   const [un, setUn] = useState("un");
   const [ambiente, setAmbiente] = useState("");
   const [aloc, setAloc] = useState(ALOC_MAT);
+  const id = React.useId();
 
   function submit(e) {
     e.preventDefault();
@@ -3738,72 +3741,68 @@ function FormAvulsa({ obra, onCriar }) {
     setAberto(false);
   }
 
-  if (!aberto) {
-    return (
-      <Button onClick={() => setAberto(true)}>
-        <Plus size={14} /> Compra avulsa
-      </Button>
-    );
-  }
-
   return (
-    <form className="form-solicitacao form-avulsa" onSubmit={submit}>
-      <div className="form-solicitacao-title">Solicitar compra avulsa</div>
-      <div className="form-avulsa-nota">
-        Item que a obra precisa e o executivo não tinha. Aqui entra só o pedido —
-        <b> o valor não</b>, porque quem descobre quanto custa é a compra. Nenhum total de verba muda.
-      </div>
-      <div className="form-row">
-        <label className="form-label">Verba da EAP
-          <select className="form-select" value={verbaNum} onChange={(e) => setVerbaNum(e.target.value)}>
-            {verbas.map((c) => <option key={c.num} value={c.num}>{c.num} — {c.nome}</option>)}
-          </select>
-        </label>
-      </div>
-      <div className="form-row">
-        <label className="form-label">Descrição
-          <input className="form-input" type="text" value={desc} onChange={(e) => setDesc(e.target.value)}
-            placeholder="Ex: Spot de sobrepor Loyo Up MR16" required autoFocus />
-        </label>
-      </div>
-      <div className="form-row form-row-3">
-        <label className="form-label">Qtd.
-          <input className="form-input" type="text" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="1" />
-        </label>
-        <label className="form-label">Unidade
-          <input className="form-input" type="text" value={un} onChange={(e) => setUn(e.target.value)} placeholder="un" />
-        </label>
-        <label className="form-label">Ambiente
-          <input className="form-input" type="text" value={ambiente} onChange={(e) => setAmbiente(e.target.value)} placeholder="Living" />
-        </label>
-      </div>
-      <div className="form-row">
-        <span className="form-label" style={{ display: "block" }}>Alocação de recurso</span>
-        <div className="aloc-escolha">
-          {[
-            { id: ALOC_MAT, rot: "MAT", sub: "só MATERIAL" },
-            { id: ALOC_MO, rot: "MO", sub: "só MÃO DE OBRA" },
-            { id: ALOC_AMBOS, rot: "MAT+MO", sub: "os dois" },
-          ].map((o) => (
-            <Button variant="ghost" key={o.id} type="button"
-              className={`aloc-op ${aloc === o.id ? "ativo" : ""}`}
-              onClick={() => setAloc(o.id)}>
-              <span className={`aloc aloc-${String(o.id).toLowerCase()}`}>{o.rot}</span>
-              <span className="aloc-op-sub">{o.sub}</span>
-            </Button>
-          ))}
-        </div>
-        {aloc === ALOC_MO && (
-          <div className="form-avulsa-aviso">
-            Só MÃO DE OBRA vai para <b>Contratos</b>, não para Compras.
-          </div>
-        )}
-      </div>
-      <div className="form-actions">
-        <Button variant="outline" type="button" onClick={() => setAberto(false)}>Cancelar</Button>
-        <Button type="submit">Registrar pedido</Button>
-      </div>
-    </form>
+    <>
+      <Button variant="outline" onClick={() => setAberto(true)}>
+        <Plus size={16} /> Compra avulsa
+      </Button>
+      <Dialog open={aberto} onOpenChange={setAberto}>
+        <DialogContent size="md">
+          <form onSubmit={submit}>
+            <DialogHeader>
+              <DialogTitle>Solicitar compra avulsa</DialogTitle>
+              <DialogDescription>
+                Item que a obra precisa e o executivo não tinha. Aqui entra só o pedido —
+                <b> o valor não</b>, porque quem descobre quanto custa é a compra. Nenhum total de verba muda.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogBody className="flex flex-col gap-4">
+              <Choice label="Verba da EAP" value={verbaNum} onChange={setVerbaNum}
+                opcoes={verbas.map((c) => ({ value: c.num, label: `${c.num} — ${c.nome}` }))} />
+              <Field>
+                <Label htmlFor={`${id}-desc`} required>Descrição</Label>
+                <Input id={`${id}-desc`} type="text" value={desc} onChange={(e) => setDesc(e.target.value)}
+                  placeholder="Ex: Spot de sobrepor Loyo Up MR16" required autoFocus />
+              </Field>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field>
+                  <Label htmlFor={`${id}-qtd`}>Qtd.</Label>
+                  <Input id={`${id}-qtd`} type="text" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="1" />
+                </Field>
+                <Field>
+                  <Label htmlFor={`${id}-un`}>Unidade</Label>
+                  <Input id={`${id}-un`} type="text" value={un} onChange={(e) => setUn(e.target.value)} placeholder="un" />
+                </Field>
+                <Field>
+                  <Label htmlFor={`${id}-amb`}>Ambiente</Label>
+                  <Input id={`${id}-amb`} type="text" value={ambiente} onChange={(e) => setAmbiente(e.target.value)} placeholder="Living" />
+                </Field>
+              </div>
+              <Field>
+                <Label htmlFor={`${id}-aloc`}>Alocação de recurso</Label>
+                <RadioGroup id={`${id}-aloc`} value={aloc} onValueChange={setAloc} aria-label="Alocação de recurso"
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {[
+                    { id: ALOC_MAT, rot: "MAT", sub: "só MATERIAL" },
+                    { id: ALOC_MO, rot: "MO", sub: "só MÃO DE OBRA" },
+                    { id: ALOC_AMBOS, rot: "MAT+MO", sub: "os dois" },
+                  ].map((o) => (
+                    <RadioCard key={o.id} value={o.id} title={o.rot} description={o.sub} />
+                  ))}
+                </RadioGroup>
+                {aloc === ALOC_MO && (
+                  <FieldHint>Só MÃO DE OBRA vai para <b>Contratos</b>, não para Compras.</FieldHint>
+                )}
+              </Field>
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setAberto(false)}>Cancelar</Button>
+              <Button type="submit">Registrar pedido</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -3833,8 +3832,10 @@ const FILTERS = [
 // gravado na obra. A decisão continua sendo de gente; o registro é que
 // deixa de ser opcional.
 function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
+  const [aberto, setAberto] = useState(false);
   const [justificativa, setJustificativa] = useState("");
   const [aprovador, setAprovador] = useState("");
+  const id = React.useId();
 
   const totalExecutivo = obra.categorias.reduce(
     (a, c) => a + (c.itensPlanilhaExecutivo || []).reduce((s, it) => s + (it.excluido ? 0 : (it.custo || 0)), 0), 0);
@@ -3857,59 +3858,73 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   const faltaJustificar = precisaExcecao && (justificativa.trim().length < 15 || aprovador.trim().length < 3);
   const bloqueado = !temItens || !podeEditar || faltaJustificar;
 
+  /* A ação primária da tela mora no cabeçalho; o que ela exige (o aviso do
+     CMV, a justificativa, o nome de quem autorizou) abre num dialog. */
   return (
-    <div className={`aprovacao-box ${precisaExcecao ? "com-estouro" : ""}`}>
-      {semAssinatura && (
-        <div className="estouro-aviso bloqueio-assinatura">
-          <Lock size={15} />
-          <span>
-            <b>O cliente ainda não aprovou o projeto executivo.</b>
-          </span>
-        </div>
-      )}
-      {acimaDoTeto && (
-        <div className="estouro-aviso">
-          <AlertTriangle size={15} />
-          <span>
-            O Executivo está <b>{fmtBRL(estouro)} acima</b> do CMV liberado ({fmtBRL(teto)}).
-            Dá pra seguir, mas precisa de justificativa e de quem autorizou — fica registrado na obra.
-          </span>
-        </div>
-      )}
-
-      {precisaExcecao && (
-        <div className="estouro-campos">
-          <label>
-            <span>{semAssinatura && acimaDoTeto ? "Por que liberar sem a assinatura do cliente e acima do CMV?"
-              : semAssinatura ? "Por que liberar sem a aprovação do cliente registrada?"
-              : "Por que o custo passou do CMV?"}</span>
-            <textarea rows={2} value={justificativa} onChange={(e) => setJustificativa(e.target.value)}
-              placeholder={semAssinatura
-                ? "Ex: cliente assinou o executivo na reunião de 12/08, documento físico a caminho do escritório."
-                : "Ex: cliente aprovou troca do ar-condicionado por modelo superior, com aditivo de contrato."} />
-          </label>
-          <label>
-            <span>Autorizado por</span>
-            <input value={aprovador} onChange={(e) => setAprovador(e.target.value)} placeholder="Nome de quem autorizou a exceção" />
-          </label>
-        </div>
-      )}
-
-      <div className="aprovacao-resumo">
-        {!temItens
-          ? "Importe o Executivo desta obra antes de liberar — sem itens não há o que comprar."
-          : "Ao liberar, este vira o plano oficial de compra: Vendido, Depara e Executivo ficam congelados."}
-      </div>
-
-      <Button disabled={bloqueado} onClick={() => {
-        onLiberar(precisaExcecao
-          ? { estouro: acimaDoTeto ? estouro : 0, semAssinatura,
-              justificativa: justificativa.trim(), aprovador: aprovador.trim() }
-          : null);
-      }}>
-        <ShieldCheck size={14} /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar plano de compras"}
+    <>
+      <Button disabled={!podeEditar} title={podeEditar ? undefined : MODO_LEITURA_DICA} onClick={() => setAberto(true)}>
+        <ShieldCheck size={16} /> Liberar compra
       </Button>
-    </div>
+      <Dialog open={aberto} onOpenChange={setAberto}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Liberar plano de compras</DialogTitle>
+            <DialogDescription>
+              {!temItens
+                ? "Importe o Executivo desta obra antes de liberar — sem itens não há o que comprar."
+                : "Ao liberar, este vira o plano oficial de compra: Vendido, Depara e Executivo ficam congelados."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="flex flex-col gap-4">
+            {semAssinatura && (
+              <Alert tone="danger">
+                <AlertDescription><b>O cliente ainda não aprovou o projeto executivo.</b></AlertDescription>
+              </Alert>
+            )}
+            {acimaDoTeto && (
+              <Alert tone="danger">
+                <AlertDescription>
+                  O Executivo está <b>{fmtBRL(estouro)} acima</b> do CMV liberado ({fmtBRL(teto)}).
+                  Dá pra seguir, mas precisa de justificativa e de quem autorizou — fica registrado na obra.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {precisaExcecao && (
+              <div className="grid gap-4">
+                <Field>
+                  <Label htmlFor={`${id}-just`} required>
+                    {semAssinatura && acimaDoTeto ? "Por que liberar sem a assinatura do cliente e acima do CMV?"
+                      : semAssinatura ? "Por que liberar sem a aprovação do cliente registrada?"
+                      : "Por que o custo passou do CMV?"}
+                  </Label>
+                  <Textarea id={`${id}-just`} rows={2} value={justificativa} onChange={(e) => setJustificativa(e.target.value)}
+                    placeholder={semAssinatura
+                      ? "Ex: cliente assinou o executivo na reunião de 12/08, documento físico a caminho do escritório."
+                      : "Ex: cliente aprovou troca do ar-condicionado por modelo superior, com aditivo de contrato."} />
+                </Field>
+                <Field>
+                  <Label htmlFor={`${id}-aprov`} required>Autorizado por</Label>
+                  <Input id={`${id}-aprov`} value={aprovador} onChange={(e) => setAprovador(e.target.value)} placeholder="Nome de quem autorizou a exceção" />
+                </Field>
+              </div>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAberto(false)}>Cancelar</Button>
+            <Button disabled={bloqueado} onClick={() => {
+              onLiberar(precisaExcecao
+                ? { estouro: acimaDoTeto ? estouro : 0, semAssinatura,
+                    justificativa: justificativa.trim(), aprovador: aprovador.trim() }
+                : null);
+              setAberto(false);
+            }}>
+              <ShieldCheck size={16} /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar plano de compras"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -4046,120 +4061,123 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
     [ALOC_AMBOS]: contaAloc(ALOC_AMBOS),
   };
 
+  const alocAtiva = FILTROS_ALOC.find((t) => t.id === tipoFilter);
+  const limparFiltros = () => { setBusca(""); setItemFilter("todos"); setTipoFilter("todos"); };
+
   return (
-    <>
-      {obra.comprasLiberadas ? (
-        <div className="import-ok liberado-barra">
-          <ShieldCheck size={14} />
-          <span>Plano de Compras liberado — as etapas anteriores estão congeladas.</span>
-          {/* Toda trava precisa de volta. Sem isso, um clique sem querer
-              congela a obra inteira e só se resolve mexendo no banco —
-              o que ninguém do time consegue fazer. */}
-          {podeEditar && (
-            <Button variant="outline" onClick={async () => {
-              if (await confirmar({
-                titulo: "Reabrir as etapas anteriores?",
-                mensagem: "Vendido, Depara e Executivo voltam a aceitar alteração. " +
-                  "Use quando algo precisar ser corrigido depois da liberação. " +
-                  "Compras e contratações já feitas não são desfeitas.",
-                confirmar: "Reabrir etapas", perigo: false,
-              })) onReabrir();
-            }}>
-              <RotateCcw size={12} /> Reabrir etapas
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="import-bar" style={{ marginBottom: 14 }}>
-          <div className="import-info">
-            <Lock size={14} />
-            <span>Este é o plano que libera compras e contratações. Ao liberar, <b>as etapas anteriores são congeladas</b> e não podem mais ser alteradas.</span>
-          </div>
+    <PageShell title="Plano de Compras"
+      description="O que a obra vai comprar e contratar, verba a verba — e com que dinheiro."
+      contentClassName="flex flex-col gap-6"
+      actions={(
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          {/* A avulsa fica no topo, junto do resumo — e uma acao sobre a obra
+              inteira, nao sobre a lista filtrada abaixo. Continua disponivel
+              DEPOIS da liberacao: e pra isso que ela serve, o item que quebrou
+              ou que o cliente pediu depois aparece justamente quando o plano
+              ja fechou. Trava-la junto com as etapas anteriores empurraria a
+              compra pra fora da plataforma, o unico lugar onde ela fica
+              registrada. */}
+          {podeEditar && <FormAvulsa obra={obra} onCriar={onCriarAvulsa} />}
+          {obra.comprasLiberadas
+            /* Toda trava precisa de volta. Sem isso, um clique sem querer
+               congela a obra inteira e só se resolve mexendo no banco —
+               o que ninguém do time consegue fazer. */
+            ? (podeEditar && (
+              <Button variant="outline" onClick={async () => {
+                if (await confirmar({
+                  titulo: "Reabrir as etapas anteriores?",
+                  mensagem: "Vendido, Depara e Executivo voltam a aceitar alteração. " +
+                    "Use quando algo precisar ser corrigido depois da liberação. " +
+                    "Compras e contratações já feitas não são desfeitas.",
+                  confirmar: "Reabrir etapas", perigo: false,
+                })) onReabrir();
+              }}>
+                <RotateCcw size={16} /> Reabrir etapas
+              </Button>
+            ))
+            : <LiberacaoCompra obra={obra} temItens={temItens} podeEditar={podeEditar} onLiberar={onLiberar} />}
         </div>
       )}
-      {/* A avulsa fica no topo, junto do resumo — e uma acao sobre a obra
-          inteira, nao sobre a lista filtrada abaixo. Continua disponivel
-          DEPOIS da liberacao: e pra isso que ela serve, o item que quebrou
-          ou que o cliente pediu depois aparece justamente quando o plano
-          ja fechou. Trava-la junto com as etapas anteriores empurraria a
-          compra pra fora da plataforma, o unico lugar onde ela fica
-          registrada. */}
-      {podeEditar && <FormAvulsa obra={obra} onCriar={onCriarAvulsa} />}
+      /* Duas dimensões, duas filas. A de cima é a ALOCAÇÃO do recurso —
+         MAT, MO ou os dois; a de baixo é em que pé o item está. */
+      toolbar={(
+        <div className="flex flex-wrap items-center gap-2">
+          <Input className="w-full sm:max-w-xs" icon={<Search size={16} />} placeholder="Buscar insumo, código ou fornecedor…"
+            aria-label="Buscar item do plano" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          {!!busca && <span className="text-xs text-text-mute" role="status">{contaItens(grupos)} de {contaItens(gruposSemBusca)} itens</span>}
+          {!!busca && <Button variant="ghost" size="sm" onClick={() => setBusca("")}><X size={16} /> Limpar busca</Button>}
+          <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => { if (v) setTipoFilter(v); }} aria-label="Alocação de recurso">
+            {FILTROS_ALOC.map((t) => (
+              <ToggleGroupItem key={t.id} value={t.id} size="sm" title={t.destino ? `Estes ${t.destino}` : undefined}>
+                {t.label}
+                <Contador tom="neutral" className="ml-1">{contaPorAloc[t.id]}</Contador>
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          {tipoFilter !== "todos" && (
+            <span className="text-xs italic text-text-mute">{alocAtiva?.destino}</span>
+          )}
+        </div>
+      )}
+      toolbarSecondary={(
+        <div className="flex flex-wrap items-center gap-2">
+          <ToggleGroup type="single" value={itemFilter} onValueChange={(v) => { if (v) setItemFilter(v); }} aria-label="Situação do item">
+            {FILTERS.map((f) => (
+              <ToggleGroupItem key={f.id} value={f.id} size="sm">{f.label}</ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <Toggle size="sm" pressed={soVendido} onPressedChange={(v) => setSoVendido(v)}
+            title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
+            {soVendido ? "Só o vendido" : "Vendido e não vendido"}
+            {soVendido && ocultosNaoVendidos > 0 && <Contador tom="neutral" className="ml-1">{ocultosNaoVendidos} ocultos</Contador>}
+          </Toggle>
+        </div>
+      )}>
+      {obra.comprasLiberadas ? (
+        <Alert tone="success">
+          <AlertDescription>Plano de Compras liberado — as etapas anteriores estão congeladas.</AlertDescription>
+        </Alert>
+      ) : (
+        <Alert tone="info">
+          <AlertDescription>Este é o plano que libera compras e contratações. Ao liberar, <b>as etapas anteriores são congeladas</b> e não podem mais ser alteradas.</AlertDescription>
+        </Alert>
+      )}
 
       {/* Um aviso, nao quinze. O prazo de compra de cada grupo depende
           desta data, e sem ela o alerta que evita comprar um item de 75
           dias com 40 simplesmente nao existe. */}
       {!obra.dataEntrega && temPrazos && (
-        <div className="import-bar aviso-entrega">
-          <div className="import-info">
-            <Clock size={14} />
-            <span>
-              Alguns grupos já têm prazo de compra, mas falta a <b>data de entrega da obra</b> —
-              sem ela não dá pra dizer até quando comprar.
-            </span>
-          </div>
-          <Button onClick={onIrParaDashboard}>Definir no Dashboard</Button>
-        </div>
+        <Alert tone="warning">
+          <AlertDescription>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                Alguns grupos já têm prazo de compra, mas falta a <b>data de entrega da obra</b> —
+                sem ela não dá pra dizer até quando comprar.
+              </span>
+              <Button variant="outline" size="sm" onClick={onIrParaDashboard}>Definir no Dashboard</Button>
+            </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {temItens && !obra.comprasLiberadas && (
-        <div className="plano-barra">
-          <div className="plano-num">
-            <div className="plano-valor mono">{fmtBRL(plano.materialNoPlano)}</div>
-            <div className="plano-rotulo">material no plano · {plano.nItens} {plano.nItens === 1 ? "item" : "itens"}</div>
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Resumo do plano">
+          <KpiMini label="Material no plano" value={fmtBRL(plano.materialNoPlano)} tone="brand"
+            hint={`${plano.nItens} ${plano.nItens === 1 ? "item" : "itens"}`} />
           {plano.moForaDoPlano > 0 && (
-            <div className="plano-num plano-num-mo">
-              <div className="plano-valor mono dim">{fmtBRL(plano.moForaDoPlano)}</div>
-              <div className="plano-rotulo">de mão de obra — vai pra Contratos, não pra compra</div>
-            </div>
+            <KpiMini label="Mão de obra" value={fmtBRL(plano.moForaDoPlano)} tone="neutral"
+              hint="vai pra Contratos, não pra compra" />
           )}
           {/* Sem isto a tela parecia que nada tinha sido comprado, mesmo
               com a compra ja marcada la em Compras de Produtos. */}
           {plano.comprado > 0 && (
-            <div className="plano-num plano-num-ok">
-              <div className="plano-valor mono">{fmtBRL(plano.comprado)}</div>
-              <div className="plano-rotulo">já comprado · {plano.nComprados} {plano.nComprados === 1 ? "item" : "itens"}</div>
-            </div>
+            <KpiMini label="Já comprado" value={fmtBRL(plano.comprado)} tone="success"
+              hint={`${plano.nComprados} ${plano.nComprados === 1 ? "item" : "itens"}`} />
           )}
         </div>
       )}
-      {/* Duas dimensões, duas filas. A de cima é a ALOCAÇÃO do recurso —
-          MAT, MO ou os dois; a de baixo é em que pé o item está. */}
-      <div className="filter-bar tipo-bar">
-        <Package size={13} className="dim" />
-        {FILTROS_ALOC.map((t) => (
-          <Button variant="ghost" key={t.id} className={`filter-chip tipo-chip ${tipoFilter === t.id ? "active" : ""}`}
-            onClick={() => setTipoFilter(t.id)} title={t.destino ? `Estes ${t.destino}` : undefined}>
-            {t.label}
-            <span className="tipo-chip-conta">{contaPorAloc[t.id]}</span>
-          </Button>
-        ))}
-        {tipoFilter !== "todos" && (
-          <span className="tipo-bar-destino">
-            {FILTROS_ALOC.find((t) => t.id === tipoFilter)?.destino}
-          </span>
-        )}
-      </div>
-      <div className="filter-bar">
-        <SlidersHorizontal size={13} className="dim" />
-        {FILTERS.map((f) => (
-          <Button variant="ghost" key={f.id} className={`filter-chip ${itemFilter === f.id ? "active" : ""}`} onClick={() => setItemFilter(f.id)}>
-            {f.label}
-          </Button>
-        ))}
-        <span className="filter-sep" />
-        <Button variant="ghost" className={`filter-chip ${soVendido ? "active" : ""}`}
-          onClick={() => setSoVendido((v) => !v)}
-          title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
-          {soVendido ? "Só o vendido" : "Vendido e não vendido"}
-          {soVendido && ocultosNaoVendidos > 0 && <span className="tipo-chip-conta">{ocultosNaoVendidos} ocultos</span>}
-        </Button>
-        <span className="filter-sep" />
-        <CampoBusca valor={busca} aoMudar={setBusca}
-          contador={`${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens`} />
-      </div>
 
+      <div>
       {grupos.map(({ cat, itens }) => (
         <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens} podeEditar={podeEditar}
           /* Com busca ligada a verba abre sozinha: procurar e ainda ter que
@@ -4201,33 +4219,29 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
           }}
         />
       ))}
+      </div>
       {temItens && grupos.length === 0 && (
-        <div className="compras-empty">
-          <SlidersHorizontal size={26} className="dim" />
-          <div className="compras-empty-title">{busca.trim() ? "Nenhum item com esse termo" : "Nenhum item com esses filtros"}</div>
-          <div className="compras-empty-sub">{busca.trim()
+        <EmptyState icon={<SlidersHorizontal size={26} />}
+          title={busca.trim() ? "Nenhum item com esse termo" : "Nenhum item com esses filtros"}
+          description={busca.trim()
             ? `Nada encontrado para "${busca.trim()}" dentro dos filtros escolhidos.`
-            : `Nenhum item da EAP combina "${FILTROS_ALOC.find((t) => t.id === tipoFilter)?.label}" com "${FILTERS.find((f) => f.id === itemFilter)?.label}"${soVendido ? " dentro do que foi vendido" : ""}.`}</div>
-        </div>
+            : `Nenhum item da EAP combina "${FILTROS_ALOC.find((t) => t.id === tipoFilter)?.label}" com "${FILTERS.find((f) => f.id === itemFilter)?.label}"${soVendido ? " dentro do que foi vendido" : ""}.`}
+          action={<Button variant="outline" onClick={limparFiltros}>Limpar filtros</Button>} />
       )}
       {/* A legenda antiga explicava as cores da barra vendido × executivo,
           que saiu junto com a tabela velha — ficou nomeando cor que a tela
           não tem mais. Aqui a dúvida é outra: o que cada sigla quer dizer
           e pra onde o item vai depois daqui. */}
-      <div className="legend">
-        <div className="legend-item"><span className="legend-quadro q-falta" /> Falta comprar</div>
-        <div className="legend-item"><span className="legend-quadro q-comprado" /> Já comprado</div>
-        <div className="legend-item"><span className="aloc aloc-mat">MAT</span> MATERIAL — vai pra Compras</div>
-        <div className="legend-item"><span className="aloc aloc-mo">MO</span> MÃO DE OBRA — vai pra Contratos</div>
-        <div className="legend-item"><span className="aloc aloc-ambos">MAT+MO</span> As duas parcelas ainda na mesma linha — dá pra separar</div>
-        <div className="legend-item"><span className="aloc aloc-mat aloc-manual">MAT</span> O ponto marca alocação corrigida à mão</div>
-        <div className="legend-item"><span className="tag-avulso"><Plus size={9} /> avulsa</span> Pedido fora do executivo, ainda sem valor</div>
+      <div className="flex flex-wrap items-center gap-4 border-t border-line-1 pt-4 text-xs text-text-soft" aria-label="Legenda">
+        <Badge tone="warning">Falta comprar</Badge>
+        <Badge tone="success">Já comprado</Badge>
+        <span className="flex items-center gap-2"><Badge tone="brand">MAT</Badge> MATERIAL — vai pra Compras</span>
+        <span className="flex items-center gap-2"><Badge tone="neutral">MO</Badge> MÃO DE OBRA — vai pra Contratos</span>
+        <span className="flex items-center gap-2"><Badge tone="outline">MAT+MO</Badge> As duas parcelas ainda na mesma linha — dá pra separar</span>
+        <span className="flex items-center gap-2"><Badge tone="purple" pulse>MAT</Badge> O ponto marca alocação corrigida à mão</span>
+        <span className="flex items-center gap-2"><Badge tone="purple"><Plus size={9} /> avulsa</Badge> Pedido fora do executivo, ainda sem valor</span>
       </div>
-
-      {!obra.comprasLiberadas && (
-        <LiberacaoCompra obra={obra} temItens={temItens} podeEditar={podeEditar} onLiberar={onLiberar} />
-      )}
-    </>
+    </PageShell>
   );
 }
 
@@ -22935,8 +22949,6 @@ export default function App() {
         .etapa-concluida svg { color: var(--green); flex-shrink: 0; }
         .etapa-concluida span { flex: 1; }
 
-        .bloqueio-assinatura { background: var(--red-bg); }
-        .bloqueio-assinatura svg { color: var(--red); }
 
         .assinatura-ok { display: flex; align-items: flex-start; gap: 16px; padding: 20px; background: var(--green-bg); border: 1px solid var(--green); border-radius: 12px; }
         .assinatura-selo { color: var(--green); flex-shrink: 0; }
@@ -22966,11 +22978,9 @@ export default function App() {
         /* Fila de cima: o que o item É. Fica acima e mais encorpada que a
            de situação, porque decide qual das duas rotinas — compra no
            Sienge ou contrato — você está tocando. */
-        .tipo-bar { margin-bottom: 8px; }
         .tipo-chip { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
         .tipo-chip-conta { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: var(--panel); color: var(--ink-3); }
         .tipo-chip.active .tipo-chip-conta { background: var(--on-inverse-hover); color: var(--bg); }
-        .tipo-bar-destino { font-size: 11px; color: var(--ink-3); font-style: italic; margin-left: 3px; }
         .venda-bar { margin-bottom: 10px; }
         .vend-nao-vendido { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; flex-shrink: 0; }
         .vend-nao-vendido.leve { text-transform: none; letter-spacing: 0; font-weight: 500; border-style: dashed; }
@@ -23040,7 +23050,6 @@ export default function App() {
 
         /* Dashboard: a data que comanda os prazos, e as avulsas. */
         .entrega-panel { display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
-        .aviso-entrega { margin-bottom: 12px; align-items: center; }
         .aviso-migracao { display: flex; align-items: center; gap: 9px; background: var(--amber-bg); color: var(--text); border: 1px solid var(--warning-line); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 14px; }
         .aviso-x { margin-left: auto; background: transparent; border: none; color: inherit; cursor: pointer; display: flex; opacity: 0.6; }
         .aviso-x:hover { opacity: 1; }
@@ -23104,13 +23113,8 @@ export default function App() {
         .grp-itens tbody tr.row-comprado td:first-child { box-shadow: inset 2px 0 0 var(--green); }
         .grp-itens tbody tr.row-falta td:first-child { box-shadow: inset 2px 0 0 var(--warning-line); }
         .status-pill { display: inline-flex; align-items: center; gap: 4px; }
-        .legend-quadro { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-        .q-falta { background: var(--warning-tint); border: 1px solid var(--warning-line); }
-        .q-comprado { background: var(--success-tint); border: 1px solid var(--green); }
         .row-avulso { background: var(--purple-tint); }
         .row-avulso td:first-child { box-shadow: inset 2px 0 0 var(--purple); }
-        .tag-avulso { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: var(--purple); background: var(--purple-soft); border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
-        .avulso-obs { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
 
         /* Separar a MO: acao pequena, ao lado da etiqueta que a motiva. */
         .btn-separar { display: inline-flex; align-items: center; gap: 3px; margin-top: 4px; background: transparent; border: 1px dashed var(--border); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; font-family: inherit; white-space: nowrap; }
@@ -23121,18 +23125,10 @@ export default function App() {
         /* As duas pontas do vinculo. Sem elas sao duas linhas parecidas em
            verbas diferentes, e a conferencia de meses depois nao sabe se e
            separacao ou duplicata. */
-        .tag-separado { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--purple); background: var(--purple-soft); border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
         .btn-juntar { background: transparent; border: none; color: var(--purple); text-decoration: underline; font-size: 10px; cursor: pointer; font-family: inherit; padding: 0 0 0 3px; }
         .btn-avulsa { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 12px; }
         .btn-avulsa:hover { background: var(--purple); }
-        .form-avulsa { max-width: 560px; margin-bottom: 12px; }
         .form-avulsa-nota { font-size: 11.5px; color: var(--ink-2); background: var(--panel); border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; line-height: 1.45; }
-        .form-avulsa-aviso { font-size: 11.5px; color: var(--ink-2); margin-top: 8px; }
-        .aloc-escolha { display: flex; gap: 8px; margin-top: 6px; }
-        .aloc-op { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; cursor: pointer; font-family: inherit; flex: 1; }
-        .aloc-op:hover { border-color: var(--purple); }
-        .aloc-op.ativo { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
-        .aloc-op-sub { font-size: 10.5px; color: var(--ink-3); }
         .filter-sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; }
 
         .cat-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
@@ -23175,11 +23171,8 @@ export default function App() {
         .tipo-tag { display: inline-block; margin-left: 7px; font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 4px; vertical-align: middle; }
         .tipo-produto { background: var(--blue-bg); color: var(--blue); }
         .tipo-servico { background: var(--panel); color: var(--ink-3); }
-        .item-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
         .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 6px; }
         .chip-red { background: var(--red-bg); color: var(--red); }
-        .chip-blue { background: var(--blue-bg); color: var(--blue); }
-        .chip-green { background: var(--green-bg); color: var(--green); }
 
         .sienge-match { display: flex; align-items: flex-start; gap: 7px; margin-top: 7px; padding: 7px 10px; border-radius: 7px; font-size: 11.5px; line-height: 1.45; }
         .sienge-match-icon { flex-shrink: 0; margin-top: 2px; }
@@ -23194,7 +23187,6 @@ export default function App() {
         .sienge-desc { color: var(--ink-2); }
         .sienge-note { display: block; color: var(--ink-3); font-size: 10.5px; margin-top: 2px; font-style: italic; }
 
-        .qtd-bad { color: var(--red); font-weight: 700; }
         .unit { color: var(--ink-3); font-size: 11px; }
         .center-block { display: block; text-align: center; }
 
@@ -23213,29 +23205,17 @@ export default function App() {
            A marca da sugestão é TRACEJADA, e a da pessoa é cheia. As duas
            contam no total do plano, mas só uma foi decidida por alguém —
            e é isso que a borda diz sem precisar de legenda. */
-        .est-tag { font-size: 9.5px; margin-left: 4px; font-style: italic; }
         /* A parcela de mão de obra do item aparece na linha de compra só
            como informação: ela segue pra Contratos, e quem a movimenta é
            aquele módulo. */
         .tag-mo { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: var(--ink-3); background: var(--panel); border-radius: 4px; padding: 1px 6px; margin-top: 3px; }
-        .plano-barra { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--linha); border-radius: 10px; padding: 13px 18px; margin-bottom: 12px; }
-        .plano-valor { font-size: 17px; font-weight: 700; }
-        .plano-rotulo { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
-        .plano-num-ok .plano-valor { color: var(--green); }
-        .plano-num-ok { padding-left: 26px; border-left: 1px solid var(--linha); }
-        .plano-num-mo { padding-left: 26px; border-left: 1px solid var(--linha); }
         .contrato-cell { vertical-align: middle; }
-        .contrato-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
-        .contrato-blocked { display: inline-block; font-size: 11px; font-weight: 600; color: var(--red); background: var(--red-bg); padding: 4px 10px; border-radius: 20px; }
         .contrato-caption { display: block; font-size: 10px; color: var(--ink-3); font-style: italic; margin-top: 4px; }
         .input-valor { width: 88px; text-align: right; border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; font-size: 12px; font-family: var(--font-mono); background: var(--surface-1); color: var(--ink); }
         .input-valor:focus { outline: none; border-color: var(--blue); }
         .check { width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--border); background: var(--surface-1); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--bg); }
         .check-on { background: var(--green); border-color: var(--green); }
 
-        .legend { display: flex; gap: 18px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
-        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
-        .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 
         .flat-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
         .flat-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
@@ -23438,8 +23418,6 @@ export default function App() {
         .liberacao-texto { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
         .liberacao-barra .btn-aprovar { flex-shrink: 0; }
 
-        .aprovacao-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 16px; }
-        .aprovacao-resumo { font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
         .aprovacao-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); margin-bottom: 12px; cursor: pointer; }
         .btn-aprovar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 10px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
         .btn-aprovar:hover:not(:disabled) { background: var(--green); }
@@ -23556,19 +23534,9 @@ export default function App() {
         .btn-linha-excluir-confirma { background: var(--danger); color: #fff; border: none; border-radius: 7px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
         .btn-linha-excluir-confirma:disabled { opacity: 0.45; cursor: not-allowed; }
         .btn-linha-excluir.desfazer:hover { color: var(--green); border-color: var(--green); }
-        .liberado-barra { display: flex; align-items: center; gap: 9px; }
-        .liberado-barra span { flex: 1; }
         .btn-reabrir-etapa { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 11px; color: var(--ink-2); cursor: pointer; font-family: inherit; flex-shrink: 0; }
         .btn-reabrir-etapa:hover { border-color: var(--ink-2); color: var(--ink); }
 
-        /* Estouro do CMV: passa, mas com nome e motivo */
-        .aprovacao-box.com-estouro { border-color: var(--red); }
-        .estouro-aviso { display: flex; align-items: flex-start; gap: 9px; background: var(--red-bg); border-radius: 9px; padding: 11px 13px; font-size: 12px; color: var(--red); line-height: 1.5; margin-bottom: 12px; }
-        .estouro-campos { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-        .estouro-campos label { display: flex; flex-direction: column; gap: 4px; }
-        .estouro-campos span { font-size: 11px; font-weight: 600; color: var(--ink-2); }
-        .estouro-campos textarea, .estouro-campos input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; color: var(--ink); outline: none; resize: vertical; }
-        .estouro-campos textarea:focus, .estouro-campos input:focus { border-color: var(--blue); }
         /* Linha que só nomeia um conjunto (qtd e valor zerados) — some do
            depara, mas continua visível na listagem, marcada. */
         .linha-titulo { background: var(--panel); }
@@ -24046,14 +24014,13 @@ export default function App() {
         .obra-endereco-edita { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 22px; }
         .obra-endereco-edita .form-input { flex: 1 1 380px; margin: 0; }
         .row-trocado td { color: var(--ink-3); background: transparent; }
-        .row-trocado .item-desc, .item-trocado { text-decoration: line-through; color: var(--ink-3); }
+        .row-trocado .item-desc { text-decoration: line-through; color: var(--ink-3); }
         .troca-meta { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
         .troca-por { color: var(--ink-2); }
         .status-par { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
         .pill.pill-mini { font-size: 10px; padding: 1px 7px; }
         .pill.troca-pill { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--ink-3); border: 1px dashed var(--line-2); }
         .troca-tag { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; font-size: 10.5px; color: var(--ink-3); }
-        .troca-tag-plano { margin-left: 0; margin-right: 6px; }
         .troca-link { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0; border: 0; background: none; font: inherit; font-size: 10.5px; color: var(--ink-3); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
         .troca-link:hover { color: var(--ink); }
         .troca-form-linha td { background: var(--surface-2); padding: 6px 12px 8px; }
@@ -24274,10 +24241,10 @@ export default function App() {
            brand com anel suave, raio 10, 14px. Os campos pequenos de tabela
            mantêm o tamanho e herdam só a linguagem. */
         :is(.form-input, .form-select, .detalhe-texto) { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
-        .estouro-campos textarea, .estouro-campos input, .campo input { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
+        .campo input { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
         :is(.ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit) { border-color: var(--line-2); border-radius: 8px; background-color: var(--field); color: var(--text); transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
         :is(.form-input, .form-select, .detalhe-texto, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit, .ad-obs):focus,
-        .estouro-campos textarea:focus, .estouro-campos input:focus, .campo input:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
+        .campo input:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
         :is(.form-input, .form-select, .detalhe-texto, .ad-obs)::placeholder { color: var(--text-mute); }
         :is(.form-input, .form-select):disabled { opacity: 0.5; cursor: not-allowed; }
         select.form-input, .form-select, .casa-sel { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px; }
@@ -24314,7 +24281,7 @@ export default function App() {
         .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
         /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
-        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .contrato-pill, .contrato-blocked, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-avulso, .tag-separado, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .vend-nao-vendido, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
+        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .vend-nao-vendido, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
         :is(.vend-nao-vendido, .soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
         :is(.nav-count, .grp-conta, .vend-count, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         .ad-obra-n { background: var(--brand); color: var(--bg); }
@@ -24324,19 +24291,19 @@ export default function App() {
         :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
         :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .campo-rotulo, .conf-col-label, .ad-prev-h, .sugestoes-titulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .ad-cab label, .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
-        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .conf-stat-num, .funil-n, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor, .plano-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .conf-stat-num, .funil-n, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
            largura da tela em vez de estourar a caixa com reticencias. */
         .ec-val, .big-card-value, .cmv-valor { font-size: 26px; }
         .gc-total-val { font-size: 32px; }
-        .mini-stat-value, .saldo-valor, .plano-valor { font-size: 20px; }
+        .mini-stat-value, .saldo-valor { font-size: 20px; }
         .saldo-bloco.destaque .saldo-valor { font-size: 24px; }
         .bucket-num, .conf-stat-num, .cf-n { font-size: 30px; }
         .funil-n, .mo-num-val { font-size: 22px; }
         .mo-escopo-val { font-size: 24px; }
         .arq-topo-n { font-size: 36px; }
         .cf-bloco.aviso, .cf-tit.aviso { color: var(--warning); }
-        .funil-no.ativo, .aloc-op.ativo, .ad-obra.on { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+        .funil-no.ativo, .ad-obra.on { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
         .mo-escopo-barra { border-radius: 14px; }
 
         /* ---------- Tabelas (Table) ---------- */
@@ -24351,8 +24318,8 @@ export default function App() {
            Amarelo sobre amarelo claro não passa no contraste. */
         :is(.aviso-monday, .aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-box) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
         :is(.aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-topo) svg { color: var(--warning); }
-        :is(.import-erro, .estouro-aviso) { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
-        :is(.import-erro, .estouro-aviso) svg { color: var(--danger); }
+        .import-erro { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
+        .import-erro svg { color: var(--danger); }
         :is(.import-ok, .assoc-resultado.ok) { background: var(--success-soft); border: 1px solid var(--success-line); border-radius: 10px; color: var(--text); }
         :is(.import-ok, .assoc-resultado.ok) svg { color: var(--success); }
         .pf-topo, .pf-nota, .aviso-pobre-sub { color: var(--text); }
