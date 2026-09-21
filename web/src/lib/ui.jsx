@@ -56,20 +56,32 @@ export function Choice({ label, value, opcoes, onChange, placeholder, required, 
    monta quando aberto. `podeAbrir` falso deixa o cabecalho parado, sem
    seta — grupo sem item nao tem o que mostrar, mas continua na lista
    porque a EAP inteira aparece sempre. Substitui o `.vend-head`/`.grp-head`. */
-export function Colapsavel({ aberto, onAbrir, podeAbrir = true, cabecalho, className = "", children }) {
+export function Colapsavel({ aberto, onAbrir, podeAbrir = true, cabecalho, acoes, className = "", children }) {
   const abertoDeFato = !!aberto && podeAbrir;
+  const gatilho = (
+    <CollapsibleTrigger asChild>
+      <Button variant="ghost" aria-disabled={!podeAbrir}
+        className={`h-auto w-full justify-start gap-2 rounded-none px-4 py-3 text-left font-normal whitespace-normal ${podeAbrir ? "" : "cursor-default hover:bg-transparent"}`}>
+        {podeAbrir
+          ? (abertoDeFato ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />)
+          : <span className="w-4 shrink-0" aria-hidden="true" />}
+        {cabecalho}
+      </Button>
+    </CollapsibleTrigger>
+  );
   return (
     <Collapsible open={abertoDeFato} onOpenChange={(v) => { if (podeAbrir && onAbrir) onAbrir(v); }}
       className={`border-b border-line-1 last:border-b-0 ${className}`}>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" aria-disabled={!podeAbrir}
-          className={`h-auto w-full justify-start gap-2 rounded-none px-4 py-3 text-left font-normal whitespace-normal ${podeAbrir ? "" : "cursor-default hover:bg-transparent"}`}>
-          {podeAbrir
-            ? (abertoDeFato ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />)
-            : <span className="w-4 shrink-0" aria-hidden="true" />}
-          {cabecalho}
-        </Button>
-      </CollapsibleTrigger>
+      {/* `acoes` (botoes de "aprovar a verba inteira", por exemplo) ficam AO
+          LADO do gatilho, nunca dentro: botao dentro de botao e' HTML
+          invalido e o clique na acao abriria o grupo junto. No celular a
+          faixa de acoes desce pra baixo do cabecalho. */}
+      {acoes ? (
+        <div className="flex flex-wrap items-center">
+          <div className="min-w-0 flex-1 basis-64">{gatilho}</div>
+          <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-3 sm:py-2">{acoes}</div>
+        </div>
+      ) : gatilho}
       <CollapsibleContent>{children}</CollapsibleContent>
     </Collapsible>
   );

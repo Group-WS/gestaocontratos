@@ -7275,21 +7275,31 @@ function pendenciasConfExecutivo(obra) {
 function FormExcecaoCliente({ onConfirmar, onCancelar }) {
   const [motivo, setMotivo] = useState("");
   const [quem, setQuem] = useState("");
+  const idMotivo = React.useId();
+  const idQuem = React.useId();
   const vale = motivo.trim().length >= 15 && quem.trim().length >= 3;
   return (
-    <div className="cli-excecao">
-      <textarea rows={2} className="form-input" value={motivo} placeholder="Por que liberar sem a aprovação do cliente? (ex: aprovado por e-mail em 12/09, documento a caminho)"
-        onChange={(e) => setMotivo(e.target.value)} />
-      <input className="form-input" value={quem} placeholder="Quem autorizou"
-        onChange={(e) => setQuem(e.target.value)} />
-      <div className="cli-excecao-acoes">
-        <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
-        <Button size="sm" type="button" disabled={!vale}
-          onClick={() => onConfirmar({ motivo: motivo.trim(), quem: quem.trim() })}>
-          <Check size={12} /> Liberar com justificativa
-        </Button>
-      </div>
-    </div>
+    <Card className="mt-2 text-left">
+      <CardContent className="grid gap-4 p-4">
+        <Field>
+          <Label htmlFor={idMotivo} required>Motivo</Label>
+          <Textarea id={idMotivo} rows={2} value={motivo} placeholder="Por que liberar sem a aprovação do cliente? (ex: aprovado por e-mail em 12/09, documento a caminho)"
+            onChange={(e) => setMotivo(e.target.value)} />
+        </Field>
+        <Field>
+          <Label htmlFor={idQuem} required>Quem autorizou</Label>
+          <Input id={idQuem} value={quem} placeholder="Quem autorizou"
+            onChange={(e) => setQuem(e.target.value)} />
+        </Field>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
+          <Button type="button" disabled={!vale}
+            onClick={() => onConfirmar({ motivo: motivo.trim(), quem: quem.trim() })}>
+            <Check size={16} /> Liberar com justificativa
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -7304,22 +7314,27 @@ function FormExcecaoCliente({ onConfirmar, onCancelar }) {
    texto bom, e' o piso que faz a pessoa escrever alguma coisa. */
 function FormRemocao({ item, onCancelar, onConfirmar }) {
   const [motivo, setMotivo] = useState("");
+  const idMotivo = React.useId();
   const vale = motivo.trim().length >= 10;
   return (
-    <div className="form-remocao">
-      <div className="form-remocao-tit">
-        <X size={12} /> Remover <b>{item}</b> do executivo
-      </div>
-      <textarea rows={2} className="form-input" value={motivo} autoFocus
-        placeholder="Por que este item está saindo? (ex: cliente retirou na reunião de 12/09; duplicado da linha 4.2)"
-        onChange={(e) => setMotivo(e.target.value)} />
-      <div className="form-remocao-acoes">
-        <span className="dim">{vale ? "A justificativa aparece na Conf. Executivo." : "Escreva o motivo para remover."}</span>
-        <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
-        <Button variant="danger" type="button" disabled={!vale}
-          onClick={() => onConfirmar(motivo.trim())}>Remover</Button>
-      </div>
-    </div>
+    <Card className="max-w-3xl text-left">
+      <CardContent className="grid gap-4 p-4">
+        <Field>
+          <Label htmlFor={idMotivo} required className="flex items-center gap-1 text-danger">
+            <X size={16} /> <span>Remover <b>{item}</b> do executivo</span>
+          </Label>
+          <Textarea id={idMotivo} rows={2} value={motivo} autoFocus
+            placeholder="Por que este item está saindo? (ex: cliente retirou na reunião de 12/09; duplicado da linha 4.2)"
+            onChange={(e) => setMotivo(e.target.value)} />
+          <FieldHint>{vale ? "A justificativa aparece na Conf. Executivo." : "Escreva o motivo para remover."}</FieldHint>
+        </Field>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
+          <Button variant="danger" type="button" disabled={!vale}
+            onClick={() => onConfirmar(motivo.trim())}>Remover</Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -7355,10 +7370,9 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
      responde pergunta nenhuma. */
   if (obra?.clienteAssinouEm) {
     return (
-      <div className="import-ok" style={{ marginTop: 14 }}>
-        <ShieldCheck size={14} />
-        <span>A assinatura registrada aprova os {nItens} produtos da obra. Para aprovação parcial, remova o registro e marque item a item.</span>
-      </div>
+      <Alert tone="success" className="mt-4">
+        <AlertDescription>A assinatura registrada aprova os {nItens} produtos da obra. Para aprovação parcial, remova o registro e marque item a item.</AlertDescription>
+      </Alert>
     );
   }
 
@@ -7370,149 +7384,147 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
     .filter((g) => g.itens.some((x) => !x.titulo));
 
   return (
-    <div className="cli-bloco">
-      <div className="conf-stats">
-        <Button variant="ghost" className={`conf-stat ${filtro === "falta" ? "active" : ""}`}
-          style={{ borderColor: filtro === "falta" ? "var(--alert)" : undefined }}
-          onClick={() => setFiltro("falta")}>
-          <div className="conf-stat-num" style={{ color: "var(--alert)" }}>{falta}</div>
-          <div className="conf-stat-label">Falta aprovar com o cliente</div>
-          <div className="conf-stat-sub">nenhum destes pode ser liberado para compra</div>
-        </Button>
-        <Button variant="ghost" className={`conf-stat ${filtro === "aprovados" ? "active" : ""}`}
-          style={{ borderColor: filtro === "aprovados" ? "var(--green)" : undefined }}
-          onClick={() => setFiltro("aprovados")}>
-          <div className="conf-stat-num" style={{ color: "var(--green)" }}>{nAprovados}</div>
-          <div className="conf-stat-label">Aprovados pelo cliente</div>
-          <div className="conf-stat-sub">liberados para o executivo decidir a compra</div>
-        </Button>
-        <Button variant="ghost" className={`conf-stat ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>
-          <div className="conf-stat-num">{nItens}</div>
-          <div className="conf-stat-label">Todos os produtos</div>
-          <div className="conf-stat-sub">a planilha executivo inteira</div>
-        </Button>
+    <div className="mt-4 space-y-4">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <KpiBotao ativo={filtro === "falta"} tone="warning" onClick={() => setFiltro("falta")}
+          label="Falta aprovar com o cliente" value={falta} hint="nenhum destes pode ser liberado para compra" />
+        <KpiBotao ativo={filtro === "aprovados"} tone="success" onClick={() => setFiltro("aprovados")}
+          label="Aprovados pelo cliente" value={nAprovados} hint="liberados para o executivo decidir a compra" />
+        <KpiBotao ativo={filtro === "todos"} tone="neutral" onClick={() => setFiltro("todos")}
+          label="Todos os produtos" value={nItens} hint="a planilha executivo inteira" />
       </div>
 
-      <div className="vend-list">
+      <Card>
         {visiveis.map((g) => {
           const aberto = abertos.has(g.num);
+          const nProdutos = g.nProdutos ?? g.itens.length;
           const pendentes = g.itens.filter((x) => !x.titulo && !x.aprovadoCliente);
           /* Desfazer em massa (pedido dela, 17/09/2026): "acrescente a opcao
              para desaprovar em massa, assim como tem a liberacao em massa do
              grupo". Aprovar a verba errada era um clique; desfazer eram
              dezenas, um por linha. */
           const aprovados = g.itens.filter((x) => !x.titulo && x.aprovadoCliente);
-          return (
-            <div key={g.num} className="grp-block">
-              <div className="grp-head">
-                <Button variant="ghost" className="grp-toggle" onClick={() => alternar(g.num)}>
-                  <div className="grp-esq">
-                    {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
-                    <span className="grp-num mono">{g.num}</span>
-                    <span className="grp-nome">{g.nome}</span>
-                    <span className="grp-conta">{g.nProdutos ?? g.itens.length} {(g.nProdutos ?? g.itens.length) === 1 ? "produto" : "produtos"}</span>
-                  </div>
+          const temAcoes = podeEditar && (pendentes.length > 0 || aprovados.length > 0);
+          const acoes = (
+            <>
+              {podeEditar && pendentes.length > 0 && (
+                <Button size="sm"
+                  onClick={() => onAprovar(pendentes.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
+                  <CheckCircle2 size={16} /> Aprovar {pendentes.length}
                 </Button>
-                <div className="grp-dir">
-                  {podeEditar && pendentes.length > 0 && (
-                    <Button size="sm"
-                      onClick={() => onAprovar(pendentes.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
-                      <CheckCircle2 size={12} /> Aprovar {pendentes.length}
-                    </Button>
-                  )}
-                  {podeEditar && aprovados.length > 0 && (
-                    <Button variant="danger"
-                      title="Tira a aprovação do cliente destes produtos — eles voltam a esperar"
-                      onClick={async () => {
-                        if (!(await confirmar(
-                          `Desfazer a aprovação do cliente em ${aprovados.length} ${aprovados.length === 1 ? "produto" : "produtos"} da verba ${g.num}?\n\n` +
-                          "Eles voltam a esperar a aprovação e não podem ser liberados para compra."
-                        ))) return;
-                        onAprovar(aprovados.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), false);
-                      }}>
-                      <X size={12} /> Desfazer {aprovados.length}
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {aberto && (
-                <table className="tab-compras grp-itens">
-                  <thead>
+              )}
+              {podeEditar && aprovados.length > 0 && (
+                <Button variant="danger" size="sm"
+                  title="Tira a aprovação do cliente destes produtos — eles voltam a esperar"
+                  onClick={async () => {
+                    if (!(await confirmar(
+                      `Desfazer a aprovação do cliente em ${aprovados.length} ${aprovados.length === 1 ? "produto" : "produtos"} da verba ${g.num}?\n\n` +
+                      "Eles voltam a esperar a aprovação e não podem ser liberados para compra."
+                    ))) return;
+                    onAprovar(aprovados.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), false);
+                  }}>
+                  <X size={12} /> Desfazer {aprovados.length}
+                </Button>
+              )}
+            </>
+          );
+          return (
+            <Colapsavel key={g.num} aberto={aberto} onAbrir={() => alternar(g.num)} acoes={temAcoes ? acoes : null}
+              cabecalho={
+                <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="mono text-text-mute">{g.num}</span>
+                  <span className="min-w-0 flex-1 font-semibold">{g.nome}</span>
+                  <Badge tone="neutral">{nProdutos} {nProdutos === 1 ? "produto" : "produtos"}</Badge>
+                </span>
+              }>
+              <div className="overflow-x-auto border-t border-line-1">
+                <Table>
+                  <TableHeader>
                     {/* "Valor", e nao "Material": a coluna mostra o item inteiro,
                         material mais mao de obra. Chamar de Material fazia a
                         tela parecer so' de material — foi o que ela apontou. */}
-                    <tr><th>Produto</th><th className="c-qtd">Qtd</th><th className="right">Valor</th><th className="center">Cliente</th></tr>
-                  </thead>
-                  <tbody>
-                    {g.itens.map((x) => (x.titulo ? (
-                      /* Cabeçalho de trecho: a mesma linha que o Executivo
-                         mostra, sem preço e sem o que aprovar. */
-                      <tr key={x.chave} className="linha-titulo">
-                        <td colSpan={4}>{x.it.desc}</td>
-                      </tr>
-                    ) : (
-                      <tr key={x.chave} className={x.aprovadoCliente ? "" : "row-estimativa"}>
-                        <td>
-                          <div className="item-desc">{x.it.desc}</div>
-                          {/* Ambiente, fornecedor e observacao entram na tela do
-                              cliente (pedido dela, 17/09/2026): e' com isso que a
-                              equipe explica pra ele o que esta' aprovando. Ficam
-                              DENTRO da celula do produto, e nao em colunas novas —
-                              a tabela ja' e' larga e a obra tem 320 linhas. */}
-                          {(x.it.ambiente || x.it.marca) && (
-                            <span className="dim cli-meta"
-                              title={[x.it.ambiente, x.it.marca ? `Fornecedor: ${x.it.marca}` : null].filter(Boolean).join(" · ") || undefined}>
-                              {[x.it.ambiente, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null]
-                                .filter(Boolean).join(" · ")}
-                            </span>
-                          )}
-                          {x.it.especificacao && <div className="det-espec">{x.it.especificacao}</div>}
-                        </td>
-                        <td className="mono center">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="unit">{x.it.un}</span></td>
-                        <td className="mono right">
-                          {fmtBRL(x.valor)}
-                          {/* O rotulo sai dos NUMEROS, nao da classificacao. Item de
-                              verba que a empresa cobra junto (o fornecedor instala) e'
-                              classificado como mao de obra tendo material dentro:
-                              chamar de "mao de obra" um valor com R$ 11.808 de
-                              material engana quem aprova. */}
-                          {x.mo > 0 && (
-                            <div className="dim" style={{ fontSize: 10 }}>
-                              {x.material > 0 || x.temMaterialNaPlanilha ? "material e mão de obra" : "mão de obra"}
-                            </div>
-                          )}
-                        </td>
-                        <td className="center">
-                          {x.aprovadoCliente ? (
-                            <div className="status-par">
-                              <span className="pill pill-ok" title={x.it.aprovadoCliente?.em
-                                ? `Aprovado em ${new Date(x.it.aprovadoCliente.em).toLocaleDateString("pt-BR")}${x.it.aprovadoCliente.por ? ` por ${x.it.aprovadoCliente.por}` : ""}`
-                                : "Aprovado pelo cliente"}>
-                                <Check size={10} /> aprovado
-                              </span>
-                              {podeEditar && x.it.aprovadoCliente && !x.liberado && (
-                                <Button variant="ghost" size="sm" type="button"
-                                  onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
-                              )}
-                            </div>
-                          ) : (
-                            <Button variant="ghost" size="sm" className="pill pill-btn pill-wait" disabled={!podeEditar}
-                              title={podeEditar ? "Marcar que o cliente aprovou este produto" : MODO_LEITURA_DICA}
-                              onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
-                              o cliente segurou · aprovar
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    )))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+                    <TableRow>
+                      <TableHead>Produto</TableHead>
+                      <TableHead className="hidden text-center md:table-cell">Qtd</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead className="text-center">Cliente</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {g.itens.map((x) => {
+                      const qtd = <>{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{x.it.un}</span></>;
+                      return x.titulo ? (
+                        /* Cabeçalho de trecho: a mesma linha que o Executivo
+                           mostra, sem preço e sem o que aprovar. */
+                        <TableRow key={x.chave} className="bg-surface-2">
+                          <TableCell colSpan={4} className="text-text-soft">{x.it.desc}</TableCell>
+                        </TableRow>
+                      ) : (
+                        <TableRow key={x.chave} className={x.aprovadoCliente ? "" : "text-text-soft"}>
+                          <TableCell>
+                            <div className={x.aprovadoCliente ? "font-medium" : ""}>{x.it.desc}</div>
+                            {/* Ambiente, fornecedor e observacao entram na tela do
+                                cliente (pedido dela, 17/09/2026): e' com isso que a
+                                equipe explica pra ele o que esta' aprovando. Ficam
+                                DENTRO da celula do produto, e nao em colunas novas —
+                                a tabela ja' e' larga e a obra tem 320 linhas. */}
+                            {(x.it.ambiente || x.it.marca) && (
+                              <div className="max-w-xl truncate text-xs text-text-mute"
+                                title={[x.it.ambiente, x.it.marca ? `Fornecedor: ${x.it.marca}` : null].filter(Boolean).join(" · ") || undefined}>
+                                {[x.it.ambiente, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null]
+                                  .filter(Boolean).join(" · ")}
+                              </div>
+                            )}
+                            {x.it.especificacao && <div className="text-xs text-text-soft">{x.it.especificacao}</div>}
+                            {/* No celular a coluna Qtd some; a quantidade vem pra
+                                dentro da celula do produto pra nao sumir com o dado. */}
+                            <div className="mono text-xs text-text-mute md:hidden">Qtd: {qtd}</div>
+                          </TableCell>
+                          <TableCell className="mono hidden text-center md:table-cell">{qtd}</TableCell>
+                          <TableCell className="mono text-right">
+                            {fmtBRL(x.valor)}
+                            {/* O rotulo sai dos NUMEROS, nao da classificacao. Item de
+                                verba que a empresa cobra junto (o fornecedor instala) e'
+                                classificado como mao de obra tendo material dentro:
+                                chamar de "mao de obra" um valor com R$ 11.808 de
+                                material engana quem aprova. */}
+                            {x.mo > 0 && (
+                              <div className="text-xs text-text-mute">
+                                {x.material > 0 || x.temMaterialNaPlanilha ? "material e mão de obra" : "mão de obra"}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {x.aprovadoCliente ? (
+                              <div className="flex flex-col items-center gap-1">
+                                <Badge tone="success" title={x.it.aprovadoCliente?.em
+                                  ? `Aprovado em ${new Date(x.it.aprovadoCliente.em).toLocaleDateString("pt-BR")}${x.it.aprovadoCliente.por ? ` por ${x.it.aprovadoCliente.por}` : ""}`
+                                  : "Aprovado pelo cliente"}>
+                                  <Check size={12} /> aprovado
+                                </Badge>
+                                {podeEditar && x.it.aprovadoCliente && !x.liberado && (
+                                  <Button variant="ghost" size="sm" type="button"
+                                    onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
+                                )}
+                              </div>
+                            ) : (
+                              <Button variant="ghost" size="sm" type="button" className="text-warning" disabled={!podeEditar}
+                                title={podeEditar ? "Marcar que o cliente aprovou este produto" : MODO_LEITURA_DICA}
+                                onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
+                                o cliente segurou · aprovar
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </Colapsavel>
           );
         })}
-      </div>
+      </Card>
     </div>
   );
 }
@@ -22220,7 +22232,6 @@ export default function App() {
         .lib-travados { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--alert); }
         .row-estimativa td { opacity: .55; }
         .row-estimativa .item-desc { font-weight: 400; }
-        .cli-bloco { margin-top: 18px; }
         /* AS DUAS APROVACOES, cada uma num bloco que abre e fecha. */
         .aprov-secao { border: 1px solid var(--line-1); border-radius: 14px; background: var(--surface-1); margin-bottom: 14px; overflow: hidden; }
         .aprov-secao-cab { display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 16px; background: none; border: none; cursor: pointer; text-align: left; font: inherit; color: inherit; }
@@ -22248,9 +22259,6 @@ export default function App() {
            e' a linha esperando a aprovacao, e ela conta no dinheiro. */
         .pill-bloqueado { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); color: var(--text-soft); border: 1px solid var(--line-2); }
         @media (max-width: 760px) { table.grp-itens { table-layout: auto; } }
-        .cli-excecao { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; text-align: left; }
-        .cli-excecao .form-input { font-size: 11.5px; }
-        .cli-excecao-acoes { display: flex; gap: 6px; justify-content: flex-end; }
         .ad-tag.aprovado.on { background: var(--green-bg); border-color: var(--green); color: var(--green); }
         .ad-tag.reprovado.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 
@@ -23144,7 +23152,6 @@ export default function App() {
         .import-card { display: flex; flex-direction: column; gap: 8px; }
         .import-bar { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; background: var(--panel); border: 1px dashed var(--border); border-radius: 12px; padding: 12px 15px; margin-bottom: 0; }
         .import-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); }
-        .import-ok { display: flex; align-items: center; gap: 8px; background: var(--green-bg); color: var(--green); border: 1px solid var(--green); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
         .import-erro { display: flex; align-items: center; gap: 8px; background: var(--red-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
         .vend-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
         .vend-grupo { border-bottom: 1px solid var(--border-soft); }
@@ -23252,13 +23259,6 @@ export default function App() {
         .compras-empty-title { font-size: 15px; font-weight: 700; color: var(--ink); }
         .compras-empty-sub { font-size: 12.5px; color: var(--ink-3); max-width: 440px; }
         /* ---- Vendido: Conferência Contrato × Planilha ---- */
-        .conf-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 4px 0 16px; }
-        .conf-stat { text-align: left; background: var(--card); border: 1.5px solid var(--border); border-radius: 12px; padding: 13px 15px; cursor: pointer; }
-        .conf-stat:hover { border-color: var(--ink-3); }
-        .conf-stat.active { border-width: 2px; padding: 12px 14px; }
-        .conf-stat-num { font-family: var(--font-sans); font-size: 26px; font-weight: 700; line-height: 1; }
-        .conf-stat-label { font-size: 12.5px; font-weight: 700; color: var(--ink); margin-top: 6px; }
-        .conf-stat-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .conf-row { padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
         .conf-row:last-child { border-bottom: none; }
         .conf-row-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -23394,10 +23394,6 @@ export default function App() {
         .btn-linha-excluir:hover { color: var(--red); border-color: var(--red); }
         /* A justificativa da remocao: abre embaixo da linha que vai sair. */
         .linha-remocao > td { background: var(--danger-tint); padding: 10px 14px !important; }
-        .form-remocao { display: flex; flex-direction: column; gap: 7px; max-width: 760px; }
-        .form-remocao-tit { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--danger); }
-        .form-remocao-acoes { display: flex; align-items: center; gap: 10px; justify-content: flex-end; font-size: 11px; }
-        .form-remocao-acoes .dim { margin-right: auto; }
         .btn-linha-excluir-confirma { background: var(--danger); color: #fff; border: none; border-radius: 7px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
         .btn-linha-excluir-confirma:disabled { opacity: 0.45; cursor: not-allowed; }
         .btn-linha-excluir.desfazer:hover { color: var(--green); border-color: var(--green); }
@@ -23985,7 +23981,6 @@ export default function App() {
         .lib-travados:hover { text-decoration: underline; }
         .lib-travados b { font-weight: 700; text-decoration: underline; }
         .lib-travados.on { background: var(--warning-tint); border-radius: 8px; padding: 4px 8px; }
-        .cli-meta { display: block; font-size: 10.5px; max-width: 560px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .hist { margin-top: 30px; padding-top: 10px; border-top: 1px solid var(--line-1); }
         .hist-abrir { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; font-family: inherit; font-size: 11.5px; color: var(--text-mute); cursor: pointer; }
         .hist-abrir:hover { color: var(--text); }
@@ -24142,14 +24137,14 @@ export default function App() {
         :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
         :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .campo-rotulo, .conf-col-label, .ad-prev-h, .sugestoes-titulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .ad-cab label, .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
-        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .conf-stat-num, .funil-n, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .funil-n, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
            largura da tela em vez de estourar a caixa com reticencias. */
         .ec-val, .big-card-value, .cmv-valor { font-size: 26px; }
         .gc-total-val { font-size: 32px; }
         .mini-stat-value, .saldo-valor { font-size: 20px; }
         .saldo-bloco.destaque .saldo-valor { font-size: 24px; }
-        .bucket-num, .conf-stat-num, .cf-n { font-size: 30px; }
+        .bucket-num, .cf-n { font-size: 30px; }
         .funil-n, .mo-num-val { font-size: 22px; }
         .mo-escopo-val { font-size: 24px; }
         .arq-topo-n { font-size: 36px; }
@@ -24171,8 +24166,8 @@ export default function App() {
         :is(.aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-topo) svg { color: var(--warning); }
         .import-erro { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
         .import-erro svg { color: var(--danger); }
-        :is(.import-ok, .assoc-resultado.ok) { background: var(--success-soft); border: 1px solid var(--success-line); border-radius: 10px; color: var(--text); }
-        :is(.import-ok, .assoc-resultado.ok) svg { color: var(--success); }
+        .assoc-resultado.ok { background: var(--success-soft); border: 1px solid var(--success-line); border-radius: 10px; color: var(--text); }
+        .assoc-resultado.ok svg { color: var(--success); }
         .pf-topo, .pf-nota, .aviso-pobre-sub { color: var(--text); }
         .etapa-concluida, .assinatura-ok, .barra-etapa.feita { border-color: var(--success-line); }
         .bucket-falta { border-color: var(--warning-line); }
