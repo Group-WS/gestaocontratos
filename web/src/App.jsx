@@ -58,14 +58,14 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
   NotificationBell, CommandGroup, Kbd,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
-  TkwsHeader, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
+  TkwsHeader, Avatar as AvatarDS, AvatarFallback, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, SeletorDeArquivo, BotaoIcone, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -508,15 +508,17 @@ function PapelDaObra({ obraId, valor: valorAtual, rotulo, vazio, equipe, podeEdi
       <>
         {valorAtual ? (
           <>
-            <div className="dash-gc-nome">{nomeNaEquipe(equipe, valorAtual)}</div>
-            <div className="dash-gc-email mono">{valorAtual}</div>
+            <div className="text-sm font-semibold text-text">{nomeNaEquipe(equipe, valorAtual)}</div>
+            <div className="truncate font-mono text-xs text-text-mute" title={valorAtual}>{valorAtual}</div>
           </>
         ) : (
-          <div className="dash-gc-vazio">{vazio}</div>
+          <div className="text-sm italic text-text-mute">{vazio}</div>
         )}
+        {/* Trocar o responsavel e' ajuste raro: botao discreto, com o papel
+            no nome, e nao um botao cheio disputando com a acao da tela. */}
         {podeEditar && (
-          <Button className="dash-atalho" onClick={() => setEditando(true)}>
-            {valorAtual ? `Trocar` : `Definir`}
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => setEditando(true)}>
+            <Pencil size={14} aria-hidden="true" /> {valorAtual ? `Trocar ${rotulo}` : `Definir ${rotulo}`}
           </Button>
         )}
       </>
@@ -525,38 +527,27 @@ function PapelDaObra({ obraId, valor: valorAtual, rotulo, vazio, equipe, podeEdi
 
   /* ESCOLHER, e nao digitar. E-mail digitado erra, e um caractere trocado
      deixa a obra sem dono sem ninguem perceber. Quem tem o cargo certo
-     (quando `prioridade` existe) vem primeiro; o resto continua na
+     (quando `prioridade` existe) vem no grupo de cima; o resto continua na
      lista porque cargo nao e' cerca. */
-  const daLista = [...(equipe || [])].filter((p) => p.ativo || p.email === valorAtual);
-  daLista.sort((a, b) => {
-    const prioA = prioridade ? prioridade.test(a.cargo || "") : false;
-    const prioB = prioridade ? prioridade.test(b.cargo || "") : false;
-    if (prioA !== prioB) return prioA ? -1 : 1;
-    return a.nome.localeCompare(b.nome, "pt-BR");
-  });
+  const daLista = [...(equipe || [])].filter((p) => p.ativo || p.email === valorAtual)
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
   return (
-    <>
+    <div className="mt-1 flex min-w-0 flex-col gap-2">
       {daLista.length === 0 ? (
-        <div className="dash-gc-vazio">
+        <p className="text-sm italic text-text-mute">
           Ninguém cadastrado na Equipe ainda — cadastre lá e o nome aparece aqui para escolher.
-        </div>
+        </p>
       ) : (
-        <select className="form-input" value={valor} autoFocus onChange={(e) => setValor(e.target.value)}>
-          <option value="">— {vazio || `sem ${rotulo}`} —</option>
-          {daLista.map((p) => (
-            <option key={p.email} value={p.email}>
-              {p.nome}{p.cargo ? ` · ${p.cargo}` : ""}{p.ativo ? "" : " (inativo)"}
-            </option>
-          ))}
-        </select>
+        <EscolhaPessoa valor={valor} pessoas={daLista} onChange={setValor} rotulo={rotulo}
+          vazio={vazio || `sem ${rotulo}`} sugerido={prioridade ? (p) => prioridade.test(p.cargo || "") : undefined} />
       )}
-      {erro && <div className="dash-gc-vazio" style={{ color: "var(--red)" }}>{erro}</div>}
-      <div className="dash-gc-acoes">
-        <Button disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</Button>
-        <Button variant="outline" onClick={() => { setValor(valorAtual || ""); setEditando(false); }}>cancelar</Button>
+      {erro && <p className="text-xs text-danger">{erro}</p>}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</Button>
+        <Button size="sm" variant="outline" onClick={() => { setValor(valorAtual || ""); setEditando(false); }}>Cancelar</Button>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -19847,22 +19838,28 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
     <span className="flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
       <MapPin size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
       <span className="sr-only">Endereço:</span>
-      <span className={atual ? "text-text-soft" : "italic text-text-mute"}>{atual || "Endereço não informado"}</span>
-      {/* Copiar e' o que se faz com endereco no dia a dia: mandar pro
-          fornecedor, pro frete, pro mapa. */}
-      {atual && (
-        <Button variant="ghost" size="sm" aria-label="Copiar endereço" title="Copiar o endereço da obra" onClick={async () => {
-          try { await navigator.clipboard.writeText(atual); avisar.ok("Endereço copiado."); }
-          catch { avisar.erro("Não foi possível copiar o endereço.", "Selecione o texto e copie manualmente."); }
-        }}>
-          <Copy size={14} aria-hidden="true" /> Copiar
-        </Button>
-      )}
-      {/* A acao tem NOME escrito: um lapis sozinho nao diz o que faz. */}
+      {/* O PROPRIO ENDERECO copia ao clicar (o Tooltip diz isso), e editar
+          e' um lapis com nome no Tooltip: duas acoes sem ocupar uma linha. */}
+      {atual ? (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-auto min-w-0 justify-start whitespace-normal px-1 py-0 text-left font-normal text-text-soft"
+                aria-label={`Copiar endereço: ${atual}`} onClick={async () => {
+                  try { await navigator.clipboard.writeText(atual); avisar.ok("Endereço copiado."); }
+                  catch { avisar.erro("Não foi possível copiar o endereço.", "Selecione o texto e copie manualmente."); }
+                }}>
+                {atual}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Copiar endereço</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : <span className="italic text-text-mute">Endereço não informado</span>}
       {podeEditar && (
-        <Button variant="ghost" size="sm" aria-label="Editar endereço" onClick={() => { setValor(atual); setEditando(true); }} title="Corrigir o endereço da obra">
-          <Pencil size={14} aria-hidden="true" /> Editar
-        </Button>
+        <BotaoIcone rotulo="Editar endereço" variant="ghost" size="sm" onClick={() => { setValor(atual); setEditando(true); }}>
+          <Pencil size={14} aria-hidden="true" />
+        </BotaoIcone>
       )}
     </span>
   );
@@ -24304,23 +24301,37 @@ export default function App() {
                     {/* O endereco logo abaixo do titulo, e depois a equipe e a
                         entrega. */}
                     <EnderecoDaObra obra={obra} podeEditar={souAdmin} onSalvar={(v) => definirEnderecoDaObra(obra.codigo, v)} />
-                    {[["GC", nomeDe(obra.gc)], ["Taylor Made", nomeDe(tailor)], ["Executivo", nomeDe(executivo)]].map(([rot, val]) => (
-                      <span key={rot} className="inline-flex items-baseline gap-1">
-                        <span className="label-mono text-text-mute">{rot}</span>
-                        <span className={val === "a definir" ? "italic text-text-mute" : "text-text"}>{val}</span>
+                    {/* OS FATOS DA OBRA numa faixa, uma coluna por campo: rotulo
+                        em cima, valor em destaque embaixo. A entrega vem
+                        primeiro (e' dela que sai todo prazo) com o selo do
+                        prazo na cor do risco; cada papel com as iniciais, e a
+                        vaga vazia escrita como lacuna. */}
+                    <span className="mt-2 grid w-full grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                      <span className="flex min-w-0 flex-col gap-1">
+                        <span className="label-mono text-text-mute">Entrega</span>
+                        {obra.dataEntrega ? (() => {
+                          const dias = diasAte(new Date(`${obra.dataEntrega}T12:00:00`));
+                          return (
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold text-text">{new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}</span>
+                              <Badge tone={dias < 0 ? "danger" : dias <= 30 ? "warning" : "success"}>
+                                {dias < 0 ? `${-dias} ${-dias === 1 ? "dia" : "dias"} atrasada` : dias === 0 ? "hoje" : `em ${dias} ${dias === 1 ? "dia" : "dias"}`}
+                              </Badge>
+                            </span>
+                          );
+                        })() : <span className="text-sm italic text-text-mute">sem data</span>}
                       </span>
-                    ))}
-                    <span className="inline-flex items-baseline gap-1">
-                      <span className="label-mono text-text-mute">Entrega</span>
-                      {obra.dataEntrega ? (() => {
-                        const dias = diasAte(new Date(`${obra.dataEntrega}T12:00:00`));
-                        return <>
-                          <span className="text-text">{new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}</span>
-                          <Badge tone={dias < 0 ? "danger" : dias <= 30 ? "warning" : "neutral"}>
-                            {dias < 0 ? `${-dias} ${-dias === 1 ? "dia" : "dias"} atrasada` : dias === 0 ? "hoje" : `em ${dias} ${dias === 1 ? "dia" : "dias"}`}
-                          </Badge>
-                        </>;
-                      })() : <span className="italic text-text-mute">sem data</span>}
+                      {[["GC", nomeDe(obra.gc)], ["Taylor Made", nomeDe(tailor)], ["Executivo", nomeDe(executivo)]].map(([rot, val]) => (
+                        <span key={rot} className="flex min-w-0 flex-col gap-1">
+                          <span className="label-mono text-text-mute">{rot}</span>
+                          {val === "a definir" ? <span className="text-sm italic text-text-mute">a definir</span> : (
+                            <span className="flex min-w-0 items-start gap-2">
+                              <AvatarDS size="xs" className="shrink-0"><AvatarFallback>{val.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</AvatarFallback></AvatarDS>
+                              <span className="min-w-0 text-sm font-medium leading-snug text-text">{val}</span>
+                            </span>
+                          )}
+                        </span>
+                      ))}
                     </span>
                     {obra.semDetalhe && <Badge tone="warning">Sem detalhe de executivo</Badge>}
                   </span>

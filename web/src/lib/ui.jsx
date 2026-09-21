@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useState } from "react";
-import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@group-ws/ws-ui";
-import { Check, ChevronDown, ChevronRight } from "lucide-react";
+import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
+  Popover, PopoverTrigger, PopoverContent, Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@group-ws/ws-ui";
+import { Check, ChevronDown, ChevronRight, ChevronsUpDown } from "lucide-react";
 
 /* Breakpoint `lg` do Tailwind: acima dele a barra lateral fica fixa na
    tela; abaixo, ela abre num Sheet pelo botão de menu do topo. */
@@ -59,6 +60,59 @@ export function BotaoIcone({ rotulo, lado = "top", children, ...props }) {
         <TooltipContent side={lado}>{rotulo}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+/* ESCOLHER UMA PESSOA, com busca (padrao Combobox do DS: Popover +
+   Command). Com 40 nomes, uma lista sem busca obrigava a rolar ate' achar;
+   aqui se digita parte do nome ou do cargo. A lista abre POR CIMA da tela,
+   no tamanho dela — nao empurra o card nem cria rolagem lateral.
+   `pessoas`: [{ email, nome, cargo, ativo }]. `sugerido(p)`: quem vem no
+   grupo de cima (o cargo do papel). `vazio`: o texto da opcao de ninguem. */
+const semAcento = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = "Ninguém", rotulo = "Escolher pessoa", disabled }) {
+  const [aberto, setAberto] = useState(false);
+  const atual = pessoas.find((p) => p.email === valor);
+  const linha = (p) => (
+    <CommandItem key={p.email} value={`${p.nome} ${p.cargo || ""}`} onSelect={() => { onChange(p.email); setAberto(false); }}>
+      <Check size={14} className={valor === p.email ? "opacity-100" : "opacity-0"} aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">{p.nome}</span>
+      {p.cargo && <span className="shrink-0 text-xs text-text-mute">{p.cargo}{p.ativo === false ? " · inativo" : ""}</span>}
+    </CommandItem>
+  );
+  const sugeridos = sugerido ? pessoas.filter(sugerido) : [];
+  const demais = sugerido ? pessoas.filter((p) => !sugerido(p)) : pessoas;
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger asChild>
+        <Button id={id} variant="outline" role="combobox" aria-expanded={aberto} aria-label={rotulo} disabled={disabled}
+          className="w-full min-w-0 justify-between gap-2 font-normal">
+          <span className={atual ? "min-w-0 truncate" : "min-w-0 truncate text-text-mute"}>
+            {atual ? `${atual.nome}${atual.cargo ? ` · ${atual.cargo}` : ""}` : vazio}
+          </span>
+          <ChevronsUpDown size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-0">
+        {/* Busca por TRECHO, sem acento: o filtro padrao do Command e'
+            aproximado, e "bru" trazia "Gabriel Diniz" (b..r..u espalhados). */}
+        <Command filter={(texto, busca) => (semAcento(texto).includes(semAcento(busca)) ? 1 : 0)}>
+          <CommandInput placeholder="Buscar pessoa ou cargo…" />
+          <CommandList className="max-h-64 overflow-y-auto">
+            <CommandEmpty>Ninguém com esse nome.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem value="__ninguem__" onSelect={() => { onChange(""); setAberto(false); }}>
+                <Check size={14} className={!valor ? "opacity-100" : "opacity-0"} aria-hidden="true" />
+                <span className="italic text-text-mute">{vazio}</span>
+              </CommandItem>
+            </CommandGroup>
+            {sugeridos.length > 0 && <CommandGroup heading="Sugeridos">{sugeridos.map(linha)}</CommandGroup>}
+            <CommandGroup heading={sugeridos.length ? "Demais pessoas" : "Pessoas"}>{demais.map(linha)}</CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 

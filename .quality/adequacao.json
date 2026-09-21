@@ -516,13 +516,6 @@
     {
       "regra": "DS-05",
       "arquivo": "web/src/App.jsx",
-      "linha": 545,
-      "trecho": "{erro && <div className=\"dash-gc-vazio\" style={{ color: \"var(--red)\" }}>{erro}</div>}",
-      "impressao": "71d780639ee405e0"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
       "linha": 816,
       "trecho": "style={img ? { width: larg, height: alt, transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))` } : { opacity: 0 }} />}",
       "impressao": "5544fad04a57ad67"
@@ -918,13 +911,6 @@
       "linha": 19523,
       "trecho": "<th style={{ width: 170 }}>Fornecedor</th>",
       "impressao": "b8ec53e5e09d9d9f"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 536,
-      "trecho": "<select className=\"form-input\" value={valor} autoFocus onChange={(e) => setValor(e.target.value)}>",
-      "impressao": "68122dac97f32550"
     },
     {
       "regra": "DS-07",
