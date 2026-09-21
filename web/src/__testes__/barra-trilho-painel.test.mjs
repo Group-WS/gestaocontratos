@@ -104,7 +104,10 @@ conf("... e, na obra, está sempre aberto", src.includes("const temPainel = naOb
 /* O destino ativo veste a cor do que abriu à direita. */
 /* O destino ativo: fio da marca à esquerda e fundo suave (App Shell do DS). */
 conf("o item ativo leva o fio e o fundo da marca",
-  src.includes('ativo && "border-brand bg-brand-soft text-brand"'), true);
+  src.includes('"bg-brand-soft text-brand before:absolute before:inset-y-2 before:left-0 before:border-l-2 before:border-brand"'), true);
+/* Item de menu e' link com endereco, nao Button: o Button do DS poe style
+   inline de fundo e cor, que apagava o destaque do ativo. */
+conf("o item do menu é um link com endereço", src.includes("<a href={href} onClick={aoClicar} className={classe}"), true);
 
 conf("os dois modos existem", src.includes('localStorage.getItem(CHAVE_MODO_OBRAS) === "squad" ? "squad" : "numero"'), true);
 /* O símbolo do squad aparece UMA vez: na linha no modo número, no cabeçalho

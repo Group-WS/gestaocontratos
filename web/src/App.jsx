@@ -10092,31 +10092,42 @@ const porCodigo = (a, b) => {
    impossivel de achar na versao antiga — existia, no sexto icone, sem nome
    em lugar nenhum. O Tooltip do DS substitui a dica caseira que seguia o
    mouse (e o `title` do navegador, que demorava e aparecia por cima). */
-function ItemTrilho({ rotulo, ativo = false, aberto = true, badge = null, className = "", children, ...props }) {
-  /* Aberto (240px), o nome esta' na tela; recolhido (60px), so' o icone,
-     com o nome no Tooltip do DS. O ativo leva o fio da marca a' esquerda e
-     o fundo suave, como no App Shell do DS. */
-  const classe = cn("relative h-auto min-h-8 w-full rounded-lg border-l-2 border-transparent text-sm font-medium text-text-soft hover:text-text",
-    ativo && "border-brand bg-brand-soft text-brand", className);
-  if (aberto) {
-    return (
-      <Button variant="ghost" aria-current={ativo ? "page" : undefined}
-        className={cn(classe, "justify-start gap-2 px-2 py-1 text-left")} {...props}>
-        <span className="flex w-5 shrink-0 items-center justify-center">{children}</span>
-        <span className="min-w-0 flex-1 whitespace-normal leading-snug">{rotulo}</span>
-        {badge}
-      </Button>
-    );
-  }
+function ItemTrilho({ rotulo, href = "/", ativo = false, aberto = true, badge = null, disabled = false, onClick, children }) {
+  /* Item do menu no molde do App Shell do DS: um LINK, nao um botao — o
+     Button do DS poe style inline (fundo e cor) que apagava o destaque do
+     ativo. Com endereco de verdade, Cmd/Ctrl+clique abre em outra aba; o
+     clique simples navega dentro do app. */
+  const classe = cn(
+    "relative flex min-h-8 w-full items-center rounded-lg text-sm font-medium no-underline transition-colors",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+    aberto ? "gap-2 px-2 py-1" : "h-9 justify-center",
+    ativo
+      ? "bg-brand-soft text-brand before:absolute before:inset-y-2 before:left-0 before:border-l-2 before:border-brand"
+      : "text-text-soft hover:bg-surface-2 hover:text-text",
+    disabled && "pointer-events-none opacity-50",
+  );
+  const aoClicar = (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
+    onClick?.();
+  };
+  const conteudo = (
+    <>
+      <span className="flex size-5 shrink-0 items-center justify-center">{children}</span>
+      {aberto && <span className="min-w-0 flex-1 leading-snug">{rotulo}</span>}
+      {aberto ? badge : badge && <span className="absolute right-0 top-0">{badge}</span>}
+    </>
+  );
+  const link = (
+    <a href={href} onClick={aoClicar} className={classe} aria-current={ativo ? "page" : undefined}
+      aria-disabled={disabled || undefined} aria-label={aberto ? undefined : rotulo} tabIndex={disabled ? -1 : undefined}>
+      {conteudo}
+    </a>
+  );
+  if (aberto) return link;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" aria-label={rotulo} aria-current={ativo ? "page" : undefined}
-          className={cn(classe, "h-9 justify-center px-0")} {...props}>
-          {children}
-          {badge && <span className="absolute right-1 top-0">{badge}</span>}
-        </Button>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{link}</TooltipTrigger>
       <TooltipContent side="right">{rotulo}</TooltipContent>
     </Tooltip>
   );
@@ -10234,12 +10245,13 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
        CAPACETE, e nao predio (escolha dela, 19/09/2026): num app de obra
        tudo e' predio, entao o predio nao distinguia nada. */
     <ItemTrilho key="obras" rotulo="Obras" ativo={naObra} aberto={trilhoAberto}
+      href={(() => { const o = obras.find((x) => x.id === selected) || filtradas[0] || obras[0]; return o ? `/obra/${o.codigo}` : "/"; })()}
       onClick={() => { if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id); }}
       disabled={!obras.length}>
       <HardHat size={16} />
     </ItemTrilho>
   ) : (
-    <ItemTrilho key={m.id} rotulo={m.nome} ativo={modulo === m.id} aberto={trilhoAberto} badge={badgeDoDestino(m)} onClick={() => irPara(m.id)}>
+    <ItemTrilho key={m.id} rotulo={m.nome} href={enderecoDaTela({ modulo: m.id })} ativo={modulo === m.id} aberto={trilhoAberto} badge={badgeDoDestino(m)} onClick={() => irPara(m.id)}>
       <m.Icone size={16} />
     </ItemTrilho>
   ));
@@ -10276,18 +10288,18 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
      topo), os modulos em grupos com rotulo, e Equipe e "Recolher" no pe. */
   const trilho = (
     <nav className={cn("flex min-h-0 shrink-0 flex-col border-r border-line-1 bg-surface-1", trilhoAberto ? "w-60" : "w-15")} aria-label="Módulos">
-      <div className={cn("flex h-15 shrink-0 items-center border-b border-line-1", trilhoAberto ? "px-4" : "justify-center")}>
-        <Button variant="ghost" className="h-auto flex-col items-start gap-1 px-2 py-1" onClick={() => { onInicio?.(); fechar(); }} title="Ir para o Início" aria-label="Gestão de Obras TKWS — ir para o Início">
-          <LogoGroupWS variante={trilhoAberto ? "completa" : "marca"} className={trilhoAberto ? "text-base" : "!size-auto !h-7"} />
-          {trilhoAberto && <span className="label-mono text-text-mute">Gestão de Obras TKWS</span>}
-        </Button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <a href="/" title="Ir para o Início" aria-label="Gestão de Obras TKWS — ir para o Início"
+        onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); onInicio?.(); fechar(); }}
+        className={cn("flex h-15 shrink-0 flex-col justify-center gap-1 border-b border-line-1 text-text no-underline", trilhoAberto ? "pl-6 pr-4" : "items-center")}>
+        <LogoGroupWS variante={trilhoAberto ? "completa" : "marca"} className={trilhoAberto ? "text-base" : "h-7"} />
+        {trilhoAberto && <span className="label-mono text-text-mute">Gestão de Obras TKWS</span>}
+      </a>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         {gruposNaTela.map((g, i) => (
-          <div key={g.id} className={cn(i > 0 && "mt-4")}>
+          <div key={g.id} className={cn(i > 0 && "mt-5")}>
             {trilhoAberto
-              ? <p className="label-mono mb-1 px-2 text-text-mute">{g.rotulo}</p>
-              : i > 0 && <Separator className="mb-2" />}
+              ? <p className="label-mono mb-2 px-2 text-text-mute">{g.rotulo}</p>
+              : i > 0 && <Separator className="mb-3" />}
             <div className="flex flex-col gap-1">{g.itens.map(botaoDestino)}</div>
           </div>
         ))}
