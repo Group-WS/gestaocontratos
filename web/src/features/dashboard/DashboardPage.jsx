@@ -225,7 +225,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold text-text-strong"><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</span>
-                        <span className="mt-1 block text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`} · GC {row.gc}</span>
+                        <span className="mt-1 block text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</span>
                       </span>
                       <Badge tone={critica ? "danger" : atencao ? "warning" : "success"} className="shrink-0"
                         title={critica ? "Obra com pendência crítica" : atencao ? "Obra com pendência de atenção" : "Obra no prazo"}>{prazo}</Badge>

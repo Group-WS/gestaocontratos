@@ -90,7 +90,7 @@ conf("olha 90 dias à frente", dashboard.includes("row.days <= 90"));
 conf("a mais próxima primeiro", dashboard.includes("sort((a, b) => a.days - b.days)"));
 conf("obra sem data fica de fora", dashboard.includes("row.days !== null"));
 conf("cada entrega abre a obra", dashboard.includes("onClick={() => onOpen(row.id)}"));
-conf("o que já venceu se distingue", dashboard.includes("critical={row.days < 0}"));
+conf("o que já venceu se distingue", dashboard.includes("const critica = row.days < 0 ||") && dashboard.includes("dias atrasada"));
 
 console.log(falhas === 0 ? "\nTUDO OK" : `\n${falhas} FALHA(S)`);
 process.exit(falhas === 0 ? 0 : 1);

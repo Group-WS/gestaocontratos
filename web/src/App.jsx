@@ -58,6 +58,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
   NotificationBell, CommandGroup, Kbd,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
+  DetailHero, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
@@ -1218,8 +1219,12 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Indicadores da obra">
-        {kpis.map((k) => <KpiMini key={k.label} label={k.label} value={k.value} hint={k.hint} tone={k.tone} />)}
+      {/* Sete indicadores: quatro na primeira linha e tres na segunda, cada
+          linha ocupando a largura inteira (grade de 12) — sem o buraco que a
+          grade de 4 deixava no fim. */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-12" aria-label="Indicadores da obra">
+        {kpis.map((k, i) => <KpiMini key={k.label} label={k.label} value={k.value} hint={k.hint} tone={k.tone}
+          className={cn(i < 4 ? "lg:col-span-3" : "lg:col-span-4", i === kpis.length - 1 && kpis.length % 2 && "col-span-2 lg:col-span-4")} />)}
       </div>
 
       {/* Data de entrega — editável aqui, é dela que sai todo prazo de
@@ -1304,8 +1309,10 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
                 lista e' pior que numero nenhum. */}
             {faltaAprovar > 0 && onIrParaLiberacao && (
               <Alert tone="warning">
-                <AlertDescription className="flex flex-wrap items-center gap-2">
-                  <span className="min-w-0 flex-1">
+                {/* Texto em cima, botao embaixo: lado a lado, numa coluna
+                    estreita, o botao espremia o texto a uma palavra por linha. */}
+                <AlertDescription className="flex flex-col items-start gap-2">
+                  <span>
                     <b className="tabular-nums">{faltaAprovar}</b> {faltaAprovar === 1 ? "item espera" : "itens esperam"} aprovação para compra
                   </span>
                   <Button variant="outline" size="sm" type="button" onClick={onIrParaLiberacao}
@@ -10316,9 +10323,11 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
   );
 
   const painel = temPainel && (
-    <div className="flex min-h-0 w-60 shrink-0 flex-col border-r border-line-1 bg-surface-1 p-3 pb-0">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-sm">Obras <span className="mono text-xs text-text-mute">{obras.length}</span></span>
+    <div className="flex min-h-0 w-60 shrink-0 flex-col border-r border-line-1 bg-surface-1 px-3 pb-0">
+      {/* O cabecalho do painel tem a altura da faixa da marca, ao lado: as
+          duas linhas de divisao se encontram. */}
+      <div className="-mx-3 mb-3 flex h-15 shrink-0 items-center justify-between gap-2 border-b border-line-1 px-3">
+        <span className="text-sm font-semibold">Obras <span className="font-mono text-xs font-normal text-text-mute">{obras.length}</span></span>
         {/* Dois modos, dois botoes. Nao e' um filtro: os dois mostram a
             lista inteira, muda so' a ordem de leitura. */}
         <ToggleGroup type="single" size="sm" value={modo} onValueChange={(v) => { if (v) setModo(v); }} aria-label="Ordem da lista">
@@ -10767,16 +10776,16 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
   /* activationMode manual: a aba so' muda no clique (ou Enter), nunca ao
      passar o foco com as setas — e' assim que o app sempre se comportou. */
   return (
-    <div className="naoimprime mb-4 space-y-2">
+    <div className="naoimprime mb-4 space-y-3">
       <Tabs value={grupo} onValueChange={onGrupo} activationMode="manual">
         <div className="overflow-x-auto">
-          <TabsList variant="pill" className="w-max" aria-label="Áreas da obra">
+          <TabsList variant="underline" className="w-max min-w-full" aria-label="Áreas da obra">
             {GRUPOS_OBRA.map((g) => {
               const Icon = g.icon;
               const lista = ETAPAS_POR_GRUPO[g.id];
               const feitas = lista ? lista.filter((e) => etapaConcluida(e.id, obra)).length : 0;
               return (
-                <TabsTrigger key={g.id} value={g.id} className="gap-2 whitespace-nowrap">
+                <TabsTrigger underline key={g.id} value={g.id} className="gap-2 whitespace-nowrap">
                   <Icon size={15} /> {g.label}
                   {lista && <span className="mono text-xs opacity-80">{feitas}/{lista.length}</span>}
                 </TabsTrigger>
@@ -10789,7 +10798,7 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
       {etapas.length > 0 && (
         <Tabs value={tab ?? ""} onValueChange={onChange} activationMode="manual">
           <div className="overflow-x-auto">
-            <TabsList variant="underline" className="w-max min-w-full" aria-label="Etapas">
+            <TabsList variant="pill" className="w-max" aria-label="Etapas">
               {etapas.map((t, i) => {
                 const Icon = t.icon;
                 const feita = etapaConcluida(t.id, obra);
@@ -10803,7 +10812,7 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
                   // Com item aprovado pra compra, as telas da compra abrem.
                   && !(ETAPAS_QUE_ABREM_COM_COMPRA.has(t.id) && temCompraAprovada(obra));
                 return (
-                  <TabsTrigger underline key={t.id} value={t.id}
+                  <TabsTrigger key={t.id} value={t.id}
                     className={cn("gap-2 whitespace-nowrap", feita && "text-text-soft", travada && "opacity-50")}
                     title={travada ? `Conclua "${anterior.label}" primeiro` : undefined}>
                     {feita ? <CheckCircle2 size={14} className="text-success" /> : <Icon size={14} />}
@@ -24245,27 +24254,62 @@ export default function App() {
             </div>
           ) : (
           <>
-          <div className="eyebrow">
-            OBRA #{obra.codigo}
-            {obra.semDetalhe && <span className="obra-fictitious">SEM DETALHE DE EXECUTIVO — só cadastro do Monday</span>}
-          </div>
-          <div className="title-row">
-            <span className="title-accent">{obra.nome}</span>
-            {/* Concluir a obra e um ato de fim de tudo. Repetido no topo
-                de oito telas ele fica ao lado do cotovelo de quem esta
-                conferindo item a item — agora mora so no Dashboard. */}
-            <div className="title-acoes">
-              {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
-                && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
-                <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
-              )}
-              {grupo === "dashboard" && (
-                <Button variant="outline" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
-                  {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={13} /> Concluir obra</>}
-                </Button>
-              )}
-            </div>
-          </div>
+          {/* O TOPO DA OBRA no molde do DS: breadcrumb (onde a pessoa esta')
+              e DetailHero (quem e' a obra). Concluir a obra e' ato de fim de
+              tudo e mora so' no Dashboard dela; a Apresentacao, so' no
+              Executivo — cada acao onde ela faz sentido. */}
+          {(() => {
+            const nomeDe = (email) => (email ? (pessoas.find((p) => p.email === email)?.nome || nomeDoEmail(email)) : "a definir");
+            const tailor = obra.tailorMade ?? registro.get(String(obra.codigo))?.tailor_made ?? null;
+            const executivo = obra.responsavelExecutivo ?? registro.get(String(obra.codigo))?.responsavel_executivo ?? null;
+            const squad = obra.squad || "Sem squad";
+            return (
+              <div className="mb-4 space-y-3">
+                <Breadcrumb>
+                  <BreadcrumbList>
+                    <BreadcrumbItem>
+                      <BreadcrumbLink href="/" onClick={(e) => { e.preventDefault(); setModulo("inicio"); }}>Início</BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>{/^squad\b/i.test(squad) ? squad : `Squad ${squad}`}</BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem><BreadcrumbPage>#{obra.codigo} {obra.nome}</BreadcrumbPage></BreadcrumbItem>
+                  </BreadcrumbList>
+                </Breadcrumb>
+                <DetailHero
+                  /* A capa e' o simbolo do squad: o DetailHero reserva o
+                     espaco dela, e vazio ele virava um bloco cinza. */
+                  cover={<span className="flex h-full w-full items-center justify-center text-brand"><IconeSquad nome={squad} size={48} /></span>}
+                  code={`Obra #${obra.codigo}`}
+                  title={obra.nome}
+                  subtitle={/^squad\b/i.test(squad) ? squad : `Squad ${squad}`}
+                  /* O selo e' ESTADO da obra, nao contagem: as pendencias tem
+                     regua propria no painel logo abaixo, e repetir a conta aqui
+                     com outra regra era o topo dizendo "sem pendencias" ao lado
+                     de um "2 pendencias". */
+                  status={obra.semDetalhe ? { label: "Sem detalhe de executivo", tone: "warning" } : undefined}
+                  meta={[
+                    { label: "GC", value: nomeDe(obra.gc) },
+                    { label: "Taylor Made", value: nomeDe(tailor) },
+                    { label: "Executivo", value: nomeDe(executivo) },
+                    { label: "Entrega", value: obra.dataEntrega ? new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR") : "sem data" },
+                  ]}
+                  actions={(
+                    <div className="flex flex-wrap gap-2">
+                      {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
+                        && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
+                        <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
+                      )}
+                      {grupo === "dashboard" && (
+                        <Button variant="outline" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
+                          {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={16} /> Concluir obra</>}
+                        </Button>
+                      )}
+                    </div>
+                  )} />
+              </div>
+            );
+          })()}
           {apresAberta && (produtosApres ? (
             <Apresentacao usuario={usuario} produtos={produtosApres} obraInicial={obra.codigo}
               obras={obrasAtivas.some((o) => String(o.codigo) === String(obra.codigo)) ? obrasAtivas : [obra, ...obrasAtivas]}

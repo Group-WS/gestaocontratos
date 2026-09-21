@@ -129,6 +129,15 @@
     padding: 0;
     list-style: none;
   }
+  /* O botão do navegador vem com borda de 2px nos quatro lados, fundo cinza
+     e fonte própria. A aba sublinhada do DS só declara a borda de baixo, e
+     herdava a moldura inteira. Mesma regra: só com classe, só na camada. */
+  :where(button)[class] {
+    border: 0 solid;
+    background-color: transparent;
+    font: inherit;
+    color: inherit;
+  }
 
   ::selection {
     background: var(--brand);
