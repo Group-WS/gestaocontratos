@@ -55,6 +55,7 @@ import { confirmar, mensagem, perguntar, avisar } from "./lib/confirmar.jsx";
 import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
   Sheet, SheetContent, SheetTitle, Popover, PopoverTrigger, PopoverContent,
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
+  NotificationBell, CommandGroup, Kbd,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
@@ -9602,7 +9603,7 @@ function MenuPerfil({ usuario, equipe, onSair, onTrocarFoto }) {
     <>
       <Popover open={menuPerfil} onOpenChange={setMenuPerfil}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="icon" className="rounded-full"
+          <Button variant="outline" className="h-auto rounded-full p-1"
             title={meuNome || usuario || "Não identificado"} aria-label={meuNome || usuario || "Não identificado"}>
             <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
           </Button>
@@ -9675,40 +9676,108 @@ function MenuPerfil({ usuario, equipe, onSair, onTrocarFoto }) {
   );
 }
 
-function TopBar({ onInicio, onMenu, usuario, equipe, onSair, onTrocarFoto }) {
+/* A BUSCA DO TOPO, agora com dados de verdade.
+
+   Tinha saido porque nunca teve handler: aceitava texto e ignorava. Voltou
+   no molde do Group WS Platform — campo inline, resultados logo abaixo, ⌘K
+   pra focar — e procura o que existe: os modulos que a pessoa ve e as obras
+   em andamento, pelo codigo, nome ou cliente. */
+function BuscaGlobal({ modulos, obras, onModulo, onObra }) {
+  const [texto, setTexto] = useState("");
+  const [aberta, setAberta] = useState(false);
+  const inputRef = useRef(null);
+  useEffect(() => {
+    const atalho = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); inputRef.current?.focus(); }
+    };
+    document.addEventListener("keydown", atalho);
+    return () => document.removeEventListener("keydown", atalho);
+  }, []);
+  const escolher = (acao) => { acao(); setTexto(""); setAberta(false); inputRef.current?.blur(); };
   return (
-    <header className="naoimprime sticky top-0 z-10 flex h-16 items-center gap-4 border-b border-line-2 bg-surface-1 px-4 md:px-6">
+    /* O Command do DS nasce paleta flutuante (sombra, borda forte, fundo claro);
+       aqui ele e' campo do topo, entao essas tres coisas saem. */
+    <Command className="relative h-10 w-full max-w-md self-center overflow-visible rounded-lg !border-line-2 !bg-surface-2 !shadow-none"
+      onKeyDown={(e) => { if (e.key === "Escape") { setAberta(false); inputRef.current?.blur(); } }}>
+      <CommandInput ref={inputRef} value={texto} onValueChange={(v) => { setTexto(v); setAberta(true); }}
+        onFocus={() => setAberta(true)} onBlur={() => setAberta(false)}
+        placeholder="Buscar obra ou módulo…" aria-label="Buscar obra ou módulo"
+        className="h-10 !border-0 py-2 text-sm" trailing={<Kbd>⌘K</Kbd>} />
+      {aberta && texto.trim() && (
+        /* mousedown sem default: o clique escolhe antes do blur fechar a lista. */
+        <CommandList onMouseDown={(e) => e.preventDefault()}
+          className="absolute left-0 top-full z-20 mt-1 max-h-96 w-full overflow-y-auto rounded-lg border border-line-3 bg-surface-1 shadow-lg">
+          <CommandEmpty>Nenhum resultado para “{texto.trim()}”.</CommandEmpty>
+          <CommandGroup heading="Módulos">
+            {modulos.map((m) => (
+              <CommandItem key={m.id} value={`modulo ${m.nome} ${m.sub || ""}`} onSelect={() => escolher(() => onModulo(m.id))}>
+                <m.Icone size={14} /> {m.nome}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+          {obras.length > 0 && (
+            <CommandGroup heading="Obras">
+              {obras.map((o) => (
+                <CommandItem key={o.id} value={`obra ${o.codigo} ${o.nome} ${o.cliente || ""}`} onSelect={() => escolher(() => onObra(o.id))}>
+                  <span className="mono text-xs text-text-mute">{o.codigo}</span> {o.nome}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+        </CommandList>
+      )}
+    </Command>
+  );
+}
+
+/* O SINO, ligado aos alertas das obras.
+
+   O "1" era fixo no codigo e o sino nao abria nada. Agora cada obra com
+   alerta vira uma linha, e clicar abre a obra. Nao ha' "marcar como lida":
+   o alerta some quando o problema da obra e' resolvido, nao quando alguem
+   olha pra ele. */
+function SinoDasObras({ obras, onObra }) {
+  const itens = obras
+    .map((o) => ({ o, n: obraAlertCount(o) }))
+    .filter(({ n }) => n > 0)
+    .sort((a, b) => b.n - a.n)
+    .map(({ o, n }) => ({
+      id: String(o.id),
+      avatar: <AlertTriangle size={14} />,
+      icon: <AlertTriangle size={14} />,
+      tone: "danger",
+      body: <><b>#{o.codigo}</b> {o.nome}</>,
+      preview: `${n} ${n === 1 ? "alerta" : "alertas"}`,
+      ts: o.squad || "",
+      unread: true,
+    }));
+  return (
+    <NotificationBell unreadCount={itens.length} items={itens} tabs={["all"]} showFooter={false}
+      onSelect={(id) => { const o = obras.find((x) => String(x.id) === id); if (o) onObra(o.id); }} />
+  );
+}
+
+/* O TOPO, no molde do Group WS Platform (21/09/2026): so' sobre a coluna do
+   conteudo — a marca mora no alto da barra lateral —, com a busca a'
+   esquerda e o sino e a conta a' direita. */
+function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modulos, obras, onModulo, onObra }) {
+  return (
+    <header className="naoimprime sticky top-0 z-10 flex h-15 shrink-0 items-center justify-between gap-3 border-b border-line-1 bg-surface-1 px-4 md:px-5">
       {/* Abaixo de lg a barra lateral vive num Sheet, e este e' o botao que a abre. */}
       <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Abrir menu">
         <Menu size={18} />
       </Button>
-      {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
-          primeiro lugar onde a pessoa clica quando se perde — deixa-la
-          inerte gasta um clique de descoberta que ninguem tem. */}
-      <Button variant="ghost" className="h-auto gap-3 px-2 py-1" onClick={onInicio} title="Ir para o Início">
-        <LogoGroupWS className="text-sm" />
-        <span className="hidden text-sm font-semibold sm:inline">Gestão de Obras TKWS</span>
-      </Button>
-      {/* A busca do topo saiu.
-
-          Ela nunca teve handler: digitar ali nao fazia nada, e o "⌘K" ao
-          lado prometia um atalho que tambem nao existia. Campo que aceita
-          texto e ignora e' pior que campo nenhum — a pessoa tenta, nao
-          acontece nada, e passa a desconfiar do resto da tela.
-
-          Quem procura obra tem o filtro da barra lateral, que funciona. */}
-      <div className="ml-auto flex items-center gap-2">
-        {/* A estrelinha saiu: era um botao sem onClick nenhum. Botao que
-            nao faz nada nao e' neutro — a pessoa clica, nada acontece, e
-            passa a duvidar do resto dos botoes da tela. */}
-        <Button variant="ghost" size="icon" className="relative" aria-label="Notificações">
-          <Bell size={16} />
-          <Contador tom="danger" className="absolute right-1 top-1">1</Contador>
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        {/* O nome do produto continua no topo e continua levando pro Inicio:
+            e' o primeiro lugar onde a pessoa clica quando se perde. */}
+        <Button variant="ghost" className="hidden h-auto shrink-0 px-2 py-1 text-sm font-semibold sm:inline-flex" onClick={onInicio} title="Ir para o Início">
+          Gestão de Obras TKWS
         </Button>
+        <BuscaGlobal modulos={modulos} obras={obras} onModulo={onModulo} onObra={onObra} />
+      </div>
+      <div className="flex items-center gap-2">
+        <SinoDasObras obras={obras} onObra={onObra} />
         <MenuPerfil usuario={usuario} equipe={equipe} onSair={onSair} onTrocarFoto={onTrocarFoto} />
-        {/* UM AVATAR SO', e e' este. Em 20/09 o do topo saiu porque eram
-            dois (este so' mostrava a foto; o do pe do trilho tinha o menu).
-            Em 21/09 o do trilho veio pra ca', com o menu inteiro. */}
       </div>
     </header>
   );
@@ -10049,7 +10118,7 @@ function ItemTrilho({ rotulo, ativo = false, semPainel = false, aberto = false, 
   );
 }
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
+function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
   /* Acima de lg a barra e' fixa ao lado do conteudo; abaixo, ela abre num
      Sheet pelo botao de menu do topo. Uma casca so' de cada vez. */
   const largo = useMediaQuery(LARGO);
@@ -10361,19 +10430,31 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     </div>
   );
 
+  /* A MARCA NO ALTO DA BARRA, como no Group WS Platform: a faixa tem a
+     altura do topo e leva pro Inicio. Com o trilho so' de icones e sem o
+     painel, cabe so' o monograma. */
+  const marcaInteira = trilhoAberto || temPainel || !largo;
   const conteudo = (
     <TooltipProvider delayDuration={200}>
-      {trilho}
-      {painel}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className={cn("flex h-15 shrink-0 items-center border-b border-r border-line-1 bg-surface-1", marcaInteira ? "px-4" : "justify-center")}>
+          <Button variant="ghost" className="h-auto px-2 py-1" onClick={() => { onInicio?.(); fechar(); }} title="Ir para o Início" aria-label="Ir para o Início">
+            <LogoGroupWS variante={marcaInteira ? "completa" : "marca"} className={marcaInteira ? "text-sm" : "!size-auto !h-7"} />
+          </Button>
+        </div>
+        <div className="flex min-h-0 flex-1">
+          {trilho}
+          {painel}
+        </div>
+      </div>
     </TooltipProvider>
   );
 
   return (
     <>
       {largo ? (
-        /* A altura (100vh - topo) mora na regra .barra do <style>: e' a unica
-           medida que o Tailwind nao expressa sem valor arbitrario. */
-        <aside className="barra naoimprime sticky top-16 flex shrink-0" ref={barraRef}>
+        /* Altura cheia, do alto da janela: o topo agora mora so' sobre o conteudo. */
+        <aside className="barra naoimprime sticky top-0 flex h-screen shrink-0" ref={barraRef}>
           {conteudo}
         </aside>
       ) : (
@@ -22113,7 +22194,6 @@ export default function App() {
         /* A BARRA (trilho + painel) e' Tailwind + componentes do DS dentro
            do proprio Sidebar. So' a altura mora aqui: 100vh menos o topo e'
            a unica medida que o Tailwind nao expressa sem valor arbitrario. */
-        .barra { height: calc(100vh - 64px); }
 
         /* O NOME DA OBRA NUNCA CORTA — pedido dela em 19/09/2026: "nunca corte
            o nome da obra, sempre mostre tudo". Mesma regra do alerta da Conf.
@@ -23981,15 +24061,18 @@ export default function App() {
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
-      <TopBar onMenu={() => setMenuAberto(true)} usuario={usuario} equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
-        onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} />
       <div className="flex">
-        <Sidebar obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
+        <Sidebar onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))}
+          obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
+        <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar onMenu={() => setMenuAberto(true)} onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} usuario={usuario} equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
+          modulos={modulosVisiveis} obras={migracaoPendente || podeAbrirObras(eu) ? obrasAtivas : []} onModulo={setModulo}
+          onObra={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
         {/* Sem padding proprio: as margens da pagina sao do PageShell de cada tela. */}
@@ -24263,6 +24346,7 @@ export default function App() {
           </>
           )}
         </main>
+        </div>
       </div>
     </div>
   );
