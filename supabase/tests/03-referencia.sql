@@ -6,7 +6,22 @@
 -- le, e o anonimo nunca le.
 
 begin;
-select plan(4);
+select plan(5);
+
+/* A massa importa mais aqui do que parece.
+ *
+ * `is_empty` numa tabela VAZIA passa por acidente: o resultado e o mesmo
+ * de um acesso negado. Sem a linha abaixo, estes testes passavam ate no
+ * banco antigo, com tudo aberto — diziam a coisa certa pelo motivo
+ * errado. A primeira conferencia e que existe o que ler. */
+insert into insumo_sienge (codigo, descricao, unidade)
+  values ('SIE-03', 'Insumo para o teste de leitura', 'un')
+on conflict (codigo) do nothing;
+
+select isnt_empty(
+  'select codigo from insumo_sienge',
+  'existe o que ler (senao os testes abaixo passariam vazios)'
+);
 
 set local role anon;
 select is_empty('select codigo from insumo_sienge', 'anonimo nao le referencia');

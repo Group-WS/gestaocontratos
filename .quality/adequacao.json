@@ -6164,20 +6164,6 @@
     },
     {
       "regra": "DS-07",
-      "arquivo": "web/src/lib/confirmar.jsx",
-      "linha": 58,
-      "trecho": "<button type=\"button\" className=\"btn-cancelar\" onClick={() => responder(false)}>",
-      "impressao": "7927537e2c3f18cf"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/lib/confirmar.jsx",
-      "linha": 61,
-      "trecho": "<button type=\"button\" ref={btnRef}",
-      "impressao": "41302335fc7fcf2d"
-    },
-    {
-      "regra": "DS-07",
       "arquivo": "web/src/marca.jsx",
       "linha": 66,
       "trecho": "<button type=\"button\" className={tema === \"light\" ? \"on\" : \"\"} aria-pressed={tema === \"light\"}",
@@ -6322,69 +6308,6 @@
       "linha": 271,
       "trecho": "if (!window.confirm(`Criar a revisão ${rev} como cópia da ${doc.capa?.rev || \"atual\"}? A anterior continua guardada.`)) return;",
       "impressao": "83473be14d8a307e"
-    },
-    {
-      "regra": "DS-10",
-      "arquivo": "web/src/lib/confirmar.jsx",
-      "linha": 19,
-      "trecho": "if (!abrir) return Promise.resolve(window.confirm(o.mensagem || o.titulo || \"Continuar?\"));",
-      "impressao": "980e1573028c1722"
-    },
-    {
-      "regra": "SEG-33",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 123,
-      "trecho": "res.status(500).json({ error: err.message });",
-      "impressao": "6701b931de47df59"
-    },
-    {
-      "regra": "SEG-33",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 146,
-      "trecho": "res.status(500).json({ error: err.message });",
-      "impressao": "6701b931de47df59#2"
-    },
-    {
-      "regra": "SEG-33",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 232,
-      "trecho": "res.status(500).json({ error: err.message });",
-      "impressao": "6701b931de47df59#3"
-    },
-    {
-      "regra": "SEG-33",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 355,
-      "trecho": "res.status(500).json({ error: err.message });",
-      "impressao": "6701b931de47df59#4"
-    },
-    {
-      "regra": "SEG-33",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 371,
-      "trecho": "res.status(500).json({ error: err.message });",
-      "impressao": "6701b931de47df59#5"
-    },
-    {
-      "regra": "SEG-33",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 648,
-      "trecho": "res.status(500).json({ error: \"Falha ao ler o PDF: \" + err.message });",
-      "impressao": "8057565847a6e567"
-    },
-    {
-      "regra": "SEG-33",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 706,
-      "trecho": "res.status(422).json({ error: erroDePDF(err.message), podeBase64: true });",
-      "impressao": "03ed5c7f166b309b"
-    },
-    {
-      "regra": "SEG-33",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 799,
-      "trecho": "res.status(500).json({ error: \"Falha ao ler o PDF: \" + err.message });",
-      "impressao": "8057565847a6e567#2"
     },
     {
       "regra": "NAV-03",
@@ -6581,111 +6504,6 @@
       "linha": 305,
       "trecho": "const { data: agora } = await supabase.from(\"pessoa\").select(\"*\").eq(\"email\", e).maybeSingle();",
       "impressao": "b756b66c455d994a"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/aditivos.sql",
-      "linha": 11,
-      "trecho": "create table if not exists aditivo (",
-      "impressao": "1a9d6cbc75e42fed"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/alocacao.sql",
-      "linha": 15,
-      "trecho": "create table if not exists alocacao_padrao (",
-      "impressao": "d463d98e993e66ab"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/apresentacao.sql",
-      "linha": 7,
-      "trecho": "create table if not exists apresentacao (",
-      "impressao": "2d2f7899cf360156"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/catalogo.sql",
-      "linha": 12,
-      "trecho": "create table if not exists catalogo_fornecedor (",
-      "impressao": "214f3f0d30770a87"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/catalogo.sql",
-      "linha": 25,
-      "trecho": "create table if not exists catalogo_produto (",
-      "impressao": "4fd67ab0cdc55017"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/compradores.sql",
-      "linha": 11,
-      "trecho": "create table if not exists public.comprador_grupo (",
-      "impressao": "5ffd7d545de4baca"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/eap.sql",
-      "linha": 21,
-      "trecho": "create table if not exists eap_grupo (",
-      "impressao": "a450650cff6bda38"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/mao-de-obra-propria.sql",
-      "linha": 12,
-      "trecho": "create table if not exists public.prestador_interno (",
-      "impressao": "b615a38c5be32159"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/obra-comentario.sql",
-      "linha": 29,
-      "trecho": "create table if not exists obra_comentario (",
-      "impressao": "810bdeaf5722a159"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/schema.sql",
-      "linha": 143,
-      "trecho": "create table if not exists insumo_preco (",
-      "impressao": "55c7de657e98cd1f"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/sienge_eap.sql",
-      "linha": 26,
-      "trecho": "create table if not exists sienge_eap_versao (",
-      "impressao": "f5eadbf2aad73268"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/sienge_eap.sql",
-      "linha": 43,
-      "trecho": "create table if not exists sienge_eap_item (",
-      "impressao": "13f641000d066f5d"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/sienge_eap.sql",
-      "linha": 64,
-      "trecho": "create table if not exists sienge_eap_mapa (",
-      "impressao": "1f46727beb82ed1a"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/sienge_obra.sql",
-      "linha": 17,
-      "trecho": "create table if not exists sienge_obra (",
-      "impressao": "68254569b27b799e"
-    },
-    {
-      "regra": "TST-03",
-      "arquivo": "supabase/sienge_solicitacao.sql",
-      "linha": 25,
-      "trecho": "create table if not exists sienge_solicitacao (",
-      "impressao": "8235e941eeacd766"
     },
     {
       "regra": "TST-04",
@@ -7429,5 +7247,6 @@
       "trecho": "app.post(\"/api/sienge/solicitacao\", exigirObra((req) => req.body?.buildingId), async (req, res) => {",
       "impressao": "5fe4a1f3a21f4f5e"
     }
-  ]
+  ],
+  "atualizadaEm": "2026-09-21"
 }
