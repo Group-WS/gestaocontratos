@@ -60,7 +60,7 @@ conf("... e fica em ordem estável", ordenar(["B", "A"]), "A B");
 /* ============================================================
    2. O TRILHO
    ============================================================ */
-conf("o trilho existe", src.includes('<nav className="trilho">'), true);
+conf("o trilho existe", src.includes('aria-label="Módulos">'), true);
 /* Novas obras e Finalizadas SÃO OBRAS: moram no painel. Foi pedido dela, e
    deixa o trilho só com ferramenta e área. */
 conf("novas e arquivo saem do trilho",
@@ -69,14 +69,14 @@ conf("o trilho é filtrado por eles",
   src.includes("const noTrilho = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));"), true);
 /* No trilho TODO destino é ícone sem rótulo — sem a dica de hover, a Equipe
    volta a ser impossível de achar, que era o defeito da barra antiga. */
-conf("a dica de hover vale pro trilho inteiro", src.includes('!b.closest(".trilho")'), true);
+/* O rotulo e' um Tooltip do DS em cada destino (ItemTrilho), a' direita. */
+conf("a dica de hover vale pro trilho inteiro", src.includes('<TooltipContent side="right">{rotulo}</TooltipContent>'), true);
 /* E ELA PRECISA SUMIR SOZINHA. Sair do trilho pro painel não é sair da barra
    — o painel é filho dela, então o `mouseleave` de baixo nunca chega. A dica
    "Obras" ficava colada em cima da lista, bem no bloco de novas obras, e o
    caminho que fazia isso era o de todo dia: clicar em Obras e escorregar pra
    direita pra escolher uma. Visto na tela em 20/09/2026. */
-conf("... e some ao entrar no painel",
-  src.includes('if (!b || !el.contains(b) || !b.closest(".trilho")) { if (alvo) sair(); return; }'), true);
+conf("... e todo destino passa por ele", /const botaoDestino = \(m\) => \(\s*<ItemTrilho /.test(src), true);
 /* ... SEM PISCAR. A linha abaixo parece redundante ao lado da de cima e não
    é: ao mostrar a dica o `title` do botão é retirado, pra dica do navegador
    não subir por cima da nossa. Só que aí o botão deixa de ser achável por
@@ -84,18 +84,15 @@ conf("... e some ao entrar no painel",
    limpeza, a dica sumia, o `title` voltava, e o mouseover seguinte a trazia
    de novo. Relato dela em 20/09/2026, um minuto depois do conserto acima:
    "quando eu passo o mouse em cima dos botões ele fica piscando". */
-conf("... e não pisca dentro do mesmo destino",
-  src.includes("if (alvo && alvo.contains(e.target)) return;"), true);
+conf("... sem listener caseiro de mouse", src.includes('addEventListener("mouseover"'), false);
 /* A ordem é o conserto: a saída antecipada tem que vir ANTES da limpeza. */
-conf("... porque a saída vem antes da limpeza",
-  src.indexOf("if (alvo && alvo.contains(e.target)) return;")
-    < src.indexOf('if (!b || !el.contains(b) || !b.closest(".trilho"))'), true);
+conf("... e o rótulo também vai no aria-label", src.includes("aria-label={rotulo}"), true);
 
 /* CLICAR EM "OBRAS" SÓ MOSTRA. Relato dela: "depois que eu entrar na obra, no
    primeiro clique dentro a barra da sidebar recolhe" — era o botão Obras
    dobrando a lista. Esconder tem botão próprio. */
 conf("clicar em Obras nunca esconde", src.includes("setPainelEscondido(false);"), true);
-conf("esconder tem botão próprio", src.includes('className="trilho-item trilho-dobrar"'), true);
+conf("esconder tem botão próprio", src.includes('rotulo={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}'), true);
 
 /* ============================================================
    3. O PAINEL
@@ -105,14 +102,14 @@ conf("o painel só aparece na obra", src.includes('const naObra = modulo === "co
 conf("... e some quando escondido", src.includes("const temPainel = naObra && mostrarObras && !painelEscondido;"), true);
 /* O destino ativo veste a cor do que abriu à direita. */
 conf("sem painel, o trilho ativo veste o campo",
-  src.includes(".barra.sem-painel .trilho-item.ativo { background: var(--page); }"), true);
+  src.includes('ativo && (semPainel ? "bg-bg" : "bg-surface-1")'), true);
 
 conf("os dois modos existem", src.includes('localStorage.getItem(CHAVE_MODO_OBRAS) === "squad" ? "squad" : "numero"'), true);
 /* O símbolo do squad aparece UMA vez: na linha no modo número, no cabeçalho
    no modo squad. Dizê-lo duas vezes era o defeito da barra antiga. */
 conf("no modo número o símbolo vai na linha", src.includes('filtradas.map((o) => linhaDaObra(o, true))'), true);
 conf("no modo squad ele sai das linhas", src.includes("porSquad[nome].map((o) => linhaDaObra(o, false))"), true);
-conf("... e sobe pro cabeçalho", /<Button variant="ghost" className="squad-cab"[\s\S]{0,200}<IconeSquad/.test(src), true);
+conf("... e sobe pro cabeçalho", /<CollapsibleTrigger asChild>[\s\S]{0,400}<IconeSquad nome=\{nome\}/.test(src), true);
 
 /* AS NOVAS OBRAS NO TOPO, antes da busca. Estavam no pé e ela reparou: "achei
    muito pequeno no final da tela, pode passar despercebido". O problema era
@@ -121,16 +118,16 @@ conf("... e sobe pro cabeçalho", /<Button variant="ghost" className="squad-cab"
    começar, as que estão em andamento, as que terminaram. */
 conf("as novas obras ficam no topo", src.includes('{novasNoPainel && novasCount > 0 && ('), true);
 conf("... antes da busca",
-  src.indexOf('className={`painel-novas') < src.indexOf('className="obra-search painel-busca"'), true);
+  src.indexOf('onClick={() => irPara("novas")} title={novasNoPainel.sub}') < src.indexOf('placeholder="Nome, código ou cliente"'), true);
 /* Zero obra esperando não ocupa o topo de nada. */
 conf("... e só quando existe alguma", /novasNoPainel && novasCount > 0/.test(src), true);
 /* Fonte normal, escolha dela: o destaque vem do lugar e do fundo. O 11.5px é
    o mesmo do nome da obra — se alguém aumentar aqui, a decisão se perde. */
-conf("em fonte normal, não maior", /\.painel-novas \{[^}]*font-size: 11\.5px/.test(src), true);
+conf("em fonte normal, não maior", /variant="outline" size="sm" className=\{cn\("mb-2 w-full justify-start gap-2 border-brand text-brand"/.test(src), true);
 /* O número antes do rótulo: é ele que faz reparar. */
 conf("o número vem antes do rótulo",
-  src.includes('<span className="painel-novas-n mono">{novasCount}</span>'), true);
-conf("as Finalizadas ficam no pé", src.includes('<div className="painel-pe">'), true);
+  src.includes('<span className="mono">{novasCount}</span>'), true);
+conf("as Finalizadas ficam no pé", src.includes('onClick={() => irPara("arquivo")} title={finalizadasNoPainel.sub}'), true);
 /* O painel tem 232px, e a barra antiga tinha 288: o texto da busca era
    cortado no meio da palavra ("...cód, clie"). */
 conf("o texto da busca cabe no painel",
@@ -153,7 +150,7 @@ conf("o nome não tem reticências", /\.obra-nome \{[^}]*text-overflow/.test(src
 conf("... nem fica numa linha só", /\.obra-nome \{[^}]*nowrap/.test(src), false);
 conf("... e quebra palavra comprida", /\.obra-nome \{[^}]*overflow-wrap: anywhere/.test(src), true);
 /* Alinhado ao topo, pra o código ficar na primeira linha quando o nome desce. */
-conf("a linha alinha pelo topo", /\.obra-linha \{[^}]*align-items: flex-start/.test(src), true);
+conf("a linha alinha pelo topo", /const linhaDaObra = [\s\S]{0,900}items-start justify-start/.test(src), true);
 
 /* ============================================================
    5. O QUE VEIO DE BRINDE

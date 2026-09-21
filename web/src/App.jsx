@@ -19,7 +19,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound
+  MessageSquare, HardHat, Camera, UserRound, Menu
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -52,7 +52,11 @@ import { abrirEnvio, fecharEnvio, enviosPendentes, envioComMesmoConteudo, reconc
   listarEnviosSienge, assinaturaDoEnvio, novaChaveIdempotencia } from "./lib/siengeSolicitacoes.js";
 import Catalogo from "./Catalogo";
 import { confirmar, mensagem, perguntar, avisar } from "./lib/confirmar.jsx";
-import { Button } from "@group-ws/ws-ui";
+import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
+  Sheet, SheetContent, SheetTitle, Popover, PopoverTrigger, PopoverContent,
+  Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
+  Collapsible, CollapsibleTrigger, CollapsibleContent, Separator } from "@group-ws/ws-ui";
+import { useMediaQuery, LARGO, Contador } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -9358,15 +9362,19 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
    TOPO / SIDEBAR
    ============================================================ */
 
-function TopBar({ onInicio }) {
+function TopBar({ onInicio, onMenu }) {
   return (
-    <header className="topbar">
+    <header className="naoimprime sticky top-0 z-10 flex h-16 items-center gap-4 border-b border-line-2 bg-surface-1 px-4 md:px-6">
+      {/* Abaixo de lg a barra lateral vive num Sheet, e este e' o botao que a abre. */}
+      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Abrir menu">
+        <Menu size={18} />
+      </Button>
       {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
           primeiro lugar onde a pessoa clica quando se perde — deixa-la
           inerte gasta um clique de descoberta que ninguem tem. */}
-      <Button variant="ghost" className="topbar-brand" onClick={onInicio} title="Ir para o Início">
-        <LogoGroupWS style={{ fontSize: 14 }} />
-        <span className="brand-produto">Gestão de Obras TKWS</span>
+      <Button variant="ghost" className="h-auto gap-3 px-2 py-1" onClick={onInicio} title="Ir para o Início">
+        <LogoGroupWS className="text-sm" />
+        <span className="hidden text-sm font-semibold sm:inline">Gestão de Obras TKWS</span>
       </Button>
       {/* A busca do topo saiu.
 
@@ -9376,12 +9384,15 @@ function TopBar({ onInicio }) {
           acontece nada, e passa a desconfiar do resto da tela.
 
           Quem procura obra tem o filtro da barra lateral, que funciona. */}
-      <div className="topbar-right">
+      <div className="ml-auto flex items-center gap-2">
         {/* A estrelinha saiu: era um botao sem onClick nenhum. Botao que
             nao faz nada nao e' neutro — a pessoa clica, nada acontece, e
             passa a duvidar do resto dos botoes da tela. */}
         <AlternarTema />
-        <Button variant="ghost" size="sm" className="bell"><Bell size={16} /><span className="notif-dot">1</span></Button>
+        <Button variant="ghost" size="icon" className="relative" aria-label="Notificações">
+          <Bell size={16} />
+          <Contador tom="danger" className="absolute right-1 top-1">1</Contador>
+        </Button>
         {/* O avatar saiu daqui (pedido dela, 20/09/2026: "esse avatar aqui
             em cima pode retirar, ja' tem la' em baixo").
 
@@ -9697,7 +9708,36 @@ const porCodigo = (a, b) => {
  * ela e' texto que se le' — nao moldura. Fica um espinho cinza, uma lista
  * branca, um campo cinza.
  */
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, onTrocarFoto, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null }) {
+/* Um destino do trilho: so' icone, com o rotulo num Tooltip a' direita.
+
+   No trilho TODO destino e' icone sem rotulo. Foi assim que a Equipe ficou
+   impossivel de achar na versao antiga — existia, no sexto icone, sem nome
+   em lugar nenhum. O Tooltip do DS substitui a dica caseira que seguia o
+   mouse (e o `title` do navegador, que demorava e aparecia por cima). */
+function ItemTrilho({ rotulo, ativo = false, semPainel = false, className = "", children, ...props }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={rotulo} aria-current={ativo ? "page" : undefined}
+          className={cn("relative h-10 w-full rounded-none border-l-2 border-transparent text-text-mute hover:text-text",
+            ativo && "border-brand text-brand", ativo && (semPainel ? "bg-bg" : "bg-surface-1"), className)}
+          {...props}>
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="right">{rotulo}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, onTrocarFoto, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
+  /* Acima de lg a barra e' fixa ao lado do conteudo; abaixo, ela abre num
+     Sheet pelo botao de menu do topo. Uma casca so' de cada vez. */
+  const largo = useMediaQuery(LARGO);
+  const fechar = () => { if (!largo && onFechar) onFechar(); };
+  const irPara = (id) => { onModulo(id); fechar(); };
+  const escolherObra = (id) => { onSelect(id); fechar(); };
+
   /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
      quer reativar o filtro a cada F5. */
   const [soMinhas, setSoMinhas] = useState(() => {
@@ -9718,29 +9758,12 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
   const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
 
+  /* O menu de perfil e' um Popover do DS: fecha clicando em qualquer lugar
+     e com Esc, sem listener caseiro. */
   const [menuPerfil, setMenuPerfil] = useState(false);
-  /* Fecha clicando em QUALQUER lugar, e com Esc. Antes so' fechava
-     clicando de novo no proprio perfil — ninguem procura o botao que
-     abriu pra fechar, procura o vazio ao lado. */
   const menuRef = useRef(null);
-  const perfilRef = useRef(null);
-  useEffect(() => {
-    if (!menuPerfil) return;
-    const fora = (e) => {
-      if (menuRef.current?.contains(e.target) || perfilRef.current?.contains(e.target)) return;
-      setMenuPerfil(false);
-    };
-    const esc = (e) => { if (e.key === "Escape") setMenuPerfil(false); };
-    document.addEventListener("mousedown", fora);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("mousedown", fora);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [menuPerfil]);
   const euNaEquipe = (equipe || []).find((p) => p.email === usuario) || null;
   const meuNome = euNaEquipe?.nome || nomeDoEmail(usuario);
-  const fotoRef = useRef(null);
   const [subindoFoto, setSubindoFoto] = useState(false);
   const [erroFoto, setErroFoto] = useState(null);
   const [verDados, setVerDados] = useState(false);
@@ -9761,8 +9784,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     if (!file || !onTrocarFoto) return;
     setErroFoto(null);
     /* O menu sai de cena: o recortador ocupa a tela, e o menuzinho atras
-       dele seria ruido. Some tambem o problema de o "fecha ao clicar
-       fora" do menu contar cada clique DENTRO do recortador como fora. */
+       dele seria ruido. */
     /* Barra antes de abrir a janela, olhando o CONTEUDO.
 
        Checar so' o nome nao bastava: o caso real dela chegou como
@@ -9828,76 +9850,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_SIDEBAR, painelEscondido ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [painelEscondido]);
 
-  /* O rotulo do hover no trilho.
-
-     Um listener so', delegado, em vez de handler em cada botao. Ele le o
-     proprio `title` — que ja existe e ja esta certo em todos — e tira o
-     atributo enquanto o mouse esta em cima, pra nao aparecerem dois rotulos:
-     o meu e o do navegador, que demora um segundo e fica por cima.
-
-     Agora vale pro trilho inteiro, e nao so' pra barra recolhida: no trilho
-     TODO destino e' icone sem rotulo. Foi assim que a Equipe ficou impossivel
-     de achar na versao antiga — existia, no sexto icone, sem nome em lugar
-     nenhum ate' alguem abrir o grupo. */
-  const [dica, setDica] = useState(null);
   const barraRef = useRef(null);
-
-  useEffect(() => {
-    const el = barraRef.current;
-    if (!el) { setDica(null); return; }
-    let alvo = null;
-
-    const entrar = (e) => {
-      /* AINDA DENTRO DO MESMO DESTINO: nada a fazer.
-
-         Esta linha parece redundante e nao e'. Ao mostrar a dica eu TIRO o
-         `title` do botao, pra dica do navegador nao aparecer por cima da
-         minha. So' que dai o botao deixa de ser achavel por
-         `closest("[title]")` — entao mexer o mouse de um pixel dentro dele
-         (ou passar por cima do icone) caia na limpeza abaixo, a dica sumia,
-         o `title` voltava, e o proximo mouseover a trazia de novo. Relato
-         dela em 20/09/2026: "quando eu passo o mouse em cima dos botoes ele
-         fica piscando". */
-      if (alvo && alvo.contains(e.target)) return;
-      const b = e.target.closest("[title]");
-      /* SAIR DO TRILHO PRO PAINEL NAO E' SAIR DA BARRA: o painel e' filho
-         dela, entao o `mouseleave` la' de baixo nunca chega. Sem limpar
-         aqui, a dica ficava colada sobre a lista de obras — e o caminho que
-         faz isso e' o de todo dia: clicar em Obras e escorregar pra direita
-         pra escolher uma. Ela parava bem em cima do bloco de novas obras. */
-      if (!b || !el.contains(b) || !b.closest(".trilho")) { if (alvo) sair(); return; }
-      if (b === alvo) return;
-      sair();
-      const t = b.getAttribute("title");
-      if (!t) return;
-      alvo = b;
-      b.dataset.tituloGuardado = t;
-      b.removeAttribute("title");
-      const r = b.getBoundingClientRect();
-      setDica({ texto: t, x: r.right + 10, y: r.top + r.height / 2 });
-    };
-    const sair = () => {
-      if (alvo?.dataset.tituloGuardado) {
-        alvo.setAttribute("title", alvo.dataset.tituloGuardado);
-        delete alvo.dataset.tituloGuardado;
-      }
-      alvo = null;
-      setDica(null);
-    };
-
-    el.addEventListener("mouseover", entrar);
-    el.addEventListener("mouseleave", sair);
-    window.addEventListener("scroll", sair, true);
-    return () => {
-      el.removeEventListener("mouseover", entrar);
-      el.removeEventListener("mouseleave", sair);
-      window.removeEventListener("scroll", sair, true);
-      sair();
-    };
-    /* Lista vazia NAO serve: sem ela o efeito se reinstala a cada render — e
-       mostrar a dica E' um render. A limpeza rodava logo em seguida e apagava
-       a dica que tinha acabado de aparecer. */
-  }, []);
 
   const [search, setSearch] = useState("");
 
@@ -9926,33 +9879,34 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   /* Escolhida a obra, o primeiro clique fora da barra recolhe o painel.
 
      A lista ja' cumpriu o papel dela: quem escolheu a obra vai trabalhar
-     na obra, e o painel fica ocupando 280px do que a pessoa foi ler.
+     na obra, e o painel fica ocupando 240px do que a pessoa foi ler.
 
-     "click", e NAO "mousedown". Os menus deste arquivo ouvem mousedown de
-     proposito — ali o clique atras nao deve acontecer. Aqui e' o
-     contrario: recolher no mousedown tirava o painel e jogava o conteudo
-     280px pra esquerda ANTES do mouseup, entao o alvo fugia de baixo do
-     cursor e o clique se perdia. Relato dela: "clico em Planejamento, ele
-     recolhe a tela e eu tenho que clicar em Planejamento novamente".
-     Ouvindo o click, o alvo resolve o dele primeiro e o painel recolhe
-     depois.
+     "click", e NAO "mousedown". Recolher no mousedown tirava o painel e
+     jogava o conteudo pra esquerda ANTES do mouseup, entao o alvo fugia de
+     baixo do cursor e o clique se perdia. Relato dela: "clico em
+     Planejamento, ele recolhe a tela e eu tenho que clicar em Planejamento
+     novamente". Ouvindo o click, o alvo resolve o dele primeiro e o painel
+     recolhe depois.
 
      UMA VEZ POR OBRA, e nao a cada clique. Se ela reabrir a lista pelo
      botao de dobrar, e' porque quer a lista aberta — recolher de novo no
      proximo clique seria o app discutindo com ela. O recolher volta a
-     valer quando outra obra for escolhida. */
+     valer quando outra obra for escolhida.
+
+     So' na barra fixa: no Sheet, escolher a obra ja' fecha a barra inteira. */
   const recolhidoPor = useRef(null);
   useEffect(() => {
-    if (!temPainel || !selected) return;
+    if (!largo || !temPainel || !selected) return;
     if (recolhidoPor.current === selected) return;
     const fora = (e) => {
       if (barraRef.current && barraRef.current.contains(e.target)) return;
+      if (menuRef.current && menuRef.current.contains(e.target)) return;
       recolhidoPor.current = selected;
       setPainelEscondido(true);
     };
     document.addEventListener("click", fora);
     return () => document.removeEventListener("click", fora);
-  }, [temPainel, selected]);
+  }, [largo, temPainel, selected]);
 
   const noTrilho = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
   const destinosTopo = noTrilho.filter((m) => !DESTINOS_NO_PE.has(m.id));
@@ -9963,146 +9917,268 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   const finalizadasNoPainel = modulos.find((m) => m.id === "arquivo");
 
   const badgeDoDestino = (m) => (m.id === "equipe" && pendentesCount > 0
-    ? <span className="trilho-badge espera">{pendentesCount}</span>
+    ? <Contador tom="warning" className="absolute right-2 top-1">{pendentesCount}</Contador>
     : null);
 
   const botaoDestino = (m) => (
-    <Button variant="ghost" key={m.id} className={`trilho-item ${modulo === m.id ? "ativo" : ""}`}
-      onClick={() => onModulo(m.id)} title={m.nome}>
+    <ItemTrilho key={m.id} rotulo={m.nome} ativo={modulo === m.id} semPainel={!temPainel} onClick={() => irPara(m.id)}>
       <m.Icone size={18} />
       {badgeDoDestino(m)}
-    </Button>
+    </ItemTrilho>
   );
 
+  /* O NOME DA OBRA NUNCA CORTA — pedido dela em 19/09/2026: "nunca corte o
+     nome da obra, sempre mostre tudo". Quem cede e' a ALTURA, nao o texto.
+     Por isso o alinhamento vai pro topo: o codigo fica na primeira linha e
+     o nome desce. */
   const linhaDaObra = (o, comSimbolo) => {
     const alertas = obraAlertCount(o);
     const trava = travas?.get?.(String(o.codigo)) || null;
+    const ativa = selected === o.id;
     return (
-      <Button variant="ghost" key={o.id} className={`obra-linha ${selected === o.id ? "ativa" : ""} ${comSimbolo ? "" : "sem-simbolo"}`}
-        onClick={() => onSelect(o.id)} title={`#${o.codigo} · ${o.nome}`}>
+      <Button variant="ghost" key={o.id}
+        className={cn("h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-md border-l-2 border-transparent px-2 py-1 text-left font-normal",
+          ativa && "border-brand bg-brand-soft", !comSimbolo && "pl-6")}
+        onClick={() => escolherObra(o.id)} title={`#${o.codigo} · ${o.nome}`} aria-current={ativa ? "true" : undefined}>
         {/* O simbolo do squad so' na lista por numero: no modo squad ele ja'
             esta' no cabecalho do grupo, e dize-lo duas vezes por obra era um
             dos defeitos da barra antiga. */}
-        {comSimbolo && <span className="obra-squad"><IconeSquad nome={o.squad || "Outras obras"} size={13} /></span>}
+        {comSimbolo && <span className={cn("flex h-4 w-3 shrink-0 items-center", ativa ? "text-brand" : "text-text-mute")}><IconeSquad nome={o.squad || "Outras obras"} size={13} /></span>}
         {/* O CODIGO PRIMEIRO. E' assim que a equipe fala — ninguem diz "Ed.
             Sixteen, 502", todo mundo diz "a 2597" — e e' o numero que aparece
             em pedido, contrato, Sienge e aditivo. */}
-        <span className="obra-cod mono">{o.codigo}</span>
-        <span className="obra-nome">{o.nome}</span>
-        {trava && <Lock size={11} className="obra-trava" />}
-        {alertas > 0 && <span className="obra-badge">{alertas}</span>}
+        <span className={cn("mono shrink-0 text-xs leading-4", ativa ? "text-brand" : "text-text")}>{o.codigo}</span>
+        <span className={cn("min-w-0 break-words text-xs leading-4", ativa ? "text-text" : "text-text-soft")}>{o.nome}</span>
+        {trava && <Lock size={11} className="ml-auto mt-1 shrink-0 text-warning" />}
+        {alertas > 0 && <Contador tom="danger" className={cn("mt-1", trava ? "ml-1" : "ml-auto")}>{alertas}</Contador>}
       </Button>
     );
   };
 
-  return (
-    <aside className={`barra ${temPainel ? "" : "sem-painel"}`} ref={barraRef}>
-      {dica && (
-        <div className="dica-lateral" style={{ left: dica.x, top: dica.y, transform: "translateY(-50%)" }}>
-          {dica.texto}
-        </div>
-      )}
+  const trilho = (
+    <nav className="flex w-14 shrink-0 flex-col items-center border-r border-line-1 bg-surface-3 py-2" aria-label="Módulos">
+      {destinosTopo.map((m) => (
+        m.id === "inicio" ? (
+          <React.Fragment key={m.id}>
+            {botaoDestino(m)}
+            {/* Quem nao abre obra (Mehoo, Canal de compra) nao tem este
+                destino: a tela dele e' o painel proprio, inteiro. */}
+            {mostrarObras && (
+              /* CLICAR EM "OBRAS" SO' MOSTRA — nunca esconde.
+                 Relato dela em 19/09/2026 sobre a barra antiga: "depois que
+                 eu entrar na obra, no primeiro clique dentro a barra da
+                 sidebar recolhe". Era o botao "Obras" dobrando a lista: a
+                 pessoa clica em Obras esperando VER as obras, e some tudo.
+                 Esconder tem botao proprio, no pe do trilho. */
+              <ItemTrilho rotulo="Obras" ativo={naObra} semPainel={!temPainel}
+                onClick={() => {
+                  setPainelEscondido(false);
+                  if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id);
+                }}
+                disabled={!obras.length}>
+                {/* CAPACETE, e nao predio (escolha dela, 19/09/2026): num app
+                    de obra tudo e' predio, entao o predio nao distinguia
+                    nada. Em portugues, capacete quer dizer obra sem precisar
+                    pensar, e nenhuma outra tela usa esse simbolo. */}
+                <HardHat size={18} />
+              </ItemTrilho>
+            )}
+          </React.Fragment>
+        ) : botaoDestino(m)
+      ))}
 
-      <nav className="trilho">
-        {destinosTopo.map((m) => (
-          m.id === "inicio" ? (
-            <React.Fragment key={m.id}>
-              {botaoDestino(m)}
-              {/* Quem nao abre obra (Mehoo, Canal de compra) nao tem este
-                  destino: a tela dele e' o painel proprio, inteiro. */}
-              {mostrarObras && (
-                /* CLICAR EM "OBRAS" SO' MOSTRA — nunca esconde.
-                   Relato dela em 19/09/2026 sobre a barra antiga: "depois que
-                   eu entrar na obra, no primeiro clique dentro a barra da
-                   sidebar recolhe". Era o botao "Obras" dobrando a lista: a
-                   pessoa clica em Obras esperando VER as obras, e some tudo.
-                   Eu tinha repetido a armadilha aqui, com o padrao de
-                   "clicar no ativo alterna". Esconder tem botao proprio, no
-                   pe do trilho. */
-                <Button variant="ghost" className={`trilho-item ${naObra ? "ativo" : ""}`} title="Obras"
-                  onClick={() => {
-                    setPainelEscondido(false);
-                    if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id);
-                  }}
-                  disabled={!obras.length}>
-                  {/* CAPACETE, e nao predio (escolha dela, 19/09/2026): num app
-                      de obra tudo e' predio, entao o predio nao distinguia
-                      nada. Em portugues, capacete quer dizer obra sem precisar
-                      pensar, e nenhuma outra tela usa esse simbolo. */}
-                  <HardHat size={18} />
-                </Button>
-              )}
-            </React.Fragment>
-          ) : botaoDestino(m)
-        ))}
-
-        <div className="trilho-pe">
-          {/* Esconder o painel e' decisao sobre a BARRA, entao mora na barra —
-              e e' o unico jeito de esconder, pra clicar num destino nunca
-              tirar nada da tela. So' aparece quando ha' painel pra esconder. */}
-          {mostrarObras && naObra && (
-            <Button variant="ghost" className="trilho-item trilho-dobrar" title={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}
-              onClick={() => setPainelEscondido((v) => !v)}>
-              {painelEscondido ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+      <div className="mt-auto flex w-full flex-col items-center gap-1 border-t border-line-1 pt-2">
+        {/* Esconder o painel e' decisao sobre a BARRA, entao mora na barra —
+            e e' o unico jeito de esconder, pra clicar num destino nunca
+            tirar nada da tela. So' aparece quando ha' painel pra esconder. */}
+        {mostrarObras && naObra && (
+          <ItemTrilho rotulo={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}
+            onClick={() => setPainelEscondido((v) => !v)}>
+            {painelEscondido ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </ItemTrilho>
+        )}
+        {destinosPe.map(botaoDestino)}
+        <Popover open={menuPerfil} onOpenChange={setMenuPerfil}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-auto w-full rounded-none py-1"
+              title={meuNome || usuario || "Não identificado"} aria-label={meuNome || usuario || "Não identificado"}>
+              <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
             </Button>
-          )}
-          {destinosPe.map(botaoDestino)}
-          <Button variant="ghost" ref={perfilRef} className={`trilho-perfil ${menuPerfil ? "aberto" : ""}`}
-            onClick={() => setMenuPerfil((v) => !v)} title={meuNome || usuario || "Não identificado"} aria-label={meuNome || usuario || "Não identificado"}>
-            <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
-          </Button>
-        </div>
-      </nav>
-
-      {menuPerfil && (
-        <div className="perfil-menu perfil-menu-trilho" ref={menuRef}>
-          <div className="perfil-cab">
-            {/* A propria foto e' o botao de trocar. Um terceiro item de
-                menu chamado "Trocar foto" diria o que a foto ali ja diz,
-                e o pedido era um menu pequeno. */}
-            <Button variant="ghost" className="perfil-foto" disabled={subindoFoto || !onTrocarFoto}
-              onClick={() => fotoRef.current && fotoRef.current.click()}
-              title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"} aria-label={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
-              <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-md" />
-              <span className="perfil-foto-capa"><Camera size={14} /></span>
-            </Button>
-            {/* So' o que o navegador decodifica. Com image/* o seletor do
-                Mac oferecia HEIC, e HEIC vira tela preta. */}
-            <input ref={fotoRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only"
-              onChange={aoEscolherFoto} />
-            <div className="perfil-cab-txt">
-              <div className="perfil-cab-nome">{meuNome || "Não identificado"}</div>
-              <div className="perfil-cab-email">{usuario || "sem sessão"}</div>
-            </div>
-          </div>
-          {subindoFoto && <div className="perfil-aviso">Enviando a foto…</div>}
-          {erroFoto && <div className="perfil-aviso erro">{erroFoto}</div>}
-          <div className="perfil-sep" />
-          <Button variant="ghost" className="perfil-item" onClick={() => setVerDados((v) => !v)} aria-expanded={verDados}>
-            <UserRound size={14} /> Meus dados
-            <ChevronDown size={13} className={`perfil-seta ${verDados ? "aberta" : ""}`} />
-          </Button>
-          {/* Em LEITURA. Quem edita pessoa e' quem cuida da Equipe; a
-              unica coisa que a pessoa muda em si mesma e' a foto. */}
-          {verDados && (
-            <div className="perfil-dados">
-              {/* Sem cargo nem perfil: pedido dela em 19/09/2026. */}
-              <div><span>Nome</span><b>{meuNome || "—"}</b></div>
-              <div><span>E-mail</span><b>{usuario || "—"}</b></div>
-              {euNaEquipe?.foto && (
-                <Button variant="ghost" className="perfil-tirar-foto" onClick={removerFoto} disabled={subindoFoto}>
-                  <Trash2 size={12} /> Remover a foto
-                </Button>
-              )}
-              <div className="perfil-dados-nota">
-                O nome é alterado por quem cuida da Equipe.
+          </PopoverTrigger>
+          <PopoverContent ref={menuRef} side="right" align="end" className="w-64 p-2">
+            <div className="flex items-center gap-3 p-2">
+              {/* A propria foto e' o botao de trocar. Um terceiro item de
+                  menu chamado "Trocar foto" diria o que a foto ali ja diz,
+                  e o pedido era um menu pequeno. A capa da camera so'
+                  aparece no hover: uma camera permanente em cima do rosto
+                  da pessoa nao e' um retrato. */}
+              <Button asChild variant="ghost" size="icon" className={cn("group relative h-10 w-10 shrink-0 cursor-pointer rounded-full p-0", (subindoFoto || !onTrocarFoto) && "cursor-default opacity-50")}>
+                <label title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"} aria-label={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
+                  <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-md" />
+                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-text/60 text-bg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><Camera size={14} /></span>
+                  {/* So' o que o navegador decodifica. Com image/* o seletor do
+                      Mac oferecia HEIC, e HEIC vira tela preta. */}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only"
+                    disabled={subindoFoto || !onTrocarFoto} onChange={aoEscolherFoto} />
+                </label>
+              </Button>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold">{meuNome || "Não identificado"}</div>
+                <div className="truncate text-xs text-text-mute">{usuario || "sem sessão"}</div>
               </div>
             </div>
-          )}
-          <Button variant="ghost" className="perfil-sair" onClick={onSair}>
-            <LogOut size={14} /> Sair
+            {subindoFoto && <p className="px-2 pb-2 text-xs text-text-mute">Enviando a foto…</p>}
+            {erroFoto && <p className="px-2 pb-2 text-xs text-danger">{erroFoto}</p>}
+            <Separator className="my-1" />
+            <Collapsible open={verDados} onOpenChange={setVerDados}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
+                  <UserRound size={14} /> Meus dados
+                  <ChevronDown size={13} className={cn("ml-auto transition-transform", verDados && "rotate-180")} />
+                </Button>
+              </CollapsibleTrigger>
+              {/* Em LEITURA. Quem edita pessoa e' quem cuida da Equipe; a
+                  unica coisa que a pessoa muda em si mesma e' a foto. */}
+              <CollapsibleContent>
+                <dl className="space-y-1 px-2 pb-2 text-xs">
+                  {/* Sem cargo nem perfil: pedido dela em 19/09/2026. */}
+                  <div className="flex justify-between gap-2"><dt className="shrink-0 text-text-mute">Nome</dt><dd className="truncate font-semibold">{meuNome || "—"}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="shrink-0 text-text-mute">E-mail</dt><dd className="truncate font-semibold">{usuario || "—"}</dd></div>
+                </dl>
+                {euNaEquipe?.foto && (
+                  <Button variant="ghost" size="sm" className="gap-1 text-danger" onClick={removerFoto} disabled={subindoFoto}>
+                    <Trash2 size={12} /> Remover a foto
+                  </Button>
+                )}
+                <p className="px-2 pb-2 text-xs italic text-text-mute">
+                  O nome é alterado por quem cuida da Equipe.
+                </p>
+              </CollapsibleContent>
+            </Collapsible>
+            <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={onSair}>
+              <LogOut size={14} /> Sair
+            </Button>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </nav>
+  );
+
+  const painel = temPainel && (
+    <div className="flex min-h-0 w-60 shrink-0 flex-col border-r border-line-1 bg-surface-1 p-3 pb-0">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-sm">Obras <span className="mono text-xs text-text-mute">{obras.length}</span></span>
+        {/* Dois modos, dois botoes. Nao e' um filtro: os dois mostram a
+            lista inteira, muda so' a ordem de leitura. */}
+        <ToggleGroup type="single" size="sm" value={modo} onValueChange={(v) => { if (v) setModo(v); }} aria-label="Ordem da lista">
+          <ToggleGroupItem value="numero" title="Todas as obras em ordem de número">número</ToggleGroupItem>
+          <ToggleGroupItem value="squad" title="As obras agrupadas por squad">squad</ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
+      {/* AS NOVAS OBRAS NO TOPO, antes da busca.
+          Estavam no pe' e ela reparou: "achei muito pequeno no final da
+          tela, pode passar despercebido". O problema era POSICAO, nao
+          tamanho — o fim de uma lista e' onde as coisas vao pra ser
+          ignoradas. O numero vem antes do rotulo porque e' ele que faz
+          reparar. E so' aparece quando ha' novas: zero obra esperando nao
+          ocupa o topo de nada.
+
+          Com isto o painel le' na ordem da vida de uma obra: as que vao
+          comecar, as que estao em andamento, as que terminaram. */}
+      {novasNoPainel && novasCount > 0 && (
+        <Button variant="outline" size="sm" className={cn("mb-2 w-full justify-start gap-2 border-brand text-brand", modulo === "novas" && "bg-brand-soft")}
+          onClick={() => irPara("novas")} title={novasNoPainel.sub}>
+          <novasNoPainel.Icone size={13} />
+          <span className="mono">{novasCount}</span>
+          <span>{novasCount === 1 ? "nova obra" : "novas obras"}</span>
+        </Button>
+      )}
+
+      <div className="mb-2 flex items-center gap-1">
+        {/* Curto de proposito: o painel e' estreito, e "Filtrar por nome,
+            código, cliente..." era cortado no meio da palavra. A lupa ja'
+            diz que e' filtro; o que falta dizer e' POR QUE se pode filtrar. */}
+        <Input icon={<Search size={14} />} placeholder="Nome, código ou cliente" aria-label="Buscar obra"
+          className="h-8 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} />
+        {search && <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setSearch("")} aria-label="Limpar busca"><X size={12} /></Button>}
+      </div>
+
+      <Toggle size="sm" pressed={soMinhas} onPressedChange={setSoMinhas} className="mb-2 gap-1 self-start text-xs"
+        title={usuario ? `Obras em que ${nomeDoEmail(usuario)} é o GC` : "Entre para filtrar pelas suas obras"}>
+        <ShieldCheck size={11} /> Minhas{nMinhas > 0 ? ` ${nMinhas}` : ""}
+      </Toggle>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+        {obras.length === 0 && (
+          <p className="px-2 py-3 text-xs text-text-mute">
+            Nenhuma obra iniciada ainda.
+            {novasCount > 0 && <> Veja <Button variant="ghost" size="sm" onClick={() => irPara("novas")}>Novas obras</Button>.</>}
+          </p>
+        )}
+        {obras.length > 0 && filtradas.length === 0 && <p className="px-2 py-3 text-xs text-text-mute">Nenhuma obra encontrada.</p>}
+
+        {modo === "numero"
+          ? filtradas.map((o) => linhaDaObra(o, true))
+          : squadsNaTela.map((nome) => (
+            <Collapsible key={nome} open={!fechados.has(nome)} onOpenChange={() => alternarSquad(nome)} className="mb-1">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-auto w-full justify-start gap-2 px-0 py-1 text-xs font-normal text-text-soft"
+                  title={fechados.has(nome) ? `Abrir ${nome}` : `Recolher ${nome}`}>
+                  <IconeSquad nome={nome} size={13} />
+                  <span className="min-w-0 truncate">{nome.replace(/^Squad\s+/i, "")}</span>
+                  <span className="mono text-xs text-text-mute">{porSquad[nome].length}</span>
+                  {/* O ponto avisa que a obra aberta esta' ai dentro. */}
+                  {fechados.has(nome) && porSquad[nome].some((o) => o.id === selected) && (
+                    <span className="h-1 w-1 shrink-0 rounded-full bg-brand" title="A obra aberta está neste squad" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {porSquad[nome].map((o) => linhaDaObra(o, false))}
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
+      </div>
+
+      {/* O PE DO PAINEL, na ordem da vida da obra: as que ainda nao
+          comecaram, e as que ja' terminaram. Sao obras, entao moram aqui
+          e nao no trilho (pedido dela, 19/09/2026). */}
+      {finalizadasNoPainel && (
+        <div className="-mx-3 shrink-0 border-t border-line-1 px-3 py-2">
+          <Button variant="ghost" size="sm" className={cn("w-full justify-start gap-2 text-xs", modulo === "arquivo" && "bg-brand-soft text-brand")}
+            onClick={() => irPara("arquivo")} title={finalizadasNoPainel.sub}>
+            <finalizadasNoPainel.Icone size={14} />
+            <span>{finalizadasNoPainel.nome}</span>
+            {arquivoCount > 0 && <Contador tom="neutral" className="ml-auto">{arquivoCount}</Contador>}
           </Button>
         </div>
+      )}
+    </div>
+  );
+
+  const conteudo = (
+    <TooltipProvider delayDuration={200}>
+      {trilho}
+      {painel}
+    </TooltipProvider>
+  );
+
+  return (
+    <>
+      {largo ? (
+        /* A altura (100vh - topo) mora na regra .barra do <style>: e' a unica
+           medida que o Tailwind nao expressa sem valor arbitrario. */
+        <aside className="barra naoimprime sticky top-16 flex shrink-0" ref={barraRef}>
+          {conteudo}
+        </aside>
+      ) : (
+        <Sheet open={aberta} onOpenChange={(open) => { if (!open && onFechar) onFechar(); }}>
+          <SheetContent side="left" className="flex w-80 max-w-full flex-row gap-0 p-0" ref={barraRef}>
+            <SheetTitle className="sr-only">Menu</SheetTitle>
+            {conteudo}
+          </SheetContent>
+        </Sheet>
       )}
 
       {fotoEscolhida && (
@@ -10110,105 +10186,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           onCancelar={() => { setFotoEscolhida(null); setMenuPerfil(true); }}
           onConfirmar={confirmarRecorte} />
       )}
-
-      {temPainel && (
-        <div className="painel">
-          <div className="painel-cab">
-            <span className="painel-nome">Obras <span className="painel-conta mono">{obras.length}</span></span>
-            {/* Dois modos, dois links. Nao e' um filtro: os dois mostram a
-                lista inteira, muda so' a ordem de leitura. */}
-            <span className="painel-modos">
-              <Button variant="ghost" className={modo === "numero" ? "on" : ""} onClick={() => setModo("numero")}
-                title="Todas as obras em ordem de número">número</Button>
-              <span className="painel-modos-sep">|</span>
-              <Button variant="ghost" className={modo === "squad" ? "on" : ""} onClick={() => setModo("squad")}
-                title="As obras agrupadas por squad">squad</Button>
-            </span>
-          </div>
-
-          {/* AS NOVAS OBRAS NO TOPO, antes da busca.
-              Estavam no pe' e ela reparou: "achei muito pequeno no final da
-              tela, pode passar despercebido". O problema era POSICAO, nao
-              tamanho — o fim de uma lista e' onde as coisas vao pra ser
-              ignoradas. Fonte normal, escolha dela: o destaque vem do lugar e
-              do fundo, nao do corpo da letra.
-
-              O numero vem antes do rotulo porque e' ele que faz reparar. E so'
-              aparece quando ha' novas: zero obra esperando nao ocupa o topo de
-              nada.
-
-              Com isto o painel le' na ordem da vida de uma obra: as que vao
-              comecar, as que estao em andamento, as que terminaram. */}
-          {novasNoPainel && novasCount > 0 && (
-            <Button variant="ghost" className={`painel-novas ${modulo === "novas" ? "ativo" : ""}`}
-              onClick={() => onModulo("novas")} title={novasNoPainel.sub}>
-              <novasNoPainel.Icone size={13} />
-              <span className="painel-novas-n mono">{novasCount}</span>
-              <span>{novasCount === 1 ? "nova obra" : "novas obras"}</span>
-            </Button>
-          )}
-
-          <div className="obra-search painel-busca">
-            <Search size={13} className="dim" />
-            {/* Curto de proposito: o painel tem 232px, e "Filtrar por nome,
-                código, cliente..." era cortado no meio da palavra — "clie".
-                A lupa ao lado ja' diz que e' filtro; o que falta dizer e' POR
-                QUE se pode filtrar. */}
-            <input placeholder="Nome, código ou cliente" value={search} onChange={(e) => setSearch(e.target.value)} />
-            {search && <Button variant="ghost" size="icon" onClick={() => setSearch("")} aria-label="Limpar busca"><X size={12} /></Button>}
-          </div>
-
-          <Button variant="ghost" className={`painel-minhas ${soMinhas ? "on" : ""}`} onClick={() => setSoMinhas((v) => !v)}
-            title={usuario ? `Obras em que ${nomeDoEmail(usuario)} é o GC` : "Entre para filtrar pelas suas obras"}>
-            <ShieldCheck size={11} /> Minhas{nMinhas > 0 ? ` ${nMinhas}` : ""}
-          </Button>
-
-          <div className="painel-lista">
-            {obras.length === 0 && (
-              <div className="no-results">
-                Nenhuma obra iniciada ainda.
-                {novasCount > 0 && <> Veja <Button variant="ghost" size="sm" onClick={() => onModulo("novas")}>Novas obras</Button>.</>}
-              </div>
-            )}
-            {obras.length > 0 && filtradas.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
-
-            {modo === "numero"
-              ? filtradas.map((o) => linhaDaObra(o, true))
-              : squadsNaTela.map((nome) => (
-                <div key={nome} className="squad-bloco">
-                  <Button variant="ghost" className="squad-cab" onClick={() => alternarSquad(nome)}
-                    title={fechados.has(nome) ? `Abrir ${nome}` : `Recolher ${nome}`}>
-                    <IconeSquad nome={nome} size={13} />
-                    <span className="squad-cab-nome">{nome.replace(/^Squad\s+/i, "")}</span>
-                    <span className="squad-cab-conta mono">{porSquad[nome].length}</span>
-                    {/* O ponto avisa que a obra aberta esta' ai dentro. */}
-                    {fechados.has(nome) && porSquad[nome].some((o) => o.id === selected) && (
-                      <span className="squad-tem-aberta" title="A obra aberta está neste squad" />
-                    )}
-                  </Button>
-                  {!fechados.has(nome) && porSquad[nome].map((o) => linhaDaObra(o, false))}
-                </div>
-              ))}
-          </div>
-
-          {/* O PE DO PAINEL, na ordem da vida da obra: as que ainda nao
-              comecaram, e as que ja' terminaram. Sao obras, entao moram aqui
-              e nao no trilho (pedido dela, 19/09/2026). */}
-          {finalizadasNoPainel && (
-            <div className="painel-pe">
-              {finalizadasNoPainel && (
-                <Button variant="ghost" className={`painel-pe-item ${modulo === "arquivo" ? "ativo" : ""}`}
-                  onClick={() => onModulo("arquivo")} title={finalizadasNoPainel.sub}>
-                  <finalizadasNoPainel.Icone size={14} />
-                  <span>{finalizadasNoPainel.nome}</span>
-                  {arquivoCount > 0 && <span className="painel-pe-conta neutro">{arquivoCount}</span>}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </aside>
+    </>
   );
 }
 
@@ -10526,48 +10504,57 @@ const ETAPAS_QUE_ABREM_COM_COMPRA = new Set(["comparativo", "compras"]);
 function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
   const etapas = ETAPAS_POR_GRUPO[grupo] || [];
 
+  /* activationMode manual: a aba so' muda no clique (ou Enter), nunca ao
+     passar o foco com as setas — e' assim que o app sempre se comportou. */
   return (
-    <div className="nav-obra">
-      <div className="nav-grupos">
-        {GRUPOS_OBRA.map((g) => {
-          const Icon = g.icon;
-          const lista = ETAPAS_POR_GRUPO[g.id];
-          const feitas = lista ? lista.filter((e) => etapaConcluida(e.id, obra)).length : 0;
-          return (
-            <Button variant="ghost" key={g.id} className={`nav-grupo ${grupo === g.id ? "active" : ""}`} onClick={() => onGrupo(g.id)}>
-              <Icon size={15} /> {g.label}
-              {lista && <span className="nav-grupo-progresso">{feitas}/{lista.length}</span>}
-            </Button>
-          );
-        })}
-      </div>
+    <div className="naoimprime mb-4 space-y-2">
+      <Tabs value={grupo} onValueChange={onGrupo} activationMode="manual">
+        <div className="overflow-x-auto">
+          <TabsList variant="pill" className="w-max" aria-label="Áreas da obra">
+            {GRUPOS_OBRA.map((g) => {
+              const Icon = g.icon;
+              const lista = ETAPAS_POR_GRUPO[g.id];
+              const feitas = lista ? lista.filter((e) => etapaConcluida(e.id, obra)).length : 0;
+              return (
+                <TabsTrigger key={g.id} value={g.id} className="gap-2 whitespace-nowrap">
+                  <Icon size={15} /> {g.label}
+                  {lista && <span className="mono text-xs opacity-80">{feitas}/{lista.length}</span>}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </div>
+      </Tabs>
 
       {etapas.length > 0 && (
-        <div className="tabbar">
-          {etapas.map((t, i) => {
-            const Icon = t.icon;
-            const feita = etapaConcluida(t.id, obra);
-            // Travada enquanto a etapa anterior nao foi cumprida: a esteira
-            // so anda pra frente, e pular etapa e o que gera compra sem
-            // conferencia.
-            const anterior = etapas[i - 1];
-            const travada = grupo === "planejamento" && anterior
-              && !ETAPAS_SEM_TRAVA_DE_ORDEM.has(t.id)
-              && !etapaConcluida(anterior.id, obra)
-              // Com item aprovado pra compra, as telas da compra abrem.
-              && !(ETAPAS_QUE_ABREM_COM_COMPRA.has(t.id) && temCompraAprovada(obra));
-            return (
-              <Button variant="ghost" key={t.id}
-                className={`tab ${tab === t.id ? "active" : ""} ${feita ? "feita" : ""} ${travada ? "travada" : ""}`}
-                onClick={() => onChange(t.id)}
-                title={travada ? `Conclua "${anterior.label}" primeiro` : undefined}>
-                {feita ? <CheckCircle2 size={14} className="tab-check" /> : <Icon size={14} />}
-                {t.label}
-                {travada && <Lock size={11} className="dim" />}
-              </Button>
-            );
-          })}
-        </div>
+        <Tabs value={tab ?? ""} onValueChange={onChange} activationMode="manual">
+          <div className="overflow-x-auto">
+            <TabsList variant="underline" className="w-max min-w-full" aria-label="Etapas">
+              {etapas.map((t, i) => {
+                const Icon = t.icon;
+                const feita = etapaConcluida(t.id, obra);
+                // Travada enquanto a etapa anterior nao foi cumprida: a esteira
+                // so anda pra frente, e pular etapa e o que gera compra sem
+                // conferencia.
+                const anterior = etapas[i - 1];
+                const travada = grupo === "planejamento" && anterior
+                  && !ETAPAS_SEM_TRAVA_DE_ORDEM.has(t.id)
+                  && !etapaConcluida(anterior.id, obra)
+                  // Com item aprovado pra compra, as telas da compra abrem.
+                  && !(ETAPAS_QUE_ABREM_COM_COMPRA.has(t.id) && temCompraAprovada(obra));
+                return (
+                  <TabsTrigger key={t.id} value={t.id}
+                    className={cn("gap-2 whitespace-nowrap", feita && "text-text-soft", travada && "opacity-50")}
+                    title={travada ? `Conclua "${anterior.label}" primeiro` : undefined}>
+                    {feita ? <CheckCircle2 size={14} className="text-success" /> : <Icon size={14} />}
+                    {t.label}
+                    {travada && <Lock size={11} className="text-text-mute" />}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </div>
+        </Tabs>
       )}
     </div>
   );
@@ -15901,11 +15888,15 @@ function fornecedoresDasObras(obras) {
 
 function GcTelas({ tela, onTela }) {
   return (
-    <div className="gc-telas">
-      <Button variant="ghost" className={`gc-chip ${tela === "painel" ? "on" : ""}`} onClick={() => onTela("painel")}>Painel</Button>
-      <Button variant="ghost" className={`gc-chip ${tela === "compradores" ? "on" : ""}`} onClick={() => onTela("compradores")}>Compradores</Button>
-      <Button variant="ghost" className={`gc-chip ${tela === "mao_propria" ? "on" : ""}`} onClick={() => onTela("mao_propria")}>Mão de obra própria</Button>
-    </div>
+    <Tabs value={tela} onValueChange={onTela} activationMode="manual" className="mb-4">
+      <div className="overflow-x-auto">
+        <TabsList variant="pill" className="w-max" aria-label="Telas da gestão de compras">
+          <TabsTrigger value="painel">Painel</TabsTrigger>
+          <TabsTrigger value="compradores">Compradores</TabsTrigger>
+          <TabsTrigger value="mao_propria">Mão de obra própria</TabsTrigger>
+        </TabsList>
+      </div>
+    </Tabs>
   );
 }
 
@@ -19739,6 +19730,8 @@ function BotaoApresentacao({ onAbrir, arquivo }) {
 
 export default function App() {
   const [obras, setObras] = useState([]);
+  /* Abaixo de lg a barra lateral abre num Sheet pelo botao de menu do topo. */
+  const [menuAberto, setMenuAberto] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   /* O endereco lido na abertura, esperando a lista de obras ficar completa
      pra ser aplicado. Mora aqui, perto da obra selecionada, porque o efeito
@@ -21778,137 +21771,34 @@ export default function App() {
         .center { text-align: center; }
         .right { text-align: right; }
 
-        .topbar { height: 64px; display: flex; align-items: center; gap: 24px; padding: 0 24px; background: var(--surface-1); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
-        .topbar-brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; background: none; border: none; font-family: inherit; padding: 4px 6px; margin-left: -6px; border-radius: 9px; cursor: pointer; }
-        .topbar-brand:hover { background: var(--panel); }
         .aviso-monday { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
         /* O margin-left auto porque quem empurrava esse bloco pra
            direita era a busca do meio, que tinha flex 1. Tirando a busca,
            ele foi junto encostar na marca. */
-        .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
         .icon-btn { width: 34px; height: 34px; border-radius: 8px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; color: var(--ink-2); cursor: pointer; position: relative; }
         .icon-btn:hover { background: var(--panel); }
-        .notif-dot { position: absolute; top: 3px; right: 3px; background: var(--red); color: var(--bg); font-size: 9px; font-weight: 700; width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
         .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--purple); color: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; }
 
-        .body-layout { display: flex; }
         /* Sem space-between: ele funcionava com dois filhos (lista e
            rodapé), mas o botão de recolher virou um terceiro — e aí o
            espaçamento automático empurrava a lista pro meio da tela,
            deixando um vazio enorme embaixo do botão.
            Agora quem ocupa a sobra é a lista, explicitamente. */
-        /* ============================================================
-           A BARRA: TRILHO + PAINEL  (19/09/2026)
+        /* A BARRA (trilho + painel) e' Tailwind + componentes do DS dentro
+           do proprio Sidebar. So' a altura mora aqui: 100vh menos o topo e'
+           a unica medida que o Tailwind nao expressa sem valor arbitrario. */
+        .barra { height: calc(100vh - 64px); }
 
-           Tres planos claros, e a ordem e' o contrario do costume: quase todo
-           app poe a barra em cinza e o conteudo em branco. Aqui o BRANCO E' A
-           LISTA de obras, porque ela e' texto que se le' — nao moldura.
-           Espinho cinza, lista branca, campo cinza.
-           ============================================================ */
-        .barra { display: flex; flex-shrink: 0; height: calc(100vh - 64px); position: sticky; top: 64px; }
-
-        .trilho { width: 56px; flex-shrink: 0; background: var(--surface-3); border-right: 1px solid var(--border-soft);
-                  display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
-        .trilho-item { position: relative; width: 100%; height: 40px; display: flex; align-items: center; justify-content: center;
-                       background: none; border: none; border-left: 2px solid transparent; color: var(--ink-3); cursor: pointer; }
-        .trilho-item:hover { color: var(--ink-1); }
-        .trilho-item:disabled { opacity: .35; cursor: default; }
-        /* O destino ativo veste a cor do que abriu a' direita: com painel ele
-           fica branco e se funde com a lista; sem painel, veste o campo. Em
-           vez de pintar a selecao, ela encosta no que abriu. */
-        .trilho-item.ativo { color: var(--brand); border-left-color: var(--brand); background: var(--card); }
-        .barra.sem-painel .trilho-item.ativo { background: var(--page); }
-        .trilho-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
-        .trilho-badge { position: absolute; top: 5px; right: 8px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
-                        background: var(--brand); color: #fff; font-size: 9.5px; font-weight: 600;
-                        display: flex; align-items: center; justify-content: center; }
-        .trilho-badge.espera { background: var(--amber); color: #3a2c00; }
-        .trilho-badge.neutro { background: var(--surface-4); color: var(--ink-2); }
-        .trilho-pe { margin-top: auto; width: 100%; padding-top: 8px; border-top: 1px solid var(--border-soft);
-                     display: flex; flex-direction: column; align-items: center; gap: 4px; }
-        .trilho-perfil { width: 100%; display: flex; justify-content: center; padding: 6px 0; background: none; border: none; cursor: pointer; }
-        /* O menu FLUTUA sobre a lista de obras.
-
-           Sem position, ele entrava como item flex da .barra (que e'
-           display:flex) e virava uma COLUNA de altura inteira, empurrando a
-           lista pro lado — os deslocamentos daqui ficavam inertes. A regra
-           que tinha o position era .sidebar.recolhida .perfil-menu, morta
-           desde que a barra virou .barra. A .barra e' sticky, e por isso
-           serve de referencia pro absolute.
-
-           Sem crase neste comentario: o bloco inteiro de estilo e' um
-           template literal, e uma crase aqui fecha a string e derruba o
-           build com um erro que aponta pra outro lugar. */
-        .perfil-menu-trilho { position: absolute; z-index: 40; width: 230px;
-                              left: 60px; bottom: 12px; top: auto; right: auto; }
-
-        .painel { width: 232px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border-soft);
-                  display: flex; flex-direction: column; min-height: 0; padding: 12px 12px 0; }
-        .painel-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-        .painel-nome { font-size: 13.5px; color: var(--ink); }
-        .painel-conta { font-size: 11px; color: var(--ink-3); margin-left: 3px; }
-        .painel-modos { display: inline-flex; align-items: center; gap: 5px; }
-        .painel-modos button { background: none; border: none; padding: 0; font-family: inherit; font-size: 11px; color: var(--ink-3); cursor: pointer; }
-        .painel-modos button:hover { color: var(--ink-1); }
-        .painel-modos button.on { color: var(--brand); }
-        .painel-modos-sep { color: var(--border); font-size: 11px; }
-        .painel-busca { margin-bottom: 8px; }
-        .painel-minhas { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 8px;
-                         background: none; border: 1px solid var(--border-soft); border-radius: 20px; padding: 3px 9px;
-                         font-family: inherit; font-size: 11px; color: var(--ink-3); cursor: pointer; }
-        .painel-minhas:hover { color: var(--ink-1); border-color: var(--border); }
-        .painel-minhas.on { color: var(--brand); border-color: var(--brand); background: var(--brand-soft); }
-        .painel-lista { flex: 1; overflow-y: auto; min-height: 0; margin: 0 -6px; padding: 0 6px 12px; }
 
         /* O NOME DA OBRA NUNCA CORTA — pedido dela em 19/09/2026: "nunca corte
            o nome da obra, sempre mostre tudo". Mesma regra do alerta da Conf.
            Executivo: quem cede e' a ALTURA, nao o texto. Por isso o alinhamento
            vai pro topo: o codigo fica na primeira linha e o nome desce. */
-        .obra-linha { width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 6px 7px; margin: 0 -7px;
-                      background: none; border: none; border-left: 2px solid transparent; border-radius: 6px;
-                      font-family: inherit; text-align: left; cursor: pointer; }
-        .obra-linha:hover { background: var(--panel); }
-        .obra-linha.ativa { background: var(--brand-soft); border-left-color: var(--brand); }
-        .obra-linha:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
-        .obra-squad { flex-shrink: 0; width: 13px; height: 17px; color: var(--ink-3); display: flex; align-items: center; }
-        .obra-linha.ativa .obra-squad { color: var(--brand); }
         /* O codigo e' a voz da linha: e' por ele que a obra e' chamada. */
-        .obra-cod { flex-shrink: 0; font-size: 12.5px; line-height: 1.38; color: var(--ink); }
-        .obra-linha.ativa .obra-cod { color: var(--brand); }
         .obra-nome { min-width: 0; font-size: 11.5px; line-height: 1.38; color: var(--ink-2); overflow-wrap: anywhere; }
-        .obra-linha.ativa .obra-nome { color: var(--ink); }
-        .obra-linha.sem-simbolo { padding-left: 25px; }
-        .obra-trava { flex-shrink: 0; margin-left: auto; margin-top: 2px; color: var(--amber); }
-        .obra-badge { flex-shrink: 0; margin-left: auto; margin-top: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
-                      background: var(--red); color: #fff; font-size: 9.5px; font-weight: 600;
-                      display: flex; align-items: center; justify-content: center; }
-        .obra-trava + .obra-badge { margin-left: 4px; }
 
-        .painel-novas { display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 8px;
-                        padding: 5px 8px; border: 1px solid var(--brand); border-radius: 6px;
-                        background: var(--brand-soft); color: var(--brand);
-                        font-family: inherit; font-size: 11.5px; text-align: left; cursor: pointer; }
-        .painel-novas:hover { background: var(--brand-bg, var(--brand-soft)); border-color: var(--brand-h); }
-        .painel-novas-n { font-size: 11.5px; }
-        .painel-novas:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 
-        .painel-pe { flex-shrink: 0; border-top: 1px solid var(--border-soft); margin: 0 -12px; padding: 6px 12px 8px; }
-        .painel-pe-item { width: 100%; display: flex; align-items: center; gap: 7px; padding: 5px 6px; margin: 0 -6px;
-                          background: none; border: none; border-radius: 6px; font-family: inherit; font-size: 11.5px;
-                          color: var(--ink-2); text-align: left; cursor: pointer; }
-        .painel-pe-item:hover { background: var(--panel); color: var(--ink-1); }
-        .painel-pe-item.ativo { color: var(--brand); background: var(--brand-soft); }
-        .painel-pe-conta { margin-left: auto; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
-                           background: var(--brand); color: #fff; font-size: 9.5px; font-weight: 600;
-                           display: flex; align-items: center; justify-content: center; }
-        .painel-pe-conta.neutro { background: var(--surface-4); color: var(--ink-2); }
 
-        .squad-bloco { margin-bottom: 6px; }
-        .squad-cab { width: 100%; display: flex; align-items: center; gap: 6px; padding: 6px 0 4px; background: none; border: none;
-                     font-family: inherit; font-size: 11px; color: var(--ink-2); cursor: pointer; text-align: left; }
-        .squad-cab:hover { color: var(--ink-1); }
-        .squad-cab-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .squad-cab-conta { font-size: 10px; color: var(--ink-3); }
 
         .sidebar { width: 288px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
         .sidebar-scroll { flex: 1; padding: 6px 14px 16px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
@@ -21947,8 +21837,6 @@ export default function App() {
            Este e' um elemento so', em position: fixed, posicionado pelo
            retangulo do botao sob o mouse. Fixed nao e' recortado por
            ancestral nenhum, que e' exatamente o problema a resolver. */
-        .dica-lateral { position: fixed; z-index: 200; background: var(--ink); color: var(--bg); border-radius: 7px; padding: 7px 11px; font-size: 11.5px; font-weight: 600; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-2); }
-        .dica-lateral::before { content: ""; position: absolute; left: -4px; top: 50%; margin-top: -4px; width: 8px; height: 8px; background: var(--ink); transform: rotate(45deg); }
 
         /* O simbolo do squad so' existe recolhida: aberta, o nome basta. */
         .squad-simbolo { display: none; }
@@ -21958,7 +21846,6 @@ export default function App() {
         .sidebar.recolhida .squad-group-label > .lucide,
         .sidebar.recolhida .squad-group-label > span:not(.squad-simbolo) { display: none; }
         .sidebar.recolhida .squad-simbolo { display: block; }
-        .squad-tem-aberta { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
 
         .squad-group-label span { text-align: left; }
 
@@ -22005,12 +21892,6 @@ export default function App() {
            conta de qualquer ferramenta: quem esta logado em cima, uma
            linha, e a saida discreta embaixo. Vermelho so' no hover — sair
            nao e' perigoso, e' so' sair. */
-        .perfil-menu { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow-3); padding: 6px; margin-bottom: 8px; }
-        .perfil-cab { display: flex; align-items: center; gap: 10px; padding: 9px 9px 10px; }
-        .perfil-cab-txt { min-width: 0; }
-        .perfil-cab-nome { font-size: 12.5px; font-weight: 700; color: var(--ink); }
-        .perfil-cab-email { font-size: 10.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
-        .perfil-sep { height: 1px; background: var(--border-soft); margin: 0 4px 5px; }
         /* RECORTADOR DA FOTO — sem crase neste bloco: o estilo inteiro e'
            um template literal, e uma crase aqui derruba o build. */
         .recorte-caixa { width: min(360px, 100%); }
@@ -22045,24 +21926,6 @@ export default function App() {
         .avatar-md { width: 40px; height: 40px; font-size: 13px; }
         /* A capa da camera so' aparece no hover: ela cobre a foto, e uma
            camera permanente em cima do rosto da pessoa nao e' um retrato. */
-        .perfil-foto { position: relative; background: none; border: none; padding: 0; cursor: pointer; border-radius: 50%; flex-shrink: 0; line-height: 0; }
-        .perfil-foto:disabled { cursor: default; }
-        .perfil-foto-capa { position: absolute; inset: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); color: #fff; opacity: 0; transition: opacity 0.12s ease; }
-        .perfil-foto:hover .perfil-foto-capa, .perfil-foto:focus-visible .perfil-foto-capa { opacity: 1; }
-        .perfil-aviso { font-size: 11px; color: var(--ink-3); padding: 0 9px 7px; }
-        .perfil-aviso.erro { color: var(--red); }
-        .perfil-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; text-align: left; }
-        .perfil-item:hover { background: var(--panel); }
-        .perfil-seta { margin-left: auto; transition: transform 0.12s ease; }
-        .perfil-seta.aberta { transform: rotate(180deg); }
-        .perfil-dados { padding: 2px 9px 8px; }
-        .perfil-dados > div { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; padding: 3px 0; }
-        .perfil-dados span { color: var(--ink-3); flex-shrink: 0; }
-        .perfil-dados b { color: var(--ink); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
-        .perfil-dados-nota { display: block !important; font-size: 10.5px; color: var(--ink-3); font-style: italic; margin-top: 5px; line-height: 1.35; text-align: left; }
-        .perfil-tirar-foto { display: flex !important; align-items: center; gap: 5px; background: none; border: none; padding: 5px 0 0; font-family: inherit; font-size: 11px; color: var(--red); cursor: pointer; }
-        .perfil-sair { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
-        .perfil-sair:hover { background: var(--red-bg); color: var(--red); }
 
         .profile:hover { background: var(--panel); }
         .avatar-sm { width: 28px; height: 28px; font-size: 10.5px; }
@@ -22129,11 +21992,9 @@ export default function App() {
         /* min-width: 0 — sem ele o flex deixa o main crescer até caber a
            tabela mais larga, e a tela inteira ganha rolagem de lado. As
            tabelas largas rolam dentro do próprio bloco. */
-        .main { flex: 1; min-width: 0; padding: 32px 40px 60px; max-width: 1260px; }
         /* Nas telas de planilha a largura é o próprio conteúdo: são 13
            colunas, e limitar em 1260px obrigava a rolar de lado pra ver
            o custo total — justamente a coluna que mais importa. */
-        .main.larga { max-width: none; }
         .eyebrow { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
         .obra-fictitious { margin-left: 8px; font-size: 10px; background: var(--panel); color: var(--ink-3); padding: 2px 8px; border-radius: 20px; text-transform: none; letter-spacing: 0; font-weight: 500; }
         .title-row { font-size: 30px; line-height: 1.15; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -22598,8 +22459,8 @@ export default function App() {
         @media (max-width: 1200px) { .ad-wrap { grid-template-columns: 1fr; } .ad-prev { position: static; } }
 
         @media print {
-          .naoimprime, .sidebar, .topbar, .nav-obra, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
-          .app, .body-layout, .main { background: #fff !important; padding: 0 !important; margin: 0 !important; display: block !important; }
+          .naoimprime, .sidebar, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
+          .app, .main { background: #fff !important; padding: 0 !important; margin: 0 !important; display: block !important; }
           .doc-escopo { border: none; box-shadow: none; border-radius: 0; max-width: none; padding: 0; margin: 0; }
           .doc-item, .doc-tab tr { break-inside: avoid; }
           .doc-h { break-after: avoid; }
@@ -23106,23 +22967,12 @@ export default function App() {
         .be-avancar:hover:not(:disabled) { filter: brightness(1.08); }
         .be-avancar:disabled { background: var(--border); color: var(--ink-3); cursor: default; }
 
-        .nav-obra { margin-bottom: 18px; }
         /* Respiro entre a navegação e o conteúdo dela. Coladas, a fila de
            etapas parecia parte do painel de baixo. */
-        .nav-obra + .resumo-label { margin-top: 0; }
-        .nav-grupos { display: flex; gap: 6px; border-bottom: 1px solid var(--border); padding: 0 2px; }
-        .nav-grupo { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; color: var(--ink-3); background: transparent; border: none; border-bottom: 2px solid transparent; padding: 11px 14px; margin-bottom: -1px; cursor: pointer; }
-        .nav-grupo:hover { color: var(--ink-1); }
-        .nav-grupo.active { color: var(--blue); border-bottom-color: var(--blue); }
-        .nav-grupo-progresso { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-3); background: var(--panel); border-radius: 20px; padding: 1px 7px; }
-        .nav-grupo.active .nav-grupo-progresso { color: var(--blue); background: var(--blue-bg); }
 
         /* etapa cumprida: check verde no lugar do icone */
-        .tab.feita .tab-check { color: var(--green); }
-        .tab.feita { color: var(--ink-2); }
         /* etapa cuja anterior nao foi cumprida: da pra ver e visitar, mas
            o cadeado avisa que a esteira ainda nao chegou ali */
-        .tab.travada { opacity: 0.5; }
 
         .etapa-pendente, .etapa-concluida { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 16px; border-radius: 10px; font-size: 13px; }
         .etapa-pendente { background: var(--panel); border: 1px solid var(--border); }
@@ -23154,11 +23004,6 @@ export default function App() {
         .assinatura-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 20px 18px; }
         .assinatura-aviso { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--alert); }
 
-        .tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
-        .tabbar .tab { white-space: nowrap; flex-shrink: 0; }
-        .tab { display: flex; align-items: center; gap: 7px; background: transparent; border: none; padding: 10px 14px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-        .tab:hover { color: var(--ink-2); }
-        .tab.active { color: var(--ink); border-bottom-color: var(--blue); }
 
         .filter-bar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
         .filter-chip { background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
@@ -24013,7 +23858,6 @@ export default function App() {
         .caderno-info { flex: 1; min-width: 0; }
         .caderno-nome { font-size: 13px; font-weight: 600; color: var(--ink); }
         .caderno-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
-        .tab .dim { margin-left: 2px; vertical-align: -1px; }
         /* ---- Módulo A Contratar ---- */
         .cad-abrir { margin-bottom: 16px; }
         .cad-box { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); padding: 14px 16px; margin-bottom: 18px; }
@@ -24266,7 +24110,6 @@ export default function App() {
         .gc-obras-filtro { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 20px; }
         .gc-obras-filtro .gc-chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gc-obras-filtro .gc-chip .mono { opacity: .6; margin-right: 3px; }
-        .gc-telas { display: flex; gap: 6px; margin-bottom: 16px; }
         .gc-selo-seta { margin-left: 3px; transition: transform .15s ease; }
         .gc-selo-seta.aberta { transform: rotate(180deg); }
         .gc-detalhe-tit { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 2px 0 6px; }
@@ -24408,14 +24251,8 @@ export default function App() {
         .dim { color: var(--text-mute); }
 
         /* ---------- Topo (AppTopHeader) ---------- */
-        .topbar { height: 59px; padding: 0 20px; gap: 16px; background: var(--surface-1); border-bottom: 1px solid var(--line-1); }
-        .topbar-brand { gap: 12px; padding: 6px 8px; margin-left: -8px; border-radius: 10px; color: var(--text); }
-        .topbar-brand:hover { background: var(--hover); }
-        .brand-produto { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--text-mute); padding-left: 12px; border-left: 1px solid var(--line-2); white-space: nowrap; }
-        .topbar-right { gap: 6px; }
         .icon-btn { width: 36px; height: 36px; border-radius: 10px; color: var(--text-soft); }
         .icon-btn:hover { background: var(--hover); color: var(--text); }
-        .notif-dot { top: 4px; right: 4px; width: auto; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: var(--bg); font-family: var(--font-mono); font-size: 9px; font-weight: 700; }
         .avatar { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
 
         /* ---------- Barra lateral (Sidebar) ---------- */
@@ -24496,24 +24333,15 @@ export default function App() {
         .nav-tira-badge.espera, .nav-badge-espera { background: var(--warning); }
         .nav-modulos { background: var(--surface-1); }
         .nav-modulos::before { margin: 0 -12px; background: linear-gradient(to bottom, transparent, var(--surface-1)); }
-        .squad-tem-aberta { background: var(--brand); }
         .sidebar-toggle { border-radius: 8px; font-size: 11px; color: var(--text-mute); }
         .sidebar-toggle:hover { background: var(--hover); color: var(--text); }
         .sidebar-footer { padding: 12px; border-top: 1px solid var(--line-1); }
         .profile { gap: 10px; padding: 7px 8px; border-radius: 8px; }
         .profile:hover, .profile.aberto { background: var(--hover); }
         .profile-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
-        .profile-email, .perfil-cab-email { font-family: var(--font-mono); font-size: 10px; color: var(--text-mute); }
-        .perfil-menu { padding: 6px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-1); box-shadow: var(--shadow-3); }
-        .perfil-cab-nome { font-size: 13px; font-weight: 600; }
-        .perfil-sep { background: var(--line-1); }
-        .perfil-sair { border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-soft); }
-        .perfil-sair:hover { background: var(--danger-soft); color: var(--danger); }
-        .dica-lateral, .dica-lateral::before { background: var(--text); }
-        .dica-lateral { color: var(--bg); border-radius: 6px; padding: 6px 10px; font-size: 11.5px; font-weight: 500; box-shadow: var(--shadow-2); }
+        .profile-email { font-family: var(--font-mono); font-size: 10px; color: var(--text-mute); }
 
         /* ---------- Página: cabeçalho e títulos (Header · PageShell) ---------- */
-        .main { padding: 28px 32px 56px; }
         .eyebrow { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 1.3px; color: var(--text-mute); margin-bottom: 6px; }
         .title-row { font-size: 30px; line-height: 1.1; margin-bottom: 6px; }
         .title-plain, .title-accent { font-family: var(--font-sans); font-style: normal; font-weight: 400; letter-spacing: -0.02em; color: var(--text); }
@@ -24530,18 +24358,6 @@ export default function App() {
         .secao-intro { background: var(--surface-2); border: 1px solid var(--line-1); border-radius: 10px; color: var(--text-soft); }
 
         /* ---------- Abas (Tabs · pill no nível 1, underline no nível 2) ---------- */
-        .nav-grupos { display: inline-flex; gap: 2px; padding: 4px; margin-bottom: 16px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface-2); }
-        .nav-grupo { gap: 8px; margin: 0; padding: 8px 14px; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease; }
-        .nav-grupo:hover { color: var(--text); }
-        .nav-grupo.active { background: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
-        .nav-grupo-progresso { font-family: var(--font-mono); font-size: 10px; background: var(--surface-3); color: var(--text-mute); border-radius: 999px; }
-        .nav-grupo.active .nav-grupo-progresso { background: var(--on-inverse-soft); color: var(--bg); }
-        .tabbar { gap: 0; border-bottom: 1px solid var(--line-2); }
-        .tab { gap: 8px; padding: 12px 16px; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--text-mute); transition: color 0.15s ease, border-color 0.15s ease; }
-        .tab:hover { color: var(--text); }
-        .tab.active { color: var(--text); border-bottom-color: var(--brand); }
-        .tab.feita { color: var(--text-soft); }
-        .tab.feita .tab-check { color: var(--success); }
         .gc-abas, .ger-modo { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
         .gc-aba, .ger-modo button { padding: 5px 11px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease; }
         .ger-modo button + button { border-left: 0; }
@@ -24803,16 +24619,11 @@ export default function App() {
            regras acima; quem ganha e' a ordem.
            ================================================================== */
         @media (max-width: 760px) {
-          .main { padding: 18px 14px 48px; }
-          .topbar { gap: 10px; padding: 0 12px; }
-          .topbar-right { min-width: 0; gap: 4px; }
           /* A marca media 320px e o lado direito 196px: 516px numa tela de
              375, e os dois com flex-shrink zero. O seletor de tema, o sino e
              o avatar ficavam FORA da tela, e a pagina inteira ganhava 155px
              de rolagem lateral so' por isso. O logo fica; o nome do produto
              sai, que ja' esta' no titulo da aba. */
-          .topbar-brand { flex-shrink: 1; min-width: 0; }
-          .brand-produto { display: none; }
 
           /* Fileiras que nao cabem quebram, em vez de empurrar a pagina. */
           .barra-etapa { flex-wrap: wrap; gap: 8px 12px; }
@@ -24822,9 +24633,6 @@ export default function App() {
 
           /* Os grupos da obra rolam dentro da propria faixa, como as abas ja'
              faziam. Quebrar em duas linhas partiria a pastilha no meio. */
-          .nav-obra { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-          .nav-obra::-webkit-scrollbar { height: 0; }
-          .nav-grupos { flex-shrink: 0; }
 
           /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
              sao duas colunas: sao duas fitas de uma palavra por linha. */
@@ -24888,10 +24696,10 @@ export default function App() {
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
-      <TopBar
+      <TopBar onMenu={() => setMenuAberto(true)}
         onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} />
-      <div className="body-layout">
-        <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
+      <div className="flex">
+        <Sidebar obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           onTrocarFoto={trocarMinhaFoto}
           equipe={pessoas} onSair={sairDaConta} modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
@@ -24900,7 +24708,8 @@ export default function App() {
 
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
-        <main className={`main ${modulo === "inicio" || ["executivo", "vendido_planilha"].includes(tab) ? "larga" : ""}`}>
+        {/* Sem padding proprio: as margens da pagina sao do PageShell de cada tela. */}
+        <main className={cn("main min-w-0 flex-1", !(modulo === "inicio" || ["executivo", "vendido_planilha"].includes(tab)) && "max-w-7xl")}>
           {/* O portao de perfil esta DESLIGADO ate a coluna existir. Dizer
           isso e' o que impede a janela virar um estado permanente que
           ninguem lembra de fechar. */}

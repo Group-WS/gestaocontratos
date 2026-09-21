@@ -44,10 +44,11 @@ const conf = (nome, obtido, esperado = true) => {
 };
 
 console.log("=== 1. O MENU FLUTUA, NÃO OCUPA COLUNA ===");
-conf("a variante do trilho declara position", /\.perfil-menu-trilho \{ position: absolute;/.test(app));
-conf("... com z-index acima do conteúdo", /\.perfil-menu-trilho \{[^}]*z-index: 40/.test(app));
-conf("... e largura própria", /\.perfil-menu-trilho \{[^}]*width: 230px/.test(app));
-conf("a .barra segue sticky, que é a referência", app.includes(".barra { display: flex; flex-shrink: 0; height: calc(100vh - 64px); position: sticky;"));
+/* O menu e' um Popover do DS: flutua por portal, fecha fora e no Esc. */
+conf("o menu é um Popover do DS", app.includes('<Popover open={menuPerfil} onOpenChange={setMenuPerfil}>'));
+conf("... aberto à direita do trilho", app.includes('<PopoverContent ref={menuRef} side="right" align="end"'));
+conf("... e largura própria", /<PopoverContent [^>]*className="w-64 p-2"/.test(app));
+conf("a .barra segue sticky, que é a referência", app.includes('<aside className="barra naoimprime sticky top-16 flex shrink-0" ref={barraRef}>'));
 // a regra que TINHA position mirava uma classe que nao existe mais
 conf("a regra morta .sidebar.recolhida saiu", app.includes(".sidebar.recolhida .perfil-menu {"), false);
 
@@ -79,16 +80,16 @@ conf("a foto é recortada, nunca esticada", app.includes(".avatar-foto { object-
 conf("o dashboard não duplica o avatar do trilho", app.includes('classe="ini-foto"'), false);
 
 console.log("\n=== 4. O MENU: FOTO, MEUS DADOS, SAIR ===");
-conf("a própria foto é o botão de trocar", app.includes('<Button variant="ghost" className="perfil-foto"'));
-conf("a câmera só aparece no hover", app.includes(".perfil-foto:hover .perfil-foto-capa"));
-conf("Meus dados abre e fecha", app.includes('onClick={() => setVerDados((v) => !v)}'));
+conf("a própria foto é o botão de trocar", /<Button asChild variant="ghost" size="icon" className=\{cn\("group relative h-10 w-10 shrink-0 cursor-pointer rounded-full p-0"[\s\S]{0,1200}<input type="file"/.test(app));
+conf("a câmera só aparece no hover", app.includes("opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"));
+conf("Meus dados abre e fecha", app.includes('<Collapsible open={verDados} onOpenChange={setVerDados}>'));
 conf("... em leitura, com o motivo escrito", app.includes("O nome é alterado por quem cuida da Equipe."));
 // pedido dela: o cartao mostra so' nome e e-mail
 conf("cargo ficou fora do cartão", app.includes("<div><span>Cargo</span>"), false);
 conf("perfil também", app.includes("<div><span>Perfil</span>"), false);
 conf("dá pra voltar pras iniciais", app.includes("Remover a foto"));
-conf("Sair continua como estava", app.includes('<Button variant="ghost" className="perfil-sair" onClick={onSair}>'));
-conf("erro de upload aparece no menu", app.includes('{erroFoto && <div className="perfil-aviso erro">{erroFoto}</div>}'));
+conf("Sair continua como estava", app.includes('<Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={onSair}>'));
+conf("erro de upload aparece no menu", app.includes('{erroFoto && <p className="px-2 pb-2 text-xs text-danger">{erroFoto}</p>}'));
 
 console.log("\n=== 5. SOBE, DEPOIS GRAVA ===");
 const troca = bloco("  async function trocarMinhaFoto(file, recorte) {");
@@ -136,7 +137,7 @@ conf("o recolher olha a obra escolhida", app.includes("const recolhidoPor = useR
 conf("... e não repete na mesma obra", app.includes("if (recolhidoPor.current === selected) return;"));
 conf("clique DENTRO da barra não recolhe", app.includes("if (barraRef.current && barraRef.current.contains(e.target)) return;"));
 conf("marca a obra antes de recolher", /recolhidoPor\.current = selected;\s*\n\s*setPainelEscondido\(true\);/.test(app));
-conf("só arma com painel aberto e obra escolhida", app.includes("if (!temPainel || !selected) return;"));
+conf("só arma com painel aberto e obra escolhida", app.includes("if (!largo || !temPainel || !selected) return;"));
 /* CLICK, nao mousedown: recolher no mousedown tirava o painel e jogava o
    conteudo 280px pra esquerda antes do mouseup, entao o alvo fugia de
    baixo do cursor. "clico em Planejamento, ele recolhe a tela e eu tenho
@@ -146,7 +147,7 @@ conf("... e nao o mousedown, que engolia o clique", /recolhidoPor[\s\S]{0,700}ad
 conf("e solta o ouvinte ao sair", app.includes('return () => document.removeEventListener("click", fora);'));
 // o botao Obras continua so' mostrando: era defeito dela, ja' corrigido antes
 conf("o capacete Obras segue só mostrando, nunca escondendo",
-  /title="Obras"[\s\S]{0,200}setPainelEscondido\(false\);/.test(app));
+  /rotulo="Obras"[\s\S]{0,200}setPainelEscondido\(false\);/.test(app));
 
 /* ---- O RECORTADOR CIRCULAR (20/09/2026) ----
  *
