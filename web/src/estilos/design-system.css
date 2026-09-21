@@ -433,20 +433,42 @@
 
    O PageShell põe descrição e ações lado a lado e limita a descrição a
    max-w-2xl. Na obra, as ações mudam conforme a aba ("Concluir etapa",
-   "Etapa concluída por… em…", "Apresentação de especificações") — e o
-   endereço e a faixa Entrega/GC/Taylor Made/Executivo encolhiam e
-   quebravam de um jeito diferente em cada aba.
+   "Etapa concluída por… em…") — e o endereço e a faixa Entrega/GC/Taylor
+   Made/Executivo encolhiam e quebravam de um jeito diferente em cada aba.
 
-   Aqui o título, o endereço e os fatos ocupam 100% da largura, e as ações
-   descem para uma linha própria, sempre à direita. Vale só para o
-   cabeçalho da obra (o PageShell seguido do respiro `.espaco-da-obra`). */
+   Aqui vira uma grade: o título na primeira linha com as ações (estado da
+   edição + botões) no canto superior direito, e o endereço e os fatos na
+   linha de baixo, em 100% da largura. No celular as ações descem para
+   depois dos fatos. Vale só para o cabeçalho da obra (o PageShell seguido
+   do respiro `.espaco-da-obra`). */
 .main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child {
-  flex-direction: column;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  column-gap: 1rem;
 }
-.main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child > div:first-child p {
+.main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child > div:first-child {
+  display: contents;
+}
+.main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child > div:first-child > p {
   max-width: none;
 }
-.main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child > div:last-child:not(:first-child) {
-  justify-content: flex-end;
+@media (min-width: 640px) {
+  .main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child h1 {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+  .main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child > div:first-child > p {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child > div:last-child:not(:first-child) {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
 }
