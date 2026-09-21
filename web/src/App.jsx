@@ -19851,17 +19851,17 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
       {/* Copiar e' o que se faz com endereco no dia a dia: mandar pro
           fornecedor, pro frete, pro mapa. */}
       {atual && (
-        <Button variant="ghost" size="sm" onClick={async () => {
+        <Button variant="ghost" size="sm" aria-label="Copiar endereço" title="Copiar o endereço da obra" onClick={async () => {
           try { await navigator.clipboard.writeText(atual); avisar.ok("Endereço copiado."); }
           catch { avisar.erro("Não foi possível copiar o endereço.", "Selecione o texto e copie manualmente."); }
         }}>
-          <Copy size={14} aria-hidden="true" /> Copiar endereço
+          <Copy size={14} aria-hidden="true" /> Copiar
         </Button>
       )}
       {/* A acao tem NOME escrito: um lapis sozinho nao diz o que faz. */}
       {podeEditar && (
-        <Button variant="ghost" size="sm" onClick={() => { setValor(atual); setEditando(true); }} title="Corrigir o endereço da obra">
-          <Pencil size={14} aria-hidden="true" /> Editar endereço
+        <Button variant="ghost" size="sm" aria-label="Editar endereço" onClick={() => { setValor(atual); setEditando(true); }} title="Corrigir o endereço da obra">
+          <Pencil size={14} aria-hidden="true" /> Editar
         </Button>
       )}
     </span>
@@ -24296,9 +24296,14 @@ export default function App() {
                   { label: /^squad\b/i.test(squad) ? squad : `Squad ${squad}` },
                   { label: `Obra #${obra.codigo}`, current: true },
                 ]}
-                title={obra.nome}
+                /* O CODIGO no titulo: e' por ele que a equipe se organiza ("a
+                   2195"), e o nome sozinho nao bastava. */
+                title={`#${obra.codigo} ${obra.nome}`}
                 description={(
                   <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    {/* O endereco logo abaixo do titulo, e depois a equipe e a
+                        entrega. */}
+                    <EnderecoDaObra obra={obra} podeEditar={souAdmin} onSalvar={(v) => definirEnderecoDaObra(obra.codigo, v)} />
                     {[["GC", nomeDe(obra.gc)], ["Taylor Made", nomeDe(tailor)], ["Executivo", nomeDe(executivo)]].map(([rot, val]) => (
                       <span key={rot} className="inline-flex items-baseline gap-1">
                         <span className="label-mono text-text-mute">{rot}</span>
@@ -24318,9 +24323,6 @@ export default function App() {
                       })() : <span className="italic text-text-mute">sem data</span>}
                     </span>
                     {obra.semDetalhe && <Badge tone="warning">Sem detalhe de executivo</Badge>}
-                    {/* O endereco fica logo abaixo das informacoes da obra,
-                        com os botoes de copiar e de editar. */}
-                    <EnderecoDaObra obra={obra} podeEditar={souAdmin} onSalvar={(v) => definirEnderecoDaObra(obra.codigo, v)} />
                   </span>
                 )}
                 actions={(
