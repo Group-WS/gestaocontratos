@@ -148,8 +148,10 @@ conf("com o de/para do valor na linha", src.includes("valor: {fmtBRL(it.valorDe)
    e saiu para quando clicar neles filtrar na tela". Entrou e mudou peneiram a
    planilha; saiu abre o painel, porque ele não existe na planilha. */
 conf("o cartão mostra o terceiro número", /~\{resumoEntrouSaiu\.nMudou\}/.test(src), true);
-conf("e os três filtram ao clicar", src.includes(`setFiltro(filtro === "es_entrou" ? "todos" : "es_entrou")`), true);
-conf("o 'saiu' abre o painel, que é onde ele existe", src.includes(`setFiltro(filtro === "somente_um" ? "todos" : "somente_um")`), true);
+/* Os tres numeros sao um ToggleGroup de escolha unica: soltar o que esta'
+   ligado volta para "todos". */
+conf("e os três filtram ao clicar", src.includes(`onValueChange={(v) => setFiltro(v || "todos")}`) && src.includes(`<ToggleGroupItem value="es_entrou"`) && src.includes(`<ToggleGroupItem value="es_mudou"`), true);
+conf("o 'saiu' abre o painel, que é onde ele existe", src.includes(`<ToggleGroupItem value="somente_um"`), true);
 conf("e o rótulo do cartão diz as três coisas", src.includes('label: "Entrou, saiu ou mudou"'), true);
 conf("o CSS da linha nova existe", src.includes(".es-linha.mudou {"), true);
 

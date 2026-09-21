@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { Button, Collapsible, CollapsibleTrigger, CollapsibleContent, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
+import { Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 /* Breakpoint `lg` do Tailwind: acima dele a barra lateral fica fixa na
@@ -72,5 +72,29 @@ export function Colapsavel({ aberto, onAbrir, podeAbrir = true, cabecalho, class
       </CollapsibleTrigger>
       <CollapsibleContent>{children}</CollapsibleContent>
     </Collapsible>
+  );
+}
+
+/* Cor legada (`var(--green)`, `var(--alert)`…) → tom semantico do DS. Os
+   metadados de status do app ainda carregam a cor como string; o KpiMini e
+   o Badge querem um `tone`. Cor desconhecida cai em `neutral`. */
+export function tomDaCor(cor) {
+  return {
+    "var(--green)": "success", "var(--success)": "success",
+    "var(--brand)": "brand", "var(--blue)": "brand",
+    "var(--alert)": "warning", "var(--amber)": "warning", "var(--warning)": "warning",
+    "var(--red)": "danger", "var(--danger)": "danger",
+  }[cor] || "neutral";
+}
+
+/* KpiMini que filtra: o cartao inteiro e' um botao de alternancia
+   (`aria-pressed`), com o anel da marca quando o filtro esta' ligado.
+   Substitui o `.conf-stat` (cartao-estatistica clicavel). */
+export function KpiBotao({ ativo, onClick, label, value, hint, tone = "neutral", title, className = "" }) {
+  return (
+    <Button variant="ghost" type="button" aria-pressed={!!ativo} title={title} onClick={onClick}
+      className={`block h-auto w-full rounded-lg p-0 text-left font-normal whitespace-normal ${ativo ? "ring-2 ring-brand" : ""} ${className}`}>
+      <KpiMini label={label} value={String(value)} hint={hint} tone={tone} className="w-full" />
+    </Button>
   );
 }

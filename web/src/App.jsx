@@ -57,10 +57,10 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
-  Alert, AlertDescription, EmptyState, Progress, Checkbox, PageShell,
+  Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell,
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, Colapsavel } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -6490,13 +6490,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   const abreNaBusca = useAbertosComBusca(buscando);
 
   if (linhas.length === 0) {
-    return (
-      <div className="compras-empty">
-        <GitCompare size={30} className="dim" />
-        <div className="compras-empty-title">{vazioTitulo}</div>
-        <div className="compras-empty-sub">{vazioSub}</div>
-      </div>
-    );
+    return <EmptyState icon={<GitCompare size={30} />} title={vazioTitulo} description={vazioSub} />;
   }
 
   const cnt = (st) => linhas.filter((l) => l.status === st).length;
@@ -6520,8 +6514,6 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   const selecionadosEscondidos = Array.from(selecionados).filter((k) => !chavesNaTela.has(k)).length;
   // No cartão "Entrou ou saiu" a lista lado a lado dá lugar ao resumo por categoria.
   const mostrarResumo = filtro === "somente_um" && !!resumoEntrouSaiu;
-  // A tela extra ocupa o lugar da lista, como o resumo do "Entrou ou saiu".
-  const mostrarExtra = !!telaExtra;
 
   // Agrupa por verba, na ordem em que as verbas aparecem — é assim que
   // a conferência acontece na prática: abre a verba, olha o que o
@@ -6546,20 +6538,28 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
     setSelecionados(new Set());
   };
 
+  /* Os chips de filtro sao um ToggleGroup de escolha unica. "Todos" cobre
+     tanto `todos` quanto a tela extra (a planilha, quando ha'); os filtros
+     do que falta sao os da tela extra. Cartao ligado que nao e' chip
+     (ex.: conferencia tecnica) deixa o grupo sem item ligado. */
+  const chipAtivo = (telaExtra?.filtros || []).some((ff) => ff.id === filtro) ? filtro
+    : (filtro === "todos" || filtro === telaExtra?.id) ? "todos" : "";
+  const escolherChip = (v) => {
+    if (!v || v === "todos") { setFiltro(telaExtra?.id || "todos"); return; }
+    setFiltro(v);
+  };
+  const filtroES = ["es_entrou", "somente_um", "es_mudou"].includes(filtro) ? filtro : "";
+
   return (
     <>
-      <div className="conf-stats">
+      <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {/* Os cartoes da planilha vem primeiro: sao as duas decisoes da tela,
             na ordem do fluxo. O "Entrou, saiu ou mudou" fecha a barra — ele
             responde a comparacao com o vendido, que e' outra pergunta. */}
         {(telaExtra?.cartoes || []).map((c) => (
-          <Button variant="ghost" key={c.id} className={`conf-stat ${filtro === c.id ? "active" : ""}`}
-            style={{ borderColor: filtro === c.id ? c.color : undefined }}
-            onClick={() => setFiltro(filtro === c.id ? telaExtra.id : c.id)}>
-            <div className="conf-stat-num" style={{ color: c.color }}>{c.contador}</div>
-            <div className="conf-stat-label">{c.label}</div>
-            <div className="conf-stat-sub">{c.sub}</div>
-          </Button>
+          <KpiBotao key={c.id} ativo={filtro === c.id} tone={tomDaCor(c.color)}
+            label={c.label} value={c.contador} hint={c.sub}
+            onClick={() => setFiltro(filtro === c.id ? telaExtra.id : c.id)} />
         ))}
         {/* A BARRA DIZ O TRABALHO, nao o que ja' passou (pedido dela,
             18/09/2026): "aquele total conferido pode retirar, n faz sentido".
@@ -6568,62 +6568,49 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             no depara —, so' nao vira cartao: um numero grande de "ja' conferido"
             ocupava um quarto da barra sem levar a lugar nenhum. */}
         {Object.entries(meta).filter(([st, m]) => st !== "ok" && !m.semCartao).map(([st, m]) => (
-          <Button variant="ghost" key={st} className={`conf-stat ${filtro === st ? "active" : ""}`} style={{ borderColor: filtro === st ? m.color : undefined }} onClick={() => setFiltro(filtro === st ? "todos" : st)}>
-            {st === "somente_um" && resumoEntrouSaiu ? (
-              /* CADA NUMERO FILTRA (pedido dela, 18/09/2026): "habilitar esse
-                 entrou mudou e saiu para quando clicar neles filtrar na tela".
+          st === "somente_um" && resumoEntrouSaiu ? (
+            /* CADA NUMERO FILTRA (pedido dela, 18/09/2026): "habilitar esse
+               entrou mudou e saiu para quando clicar neles filtrar na tela".
 
-                 Entrou e mudou viram filtro da planilha — sao itens que estao
-                 la'. SAIU nao: ele so' existe no vendido, entao continua
-                 abrindo o painel, que e' o unico lugar onde da' pra ve-lo. */
-              <div className="conf-stat-num conf-stat-duplo" onClick={(e) => e.stopPropagation()}>
-                <span role="button" tabIndex={0} title="Ver só o que entrou no executivo"
-                  className={`conf-entrou conf-es-btn ${filtro === "es_entrou" ? "on" : ""}`}
-                  onClick={() => setFiltro(filtro === "es_entrou" ? "todos" : "es_entrou")}
-                  onKeyDown={(ev) => { if (ev.key === "Enter") setFiltro("es_entrou"); }}>
-                  +{resumoEntrouSaiu.nEntrou}
-                </span>
-                <span role="button" tabIndex={0} title="Ver a lista do que saiu — eles não estão na planilha do executivo"
-                  className={`conf-saiu conf-es-btn ${filtro === "somente_um" ? "on" : ""}`}
-                  onClick={() => setFiltro(filtro === "somente_um" ? "todos" : "somente_um")}
-                  onKeyDown={(ev) => { if (ev.key === "Enter") setFiltro("somente_um"); }}>
-                  −{resumoEntrouSaiu.nSaiu}
-                </span>
-                {resumoEntrouSaiu.nMudou > 0 && (
-                  <span role="button" tabIndex={0} title="Ver só o que mudou de quantidade ou valor"
-                    className={`conf-mudou conf-es-btn ${filtro === "es_mudou" ? "on" : ""}`}
-                    onClick={() => setFiltro(filtro === "es_mudou" ? "todos" : "es_mudou")}
-                    onKeyDown={(ev) => { if (ev.key === "Enter") setFiltro("es_mudou"); }}>
-                    ~{resumoEntrouSaiu.nMudou}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="conf-stat-num" style={{ color: m.color }}>{cnt(st)}</div>
-            )}
-            <div className="conf-stat-label">{m.label}</div>
-            <div className="conf-stat-sub">{m.sub}</div>
-          </Button>
+               Entrou e mudou viram filtro da planilha — sao itens que estao
+               la'. SAIU nao: ele so' existe no vendido, entao continua
+               abrindo o painel, que e' o unico lugar onde da' pra ve-lo. */
+            <Card key={st} className={filtroES ? "ring-2 ring-brand" : ""}>
+              <CardContent className="flex flex-col gap-2 p-4">
+                <ToggleGroup type="single" value={filtroES} aria-label={m.label}
+                  onValueChange={(v) => setFiltro(v || "todos")}>
+                  <ToggleGroupItem value="es_entrou" size="sm" title="Ver só o que entrou no executivo" className="mono text-success">+{resumoEntrouSaiu.nEntrou}</ToggleGroupItem>
+                  <ToggleGroupItem value="somente_um" size="sm" title="Ver a lista do que saiu — eles não estão na planilha do executivo" className="mono text-danger">−{resumoEntrouSaiu.nSaiu}</ToggleGroupItem>
+                  {resumoEntrouSaiu.nMudou > 0 && (
+                    <ToggleGroupItem value="es_mudou" size="sm" title="Ver só o que mudou de quantidade ou valor" className="mono text-warning">~{resumoEntrouSaiu.nMudou}</ToggleGroupItem>
+                  )}
+                </ToggleGroup>
+                <div className="text-sm font-semibold">{m.label}</div>
+                <div className="text-xs text-text-mute">{m.sub}</div>
+              </CardContent>
+            </Card>
+          ) : (
+            <KpiBotao key={st} ativo={filtro === st} tone={tomDaCor(m.color)}
+              label={m.label} value={cnt(st)} hint={m.sub}
+              onClick={() => setFiltro(filtro === st ? "todos" : st)} />
+          )
         ))}
-
       </div>
 
-      <div className="compras-filtros">
-        <Button variant="ghost" className={`cfiltro ${filtro === "todos" || filtro === telaExtra?.id ? "active" : ""}`}
-          onClick={() => setFiltro(telaExtra?.id || "todos")}>Todos <span className="cbadge">{linhas.length}</span></Button>
-        {/* OS DOIS FILTROS DO QUE FALTA (pedido dela, 18/09/2026): "criar um
-            bloco de filtro mostrando oque falta concluir executivo e um bloco
-            de filtro mostrando oque falta aprovar pra compra".
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <ToggleGroup type="single" value={chipAtivo} onValueChange={escolherChip} aria-label="Filtrar linhas">
+          <ToggleGroupItem value="todos" size="sm">Todos <Badge tone="neutral">{linhas.length}</Badge></ToggleGroupItem>
+          {/* OS DOIS FILTROS DO QUE FALTA (pedido dela, 18/09/2026): "criar um
+              bloco de filtro mostrando oque falta concluir executivo e um bloco
+              de filtro mostrando oque falta aprovar pra compra".
 
-            Os cartoes de cima dizem o ANDAMENTO (0 de 238); estes dizem o que
-            SOBROU pra fazer, que e' o numero com que se trabalha. Sao o mesmo
-            filtro dos cartoes — clicar num ou noutro leva ao mesmo lugar. */}
-        {(telaExtra?.filtros || []).map((ff) => (
-          <Button variant="ghost" key={ff.id} className={`cfiltro ${filtro === ff.id ? "active" : ""}`}
-            onClick={() => setFiltro(filtro === ff.id ? telaExtra.id : ff.id)}>
-            {ff.label} <span className="cbadge">{ff.contador}</span>
-          </Button>
-        ))}
+              Os cartoes de cima dizem o ANDAMENTO (0 de 238); estes dizem o que
+              SOBROU pra fazer, que e' o numero com que se trabalha. Sao o mesmo
+              filtro dos cartoes — clicar num ou noutro leva ao mesmo lugar. */}
+          {(telaExtra?.filtros || []).map((ff) => (
+            <ToggleGroupItem key={ff.id} value={ff.id} size="sm">{ff.label} <Badge tone="neutral">{ff.contador}</Badge></ToggleGroupItem>
+          ))}
+        </ToggleGroup>
         <CampoBusca valor={busca} aoMudar={setBusca}
           contador={`${visiveis.length} de ${porStatus.length} linhas`} />
       </div>
@@ -6638,34 +6625,31 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
         : telaExtra ? telaExtra.render(busca, filtro) : (
         <>
           {onAprovarLinha && pendentesVisiveis.length > 0 && (
-            <div className="selecao-massa">
+            <div className="mb-4 flex flex-wrap items-center gap-2">
               {selecionados.size === 0 ? (
-                <Button variant="outline" type="button" onClick={selecionarTodasPendentes}>Selecionar todas as pendências {buscando ? "desta busca" : "visíveis"} ({pendentesVisiveis.length})</Button>
+                <Button variant="outline" size="sm" type="button" onClick={selecionarTodasPendentes}>Selecionar todas as pendências {buscando ? "desta busca" : "visíveis"} ({pendentesVisiveis.length})</Button>
               ) : (
                 <>
-                  <span className="selecao-massa-texto">
+                  <span className="text-sm font-semibold">
                     {selecionados.size} selecionada{selecionados.size > 1 ? "s" : ""}
                     {selecionadosEscondidos > 0 && (
-                      <b className="selecao-escondidos" title="Selecionadas que a busca está escondendo — elas também serão aprovadas">
+                      <b className="text-warning" title="Selecionadas que a busca está escondendo — elas também serão aprovadas">
                         {" · "}{selecionadosEscondidos} fora da busca
                       </b>
                     )}
                   </span>
-                  <Button variant="outline" type="button" onClick={limparSelecao}>Limpar</Button>
-                  <Button size="sm" type="button" onClick={aprovarSelecionados}><CheckCircle2 size={12} /> Aprovar selecionadas</Button>
+                  <Button variant="outline" size="sm" type="button" onClick={limparSelecao}>Limpar seleção</Button>
+                  <Button size="sm" type="button" onClick={aprovarSelecionados}><CheckCircle2 size={16} /> Aprovar selecionadas</Button>
                 </>
               )}
             </div>
           )}
 
           {buscando && grupos.length === 0 && (
-            <div className="compras-empty">
-              <Search size={26} className="dim" />
-              <div className="compras-empty-title">Nenhuma linha com esse termo</div>
-              <div className="compras-empty-sub">{`Nada encontrado para "${busca.trim()}"${filtro === "todos" ? "" : " dentro do filtro escolhido"}.`}</div>
-            </div>
+            <EmptyState icon={<Search size={26} />} title="Nenhuma linha com esse termo"
+              description={`Nada encontrado para "${busca.trim()}"${filtro === "todos" ? "" : " dentro do filtro escolhido"}.`} />
           )}
-          <div className="vend-list">
+          <Card>
             {grupos.map((g) => {
               const { num, nome, itens } = g;
               /* Com busca ligada a verba abre sozinha: procurar e ainda ter
@@ -6674,72 +6658,70 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
               const pend = itens.filter((l) => l.status !== "ok").length;
               const alertaGrupo = alertasPorVerba ? alertasPorVerba.get(num) : null;
               return (
-                <div key={num} className="vend-grupo">
-                  <Button variant="ghost" className="vend-head" onClick={() => abreNaBusca.alternar(g, () => toggle(g))}>
-                    {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
-                    <span className="vend-num mono">{num}</span>
-                    <span className="vend-nome">{nome}</span>
-                    {/* Marca a verba com alerta técnico mesmo fechada — senão
-                        o aviso fica escondido atrás de um clique que ninguém
-                        sabe que precisa dar. */}
-                    {alertaGrupo && <span className="vend-alerta-mark" title="Esta verba tem alerta de conferência técnica"><AlertTriangle size={12} /></span>}
-                    <span className="vend-count">{itens.length} {itens.length === 1 ? "linha" : "linhas"}</span>
-                    <span className={`vend-pend ${pend === 0 ? "ok" : ""}`}>
-                      {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
+                <Colapsavel key={num} aberto={aberto} onAbrir={() => abreNaBusca.alternar(g, () => toggle(g))}
+                  cabecalho={
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <span className="mono text-text-mute">{num}</span>
+                      <span className="min-w-0 flex-1 font-semibold">{nome}</span>
+                      {/* Marca a verba com alerta técnico mesmo fechada — senão
+                          o aviso fica escondido atrás de um clique que ninguém
+                          sabe que precisa dar. */}
+                      {alertaGrupo && <span className="text-alert" title="Esta verba tem alerta de conferência técnica"><AlertTriangle size={16} /></span>}
+                      <Badge tone="neutral">{itens.length} {itens.length === 1 ? "linha" : "linhas"}</Badge>
+                      <Badge tone={pend === 0 ? "success" : "warning"}>
+                        {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
+                      </Badge>
                     </span>
-                  </Button>
-                  {aberto && alertaGrupo && (
-                    <div className="grupo-alerta">
-                      <AlertTriangle size={14} />
-                      <div>
-                        <b>
-                          {alertaGrupo.length === 1
-                            ? (partesDoAlerta(alertaGrupo[0]) ? `${partesDoAlerta(alertaGrupo[0]).titulo}:` : "Alerta de conferência técnica — vale para toda a verba:")
-                            : `${alertaGrupo.length} alertas de conferência técnica nesta verba:`}
-                        </b>{" "}
+                  }>
+                  {alertaGrupo && (
+                    <Alert tone="alert" className="mx-4 mb-4">
+                      <AlertTitle>
+                        {alertaGrupo.length === 1
+                          ? (partesDoAlerta(alertaGrupo[0]) ? `${partesDoAlerta(alertaGrupo[0]).titulo}:` : "Alerta de conferência técnica — vale para toda a verba:")
+                          : `${alertaGrupo.length} alertas de conferência técnica nesta verba:`}
+                      </AlertTitle>
+                      <AlertDescription>
                         {alertaGrupo.length === 1 ? (
                           <span>{partesDoAlerta(alertaGrupo[0])?.corpo ?? alertaGrupo[0]}</span>
                         ) : (
-                          <ul className="grupo-alerta-lista">
+                          <ul className="list-disc space-y-1 pl-4">
                             {alertaGrupo.map((texto) => <li key={texto}>{texto}</li>)}
                           </ul>
                         )}
-                      </div>
-                    </div>
+                      </AlertDescription>
+                    </Alert>
                   )}
-                  {aberto && (
-                    <div className="compras-list">
-                      {itens.map((l, i) => {
-                        const k = chave(l);
-                        return (
-                          <ConfRow key={`${l.codigo}-${i}`} l={l} m={meta[l.status]}
-                            colALabel={colALabel} colBLabel={colBLabel} vazioALabel={vazioALabel} vazioBLabel={vazioBLabel}
-                            aprovado={aprovacoes ? aprovacoes.has(`${escopo}:${k}`) : false}
-                            onAprovar={() => onAprovarLinha && onAprovarLinha(l.catNum, l.codigo)}
-                            onEditar={(patch) => onEditarB && onEditarB(l.catNum, l.codigo, patch)}
-                            selecionavel={l.status !== "ok" && !!onAprovarLinha}
-                            selecionado={selecionados.has(k)}
-                            onToggleSelecionar={() => toggleSel(k)} />
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                  <div className="divide-y divide-line-1 border-t border-line-1">
+                    {itens.map((l, i) => {
+                      const k = chave(l);
+                      return (
+                        <ConfRow key={`${l.codigo}-${i}`} l={l} m={meta[l.status]}
+                          colALabel={colALabel} colBLabel={colBLabel} vazioALabel={vazioALabel} vazioBLabel={vazioBLabel}
+                          aprovado={aprovacoes ? aprovacoes.has(`${escopo}:${k}`) : false}
+                          onAprovar={() => onAprovarLinha && onAprovarLinha(l.catNum, l.codigo)}
+                          onEditar={(patch) => onEditarB && onEditarB(l.catNum, l.codigo, patch)}
+                          selecionavel={l.status !== "ok" && !!onAprovarLinha}
+                          selecionado={selecionados.has(k)}
+                          onToggleSelecionar={() => toggleSel(k)} />
+                      );
+                    })}
+                  </div>
+                </Colapsavel>
               );
             })}
 
             {naoAnalisadas.map((c) => (
-              <div key={c.num} className="vend-grupo na">
-                <div className="vend-head na">
-                  <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />
-                  <span className="vend-num mono">{c.num}</span>
-                  <span className="vend-nome">{c.nome}</span>
-                  <span className="vend-na-motivo">{motivoVerbaNaoAnalisada(c.num, c.nome)}</span>
-                  <span className="vend-pend na">N/A</span>
-                </div>
-              </div>
+              <Colapsavel key={c.num} aberto={false} podeAbrir={false}
+                cabecalho={
+                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-text-soft">
+                    <span className="mono text-text-mute">{c.num}</span>
+                    <span className="min-w-0 flex-1 font-semibold">{c.nome}</span>
+                    <span className="text-xs text-text-mute">{motivoVerbaNaoAnalisada(c.num, c.nome)}</span>
+                    <Badge tone="neutral">N/A</Badge>
+                  </span>
+                } />
             ))}
-          </div>
+          </Card>
         </>
       )}
     </>
@@ -6927,11 +6909,8 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
 
   if (linhas.length === 0) {
     return (
-      <div className="compras-empty">
-        <FileText size={30} className="dim" />
-        <div className="compras-empty-title">CMV ainda sem base</div>
-        <div className="compras-empty-sub">Importe a Vendido Planilha desta obra — o CMV sai dela, somando o custo de cada grupo.</div>
-      </div>
+      <EmptyState icon={<FileText size={30} />} title="CMV ainda sem base"
+        description="Importe a Vendido Planilha desta obra — o CMV sai dela, somando o custo de cada grupo." />
     );
   }
 
@@ -6942,37 +6921,39 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
   const podeLiberar = cmvApurado && podeEditar;
 
   return (
-    <>
+    <div className="space-y-6">
       <ResumoCMV linhas={linhas} categorias={obra.categorias} />
 
       {obra.deparaAprovado ? (
-        <div className="import-ok"><ShieldCheck size={14} /> CMV liberado — Executivo e etapas seguintes abertos.</div>
+        <Alert tone="success"><AlertDescription>CMV liberado — Executivo e etapas seguintes abertos.</AlertDescription></Alert>
       ) : (
-        <div className="liberacao-barra">
-          <div className="liberacao-texto">
-            {cmvApurado ? (
-              <><CheckCircle2 size={15} /> <span>
-                Liberar o CMV de <b>{fmtBRL(cmvTotal)}</b> abre o Executivo e as etapas seguintes.
-              </span></>
-            ) : (
-              <><Lock size={15} /> <span>
-                <b>CMV ainda não apurado.</b> O Executivo abre quando a <b>Vendido Planilha</b> trouxer
-                valor — confira se ela subiu com a coluna de custo.
-              </span></>
-            )}
-          </div>
-          <Button disabled={!podeLiberar} onClick={async () => {
-            if (await confirmar({
-              titulo: `Liberar o CMV de ${fmtBRL(cmvTotal)}?`,
-              mensagem: "Este vira o teto de custo da obra, e o Executivo e as etapas seguintes abrem para a equipe.",
-              confirmar: "Liberar CMV", perigo: false,
-            })) onAprovar(cmvTotal);
-          }}>
-            <ShieldCheck size={14} /> Liberar CMV
-          </Button>
-        </div>
+        <Card>
+          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2 text-sm">
+              {cmvApurado ? (
+                <><CheckCircle2 size={16} className="mt-1 shrink-0 text-success" /> <span>
+                  Liberar o CMV de <b>{fmtBRL(cmvTotal)}</b> abre o Executivo e as etapas seguintes.
+                </span></>
+              ) : (
+                <><Lock size={16} className="mt-1 shrink-0 text-text-mute" /> <span>
+                  <b>CMV ainda não apurado.</b> O Executivo abre quando a <b>Vendido Planilha</b> trouxer
+                  valor — confira se ela subiu com a coluna de custo.
+                </span></>
+              )}
+            </div>
+            <Button className="shrink-0" disabled={!podeLiberar} onClick={async () => {
+              if (await confirmar({
+                titulo: `Liberar o CMV de ${fmtBRL(cmvTotal)}?`,
+                mensagem: "Este vira o teto de custo da obra, e o Executivo e as etapas seguintes abrem para a equipe.",
+                confirmar: "Liberar CMV", perigo: false,
+              })) onAprovar(cmvTotal);
+            }}>
+              <ShieldCheck size={16} /> Liberar CMV
+            </Button>
+          </CardContent>
+        </Card>
       )}
-    </>
+    </div>
   );
 }
 
@@ -7675,58 +7656,50 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
 
   if (!nItens) {
     return (
-      <div className="compras-empty">
-        <ShoppingCart size={30} className="dim" />
-        <div className="compras-empty-title">Nada para liberar ainda</div>
-        <div className="compras-empty-sub">Importe a Planilha Executivo desta obra — os produtos aparecem aqui para liberação.</div>
-      </div>
+      <EmptyState icon={<ShoppingCart size={30} />} title="Nada para liberar ainda"
+        description="Importe a Planilha Executivo desta obra — os produtos aparecem aqui para liberação." />
     );
   }
 
   return (
-    <>
-      <div className="lib-topo">
-        <div className="lib-placar">
-          {/* Os numeros de liberado e concluido agora sao os cartoes de cima —
-              aqui fica o dinheiro, que os cartoes nao dizem. */}
-          <b>{fmtBRL(liberado)}</b> <span className="lib-valor">de {fmtBRL(total)} liberados para compra</span>
-        </div>
-        {/* O AVISO DOS TRAVADOS SAIU (pedido dela, 18/09/2026): "retirar essa
-            frase pois ja tem um filtro em cima". O cartao "Falta conferir"
-            conta o mesmo e leva ao mesmo lugar — duas portas pra mesma sala,
-            uma delas em forma de paragrafo. */}
-      </div>
+    <div className="space-y-4">
+      {/* Os numeros de liberado e concluido agora sao os cartoes de cima —
+          aqui fica o dinheiro, que os cartoes nao dizem. */}
+      {/* O AVISO DOS TRAVADOS SAIU (pedido dela, 18/09/2026): "retirar essa
+          frase pois ja tem um filtro em cima". O cartao "Falta conferir"
+          conta o mesmo e leva ao mesmo lugar — duas portas pra mesma sala,
+          uma delas em forma de paragrafo. */}
+      <p className="text-sm text-text-soft">
+        <b className="text-base text-text">{fmtBRL(liberado)}</b> de {fmtBRL(total)} liberados para compra
+      </p>
 
       {sel.size > 0 && (
-        <div className="selecao-massa">
-          <span><b>{sel.size}</b> {sel.size === 1 ? "linha selecionada" : "linhas selecionadas"}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold"><b>{sel.size}</b> {sel.size === 1 ? "linha selecionada" : "linhas selecionadas"}</span>
           {(() => {
             const naTela = new Set(grupos.flatMap((g) => g.itens.map((x) => x.chave)));
             const fora = [...sel].filter((k) => !naTela.has(k)).length;
-            return fora > 0 ? <span className="dim">· {fora} fora do que está na tela</span> : null;
+            return fora > 0 ? <span className="text-sm text-text-mute">· {fora} fora do que está na tela</span> : null;
           })()}
-          <div className="selecao-acoes">
-            {podeEditar && onConcluir && (
-              <Button size="sm" onClick={() => {
-                const alvos = todosOsGrupos.flatMap((g) => g.itens)
-                  .filter((x) => sel.has(x.chave) && !x.titulo)
-                  .map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
-                if (!alvos.length) return;
-                onConcluir(alvos, true);
-                setSel(new Set());
-              }}><Check size={12} /> Concluir {sel.size}</Button>
-            )}
-            <Button variant="outline" onClick={() => setSel(new Set())}>Limpar</Button>
-          </div>
+          {podeEditar && onConcluir && (
+            <Button size="sm" onClick={() => {
+              const alvos = todosOsGrupos.flatMap((g) => g.itens)
+                .filter((x) => sel.has(x.chave) && !x.titulo)
+                .map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
+              if (!alvos.length) return;
+              onConcluir(alvos, true);
+              setSel(new Set());
+            }}><Check size={16} /> Concluir {sel.size}</Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => setSel(new Set())}>Limpar seleção</Button>
         </div>
       )}
 
       {filtrando && grupos.length === 0 && (
-        <div className="empty-note">
-          {busca.trim() ? `Nada encontrado para "${busca.trim()}".` : "Nada neste filtro."}
-        </div>
+        <EmptyState icon={<Search size={26} />} title="Nenhum resultado para os filtros aplicados"
+          description={busca.trim() ? `Nada encontrado para "${busca.trim()}".` : "Nada neste filtro."} />
       )}
-      <div className="vend-list">
+      <Card>
         {grupos.map((g) => {
           // Filtrando, a verba abre sozinha: procurar e ainda ter que clicar
           // em cada verba não é procurar.
@@ -7751,291 +7724,292 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
              cliente nao e' alerta pra conferir, e' portao com justificativa
              (o "liberar mesmo assim", linha por linha). */
           const travadosAqui = g.itens.filter((x) => !x.titulo && !x.liberado && !x.pode);
+          const selecaoDaVerba = podeEditar && onConcluir;
+          const verbaToda = g.itens.every((x) => x.titulo || sel.has(x.chave));
           return (
-            <div key={g.num} className="grp-block">
-              <div className="grp-head">
-                <Button variant="ghost" className="grp-toggle" onClick={() => abreNaBusca.alternar(g.num, () => alternar(g.num))}>
-                  <div className="grp-esq">
-                    {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
-                    <span className="grp-num mono">{g.num}</span>
-                    <span className="grp-nome">{g.nome}</span>
-                    {/* O CONTADOR E' DO GRUPO, sempre — nao do recorte na tela.
+            <Collapsible key={g.num} open={aberto} onOpenChange={() => abreNaBusca.alternar(g.num, () => alternar(g.num))}
+              className="border-b border-line-1 last:border-b-0">
+              <div className="flex flex-col gap-2 px-4 py-3 md:flex-row md:items-center">
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal p-0 text-left font-normal hover:bg-transparent">
+                    {aberto ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />}
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <span className="mono text-text-mute">{g.num}</span>
+                      <span className="font-semibold">{g.nome}</span>
+                      {/* O CONTADOR E' DO GRUPO, sempre — nao do recorte na tela.
 
-                        Com o filtro de travados ligado ela leu "13 de 8
-                        liberados" (17/09/2026): os 13 eram da verba inteira e
-                        os 8 eram o que tinha sobrado na tela. Agora o de
-                        dentro diz o grupo, e o que esta' na tela vira um
-                        segundo numero, dito com o nome do filtro. */}
-                    <span className="grp-conta">{g.nProdutos ?? g.itens.length} produtos</span>
-                    {/* OS NOMES INTEIROS, E NA ORDEM DO FLUXO — pedido dela em
-                        19/09/2026: "vamos padronizar os nomes: sempre colocar
-                        'Concluido executivo' e 'Liberado para compra' mesmo aqui
-                        na barra. e sempre na ordem, primeiro vem o concluido e
-                        depois o liberado."
+                          Com o filtro de travados ligado ela leu "13 de 8
+                          liberados" (17/09/2026): os 13 eram da verba inteira e
+                          os 8 eram o que tinha sobrado na tela. Agora o de
+                          dentro diz o grupo, e o que esta' na tela vira um
+                          segundo numero, dito com o nome do filtro. */}
+                      <Badge tone="neutral">{g.nProdutos ?? g.itens.length} produtos</Badge>
+                      {/* OS NOMES INTEIROS, E NA ORDEM DO FLUXO — pedido dela em
+                          19/09/2026: "vamos padronizar os nomes: sempre colocar
+                          'Concluido executivo' e 'Liberado para compra' mesmo aqui
+                          na barra. e sempre na ordem, primeiro vem o concluido e
+                          depois o liberado."
 
-                        Antes a barra dizia "7 de 7 liberados · 7 concluídos":
-                        o liberado vinha na frente (fora da ordem do fluxo), os
-                        dois com o nome pela metade, e um com denominador e o
-                        outro sem. Os dois olham a MESMA lista — todo item passa
-                        pelas duas decisões, independente da alocação —, entao
-                        mostrar os dois como "X de Y" e' o que deixa comparar. */}
-                    <span className="grp-conta">{compraveisDoGrupo(g).filter((x) => estaConcluido(x)).length} de {compraveisDoGrupo(g).length} concluído executivo</span>
-                    <span className="grp-conta">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberado para compra</span>
-                    {filtrando && (
-                      <span className="grp-conta grp-conta-filtro">
-                        {g.itens.length} nesta busca
-                      </span>
-                    )}
-                  </div>
-                </Button>
-                <div className="grp-dir">
-                  <span className="mono dim lib-grp-valor">{fmtBRL(g.liberado)} de {fmtBRL(g.total)}</span>
+                          Antes a barra dizia "7 de 7 liberados · 7 concluídos":
+                          o liberado vinha na frente (fora da ordem do fluxo), os
+                          dois com o nome pela metade, e um com denominador e o
+                          outro sem. Os dois olham a MESMA lista — todo item passa
+                          pelas duas decisões, independente da alocação —, entao
+                          mostrar os dois como "X de Y" e' o que deixa comparar. */}
+                      <Badge tone="neutral">{compraveisDoGrupo(g).filter((x) => estaConcluido(x)).length} de {compraveisDoGrupo(g).length} concluído executivo</Badge>
+                      <Badge tone="neutral">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberado para compra</Badge>
+                      {filtrando && <Badge tone="warning">{g.itens.length} nesta busca</Badge>}
+                    </span>
+                  </Button>
+                </CollapsibleTrigger>
+                <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                  <span className="mono text-xs text-text-mute">{fmtBRL(g.liberado)} de {fmtBRL(g.total)}</span>
                   {podeEditar && onConcluir && aConcluir.length > 0 && (
-                    <Button variant="danger"
+                    <Button variant="outline" size="sm"
                       title="Marca a verba inteira como concluída pelo executivo"
                       onClick={() => onConcluir(aConcluir.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
-                      <Check size={12} /> Concluir executivo {aConcluir.length}
+                      <Check size={16} /> Concluir executivo {aConcluir.length}
                     </Button>
                   )}
                   {/* SO' ADMINISTRADOR LIBERA (decisao dela, ADR-005) — e o botao
                       some pra quem nao e', em vez de aparecer e recusar no clique. */}
                   {podeEditar && souAdmin && faltam.length > 0 && (
                     <Button size="sm" onClick={() => onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
-                      <Check size={12} /> Liberar para compra {faltam.length}
+                      <Check size={16} /> Liberar para compra {faltam.length}
                     </Button>
                   )}
                   {podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && (
-                    <Button size="sm"
+                    <Button variant="outline" size="sm"
                       title={`Marca o alerta como conferido no seu nome nos ${travadosAqui.length} produtos e libera os ${travadosAqui.length} para compra`}
                       onClick={() => {
                         const alvos = travadosAqui.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
                         onConferirVarios(alvos, true);
                         onLiberar(alvos, true);
                       }}>
-                      <AlertTriangle size={12} /> Conferi os alertas · liberar {travadosAqui.length}
+                      <AlertTriangle size={16} /> Conferi os alertas · liberar {travadosAqui.length}
                     </Button>
                   )}
                 </div>
               </div>
 
-              {aberto && (
-                <table className="tab-compras grp-itens tab-conf">
-                  <thead>
-                    <tr>
-                      <th className="c-check">
-                        {/* Marca a verba inteira do que esta' na tela. */}
-                        {podeEditar && onConcluir && (
-                          <input type="checkbox" className="conf-check" aria-label="Selecionar a verba"
-                            checked={g.itens.every((x) => x.titulo || sel.has(x.chave))}
-                            onChange={(e) => setSel((p) => {
-                              const n = new Set(p);
-                              g.itens.forEach((x) => { if (!x.titulo) { e.target.checked ? n.add(x.chave) : n.delete(x.chave); } });
-                              return n;
-                            })} />
-                        )}
-                      </th>
-                      {/* O CODIGO VEM ANTES, na esquerda (pedido dela,
-                          18/09/2026): "o codigo do item tem que vir antes, ali
-                          na esquerda do item, como esta na planilha do
-                          executivo". Coluna propria, como la' — dentro da
-                          celula do produto ele se perdia no meio da
-                          especificacao e do fornecedor. */}
-                      <th className="c-cod">Cód.</th>
-                      <th>Produto</th>
-                      <th className="c-qtd">Qtd</th>
-                      <th className="right c-unit">Custo unit.</th>
-                      <th className="right c-total">Total</th>
-                      {/* DUAS COLUNAS, e so' (correcao dela, 18/09/2026): "o fluxo
-                          correto e': Concluido Executivo / Aprovado para Compra / e
-                          so'. o aprovado para compra so' libera se o concluido
-                          executivo estiver aprovado."
+              <CollapsibleContent>
+                <div className="overflow-x-auto border-t border-line-1">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10">
+                          {/* Marca a verba inteira do que esta' na tela. */}
+                          {selecaoDaVerba && (
+                            <Checkbox aria-label="Selecionar a verba" checked={verbaToda}
+                              onCheckedChange={(marcado) => setSel((p) => {
+                                const n = new Set(p);
+                                g.itens.forEach((x) => { if (!x.titulo) { marcado ? n.add(x.chave) : n.delete(x.chave); } });
+                                return n;
+                              })} />
+                          )}
+                        </TableHead>
+                        {/* O CODIGO VEM ANTES, na esquerda (pedido dela,
+                            18/09/2026): "o codigo do item tem que vir antes, ali
+                            na esquerda do item, como esta na planilha do
+                            executivo". Coluna propria, como la' — dentro da
+                            celula do produto ele se perdia no meio da
+                            especificacao e do fornecedor. */}
+                        <TableHead className="hidden w-24 md:table-cell">Cód.</TableHead>
+                        <TableHead>Produto</TableHead>
+                        <TableHead className="hidden w-20 text-center md:table-cell">Qtd</TableHead>
+                        <TableHead className="hidden w-28 text-right md:table-cell">Custo unit.</TableHead>
+                        <TableHead className="w-28 text-right">Total</TableHead>
+                        {/* DUAS COLUNAS, e so' (correcao dela, 18/09/2026): "o fluxo
+                            correto e': Concluido Executivo / Aprovado para Compra / e
+                            so'. o aprovado para compra so' libera se o concluido
+                            executivo estiver aprovado."
 
-                          A aprovacao do cliente continua sendo pre-requisito da
-                          liberacao — ela so' nao e' mais coluna aqui; quando estiver
-                          faltando, a celula da compra diz. */}
-                      <th className="center c-dec">Concluído executivo</th>
-                      <th className="center c-sit">Aprovado p/ compra</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.itens.map((x) => (x.titulo ? (
-                      /* Cabecalho de trecho: a mesma linha que o Executivo mostra,
-                         sem preco e sem o que decidir. */
-                      <tr key={x.chave} className="linha-titulo"><td colSpan={8}>{x.it.desc}</td></tr>
-                    ) : (
-                      /* A COR DIZ O ESTADO DA CONFERENCIA (pedido dela, 18/09/2026):
-                         "se o item tiver alguma conferencia tecnica, pode aparecer a
-                         linha em laranja, oque ta conferido aparece normal". */
-                      /* LARANJA E' O QUE PEDE CONFERENCIA (ajuste dela,
-                         18/09/2026). Alerta tecnico e item que entrou sem ter
-                         sido vendido sao os dois que se resolvem com o
-                         "conferi" — e sao eles que travam a liberacao. Falta
-                         do cliente NAO pinta a linha: ela virou coluna, e
-                         repetir em cor o que a coluna ja' diz e' barulho. */
-                      <tr key={x.chave} className={
-                        x.it.excluido ? "linha-excluida"
-                        : x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "row-alert"
-                        : ""
-                      }>
-                        <td className="c-check">
-                          {podeEditar && onConcluir && (
-                            <input type="checkbox" className="conf-check" aria-label="Selecionar linha"
-                              checked={sel.has(x.chave)} onChange={() => marcar(x.chave)} />
-                          )}
-                        </td>
-                        <td className="mono dim c-cod">{codigoVisivel(x.it) || "—"}</td>
-                        <td>
-                          {/* O texto inteiro fica no title: a descricao corta em
-                              duas linhas pra lista caber na tela. */}
-                          <div className="item-desc" title={x.it.desc}>{x.it.desc}</div>
-                          {/* Codigo, especificacao, fornecedor e ambiente: a linha de
-                              conferencia contra a planilha. Dentro da celula do produto,
-                              e nao em colunas proprias — sao dez informacoes por linha, e
-                              coluna pra cada uma esmaga a descricao. */}
-                          {/* Especificacao, fornecedor e ambiente. O codigo saiu
-                              daqui: virou coluna propria, na esquerda. */}
-                          {(x.it.especificacao || x.it.marca || x.it.ambiente) && (
-                            <div className="conf-det">
-                              {[x.it.especificacao, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente]
-                                .filter(Boolean).join(" · ")}
-                            </div>
-                          )}
-                          {/* A JUSTIFICATIVA DA REMOCAO (ADR-005): item removido da
-                              planilha aparece aqui dizendo por que, e por quem. */}
-                          {x.it.excluido && (
-                            <div className="conf-removido">
-                              <X size={11} /> <b>Removido do executivo</b>
-                              {x.it.excluidoMotivo ? <> — {x.it.excluidoMotivo}</> : <> — sem justificativa registrada</>}
-                              {x.it.excluidoPor ? <span className="dim"> · {x.it.excluidoPor}</span> : null}
-                            </div>
-                          )}
-                          {/* O aviso do cliente saiu daqui: ele virou a coluna
-                              "Cliente", ao lado. Dizer a mesma coisa duas vezes
-                              na mesma linha era o que engordava a lista. */}
-                          {x.pendencia && x.pendencia.tipo !== "cliente" && (
-                            <div className={`lib-alerta ${x.it.alertaConferido ? "conferido" : ""}`}>
-                              <AlertTriangle size={11} />
-                              <span>{x.pendencia.texto}</span>
-                              {podeEditar && !x.liberado && (
-                                <Button variant="ghost" size="sm" type="button"
-                                  onClick={() => onConferir(x.catIdx, x.itemIdx, !x.it.alertaConferido)}>
-                                  {x.it.alertaConferido ? "desmarcar" : "conferi"}
-                                </Button>
-                              )}
-                              {x.it.alertaConferido && (
-                                <span className="lib-conferido-por">
-                                  conferido{x.it.alertaConferido.por ? ` por ${x.it.alertaConferido.por}` : ""}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="mono center">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="unit">{x.it.un}</span></td>
-                        <td className="mono right">{x.it.custoUnitario != null ? fmtBRL(x.it.custoUnitario) : "—"}</td>
-                        {/* O TOTAL e' o do item inteiro, material mais mao de obra: e'
-                            o numero da planilha, e e' com ele que se confere. */}
-                        <td className="mono right">{fmtBRL(x.valor)}</td>
+                            A aprovacao do cliente continua sendo pre-requisito da
+                            liberacao — ela so' nao e' mais coluna aqui; quando estiver
+                            faltando, a celula da compra diz. */}
+                        <TableHead className="w-32 whitespace-normal text-center">Concluído executivo</TableHead>
+                        <TableHead className="w-40 whitespace-normal text-center">Aprovado p/ compra</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {g.itens.map((x) => (x.titulo ? (
+                        /* Cabecalho de trecho: a mesma linha que o Executivo mostra,
+                           sem preco e sem o que decidir. */
+                        <TableRow key={x.chave} className="bg-surface-2"><TableCell colSpan={8} className="font-semibold">{x.it.desc}</TableCell></TableRow>
+                      ) : (
+                        /* A COR DIZ O ESTADO DA CONFERENCIA (pedido dela, 18/09/2026):
+                           "se o item tiver alguma conferencia tecnica, pode aparecer a
+                           linha em laranja, oque ta conferido aparece normal". */
+                        /* LARANJA E' O QUE PEDE CONFERENCIA (ajuste dela,
+                           18/09/2026). Alerta tecnico e item que entrou sem ter
+                           sido vendido sao os dois que se resolvem com o
+                           "conferi" — e sao eles que travam a liberacao. Falta
+                           do cliente NAO pinta a linha: ela virou coluna, e
+                           repetir em cor o que a coluna ja' diz e' barulho. */
+                        <TableRow key={x.chave} className={
+                          x.it.excluido ? "bg-danger/10 text-text-mute"
+                          : x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "bg-alert/10"
+                          : ""
+                        }>
+                          <TableCell className="w-10">
+                            {selecaoDaVerba && (
+                              <Checkbox aria-label="Selecionar linha" checked={sel.has(x.chave)} onCheckedChange={() => marcar(x.chave)} />
+                            )}
+                          </TableCell>
+                          <TableCell className={`mono hidden text-text-mute md:table-cell ${x.it.excluido ? "line-through" : ""}`}>{codigoVisivel(x.it) || "—"}</TableCell>
+                          <TableCell>
+                            {/* O texto inteiro fica no title: a descricao corta em
+                                duas linhas pra lista caber na tela. */}
+                            <div className="line-clamp-2 text-sm" title={x.it.desc}>{x.it.desc}</div>
+                            {/* Codigo, especificacao, fornecedor e ambiente: a linha de
+                                conferencia contra a planilha. Dentro da celula do produto,
+                                e nao em colunas proprias — sao dez informacoes por linha, e
+                                coluna pra cada uma esmaga a descricao. */}
+                            {/* Especificacao, fornecedor e ambiente. O codigo saiu
+                                daqui: virou coluna propria, na esquerda. */}
+                            {(x.it.especificacao || x.it.marca || x.it.ambiente) && (
+                              <div className="text-xs text-text-mute">
+                                {[x.it.especificacao, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente]
+                                  .filter(Boolean).join(" · ")}
+                              </div>
+                            )}
+                            {/* A JUSTIFICATIVA DA REMOCAO (ADR-005): item removido da
+                                planilha aparece aqui dizendo por que, e por quem. */}
+                            {x.it.excluido && (
+                              <div className="mt-1 flex flex-wrap items-baseline gap-1 text-xs text-danger">
+                                <X size={12} /> <b>Removido do executivo</b>
+                                {x.it.excluidoMotivo ? <> — {x.it.excluidoMotivo}</> : <> — sem justificativa registrada</>}
+                                {x.it.excluidoPor ? <span className="text-text-mute"> · {x.it.excluidoPor}</span> : null}
+                              </div>
+                            )}
+                            {/* O aviso do cliente saiu daqui: ele virou a coluna
+                                "Cliente", ao lado. Dizer a mesma coisa duas vezes
+                                na mesma linha era o que engordava a lista. */}
+                            {x.pendencia && x.pendencia.tipo !== "cliente" && (
+                              <div className={`mt-1 flex flex-wrap items-center gap-1 text-xs ${x.it.alertaConferido ? "text-text-mute" : "text-alert"}`}>
+                                <AlertTriangle size={12} />
+                                <span>{x.pendencia.texto}</span>
+                                {podeEditar && !x.liberado && (
+                                  <Button variant="ghost" size="sm" type="button"
+                                    onClick={() => onConferir(x.catIdx, x.itemIdx, !x.it.alertaConferido)}>
+                                    {x.it.alertaConferido ? "desmarcar" : "conferi"}
+                                  </Button>
+                                )}
+                                {x.it.alertaConferido && (
+                                  <span className="text-xs italic text-text-mute">
+                                    conferido{x.it.alertaConferido.por ? ` por ${x.it.alertaConferido.por}` : ""}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="mono hidden text-center md:table-cell">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{x.it.un}</span></TableCell>
+                          <TableCell className="mono hidden text-right md:table-cell">{x.it.custoUnitario != null ? fmtBRL(x.it.custoUnitario) : "—"}</TableCell>
+                          {/* O TOTAL e' o do item inteiro, material mais mao de obra: e'
+                              o numero da planilha, e e' com ele que se confere. */}
+                          <TableCell className="mono text-right">{fmtBRL(x.valor)}</TableCell>
 
-                        {/* CONCLUIDO EXECUTIVO — quem trabalha a linha diz que terminou. */}
-                        <td className="center">
-                          {estaConcluido(x) ? (
-                            <div className="status-par">
-                              {/* Sem carimbo proprio, a etiqueta diz DE ONDE veio —
-                                  e nao inventa quem concluiu. */}
-                              <span className="pill pill-ok" title={x.it.concluidoExecutivo
-                                ? `Concluído em ${new Date(x.it.concluidoExecutivo.em).toLocaleDateString("pt-BR")}${x.it.concluidoExecutivo.por ? ` por ${x.it.concluidoExecutivo.por}` : ""}`
-                                : "Concluído porque já está aprovado para compra"}>
-                                <Check size={10} /> concluído
-                              </span>
-                              {podeEditar && onConcluir && x.it.concluidoExecutivo && (
-                                <Button variant="ghost" size="sm" type="button"
-                                  onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
-                              )}
-                            </div>
-                          ) : (
-                            <Button variant="ghost" size="sm" className="pill pill-btn pill-wait" disabled={!podeEditar || !onConcluir}
-                              title={podeEditar ? "Marcar esta linha como concluída pelo executivo" : MODO_LEITURA_DICA}
-                              onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
-                              concluir
-                            </Button>
-                          )}
-                        </td>
-
-                        <td className="center">
-                          {/* MAO DE OBRA NAO SE COMPRA: ela aparece na planilha (a tela
-                              mostra tudo), mas o destino dela e' Contratos — e dizer isso
-                              e' melhor do que um botao que nunca deveria ser clicado. */}
-                          {/* VAZIO ENQUANTO NAO E' A VEZ DELA (correcao dela,
-                              18/09/2026): "se n ta aprovado, deixa sem nada
-                              preenchido".
-
-                              Mao de obra nao se compra. E, pela ordem que ela
-                              definiu, enquanto o executivo nao concluir nao ha' o
-                              que o administrador decidir — entao a celula fica
-                              limpa, em vez de explicar em texto o que a coluna do
-                              lado ja' mostra. O botao aparece quando e' a vez. */}
-                          {/* CELULA NENHUMA FICA EM BRANCO (pedido dela,
-                              18/09/2026): "todo campo em branco nao preenchido
-                              deve constar como nao aprovado" — e "na mesma fonte
-                              do concluir", entao e' uma etiqueta igual as outras,
-                              so' que apagada. Mao de obra entra tambem: ela nunca
-                              vai ser aprovada pra compra, e dizer isso e' melhor
-                              do que deixar um buraco na coluna. */}
-                          {/* Quem NAO pode agir ve o estado; quem pode ve o botao.
-                              O carimbo do executivo deixou de ser pre-requisito do
-                              clique: aprovar a compra conclui junto (18/09/2026). */}
-                          {!x.liberado && (!podeEditar || !souAdmin) ? (
-                              <span className="pill pill-nao">não aprovado</span>
-                            ) : x.liberado ? (
-                            <div className="status-par">
-                              <span className="pill pill-ok" title={x.it.liberadoCompra?.em
-                                ? `Liberado em ${new Date(x.it.liberadoCompra.em).toLocaleDateString("pt-BR")}${x.it.liberadoCompra.por ? ` por ${x.it.liberadoCompra.por}` : ""}`
-                                : "Já estava no fluxo de compras"}>
-                                <Check size={10} /> liberado
-                              </span>
-                              {podeEditar && souAdmin && x.it.liberadoCompra && !x.it.comprado && (
-                                <Button variant="ghost" size="sm" type="button"
-                                  onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
-                              )}
-                            </div>
-                          ) : (
-                            <>
-                              {/* A ordem continua (o executivo vem antes), mas o
-                                  clique nao pede os dois: aprovar pra compra
-                                  conclui o executivo junto, quando falta. */}
-                              <Button variant="ghost" size="sm" className="pill pill-btn pill-wait"
-                                disabled={!podeEditar || !souAdmin || !x.pode}
-                                title={!podeEditar ? MODO_LEITURA_DICA
-                                  : !souAdmin ? "Só um administrador libera a compra"
-                                  : !x.pode ? "Confira o alerta desta linha antes de liberar"
-                                  : estaConcluido(x) ? "Liberar para compra"
-                                  : "Liberar para compra — marca o executivo como concluído junto"}
-                                onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
-                                estimativa · liberar
+                          {/* CONCLUIDO EXECUTIVO — quem trabalha a linha diz que terminou. */}
+                          <TableCell className="text-center">
+                            {estaConcluido(x) ? (
+                              <div className="inline-flex flex-col items-center gap-1">
+                                {/* Sem carimbo proprio, a etiqueta diz DE ONDE veio —
+                                    e nao inventa quem concluiu. */}
+                                <Badge tone="success" title={x.it.concluidoExecutivo
+                                  ? `Concluído em ${new Date(x.it.concluidoExecutivo.em).toLocaleDateString("pt-BR")}${x.it.concluidoExecutivo.por ? ` por ${x.it.concluidoExecutivo.por}` : ""}`
+                                  : "Concluído porque já está aprovado para compra"}>
+                                  <Check size={12} /> concluído
+                                </Badge>
+                                {podeEditar && onConcluir && x.it.concluidoExecutivo && (
+                                  <Button variant="ghost" size="sm" type="button"
+                                    onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
+                                )}
+                              </div>
+                            ) : (
+                              <Button variant="outline" size="sm" disabled={!podeEditar || !onConcluir}
+                                title={podeEditar ? "Marcar esta linha como concluída pelo executivo" : MODO_LEITURA_DICA}
+                                onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
+                                concluir
                               </Button>
-                              {/* A excecao, no mesmo padrao do portao da assinatura que
-                                  ja existe no Plano de Compras: bloqueia por padrao, mas
-                                  quem tem autoridade libera dizendo por que — e fica
-                                  gravado no item, com nome. */}
-                              {podeEditar && souAdmin && x.pendencia?.tipo === "cliente" && onLiberarSemCliente && (
-                                excecao === x.chave
-                                  ? <FormExcecaoCliente onCancelar={() => setExcecao(null)}
-                                      onConfirmar={(dados) => { onLiberarSemCliente(x.catIdx, x.itemIdx, dados); setExcecao(null); }} />
-                                  : <Button variant="ghost" size="sm" type="button" onClick={() => setExcecao(x.chave)}>liberar mesmo assim</Button>
-                              )}
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    )))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="text-center">
+                            {/* MAO DE OBRA NAO SE COMPRA: ela aparece na planilha (a tela
+                                mostra tudo), mas o destino dela e' Contratos — e dizer isso
+                                e' melhor do que um botao que nunca deveria ser clicado. */}
+                            {/* VAZIO ENQUANTO NAO E' A VEZ DELA (correcao dela,
+                                18/09/2026): "se n ta aprovado, deixa sem nada
+                                preenchido".
+
+                                Mao de obra nao se compra. E, pela ordem que ela
+                                definiu, enquanto o executivo nao concluir nao ha' o
+                                que o administrador decidir — entao a celula fica
+                                limpa, em vez de explicar em texto o que a coluna do
+                                lado ja' mostra. O botao aparece quando e' a vez. */}
+                            {/* CELULA NENHUMA FICA EM BRANCO (pedido dela,
+                                18/09/2026): "todo campo em branco nao preenchido
+                                deve constar como nao aprovado" — e "na mesma fonte
+                                do concluir", entao e' uma etiqueta igual as outras,
+                                so' que apagada. Mao de obra entra tambem: ela nunca
+                                vai ser aprovada pra compra, e dizer isso e' melhor
+                                do que deixar um buraco na coluna. */}
+                            {/* Quem NAO pode agir ve o estado; quem pode ve o botao.
+                                O carimbo do executivo deixou de ser pre-requisito do
+                                clique: aprovar a compra conclui junto (18/09/2026). */}
+                            {!x.liberado && (!podeEditar || !souAdmin) ? (
+                                <Badge tone="neutral">não aprovado</Badge>
+                              ) : x.liberado ? (
+                              <div className="inline-flex flex-col items-center gap-1">
+                                <Badge tone="success" title={x.it.liberadoCompra?.em
+                                  ? `Liberado em ${new Date(x.it.liberadoCompra.em).toLocaleDateString("pt-BR")}${x.it.liberadoCompra.por ? ` por ${x.it.liberadoCompra.por}` : ""}`
+                                  : "Já estava no fluxo de compras"}>
+                                  <Check size={12} /> liberado
+                                </Badge>
+                                {podeEditar && souAdmin && x.it.liberadoCompra && !x.it.comprado && (
+                                  <Button variant="ghost" size="sm" type="button"
+                                    onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="inline-flex flex-col items-center gap-1">
+                                {/* A ordem continua (o executivo vem antes), mas o
+                                    clique nao pede os dois: aprovar pra compra
+                                    conclui o executivo junto, quando falta. */}
+                                <Button variant="outline" size="sm"
+                                  disabled={!podeEditar || !souAdmin || !x.pode}
+                                  title={!podeEditar ? MODO_LEITURA_DICA
+                                    : !souAdmin ? "Só um administrador libera a compra"
+                                    : !x.pode ? "Confira o alerta desta linha antes de liberar"
+                                    : estaConcluido(x) ? "Liberar para compra"
+                                    : "Liberar para compra — marca o executivo como concluído junto"}
+                                  onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
+                                  estimativa · liberar
+                                </Button>
+                                {/* A excecao, no mesmo padrao do portao da assinatura que
+                                    ja existe no Plano de Compras: bloqueia por padrao, mas
+                                    quem tem autoridade libera dizendo por que — e fica
+                                    gravado no item, com nome. */}
+                                {podeEditar && souAdmin && x.pendencia?.tipo === "cliente" && onLiberarSemCliente && (
+                                  excecao === x.chave
+                                    ? <FormExcecaoCliente onCancelar={() => setExcecao(null)}
+                                        onConfirmar={(dados) => { onLiberarSemCliente(x.catIdx, x.itemIdx, dados); setExcecao(null); }} />
+                                    : <Button variant="ghost" size="sm" type="button" onClick={() => setExcecao(x.chave)}>liberar mesmo assim</Button>
+                                )}
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           );
         })}
-      </div>
-    </>
+      </Card>
+    </div>
   );
 }
 
@@ -22243,19 +22217,9 @@ export default function App() {
         .ad-tag.rascunho.on { background: var(--panel); border-color: var(--ink-3); color: var(--ink-2); }
         .ad-tag.aguardando.on { background: var(--alert-soft); border-color: var(--alert); color: var(--alert); }
 
-        /* LIBERAR PARA COMPRA — a estimativa e' clara de proposito: ela
-           esta na tela pra ser contada, nao pra ser trabalhada. */
-        .lib-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 12px; }
-        .lib-placar { font-size: 13px; color: var(--ink-2); display: flex; align-items: baseline; gap: 10px; }
-        .lib-placar b { font-size: 16px; color: var(--ink); }
-        .lib-valor { font-size: 12px; color: var(--ink-3); }
         .lib-travados { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--alert); }
-        .lib-grp-valor { font-size: 11.5px; }
         .row-estimativa td { opacity: .55; }
         .row-estimativa .item-desc { font-weight: 400; }
-        .lib-alerta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 3px; font-size: 10.5px; line-height: 1.4; color: var(--alert); }
-        .lib-alerta.conferido { color: var(--ink-3); }
-        .lib-conferido-por { font-size: 10px; color: var(--ink-3); font-style: italic; }
         .cli-bloco { margin-top: 18px; }
         /* AS DUAS APROVACOES, cada uma num bloco que abre e fecha. */
         .aprov-secao { border: 1px solid var(--line-1); border-radius: 14px; background: var(--surface-1); margin-bottom: 14px; overflow: hidden; }
@@ -22279,57 +22243,10 @@ export default function App() {
         table.grp-itens th.c-qtd { width: 104px; }
         table.grp-itens th.right { width: 172px; }
         table.grp-itens th.center { width: 178px; }
-        /* A PLANILHA DA CONFERENCIA (ADR-005): sete colunas.
-
-           A descricao fica com o que sobrar, e as colunas de decisao sao
-           estreitas de proposito — codigo, especificacao, fornecedor e
-           ambiente moram DENTRO da celula do produto, na linha de
-           conferencia. Coluna pra cada um esmagaria a descricao. */
-        table.tab-conf th.c-qtd { width: 88px; }
-        table.tab-conf th.c-unit { width: 100px; }
-        table.tab-conf th.c-total { width: 112px; }
-        table.tab-conf th.c-check { width: 34px; }
-        table.tab-conf th.c-cod { width: 62px; }
-        table.tab-conf td.c-cod { font-size: 11px; white-space: nowrap; }
-        table.tab-conf td.c-check { padding-top: 8px; }
-        table.tab-conf th.c-dec { width: 132px; }
-        table.tab-conf th.c-sit { width: 172px; }
-        .conf-det { margin-top: 1px; font-size: 10.5px; color: var(--text-mute); line-height: 1.35; }
-        /* LINHA FINA (pedido dela, 18/09/2026): "apresentar a linha mais
-           fina". Sao 443 linhas numa obra — cada pixel de altura custa uma
-           rolagem. A descricao para de quebrar em quatro linhas: ela ganha
-           reticencias em duas, e o texto inteiro fica no title. */
-        table.tab-conf td { padding: 5px 10px; font-size: 12px; line-height: 1.35; }
-        /* O CABECALHO QUEBRA EM DUAS LINHAS. A regra geral do th e' nowrap, e
-           "Concluido executivo" em 104 px saia por cima do vizinho — ela viu
-           os textos se sobrepondo. Aqui a coluna e' estreita de proposito,
-           entao quem cede e' o texto. */
-        table.tab-conf th { padding: 6px 10px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
         .conf-cod { color: var(--text-soft); margin-right: 6px; font-size: 10.5px; }
-        /* Mesma forma das outras etiquetas da coluna, sem cor de estado: e'
-           ausencia de decisao, nao um alerta. */
-        .pill-nao { background: var(--surface-2); color: var(--text-mute); border: 1px solid var(--line-1); }
         /* Bloqueado no Plano de Compras: cadeado e tom neutro. Nao e' erro —
            e' a linha esperando a aprovacao, e ela conta no dinheiro. */
         .pill-bloqueado { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); color: var(--text-soft); border: 1px solid var(--line-2); }
-        table.tab-conf .item-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        /* O ALERTA APARECE INTEIRO (correcao dela, 18/09/2026): "esse texto
-           deve aparecer inteiro e nao sumir, botao de conferido no final".
-
-           Eu tinha cortado a frase com reticencias pra ganhar altura — mas
-           esta frase e' a razao da linha existir: ela diz o que conferir. Quem
-           cede e' a altura, nao o texto. O "conferi" vem depois da frase, no
-           fim, e nunca some. */
-        table.tab-conf .lib-alerta { margin-top: 3px; font-size: 10.5px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; line-height: 1.4; }
-        table.tab-conf .lib-alerta > span:first-of-type { white-space: normal; overflow: visible; }
-        table.tab-conf .lib-alerta > button, table.tab-conf .lib-alerta .lib-conferido-por { flex-shrink: 0; }
-        table.tab-conf .pill { padding: 1px 7px; font-size: 10.5px; }
-        table.tab-conf .troca-link { font-size: 10.5px; }
-        /* Removido do executivo: a justificativa fica na linha, nao num
-           tooltip — quem confere precisa ler sem descobrir que da' pra passar
-           o mouse. */
-        .conf-removido { margin-top: 4px; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; font-size: 11px; color: var(--danger); }
-        @media (max-width: 1100px) { table.tab-conf th.c-unit, table.tab-conf td:nth-child(3) { display: none; } }
         @media (max-width: 760px) { table.grp-itens { table-layout: auto; } }
         .cli-excecao { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; text-align: left; }
         .cli-excecao .form-input { font-size: 11.5px; }
@@ -23238,16 +23155,6 @@ export default function App() {
         .vend-nome { font-size: 13px; color: var(--ink); font-weight: 600; flex: 1; min-width: 0; }
         .vend-count { font-size: 11px; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         .vend-val { font-size: 13px; color: var(--ink); width: 130px; text-align: right; flex-shrink: 0; }
-        /* No depara, o lugar do valor mostra o que ainda falta conferir
-           naquela verba — é a informação que decide se vale abrir. */
-        .vend-pend { font-size: 11.5px; font-weight: 600; color: var(--amber); width: 130px; text-align: right; flex-shrink: 0; }
-        .vend-pend.ok { color: var(--green); font-weight: 500; }
-        /* Verba fora da conferência: aparece apagada, mas aparece — some
-           da tela é diferente de dizer que não foi analisada. */
-        .vend-pend.na { color: var(--ink-3); font-weight: 600; letter-spacing: 0.04em; }
-        .vend-grupo.na { opacity: 0.72; }
-        .vend-head.na { cursor: default; }
-        .vend-na-motivo { font-size: 11px; color: var(--ink-3); flex: 1; text-align: right; padding-right: 10px; }
         .aviso-pobre { display: flex; align-items: flex-start; gap: 10px; background: var(--amber-bg); border: 1px solid var(--amber); color: var(--amber); border-radius: 10px; padding: 11px 14px; font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
         .aviso-pobre-sub { color: var(--ink-2); font-size: 11.5px; margin-top: 4px; }
 
@@ -23285,19 +23192,12 @@ export default function App() {
         .bucket-falta .bucket-num span { color: var(--amber); }
         .bucket-sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
         .bucket-falta .bucket-sub { color: var(--amber); }
-        .compras-filtros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-        .cfiltro { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
-        .cfiltro:hover { border-color: var(--blue); }
-        .cfiltro.active { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-        .cbadge { background: color-mix(in srgb, var(--text) 8%, transparent); border-radius: 10px; padding: 0 6px; font-size: 11px; font-weight: 600; }
-        .cfiltro.active .cbadge { background: var(--on-inverse-hover); }
         .compras-grupo { margin-bottom: 16px; }
         .compras-grupo-head { display: flex; align-items: center; gap: 8px; padding: 6px 4px; width: 100%; background: transparent; border: none; border-radius: 8px; cursor: pointer; text-align: left; }
         .compras-grupo-head:hover { background: var(--panel); }
         .cg-num { font-size: 11px; color: var(--ink-3); font-weight: 600; }
         .cg-nome { font-size: 13.5px; font-weight: 700; color: var(--ink); }
         .cg-meta { margin-left: auto; font-size: 11px; color: var(--ink-3); }
-        .compras-list { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
         .compras-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
         .compras-row:last-child { border-bottom: none; }
         .compras-rowwrap { border-bottom: 1px solid var(--border-soft); }
@@ -23379,19 +23279,11 @@ export default function App() {
            ela atravessa, e isso tem que estar na cor. */
         .btn-conferir-liberar { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
         .btn-conferir-liberar:hover { filter: brightness(0.97); }
-        .grp-conta-filtro { color: var(--amber); }
         .conf-edit { display: flex; flex-direction: column; gap: 6px; }
         .conf-edit-row { display: flex; gap: 6px; }
         .conf-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
         .conf-check { width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
-        .selecao-massa { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 9px 13px; margin-bottom: 12px; }
-        .selecao-massa-texto { font-size: 12px; font-weight: 600; color: var(--ink); }
         .conf-motivo { font-size: 11.5px; color: var(--amber); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft); }
-        /* Barra de liberação no topo — mesma linguagem visual do painel
-           de CMV logo acima, pra ler como uma coisa só. */
-        .liberacao-barra { display: flex; align-items: center; gap: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; }
-        .liberacao-texto { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
-        .liberacao-barra .btn-aprovar { flex-shrink: 0; }
 
         .aprovacao-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); margin-bottom: 12px; cursor: pointer; }
         .btn-aprovar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 10px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
@@ -23627,18 +23519,6 @@ export default function App() {
         .alerta-conf b { color: var(--danger); text-transform: uppercase; font-weight: 700; letter-spacing: 0.01em; }
         .conf-badge.nao-vendido { color: var(--danger); background: var(--danger-soft); }
 
-        /* Alerta que vale pra verba inteira: aparece UMA vez, no topo do
-           grupo. A infraestrutura de climatização da planta é uma só — não
-           é uma por aparelho. */
-        .grupo-alerta { display: flex; align-items: flex-start; gap: 9px; background: var(--alert-soft); box-shadow: inset 3px 0 0 var(--alert); padding: 11px 14px; font-size: 12px; line-height: 1.5; color: var(--text); border-bottom: 1px solid var(--border-soft); }
-        /* Com mais de um alerta na verba, texto corrido vira parede: cada
-           um é uma conferência diferente, com resposta diferente. */
-        .grupo-alerta-lista { margin: 4px 0 0; padding-left: 17px; }
-        .grupo-alerta-lista li { margin-bottom: 3px; }
-        .grupo-alerta svg { color: var(--alert); flex-shrink: 0; margin-top: 1px; }
-        .grupo-alerta b { color: var(--alert); text-transform: uppercase; font-weight: 700; font-size: 11px; letter-spacing: 0.01em; }
-        /* Marca a verba com alerta mesmo com o grupo fechado */
-        .vend-alerta-mark { display: inline-flex; align-items: center; color: var(--alert); flex-shrink: 0; }
         .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
         /* Cabecalho de duas linhas ("Codigo / especif. / Obs.") precisa de
            altura pra segunda linha caber inteira, senao ela sai cortada. */
@@ -24237,15 +24117,15 @@ export default function App() {
         .det-opcao.escolhida .det-radio { border-color: var(--brand); background: var(--brand); box-shadow: inset 0 0 0 2px var(--surface-1); }
 
         /* ---------- Filtros em chip (SavedViewChips) ---------- */
-        :is(.squad-chip, .filter-chip, .cfiltro, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+        :is(.squad-chip, .filter-chip, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
         .squad-chip.neutro { background: var(--surface-2); color: var(--text-soft); }
-        :is(.squad-chip, .filter-chip, .cfiltro, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag):hover { border-color: var(--line-3); color: var(--text); }
-        :is(.squad-chip.active, .squad-chip.neutro.on, .filter-chip.active, .cfiltro.active, .gc-chip.on, .fo-btn.on, .cargo-chip.on, .ac-chip.on) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); box-shadow: none; }
+        :is(.squad-chip, .filter-chip, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag):hover { border-color: var(--line-3); color: var(--text); }
+        :is(.squad-chip.active, .squad-chip.neutro.on, .filter-chip.active, .gc-chip.on, .fo-btn.on, .cargo-chip.on, .ac-chip.on) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); box-shadow: none; }
         .squad-chip.active.alerta { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
         .alert-toggle { border-radius: 999px; border-color: var(--line-2); font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-soft); }
         .alert-toggle.active { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
-        .cbadge, .tipo-chip-conta { background: color-mix(in srgb, var(--text) 8%, transparent); color: inherit; font-family: var(--font-mono); }
-        .cfiltro.active .cbadge, .tipo-chip.active .tipo-chip-conta { background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand); }
+        .tipo-chip-conta { background: color-mix(in srgb, var(--text) 8%, transparent); color: inherit; font-family: var(--font-mono); }
+        .tipo-chip.active .tipo-chip-conta { background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand); }
         .ad-tag.rascunho.on { background: var(--surface-3); border-color: var(--line-3); color: var(--text); }
         .ad-tag.aguardando.on { background: color-mix(in srgb, var(--warning) 14%, transparent); border-color: var(--warning); color: var(--warning); }
         .ad-tag.aprovado.on { background: var(--success-soft); border-color: var(--success); color: var(--success); }
@@ -24345,16 +24225,6 @@ export default function App() {
         .jornada-anexar-desc { flex: 1 1 220px; min-width: 0; max-width: 340px; font-size: 12px; padding: 6px 9px; }
         .jornada-vazio { font-size: 12px; color: var(--text-mute); }
         @media (max-width: 1100px) { .jornada-anexos { grid-template-columns: 1fr; } }
-        /* ---------- Conf. Executivo: o que entrou e o que saiu ---------- */
-        .conf-stat-duplo { display: flex; align-items: baseline; gap: 14px; }
-        .conf-entrou { color: var(--success); }
-        .conf-saiu { color: var(--danger); }
-        .conf-mudou { color: var(--amber); }
-        /* Os tres numeros do cartao viraram filtro: precisam parecer
-           clicaveis e mostrar qual esta ligado. */
-        .conf-es-btn { cursor: pointer; border-radius: 8px; padding: 0 4px; }
-        .conf-es-btn:hover { background: var(--surface-2); }
-        .conf-es-btn.on { box-shadow: inset 0 -2px 0 currentColor; }
         .es-topo { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
         .es-total { padding: 14px 16px; border: 1px solid var(--line-1); border-radius: 12px; background: var(--surface-1); }
         .es-total.entrou { border-color: var(--success-line); background: var(--success-tint); }

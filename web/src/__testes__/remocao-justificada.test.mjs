@@ -50,7 +50,7 @@ conf("desfazer limpa a justificativa",
 
 /* ---- 5. E aparece na Conf. Executivo ---- */
 conf("a Conf. Executivo mostra a justificativa", src.includes("Removido do executivo"), true);
-conf("... com quem removeu", src.includes("{x.it.excluidoPor ? <span className=\"dim\"> · {x.it.excluidoPor}</span> : null}"), true);
+conf("... com quem removeu", src.includes("{x.it.excluidoPor ? <span className=\"text-text-mute\"> · {x.it.excluidoPor}</span> : null}"), true);
 conf("... e diz quando não tem (removido antes desta regra)",
   src.includes("sem justificativa registrada"), true);
 

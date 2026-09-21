@@ -314,7 +314,7 @@ conf("... e quantos foram liberados para compra, idem",
 /* A ordem é a do fluxo: sem o carimbo do executivo o admin não libera, então
    ler "liberado" antes de "concluído" conta a história de trás pra frente. */
 conf("o concluído vem ANTES do liberado na barra",
-  src.indexOf("concluído executivo</span>") < src.indexOf("liberado para compra</span>"), true);
+  src.indexOf("concluído executivo</Badge>") < src.indexOf("liberado para compra</Badge>"), true);
 /* Os dois olham a MESMA lista — todo item passa pelas duas decisões,
    independente da alocação —, então os dois têm o mesmo denominador e dá
    pra comparar um com o outro de relance. */
@@ -422,7 +422,7 @@ conf("a tela pede a planilha inteira, com mão de obra",
   src.includes("itensParaLiberar(obra, entrouPorDesc, { comMaoDeObra: true })"), true);
 conf("as colunas da planilha estão na tabela",
   ["Produto", "Qtd", "Custo unit.", "Total", "Concluído executivo", "Aprovado p/ compra"]
-    .every((c) => src.includes(`>${c}</th>`)), true);
+    .every((c) => src.includes(`>${c}</TableHead>`)), true);
 conf("espec., fornecedor e ambiente ficam na célula do produto",
   src.includes(`[x.it.especificacao, x.it.marca ? \`Fornecedor: \${nomeDoFornecedor(x.it)}\` : null, x.it.ambiente]`), true);
 
@@ -433,7 +433,7 @@ conf("espec., fornecedor e ambiente ficam na célula do produto",
    "conferi" — e são eles que travam a liberação. Falta do cliente NÃO pinta:
    ela virou coluna, e repetir em cor o que a coluna diz é barulho. */
 conf("linha que pede conferência sai laranja",
-  src.includes(`: x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "row-alert"`), true);
+  src.includes(`: x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "bg-alert/10"`), true);
 conf("o aviso do cliente saiu da linha (virou coluna)",
   src.includes(`{x.pendencia && x.pendencia.tipo !== "cliente" && (`), true);
 
@@ -501,21 +501,23 @@ conf("... e o padrão continua sendo 'todos'", /useState\(\(\) => [^)]*\|\| "tod
 
 /* "apresentar a linha mais fina": com 443 linhas, cada pixel custa rolagem.
    Medido na 2498 depois do ajuste: 54 px sem alerta, 71 px com (era 102). */
-conf("a linha da conferência é fina", src.includes("table.tab-conf td { padding: 5px 10px;"), true);
-conf("a descrição corta em duas linhas", src.includes("-webkit-line-clamp: 2"), true);
-conf("... com o texto inteiro no title", src.includes(`<div className="item-desc" title={x.it.desc}>`), true);
+/* A linha fina e o cabecalho mono agora vem da `Table` do DS — a tela nao
+   escreve mais CSS proprio de tabela. */
+conf("a linha da conferência é a tabela do DS", src.includes(`<TableHead className="hidden w-24 md:table-cell">Cód.</TableHead>`), true);
+conf("a descrição corta em duas linhas", src.includes(`<div className="line-clamp-2 text-sm" title={x.it.desc}>`), true);
+conf("... com o texto inteiro no title", src.includes(`title={x.it.desc}>{x.it.desc}</div>`), true);
 /* "esse texto deve aparecer inteiro e nao sumir, botao de conferido no final"
    (18/09/2026): eu tinha cortado a frase com reticências para ganhar altura,
    mas ela é a razão da linha existir — diz o que conferir. Quem cede é a
    altura. */
-conf("o alerta aparece inteiro", src.includes("table.tab-conf .lib-alerta > span:first-of-type { white-space: normal; overflow: visible; }"), true);
-conf("... e o conferi vem no fim", src.includes("table.tab-conf .lib-alerta { margin-top: 3px; font-size: 10.5px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;"), true);
+conf("o alerta aparece inteiro", src.includes('<div className={`mt-1 flex flex-wrap items-center gap-1 text-xs ${x.it.alertaConferido ? "text-text-mute" : "text-alert"}`}>'), true);
+conf("... e o conferi vem no fim", src.indexOf("<span>{x.pendencia.texto}</span>") < src.indexOf('{x.it.alertaConferido ? "desmarcar" : "conferi"}'), true);
 
 /* ---- A CORREÇÃO DELA: DUAS COLUNAS, E SÓ (18/09/2026) ----
    "o fluxo correto é: Concuído Executivo / Aprovado para Compra / e só. o
    aprovado para compra só libera se o concluido executivo estiver aprovado."
    Eu tinha colocado três, com "Cliente" — era leitura minha, não pedido dela. */
-conf("a tabela tem duas colunas de decisão", src.includes(`<th className="center c-dec">Concluído executivo</th>`), true);
+conf("a tabela tem duas colunas de decisão", src.includes(`<TableHead className="w-32 whitespace-normal text-center">Concluído executivo</TableHead>`), true);
 conf("a coluna Cliente saiu", /<th className="center c-dec">Cliente<\/th>/.test(src), false);
 /* O cliente saiu do fluxo de vez em 18/09/2026 — inclusive da dica do botão,
    que não tem mais por que citá-lo. */
@@ -528,8 +530,8 @@ conf("o cliente não aparece mais nem na dica",
 /* "todo campo em branco nao preenchido deve constar como nao aprovado", e
    "na mesma fonte do concluir": é etiqueta igual às outras, só que apagada. */
 conf("nenhuma célula fica em branco",
-  src.includes(`<span className="pill pill-nao">não aprovado</span>`), true);
-conf("... e é uma etiqueta, como as vizinhas", src.includes(".pill-nao {"), true);
+  src.includes(`<Badge tone="neutral">não aprovado</Badge>`), true);
+conf("... e é uma etiqueta, como as vizinhas", src.includes(`<Badge tone="success" title={x.it.liberadoCompra?.em`), true);
 conf("nenhum texto avulso de espera sobrou", /aguarda o (executivo|cliente)/.test(src), false);
 
 /* Os dois filtros do que FALTA, ao lado do "Todos" (pedido dela, 18/09/2026). */
@@ -582,12 +584,12 @@ conf("e o placar parou de repetir os cartões", src.includes("de {fmtBRL(total)}
    célula do produto, onde ele se perdia entre especificação e fornecedor. */
 conf("o código tem coluna própria, na esquerda", src.includes(`<th className="c-cod">Cód.</th>`), true);
 conf("... e a célula vem antes do produto",
-  src.includes(`<td className="mono dim c-cod">{codigoVisivel(x.it) || "—"}</td>`), true);
+  src.includes('<TableCell className={`mono hidden text-text-mute md:table-cell ${x.it.excluido ? "line-through" : ""}`}>{codigoVisivel(x.it) || "—"}</TableCell>'), true);
 
 /* ---- SELECIONAR PARA CONCLUIR EM MASSA (18/09/2026) ---- */
 conf("existe seleção por linha", src.includes(`aria-label="Selecionar linha"`), true);
 conf("e pela verba inteira", src.includes(`aria-label="Selecionar a verba"`), true);
-conf("a barra conclui o que está selecionado", /<Check size=\{12\} \/> Concluir \{sel\.size\}/.test(src), true);
+conf("a barra conclui o que está selecionado", /<Check size=\{\d+\} \/> Concluir \{sel\.size\}/.test(src), true);
 conf("... e diz quantas ficaram fora da tela", src.includes("fora do que está na tela"), true);
 conf("a seleção some no modo leitura", src.includes("{podeEditar && onConcluir && (\n                            <input type=\"checkbox\"") || src.includes(`{podeEditar && onConcluir && (`), true);
 /* Título de trecho não é produto: não entra na seleção nem na conclusão. */
@@ -595,7 +597,7 @@ conf("título não entra na conclusão em massa", src.includes(".filter((x) => s
 
 /* O cabeçalho quebra em duas linhas: "Concluído executivo" em 104 px saía por
    cima do vizinho. */
-conf("o cabeçalho da conferência pode quebrar", src.includes("table.tab-conf th { padding: 6px 10px; white-space: normal;"), true);
+conf("o cabeçalho da conferência pode quebrar", src.includes(`<TableHead className="w-40 whitespace-normal text-center">Aprovado p/ compra</TableHead>`), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
