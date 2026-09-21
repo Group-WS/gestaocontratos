@@ -5,10 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestão de Obras TKWS — Vendido × Executivo</title>
     <!-- O tema salvo entra antes da primeira pintura: sem isto, quem usa o
-         escuro vê um clarão a cada recarga. Mesma chave de src/marca.jsx. -->
+         escuro vê um clarão a cada recarga. Mesma chave do ThemeToggle do ws-ui. -->
     <script>
+      /* O tema ANTES da primeira pintura — sem isto, quem usa o escuro ve a
+         tela piscar branca a cada recarga.
+
+         A escolha e' do ThemeToggle do ws-ui, que guarda em "tkws-theme"
+         (formato do zustand). A chave antiga do Confere, "ws-tema", e' lida
+         uma vez e migrada: ninguem perde o tema que ja' tinha escolhido. */
       try {
-        var tema = localStorage.getItem("ws-tema");
+        var tema = null;
+        try { tema = (JSON.parse(localStorage.getItem("tkws-theme") || "null") || {}).state.theme; } catch (e) {}
+        if (tema !== "dark" && tema !== "light") {
+          tema = localStorage.getItem("ws-tema");
+          if (tema === "dark" || tema === "light") {
+            localStorage.setItem("tkws-theme", JSON.stringify({ state: { theme: tema }, version: 0 }));
+          }
+        }
         if (tema === "dark" || tema === "light") document.documentElement.setAttribute("data-theme", tema);
       } catch (e) {}
     </script>

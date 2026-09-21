@@ -46,7 +46,8 @@ const conf = (nome, obtido, esperado = true) => {
 console.log("=== 1. O MENU FLUTUA, NÃO OCUPA COLUNA ===");
 /* O menu e' um Popover do DS: flutua por portal, fecha fora e no Esc. */
 conf("o menu é um Popover do DS", app.includes('<Popover open={menuPerfil} onOpenChange={setMenuPerfil}>'));
-conf("... aberto à direita do trilho", app.includes('<PopoverContent ref={menuRef} side="right" align="end"'));
+conf("... aberto abaixo do avatar, no topo", app.includes('<PopoverContent side="bottom" align="end"'));
+conf("... e o tema mora no menu", /<span>Tema<\/span>\s*<ThemeToggle \/>/.test(app));
 conf("... e largura própria", /<PopoverContent [^>]*className="w-64 p-2"/.test(app));
 conf("a .barra segue sticky, que é a referência", app.includes('<aside className="barra naoimprime sticky top-16 flex shrink-0" ref={barraRef}>'));
 // a regra que TINHA position mirava uma classe que nao existe mais

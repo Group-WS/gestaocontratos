@@ -19,7 +19,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -54,7 +54,7 @@ import Catalogo from "./Catalogo";
 import { confirmar, mensagem, perguntar, avisar } from "./lib/confirmar.jsx";
 import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
   Sheet, SheetContent, SheetTitle, Popover, PopoverTrigger, PopoverContent,
-  Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
+  Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
@@ -66,7 +66,7 @@ import { useMediaQuery, LARGO, Contador, Choice, SeletorDeArquivo, Colapsavel, K
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
-import { LogoGroupWS, AlternarTema } from "./marca.jsx";
+import { LogoGroupWS } from "./marca.jsx";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
@@ -9523,7 +9523,159 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
    TOPO / SIDEBAR
    ============================================================ */
 
-function TopBar({ onInicio, onMenu }) {
+/* O PERFIL MORA NO TOPO (21/09/2026).
+
+   No pe do trilho ele ficava longe de onde todo app poe a conta, e o padrao
+   de App Shell do DS poe o usuario no topo, ao lado do sino. Continua havendo
+   um avatar so' — este. O menu e' um Popover do DS: fecha clicando fora e
+   com Esc, sem listener caseiro. O tema tambem mora aqui, no ThemeToggle do
+   DS, junto de "Meus dados" e "Sair". */
+function MenuPerfil({ usuario, equipe, onSair, onTrocarFoto }) {
+  const [menuPerfil, setMenuPerfil] = useState(false);
+  const euNaEquipe = (equipe || []).find((p) => p.email === usuario) || null;
+  const meuNome = euNaEquipe?.nome || nomeDoEmail(usuario);
+  const [subindoFoto, setSubindoFoto] = useState(false);
+  const [erroFoto, setErroFoto] = useState(null);
+  const [verDados, setVerDados] = useState(false);
+
+  /* Escolher ABRE O RECORTADOR; quem sobe e' o confirmar dele.
+
+     Ate' 19/09 escolher o arquivo ja' subia, e o motivo escrito aqui era
+     que "inventar um salvar so' pra foto seria o menu grande que ela nao
+     quis". O recortador inverteu isso, com o aval dela: sem um momento de
+     confirmar nao existe quando aplicar o enquadramento. O passo a mais
+     nao esta no menu — esta numa janela que so' aparece quando ha' uma
+     foto pra ajustar. */
+  const [fotoEscolhida, setFotoEscolhida] = useState(null);
+
+  function aoEscolherFoto(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file || !onTrocarFoto) return;
+    setErroFoto(null);
+    /* O menu sai de cena: o recortador ocupa a tela, e o menuzinho atras
+       dele seria ruido. */
+    /* Barra antes de abrir a janela, olhando o CONTEUDO.
+
+       Checar so' o nome nao bastava: o caso real dela chegou como
+       "IMG_0889-Edit.jpg", tipo "image/jpeg", e era HEIC por dentro.
+       Abrir uma janela preta pra depois explicar e' pior do que nao
+       abrir. */
+    formatoReal(file).then((fmt) => {
+      if (fmt === "heic") {
+        setErroFoto(/\.hei[cf]$/i.test(file.name) ? MSG_IMAGEM_ILEGIVEL : MSG_HEIC_DISFARCADO);
+        return;
+      }
+      setMenuPerfil(false);
+      setFotoEscolhida(file);
+    });
+  }
+
+  async function confirmarRecorte(recorte) {
+    const file = fotoEscolhida;
+    setFotoEscolhida(null);
+    setSubindoFoto(true);
+    try {
+      await onTrocarFoto(file, recorte);
+    } catch (err) {
+      setErroFoto(err.message);
+      setMenuPerfil(true);
+    } finally {
+      setSubindoFoto(false);
+    }
+  }
+
+  async function removerFoto() {
+    if (!(await confirmar("Remover a sua foto de perfil?"))) return;
+    setErroFoto(null);
+    setSubindoFoto(true);
+    try {
+      await onTrocarFoto(null);
+    } catch (err) {
+      setErroFoto(err.message);
+    } finally {
+      setSubindoFoto(false);
+    }
+  }
+
+  return (
+    <>
+      <Popover open={menuPerfil} onOpenChange={setMenuPerfil}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="icon" className="rounded-full"
+            title={meuNome || usuario || "Não identificado"} aria-label={meuNome || usuario || "Não identificado"}>
+            <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent side="bottom" align="end" className="w-64 p-2">
+          <div className="flex items-center gap-3 p-2">
+            {/* A propria foto e' o botao de trocar. Um terceiro item de
+                menu chamado "Trocar foto" diria o que a foto ali ja diz,
+                e o pedido era um menu pequeno. A capa da camera so'
+                aparece no hover: uma camera permanente em cima do rosto
+                da pessoa nao e' um retrato. */}
+            <Button asChild variant="ghost" size="icon" className={cn("group relative h-10 w-10 shrink-0 cursor-pointer rounded-full p-0", (subindoFoto || !onTrocarFoto) && "cursor-default opacity-50")}>
+              <label title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"} aria-label={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
+                <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-md" />
+                <span className="absolute inset-0 flex items-center justify-center rounded-full bg-text/60 text-bg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><Camera size={14} /></span>
+                {/* So' o que o navegador decodifica. Com image/* o seletor do
+                    Mac oferecia HEIC, e HEIC vira tela preta. */}
+                <SeletorDeArquivo accept="image/jpeg,image/png,image/webp"
+                  disabled={subindoFoto || !onTrocarFoto} onChange={aoEscolherFoto} />
+              </label>
+            </Button>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-bold">{meuNome || "Não identificado"}</div>
+              <div className="truncate text-xs text-text-mute">{usuario || "sem sessão"}</div>
+            </div>
+          </div>
+          {subindoFoto && <p className="px-2 pb-2 text-xs text-text-mute">Enviando a foto…</p>}
+          {erroFoto && <p className="px-2 pb-2 text-xs text-danger">{erroFoto}</p>}
+          <Separator className="my-1" />
+          <Collapsible open={verDados} onOpenChange={setVerDados}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
+                <UserRound size={14} /> Meus dados
+                <ChevronDown size={13} className={cn("ml-auto transition-transform", verDados && "rotate-180")} />
+              </Button>
+            </CollapsibleTrigger>
+            {/* Em LEITURA. Quem edita pessoa e' quem cuida da Equipe; a
+                unica coisa que a pessoa muda em si mesma e' a foto. */}
+            <CollapsibleContent>
+              <dl className="space-y-1 px-2 pb-2 text-xs">
+                {/* Sem cargo nem perfil: pedido dela em 19/09/2026. */}
+                <div className="flex justify-between gap-2"><dt className="shrink-0 text-text-mute">Nome</dt><dd className="truncate font-semibold">{meuNome || "—"}</dd></div>
+                <div className="flex justify-between gap-2"><dt className="shrink-0 text-text-mute">E-mail</dt><dd className="truncate font-semibold">{usuario || "—"}</dd></div>
+              </dl>
+              {euNaEquipe?.foto && (
+                <Button variant="ghost" size="sm" className="gap-1 text-danger" onClick={removerFoto} disabled={subindoFoto}>
+                  <Trash2 size={12} /> Remover a foto
+                </Button>
+              )}
+              <p className="px-2 pb-2 text-xs italic text-text-mute">
+                O nome é alterado por quem cuida da Equipe.
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
+          <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm">
+            <span>Tema</span>
+            <ThemeToggle />
+          </div>
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={onSair}>
+            <LogOut size={14} /> Sair
+          </Button>
+        </PopoverContent>
+      </Popover>
+      {fotoEscolhida && (
+        <RecortadorFoto file={fotoEscolhida}
+          onCancelar={() => { setFotoEscolhida(null); setMenuPerfil(true); }}
+          onConfirmar={confirmarRecorte} />
+      )}
+    </>
+  );
+}
+
+function TopBar({ onInicio, onMenu, usuario, equipe, onSair, onTrocarFoto }) {
   return (
     <header className="naoimprime sticky top-0 z-10 flex h-16 items-center gap-4 border-b border-line-2 bg-surface-1 px-4 md:px-6">
       {/* Abaixo de lg a barra lateral vive num Sheet, e este e' o botao que a abre. */}
@@ -9549,18 +9701,14 @@ function TopBar({ onInicio, onMenu }) {
         {/* A estrelinha saiu: era um botao sem onClick nenhum. Botao que
             nao faz nada nao e' neutro — a pessoa clica, nada acontece, e
             passa a duvidar do resto dos botoes da tela. */}
-        <AlternarTema />
         <Button variant="ghost" size="icon" className="relative" aria-label="Notificações">
           <Bell size={16} />
           <Contador tom="danger" className="absolute right-1 top-1">1</Contador>
         </Button>
-        {/* O avatar saiu daqui (pedido dela, 20/09/2026: "esse avatar aqui
-            em cima pode retirar, ja' tem la' em baixo").
-
-            Este era so' a foto: nao abria nada. O do pe do trilho e' o que
-            tem o menu de perfil. Duas fotos iguais na mesma tela fazem quem
-            olha procurar a diferenca entre elas — e nao havia nenhuma, a
-            nao ser que uma funcionava e a outra nao. */}
+        <MenuPerfil usuario={usuario} equipe={equipe} onSair={onSair} onTrocarFoto={onTrocarFoto} />
+        {/* UM AVATAR SO', e e' este. Em 20/09 o do topo saiu porque eram
+            dois (este so' mostrava a foto; o do pe do trilho tinha o menu).
+            Em 21/09 o do trilho veio pra ca', com o menu inteiro. */}
       </div>
     </header>
   );
@@ -9875,14 +10023,24 @@ const porCodigo = (a, b) => {
    impossivel de achar na versao antiga — existia, no sexto icone, sem nome
    em lugar nenhum. O Tooltip do DS substitui a dica caseira que seguia o
    mouse (e o `title` do navegador, que demorava e aparecia por cima). */
-function ItemTrilho({ rotulo, ativo = false, semPainel = false, className = "", children, ...props }) {
+function ItemTrilho({ rotulo, ativo = false, semPainel = false, aberto = false, className = "", children, ...props }) {
+  const classe = cn("relative h-10 w-full rounded-none border-l-2 border-transparent text-text-mute hover:text-text",
+    ativo && "border-brand text-brand", ativo && (semPainel ? "bg-bg" : "bg-surface-1"), className);
+  /* Aberto, o nome ja' esta' na tela: o Tooltip sairia repetindo o rotulo. */
+  if (aberto) {
+    return (
+      <Button variant="ghost" aria-current={ativo ? "page" : undefined}
+        className={cn(classe, "h-auto min-h-10 justify-start gap-3 px-4 py-2 text-left text-sm font-medium")} {...props}>
+        {children}
+        <span className="min-w-0 whitespace-normal">{rotulo}</span>
+      </Button>
+    );
+  }
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button variant="ghost" size="icon" aria-label={rotulo} aria-current={ativo ? "page" : undefined}
-          className={cn("relative h-10 w-full rounded-none border-l-2 border-transparent text-text-mute hover:text-text",
-            ativo && "border-brand text-brand", ativo && (semPainel ? "bg-bg" : "bg-surface-1"), className)}
-          {...props}>
+          className={classe} {...props}>
           {children}
         </Button>
       </TooltipTrigger>
@@ -9891,7 +10049,7 @@ function ItemTrilho({ rotulo, ativo = false, semPainel = false, className = "", 
   );
 }
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, equipe, onSair, onTrocarFoto, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
   /* Acima de lg a barra e' fixa ao lado do conteudo; abaixo, ela abre num
      Sheet pelo botao de menu do topo. Uma casca so' de cada vez. */
   const largo = useMediaQuery(LARGO);
@@ -9919,76 +10077,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
   const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
 
-  /* O menu de perfil e' um Popover do DS: fecha clicando em qualquer lugar
-     e com Esc, sem listener caseiro. */
-  const [menuPerfil, setMenuPerfil] = useState(false);
-  const menuRef = useRef(null);
-  const euNaEquipe = (equipe || []).find((p) => p.email === usuario) || null;
-  const meuNome = euNaEquipe?.nome || nomeDoEmail(usuario);
-  const [subindoFoto, setSubindoFoto] = useState(false);
-  const [erroFoto, setErroFoto] = useState(null);
-  const [verDados, setVerDados] = useState(false);
-
-  /* Escolher ABRE O RECORTADOR; quem sobe e' o confirmar dele.
-
-     Ate' 19/09 escolher o arquivo ja' subia, e o motivo escrito aqui era
-     que "inventar um salvar so' pra foto seria o menu grande que ela nao
-     quis". O recortador inverteu isso, com o aval dela: sem um momento de
-     confirmar nao existe quando aplicar o enquadramento. O passo a mais
-     nao esta no menu — esta numa janela que so' aparece quando ha' uma
-     foto pra ajustar. */
-  const [fotoEscolhida, setFotoEscolhida] = useState(null);
-
-  function aoEscolherFoto(e) {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!file || !onTrocarFoto) return;
-    setErroFoto(null);
-    /* O menu sai de cena: o recortador ocupa a tela, e o menuzinho atras
-       dele seria ruido. */
-    /* Barra antes de abrir a janela, olhando o CONTEUDO.
-
-       Checar so' o nome nao bastava: o caso real dela chegou como
-       "IMG_0889-Edit.jpg", tipo "image/jpeg", e era HEIC por dentro.
-       Abrir uma janela preta pra depois explicar e' pior do que nao
-       abrir. */
-    formatoReal(file).then((fmt) => {
-      if (fmt === "heic") {
-        setErroFoto(/\.hei[cf]$/i.test(file.name) ? MSG_IMAGEM_ILEGIVEL : MSG_HEIC_DISFARCADO);
-        return;
-      }
-      setMenuPerfil(false);
-      setFotoEscolhida(file);
-    });
-  }
-
-  async function confirmarRecorte(recorte) {
-    const file = fotoEscolhida;
-    setFotoEscolhida(null);
-    setSubindoFoto(true);
-    try {
-      await onTrocarFoto(file, recorte);
-    } catch (err) {
-      setErroFoto(err.message);
-      setMenuPerfil(true);
-    } finally {
-      setSubindoFoto(false);
-    }
-  }
-
-  async function removerFoto() {
-    if (!(await confirmar("Remover a sua foto de perfil?"))) return;
-    setErroFoto(null);
-    setSubindoFoto(true);
-    try {
-      await onTrocarFoto(null);
-    } catch (err) {
-      setErroFoto(err.message);
-    } finally {
-      setSubindoFoto(false);
-    }
-  }
-
   /* Quais squads estao dobrados — so' vale no modo squad. Guardado, porque
      quem trabalha num squad so nao quer dobrar os outros a cada F5. */
   const [fechados, setFechados] = useState(() => {
@@ -10012,6 +10100,17 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   }, [painelEscondido]);
 
   const barraRef = useRef(null);
+
+  /* Os nomes do menu, a pedido (21/09/2026).
+
+     O trilho e' so' icone de proposito, com o nome no Tooltip. Mas o Tooltip
+     mostra um nome por vez, e quem ainda nao decorou os icones precisa passar
+     o mouse em todos pra achar o que procura. Aberto, cada destino mostra o
+     proprio nome.
+
+     Nao guarda a escolha no navegador de proposito — preferencia mora no
+     banco (NAV-02), e isso fica pra quando existir a tabela de preferencias. */
+  const [trilhoAberto, setTrilhoAberto] = useState(false);
 
   const [search, setSearch] = useState("");
 
@@ -10061,7 +10160,8 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     if (recolhidoPor.current === selected) return;
     const fora = (e) => {
       if (barraRef.current && barraRef.current.contains(e.target)) return;
-      if (menuRef.current && menuRef.current.contains(e.target)) return;
+      /* O menu de perfil (no topo) abre num portal: clicar nele nao e' "fora". */
+      if (e.target.closest?.("[data-radix-popper-content-wrapper]")) return;
       recolhidoPor.current = selected;
       setPainelEscondido(true);
     };
@@ -10082,7 +10182,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     : null);
 
   const botaoDestino = (m) => (
-    <ItemTrilho key={m.id} rotulo={m.nome} ativo={modulo === m.id} semPainel={!temPainel} onClick={() => irPara(m.id)}>
+    <ItemTrilho key={m.id} rotulo={m.nome} ativo={modulo === m.id} semPainel={!temPainel} aberto={trilhoAberto} onClick={() => irPara(m.id)}>
       <m.Icone size={18} />
       {badgeDoDestino(m)}
     </ItemTrilho>
@@ -10117,7 +10217,12 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   };
 
   const trilho = (
-    <nav className="flex w-14 shrink-0 flex-col items-center border-r border-line-1 bg-surface-3 py-2" aria-label="Módulos">
+    <nav className={cn("flex shrink-0 flex-col border-r border-line-1 bg-surface-3 py-2", trilhoAberto ? "w-56 items-stretch" : "w-14 items-center")} aria-label="Módulos">
+      <Button variant="ghost" size="icon" className={cn("mb-1 shrink-0 text-text-mute", trilhoAberto ? "ml-auto mr-2" : "mx-auto")}
+        onClick={() => setTrilhoAberto((v) => !v)} aria-expanded={trilhoAberto}
+        aria-label={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"} title={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"}>
+        {trilhoAberto ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+      </Button>
       {destinosTopo.map((m) => (
         m.id === "inicio" ? (
           <React.Fragment key={m.id}>
@@ -10131,7 +10236,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                  sidebar recolhe". Era o botao "Obras" dobrando a lista: a
                  pessoa clica em Obras esperando VER as obras, e some tudo.
                  Esconder tem botao proprio, no pe do trilho. */
-              <ItemTrilho rotulo="Obras" ativo={naObra} semPainel={!temPainel}
+              <ItemTrilho rotulo="Obras" ativo={naObra} semPainel={!temPainel} aberto={trilhoAberto}
                 onClick={() => {
                   setPainelEscondido(false);
                   if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id);
@@ -10153,74 +10258,12 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             e e' o unico jeito de esconder, pra clicar num destino nunca
             tirar nada da tela. So' aparece quando ha' painel pra esconder. */}
         {mostrarObras && naObra && (
-          <ItemTrilho rotulo={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}
+          <ItemTrilho rotulo={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"} aberto={trilhoAberto}
             onClick={() => setPainelEscondido((v) => !v)}>
             {painelEscondido ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
           </ItemTrilho>
         )}
         {destinosPe.map(botaoDestino)}
-        <Popover open={menuPerfil} onOpenChange={setMenuPerfil}>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-auto w-full rounded-none py-1"
-              title={meuNome || usuario || "Não identificado"} aria-label={meuNome || usuario || "Não identificado"}>
-              <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent ref={menuRef} side="right" align="end" className="w-64 p-2">
-            <div className="flex items-center gap-3 p-2">
-              {/* A propria foto e' o botao de trocar. Um terceiro item de
-                  menu chamado "Trocar foto" diria o que a foto ali ja diz,
-                  e o pedido era um menu pequeno. A capa da camera so'
-                  aparece no hover: uma camera permanente em cima do rosto
-                  da pessoa nao e' um retrato. */}
-              <Button asChild variant="ghost" size="icon" className={cn("group relative h-10 w-10 shrink-0 cursor-pointer rounded-full p-0", (subindoFoto || !onTrocarFoto) && "cursor-default opacity-50")}>
-                <label title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"} aria-label={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
-                  <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-md" />
-                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-text/60 text-bg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><Camera size={14} /></span>
-                  {/* So' o que o navegador decodifica. Com image/* o seletor do
-                      Mac oferecia HEIC, e HEIC vira tela preta. */}
-                  <SeletorDeArquivo accept="image/jpeg,image/png,image/webp"
-                    disabled={subindoFoto || !onTrocarFoto} onChange={aoEscolherFoto} />
-                </label>
-              </Button>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-bold">{meuNome || "Não identificado"}</div>
-                <div className="truncate text-xs text-text-mute">{usuario || "sem sessão"}</div>
-              </div>
-            </div>
-            {subindoFoto && <p className="px-2 pb-2 text-xs text-text-mute">Enviando a foto…</p>}
-            {erroFoto && <p className="px-2 pb-2 text-xs text-danger">{erroFoto}</p>}
-            <Separator className="my-1" />
-            <Collapsible open={verDados} onOpenChange={setVerDados}>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
-                  <UserRound size={14} /> Meus dados
-                  <ChevronDown size={13} className={cn("ml-auto transition-transform", verDados && "rotate-180")} />
-                </Button>
-              </CollapsibleTrigger>
-              {/* Em LEITURA. Quem edita pessoa e' quem cuida da Equipe; a
-                  unica coisa que a pessoa muda em si mesma e' a foto. */}
-              <CollapsibleContent>
-                <dl className="space-y-1 px-2 pb-2 text-xs">
-                  {/* Sem cargo nem perfil: pedido dela em 19/09/2026. */}
-                  <div className="flex justify-between gap-2"><dt className="shrink-0 text-text-mute">Nome</dt><dd className="truncate font-semibold">{meuNome || "—"}</dd></div>
-                  <div className="flex justify-between gap-2"><dt className="shrink-0 text-text-mute">E-mail</dt><dd className="truncate font-semibold">{usuario || "—"}</dd></div>
-                </dl>
-                {euNaEquipe?.foto && (
-                  <Button variant="ghost" size="sm" className="gap-1 text-danger" onClick={removerFoto} disabled={subindoFoto}>
-                    <Trash2 size={12} /> Remover a foto
-                  </Button>
-                )}
-                <p className="px-2 pb-2 text-xs italic text-text-mute">
-                  O nome é alterado por quem cuida da Equipe.
-                </p>
-              </CollapsibleContent>
-            </Collapsible>
-            <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={onSair}>
-              <LogOut size={14} /> Sair
-            </Button>
-          </PopoverContent>
-        </Popover>
       </div>
     </nav>
   );
@@ -10342,11 +10385,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
         </Sheet>
       )}
 
-      {fotoEscolhida && (
-        <RecortadorFoto file={fotoEscolhida}
-          onCancelar={() => { setFotoEscolhida(null); setMenuPerfil(true); }}
-          onConfirmar={confirmarRecorte} />
-      )}
     </>
   );
 }
@@ -23943,12 +23981,11 @@ export default function App() {
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
-      <TopBar onMenu={() => setMenuAberto(true)}
+      <TopBar onMenu={() => setMenuAberto(true)} usuario={usuario} equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
         onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} />
       <div className="flex">
         <Sidebar obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
-          onTrocarFoto={trocarMinhaFoto}
-          equipe={pessoas} onSair={sairDaConta} modulos={modulosVisiveis} pendentesCount={nPendentes}
+          modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
