@@ -23,6 +23,8 @@
  */
 const app = (await import("fs")).readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
 
+const dashboard = (await import("fs")).readFileSync(new URL("../features/dashboard/DashboardPage.jsx", import.meta.url), "utf8");
+
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = app.indexOf(assinatura);
   if (i === -1) throw new Error(`não achei no App.jsx: ${assinatura}`);
@@ -53,8 +55,8 @@ conf("a fila sai atrasada > cedo > tarde > sem data",
   "atrasada,2026-10-01,2026-12-01,semData");
 // e o resumo usa a MESMA função, em vez de repetir a regra
 conf("resumoGeral usa a função nomeada", app.includes("linhas: linhas.sort((a, b) => ordemDeUrgencia("));
-conf("a lista do Início usa a lista ordenada", app.includes("{listaObras.map((o) => {"));
-conf("... e o contador também", app.includes(`<span className="ini-conta">{listaObras.length}</span>`));
+conf("a lista do Início usa a lista ordenada", dashboard.includes("{tableRows.map((row) =>"));
+conf("... e o contador também", dashboard.includes("{tableRows.length}</Badge>"));
 conf("o array cru não é mais renderizado", app.includes("{(minhas.length ? minhas : obras).map("), false);
 
 console.log("\n=== 3. ADITIVO APROVADO CONTA NOS DOIS LADOS ===");
@@ -83,12 +85,12 @@ conf("... e o texto diz qual é a régua", app.includes("O executivo passou do o
 conf("a seta morta saiu", app.includes("const ArrowRightIcon"), false);
 
 console.log("\n=== 6. ENTREGAS PRÓXIMAS ===");
-conf("existe a conta das entregas", app.includes("const entregasProximas = useMemo(() => obras"));
-conf("olha 90 dias à frente", app.includes("filter(({ dias }) => dias <= 90)"));
-conf("a mais próxima primeiro", app.includes("sort((a, b) => a.dias - b.dias)"));
-conf("obra sem data fica de fora", app.includes("filter((o) => o.dataEntrega)"));
-conf("cada entrega abre a obra", app.includes("onClick={() => onAbrirObra(o.id)}"));
-conf("o que já venceu se distingue", app.includes(`${"$"}{dias < 0 ? "vencida" : dias <= 30 ? "perto" : ""}`));
+conf("existe a conta das entregas", dashboard.includes("const deliveries = [...filtered]"));
+conf("olha 90 dias à frente", dashboard.includes("row.days <= 90"));
+conf("a mais próxima primeiro", dashboard.includes("sort((a, b) => a.days - b.days)"));
+conf("obra sem data fica de fora", dashboard.includes("row.days !== null"));
+conf("cada entrega abre a obra", dashboard.includes("onClick={() => onOpen(row.id)}"));
+conf("o que já venceu se distingue", dashboard.includes("critical={row.days < 0}"));
 
 console.log(falhas === 0 ? "\nTUDO OK" : `\n${falhas} FALHA(S)`);
 process.exit(falhas === 0 ? 0 : 1);

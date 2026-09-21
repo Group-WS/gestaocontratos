@@ -74,11 +74,9 @@ conf("equipe da obra usa", app.includes("classe={`equipe-avatar ${valor ? \"\" :
 conf("tela Equipe usa", app.includes("classe={`eq-avatar ${estaOnline(p) ? \"online\" : \"\"}`}"));
 conf("a foto é recortada, nunca esticada", app.includes(".avatar-foto { object-fit: cover;"));
 
-console.log("\n=== 3. A BOLINHA DO INÍCIO ===");
-conf("só renderiza quando há foto", app.includes("{euNaEquipe?.foto && <Avatar pessoa={euNaEquipe} nome={meuNome} classe=\"ini-foto\" />}"));
-conf("o bloco vira flex pra centrar a bolinha", /\.ini-topo \{ margin: 6px 0 18px; display: flex; align-items: center;/.test(app));
-conf("nome e recado alinham à direita dela", app.includes(".ini-topo-txt { min-width: 0; }"));
-conf("54px, como decidido", /\.ini-foto \{ width: 54px; height: 54px;/.test(app));
+// O dashboard de 20/09 segue a referência: identidade permanece no trilho,
+// sem repetir a saudação com avatar acima dos indicadores.
+conf("o dashboard não duplica o avatar do trilho", app.includes('classe="ini-foto"'), false);
 
 console.log("\n=== 4. O MENU: FOTO, MEUS DADOS, SAIR ===");
 conf("a própria foto é o botão de trocar", app.includes('<button className="perfil-foto"'));

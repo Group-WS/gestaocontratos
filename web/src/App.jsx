@@ -1,3 +1,4 @@
+import DashboardPage from "./features/dashboard/DashboardPage.jsx";
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 
@@ -17726,282 +17727,55 @@ function MarcosDaObra({ obra }) {
   );
 }
 
-function InicioView({ obras, novas, carregando, usuario, equipe, nPendentes = 0, onAbrirObra, onModulo, dadosLocalizacao = [], localizacaoCarregando = false, onToggleLocalizacao }) {
+function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
-  const t = r.totais;
-
-  const semEntrega = obras.filter((o) => !o.dataEntrega && (o.categorias || []).some((c) => (c.itens || []).length));
-
-  /* A lista sai na ordem de quem doi primeiro, a MESMA do resumo.
-
-     Ate' aqui ela saia na ordem de carregamento: a obra atrasada que
-     entrega semana que vem podia estar no fim, embaixo de quatro que
-     entregam ano que vem. O `resumoGeral` ja ordenava — a lista so' nao
-     usava. O atraso vem de `r.linhas`, que e' quem sabe dele; obra sem
-     planilha nao esta la' e conta como sem atraso, que e' verdade: sem
-     planilha nao ha compra com prazo vencido. */
-  const temAtrasoPorCodigo = useMemo(
-    () => new Map(r.linhas.map((L) => [L.codigo, L.atrasos.length > 0])),
-    [r.linhas],
-  );
-  const euNaEquipe = (equipe || []).find((p) => p.email === usuario) || null;
-  const meuNome = euNaEquipe?.nome || nomeDoEmail(usuario);
-  const meuCargo = (equipe || []).find((p) => p.email === usuario)?.cargo || "";
-  /* Coordenação enxerga o painel inteiro, mesmo que por acaso também
-     esteja marcada como GC de alguma obra — "Suas obras" é um recorte
-     pra quem acompanha só a própria carteira, não pra quem coordena
-     todo mundo. */
-  const minhas = meuCargo === "Coordenação" ? [] : obras.filter((o) => obraDoGC(o, usuario));
-  /* ENTREGAS DO TRIMESTRE — a pergunta de segunda-feira de manhã.
-
-     A data de cada obra já existia e o alerta dos 90 dias já falava do
-     prazo, mas nada respondia "o que entrega nos próximos meses" sem ler
-     obra por obra. Aqui é leitura de calendário, não de pendência: entra
-     obra em dia também, porque saber que três entregam em outubro é
-     planejamento, não alarme.
-
-     Só obra com data: sem data não há o que colocar no calendário — e
-     essa ausência já tem alerta próprio na lista ao lado. */
-  const entregasProximas = useMemo(() => obras
-    .filter((o) => o.dataEntrega)
-    .map((o) => ({ o, dias: diasAte(new Date(`${o.dataEntrega}T12:00:00`)) }))
-    .filter(({ dias }) => dias <= 90)
-    .sort((a, b) => a.dias - b.dias), [obras]);
-
-  const listaObras = useMemo(() => {
-    const base = minhas.length ? minhas : obras;
-    const chave = (o) => ({ temAtraso: temAtrasoPorCodigo.get(o.codigo) || false, dataEntrega: o.dataEntrega });
-    return [...base].sort((x, y) => ordemDeUrgencia(chave(x), chave(y)));
-  }, [minhas, obras, temAtrasoPorCodigo]);
-  const semGC = obras.filter((o) => !o.gc);
-
-  /* Aditivo aprovado sem o card do Pipefy: e' compromisso assumido que o
-     comercial ainda nao viu. */
-  const pipefyAberto = obras.flatMap((o) => (o.aditivos || []).filter(pipefyPendente).map((a) => ({ a, o })));
-
-  /* Regra da empresa: Criativo, CMV, os três cadernos (Especificação,
-     Marcenaria, Projeto Executivo) — tudo isso precisa estar pronto até
-     90 dias antes da entrega, porque é o que abre a contratação de mão
-     de obra. Passou dessa marca sem estar "em execução" (comprasLiberadas)
-     é risco real no prazo — mesmo cálculo de dias que o resto do painel
-     já usa (`entrega - hoje`), só que contra 90, não contra 0. */
-  const atrasadas90 = obras
-    .map((o) => ({ o, ...passosCriticosAtrasados(o) }))
-    .filter(({ passos }) => passos.length > 0);
-
-  /* Uma lista so, ordenada pelo que dói primeiro. Cada linha leva ao
-     lugar de resolver — aviso que nao tem para onde ir vira paisagem. */
-  const atencao = [];
-  r.linhas.forEach((L) => {
-    L.atrasos.forEach((v) => atencao.push({
-      tom: "ruim",
-      txt: <>Em <b>#{L.codigo} {L.nome}</b>, a compra de <b>{v.nome}</b> venceu há {-v.dias} dias — {fmtBRL(v.matFalta)}</>,
-      ir: () => onAbrirObra(L.id),
-    }));
-  });
-  atrasadas90.forEach(({ o, dias, passos }) => {
-    const nomes = passos.map((p) => p.rotulo).join(", ");
-    const verbo = passos.length === 1 ? "precisa estar pronto" : "precisam estar prontos";
-    atencao.push({
-      tom: "ruim",
-      txt: dias < 0
-        ? <><b>#{o.codigo} {o.nome}</b> já passou da data de entrega e ainda não está em execução — {nomes} {verbo} há {90 - dias} dias</>
-        : <><b>#{o.codigo} {o.nome}</b> entrega em {dias} {dias === 1 ? "dia" : "dias"} e ainda não está em execução — {nomes} {verbo} até 90 dias antes da entrega</>,
-      ir: () => onAbrirObra(o.id),
+  const rows = useMemo(() => {
+    const summaries = new Map(r.linhas.map((line) => [String(line.codigo), line]));
+    const ordered = [...obras].sort((a, b) => ordemDeUrgencia(
+      { temAtraso: !!summaries.get(String(a.codigo))?.atrasos.length, dataEntrega: a.dataEntrega },
+      { temAtraso: !!summaries.get(String(b.codigo))?.atrasos.length, dataEntrega: b.dataEntrega },
+    ));
+    return ordered.map((o, rank) => {
+      const summary = summaries.get(String(o.codigo));
+      const journey = esteiraDaObra(o);
+      const criticalSteps = passosCriticosAtrasados(o);
+      const alerts = (summary?.atrasos || []).map((v) => ({
+        id: `${o.id}-compra-${v.num}`, critical: true,
+        text: `Compra de ${v.nome} venceu há ${-v.dias} dias`, amount: v.matFalta,
+        action: () => onAbrirObra(o.id, "compras"),
+      }));
+      if (criticalSteps.passos.length) alerts.push({
+        id: `${o.id}-prazo`, critical: true,
+        text: criticalSteps.dias < 0
+          ? `Entrega vencida há ${-criticalSteps.dias} dias e obra ainda não está em execução`
+          : `Entrega em ${criticalSteps.dias} dias e ainda não está em execução`,
+        action: () => onAbrirObra(o.id),
+      });
+      (o.aditivos || []).filter(pipefyPendente).forEach((a) => alerts.push({
+        id: `${o.id}-aditivo-${a.id}`, critical: false,
+        text: `Aditivo ${a.numero} aprovado, aguardando solicitação no Pipefy`,
+        action: () => onModulo("aditivos"),
+      }));
+      if (!o.dataEntrega && (o.categorias || []).some((c) => (c.itens || []).length)) alerts.push({
+        id: `${o.id}-entrega`, critical: false, text: "Definir a data de entrega para calcular os prazos",
+        action: () => onAbrirObra(o.id),
+      });
+      if (!o.gc) alerts.push({ id: `${o.id}-gc`, critical: false, text: "Definir o GC responsável", action: () => onAbrirObra(o.id) });
+      return {
+        id: o.id, code: o.codigo, name: o.nome, squad: o.squad || "Sem squad",
+        unit: o.filial || "Não informada",
+        gc: o.gc ? (equipe.find((person) => person.email === o.gc)?.nome || nomeDoEmail(o.gc)) : "Não atribuído",
+        delivery: o.dataEntrega, days: o.dataEntrega ? diasAte(new Date(`${o.dataEntrega}T12:00:00`)) : null,
+        summary, steps: journey.passos, stage: journey.texto,
+        currentStep: journey.passos.find((step) => !step.feito)?.chave,
+        rank, alerts,
+      };
     });
-  });
-  pipefyAberto.forEach(({ a, o }) => atencao.push({
-    tom: "aviso",
-    txt: <>O aditivo <b>{a.numero}</b> de <b>{o.nome}</b> está aprovado e ainda sem a Solicitação de contrato no Pipefy</>,
-    ir: () => onModulo("aditivos"),
-  }));
-  semEntrega.forEach((o) => atencao.push({
-    tom: "aviso",
-    txt: <><b>#{o.codigo} {o.nome}</b> não tem data de entrega — sem ela nenhum prazo de compra é calculado</>,
-    ir: () => onAbrirObra(o.id),
-  }));
-  if (semGC.length) atencao.push({
-    tom: "info",
-    txt: <><b>{semGC.length}</b> {semGC.length === 1 ? "obra está" : "obras estão"} sem GC responsável</>,
-    ir: () => onAbrirObra(semGC[0].id),
-  });
-  if (novas.length) atencao.push({
-    tom: "info",
-    txt: <><b>{novas.length}</b> obras do Monday ainda não foram iniciadas aqui</>,
-    ir: () => onModulo("novas"),
-  });
-  /* A fila vem PRIMEIRO na lista: e' gente parada esperando pra
-     trabalhar, e o custo de demorar e' de outra pessoa, nao de quem le.
-     So' o administrador ve — pra quem nao pode liberar, isso seria um
-     aviso sem para onde ir. */
-  if (nPendentes > 0) atencao.unshift({
-    tom: "aviso",
-    txt: <><b>{nPendentes}</b> {nPendentes === 1 ? "pessoa está aguardando" : "pessoas estão aguardando"} liberação de acesso</>,
-    ir: () => onModulo("equipe"),
-  });
-
-  return (
-    <>
-      {/* Centralizada, com o avatar ao lado — o formato do portal da
-          empresa. Encostada a esquerda e em duas linhas ela competia com
-          os numeros logo abaixo; centralizada ela vira o cumprimento que
-          e', e o olho desce direto pro que importa.
-
-          Nome em cheio, recado em cinza: o nome ancora, a frase muda todo
-          dia. Uma frase nova a cada F5 deixaria de ser recado e viraria
-          ruido, entao o indice sai da DATA — o time todo ve a mesma. */}
-      {/* O nome ancora, a data acompanha, o recado vem embaixo em corpo
-          menor. Sem avatar: num app onde so' existe uma pessoa logada, as
-          iniciais nao dizem nada que o nome ao lado ja nao diga. */}
-      <div className="ini-topo">
-        {/* A foto so' aparece quando existe.
-
-            O avatar foi tirado daqui de proposito um dia, e o motivo
-            escrito acima continua de pe': INICIAIS nao dizem nada que o
-            nome ao lado ja nao diga. Uma foto diz — e' a cara da pessoa,
-            nao uma abreviacao do que esta escrito do lado. Por isso a
-            bolinha entra quando ha foto e some quando nao ha, em vez de
-            virar duas letras roxas repetindo o nome. */}
-        {euNaEquipe?.foto && <Avatar pessoa={euNaEquipe} nome={meuNome} classe="ini-foto" />}
-        <div className="ini-topo-txt">
-          <div className="ini-nome-linha">
-            <span className="ini-nome">{meuNome || "Olá"}</span>
-            {/* So a PRIMEIRA letra: capitalize no CSS subia tambem os "de",
-                virando "Domingo, 30 De Agosto De 2026". */}
-            <span className="ini-data">{(() => {
-              const d = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
-              return d.charAt(0).toUpperCase() + d.slice(1);
-            })()}</span>
-          </div>
-          <div className="ini-recado">{mensagemDoDia()}</div>
-        </div>
-      </div>
-
-      {carregando && <div className="empty-note">Carregando as obras…</div>}
-
-      <div className="ini-regua">
-        <InicioNum rot="OBRAS ATIVAS" valor={obras.length}
-          sub={`${r.linhas.length} com planilha carregada`} />
-        {/* Azul só aqui — é o número que a casa mais precisa olhar. Os
-           outros três ficam em grafite: cor demais na régua toda tira
-           a força justamente do que devia se destacar. */}
-        <InicioNum rot="A COMPRAR" cor="var(--blue)" valor={fmtBRL(t.matTotal - t.matFeito)}
-          sub={`de ${fmtBRL(t.matTotal)} em material`} onClick={() => onModulo("a_contratar")} />
-        <InicioNum rot="A CONTRATAR" valor={fmtBRL(t.moTotal - t.moFeito)}
-          sub={`de ${fmtBRL(t.moTotal)} em mão de obra`} onClick={() => onModulo("a_contratar")} />
-        <InicioNum rot="MINHAS OBRAS" valor={minhas.length}
-          sub={minhas.length ? "onde você é o GC" : "nenhuma atribuída a você"} />
-      </div>
-
-      {entregasProximas.length > 0 && (
-        <div className="ini-entregas">
-          <div className="ini-titulo">
-            <Clock size={14} className="ini-titulo-icone" />
-            Entregas nos próximos 90 dias
-            <span className="ini-conta">{entregasProximas.length}</span>
-          </div>
-          <div className="ini-entregas-lista">
-            {entregasProximas.map(({ o, dias }) => (
-              <button key={o.id} type="button" className={`ini-entrega ${dias < 0 ? "vencida" : dias <= 30 ? "perto" : ""}`}
-                onClick={() => onAbrirObra(o.id)}>
-                <span className="ini-entrega-quando mono">
-                  {dias < 0 ? `${-dias}d atrás` : dias === 0 ? "hoje" : `${dias}d`}
-                </span>
-                <span className="ini-entrega-nome"><span className="mono dim">#{o.codigo}</span> {o.nome}</span>
-                <span className="ini-entrega-data">
-                  {new Date(`${o.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="ini-colunas">
-        <div>
-          <div className="ini-titulo">
-            <AlertTriangle size={14} className="ini-titulo-icone" />
-            Pedindo atenção
-            {atencao.length > 0 && <span className="ini-conta">{atencao.length}</span>}
-          </div>
-          {atencao.length === 0 ? (
-            <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção agora.</div>
-          ) : atencao.map((a, i) => (
-            <button key={i} className={`ini-alerta ${a.tom}`} onClick={a.ir}>
-              <AlertTriangle size={13} />
-              <span>{a.txt}</span>
-              <ChevronRight size={13} className="ini-seta" />
-            </button>
-          ))}
-        </div>
-
-        <div>
-          <div className="ini-titulo ini-titulo-linha">
-            <span className="ini-titulo-esq">
-              <Building2 size={14} className="ini-titulo-icone" />
-              {minhas.length ? "Suas obras" : "Obras ativas"}
-              <span className="ini-conta">{listaObras.length}</span>
-            </span>
-            <button type="button" className="ini-link-finalizadas" onClick={() => onModulo("arquivo")}>
-              Finalizadas <ChevronRight size={12} />
-            </button>
-          </div>
-          {listaObras.map((o) => {
-            const L = r.linhas.find((x) => x.codigo === o.codigo);
-            const esteira = esteiraDaObra(o);
-            const executivoAtrasado = passosCriticosAtrasados(o).passos.some((p) => p.chave === "projeto");
-            const nomeGC = o.gc ? ((equipe || []).find((p) => p.email === o.gc)?.nome || nomeDoEmail(o.gc)) : null;
-            return (
-              <button key={o.id} className="ini-obra" onClick={() => onAbrirObra(o.id)}>
-                <div className="ini-obra-id">
-                  <div className="ini-obra-nome"><span className="mono dim">#{o.codigo}</span> {o.nome}</div>
-                  <div className="ini-obra-sub">
-                    {o.squad}
-                    {o.dataEntrega
-                      ? ` · entrega ${new Date(`${o.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")}`
-                      : " · sem data de entrega"}
-                  </div>
-                  <div className="ini-esteira">
-                    {esteira.passos.map((p) => {
-                      const alerta = p.chave === "projeto" && executivoAtrasado;
-                      return (
-                        <span key={p.chave} className={`ini-passo-chip ${p.feito ? "on" : ""} ${alerta ? "atrasado" : ""}`}
-                          title={`${p.rotulo}: ${p.feito ? "feito" : alerta ? "pendente — passou do prazo de 90 dias antes da entrega" : "pendente"}`}>
-                          {p.feito ? <Check size={9} /> : alerta ? <AlertTriangle size={9} /> : null} {p.curto}
-                        </span>
-                      );
-                    })}
-                  </div>
-                  <span className={`ini-fase-pilula ${esteira.tom || ""}`}>{esteira.texto}</span>
-                  {/* A fila da obra, na ordem do fluxo. Numero zerado nao
-                      aparece: a linha vazia e' a obra em dia, e o silencio
-                      vira informacao. */}
-                  <MarcosDaObra obra={o} />
-                </div>
-                {/* Duas barras sem legenda ninguém decifra de relance —
-                    o número já diz sozinho. GC bem pequeno: é contexto
-                    de apoio, não o que a linha existe pra responder. */}
-                {L ? (
-                  <div className="ini-obra-resumo">
-                    {nomeGC && <div className="ini-obra-gc">GC {nomeGC}</div>}
-                    <div className="ini-obra-pct">{Math.round(L.mat.pct)}% comprado</div>
-                  </div>
-                ) : (
-                  <div className="ini-obra-resumo">
-                    {nomeGC && <div className="ini-obra-gc">GC {nomeGC}</div>}
-                    <span className="ini-obra-vazia">sem planilha</span>
-                  </div>
-                )}
-                {L && L.atrasos.length > 0 && <span className="gc-selo atraso">{L.atrasos.length}</span>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <PainelLocalizacao dados={dadosLocalizacao} carregando={localizacaoCarregando} onToggleStatus={onToggleLocalizacao} />
-    </>
-  );
+  }, [obras, r, equipe, onAbrirObra, onModulo]);
+  const extraAlerts = [];
+  if (nPendentes) extraAlerts.push({ id: "acessos", text: `${nPendentes} pessoas aguardando liberação de acesso`, action: () => onModulo("equipe") });
+  if (novas.length) extraAlerts.push({ id: "novas", text: `${novas.length} obras ainda não iniciadas`, action: () => onModulo("novas") });
+  return <DashboardPage rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
 }
 
 /* ============================================================
@@ -20286,6 +20060,8 @@ export default function App() {
   const [painelDados, setPainelDados] = useState(null);
   const [painelCarregando, setPainelCarregando] = useState(false);
   const [painelErro, setPainelErro] = useState(null);
+  const [painelRevisao, setPainelRevisao] = useState(0);
+  const [painelAditivos, setPainelAditivos] = useState([]);
 
   useEffect(() => {
     if (!["inicio", "a_contratar", "mehoo"].includes(modulo) || !obrasAtivas.length || !usuario) return;
@@ -20294,12 +20070,15 @@ export default function App() {
     setPainelErro(null);
     /* O parcial faz a tabela ir se preenchendo lote a lote, em vez de
        ficar em branco ate a ultima obra chegar. */
-    carregarResumoDeVarias(obrasAtivas.map((o) => o.codigo), (m) => { if (vivo) setPainelDados(m); })
-      .then((m) => { if (vivo) setPainelDados(m); })
-      .catch((e) => { if (vivo) setPainelErro(`Não consegui carregar as obras: ${e.message || e}`); })
+    Promise.all([
+      carregarResumoDeVarias(obrasAtivas.map((o) => o.codigo), (m) => { if (vivo) setPainelDados(m); }),
+      listarAditivos(),
+    ])
+      .then(([m, aditivos]) => { if (vivo) { setPainelDados(m); setPainelAditivos(aditivos); } })
+      .catch((e) => { if (vivo) setPainelErro("Não conseguimos carregar os dados das obras. Tente novamente."); })
       .finally(() => { if (vivo) setPainelCarregando(false); });
     return () => { vivo = false; };
-  }, [modulo, obrasAtivas.length, usuario]);
+  }, [modulo, obrasAtivas.map((o) => String(o.codigo)).sort().join(","), usuario, painelRevisao]);
 
   /* A obra aberta tem edicao em andamento na memoria; o painel nao pode
      mostrar dela um retrato mais velho do que a tela ao lado. */
@@ -20311,12 +20090,13 @@ export default function App() {
       // A obra aberta manda: ela pode ter edicao ainda nao salva na tela.
       if (o.id === selectedId && temItens(o.categorias)) return o;
       const salvo = painelDados?.get(String(o.codigo));
-      if (!temItens(salvo?.categorias)) return o;
+      if (!salvo) return { ...o, aditivos: painelAditivos.filter((a) => String(a.obraCodigo) === String(o.codigo)) };
       return {
         ...o,
         // Mesma migracao que a obra recebe ao abrir: sem ela a mao de
         // obra separada aparece na verba 32 e nao no grupo dela.
         categorias: devolverMOaoGrupoDeOrigem(normalizarCategorias(salvo.categorias)),
+        aditivos: painelAditivos.filter((a) => String(a.obraCodigo) === String(o.codigo)),
         dataEntrega: salvo.dataEntrega,
         cadernos: salvo.cadernos || o.cadernos,
         comprasLiberadas: salvo.comprasLiberadas,
@@ -20325,7 +20105,7 @@ export default function App() {
         clienteAssinouEm: salvo.clienteAssinouEm,
       };
     });
-  }, [obrasAtivas, painelDados, selectedId]);
+  }, [obrasAtivas, painelDados, painelAditivos, selectedId]);
   const obrasConcluidas = useMemo(() => obras.filter((o) => situacaoDe(o) === "concluida"), [obras, registro]);
   const obrasNovas = useMemo(() => obras.filter((o) => !situacaoDe(o)), [obras, registro]);
   /* O endereço da obra que não tem um: o do cadastro do Sienge
@@ -25100,7 +24880,7 @@ export default function App() {
 
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
-        <main className={`main ${["executivo", "vendido_planilha"].includes(tab) ? "larga" : ""}`}>
+        <main className={`main ${modulo === "inicio" || ["executivo", "vendido_planilha"].includes(tab) ? "larga" : ""}`}>
           {/* O portao de perfil esta DESLIGADO ate a coluna existir. Dizer
           isso e' o que impede a janela virar um estado permanente que
           ninguem lembra de fechar. */}
@@ -25130,11 +24910,12 @@ export default function App() {
               descrevia o que a propria tela mostra logo abaixo. Tres
               linhas pra dizer onde a pessoa esta quando ela ja sabe —
               elas empurravam pra baixo o unico conteudo que importa. */}
-          <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={painelCarregando}
+          <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={loading || !registroCarregado || painelCarregando}
+            erro={painelErro || erroBanco || avisoMonday} onRetry={() => { if (erroBanco || avisoMonday) window.location.reload(); else setPainelRevisao((value) => value + 1); }}
             usuario={usuario} equipe={pessoas} nPendentes={nPendentes}
             dadosLocalizacao={dadosLocalizacao} localizacaoCarregando={siengeCarregando}
             onToggleLocalizacao={alternarStatusLocalizacao}
-            onAbrirObra={(id) => { setSelectedId(id); setModulo("comparativo"); setGrupo("dashboard"); setTab(null); }}
+            onAbrirObra={(id, destino = null) => { setSelectedId(id); setModulo("comparativo"); setGrupo(destino ? grupoDaEtapa(destino) : "dashboard"); setTab(destino); }}
             onModulo={setModulo} />
           </>
           ) : modulo === "novas" ? (
