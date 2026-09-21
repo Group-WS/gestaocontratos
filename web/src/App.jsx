@@ -23224,18 +23224,9 @@ export default function App() {
         .flat-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
         .flat-panel-title { font-size: 14px; font-weight: 700; color: var(--ink); }
         .flat-panel-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; max-width: 560px; }
-        .btn-download { display: flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
-        .btn-download:hover { background: var(--blue); }
-        .import-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 14px; align-items: start; }
         .import-card { display: flex; flex-direction: column; gap: 8px; }
         .import-bar { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; background: var(--panel); border: 1px dashed var(--border); border-radius: 12px; padding: 12px 15px; margin-bottom: 0; }
-        .import-bar .btn-import { align-self: stretch; justify-content: center; }
-        .btn-limpar-import { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--red); background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 6px 11px; cursor: pointer; flex-shrink: 0; }
-        .btn-limpar-import:hover:not(:disabled) { background: var(--red-bg); border-color: var(--red); }
-        .btn-limpar-import:disabled { opacity: 0.5; cursor: default; }
         .import-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); }
-        .btn-import { display: inline-flex; align-items: center; gap: 6px; background: var(--blue); color: var(--bg); border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
-        .btn-import:hover { filter: brightness(1.08); }
         .import-ok { display: flex; align-items: center; gap: 8px; background: var(--green-bg); color: var(--green); border: 1px solid var(--green); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
         .import-erro { display: flex; align-items: center; gap: 8px; background: var(--red-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
         .vend-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
@@ -24184,27 +24175,27 @@ export default function App() {
            primário = default do DS (brand) · contorno = outline ·
            tracejado = adicionar · fantasma = só ícone. O tamanho sm (30px)
            é o padrão aqui; o default (38px) fica para a ação principal. */
-        :is(.btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template) {
+        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template) {
           display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 8px;
           font-family: var(--font-sans); font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap;
           background: var(--brand); color: var(--bg); border: 1px solid var(--brand); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
         }
-        :is(.btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
-        :is(.btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
-        :is(.btn-import, .btn-aprovar, .btn-nova-solicitacao, .btn-avulsa, .btn-download, .btn-criar) { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
+        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
+        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
+        :is(.btn-aprovar, .btn-nova-solicitacao, .btn-avulsa, .btn-criar) { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
         .pf-box.compacto .btn-doc { min-height: 24px; }
 
-        :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel) {
+        :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel) {
           display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 8px;
           font-family: var(--font-sans); font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap;
           background: transparent; color: var(--text); border: 1px solid var(--line-2); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         }
         :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo):hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-3); color: var(--text); }
-        :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel):disabled { opacity: 0.5; cursor: not-allowed; }
+        :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel):disabled { opacity: 0.5; cursor: not-allowed; }
         :is(.btn-lupa, .btn-copiar, .btn-apagar-escopo) { width: 30px; padding: 0; color: var(--text-mute); }
         .btn-cancelar { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
-        :is(.btn-limpar-import, .btn-cadastrar) { color: var(--danger); }
-        :is(.btn-limpar-import, .btn-cadastrar, .btn-apagar-escopo):hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+        .btn-cadastrar { color: var(--danger); }
+        :is(.btn-cadastrar, .btn-apagar-escopo):hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
         .btn-compra { color: var(--brand); border-color: var(--brand); }
         .btn-compra:hover:not(:disabled) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
         /* Sobre a barra invertida de seleção: botão claro no escuro (e vice-versa). */
@@ -24442,7 +24433,7 @@ export default function App() {
           .dash, .ad-wrap, .ad-cab, .conf-cols,
           .escopo-conta, .escopo-campos, .confronto-placar, .ger-placar,
           .sol-campos, .assinatura-campos, .form-row-3, .cad-campos,
-          .ad-item-campos, .ad-item-campos.com-custo, .import-row {
+          .ad-item-campos, .ad-item-campos.com-custo {
             /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
                min-width auto, e com isso se RECUSA a encolher abaixo do
                proprio conteudo. Na Inicio, as duas colunas viravam uma so'
@@ -24461,7 +24452,7 @@ export default function App() {
           .mh-num-larga { width: auto; min-width: 120px; }
 
           /* Tabela larga rola dentro do bloco dela; a pagina fica parada. */
-          .grp-itens, .vend-itens-wrap, .exec-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          .grp-itens, .exec-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
           /* Alvo de toque: 16px de fonte no campo impede o zoom automatico do
              iPhone ao focar, que e' o que faz a pagina "pular" ao digitar. */
