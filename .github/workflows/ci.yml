@@ -21,6 +21,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# O design system (@group-ws/ws-ui) e' pacote privado do GitHub Packages.
+# Sem autenticacao o `npm ci` do web para em 401. O token vem do segredo
+# GH_PACKAGES_TOKEN (PAT com read:packages na org Group-WS); sem ele, tenta o
+# GITHUB_TOKEN do proprio workflow, que so' funciona se o pacote der acesso
+# de leitura a este repositorio (Package settings > Manage Actions access).
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   app:
     name: Testes e build
@@ -36,8 +45,12 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: web/package-lock.json
+          registry-url: https://npm.pkg.github.com
+          scope: "@group-ws"
 
       - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
       - run: npm test
       - run: npm run build
 
@@ -54,10 +67,14 @@ jobs:
           cache-dependency-path: |
             web/package-lock.json
             e2e/package-lock.json
+          registry-url: https://npm.pkg.github.com
+          scope: "@group-ws"
 
       - name: Dependencias do app
         run: npm ci
         working-directory: web
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Dependencias do e2e
         run: npm ci
