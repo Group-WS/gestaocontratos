@@ -61,7 +61,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor, EstadoAcao } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor, EstadoAcao, SecaoRotulo } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -13704,46 +13704,46 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
   if (jaEnviado) avisos.push({ tipo: "repetido" });
   if (erroCatalogo) avisos.push({ tipo: "catalogo" });
 
-  return createPortal(
-    <div className="sobreposto-fundo" onClick={(e) => { if (e.target === e.currentTarget && !enviando) onFechar(); }}>
-      <div className="sobreposto-caixa">
-        <div className="sobreposto-topo">
-          <div>
-            <div className="flat-panel-title">Solicitar compra no Sienge</div>
-            <div className="flat-panel-sub">
-              Obra <b>#{obra.codigo}</b> · solicitante <b>VALENTINA</b>
-            </div>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onFechar} disabled={enviando} aria-label="Fechar"><X size={14} /></Button>
-        </div>
+  /* Campo de tabela: o Input do DS com o respiro vertical encolhido,
+     porque a linha tem altura de linha, não de formulário. */
+  const compacto = "h-8 px-2 text-sm";
 
-        <div className="sobreposto-corpo">
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v && !enviando) onFechar(); }}>
+      <DialogContent size="full">
+        <DialogHeader>
+          <DialogTitle>Solicitar compra no Sienge</DialogTitle>
+          <DialogDescription>
+            Obra <b>#{obra.codigo}</b> · solicitante <b>VALENTINA</b>
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogBody className="space-y-6">
           <AvisoErro erro={erro} />
 
           {avisos.map((a) => a.tipo === "repetido" ? (
-            <div key="repetido" className="import-erro erro-detalhado">
-              <AlertTriangle size={14} />
-              <div>
-                <div><b>
-                  Estes itens já foram enviados
-                  {jaEnviado.solicitacao_id ? <> na solicitação <span className="mono">{jaEnviado.solicitacao_id}</span></> : ""}
-                  {" · "}{new Date(jaEnviado.enviado_em).toLocaleString("pt-BR")}
-                  {jaEnviado.enviado_por ? ` · ${jaEnviado.enviado_por}` : ""}
-                </b></div>
-                <div className="erro-acao">Enviar de novo cria uma segunda solicitação com o mesmo conteúdo.</div>
+            <Alert key="repetido" tone="warning">
+              <AlertTitle>
+                Estes itens já foram enviados
+                {jaEnviado.solicitacao_id ? <> na solicitação <span className="font-mono">{jaEnviado.solicitacao_id}</span></> : ""}
+                {" · "}{new Date(jaEnviado.enviado_em).toLocaleString("pt-BR")}
+                {jaEnviado.enviado_por ? ` · ${jaEnviado.enviado_por}` : ""}
+              </AlertTitle>
+              <AlertDescription className="space-y-2">
+                <div>Enviar de novo cria uma segunda solicitação com o mesmo conteúdo.</div>
                 {jaEnviado.solicitacao_id && !anterior && (
-                  <Button variant="outline" className="sol-acao-aviso" disabled={vendoAnterior}
+                  <Button variant="outline" size="sm" disabled={vendoAnterior}
                     onClick={() => verAnterior(jaEnviado.solicitacao_id)}>
-                    {vendoAnterior ? "consultando…" : "conferir no Sienge"}
+                    {vendoAnterior ? "Consultando…" : "Conferir no Sienge"}
                   </Button>
                 )}
-                {anterior?.erro && <div className="erro-acao">{anterior.erro}</div>}
+                {anterior?.erro && <div>{anterior.erro}</div>}
                 {/* A API não devolve os itens de uma solicitação (o GET
                     responde 405), então o que dá pra afirmar é se ela
                     existe e em que estado está — e é só isso que a tela
                     diz. Prometer a lista seria prometer o que não há. */}
                 {anterior && !anterior.erro && (
-                  <div className="erro-acao">
+                  <div>
                     {!anterior.existe ? (
                       <>A solicitação <b>não existe mais</b> no Sienge — foi cancelada. Pode enviar.</>
                     ) : (
@@ -13756,344 +13756,352 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                     )}
                   </div>
                 )}
-              </div>
-            </div>
+              </AlertDescription>
+            </Alert>
           ) : (
-            <div key="catalogo" className="import-erro erro-detalhado">
-              <AlertTriangle size={14} />
-              <div>
-                <div><b>Não deu pra ler os detalhes dos insumos.</b></div>
-                <div className="erro-acao">{erroCatalogo} Dá pra enviar assim mesmo, sem apontar o detalhe.</div>
-              </div>
-            </div>
+            <Alert key="catalogo" tone="warning">
+              <AlertTitle>Não deu pra ler os detalhes dos insumos.</AlertTitle>
+              <AlertDescription>{erroCatalogo} Dá pra enviar assim mesmo, sem apontar o detalhe.</AlertDescription>
+            </Alert>
           ))}
 
           {resultado ? (
             <>
-              <div className="sol-numero">
-                <CheckCircle2 size={16} />
-                <span>Solicitação <b className="mono">{resultado.solicitacaoId}</b> no Sienge</span>
-                <Button variant="outline" title="Copiar o número"
-                  onClick={() => navigator.clipboard?.writeText(String(resultado.solicitacaoId))}>
-                  <Copy size={12} /> copiar
-                </Button>
-              </div>
-
-              <div className="sol-placar">
-                <b>{resultado.ok}</b> {resultado.ok === 1 ? "item entrou" : "itens entraram"}
-                {resultado.falhas > 0 && <> · <b className="sol-motivo">{resultado.falhas} recusado{resultado.falhas > 1 ? "s" : ""}</b></>}
-              </div>
+              <Alert tone="success">
+                <AlertTitle className="flex flex-wrap items-center gap-2">
+                  <span>Solicitação <b className="font-mono">{resultado.solicitacaoId}</b> no Sienge</span>
+                  <Button variant="outline" size="sm" title="Copiar o número"
+                    onClick={() => navigator.clipboard?.writeText(String(resultado.solicitacaoId))}>
+                    <Copy size={12} /> Copiar número
+                  </Button>
+                </AlertTitle>
+                <AlertDescription>
+                  <b>{resultado.ok}</b> {resultado.ok === 1 ? "item entrou" : "itens entraram"}
+                  {resultado.falhas > 0 && <> · <b className="text-danger">{resultado.falhas} recusado{resultado.falhas > 1 ? "s" : ""}</b></>}
+                </AlertDescription>
+              </Alert>
 
               {/* Zero aceitos = solicitação vazia no Sienge, e ela não sai
                   de lá sozinha: a API não tem DELETE nem cancelamento.
                   Quem não for avisado agora não descobre depois — e o ERP
                   acumula solicitações sem nada dentro. */}
               {resultado.ok === 0 && !resultado.reenvio && (
-                <div className="import-erro erro-detalhado">
-                  <AlertTriangle size={14} />
-                  <div>
-                    <div><b>Nenhum item entrou — a solicitação {resultado.solicitacaoId} ficou vazia no Sienge.</b></div>
-                    <div className="erro-acao">
-                      Corrija os itens abaixo e reenvie para ela, ou <b>cancele-a no Sienge</b>
-                      {" "}(Suprimentos &gt; Solicitações de Compra). Solicitação vazia não pode ser
-                      apagada pela integração.
-                    </div>
-                  </div>
-                </div>
+                <Alert tone="danger">
+                  <AlertTitle>Nenhum item entrou — a solicitação {resultado.solicitacaoId} ficou vazia no Sienge.</AlertTitle>
+                  <AlertDescription>
+                    Corrija os itens abaixo e reenvie para ela, ou <b>cancele-a no Sienge</b>
+                    {" "}(Suprimentos &gt; Solicitações de Compra). Solicitação vazia não pode ser
+                    apagada pela integração.
+                  </AlertDescription>
+                </Alert>
               )}
 
               {recusados.length > 0 && (
-                <>
-                  <div className="sol-secao-rotulo">Itens recusados</div>
-                  <div className="flat-panel-sub">
+                <section className="space-y-2">
+                  <SecaoRotulo>Itens recusados</SecaoRotulo>
+                  <p className="text-sm text-text-soft">
                     Corrija e reenvie — vai para a <b>mesma solicitação {resultado.solicitacaoId}</b>.
                     A correção vale só para este reenvio; a planilha da obra não muda.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-24">Insumo</TableHead>
+                          {/* O motivo é a informação principal desta tabela:
+                              coluna própria, não subtexto de outro campo. */}
+                          <TableHead className="w-1/3">Motivo da recusa</TableHead>
+                          <TableHead>Observação</TableHead>
+                          <TableHead className="w-24 text-right">Qtd.</TableHead>
+                          <TableHead className="w-28 text-center">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {recusados.map((r) => {
+                          const id = chaveDoResultado(r);
+                          const ed = edicoes[id] || {};
+                          const item = itemDoResultado(r);
+                          return (
+                            <TableRow key={id}>
+                              <TableCell>
+                                <Input className={`${compacto} w-20 font-mono`}
+                                  type="number" min="1" step="1"
+                                  value={insumoEscolhido[id] ?? r.productId}
+                                  onChange={(e) => trocarInsumo(id, e.target.value)}
+                                  aria-label="Código do insumo no Sienge" />
+                              </TableCell>
+                              {/* Texto do Sienge, palavra por palavra. Quando
+                                  ele recusa sem dizer nada, dizer isso é
+                                  melhor que uma célula vazia — que parece
+                                  defeito da tela, não resposta do ERP. */}
+                              <TableCell className="whitespace-normal break-words text-danger">
+                                {r.erro || "Recusado sem motivo informado. Confira o item no Sienge."}
+                              </TableCell>
+                              <TableCell>
+                                <Input className={`${compacto} min-w-40`} value={ed.notes ?? item?.notes ?? ""}
+                                  onChange={(e) => editar(id, { notes: e.target.value })}
+                                  maxLength={4000} aria-label="Observação do item" />
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Input className={`${compacto} w-20 text-right`} type="number" min="0" step="any"
+                                  value={ed.quantity ?? item?.quantity ?? ""}
+                                  onChange={(e) => editar(id, { quantity: e.target.value })}
+                                  aria-label="Quantidade" />
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex justify-center gap-1">
+                                  <Button variant="outline" size="sm" disabled={enviando}
+                                    onClick={() => reenviar([r])} title="Reenviar só este item">
+                                    Reenviar
+                                  </Button>
+                                  <Button variant="outline" size="icon" disabled={enviando}
+                                    onClick={() => descartar(id)}
+                                    title="Tirar do envio — continua pendente nas Compras" aria-label="Tirar do envio — continua pendente nas Compras">
+                                    <X size={12} />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
-                  <div className="sol-rolagem"><table className="vend-itens sol-tabela">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 58 }}>Insumo</th>
-                        {/* O motivo é a informação principal desta tabela:
-                            coluna própria, não subtexto de outro campo. */}
-                        <th style={{ width: "34%" }}>Motivo da recusa</th>
-                        <th>Observação</th>
-                        <th style={{ width: 76 }} className="right">Qtd.</th>
-                        <th style={{ width: 96 }} className="center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recusados.map((r) => {
-                        const id = chaveDoResultado(r);
-                        const ed = edicoes[id] || {};
-                        const item = itemDoResultado(r);
-                        return (
-                          <tr key={id} className="row-falta">
-                            <td>
-                              <input className="form-input sol-campo-compacto mono"
-                                type="number" min="1" step="1"
-                                value={insumoEscolhido[id] ?? r.productId}
-                                onChange={(e) => trocarInsumo(id, e.target.value)}
-                                aria-label="Código do insumo no Sienge" />
-                            </td>
-                            {/* Texto do Sienge, palavra por palavra. Quando
-                                ele recusa sem dizer nada, dizer isso é
-                                melhor que uma célula vazia — que parece
-                                defeito da tela, não resposta do ERP. */}
-                            <td className="sol-motivo">
-                              {r.erro || "Recusado sem motivo informado. Confira o item no Sienge."}
-                            </td>
-                            <td>
-                              <input className="form-input sol-campo-compacto" value={ed.notes ?? item?.notes ?? ""}
-                                onChange={(e) => editar(id, { notes: e.target.value })}
-                                maxLength={4000} aria-label="Observação do item" />
-                            </td>
-                            <td className="right">
-                              <input className="form-input sol-campo-compacto right" type="number" min="0" step="any"
-                                value={ed.quantity ?? item?.quantity ?? ""}
-                                onChange={(e) => editar(id, { quantity: e.target.value })}
-                                aria-label="Quantidade" />
-                            </td>
-                            <td className="sol-acoes">
-                              <Button variant="outline" disabled={enviando}
-                                onClick={() => reenviar([r])} title="Reenviar só este item">
-                                reenviar
-                              </Button>
-                              <Button variant="outline" size="icon" disabled={enviando}
-                                onClick={() => descartar(id)}
-                                title="Tirar do envio — continua pendente nas Compras" aria-label="Tirar do envio — continua pendente nas Compras">
-                                <X size={12} />
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table></div>
-                  <div className="sol-acao-bloco">
+                  <div className="flex justify-end">
                     <Button disabled={enviando} onClick={() => reenviar(recusados)}>
                       {enviando ? "Reenviando…" : `Reenviar ${recusados.length} ${recusados.length === 1 ? "item" : "itens"}`}
                     </Button>
                   </div>
-                </>
+                </section>
               )}
 
               {ultimoEnvio && (
-                <div className="sol-tecnico">
-                  <Button variant="ghost" size="sm" onClick={() => setVerEnvio((v) => !v)}>
-                    {verEnvio ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                    Detalhes técnicos do envio
-                  </Button>
-                  {verEnvio && (
-                    <>
-                      <div className="flat-panel-sub sol-tecnico-nota">
+                <Collapsible open={verEnvio} onOpenChange={setVerEnvio} className="border-t border-line-1 pt-4">
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      {verEnvio ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      Detalhes técnicos do envio
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-2 pt-2">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-text-soft">
+                      <span>
                         O corpo exato da chamada e a resposta do Sienge — para entender recusa que a
                         mensagem não explica.
-                        <Button variant="outline" className="sol-acao-aviso"
-                          onClick={() => navigator.clipboard?.writeText(JSON.stringify(ultimoEnvio, null, 2))}>
-                          <Copy size={12} /> copiar
-                        </Button>
-                      </div>
-                      <div className="sol-json-rotulo">Enviado</div>
-                      <pre className="sol-json">{JSON.stringify(ultimoEnvio.enviado, null, 2)}</pre>
-                      <div className="sol-json-rotulo">Resposta do Sienge</div>
-                      <pre className="sol-json">{JSON.stringify(ultimoEnvio.recebido, null, 2)}</pre>
-                    </>
-                  )}
-                </div>
+                      </span>
+                      <Button variant="outline" size="sm"
+                        onClick={() => navigator.clipboard?.writeText(JSON.stringify(ultimoEnvio, null, 2))}>
+                        <Copy size={12} /> Copiar JSON
+                      </Button>
+                    </div>
+                    <SecaoRotulo>Enviado</SecaoRotulo>
+                    <pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line-1 bg-surface-1 p-3 font-mono text-xs text-text-soft">{JSON.stringify(ultimoEnvio.enviado, null, 2)}</pre>
+                    <SecaoRotulo>Resposta do Sienge</SecaoRotulo>
+                    <pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line-1 bg-surface-1 p-3 font-mono text-xs text-text-soft">{JSON.stringify(ultimoEnvio.recebido, null, 2)}</pre>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </>
           ) : (
             <>
-              <div className="sol-secao-rotulo">Apropriação no orçamento</div>
-              <div className="sol-verbas">
-                {verbasDaSelecao.map((num) => {
-                  const v = verbas.find((x) => x.num === num);
-                  return (
-                    <div key={num} className="sol-verba-linha">
-                      <span className="sol-verba-num">verba <b className="mono">{num}</b></span>
-                      <SelectBusca className="mono sol-verba-sel" aria={`Item do orçamento da verba ${num}`}
-                        valor={mapa[num] || ""} vazio="— sem apropriação —"
-                        opcoes={folhasEap}
-                        onChange={(v) => trocarFolha(num, v || null)} />
-                      <span className="dim sol-verba-qtd">{v ? `${v.itens} ${v.itens === 1 ? "item" : "itens"}` : "—"}</span>
-                    </div>
-                  );
-                })}
-                <div className="flat-panel-sub">Trocar aqui grava no cadastro (EAP Sienge).</div>
-                {erroMapa && <div className="import-erro"><AlertTriangle size={13} /> {erroMapa}</div>}
-              </div>
+              <section className="space-y-2">
+                <SecaoRotulo>Apropriação no orçamento</SecaoRotulo>
+                <Card>
+                  <CardContent className="space-y-2 p-4 text-sm">
+                    {verbasDaSelecao.map((num) => {
+                      const v = verbas.find((x) => x.num === num);
+                      return (
+                        <div key={num} className="flex flex-wrap items-center gap-2">
+                          <span className="w-20 shrink-0">verba <b className="font-mono">{num}</b></span>
+                          <SelectBusca className="font-mono basis-64" aria={`Item do orçamento da verba ${num}`}
+                            valor={mapa[num] || ""} vazio="— sem apropriação —"
+                            opcoes={folhasEap}
+                            onChange={(v) => trocarFolha(num, v || null)} />
+                          <span className="w-16 shrink-0 text-right text-text-mute">{v ? `${v.itens} ${v.itens === 1 ? "item" : "itens"}` : "—"}</span>
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-text-mute">Trocar aqui grava no cadastro (EAP Sienge).</p>
+                    {erroMapa && <Alert tone="danger"><AlertDescription>{erroMapa}</AlertDescription></Alert>}
+                  </CardContent>
+                </Card>
+              </section>
 
-              <div className="sol-secao-rotulo">Dados da solicitação</div>
-              <div className="sol-campos">
-                <label className="sol-campo">
-                  <span>Unidade construtiva</span>
-                  {/* As unidades são as DESTA obra, lidas do Sienge: o id é a
-                      planilha do orçamento e muda de obra para obra. Número
-                      de outra obra volta como "Item do orçamento é inválido",
-                      depois da solicitação já criada. Sem a lista, o campo
-                      abre pra digitação em vez de travar o envio. */}
-                  {unidades && !unidades.length ? (
-                    <input className="form-input" type="number" min="1" value={unidade}
-                      placeholder="ex.: 1" onChange={(e) => setUnidade(e.target.value)} />
-                  ) : (
-                    <SelectBusca aria="Unidade construtiva" disabled={!unidades}
-                      valor={unidade} placeholder={unidades ? "selecione…" : "carregando…"}
-                      opcoes={(unidades || []).map((u) => ({ valor: String(u.id), rotulo: `${u.id} · ${u.descricao}` }))}
-                      onChange={setUnidade} />
-                  )}
-                  {erroUnidades
-                    ? <span className="dim">{erroUnidades} Quase sempre é <b>1</b> (Orçamento Executivo).</span>
-                    : unidades && !unidades.length
-                    ? <span className="dim">Nenhuma encontrada. Confira o número da planilha no Sienge.</span>
-                    : null}
-                </label>
+              <section className="space-y-2">
+                <SecaoRotulo>Dados da solicitação</SecaoRotulo>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <Label htmlFor="sol-unidade">Unidade construtiva</Label>
+                    {/* As unidades são as DESTA obra, lidas do Sienge: o id é a
+                        planilha do orçamento e muda de obra para obra. Número
+                        de outra obra volta como "Item do orçamento é inválido",
+                        depois da solicitação já criada. Sem a lista, o campo
+                        abre pra digitação em vez de travar o envio. */}
+                    {unidades && !unidades.length ? (
+                      <Input id="sol-unidade" type="number" min="1" value={unidade}
+                        placeholder="ex.: 1" onChange={(e) => setUnidade(e.target.value)} />
+                    ) : (
+                      <SelectBusca aria="Unidade construtiva" disabled={!unidades}
+                        valor={unidade} placeholder={unidades ? "selecione…" : "carregando…"}
+                        opcoes={(unidades || []).map((u) => ({ valor: String(u.id), rotulo: `${u.id} · ${u.descricao}` }))}
+                        onChange={setUnidade} />
+                    )}
+                    {erroUnidades
+                      ? <FieldHint>{erroUnidades} Quase sempre é <b>1</b> (Orçamento Executivo).</FieldHint>
+                      : unidades && !unidades.length
+                      ? <FieldHint>Nenhuma encontrada. Confira o número da planilha no Sienge.</FieldHint>
+                      : null}
+                  </Field>
 
-                <label className="sol-campo">
-                  <span>Observação da solicitação</span>
-                  <input className="form-input" value={notas}
-                    onChange={(e) => setNotas(e.target.value)} maxLength={4000} />
-                </label>
-              </div>
+                  <Field>
+                    <Label htmlFor="sol-notas">Observação da solicitação</Label>
+                    <Input id="sol-notas" value={notas}
+                      onChange={(e) => setNotas(e.target.value)} maxLength={4000} />
+                  </Field>
+                </div>
+              </section>
 
-              <div className="sol-secao-rotulo">
-                Itens
-                {/* Prestação de contas das linhas selecionadas: cada uma
-                    aparece no que vai (às vezes somada) ou no que não vai.
-                    Sem essa conta, agregação parece sumiço. */}
-                <span className="sol-conta">
+              <section className="space-y-2">
+                <SecaoRotulo conta={<>
+                  {/* Prestação de contas das linhas selecionadas: cada uma
+                      aparece no que vai (às vezes somada) ou no que não vai.
+                      Sem essa conta, agregação parece sumiço. */}
                   {linhas.length} {linhas.length === 1 ? "linha selecionada" : "linhas selecionadas"}
                   {somadas > 0 && ` · ${somadas} ${somadas === 1 ? "somada" : "somadas"}`}
                   {bloqueados.length > 0 && ` · ${bloqueados.length} fora`}
-                </span>
-              </div>
+                </>}>
+                  Itens
+                </SecaoRotulo>
 
-              <div className="sol-rolagem"><table className="vend-itens sol-tabela">
-                <thead>
-                  <tr>
-                    <th style={{ width: 84 }}>Insumo</th>
-                    <th>Detalhe · apropriação</th>
-                    <th style={{ width: 62 }} className="right">Qtd.</th>
-                    <th style={{ width: 46 }} className="center">Un.</th>
-                    <th style={{ width: 104 }} className="right">Preço unit.</th>
-                    <th style={{ width: 112 }} className="right">Valor total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {itens.map((i, k) => (
-                    <tr key={k}>
-                      {/* O código do insumo é editável: o casamento com a
-                          base acerta a família e às vezes erra o código, e
-                          sem isto a correção obrigava a fechar o modal e
-                          refazer a seleção. A descrição ao lado é a
-                          conferência — digitar 275 e ler "AR CONDICIONADO"
-                          é o que diz se o número está certo. */}
-                      <td>
-                        <input className="form-input sol-campo-compacto mono"
-                          type="number" min="1" step="1"
-                          value={insumoEscolhido[i.chaves.join("|")] ?? i.productId}
-                          onChange={(e) => trocarInsumo(i.chaves.join("|"), e.target.value)}
-                          aria-label="Código do insumo no Sienge" />
-                      </td>
-                      <td>
-                        {/* O nome que o Sienge dá a este código. Vermelho
-                            quando o código não existe no orçamento da obra:
-                            é erro que só apareceria depois do envio. */}
-                        {catalogo && (
-                          i.insumoDescricao
-                            ? <span className="dim sol-insumo-nome">{i.insumoDescricao}</span>
-                            : <span className="sol-motivo sol-insumo-nome">insumo não encontrado nesta obra</span>
-                        )}
-                        <span className="sol-corte" title={i.notes}>{i.notes}</span>
-                        {/* Onde este item cai no orçamento: é a informação
-                            que faz alguém parar o envio. */}
-                        <span className="dim sol-sub">
-                          <span className="mono">{i.costEstimationItemReference}</span>
-                          {" · un. "}{i.buildingUnitId}
-                          {/* O código do detalhe é como se confere o item
-                              dentro do Sienge — sem ele, a linha diz o que
-                              foi pedido mas não onde olhar. */}
-                          {Number.isInteger(i.detailId) && <> · detalhe <span className="mono">{i.detailId}</span></>}
-                          {i.chaves.length > 1 && ` · ${i.chaves.length} linhas somadas`}
-                          {i.detalheNovo && " · detalhe novo"}
-                        </span>
-                        {i.detalhesDisponiveis?.length > 0 && (
-                          <span className="sol-detalhe">
-                            <SelectBusca className="sol-campo-compacto" aria="Detalhe do insumo no Sienge"
-                              valor={i.detailId ?? ""} vazio="— sem detalhe —"
-                              opcoes={i.detalhesDisponiveis.map((d) => ({
-                                valor: String(d.id),
-                                rotulo: `${d.id}${d.codigo ? ` (${d.codigo})` : ""} · ${d.descricao}`,
-                              }))}
-                              onChange={(v) => setDetalheEscolhido((d) => ({ ...d, [i.chaves.join("|")]: v }))} />
-                          </span>
-                        )}
-                      </td>
-                      <td className="right">{i.quantity}</td>
-                      <td className="center mono">{i.unitySymbol}</td>
-                      <td className="right">{fmtBRL(i.estimatedPrice)}</td>
-                      {/* O custo de material da linha nas Compras — é ele que
-                          soma o total e bate com a tela de origem. O unitário
-                          ao lado é derivado dele. */}
-                      <td className="right">{fmtBRL(i.custoTotal)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="sol-total">
-                    <td colSpan={5} className="right">Total</td>
-                    <td className="right">{fmtBRL(total)}</td>
-                  </tr>
-                </tfoot>
-              </table></div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-28">Insumo</TableHead>
+                        <TableHead>Detalhe · apropriação</TableHead>
+                        <TableHead className="w-16 text-right">Qtd.</TableHead>
+                        <TableHead className="w-12 text-center">Un.</TableHead>
+                        <TableHead className="w-28 text-right">Preço unit.</TableHead>
+                        <TableHead className="w-28 text-right">Valor total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {itens.map((i, k) => (
+                        <TableRow key={k}>
+                          {/* O código do insumo é editável: o casamento com a
+                              base acerta a família e às vezes erra o código, e
+                              sem isto a correção obrigava a fechar o modal e
+                              refazer a seleção. A descrição ao lado é a
+                              conferência — digitar 275 e ler "AR CONDICIONADO"
+                              é o que diz se o número está certo. */}
+                          <TableCell>
+                            <Input className={`${compacto} w-24 font-mono`}
+                              type="number" min="1" step="1"
+                              value={insumoEscolhido[i.chaves.join("|")] ?? i.productId}
+                              onChange={(e) => trocarInsumo(i.chaves.join("|"), e.target.value)}
+                              aria-label="Código do insumo no Sienge" />
+                          </TableCell>
+                          <TableCell className="whitespace-normal break-words">
+                            {/* O nome que o Sienge dá a este código. Vermelho
+                                quando o código não existe no orçamento da obra:
+                                é erro que só apareceria depois do envio. */}
+                            {catalogo && (
+                              i.insumoDescricao
+                                ? <span className="block text-xs text-text-mute">{i.insumoDescricao}</span>
+                                : <span className="block text-xs text-danger">insumo não encontrado nesta obra</span>
+                            )}
+                            <span className="line-clamp-3" title={i.notes}>{i.notes}</span>
+                            {/* Onde este item cai no orçamento: é a informação
+                                que faz alguém parar o envio. */}
+                            <span className="block text-xs text-text-mute">
+                              <span className="font-mono">{i.costEstimationItemReference}</span>
+                              {" · un. "}{i.buildingUnitId}
+                              {/* O código do detalhe é como se confere o item
+                                  dentro do Sienge — sem ele, a linha diz o que
+                                  foi pedido mas não onde olhar. */}
+                              {Number.isInteger(i.detailId) && <> · detalhe <span className="font-mono">{i.detailId}</span></>}
+                              {i.chaves.length > 1 && ` · ${i.chaves.length} linhas somadas`}
+                              {i.detalheNovo && " · detalhe novo"}
+                            </span>
+                            {i.detalhesDisponiveis?.length > 0 && (
+                              <span className="mt-1 flex items-center gap-2 text-xs">
+                                <SelectBusca aria="Detalhe do insumo no Sienge"
+                                  valor={i.detailId ?? ""} vazio="— sem detalhe —"
+                                  opcoes={i.detalhesDisponiveis.map((d) => ({
+                                    valor: String(d.id),
+                                    rotulo: `${d.id}${d.codigo ? ` (${d.codigo})` : ""} · ${d.descricao}`,
+                                  }))}
+                                  onChange={(v) => setDetalheEscolhido((d) => ({ ...d, [i.chaves.join("|")]: v }))} />
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">{i.quantity}</TableCell>
+                          <TableCell className="text-center font-mono">{i.unitySymbol}</TableCell>
+                          <TableCell className="text-right">{fmtBRL(i.estimatedPrice)}</TableCell>
+                          {/* O custo de material da linha nas Compras — é ele que
+                              soma o total e bate com a tela de origem. O unitário
+                              ao lado é derivado dele. */}
+                          <TableCell className="text-right">{fmtBRL(i.custoTotal)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-right font-bold">Total</TableCell>
+                        <TableCell className="text-right font-bold">{fmtBRL(total)}</TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+              </section>
 
               {bloqueados.length > 0 && (
-                <>
-                  <div className="sol-secao-rotulo">
-                    Não vão
-                    <span className="sol-conta">continuam selecionados nas Compras</span>
+                <section className="space-y-2">
+                  <SecaoRotulo conta="continuam selecionados nas Compras">Não vão</SecaoRotulo>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-2/5">Item</TableHead>
+                          <TableHead className="w-16">Verba</TableHead>
+                          <TableHead>Motivo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {bloqueados.map((b, k) => (
+                          <TableRow key={k}>
+                            {/* Descrição de item passa fácil de 100 caracteres.
+                                Corta em 3 linhas, e o texto inteiro fica no
+                                title — o motivo ao lado é que não pode sumir. */}
+                            <TableCell className="whitespace-normal break-words"><span className="line-clamp-3" title={b.item}>{b.item}</span></TableCell>
+                            <TableCell className="font-mono">{b.verba}</TableCell>
+                            <TableCell className="whitespace-normal break-words text-danger">{b.motivo}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
-                  <div className="sol-rolagem"><table className="vend-itens sol-tabela">
-                    <thead>
-                      <tr>
-                        <th style={{ width: "38%" }}>Item</th>
-                        <th style={{ width: 52 }}>Verba</th>
-                        <th>Motivo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bloqueados.map((b, k) => (
-                        <tr key={k} className="row-falta">
-                          {/* Descrição de item passa fácil de 100 caracteres.
-                              Corta em 3 linhas, e o texto inteiro fica no
-                              title — o motivo ao lado é que não pode sumir. */}
-                          <td><span className="sol-corte" title={b.item}>{b.item}</span></td>
-                          <td className="mono">{b.verba}</td>
-                          <td>{b.motivo}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table></div>
-                </>
+                </section>
               )}
             </>
           )}
-        </div>
+        </DialogBody>
 
-        <div className="sobreposto-rodape">
+        <DialogFooter className="flex-wrap">
           {resultado ? (
             <>
               {/* Fechar com item recusado em aberto é uma decisão, não um
                   descuido: eles continuam pendentes e dá pra retomar. */}
               {recusados.length > 0 && (
-                <span className="dim sol-rodape-aviso">
+                <span className="mr-auto text-xs text-text-mute">
                   {recusados.length} {recusados.length === 1 ? "item continua" : "itens continuam"} pendente{recusados.length === 1 ? "" : "s"} nas Compras.
                 </span>
               )}
-              <Button onClick={onFechar}>Fechar</Button>
+              <Button variant="outline" onClick={onFechar}>Fechar</Button>
             </>
           ) : (
             <>
-              <span className={insumosInvalidos.length ? "sol-motivo sol-rodape-aviso" : "dim sol-rodape-aviso"}>
+              <span className={`mr-auto text-xs ${insumosInvalidos.length ? "text-danger" : "text-text-mute"}`}>
                 {insumosInvalidos.length
                   ? `${insumosInvalidos.length} ${insumosInvalidos.length === 1 ? "item está" : "itens estão"} sem código de insumo`
                   : `${itens.length} ${itens.length === 1 ? "item" : "itens"} · ${fmtBRL(total)}`}
@@ -14107,10 +14115,10 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
               </Button>
             </>
           )}
-        </div>
-      </div>
-    </div>,
-    document.body);
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function situacaoNoSienge(it, casamento, grupos) {
@@ -14715,39 +14723,46 @@ function NovaSolicitacaoForm({ obra, onCriar }) {
     setAberto(false);
   }
 
-  if (!aberto) {
-    return (
+  return (
+    <>
       <Button onClick={() => setAberto(true)}>
         <Plus size={14} /> Nova solicitação de contrato
       </Button>
-    );
-  }
-
-  return (
-    <form className="form-solicitacao" onSubmit={submit}>
-      <div className="form-solicitacao-title">Nova solicitação de contrato</div>
-      <div className="form-row">
-        <label className="form-label">Verba
-          <select className="form-select" value={verbaNum} onChange={(e) => setVerbaNum(e.target.value)}>
-            {verbas.map((c) => <option key={c.num} value={c.num}>{c.num} — {c.nome}</option>)}
-          </select>
-        </label>
-      </div>
-      <div className="form-row">
-        <label className="form-label">Descrição do serviço
-          <input className="form-input" type="text" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Ex: Instalação de cortinas" required autoFocus />
-        </label>
-      </div>
-      <div className="form-row form-row-3">
-        <label className="form-label">Qtd.<input className="form-input" type="text" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="1" /></label>
-        <label className="form-label">Unidade<input className="form-input" type="text" value={un} onChange={(e) => setUn(e.target.value)} placeholder="vb" /></label>
-        <label className="form-label">Custo estimado (R$)<input className="form-input" type="text" value={custo} onChange={(e) => setCusto(e.target.value)} placeholder="0,00" /></label>
-      </div>
-      <div className="form-actions">
-        <Button variant="outline" type="button" onClick={() => setAberto(false)}>Cancelar</Button>
-        <Button type="submit">Criar solicitação</Button>
-      </div>
-    </form>
+      <Dialog open={aberto} onOpenChange={setAberto}>
+        <DialogContent size="md">
+          <form onSubmit={submit}>
+            <DialogHeader>
+              <DialogTitle>Nova solicitação de contrato</DialogTitle>
+            </DialogHeader>
+            <DialogBody className="grid gap-4 md:grid-cols-3">
+              <Choice className="md:col-span-3" label="Verba" value={String(verbaNum)} onChange={setVerbaNum}
+                opcoes={verbas.map((c) => ({ value: String(c.num), label: `${c.num} — ${c.nome}` }))} />
+              <Field className="md:col-span-3">
+                <Label htmlFor="nova-sol-desc" required>Descrição do serviço</Label>
+                <Input id="nova-sol-desc" type="text" value={desc} onChange={(e) => setDesc(e.target.value)}
+                  placeholder="Ex: Instalação de cortinas" required autoFocus />
+              </Field>
+              <Field>
+                <Label htmlFor="nova-sol-qtd">Qtd.</Label>
+                <Input id="nova-sol-qtd" type="text" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="1" />
+              </Field>
+              <Field>
+                <Label htmlFor="nova-sol-un">Unidade</Label>
+                <Input id="nova-sol-un" type="text" value={un} onChange={(e) => setUn(e.target.value)} placeholder="vb" />
+              </Field>
+              <Field>
+                <Label htmlFor="nova-sol-custo">Custo estimado (R$)</Label>
+                <Input id="nova-sol-custo" type="text" value={custo} onChange={(e) => setCusto(e.target.value)} placeholder="0,00" />
+              </Field>
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setAberto(false)}>Cancelar</Button>
+              <Button type="submit">Criar solicitação</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -22562,26 +22577,9 @@ export default function App() {
           box-shadow: var(--shadow-4); }
         .sobreposto-topo { display: flex; align-items: flex-start; justify-content: space-between;
           gap: 12px; padding: 20px 24px 12px; border-bottom: 1px solid var(--line-2); }
-        .sobreposto-corpo { padding: 16px 24px; overflow: auto; }
         .sobreposto-rodape { display: flex; align-items: center; justify-content: flex-end; gap: 8px;
           padding: 16px 24px; border-top: 1px solid var(--line-2); background: var(--surface-1);
           border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
-        .sol-numero { display: flex; align-items: center; gap: 8px; font-size: 15px;
-          padding: 12px 16px; border-radius: var(--radius); background: var(--green-bg); }
-        .sol-verbas { display: grid; gap: 4px; padding: 12px 16px; border-radius: var(--radius);
-          background: var(--surface-1); border: 1px solid var(--line-1); font-size: 12.5px; }
-        /* As tabelas do modal herdam o table-layout fixed da .vend-itens,
-           que espreme o texto em vez de quebrá-lo quando a coluna não tem
-           largura declarada — era o que cortava "Item · Verba · Motivo".
-           Aqui as larguras estão declaradas e o resto quebra. */
-        .sol-tabela td, .sol-tabela th { overflow-wrap: anywhere; word-break: break-word;
-          white-space: normal; line-height: 1.45; }
-        /* A descrição do produto passa fácil de 100 caracteres. Três
-           linhas e o resto no title (atributo HTML): o motivo ao lado é
-           que não pode perder espaço pra ela. */
-        .sol-corte { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-          overflow: hidden; }
-        .sol-sub { display: block; font-size: 11px; margin-top: 2px; }
         /* O erro em duas partes: o que houve (forte) e o que fazer
            (logo abaixo, sem competir com a primeira linha). */
         .erro-detalhado { align-items: flex-start; gap: 10px; padding: 12px 16px;
@@ -22591,52 +22589,8 @@ export default function App() {
            era o que sumia com o motivo da recusa quando ele vinha logo
            depois de um input de largura total. */
         .erro-acao { display: block; margin-top: 4px; font-weight: 400; line-height: 1.45; opacity: .92; }
-        .sol-motivo { color: var(--danger); line-height: 1.45; }
-        .sol-total td { font-weight: 700; border-top: 1px solid var(--line-2); }
-        /* Campo do design system em versão de TABELA: mesma borda, mesmo
-           raio, mesmo fundo (--field) e mesmo foco — só o respiro vertical
-           encolhe, porque a linha tem altura de linha, não de formulário. */
-        .sol-campo-compacto { width: 100%; padding: 6px 10px; font-size: 12.5px; }
-        .sol-campo-compacto.right { text-align: right; }
-        .sol-insumo-nome { display: block; font-size: 11px; margin-bottom: 2px; }
-        .sol-detalhe { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11.5px; }
-        .sol-rodape-aviso { margin-right: auto; font-size: 12px; }
-        .sol-tecnico { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-1); }
-        .sol-json-rotulo { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
-          letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute); margin: 12px 0 4px; }
-        .sol-json { margin: 0; padding: 12px; border-radius: var(--radius); background: var(--surface-1);
-          border: 1px solid var(--line-1); font-family: var(--font-mono); font-size: 11px;
-          line-height: 1.5; max-height: 240px; overflow: auto; white-space: pre-wrap;
-          word-break: break-word; color: var(--text-soft); }
-        /* O título não quebra em três linhas: ele ocupa o espaço que
-           sobra e empurra a data pra direita. */
-        .sol-verba-linha { display: flex; align-items: center; gap: 8px; }
-        .sol-verba-num { width: 76px; flex-shrink: 0; }
-        .sol-verba-qtd { width: 64px; flex-shrink: 0; text-align: right; }
-        .sol-placar { margin: 12px 0; font-size: 13px; }
-        .sol-conta { font-family: var(--font-sans); font-size: 11px; font-weight: 400;
-          letter-spacing: 0; text-transform: none; color: var(--text-mute); margin-left: 8px; }
-        .sol-acoes { display: flex; gap: 4px; justify-content: center; }
-        .sol-acao-bloco { margin-top: 12px; }
-        .sol-acao-aviso { margin-left: 8px; margin-top: 6px; }
-        .sol-tecnico-nota { margin-top: 8px; }
-        /* Rótulo de seção no padrão dos outros blocos do app: mono,
-           caixa alta, discreto — separa as partes do modal sem pesar. */
-        .sol-secao-rotulo { display: flex; align-items: baseline; flex-wrap: wrap;
-          font-family: var(--font-mono); font-size: 10px; font-weight: 700;
-          letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute);
-          margin: 20px 0 8px; }
-        .sol-secao-rotulo:first-child { margin-top: 0; }
-        /* Respiro em múltiplos de 4, como manda o design system. */
-        .sol-campos { display: grid; grid-template-columns: 200px 1fr; gap: 12px; align-items: end; }
-        .sol-campo { display: grid; gap: 4px; font-size: 12px; color: var(--text-soft); }
-        .sol-campo input { width: 100%; }
-        /* Tabela mais larga que a tela rola dentro do próprio quadro, em
-           vez de esticar o modal e o corpo da página. */
-        .sol-rolagem { overflow-x: auto; }
         @media (max-width: 720px) {
-          .sol-campos { grid-template-columns: 1fr; }
-          .sobreposto-topo, .sobreposto-corpo, .sobreposto-rodape { padding-left: 16px; padding-right: 16px; }
+          .sobreposto-topo, .sobreposto-rodape { padding-left: 16px; padding-right: 16px; }
         }
         .btn-canal:disabled { opacity: .45; cursor: not-allowed; }
         .det-opcao:disabled { cursor: default; }
@@ -23903,7 +23857,7 @@ export default function App() {
 
           /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
              sao duas colunas: sao duas fitas de uma palavra por linha. */
-          .dash, .ad-wrap, .ad-cab, .conf-cols, .escopo-conta, .escopo-campos, .sol-campos, .form-row-3, .cad-campos, .ad-item-campos, .ad-item-campos.com-custo {
+          .dash, .ad-wrap, .ad-cab, .conf-cols, .escopo-conta, .escopo-campos, .form-row-3, .cad-campos, .ad-item-campos, .ad-item-campos.com-custo {
             /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
                min-width auto, e com isso se RECUSA a encolher abaixo do
                proprio conteudo. Na Inicio, as duas colunas viravam uma so'

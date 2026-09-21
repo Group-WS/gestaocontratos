@@ -137,3 +137,15 @@ export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", ac
     </div>
   );
 }
+
+/* Rotulo de secao dentro de um dialog ou card: mono, caixa alta, discreto
+   (classe `label-mono` do DS). `conta` e' o complemento em texto normal
+   ao lado ("12 linhas selecionadas"). Substitui o `.sol-secao-rotulo`. */
+export function SecaoRotulo({ conta, className = "", children }) {
+  return (
+    <h2 className={`flex flex-wrap items-baseline gap-2 ${className}`}>
+      <span className="label-mono">{children}</span>
+      {conta && <span className="text-xs font-normal normal-case tracking-normal text-text-mute">{conta}</span>}
+    </h2>
+  );
+}
