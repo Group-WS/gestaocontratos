@@ -1,44 +1,16 @@
 import React, { useState } from "react";
+import { GroupWsLogo, ToggleGroup, ToggleGroupItem } from "@group-ws/ws-ui";
 
-/* A marca oficial do Group WS — o mesmo desenho do GroupWsLogo do design
-   system. Tudo em currentColor: herda a cor do texto e funciona nos dois
-   temas. O logo.png de antes era preto chapado e sumia no escuro. */
-const CAIXA_MONOGRAMA = "108 70 232 262";
-
-function Monograma() {
-  return (
-    <>
-      <path d="M221.48,197.38c1.36-2.19,2.5-3.95,3.58-5.76c8.14-13.62,16.26-27.26,24.45-40.85c0.57-0.94,1.67-1.98,2.65-2.14c1.13-0.18,2.77,0.22,3.55,1c1.28,1.28,0.95,3.12,0.08,4.64c-2.66,4.67-5.39,9.31-8.09,13.96c-7.01,12.05-14.04,24.08-20.98,36.17c-0.33,0.58-0.08,1.78,0.32,2.44c5.89,9.86,11.84,19.68,17.79,29.5c4.81,7.95,9.82,15.79,14.4,23.87c5.52,9.73,6.06,20.01,2.49,30.58c-2.44,7.23-6.02,13.73-11.72,18.9c-7.86,7.14-17.15,9.98-27.6,8.39c-10.35-1.57-18.75-7.11-26.34-13.98c-2.11-1.91-4-4.06-5.9-6.19c-2.04-2.29-1.33-5.52,1.46-6.77c1.45-0.65,2.68-0.15,3.77,0.95c2.19,2.22,4.38,4.45,6.66,6.57c5,4.65,10.52,8.44,16.99,10.86c9.48,3.54,21.18,0.68,28.6-7.81c7.19-8.23,10.3-17.88,7.91-28.84c-1.26-5.78-4-10.95-7-15.98c-9.76-16.36-19.52-32.72-29.33-49.05c-8.37-13.95-16.8-27.85-25.18-41.79c-3.01-5-6.3-9.88-8.83-15.11c-4.62-9.53-4.34-19.37-0.74-29.22c3.01-8.24,7.5-15.4,14.84-20.45c10.24-7.04,21.2-7.85,32.58-3.21c9.35,3.81,17.05,9.92,23.59,17.54c1.32,1.54,1.78,3.18,0.72,5.11c-1.34,2.44-3.68,2.83-5.74,0.98c-4.79-4.29-9.39-8.83-14.51-12.68c-4.97-3.75-10.73-5.97-17.18-6.07c-9.22-0.14-16.49,3.68-22.02,10.78c-4.91,6.3-7.64,13.54-7.3,21.64c0.26,6.29,2.4,12.1,5.54,17.49c5.41,9.29,10.96,18.5,16.44,27.75c2.91,4.91,5.79,9.84,8.69,14.75C220.45,195.9,220.84,196.42,221.48,197.38z" />
-      <path d="M187.75,260.41c9.27-17.62,18.32-34.83,27.69-52.63c1.75,2.9,3.26,5.33,4.68,7.82c0.15,0.26-0.17,0.87-0.38,1.26c-4.53,8.42-9.06,16.83-13.62,25.23c-4.65,8.57-9.38,17.1-13.97,25.71c-1.03,1.93-2.41,2.93-4.52,3.01c-2.24,0.08-3.8-1.1-4.84-2.94c-4.96-8.79-9.84-17.62-14.8-26.41c-5.18-9.2-10.38-18.38-15.62-27.54c-8-14-16.01-28-24.06-41.97c-2.85-4.95-5.85-9.81-8.78-14.71c-1.22-2.04-0.85-4.25,0.89-5.49c1.63-1.16,3.63-0.75,4.94,1.29c1.76,2.73,3.33,5.58,4.97,8.39c6.91,11.8,13.88,23.56,20.72,35.4c11.79,20.4,23.5,40.85,35.25,61.28C186.66,258.73,187.06,259.32,187.75,260.41z" />
-      <path d="M264.25,261.89c-1.53-2.81-3.03-5.43-4.36-8.14c-0.22-0.46,0.17-1.35,0.5-1.93c5.76-10.01,11.56-19.99,17.35-29.98c6.92-11.96,13.83-23.93,20.76-35.88c6.08-10.49,12.19-20.97,18.28-31.46c0.88-1.51,1.71-3.07,2.7-4.5c1.13-1.64,3.2-2,4.83-0.98c1.55,0.96,2.03,2.79,1.04,4.59c-4.21,7.6-8.46,15.18-12.72,22.75c-4.71,8.36-9.44,16.71-14.16,25.06c-6.06,10.74-12.11,21.47-18.15,32.21c-5.05,8.99-10.08,17.99-15.13,26.98C264.94,261.04,264.6,261.41,264.25,261.89z" />
-      <path d="M316.83,86.07h1.24c0.8,0,1.3-0.03,1.5-0.1c0.2-0.07,0.36-0.18,0.47-0.35c0.11-0.17,0.17-0.37,0.17-0.62c0-0.28-0.07-0.5-0.22-0.67c-0.15-0.17-0.36-0.28-0.63-0.33c-0.13-0.02-0.54-0.03-1.22-0.03h-1.3V86.07L316.83,86.07z M315.16,90.84L315.16,90.84v-8.26h3.51c0.88,0,1.52,0.07,1.92,0.22c0.4,0.15,0.72,0.41,0.96,0.79c0.24,0.38,0.36,0.81,0.36,1.3c0,0.62-0.18,1.13-0.55,1.54c-0.36,0.41-0.91,0.66-1.63,0.76c0.36,0.21,0.66,0.44,0.89,0.69c0.24,0.25,0.55,0.7,0.95,1.34l1.01,1.61h-2l-1.21-1.8c-0.43-0.64-0.72-1.05-0.88-1.22c-0.16-0.17-0.33-0.28-0.5-0.34c-0.18-0.06-0.46-0.09-0.84-0.09h-0.34v3.45H315.16z" />
-      <path d="M318.43,93.19c3.4,0,6.17-2.76,6.17-6.17c0-3.4-2.77-6.17-6.17-6.17c-3.4,0-6.17,2.77-6.17,6.17C312.27,90.42,315.03,93.19,318.43,93.19L318.43,93.19z M325.73,87.02L325.73,87.02c0,4.03-3.27,7.3-7.3,7.3c-4.03,0-7.3-3.27-7.3-7.3c0-4.03,3.27-7.3,7.3-7.3C322.47,79.72,325.73,82.99,325.73,87.02z" />
-    </>
-  );
-}
-
-/* completa: monograma + "GROUP WS" — dimensione pelo font-size.
-   marca: só o monograma — dimensione pela altura. */
+/* A marca oficial do Group WS: o GroupWsLogo do design system, com a API em
+   português que o app já usa. Tudo em currentColor: herda a cor do texto e
+   funciona nos dois temas.
+     completa: monograma + "GROUP WS" — dimensione pelo font-size.
+     marca: só o monograma — dimensione pela altura.
+   `style` só existe para quem ainda passa fontSize por prop; prefira classe. */
 export function LogoGroupWS({ variante = "completa", className, style, titulo = "Group WS" }) {
-  if (variante === "marca") {
-    return (
-      <svg viewBox={CAIXA_MONOGRAMA} className={className} style={{ width: "auto", ...style }}
-        fill="currentColor" fillRule="evenodd" clipRule="evenodd" role="img" aria-label={titulo}
-        xmlns="http://www.w3.org/2000/svg">
-        <title>{titulo}</title>
-        <Monograma />
-      </svg>
-    );
-  }
   return (
-    <span className={className} role="img" aria-label={titulo}
-      style={{ display: "inline-flex", alignItems: "center", lineHeight: 1, gap: "0.5em", ...style }}>
-      <svg viewBox={CAIXA_MONOGRAMA} style={{ height: "1.95em", width: "auto" }} fill="currentColor"
-        fillRule="evenodd" clipRule="evenodd" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-        <Monograma />
-      </svg>
-      <span style={{ fontSize: "1em", fontWeight: 400, letterSpacing: "0.2em", whiteSpace: "nowrap" }}>GROUP WS</span>
-    </span>
+    <GroupWsLogo variant={variante === "marca" ? "mark" : "full"} className={className}
+      style={style} title={titulo} />
   );
 }
 
@@ -62,11 +34,10 @@ export function useTema() {
 export function AlternarTema({ className = "" }) {
   const [tema, setTema] = useTema();
   return (
-    <div className={`tema-toggle ${className}`} role="group" aria-label="Tema">
-      <button type="button" className={tema === "light" ? "on" : ""} aria-pressed={tema === "light"}
-        onClick={() => setTema("light")}>Claro</button>
-      <button type="button" className={tema === "dark" ? "on" : ""} aria-pressed={tema === "dark"}
-        onClick={() => setTema("dark")}>Escuro</button>
-    </div>
+    <ToggleGroup type="single" value={tema} aria-label="Tema" className={className}
+      onValueChange={(novo) => { if (novo === "light" || novo === "dark") setTema(novo); }}>
+      <ToggleGroupItem value="light" size="sm" aria-label="Tema claro">Claro</ToggleGroupItem>
+      <ToggleGroupItem value="dark" size="sm" aria-label="Tema escuro">Escuro</ToggleGroupItem>
+    </ToggleGroup>
   );
 }
