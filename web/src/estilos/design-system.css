@@ -294,3 +294,48 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- Layout da área de conteúdo ----------
+   O PageShell do DS é full-bleed: ele cancela o respiro do container com
+   `-mx-4 -my-6 md:-mx-8 md:-my-8` para encostar a barra de breadcrumb nas
+   bordas. Isso só fecha se o `<main>` tiver EXATAMENTE o padding que essas
+   margens negativas cancelam — sem ele, o conteúdo de toda tela migrada é
+   puxado para fora do container e a página aparece desalinhada, com o
+   cabeçalho sangrando por cima da barra lateral.
+
+   Os valores abaixo são o par do que o PageShell cancela (1rem/1.5rem no
+   mobile, 2rem a partir de md). Telas ainda não migradas, que não cancelam
+   nada, ganham o mesmo respiro — é o que as mantém descoladas da borda.
+
+   `margin-inline: auto` centraliza a coluna quando o App limita a largura
+   (`max-w-7xl`): sem isso ela fica presa à esquerda e o vazio todo sobra do
+   lado direito em telas largas. Em modo largo o flex ocupa tudo e o auto
+   não tem efeito. */
+@layer ds-base {
+  .main {
+    padding: 1.5rem 1rem;
+    margin-inline: auto;
+  }
+
+  @media (min-width: 768px) {
+    .main {
+      padding: 2rem;
+    }
+  }
+}
+
+/* O PageShell é full-bleed: sobe e alarga com margem negativa para encostar
+   a barra de breadcrumb nas bordas do `<main>`. Isso pressupõe que ele é o
+   ÚNICO filho. Quando a tela renderiza um aviso global antes dele (o do
+   Monday, por exemplo), o puxão para cima de 32px cobre esse aviso pela
+   metade — foi o que apareceu na tela inicial.
+
+   Aqui o puxão VERTICAL é cancelado só quando há um irmão antes; o
+   horizontal continua, então a faixa do cabeçalho segue de borda a borda.
+   Fora de @layer de propósito: a margem negativa vem de utilitário do
+   Tailwind (camada `utilities`), e regra sem camada vence qualquer camada.
+   Quando o aviso global sair de dentro do `<main>`, esta regra deixa de ter
+   efeito sozinha — ela só age quando existe irmão antes. */
+.main > * + [class~="-my-6"] {
+  margin-top: 0;
+}
