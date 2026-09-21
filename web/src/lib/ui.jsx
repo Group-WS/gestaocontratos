@@ -35,7 +35,16 @@ export function Contador({ tom = "brand", className = "", children }) {
 
 /* Escolha única num Select do DS, com o rótulo em cima — o mesmo desenho
    do `Choice` do Dashboard, só que as opções vêm prontas ({ value, label })
-   e não há "Todas" implícito. Substitui o <select className="form-select">. */
+   e não há "Todas" implícito. Substitui o seletor nativo com classe form-select. */
+/* O seletor de arquivo do sistema, escondido. Quem aparece é o Button do DS:
+   ou ele chama `ref.current.click()`, ou envolve isto num <label> via asChild.
+   O FileInput do DS é uma dropzone (outro gesto, outra área de tela), então o
+   botão "Anexar" do padrão de upload precisa deste input — e ele mora só aqui. */
+export function SeletorDeArquivo({ ref, accept, disabled, onChange, multiple }) {
+  // gate-allow DS-07: o DS não tem seletor de arquivo em botão; input sr-only é a exceção do padrão de upload
+  return <input ref={ref} type="file" accept={accept} disabled={disabled} multiple={multiple} className="sr-only" onChange={onChange} />;
+}
+
 export function Choice({ label, value, opcoes, onChange, placeholder, required, disabled, className = "" }) {
   const id = useId();
   return (

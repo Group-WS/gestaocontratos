@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useId } from "react";
 import { confirmar, avisar } from "./lib/confirmar.jsx";
+import { SeletorDeArquivo } from "./lib/ui.jsx";
 import {
   Alert, AlertTitle, AlertDescription, Badge, BulkActionBar, Button,
   Card, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -174,7 +175,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
               <Button asChild variant="outline">
                 <label>
                   <Upload size={16} /> Importar planilha
-                  <input type="file" accept=".xlsx,.xlsm,.pptx" className="sr-only"
+                  <SeletorDeArquivo accept=".xlsx,.xlsm,.pptx"
                     onChange={(e) => {
                       const f = e.target.files?.[0]; e.target.value = "";
                       if (f) setImportando(f);
@@ -593,7 +594,7 @@ function FormProduto({ p, produtos, fornecedores, verbas, onFechar, onSalvar, on
               <Button asChild variant="outline" size="sm">
                 <label>
                   <Upload size={14} /> {f.imagem || arquivo ? "Trocar foto" : "Escolher foto"}
-                  <input type="file" accept="image/*" className="sr-only"
+                  <SeletorDeArquivo accept="image/*"
                     onChange={(e) => setArquivo(e.target.files?.[0] || null)} />
                 </label>
               </Button>

@@ -80,7 +80,7 @@ conf("a foto é recortada, nunca esticada", app.includes(".avatar-foto { object-
 conf("o dashboard não duplica o avatar do trilho", app.includes('classe="ini-foto"'), false);
 
 console.log("\n=== 4. O MENU: FOTO, MEUS DADOS, SAIR ===");
-conf("a própria foto é o botão de trocar", /<Button asChild variant="ghost" size="icon" className=\{cn\("group relative h-10 w-10 shrink-0 cursor-pointer rounded-full p-0"[\s\S]{0,1200}<input type="file"/.test(app));
+conf("a própria foto é o botão de trocar", /<Button asChild variant="ghost" size="icon" className=\{cn\("group relative h-10 w-10 shrink-0 cursor-pointer rounded-full p-0"[\s\S]{0,1200}(<input type="file"|<SeletorDeArquivo)/.test(app));
 conf("a câmera só aparece no hover", app.includes("opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"));
 conf("Meus dados abre e fecha", app.includes('<Collapsible open={verDados} onOpenChange={setVerDados}>'));
 conf("... em leitura, com o motivo escrito", app.includes("O nome é alterado por quem cuida da Equipe."));

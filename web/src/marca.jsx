@@ -5,12 +5,11 @@ import { GroupWsLogo, ToggleGroup, ToggleGroupItem } from "@group-ws/ws-ui";
    português que o app já usa. Tudo em currentColor: herda a cor do texto e
    funciona nos dois temas.
      completa: monograma + "GROUP WS" — dimensione pelo font-size.
-     marca: só o monograma — dimensione pela altura.
-   `style` só existe para quem ainda passa fontSize por prop; prefira classe. */
-export function LogoGroupWS({ variante = "completa", className, style, titulo = "Group WS" }) {
+     marca: só o monograma — dimensione pela altura. */
+export function LogoGroupWS({ variante = "completa", className, titulo = "Group WS" }) {
   return (
     <GroupWsLogo variant={variante === "marca" ? "mark" : "full"} className={className}
-      style={style} title={titulo} />
+      title={titulo} />
   );
 }
 

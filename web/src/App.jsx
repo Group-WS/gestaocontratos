@@ -62,7 +62,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, SeletorDeArquivo, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -1027,7 +1027,7 @@ function AnexarAvulso({ obra, usuario, fase, onArquivos, rotulo = "Anexar arquiv
       <Button variant="outline" size="sm" type="button" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
         <Upload size={12} /> {enviando ? "Enviando…" : rotulo}
       </Button>
-      <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} className="sr-only" onChange={aoEscolher} />
+      <SeletorDeArquivo ref={inputRef} accept={EXTENSOES_ACEITAS} onChange={aoEscolher} />
       {erro && <span className="caderno-erro">{erro}</span>}
     </div>
   );
@@ -4931,7 +4931,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
         <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
           <Upload size={16} /> {carregando ? "Lendo…" : label}
         </Button>
-        <input ref={inputRef} type="file" accept={accept} className="sr-only" onChange={aoEscolher} />
+        <SeletorDeArquivo ref={inputRef} accept={accept} onChange={aoEscolher} />
       </div>
       <p className="flex items-start gap-2 text-xs text-text-soft">
         {congelado ? <Lock size={14} className="mt-px shrink-0" /> : <Upload size={14} className="mt-px shrink-0" />}
@@ -8861,7 +8861,7 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
           <Lock size={10} /> compras liberadas
         </span>
       )}
-      <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} className="sr-only" onChange={aoEscolher} />
+      <SeletorDeArquivo ref={inputRef} accept={EXTENSOES_ACEITAS} onChange={aoEscolher} />
       {erro && <span className="caderno-erro">{erro}</span>}
     </div>
   );
@@ -10179,7 +10179,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                   <span className="absolute inset-0 flex items-center justify-center rounded-full bg-text/60 text-bg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><Camera size={14} /></span>
                   {/* So' o que o navegador decodifica. Com image/* o seletor do
                       Mac oferecia HEIC, e HEIC vira tela preta. */}
-                  <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only"
+                  <SeletorDeArquivo accept="image/jpeg,image/png,image/webp"
                     disabled={subindoFoto || !onTrocarFoto} onChange={aoEscolherFoto} />
                 </label>
               </Button>
@@ -10525,7 +10525,7 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
                 <Button asChild variant="outline" aria-disabled={congelado} className={congelado ? "pointer-events-none opacity-50" : ""}>
                   <label>
                     <Upload size={16} /> {arquivo ? "Trocar arquivo" : "Anexar documento"}
-                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="sr-only" disabled={congelado}
+                    <SeletorDeArquivo accept=".pdf,.jpg,.jpeg,.png" disabled={congelado}
                       onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setArquivo(f); }} />
                   </label>
                 </Button>
@@ -11393,7 +11393,7 @@ function GeradorSiengeView() {
     <Button asChild variant="outline">
       <label>
         <Upload size={16} /> {linhas ? "Trocar arquivo" : "Subir lista de produtos"}
-        <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" className="sr-only"
+        <SeletorDeArquivo accept=".xlsx,.xlsm,.xls,.csv,.pdf"
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
       </label>
     </Button>
@@ -13896,9 +13896,9 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                       </Button>
                     </div>
                     <SecaoRotulo>Enviado</SecaoRotulo>
-                    <pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line-1 bg-surface-1 p-3 font-mono text-xs text-text-soft">{JSON.stringify(ultimoEnvio.enviado, null, 2)}</pre>
+                    <pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-words bg-surface-1 p-3 font-mono text-xs text-text-soft">{JSON.stringify(ultimoEnvio.enviado, null, 2)}</pre>
                     <SecaoRotulo>Resposta do Sienge</SecaoRotulo>
-                    <pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line-1 bg-surface-1 p-3 font-mono text-xs text-text-soft">{JSON.stringify(ultimoEnvio.recebido, null, 2)}</pre>
+                    <pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-words bg-surface-1 p-3 font-mono text-xs text-text-soft">{JSON.stringify(ultimoEnvio.recebido, null, 2)}</pre>
                   </CollapsibleContent>
                 </Collapsible>
               )}
@@ -17796,7 +17796,7 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
       background: "var(--bg)", color: "var(--text)", fontFamily: "var(--font-sans)", padding: 20 }}>
       <div style={caixa}>
-        <LogoGroupWS style={{ fontSize: 14 }} />
+        <LogoGroupWS className="text-sm" />
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 600, letterSpacing: "1.3px",
           textTransform: "uppercase", color: "var(--text-mute)", margin: "14px 0 22px" }}>
           Gestão de Obras TKWS
@@ -18690,7 +18690,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, souAdmin, onArquivos }) {
               onClick={() => inputRef.current && inputRef.current.click()}>
               <Upload size={13} /> {enviando ? "Enviando…" : "Anexar arquivo"}
             </Button>
-            <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} className="sr-only" onChange={subir} />
+            <SeletorDeArquivo ref={inputRef} accept={EXTENSOES_ACEITAS} onChange={subir} />
           </div>
         )}
       </div>
@@ -19269,7 +19269,7 @@ function EapSiengeView({ usuario }) {
           <Button disabled={salvando} onClick={() => inputRef.current && inputRef.current.click()}>
             <Upload size={13} /> Importar orçamento
           </Button>
-          <input ref={inputRef} type="file" accept=".xlsx,.xlsm,.xlsb,.xls" className="sr-only" onChange={aoEscolher} />
+          <SeletorDeArquivo ref={inputRef} accept=".xlsx,.xlsm,.xlsb,.xls" onChange={aoEscolher} />
         </div>
         {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
         {aviso && <div className="import-erro" style={{ background: "var(--blue-bg)", color: "var(--blue)" }}>
@@ -19552,7 +19552,7 @@ function BancoPrecosView({ usuario }) {
           <Button disabled={!!importando} onClick={() => inputRef.current && inputRef.current.click()}>
             <Upload size={13} /> {importando || "Importar do Sienge"}
           </Button>
-          <input ref={inputRef} type="file" accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv" className="sr-only" onChange={aoEscolher} />
+          <SeletorDeArquivo ref={inputRef} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv" onChange={aoEscolher} />
         </div>
         {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
       </div>
@@ -22581,7 +22581,7 @@ export default function App() {
 
         @media print {
           .naoimprime, .sidebar, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
-          .app, .main { background: #fff !important; padding: 0 !important; margin: 0 !important; display: block !important; }
+          .app, .main { background: transparent !important; padding: 0 !important; margin: 0 !important; display: block !important; }
           .doc-escopo { border: none; box-shadow: none; border-radius: 0; max-width: none; padding: 0; margin: 0; }
           .doc-item, .doc-tab tr { break-inside: avoid; }
           .doc-h { break-after: avoid; }
