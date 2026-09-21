@@ -59,7 +59,8 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@group-ws/ws-ui";
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
+  Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@group-ws/ws-ui";
 import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
@@ -11387,121 +11388,138 @@ function GeradorSiengeView() {
     XLSX.writeFile(wb, `codigos-sienge-${(arquivo || "lista").replace(/\.[^.]+$/, "")}.xlsx`);
   }
 
-  return (
-    <>
-      <div className="ger-topo">
-        <label className="btn-doc">
-          <Upload size={13} /> {linhas ? "Trocar arquivo" : "Subir lista de produtos"}
-          <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" className="sr-only"
-            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
-        </label>
-        {linhas && (
-          <div className="ger-forn">
-            <div className="ger-modo">
-              <Button variant="ghost" className={modoForn === "mesmo" ? "on" : ""}
-                onClick={() => setModoForn("mesmo")}>Mesmo fornecedor</Button>
-              <Button variant="ghost" className={modoForn === "planilha" ? "on" : ""}
-                onClick={() => setModoForn("planilha")}
-                disabled={!temLaterais}
-                title={temLaterais ? "Cada linha usa o fornecedor da própria coluna"
-                  : "Esta planilha não trouxe uma coluna de fornecedor"}>
-                Vários fornecedores
-              </Button>
-            </div>
-            {modoForn === "mesmo" ? (
-              <input className="form-input" type="text" value={fornecedor}
-                onChange={(e) => setFornecedor(e.target.value)}
-                placeholder="ex: Macrosul"
-                title="Abre o descritivo de todas as linhas" />
-            ) : (
-              <span className="ger-forn-lidos">
-                {fornsDaPlanilha.length
-                  ? <>{fornsDaPlanilha.length} da planilha: <b>{fornsDaPlanilha.slice(0, 3).join(", ")}</b>
-                      {fornsDaPlanilha.length > 3 && `, +${fornsDaPlanilha.length - 3}`}</>
-                  : "nenhum fornecedor lido"}
-                <Button variant="ghost" size="sm" onClick={() => setTrocado((v) => !v)}
-                  title="Fornecedor e ambiente têm o mesmo formato — se vieram trocados, isto desfaz">
-                  trocar com ambiente
-                </Button>
-              </span>
-            )}
-          </div>
-        )}
-        <span className="ger-info">
-          {carregando ? "Carregando a base do Sienge…"
-            : baseSienge ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge`
-            : "Base do Sienge indisponível"}
-          {arquivo && ` · ${arquivo}`}
-        </span>
-        {linhas && <Button onClick={baixarResultado}><Download size={13} /> Conferência (Excel)</Button>}
-        {linhas && paraCadastrar.length > 0 && (
-          <Button onClick={baixarTemplate}
-            title="Template de importação de detalhes do Sienge, em CSV — sobe direto lá">
-            <Download size={13} /> Template Sienge para cadastro de detalhe ({paraCadastrar.length})
-          </Button>
-        )}
-      </div>
+  const uploadBotao = (
+    <Button asChild variant="outline">
+      <label>
+        <Upload size={16} /> {linhas ? "Trocar arquivo" : "Subir lista de produtos"}
+        <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" className="sr-only"
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
+      </label>
+    </Button>
+  );
 
-      {/* Colado no cartao de propósito: nada pode entrar no meio dos
-          dois, nem um aviso de erro, senao a emenda abre. */}
-      {!linhas && (
-        <div className="sg-formatos">
-          <dl>
-            <div>
-              <dt>Excel ou CSV</dt>
-              <dd>uma coluna de descrição basta. Marca, modelo, cor e código entram na descrição
-                gerada, se existirem.</dd>
-            </div>
-            <div>
-              <dt>Sem cabeçalho serve</dt>
-              <dd>acho sozinho a coluna das descrições e, junto dela, modelo, quantidade e unidade.
-                Título de grupo não vira produto.</dd>
-            </div>
-            <div>
-              <dt>PDF</dt>
-              <dd>o relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
-            </div>
-          </dl>
-          <p className="sg-formatos-nota">Nada é guardado: o arquivo é lido aqui e some quando você sair.</p>
+  return (
+    <PageShell title="Gerador de códigos Sienge"
+      description="Detalhes de insumos: associa cada produto do arquivo a um insumo que já existe no Sienge e gera o template de cadastro do que falta."
+      contentClassName="flex flex-col gap-6"
+      actions={(
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+          {uploadBotao}
+          {linhas && <Button variant="outline" onClick={baixarResultado}><Download size={16} /> Conferência (Excel)</Button>}
+          {linhas && paraCadastrar.length > 0 && (
+            <Button onClick={baixarTemplate}
+              title="Template de importação de detalhes do Sienge, em CSV — sobe direto lá">
+              <Download size={16} /> Template Sienge para cadastro de detalhe ({paraCadastrar.length})
+            </Button>
+          )}
         </div>
       )}
+      toolbar={(
+        <div className="flex flex-wrap items-center gap-2">
+          {linhas && (
+            <>
+              <ToggleGroup type="single" value={modoForn} onValueChange={(v) => { if (v) setModoForn(v); }} aria-label="Origem do fornecedor">
+                <ToggleGroupItem value="mesmo" size="sm">Mesmo fornecedor</ToggleGroupItem>
+                <ToggleGroupItem value="planilha" size="sm" disabled={!temLaterais}
+                  title={temLaterais ? "Cada linha usa o fornecedor da própria coluna"
+                    : "Esta planilha não trouxe uma coluna de fornecedor"}>
+                  Vários fornecedores
+                </ToggleGroupItem>
+              </ToggleGroup>
+              {modoForn === "mesmo" ? (
+                <Input type="text" value={fornecedor} className="w-48"
+                  onChange={(e) => setFornecedor(e.target.value)}
+                  placeholder="ex: Macrosul" aria-label="Fornecedor"
+                  title="Abre o descritivo de todas as linhas" />
+              ) : (
+                <span className="flex flex-wrap items-center gap-2 text-sm text-text-soft">
+                  {fornsDaPlanilha.length
+                    ? <>{fornsDaPlanilha.length} da planilha: <b className="font-semibold text-text">{fornsDaPlanilha.slice(0, 3).join(", ")}</b>
+                        {fornsDaPlanilha.length > 3 && `, +${fornsDaPlanilha.length - 3}`}</>
+                    : "nenhum fornecedor lido"}
+                  <Button variant="ghost" size="sm" onClick={() => setTrocado((v) => !v)}
+                    title="Fornecedor e ambiente têm o mesmo formato — se vieram trocados, isto desfaz">
+                    trocar com ambiente
+                  </Button>
+                </span>
+              )}
+            </>
+          )}
+          <span className="min-w-0 flex-1 text-sm text-text-soft">
+            {carregando ? "Carregando a base do Sienge…"
+              : baseSienge ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge`
+              : "Base do Sienge indisponível"}
+            {arquivo && ` · ${arquivo}`}
+          </span>
+        </div>
+      )}>
 
-      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+      {!linhas && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Formatos aceitos</CardTitle>
+            <CardDescription>Nada é guardado: o arquivo é lido aqui e some quando você sair.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
+              <div>
+                <dt className="font-semibold">Excel ou CSV</dt>
+                <dd className="text-text-soft">uma coluna de descrição basta. Marca, modelo, cor e código entram na descrição
+                  gerada, se existirem.</dd>
+              </div>
+              <div>
+                <dt className="font-semibold">Sem cabeçalho serve</dt>
+                <dd className="text-text-soft">acho sozinho a coluna das descrições e, junto dela, modelo, quantidade e unidade.
+                  Título de grupo não vira produto.</dd>
+              </div>
+              <div>
+                <dt className="font-semibold">PDF</dt>
+                <dd className="text-text-soft">o relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+      )}
+
+      {erro && (
+        <Alert tone="danger">
+          <AlertDescription>{erro}</AlertDescription>
+        </Alert>
+      )}
 
       {linhas && (
         <>
-          <div className="ger-placar">
-            <div className="cf-bloco ok"><div className="cf-n">{achados}</div><div className="cf-rot">já existem no Sienge</div></div>
-            <div className={`cf-bloco ${semMae ? "ruim" : "ok"}`}><div className="cf-n">{semMae}</div><div className="cf-rot">precisam ser cadastrados</div></div>
-            <div className="cf-bloco aviso"><div className="cf-n">{paraCadastrar.length}</div><div className="cf-rot">vão pra planilha</div></div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <KpiMini label="já existem no Sienge" value={String(achados)} tone="success" />
+            <KpiMini label="precisam ser cadastrados" value={String(semMae)} tone={semMae ? "danger" : "success"} />
+            <KpiMini label="vão pra planilha" value={String(paraCadastrar.length)} tone="warning" />
           </div>
           {/* O template exige tres campos, e um deles o Sienge e' quem
               numera. Dizer QUANTAS linhas vao sair incompletas, antes de
               baixar, evita a pessoa subir o arquivo e ser recusada la. */}
           {incompletas > 0 && (
-            <div className="aviso-migracao">
-              <AlertTriangle size={14} />
-              <span>
+            <Alert tone="warning">
+              <AlertDescription>
                 <b>{incompletas}</b> {incompletas === 1 ? "linha vai sair incompleta" : "linhas vão sair incompletas"} no
                 template — o Sienge exige código do insumo, código do detalhe e código auxiliar, e o
                 <b> código do detalhe é ele quem numera</b>. Baixe, preencha as colunas vazias e suba.
-              </span>
-            </div>
+              </AlertDescription>
+            </Alert>
           )}
-          <div style={{ display: "none" }}>
-          </div>
 
-          <div className="grp-block">
-            <div className="grp-itens">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: 40 }}>#</th>
-                    <th>Produto do arquivo</th>
-                    <th style={{ width: 320 }}>Insumo no Sienge</th>
-                  </tr>
-                </thead>
-                <tbody>
+          <Card>
+            {/* `grp-itens` fica so' pelo estilo das celulas da LinhaGerador,
+                que ainda nao migrou; o wrapper rola na horizontal no celular. */}
+            <div className="grp-itens overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">#</TableHead>
+                    <TableHead>Produto do arquivo</TableHead>
+                    <TableHead className="w-80">Insumo no Sienge</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {casados.map((c) => (
                     <LinhaGerador key={c.i} linha={c} escolhida={escolhas.get(c.i)}
                       onEscolher={(d) => escolher(c.i, d)}
@@ -11526,13 +11544,13 @@ function GeradorSiengeView() {
                         return n;
                       })} />
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
-          </div>
+          </Card>
         </>
       )}
-    </>
+    </PageShell>
   );
 }
 
@@ -11779,7 +11797,7 @@ function PedidoCompra({ obra, itens, usuario }) {
             <div><b>Data:</b> {hoje} · <b>Itens:</b> {itens.length}</div>
             <div><b>Solicitado por:</b> {usuario || "—"}</div>
             {prazo && (
-              <div className={faltam < 0 ? "pedido-vencido" : faltam <= 15 ? "pedido-perto" : ""}>
+              <div className={faltam < 0 ? "font-bold text-danger" : faltam <= 15 ? "font-semibold text-warning" : ""}>
                 <b>Comprar até:</b> {fmtData(prazo)}
                 {faltam != null && (faltam < 0
                   ? ` — venceu há ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
@@ -11795,38 +11813,40 @@ function PedidoCompra({ obra, itens, usuario }) {
         {grupos.map((g) => (
           <div key={g.num} className="rel-obra">
             <div className="ad-sectitle">{g.num} · {g.nome}</div>
-            <table className="ad-dt">
-              <thead>
-                <tr>
-                  <th className="c-cod">Cód.</th>
-                  <th>Descrição</th>
-                  <th className="c-amb">Ambiente</th>
-                  <th className="c-qtd">Qtd.</th>
-                  <th className="c-un">Un.</th>
-                </tr>
-              </thead>
-              <tbody>
+            {/* ds-allow: documento impresso — as classes `ad-dt`/`c-*` sao o
+                CSS de impressao (A4) compartilhado com os outros relatorios. */}
+            <Table className="ad-dt">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="c-cod">Cód.</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead className="c-amb">Ambiente</TableHead>
+                  <TableHead className="c-qtd">Qtd.</TableHead>
+                  <TableHead className="c-un">Un.</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {g.itens.map(({ it }, k) => {
                   const qtd = it.qtdExecutivo ?? it.qtdVendida ?? null;
                   const extra = [it.modelo, it.cor, it.especificacao].filter(Boolean).join(" · ");
                   return (
-                    <tr key={k}>
-                      <td className="c-cod">{it.codigo || "—"}</td>
-                      <td>
+                    <TableRow key={k}>
+                      <TableCell className="c-cod">{it.codigo || "—"}</TableCell>
+                      <TableCell>
                         <div className="ad-dt1">{it.desc}</div>
                         {/* A especificação é o que evita o fornecedor mandar a
                             peça parecida — é a pergunta que ele faria por telefone. */}
                         {extra && <div className="rel-extra">{extra}</div>}
                         {it.detalheSienge && <div className="rel-extra">Sienge: {it.detalheSienge}</div>}
-                      </td>
-                      <td className="c-amb">{it.ambiente || "—"}</td>
-                      <td className="c-qtd">{qtd != null ? Number(qtd).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—"}</td>
-                      <td className="c-un">{it.un || "—"}</td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="c-amb">{it.ambiente || "—"}</TableCell>
+                      <TableCell className="c-qtd">{qtd != null ? Number(qtd).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—"}</TableCell>
+                      <TableCell className="c-un">{it.un || "—"}</TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         ))}
 
@@ -13190,111 +13210,62 @@ function juntarResultado(antes, novo) {
 function SelectBusca({ valor, onChange, opcoes, placeholder = "selecione…", vazio, aria, className = "", disabled }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
-  const [ativo, setAtivo] = useState(0);
-  const [pos, setPos] = useState(null);
-  const caixa = useRef(null);
-  const campo = useRef(null);
-  const gatilho = useRef(null);
 
   const escolhida = opcoes.find((o) => String(o.valor) === String(valor)) || null;
+  /* O filtro e' nosso, nao do cmdk: a busca ignora acento e caixa do
+     mesmo jeito que o resto da tela do Sienge (`normSienge`), e casa
+     tanto no codigo quanto no rotulo. */
   const termo = normSienge(busca);
   const filtradas = useMemo(() => {
     if (!termo) return opcoes;
     return opcoes.filter((o) => normSienge(`${o.valor} ${o.rotulo}`).includes(termo));
   }, [opcoes, termo]);
 
-  // Clicar fora fecha — sem isso o painel fica aberto atrás do resto.
-  useEffect(() => {
-    if (!aberto) return;
-    const fora = (e) => {
-      const dentroDoGatilho = caixa.current?.contains(e.target);
-      const dentroDoPainel = e.target.closest?.(".sel-busca-painel");
-      if (!dentroDoGatilho && !dentroDoPainel) setAberto(false);
-    };
-    document.addEventListener("mousedown", fora);
-    return () => document.removeEventListener("mousedown", fora);
-  }, [aberto]);
-
-  /* O painel vai pro body, não pra dentro do campo.
-     Este select vive dentro de tabela com rolagem horizontal, e quando um
-     eixo tem overflow não-visível o outro também passa a cortar: o painel
-     aberto era decepado na primeira linha. Em portal, com posição
-     calculada do gatilho, ele aparece inteiro em qualquer lugar. */
-  useLayoutEffect(() => {
-    if (!aberto) { setPos(null); return; }
-    const medir = () => {
-      const r = gatilho.current?.getBoundingClientRect();
-      if (!r) return;
-      const largura = Math.max(r.width, 260);
-      const espacoAbaixo = window.innerHeight - r.bottom;
-      // Perto do rodapé, abre pra cima em vez de sair da tela.
-      const paraCima = espacoAbaixo < 240 && r.top > espacoAbaixo;
-      setPos({
-        left: Math.min(Math.max(8, r.left), window.innerWidth - largura - 8),
-        top: paraCima ? undefined : r.bottom + 4,
-        bottom: paraCima ? window.innerHeight - r.top + 4 : undefined,
-        width: largura,
-        maxAltura: Math.max(180, (paraCima ? r.top : espacoAbaixo) - 16),
-      });
-    };
-    medir();
-    // Rolar a página move o gatilho; o painel tem que ir junto ou fechar.
-    const aoMexer = () => setAberto(false);
-    window.addEventListener("scroll", aoMexer, true);
-    window.addEventListener("resize", aoMexer);
-    return () => {
-      window.removeEventListener("scroll", aoMexer, true);
-      window.removeEventListener("resize", aoMexer);
-    };
-  }, [aberto]);
-
-  useEffect(() => { if (aberto) { setBusca(""); setAtivo(0); campo.current?.focus(); } }, [aberto]);
-
+  /* O painel e' um Popover do DS, em portal: este select vive dentro de
+     tabela com rolagem horizontal, e um painel montado ali dentro era
+     decepado na primeira linha. */
   function escolher(o) {
     onChange(o ? o.valor : "");
     setAberto(false);
   }
 
-  function tecla(e) {
-    if (e.key === "ArrowDown") { e.preventDefault(); setAtivo((i) => Math.min(i + 1, filtradas.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setAtivo((i) => Math.max(i - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); if (filtradas[ativo]) escolher(filtradas[ativo]); }
-    else if (e.key === "Escape") { e.preventDefault(); setAberto(false); }
-  }
-
   return (
-    <div className={`sel-busca ${className}`} ref={caixa}>
-      <Button variant="ghost" type="button" ref={gatilho} className="form-select sel-busca-gatilho" disabled={disabled}
-        aria-label={aria} aria-expanded={aberto} onClick={() => setAberto((v) => !v)}>
-        <span className={escolhida ? "" : "dim"}>{escolhida ? escolhida.rotulo : (vazio || placeholder)}</span>
-        <ChevronDown size={13} className="dim" />
-      </Button>
-      {aberto && pos && createPortal(
-        <div className="sel-busca-painel" style={{
-          left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width,
-        }}>
-          <div className="sel-busca-campo">
-            <Search size={13} className="dim" />
-            <input ref={campo} value={busca} placeholder="buscar…" onKeyDown={tecla}
-              onChange={(e) => { setBusca(e.target.value); setAtivo(0); }} />
-          </div>
-          <div className="sel-busca-lista" role="listbox">
-            {vazio && (
-              <Button variant="ghost" type="button" className={`sel-busca-item ${!valor ? "sel-busca-ativo" : ""}`}
-                onClick={() => escolher(null)}>{vazio}</Button>
-            )}
-            {filtradas.map((o, i) => (
-              <Button variant="ghost" type="button" key={o.valor} role="option"
-                aria-selected={String(o.valor) === String(valor)}
-                className={`sel-busca-item ${i === ativo ? "sel-busca-ativo" : ""} ${String(o.valor) === String(valor) ? "sel-busca-escolhida" : ""}`}
-                onMouseEnter={() => setAtivo(i)} onClick={() => escolher(o)}>
-                {o.rotulo}
-              </Button>
-            ))}
-            {!filtradas.length && <div className="sel-busca-nada">nada encontrado para “{busca}”</div>}
-          </div>
-        </div>,
-        document.body)}
+    <div className={cn("min-w-0 flex-1", className)}>
+      <Popover open={aberto} onOpenChange={(v) => { setAberto(v); if (v) setBusca(""); }}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" type="button" role="combobox" disabled={disabled}
+            aria-label={aria} aria-expanded={aberto}
+            className="w-full justify-between font-normal">
+            <span className={cn("truncate", escolhida ? "" : "text-text-mute")}>
+              {escolhida ? escolhida.rotulo : (vazio || placeholder)}
+            </span>
+            <ChevronDown size={16} className="shrink-0 text-text-mute" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto min-w-64 max-w-md p-0">
+          <Command shouldFilter={false}>
+            <CommandInput value={busca} onValueChange={setBusca} placeholder="buscar…" />
+            <CommandList className="max-h-64">
+              <CommandEmpty>nada encontrado para “{busca}”</CommandEmpty>
+              {vazio && (
+                <CommandItem value="__vazio__" onSelect={() => escolher(null)}
+                  className={!valor ? "font-semibold text-brand" : ""}>
+                  {vazio}
+                </CommandItem>
+              )}
+              {filtradas.map((o) => {
+                const marcada = String(o.valor) === String(valor);
+                return (
+                  <CommandItem key={o.valor} value={String(o.valor)} onSelect={() => escolher(o)}
+                    aria-selected={marcada} className={marcada ? "font-semibold text-brand" : ""}>
+                    {o.rotulo}
+                  </CommandItem>
+                );
+              })}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -22209,11 +22180,6 @@ export default function App() {
         .sg-passos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 26px; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
         .sg-escopo-nota { margin: 10px 0 0 !important; font-size: 11.5px; }
         /* Rodape do cartao de subir: mesma borda, mesmo recuo, sem vao. */
-        .sg-formatos { margin-bottom: 12px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; background: var(--card); padding: 2px 16px 14px; font-size: 12px; line-height: 1.55; color: var(--ink-3); }
-        .sg-formatos dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 26px; }
-        .sg-formatos dt { font-weight: 600; color: var(--ink-2); margin-bottom: 1px; }
-        .sg-formatos dd { margin: 0; }
-        .sg-formatos-nota { margin: 11px 0 0; padding-top: 9px; border-top: 1px solid var(--border); font-size: 11.5px; }
 
         /* DASHBOARD DA OBRA
            Tres perguntas na ordem em que se faz: o executivo cabe no
@@ -22616,7 +22582,6 @@ export default function App() {
         .sol-campo-compacto.right { text-align: right; }
         .sol-insumo-nome { display: block; font-size: 11px; margin-bottom: 2px; }
         .sol-detalhe { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11.5px; }
-        .sol-detalhe .sel-busca { flex: 1; min-width: 0; }
         .sol-rodape-aviso { margin-right: auto; font-size: 12px; }
         .sol-tecnico { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-1); }
         .sol-json-rotulo { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
@@ -22650,40 +22615,6 @@ export default function App() {
           font-size: 12px; font-weight: 400; }
         .sol-pendente:first-of-type { border-top: none; }
         .sol-verba-linha { display: flex; align-items: center; gap: 8px; }
-        .sol-verba-linha .sel-busca { flex: 1; min-width: 0; }
-        /* Largura fixa nos dois lados: com o texto solto, cada linha
-           começava e terminava num ponto diferente e a coluna de selects
-           ficava serrilhada. */
-        /* ---------- Select com busca ---------- */
-        .sel-busca { position: relative; flex: 1; min-width: 0; }
-        /* O gatilho é o mesmo campo do design system (.form-select), só
-           que como botão: mesma borda, mesmo raio, mesmo fundo e o mesmo
-           foco — a seta nativa dá lugar ao chevron. */
-        .sel-busca-gatilho { display: flex; align-items: center; justify-content: space-between;
-          gap: 8px; width: 100%; text-align: left; background-image: none; padding-right: 12px;
-          cursor: pointer; }
-        .sel-busca-gatilho > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sel-busca-gatilho:disabled { opacity: 0.5; cursor: not-allowed; }
-        /* z acima do modal (1200): o painel é aberto de dentro dele. */
-        .sel-busca-painel { position: fixed; z-index: 1300;
-          background: var(--surface-1); border: 1px solid var(--line-2); border-radius: var(--radius);
-          box-shadow: var(--shadow-3); overflow: hidden; }
-        .sel-busca-campo { display: flex; align-items: center; gap: 6px; padding: 8px 12px;
-          border-bottom: 1px solid var(--line-1); }
-        .sel-busca-campo input { flex: 1; min-width: 0; border: none; background: none; outline: none;
-          font: inherit; font-size: 12.5px; color: var(--text); }
-        .sel-busca-lista { max-height: 260px; overflow-y: auto; }
-        .sel-busca-item { display: block; width: 100%; text-align: left; border: none; background: none;
-          padding: 7px 12px; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer;
-          white-space: normal; line-height: 1.35; }
-        .sel-busca-ativo { background: var(--surface-2); }
-        .sel-busca-escolhida { color: var(--brand); font-weight: 600; }
-        .sel-busca-nada { padding: 10px 12px; font-size: 12px; color: var(--text-mute); }
-        /* Na tabela o gatilho acompanha a altura da linha, como os outros
-           campos compactos. */
-        .sol-campo-compacto .sel-busca-gatilho,
-        .sel-busca.sol-campo-compacto .sel-busca-gatilho { padding: 6px 10px; font-size: 12.5px; }
-
         .sol-verba-num { width: 76px; flex-shrink: 0; }
         .sol-verba-qtd { width: 64px; flex-shrink: 0; text-align: right; }
         .sol-placar { margin: 12px 0; font-size: 13px; }
@@ -22825,31 +22756,11 @@ export default function App() {
         .padrao-edit:focus { outline: none; border-color: var(--blue); background: var(--panel-2); }
         .padrao-acoes { display: flex; flex-direction: column; gap: 3px; }
         .padrao-nota { font-size: 10px; color: var(--amber); font-weight: 600; margin-left: 2px; }
-        .ger-forn { display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
-        .ger-forn .form-input { margin-top: 0; width: 160px; font-size: 12px; padding: 6px 9px; }
-        .ger-modo { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-        .ger-modo button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--ink-3); padding: 6px 11px; cursor: pointer; }
-        .ger-modo button + button { border-left: 1px solid var(--border); }
-        .ger-modo button:hover:not(:disabled) { color: var(--ink); background: var(--panel); }
-        .ger-modo button.on { background: var(--ink); color: var(--bg); }
-        .ger-modo button:disabled { color: var(--text-mute); cursor: default; }
-        .ger-forn-lidos { display: inline-flex; align-items: center; gap: 8px; font-weight: 400; color: var(--ink-3); }
-        .ger-forn-lidos b { font-weight: 600; color: var(--ink-2); }
-        .ger-trocar-col { background: none; border: none; font-family: inherit; font-size: 10.5px; color: var(--blue); text-decoration: underline; cursor: pointer; padding: 0; }
         .det-forn, .det-amb { display: inline-block; border-radius: 4px; padding: 1px 6px; margin-right: 6px; font-weight: 600; font-size: 10.5px; }
         .det-forn { background: var(--blue-bg); color: var(--blue); }
         .det-amb { background: var(--panel); color: var(--ink-2); }
-        .ger-trocar { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; background: transparent; border: none; color: var(--ink-3); text-decoration: underline; font-size: 10px; cursor: pointer; font-family: inherit; padding: 2px 0; }
-        .ger-trocar:hover { color: var(--ink); }
         .ger-busca { display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--panel); border-radius: 8px; }
         .ger-busca .form-input { margin-top: 0; font-size: 12px; padding: 5px 8px; }
-        .ger-topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 13px 16px; margin-bottom: 12px; }
-        .ger-topo:has(+ .sg-formatos) { border-radius: 12px 12px 0 0; margin-bottom: 0; }
-        .ger-info { flex: 1; font-size: 12px; color: var(--ink-3); }
-        .ger-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
-        /* O pedido: mesma folha do escopo, com o cabecalho do pedido. */
-        .pedido-vencido { color: var(--danger); font-weight: 700; }
-        .pedido-perto { color: var(--alert); font-weight: 600; }
         /* DASHBOARD MO — a base de orcado de um escopo. */
         .mo-topo { display: flex; align-items: center; gap: 30px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
         .mo-num-val { font-family: var(--font-sans); font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -23869,12 +23780,10 @@ export default function App() {
         .gc-bloco-head, .arq-bloco-h { padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
 
         /* ---------- Abas (Tabs · pill no nível 1, underline no nível 2) ---------- */
-        .gc-abas, .ger-modo { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
-        .gc-aba, .ger-modo button { padding: 5px 11px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease; }
-        .ger-modo button + button { border-left: 0; }
-        .gc-aba:hover, .ger-modo button:hover:not(:disabled) { background: transparent; color: var(--text); }
-        .gc-aba.on, .ger-modo button.on { background: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
-        .ger-modo button:disabled { opacity: 0.5; }
+        .gc-abas { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
+        .gc-aba { padding: 5px 11px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease; }
+        .gc-aba:hover { background: transparent; color: var(--text); }
+        .gc-aba.on { background: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
 
         /* ---------- Botões (Button) ----------
            primário = default do DS (brand) · contorno = outline ·
@@ -24121,7 +24030,7 @@ export default function App() {
           /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
              sao duas colunas: sao duas fitas de uma palavra por linha. */
           .dash, .ad-wrap, .ad-cab, .conf-cols,
-          .escopo-conta, .escopo-campos, .confronto-placar, .ger-placar,
+          .escopo-conta, .escopo-campos, .confronto-placar,
           .sol-campos, .form-row-3, .cad-campos,
           .ad-item-campos, .ad-item-campos.com-custo {
             /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
