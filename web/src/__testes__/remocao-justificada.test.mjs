@@ -29,7 +29,7 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
 conf("o botão de remover abre a justificativa",
   src.includes("onClick={() => (it.excluido\n                                          ? onEditarItem(c.num, i, { excluido: false })\n                                          : setRemovendo(`${c.num}:${i}`))}"), true);
 conf("e a dica diz que vai pedir motivo",
-  src.includes('<TooltipContent>{it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}</TooltipContent>'), true);
+  src.includes('rotulo={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}'), true);
 conf("o campo abre embaixo da linha que vai sair", src.includes(`<TableRow className="bg-danger/10 hover:bg-danger/10">`), true);
 
 /* ---- 2. Sem texto não remove ---- */

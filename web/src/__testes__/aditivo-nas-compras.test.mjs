@@ -133,7 +133,7 @@ conf("juntar mantém a compra da segunda", !!pintura.comprasAditivo?.b, true);
 
 /* ---- 7. As telas ---- */
 const linhaPlano = bloco("function LinhaPlano(");
-conf("o Plano mostra a especificação do aditivo", /item\.aditivo[\s\S]*item\.especificacao && <div className="det-espec">/.test(linhaPlano), true);
+conf("o Plano mostra a especificação do aditivo", /item\.aditivo[\s\S]*item\.especificacao && <div className="mt-1 text-xs text-text-mute">/.test(linhaPlano), true);
 const compras = src.slice(src.indexOf("function ComprasView("), src.indexOf("/* A situacao do produto no Sienge"));
 conf("as Compras juntam os aditivos", compras.includes("categoriasComAditivos(obraCrua.categorias, obraCrua.aditivos)"), true);
 conf("linha de aditivo não oferece troca", compras.includes("onAbrirTroca={r.it.aditivo ? undefined"), true);

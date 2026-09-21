@@ -504,7 +504,7 @@ conf("... e o padrão continua sendo 'todos'", /useState\(\(\) => [^)]*\|\| "tod
 /* A linha fina e o cabecalho mono agora vem da `Table` do DS — a tela nao
    escreve mais CSS proprio de tabela. */
 conf("a linha da conferência é a tabela do DS", src.includes(`<TableHead className="hidden w-24 md:table-cell">Cód.</TableHead>`), true);
-conf("a descrição corta em duas linhas", src.includes(`<div className="line-clamp-2 text-sm" title={x.it.desc}>`), true);
+conf("a descrição corta em duas linhas", src.includes(`<div className="line-clamp-2 text-sm text-text" title={x.it.desc}>`), true);
 conf("... com o texto inteiro no title", src.includes(`title={x.it.desc}>{x.it.desc}</div>`), true);
 /* "esse texto deve aparecer inteiro e nao sumir, botao de conferido no final"
    (18/09/2026): eu tinha cortado a frase com reticências para ganhar altura,
@@ -575,7 +575,7 @@ conf("o cartão de concluído existe", src.includes(`label: "Concluído executiv
 conf("o de aprovado para compra também", src.includes(`label: "Aprovado para compra",`), true);
 conf("e o de falta conferir", src.includes(`label: "Falta conferir",`), true);
 conf("o cartão 'Conferido' saiu da barra", src.includes(`st !== "ok" && !m.semCartao`), true);
-conf("e o placar parou de repetir os cartões", src.includes("de {fmtBRL(total)} liberados para compra"), true);
+conf("e o placar parou de repetir os cartões", /de <span className="mono tabular-nums">\{fmtBRL\(total\)\}<\/span> liberados para compra/.test(src), true);
 
 /* ---- O CÓDIGO NA FRENTE (18/09/2026) ----
    "pode trazer os códigos dos itens, pode ajudar o usuário a filtrar." */
@@ -589,7 +589,7 @@ conf("... e a célula vem antes do produto",
 /* ---- SELECIONAR PARA CONCLUIR EM MASSA (18/09/2026) ---- */
 conf("existe seleção por linha", src.includes(`aria-label="Selecionar linha"`), true);
 conf("e pela verba inteira", src.includes(`aria-label="Selecionar a verba"`), true);
-conf("a barra conclui o que está selecionado", /<Check size=\{\d+\} \/> Concluir \{sel\.size\}/.test(src), true);
+conf("a barra conclui o que está selecionado", /<Check size=\{\d+\}(?: aria-hidden="true")? \/> Concluir \{sel\.size\}/.test(src), true);
 conf("... e diz quantas ficaram fora da tela", src.includes("fora do que está na tela"), true);
 conf("a seleção some no modo leitura", src.includes("{podeEditar && onConcluir && (\n                            <input type=\"checkbox\"") || src.includes(`{podeEditar && onConcluir && (`), true);
 /* Título de trecho não é produto: não entra na seleção nem na conclusão. */

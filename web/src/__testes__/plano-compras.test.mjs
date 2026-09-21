@@ -110,7 +110,7 @@ conf("e nada de material", parcelasDoItem(servico).material, 0);
  * o caminho inteiro fica trancado, e a etiqueta diz por quê.
  */
 const app = src;
-conf("a etiqueta de alocação desabilita sem a trava", /<select value=\{aloc\}[\s\S]{0,200}disabled=\{!podeEditar\}/.test(app), true);
+conf("a etiqueta de alocação desabilita sem a trava", /<Select value=\{aloc\} onValueChange=\{onChange\} disabled=\{!podeEditar\}>/.test(app), true);
 conf("... e diz que é modo leitura", /title=\{podeEditar[\s\S]{0,140}MODO_LEITURA_DICA\}/.test(app), true);
 conf("a linha do plano recebe o modo leitura", /function LinhaPlano\(\{ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, podeEditar = true \}\)/.test(app), true);
 conf("o grupo do plano também", /function GrupoPlano\(\{[^}]*podeEditar = true \}\)/.test(app), true);

@@ -537,100 +537,9 @@
     {
       "regra": "DS-05",
       "arquivo": "web/src/App.jsx",
-      "linha": 3585,
-      "trecho": "<th style={{ width: 62 }}>Cód.</th>",
-      "impressao": "0cc876360aafdd3f"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 3587,
-      "trecho": "<th style={{ width: 88 }}>Ambiente</th>",
-      "impressao": "6b758fadceca7941"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
       "linha": 3588,
       "trecho": "<th style={{ width: 78 }} className=\"center\">Qtd.</th>",
       "impressao": "66f269831554ef07"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 3589,
-      "trecho": "<th style={{ width: 72 }} className=\"center\">Alocação</th>",
-      "impressao": "a9a95925735adb12"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 3590,
-      "trecho": "<th style={{ width: 100 }} className=\"right\">MAT</th>",
-      "impressao": "4e328529a76ca562"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 3591,
-      "trecho": "<th style={{ width: 100 }} className=\"right\">MO</th>",
-      "impressao": "339e9636fcb59497"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 3592,
-      "trecho": "<th style={{ width: 100 }} className=\"right\">Total</th>",
-      "impressao": "612efaae9107703f"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 3593,
-      "trecho": "<th style={{ width: 170 }} className=\"center\">Destino</th>",
-      "impressao": "9fb9b14dab747eba"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6307,
-      "trecho": "<div className={`conf-row ${l.alertaTecnico ? \"com-alerta\" : \"\"}`} style={{ background: l.alertaTecnico ? undefined : m.bg }}>",
-      "impressao": "c89bda39db750d28"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6311,
-      "trecho": "<span className=\"conf-badge\" style={{ color: m.color, background: m.bg === \"transparent\" ? \"var(--panel)\" : m.bg }}><m.Icon size={12} /> {m.label}</span>",
-      "impressao": "6611071c3b0ac567"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6312,
-      "trecho": "{aprovado && <span className=\"conf-badge\" style={{ color: \"var(--green)\", background: \"var(--green-bg)\" }}><CheckCircle2 size={12} /> Aprovado</span>}",
-      "impressao": "abeb5b5409004269"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6332,
-      "trecho": "<input className=\"form-input\" style={{ width: 70 }} value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder=\"Qtd.\" />",
-      "impressao": "7b5722188fbaf03c"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6333,
-      "trecho": "<input className=\"form-input\" style={{ width: 90 }} value={valor} onChange={(e) => setValor(e.target.value)} placeholder=\"Valor\" />",
-      "impressao": "59d3fcf6574da10d"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6802,
-      "trecho": "<span style={{ width: total > 0 ? `${(g.valor / total) * 100}%` : 0 }} />",
-      "impressao": "53a55e5942181795"
     },
     {
       "regra": "DS-05",
@@ -750,13 +659,6 @@
       "linha": 18771,
       "trecho": "<th style={{ width: 46 }}>Verba</th>",
       "impressao": "884aa731224f2278"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 18773,
-      "trecho": "<th style={{ width: 78 }} className=\"center\">Qtd.</th>",
-      "impressao": "66f269831554ef07#2"
     },
     {
       "regra": "DS-05",
@@ -901,13 +803,6 @@
     {
       "regra": "DS-07",
       "arquivo": "web/src/App.jsx",
-      "linha": 3219,
-      "trecho": "<select value={aloc} onChange={(e) => onChange(e.target.value)} aria-label=\"Alocação de recurso\"",
-      "impressao": "0bf01ba19940c6a3"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
       "linha": 3582,
       "trecho": "<table>",
       "impressao": "2339747de0ea639f"
@@ -922,44 +817,9 @@
     {
       "regra": "DS-07",
       "arquivo": "web/src/App.jsx",
-      "linha": 6309,
-      "trecho": "{selecionavel && <input type=\"checkbox\" className=\"conf-check\" checked={selecionado} onChange={onToggleSelecionar} aria-label=\"Selecionar linha\" />}",
-      "impressao": "434c12b9aa0f9c6d"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6330,
-      "trecho": "<input className=\"form-input\" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder=\"Descrição\" />",
-      "impressao": "bcdcdf2f5b25e4b1"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6332,
-      "trecho": "<input className=\"form-input\" style={{ width: 70 }} value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder=\"Qtd.\" />",
-      "impressao": "e8f471a4a5cd73ed"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 6333,
-      "trecho": "<input className=\"form-input\" style={{ width: 90 }} value={valor} onChange={(e) => setValor(e.target.value)} placeholder=\"Valor\" />",
-      "impressao": "28a908d414e76818"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
       "linha": 8513,
       "trecho": "<textarea className=\"detalhe-texto\" readOnly value={item.texto} onFocus={(e) => e.target.select()} />",
       "impressao": "6ba43a29c6e9d58d"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 11332,
-      "trecho": "<table>",
-      "impressao": "2339747de0ea639f#2"
     },
     {
       "regra": "DS-07",

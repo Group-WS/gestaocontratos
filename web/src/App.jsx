@@ -3295,8 +3295,7 @@ function TagAloc({ aloc, manual, onChange, podeEditar = true }) {
   );
   if (!onChange) return etiqueta;
   return (
-    <span className="aloc-edit">
-      {etiqueta}
+    <Select value={aloc} onValueChange={onChange} disabled={!podeEditar}>
       {/* EM MODO LEITURA, DESABILITADA — e dizendo por que (17/09/2026).
 
           Ela trocou a alocacao com a obra travada por outra pessoa: a tela
@@ -3304,16 +3303,18 @@ function TagAloc({ aloc, manual, onChange, podeEditar = true }) {
           sumia no F5. Do lado dela ficou "ja esta lancado como MAT" e o item
           nao subia pras Compras. Nao ha' aviso possivel depois do clique —
           o unico jeito honesto e' nao deixar clicar. */}
-      <select value={aloc} onChange={(e) => onChange(e.target.value)} aria-label="Alocação de recurso"
-        disabled={!podeEditar}
+      <SelectTrigger className="h-8 w-24" aria-label="Alocação de recurso"
         title={podeEditar
           ? "Trocar a alocação. O valor do item vai junto pra coluna escolhida — o total não muda."
           : MODO_LEITURA_DICA}>
-        <option value={ALOC_MAT}>{NOME_ALOC.MAT}</option>
-        <option value={ALOC_MO}>{NOME_ALOC.MO}</option>
-        <option value={ALOC_AMBOS}>{NOME_ALOC.AMBOS}</option>
-      </select>
-    </span>
+        <SelectValue>{etiqueta}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ALOC_MAT}>{NOME_ALOC.MAT}</SelectItem>
+        <SelectItem value={ALOC_MO}>{NOME_ALOC.MO}</SelectItem>
+        <SelectItem value={ALOC_AMBOS}>{NOME_ALOC.AMBOS}</SelectItem>
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -3370,7 +3371,7 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
           O controle nao se perdeu: a propria situacao virou o botao. */}
       <TableCell className="mono text-text-mute">{codigoVisivel(item)}</TableCell>
       <TableCell>
-        <div className={cn("item-desc", item.troca && "line-through text-text-mute")}>{item.desc}</div>
+        <div className={cn("break-words text-sm text-text", item.troca && "line-through text-text-mute")}>{item.desc}</div>
         {item.troca && (
           <Badge tone="neutral" className="mr-1 mt-1">
             trocado{linhasDaTroca(cat.itens, item).length ? ` por ${linhasDaTroca(cat.itens, item).map((n) => n.desc).join(" + ")}` : ""}
@@ -3381,7 +3382,7 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
         {item.aditivo
           ? <>
               <Badge tone="purple" className="mt-1" title={item.descCompleta ? `Texto do cliente: ${item.descCompleta}` : undefined}>
-                <FileText size={9} /> aditivo {item.aditivo}{item.ambiente ? ` · ${item.ambiente}` : ""}
+                <FileText size={12} aria-hidden="true" /> aditivo {item.aditivo}{item.ambiente ? ` · ${item.ambiente}` : ""}
               </Badge>
               {/* A ESPECIFICACAO INTERNA, a que vai pra quem compra.
 
@@ -3390,11 +3391,11 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
                   copiada pro campo certo mas nunca aparecia aqui. Relato
                   dela em 17/09/2026: "nao veio a especificacao interna
                   correta, veio a do cliente". */}
-              {item.especificacao && <div className="det-espec">{item.especificacao}</div>}
+              {item.especificacao && <div className="mt-1 text-xs text-text-mute">{item.especificacao}</div>}
             </>
           : item.avulso
           ? <Badge tone="purple" className="mt-1" title={item.avulsoEm ? `Pedido em ${new Date(item.avulsoEm).toLocaleDateString("pt-BR")}` : undefined}>
-              <Plus size={9} /> compra avulsa{item.avulsoPor ? ` · ${item.avulsoPor}` : ""}
+              <Plus size={12} aria-hidden="true" /> compra avulsa{item.avulsoPor ? ` · ${item.avulsoPor}` : ""}
             </Badge>
           : <ItemTags item={item} alertas={alertas} />}
         {item.avulso && item.avulsoObs && <div className="mt-1 text-xs text-text-mute">{item.avulsoObs}</div>}
@@ -3406,25 +3407,25 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {/* A linha separada esta logo abaixo, na mesma verba — nao ha
                 mais pra onde mandar a pessoa. */}
-            <Badge tone="purple"><CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo</Badge>
+            <Badge tone="purple"><CornerDownRight size={12} aria-hidden="true" /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo</Badge>
             {onJuntarMO && podeEditar && <Button variant="ghost" size="sm" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</Button>}
           </div>
         )}
         {item.separadoDe && (
           <Badge tone="purple" className="mt-1">
-            <CornerDownRight size={10} /> mão de obra do item {item.separadoDe.codigo}
+            <CornerDownRight size={12} aria-hidden="true" /> mão de obra do item {item.separadoDe.codigo}
           </Badge>
         )}
         {item.contavel && <SiengeMatch sienge={item.sienge} />}
       </TableCell>
-      <TableCell className="mono center text-text-mute">{item.ambiente}</TableCell>
-      <TableCell className="mono center">
+      <TableCell className="text-text-mute">{item.ambiente}</TableCell>
+      <TableCell className="mono text-center tabular-nums">
         {/* `qtdVendida` entra na conta: o leitor do executivo grava a
             quantidade nesse campo, e a tela so olhava `qtdExecutivo` — o
             numero vinha certo do arquivo e virava travessao na tabela. */}
-        <span className={item.excedeQtd ? "font-bold text-danger" : ""}>{item.qtdExecutivo ?? item.qtdVendida ?? item.qtd ?? "—"}</span> <span className="unit">{item.un}</span>
+        <span className={item.excedeQtd ? "font-semibold text-danger" : ""}>{item.qtdExecutivo ?? item.qtdVendida ?? item.qtd ?? "—"}</span> <span className="text-xs text-text-mute">{item.un}</span>
       </TableCell>
-      <TableCell className="center">
+      <TableCell className="text-center">
         <TagAloc aloc={aloc} manual={!!item.alocacaoManual} onChange={onAlocar} podeEditar={podeEditar} />
         {/* So faz sentido separar o que TEM as duas parcelas, e so uma
             vez. Item que ja mora na propria verba de mao de obra nao tem
@@ -3432,15 +3433,15 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
         {podeSepararMO(item, cat) && onSepararMO && podeEditar && (
           <Button variant="ghost" size="sm" onClick={onSepararMO}
             title="Tira a mão de obra deste item e cria uma linha só dela logo abaixo, com a mesma descrição e quantidade. O total não muda.">
-            <GitCompare size={9} /> separar MO
+            <GitCompare size={14} aria-hidden="true" /> separar MO
           </Button>
         )}
       </TableCell>
-      <TableCell className="mono right">
+      <TableCell className="mono text-right tabular-nums">
         {material > 0 ? fmtBRL(material) : <span className="text-text-mute">—</span>}
         {estimado && !manual && material > 0 && <span className="ml-1 text-xs italic text-text-mute" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
       </TableCell>
-      <TableCell className="mono right">
+      <TableCell className="mono text-right tabular-nums">
         {mo > 0 ? fmtBRL(mo) : <span className="text-text-mute">—</span>}
         {estimado && !manual && mo > 0 && <span className="ml-1 text-xs italic text-text-mute" title="A planilha não trouxe a coluna de mão de obra — assumido o custo total">est.</span>}
       </TableCell>
@@ -3452,15 +3453,15 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
           pra outra verba continuavam somando ali. Tres colunas na mesma
           linha que nao fecham entre si e o tipo de erro que faz a pessoa
           parar de confiar na tela inteira. */}
-      <TableCell className="mono right">
+      <TableCell className="mono text-right tabular-nums">
         {item.custo == null && material + mo === 0
           ? <span className="text-text-mute">a orçar</span>
           : fmtBRL(material + mo)}
       </TableCell>
-      <TableCell className="center">
+      <TableCell className="text-center">
         {bloqueado
           ? <Button size="sm" onClick={onAprovar} disabled={!podeEditar}
-              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={12} /> Aprovar p/ compra</Button>
+              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={14} aria-hidden="true" /> Aprovar p/ compra</Button>
           : <DestinoCompra item={item} aloc={aloc} />}
       </TableCell>
     </TableRow>
@@ -3558,11 +3559,11 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
   // Celula vazia, e nao ausente: sem ela as colunas MAT e MO dos grupos
   // sem regra deslizariam pra esquerda e a lista deixaria de ser lida
   // como coluna.
-  if (!prazo) return <div className="grp-prazo" />;
+  if (!prazo) return <span className="block w-36 shrink-0" aria-hidden="true" />;
 
   const limite = dataLimiteCompra(dataEntrega, prazo.dias);
   const faltam = diasAte(limite);
-  const tom = faltam == null ? "" : faltam < 0 ? "prazo-vencido" : faltam <= 15 ? "prazo-perto" : "";
+  const tom = faltam == null ? "" : faltam < 0 ? "text-danger" : faltam <= 15 ? "text-warning" : "";
   const conta = faltam == null ? null
     : faltam < 0 ? `passou ${Math.abs(faltam)} ${Math.abs(faltam) === 1 ? "dia" : "dias"}`
     : faltam === 0 ? "é hoje"
@@ -3575,26 +3576,26 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
       : `${prazo.dias} dias antes da entrega`;
 
   return (
-    <div className={`grp-prazo ${tom}`} title={porque}>
-      <div className="grp-tot-rot">
+    <span className="block w-36 shrink-0 text-center" title={porque}>
+      <span className="label-mono block text-center text-text-mute">
         COMPRAR ATÉ
-        {prazo.incerto && <span className="prazo-marca" title={porque}>?</span>}
-      </div>
+        {prazo.incerto && <Badge tone="warning" className="ml-1" title={porque}>?</Badge>}
+      </span>
       {limite ? (
         <>
-          <div className="grp-tot-val mono">{fmtData(limite)}</div>
-          <div className="prazo-conta">{conta}</div>
+          <span className={cn("mono block text-sm tabular-nums", tom || "text-text")}>{fmtData(limite)}</span>
+          <span className={cn("block text-xs", tom || "text-text-mute")}>{conta}</span>
         </>
       ) : (
         /* Sem data de entrega, mostra so a antecedencia. Repetir "falta a
            data de entrega" em quinze grupos era encher a tela com o mesmo
            recado — ele passou a ser um aviso unico, no topo. */
         <>
-          <div className="grp-tot-val mono dim">{prazo.dias} dias</div>
-          <div className="prazo-conta">antes da entrega</div>
+          <span className="mono block text-sm tabular-nums text-text-mute">{prazo.dias} dias</span>
+          <span className="block text-xs text-text-mute">antes da entrega</span>
         </>
       )}
-    </div>
+    </span>
   );
 }
 
@@ -3608,80 +3609,82 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
   const aSeparar = itens.filter((it) => podeSepararMO(it, cat)).length;
 
   return (
-    <div className="grp-block" data-grp={cat.num}>
-      {/* Era um botao so. Virou div com o botao SO na parte esquerda:
-          o campo de dias e o "x" de limpar sao controles, e controle
-          dentro de botao nao e HTML valido — o clique de um come o do
-          outro. A area de abrir continua sendo a maior parte da linha. */}
-      <div className="grp-head">
-        <Button variant="ghost" className="grp-toggle" onClick={onToggle}>
-          <div className="grp-esq">
-          {expanded ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
-          <span className="grp-num mono">{cat.num}</span>
-          <span className="grp-nome">{cat.nome}</span>
-          {cat.foraDeEscopoCategoria && <span className="chip chip-red"><XCircle size={11} /> Fora do escopo vendido</span>}
-          <span className="grp-conta">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>
-          {nAvulsos > 0 && <span className="grp-avulsos"><Plus size={9} /> {nAvulsos} avulso{nAvulsos > 1 ? "s" : ""}</span>}
-          {/* O que veio de aditivo fica dito no cabecalho: o total do
-              grupo cresceu, e sem isso a pessoa procura na planilha uma
-              linha que nunca esteve la. Supressao aparece junto porque
-              ela nao vira item — se so a adicao aparecesse, o grupo
-              pareceria ter crescido mais do que cresceu. */}
-          {aditivo && (
-            <span className="grp-aditivo" title={`Aditivo ${[...aditivo.numeros].join(", ")} — estes são os valores do contrato; as linhas abaixo mostram o custo`}>
-              <FileText size={9} /> aditivo
-              {aditivo.adicao > 0 && <b className="adit-mais"> +{fmtBRL(aditivo.adicao)}</b>}
-              {aditivo.supressao > 0 && <b className="adit-menos"> −{fmtBRL(aditivo.supressao)}</b>}
-              {/* Linha de aditivo sem custo entra "a orcar": dizer quantas
-                  sao aqui evita abrir o grupo so pra descobrir. */}
-              {aditivo.semCusto > 0 && <b className="adit-orcar"> · {aditivo.semCusto} a orçar</b>}
-            </span>
-          )}
-          </div>
-        </Button>
-        <div className="grp-dir">
+    /* Mesmo Colapsavel de Vendido e Executivo: cabecalho inteiro como
+       gatilho, px-4 py-3, a seta na frente. O prazo e os totais MAT/MO nao
+       sao controles, entao podem morar dentro do gatilho, a direita do nome;
+       no celular eles descem de linha. */
+    <Colapsavel aberto={expanded} onAbrir={onToggle} cabecalho={(
+      <span className="flex min-w-0 flex-1 flex-wrap items-start gap-x-4 gap-y-2">
+        <span className="flex min-w-0 flex-1 basis-64 items-start gap-2">
+          <span className="mono w-6 shrink-0 text-xs text-text-mute">{cat.num}</span>
+          <span className="min-w-0 flex-1 text-sm font-semibold text-text">{cat.nome}</span>
+          <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-56">
+            {cat.foraDeEscopoCategoria && <Badge tone="danger"><XCircle size={12} aria-hidden="true" /> Fora do escopo vendido</Badge>}
+            <Badge tone="neutral">{itens.length} {itens.length === 1 ? "item" : "itens"}</Badge>
+            {nAvulsos > 0 && <Badge tone="purple"><Plus size={12} aria-hidden="true" /> {nAvulsos} avulso{nAvulsos > 1 ? "s" : ""}</Badge>}
+            {/* O que veio de aditivo fica dito no cabecalho: o total do
+                grupo cresceu, e sem isso a pessoa procura na planilha uma
+                linha que nunca esteve la. Supressao aparece junto porque
+                ela nao vira item — se so a adicao aparecesse, o grupo
+                pareceria ter crescido mais do que cresceu. */}
+            {aditivo && (
+              <Badge tone="purple" title={`Aditivo ${[...aditivo.numeros].join(", ")} — estes são os valores do contrato; as linhas abaixo mostram o custo`}>
+                <FileText size={12} aria-hidden="true" /> aditivo
+                {aditivo.adicao > 0 && <span className="mono tabular-nums"> +{fmtBRL(aditivo.adicao)}</span>}
+                {aditivo.supressao > 0 && <span className="mono tabular-nums"> −{fmtBRL(aditivo.supressao)}</span>}
+                {/* Linha de aditivo sem custo entra "a orcar": dizer quantas
+                    sao aqui evita abrir o grupo so pra descobrir. */}
+                {aditivo.semCusto > 0 && <span className="mono tabular-nums"> · {aditivo.semCusto} a orçar</span>}
+              </Badge>
+            )}
+          </span>
+        </span>
+        <span className="flex w-full shrink-0 items-start justify-between gap-4 sm:w-auto sm:justify-end">
           <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega} />
-          <div className="grp-tot">
-            <div className="grp-tot-rot">MAT</div>
-            <div className={`grp-tot-val mono ${mat > 0 ? "" : "dim"}`}>{mat > 0 ? fmtBRL(mat) : "—"}</div>
-          </div>
-          <div className="grp-tot">
-            <div className="grp-tot-rot">MO</div>
-            <div className={`grp-tot-val mono ${mo > 0 ? "" : "dim"}`}>{mo > 0 ? fmtBRL(mo) : "—"}</div>
-          </div>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="grp-itens">
-          {/* Fora do cabecalho de proposito: ele e um botao, e botao
-              dentro de botao nao e HTML valido — o clique de um comeria o
-              do outro. Aqui tambem fica melhor: separa depois de olhar. */}
-          {aSeparar > 0 && onSepararGrupo && (
-            <div className="grp-acao">
-              <GitCompare size={12} className="dim" />
-              <span>
-                <b>{aSeparar}</b> {aSeparar === 1 ? "item tem" : "itens têm"} MAT e MO na mesma linha.
+          <span className="w-32 shrink-0">
+            <span className="label-mono block text-center text-text-mute">MAT</span>
+            <span className={cn("mono block text-right text-sm font-semibold tabular-nums", mat > 0 ? "text-text" : "text-text-mute")}>{mat > 0 ? fmtBRL(mat) : "—"}</span>
+          </span>
+          <span className="w-32 shrink-0">
+            <span className="label-mono block text-center text-text-mute">MO</span>
+            <span className={cn("mono block text-right text-sm font-semibold tabular-nums", mo > 0 ? "text-text" : "text-text-mute")}>{mo > 0 ? fmtBRL(mo) : "—"}</span>
+          </span>
+        </span>
+      </span>
+    )}>
+      <div className="border-t border-line-1 bg-surface-2">
+        {/* Fora do cabecalho de proposito: ele e um botao, e botao
+            dentro de botao nao e HTML valido — o clique de um comeria o
+            do outro. Aqui tambem fica melhor: separa depois de olhar. */}
+        {aSeparar > 0 && onSepararGrupo && (
+          <Alert tone="warning" className="m-4">
+            <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <span className="min-w-0 flex-1">
+                {aSeparar} {aSeparar === 1 ? "item tem" : "itens têm"} MAT e MO na mesma linha.
                 {" "}Separar cria a linha de mão de obra logo abaixo, aqui mesmo, com a mesma descrição e quantidade.
               </span>
-              <Button variant="outline" size="sm" onClick={onSepararGrupo}>Separar MO do grupo</Button>
-            </div>
-          )}
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: 62 }}>Cód.</th>
-                <th>Descrição</th>
-                <th style={{ width: 88 }}>Ambiente</th>
-                <th style={{ width: 78 }} className="center">Qtd.</th>
-                <th style={{ width: 72 }} className="center">Alocação</th>
-                <th style={{ width: 100 }} className="right">MAT</th>
-                <th style={{ width: 100 }} className="right">MO</th>
-                <th style={{ width: 100 }} className="right">Total</th>
-                <th style={{ width: 170 }} className="center">Destino</th>
-              </tr>
-            </thead>
-            <tbody>
+              <Button variant="outline" size="sm" className="shrink-0" onClick={onSepararGrupo}>
+                <GitCompare size={14} aria-hidden="true" /> Separar MO do grupo
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        <div className="overflow-x-auto">
+          <Table className="min-w-4xl table-fixed">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16">Cód.</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead className="w-24">Ambiente</TableHead>
+                <TableHead className="w-20 text-center">Qtd.</TableHead>
+                <TableHead className="w-24 text-center">Alocação</TableHead>
+                <TableHead className="w-28 text-center">MAT</TableHead>
+                <TableHead className="w-28 text-center">MO</TableHead>
+                <TableHead className="w-28 text-center">Total</TableHead>
+                <TableHead className="w-44 text-center">Destino</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {itens.map((it) => {
                 const idx = (cat.itens || []).indexOf(it);
                 return (
@@ -3694,11 +3697,11 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
                   />
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
-      )}
-    </div>
+      </div>
+    </Colapsavel>
   );
 }
 
@@ -3750,7 +3753,7 @@ function FormAvulsa({ obra, onCriar }) {
   return (
     <>
       <Button variant="outline" onClick={() => setAberto(true)}>
-        <Plus size={16} /> Compra avulsa
+        <Plus size={16} aria-hidden="true" /> Compra avulsa
       </Button>
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent size="md">
@@ -3869,7 +3872,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
   return (
     <>
       <Button disabled={!podeEditar} title={podeEditar ? undefined : MODO_LEITURA_DICA} onClick={() => setAberto(true)}>
-        <ShieldCheck size={16} /> Liberar compra
+        <ShieldCheck size={16} aria-hidden="true" /> Liberar compra
       </Button>
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent size="md">
@@ -3925,7 +3928,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
                 : null);
               setAberto(false);
             }}>
-              <ShieldCheck size={16} /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar plano de compras"}
+              <ShieldCheck size={16} aria-hidden="true" /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar plano de compras"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4075,7 +4078,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       description="O que a obra vai comprar e contratar, verba a verba — e com que dinheiro."
       contentClassName="flex flex-col gap-6"
       actions={(
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-end">
           {/* A avulsa fica no topo, junto do resumo — e uma acao sobre a obra
               inteira, nao sobre a lista filtrada abaixo. Continua disponivel
               DEPOIS da liberacao: e pra isso que ela serve, o item que quebrou
@@ -4098,7 +4101,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
                   confirmar: "Reabrir etapas", perigo: false,
                 })) onReabrir();
               }}>
-                <RotateCcw size={16} /> Reabrir etapas
+                <RotateCcw size={16} aria-hidden="true" /> Reabrir etapas
               </Button>
             ))
             : <LiberacaoCompra obra={obra} temItens={temItens} podeEditar={podeEditar} onLiberar={onLiberar} />}
@@ -4108,10 +4111,8 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
          MAT, MO ou os dois; a de baixo é em que pé o item está. */
       toolbar={(
         <div className="flex flex-wrap items-center gap-2">
-          <Input className="w-full sm:w-72" icon={<Search size={16} />} placeholder="Buscar insumo, código ou fornecedor…"
-            aria-label="Buscar item do plano" value={busca} onChange={(e) => setBusca(e.target.value)} />
-          {!!busca && <span className="text-xs text-text-mute" role="status">{contaItens(grupos)} de {contaItens(gruposSemBusca)} itens</span>}
-          {!!busca && <Button variant="ghost" onClick={() => setBusca("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>}
+          <CampoBusca valor={busca} aoMudar={setBusca} dica="Buscar insumo, código ou fornecedor…"
+            contador={`${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens`} />
           <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => { if (v) setTipoFilter(v); }} aria-label="Alocação de recurso">
             {FILTROS_ALOC.map((t) => (
               <ToggleGroupItem key={t.id} value={t.id} title={t.destino ? `Estes ${t.destino}` : undefined}>
@@ -4183,7 +4184,8 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
         </div>
       )}
 
-      <div>
+      {grupos.length > 0 && (
+      <Card>
       {grupos.map(({ cat, itens }) => (
         <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens} podeEditar={podeEditar}
           /* Com busca ligada a verba abre sozinha: procurar e ainda ter que
@@ -4225,7 +4227,8 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
           }}
         />
       ))}
-      </div>
+      </Card>
+      )}
       {temItens && grupos.length === 0 && (
         <EmptyState icon={<SlidersHorizontal size={26} />}
           title={busca.trim() ? "Nenhum item com esse termo" : "Nenhum item com esses filtros"}
@@ -4245,7 +4248,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
         <span className="flex items-center gap-2"><Badge tone="neutral">MO</Badge> MÃO DE OBRA — vai pra Contratos</span>
         <span className="flex items-center gap-2"><Badge tone="outline">MAT+MO</Badge> As duas parcelas ainda na mesma linha — dá pra separar</span>
         <span className="flex items-center gap-2"><Badge tone="purple" pulse>MAT</Badge> O ponto marca alocação corrigida à mão</span>
-        <span className="flex items-center gap-2"><Badge tone="purple"><Plus size={9} /> avulsa</Badge> Pedido fora do executivo, ainda sem valor</span>
+        <span className="flex items-center gap-2"><Badge tone="purple"><Plus size={12} aria-hidden="true" /> avulsa</Badge> Pedido fora do executivo, ainda sem valor</span>
       </div>
     </PageShell>
   );
@@ -5247,7 +5250,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
         contentClassName="flex flex-col gap-6"
         actions={(
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-end">
-            <Button variant="outline" onClick={() => exportVendidoCSV(obra)}><Download size={16} /> Baixar tabela (.csv)</Button>
+            <Button variant="outline" onClick={() => exportVendidoCSV(obra)}><Download size={16} aria-hidden="true" /> Baixar tabela (.csv)</Button>
             <ImportButton congelado={congelado} label="Importar Contrato (PDF)" accept=".pdf"
               onLimpar={onLimpar} oQueLimpa="os itens e valores do Contrato"
               onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
@@ -5271,7 +5274,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
           </div>
         )}>
 
-        <div className="rounded-lg border border-line-1">
+        <Card>
           {verbas.map((c) => {
             const itens = c.itensContrato || [];
             const temItens = itens.length > 0;
@@ -5279,17 +5282,19 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
             const semVenda = itens.filter((it) => !itemFoiVendido(it)).length;
             return (
               <Colapsavel key={c.num} aberto={aberto} podeAbrir={temItens} onAbrir={() => toggle(c.num)}
-                cabecalho={<>
-                  <span className="mono w-6 shrink-0 text-xs font-semibold text-text-mute">{c.num}</span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-text">{c.nome}</span>
-                  {temItens && <Badge tone="neutral">{itens.length} {itens.length === 1 ? "item" : "itens"}</Badge>}
-                  {/* Grupo da EAP em que esta obra não vendeu nada. Não é
-                      falha nem dado faltando — é o escopo da obra. */}
-                  {!grupoFoiVendido(itens) && <Badge tone="outline">não vendido</Badge>}
-                  {temItens && grupoFoiVendido(itens) && semVenda > 0 && (
-                    <Badge tone="outline" className="border-dashed font-medium normal-case tracking-normal">{semVenda} sem venda</Badge>
-                  )}
-                </>}>
+                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="mono w-6 shrink-0 text-xs text-text-mute">{c.num}</span>
+                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{c.nome}</span>
+                  <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-44">
+                    {temItens && <Badge tone="neutral">{itens.length} {itens.length === 1 ? "item" : "itens"}</Badge>}
+                    {/* Grupo da EAP em que esta obra não vendeu nada. Não é
+                        falha nem dado faltando — é o escopo da obra. */}
+                    {!grupoFoiVendido(itens) && <Badge tone="outline">não vendido</Badge>}
+                    {temItens && grupoFoiVendido(itens) && semVenda > 0 && (
+                      <Badge tone="outline">{semVenda} sem venda</Badge>
+                    )}
+                  </span>
+                </span>}>
                 <div className="overflow-x-auto border-t border-line-1 bg-surface-2">
                   <Table className="min-w-lg table-fixed">
                     <TableHeader>
@@ -5312,7 +5317,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                             onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })}
                             onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { desc: v }) : undefined}
                             congelado={congelado} /></TableCell>
-                          <TableCell className="mono hidden whitespace-nowrap text-center text-text-mute md:table-cell"><CelulaTexto texto={it.ambiente} linhas={1}
+                          <TableCell className="hidden whitespace-nowrap text-text-mute md:table-cell"><CelulaTexto texto={it.ambiente} linhas={1}
                             onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })}
                             onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { ambiente: v }) : undefined}
                             congelado={congelado} /></TableCell>
@@ -5326,7 +5331,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                                 espaço. Antes o botão de editar ocupava 100% da
                                 célula e a unidade vinha depois, empurrada pra
                                 fora dos 92px: aparecia "1 v", "30 u". */}
-                            <div className="flex items-baseline justify-end gap-1">
+                            <div className="flex items-baseline justify-center gap-1 tabular-nums">
                               <div className="min-w-10 flex-1">
                                 <CelulaEditavel valor={it.qtdVendida} formato="numero"
                                   onSalvar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { qtdVendida: v }) : undefined}
@@ -5343,7 +5348,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
               </Colapsavel>
             );
           })}
-        </div>
+        </Card>
       </PageShell>
     </>
   );
@@ -5466,7 +5471,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
 
         <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilha || [])} />
 
-        <div className="rounded-lg border border-line-1">
+        <Card>
           {verbas.map((c) => {
             const itens = c.itensPlanilha || [];
             /* O que a busca deixa na tela. O `subtotal` abaixo continua
@@ -5482,16 +5487,18 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             return (
               <Colapsavel key={c.num} aberto={aberto} podeAbrir={temItens}
                 onAbrir={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}
-                cabecalho={<>
-                  <span className="mono w-6 shrink-0 text-xs font-semibold text-text-mute">{c.num}</span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-text">{c.nome}</span>
-                  {temItens && <Badge tone="neutral">{buscando ? `${naTela.length} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</Badge>}
-                  {!grupoFoiVendido(itens) && <Badge tone="outline">não vendido</Badge>}
-                  {temItens && semVenda > 0 && (
-                    <Badge tone="outline" className="border-dashed font-medium normal-case tracking-normal">{semVenda} sem venda</Badge>
-                  )}
-                  <span className="mono w-32 shrink-0 text-right text-sm text-text">{temItens ? fmtBRL(subtotal) : "—"}</span>
-                </>}>
+                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="mono w-6 shrink-0 text-xs text-text-mute">{c.num}</span>
+                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{c.nome}</span>
+                  <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-44">
+                    {temItens && <Badge tone="neutral">{buscando ? `${naTela.length} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</Badge>}
+                    {!grupoFoiVendido(itens) && <Badge tone="outline">não vendido</Badge>}
+                    {temItens && semVenda > 0 && (
+                      <Badge tone="outline">{semVenda} sem venda</Badge>
+                    )}
+                  </span>
+                  <span className="mono w-32 shrink-0 text-right text-sm font-semibold tabular-nums text-text">{temItens ? fmtBRL(subtotal) : "—"}</span>
+                </span>}>
                 {/* Mesmas colunas do Executivo, na mesma ordem da
                     planilha de origem — os dois documentos usam o mesmo
                     cabeçalho, e manter o padrão é o que deixa comparar
@@ -5507,11 +5514,11 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
                         <TableHead className="w-20">Ambiente</TableHead>
                         <TableHead className="w-14 text-center">Qtd.</TableHead>
                         <TableHead className="w-10 text-center">Un.</TableHead>
-                        <TableHead className="w-24 text-right">Custo<br />Material</TableHead>
-                        <TableHead className="w-24 text-right">Custo<br />Mão de Obra</TableHead>
-                        <TableHead className="w-24 text-right">Custo Total<br />Material</TableHead>
-                        <TableHead className="w-24 text-right">Custo Total<br />Mão de Obra</TableHead>
-                        <TableHead className="w-24 text-right">Custo<br />Total</TableHead>
+                        <TableHead className="w-24 whitespace-normal text-center">Custo material</TableHead>
+                        <TableHead className="w-24 whitespace-normal text-center">Custo M.O.</TableHead>
+                        <TableHead className="w-24 whitespace-normal text-center">Total material</TableHead>
+                        <TableHead className="w-24 whitespace-normal text-center">Total M.O.</TableHead>
+                        <TableHead className="w-24 whitespace-normal text-center">Custo total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -5529,11 +5536,11 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
                           <TableCell className="text-text-mute"><span className="line-clamp-2">{it.ambiente || "—"}</span></TableCell>
                           <TableCell className="mono text-center">{it.qtdVendida ?? "—"}</TableCell>
                           <TableCell className="mono text-center text-text-mute">{it.un || "—"}</TableCell>
-                          <TableCell className="mono text-right text-text-mute">{it.custoMaterial != null ? fmtBRL(it.custoMaterial) : "—"}</TableCell>
-                          <TableCell className="mono text-right text-text-mute">{it.custoMO != null ? fmtBRL(it.custoMO) : "—"}</TableCell>
-                          <TableCell className="mono text-right">{it.totalMaterial != null ? fmtBRL(it.totalMaterial) : "—"}</TableCell>
-                          <TableCell className="mono text-right">{it.totalMO != null ? fmtBRL(it.totalMO) : "—"}</TableCell>
-                          <TableCell className="mono text-right font-semibold">{it.custo != null ? fmtBRL(it.custo) : "—"}</TableCell>
+                          <TableCell className="mono text-right tabular-nums text-text-mute">{it.custoMaterial != null ? fmtBRL(it.custoMaterial) : "—"}</TableCell>
+                          <TableCell className="mono text-right tabular-nums text-text-mute">{it.custoMO != null ? fmtBRL(it.custoMO) : "—"}</TableCell>
+                          <TableCell className="mono text-right tabular-nums">{it.totalMaterial != null ? fmtBRL(it.totalMaterial) : "—"}</TableCell>
+                          <TableCell className="mono text-right tabular-nums">{it.totalMO != null ? fmtBRL(it.totalMO) : "—"}</TableCell>
+                          <TableCell className="mono text-right font-semibold tabular-nums">{it.custo != null ? fmtBRL(it.custo) : "—"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -5544,10 +5551,10 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
           })}
 
           <div className="flex items-center justify-between border-t-2 border-text px-4 py-3">
-            <span className="text-sm font-bold">Total da planilha</span>
-            <span className="mono text-sm font-bold">{fmtBRL(totalPlanilha)}</span>
+            <span className="text-sm font-semibold text-text">Total da planilha</span>
+            <span className="mono w-32 shrink-0 text-right text-sm font-semibold tabular-nums">{fmtBRL(totalPlanilha)}</span>
           </div>
-        </div>
+        </Card>
       </PageShell>
     </>
   );
@@ -6396,6 +6403,10 @@ const EXEC_META = {
 // uma linha do depara: mostra A×B e, se diverge, os botões Aprovar/Editar.
 // Editar só habilita os campos da coluna B (planilha) DESSA linha — o
 // resto da tabela continua travado.
+/* Fundo da linha pelo tom do estado — classes fixas, pra o Tailwind
+   enxergar. Conferido (neutral) fica sem fundo. */
+const FUNDO_DO_TOM = { warning: "bg-warning/10", danger: "bg-danger/10", success: "bg-success/10", brand: "bg-brand/10", neutral: "" };
+
 function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovado, onAprovar, onEditar, selecionavel, selecionado, onToggleSelecionar }) {
   const [editando, setEditando] = useState(false);
   const [desc, setDesc] = useState(l.b?.desc || "");
@@ -6410,59 +6421,66 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   }
 
   return (
-    <div className={`conf-row ${l.alertaTecnico ? "com-alerta" : ""}`} style={{ background: l.alertaTecnico ? undefined : m.bg }}>
-      <div className="conf-row-top">
-        {selecionavel && <input type="checkbox" className="conf-check" checked={selecionado} onChange={onToggleSelecionar} aria-label="Selecionar linha" />}
-        <span className="mono dim conf-codigo">{l.catNum}.{l.codigo || "—"}</span>
-        <span className="conf-badge" style={{ color: m.color, background: m.bg === "transparent" ? "var(--panel)" : m.bg }}><m.Icon size={12} /> {m.label}</span>
-        {aprovado && <span className="conf-badge" style={{ color: "var(--green)", background: "var(--green-bg)" }}><CheckCircle2 size={12} /> Aprovado</span>}
-        {l.naoVendido && <span className="conf-badge nao-vendido"><AlertTriangle size={12} /> Não foi vendido</span>}
+    <div className={cn("px-4 py-3", l.alertaTecnico ? "border-l-2 border-alert bg-alert/10" : FUNDO_DO_TOM[tomDaCor(m.color)])}>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {selecionavel && <Checkbox aria-label="Selecionar linha" checked={selecionado} onCheckedChange={onToggleSelecionar} />}
+        <span className="mono w-20 shrink-0 text-xs text-text-mute">{l.catNum}.{l.codigo || "—"}</span>
+        <Badge tone={tomDaCor(m.color)}><m.Icon size={12} aria-hidden="true" /> {m.label}</Badge>
+        {aprovado && <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Aprovado</Badge>}
+        {l.naoVendido && <Badge tone="danger"><AlertTriangle size={12} aria-hidden="true" /> Não foi vendido</Badge>}
       </div>
-      <div className="conf-cols">
-        <div className="conf-col">
-          <div className="conf-col-label">{colALabel}</div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="min-w-0">
+          <div className="label-mono mb-1 text-text-mute">{colALabel}</div>
           {l.a ? (
             <>
-              <div className="conf-desc">{l.a.desc}</div>
-              <div className="conf-meta mono">{l.a.qtd ?? "—"} {l.a.un || ""} · {l.a.extra || "—"}</div>
-              <div className="conf-meta mono">{l.a.valor != null ? fmtBRL(l.a.valor) : "—"}</div>
+              <div className="text-sm text-text">{l.a.desc}</div>
+              <div className="mono mt-1 text-xs tabular-nums text-text-mute">{l.a.qtd ?? "—"} {l.a.un || ""} · {l.a.extra || "—"}</div>
+              <div className="mono mt-1 text-xs tabular-nums text-text-mute">{l.a.valor != null ? fmtBRL(l.a.valor) : "—"}</div>
             </>
-          ) : <div className="conf-vazio">— {vazioALabel} —</div>}
+          ) : <div className="text-xs italic text-text-mute">— {vazioALabel} —</div>}
         </div>
-        <div className="conf-col">
-          <div className="conf-col-label">{colBLabel}</div>
+        <div className="min-w-0">
+          <div className="label-mono mb-1 text-text-mute">{colBLabel}</div>
           {editando ? (
-            <div className="conf-edit">
-              <input className="form-input" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Descrição" />
-              <div className="conf-edit-row">
-                <input className="form-input" style={{ width: 70 }} value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="Qtd." />
-                <input className="form-input" style={{ width: 90 }} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Valor" />
+            <div className="flex flex-col gap-2">
+              <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Descrição" aria-label="Descrição" />
+              <div className="flex gap-2">
+                <Input className="w-20" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="Qtd." aria-label="Qtd." />
+                <Input className="w-24" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Valor" aria-label="Valor" />
               </div>
-              <div className="conf-edit-actions">
-                <Button variant="outline" type="button" onClick={() => setEditando(false)}>Cancelar</Button>
-                <Button type="button" onClick={salvar}>Salvar</Button>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" type="button" onClick={() => setEditando(false)}>Cancelar</Button>
+                <Button size="sm" type="button" onClick={salvar}>Salvar</Button>
               </div>
             </div>
           ) : l.b ? (
             <>
-              <div className="conf-desc">{l.b.desc}</div>
-              <div className="conf-meta mono">{l.b.qtd ?? "—"} {l.b.un || ""} · {l.b.extra || "—"}</div>
-              <div className="conf-meta mono">{l.b.valor != null ? fmtBRL(l.b.valor) : "—"}</div>
+              <div className="text-sm text-text">{l.b.desc}</div>
+              <div className="mono mt-1 text-xs tabular-nums text-text-mute">{l.b.qtd ?? "—"} {l.b.un || ""} · {l.b.extra || "—"}</div>
+              <div className="mono mt-1 text-xs tabular-nums text-text-mute">{l.b.valor != null ? fmtBRL(l.b.valor) : "—"}</div>
             </>
-          ) : <div className="conf-vazio">— {vazioBLabel} —</div>}
+          ) : <div className="text-xs italic text-text-mute">— {vazioBLabel} —</div>}
         </div>
       </div>
       {l.alertaTecnico && (
-        <div className="conf-motivo">
-          <span className="alerta-conf">⚠️ <b>{partesDoAlerta(l.alertaTecnico) ? `${partesDoAlerta(l.alertaTecnico).titulo}:` : "Alerta de conferência técnica:"}</b></span>{" "}
-          <span>{partesDoAlerta(l.alertaTecnico)?.corpo ?? l.alertaTecnico}</span>
+        <div className="mt-2 flex items-start gap-1 border-t border-dashed border-line-1 pt-2 text-xs text-alert">
+          <AlertTriangle size={14} aria-hidden="true" className="mt-px shrink-0" />
+          <span>
+            <span className="font-semibold">{partesDoAlerta(l.alertaTecnico) ? `${partesDoAlerta(l.alertaTecnico).titulo}:` : "Alerta de conferência técnica:"}</span>{" "}
+            {partesDoAlerta(l.alertaTecnico)?.corpo ?? l.alertaTecnico}
+          </span>
         </div>
       )}
-      {l.motivo && <div className="conf-motivo">{l.motivo}</div>}
+      {l.motivo && (
+        <div className="mt-2 flex items-start gap-1 border-t border-dashed border-line-1 pt-2 text-xs text-warning">
+          <span>{l.motivo}</span>
+        </div>
+      )}
       {l.status !== "ok" && !editando && (
-        <div className="conf-acoes">
-          <Button variant="outline" type="button" onClick={() => setEditando(true)}><SlidersHorizontal size={12} /> Editar planilha</Button>
-          {!aprovado && <Button size="sm" type="button" onClick={onAprovar}><CheckCircle2 size={12} /> Aprovar</Button>}
+        <div className="mt-3 flex justify-end gap-2 border-t border-dashed border-line-1 pt-3">
+          <Button variant="outline" size="sm" type="button" onClick={() => setEditando(true)}><SlidersHorizontal size={14} aria-hidden="true" /> Editar planilha</Button>
+          {!aprovado && <Button size="sm" type="button" onClick={onAprovar}><CheckCircle2 size={14} aria-hidden="true" /> Aprovar</Button>}
         </div>
       )}
     </div>
@@ -6633,19 +6651,21 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
           {onAprovarLinha && pendentesVisiveis.length > 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {selecionados.size === 0 ? (
-                <Button variant="outline" size="sm" type="button" onClick={selecionarTodasPendentes}>Selecionar todas as pendências {buscando ? "desta busca" : "visíveis"} ({pendentesVisiveis.length})</Button>
+                <Button variant="outline" type="button" onClick={selecionarTodasPendentes}>Selecionar todas as pendências {buscando ? "desta busca" : "visíveis"} ({pendentesVisiveis.length})</Button>
               ) : (
                 <>
-                  <span className="text-sm font-semibold">
+                  <span className="text-sm text-text">
                     {selecionados.size} selecionada{selecionados.size > 1 ? "s" : ""}
                     {selecionadosEscondidos > 0 && (
-                      <b className="text-warning" title="Selecionadas que a busca está escondendo — elas também serão aprovadas">
+                      <span className="text-warning" title="Selecionadas que a busca está escondendo — elas também serão aprovadas">
                         {" · "}{selecionadosEscondidos} fora da busca
-                      </b>
+                      </span>
                     )}
                   </span>
-                  <Button variant="outline" size="sm" type="button" onClick={limparSelecao}>Limpar seleção</Button>
-                  <Button size="sm" type="button" onClick={aprovarSelecionados}><CheckCircle2 size={16} /> Aprovar selecionadas</Button>
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    <Button variant="outline" type="button" onClick={limparSelecao}>Limpar seleção</Button>
+                    <Button type="button" onClick={aprovarSelecionados}><CheckCircle2 size={16} aria-hidden="true" /> Aprovar selecionadas</Button>
+                  </div>
                 </>
               )}
             </div>
@@ -6667,16 +6687,18 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
                 <Colapsavel key={num} aberto={aberto} onAbrir={() => abreNaBusca.alternar(g, () => toggle(g))}
                   cabecalho={
                     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                      <span className="mono text-text-mute">{num}</span>
-                      <span className="min-w-0 flex-1 font-semibold">{nome}</span>
-                      {/* Marca a verba com alerta técnico mesmo fechada — senão
-                          o aviso fica escondido atrás de um clique que ninguém
-                          sabe que precisa dar. */}
-                      {alertaGrupo && <span className="text-alert" title="Esta verba tem alerta de conferência técnica"><AlertTriangle size={16} /></span>}
-                      <Badge tone="neutral">{itens.length} {itens.length === 1 ? "linha" : "linhas"}</Badge>
-                      <Badge tone={pend === 0 ? "success" : "warning"}>
-                        {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
-                      </Badge>
+                      <span className="mono w-6 shrink-0 text-xs text-text-mute">{num}</span>
+                      <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{nome}</span>
+                      <span className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:w-56">
+                        {/* Marca a verba com alerta técnico mesmo fechada — senão
+                            o aviso fica escondido atrás de um clique que ninguém
+                            sabe que precisa dar. */}
+                        {alertaGrupo && <span className="text-alert" title="Esta verba tem alerta de conferência técnica"><AlertTriangle size={16} aria-hidden="true" /></span>}
+                        <Badge tone="neutral">{itens.length} {itens.length === 1 ? "linha" : "linhas"}</Badge>
+                        <Badge tone={pend === 0 ? "success" : "warning"}>
+                          {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
+                        </Badge>
+                      </span>
                     </span>
                   }>
                   {alertaGrupo && (
@@ -6719,11 +6741,11 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             {naoAnalisadas.map((c) => (
               <Colapsavel key={c.num} aberto={false} podeAbrir={false}
                 cabecalho={
-                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-text-soft">
-                    <span className="mono text-text-mute">{c.num}</span>
-                    <span className="min-w-0 flex-1 font-semibold">{c.nome}</span>
+                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <span className="mono w-6 shrink-0 text-xs text-text-mute">{c.num}</span>
+                    <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{c.nome}</span>
                     <span className="text-xs text-text-mute">{motivoVerbaNaoAnalisada(c.num, c.nome)}</span>
-                    <Badge tone="neutral">N/A</Badge>
+                    <span className="flex shrink-0 justify-end sm:w-56"><Badge tone="neutral">N/A</Badge></span>
                   </span>
                 } />
             ))}
@@ -6866,34 +6888,36 @@ function ResumoCMV({ linhas, categorias }) {
   const { total, grupos } = calcularCMV(linhas, categorias);
 
   return (
-    <div className="cmv-painel">
-      <div className="cmv-topo">
-        <div className="cmv-bloco">
-          <div className="cmv-rotulo">CMV</div>
-          <div className="cmv-valor mono">{fmtBRL(total)}</div>
-          <div className="cmv-sub">custo da Vendido Planilha, somado por grupo</div>
-        </div>
-      </div>
+    <div className="flex flex-col gap-4">
+      <KpiMini label="CMV" value={fmtBRL(total)} hint="custo da Vendido Planilha, somado por grupo" tone="brand" />
 
       {grupos.length > 0 && (
-        <div className="cmv-grupos">
-          <div className="cmv-grupos-titulo">CMV por grupo</div>
-          {grupos.map((g) => (
-            <div key={g.num} className="cmv-linha">
-              <span className="cmv-linha-num mono">{g.num}</span>
-              <span className="cmv-linha-nome">
-                {g.nome}
-                {/* Entra no CMV, mas fica dito: é grupo que a planilha
-                    trouxe e a EAP da empresa não tem. */}
-                {g.foraDoPadrao && <span className="cmv-tag-fora">fora do padrão da EAP</span>}
-              </span>
-              <span className="cmv-linha-barra">
-                <span style={{ width: total > 0 ? `${(g.valor / total) * 100}%` : 0 }} />
-              </span>
-              <span className="cmv-linha-valor mono">{fmtBRL(g.valor)}</span>
+        <Card>
+          <CardHeader>
+            <CardTitle>CMV por grupo</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="flex gap-2 px-4 py-2 text-xs text-text-mute" aria-hidden="true">
+              <span className="w-6 shrink-0" />
+              <span className="min-w-0 flex-1">Grupo</span>
+              <span className="w-32 shrink-0 text-center">CMV</span>
             </div>
-          ))}
-        </div>
+            {grupos.map((g) => (
+              <div key={g.num} className="flex items-center gap-2 border-b border-line-1 px-4 py-3 last:border-b-0">
+                <span className="mono w-6 shrink-0 text-xs text-text-mute">{g.num}</span>
+                <span className="min-w-0 flex-1 text-sm font-semibold text-text sm:w-64 sm:flex-none">
+                  {g.nome}
+                  {/* Entra no CMV, mas fica dito: é grupo que a planilha
+                      trouxe e a EAP da empresa não tem. */}
+                  {g.foraDoPadrao && <Badge tone="warning" className="ml-2">fora do padrão da EAP</Badge>}
+                </span>
+                <Progress value={total > 0 ? (g.valor / total) * 100 : 0} aria-label={`Participação de ${g.nome} no CMV`}
+                  className="hidden min-w-10 flex-1 sm:block" />
+                <span className="mono w-32 shrink-0 text-right text-sm tabular-nums text-text">{fmtBRL(g.valor)}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
@@ -6941,27 +6965,27 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
         <Alert tone="success"><AlertDescription>CMV liberado — Executivo e etapas seguintes abertos.</AlertDescription></Alert>
       ) : (
         <Card>
-          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-2 text-sm">
               {cmvApurado ? (
-                <><CheckCircle2 size={16} className="mt-1 shrink-0 text-success" /> <span>
+                <><CheckCircle2 size={16} aria-hidden="true" className="mt-1 shrink-0 text-success" /> <span>
                   Liberar o CMV de <b>{fmtBRL(cmvTotal)}</b> abre o Executivo e as etapas seguintes.
                 </span></>
               ) : (
-                <><Lock size={16} className="mt-1 shrink-0 text-text-mute" /> <span>
+                <><Lock size={16} aria-hidden="true" className="mt-1 shrink-0 text-text-mute" /> <span>
                   <b>CMV ainda não apurado.</b> O Executivo abre quando a <b>Vendido Planilha</b> trouxer
                   valor — confira se ela subiu com a coluna de custo.
                 </span></>
               )}
             </div>
-            <Button className="shrink-0" disabled={!podeLiberar} onClick={async () => {
+            <Button size="sm" className="shrink-0" disabled={!podeLiberar} onClick={async () => {
               if (await confirmar({
                 titulo: `Liberar o CMV de ${fmtBRL(cmvTotal)}?`,
                 mensagem: "Este vira o teto de custo da obra, e o Executivo e as etapas seguintes abrem para a equipe.",
                 confirmar: "Liberar CMV", perigo: false,
               })) onAprovar(cmvTotal);
             }}>
-              <ShieldCheck size={16} /> Liberar CMV
+              <ShieldCheck size={14} aria-hidden="true" /> Liberar CMV
             </Button>
           </CardContent>
         </Card>
@@ -7694,28 +7718,30 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           conta o mesmo e leva ao mesmo lugar — duas portas pra mesma sala,
           uma delas em forma de paragrafo. */}
       <p className="text-sm text-text-soft">
-        <b className="text-base text-text">{fmtBRL(liberado)}</b> de {fmtBRL(total)} liberados para compra
+        <span className="mono font-semibold tabular-nums text-text">{fmtBRL(liberado)}</span> de <span className="mono tabular-nums">{fmtBRL(total)}</span> liberados para compra
       </p>
 
       {sel.size > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold"><b>{sel.size}</b> {sel.size === 1 ? "linha selecionada" : "linhas selecionadas"}</span>
+          <span className="text-sm text-text">{sel.size} {sel.size === 1 ? "linha selecionada" : "linhas selecionadas"}</span>
           {(() => {
             const naTela = new Set(grupos.flatMap((g) => g.itens.map((x) => x.chave)));
             const fora = [...sel].filter((k) => !naTela.has(k)).length;
             return fora > 0 ? <span className="text-sm text-text-mute">· {fora} fora do que está na tela</span> : null;
           })()}
-          {podeEditar && onConcluir && (
-            <Button size="sm" onClick={() => {
-              const alvos = todosOsGrupos.flatMap((g) => g.itens)
-                .filter((x) => sel.has(x.chave) && !x.titulo)
-                .map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
-              if (!alvos.length) return;
-              onConcluir(alvos, true);
-              setSel(new Set());
-            }}><Check size={16} /> Concluir {sel.size}</Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setSel(new Set())}>Limpar seleção</Button>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {podeEditar && onConcluir && (
+              <Button onClick={() => {
+                const alvos = todosOsGrupos.flatMap((g) => g.itens)
+                  .filter((x) => sel.has(x.chave) && !x.titulo)
+                  .map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
+                if (!alvos.length) return;
+                onConcluir(alvos, true);
+                setSel(new Set());
+              }}><Check size={16} aria-hidden="true" /> Concluir {sel.size}</Button>
+            )}
+            <Button variant="outline" onClick={() => setSel(new Set())}>Limpar seleção</Button>
+          </div>
         </div>
       )}
 
@@ -7753,13 +7779,14 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           return (
             <Collapsible key={g.num} open={aberto} onOpenChange={() => abreNaBusca.alternar(g.num, () => alternar(g.num))}
               className="border-b border-line-1 last:border-b-0">
-              <div className="flex flex-col gap-2 px-4 py-3 md:flex-row md:items-center">
+              <div className="flex flex-col gap-2 px-4 py-3 md:flex-row md:items-start">
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal p-0 text-left font-normal hover:bg-transparent">
                     {aberto ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />}
                     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                      <span className="mono text-text-mute">{g.num}</span>
-                      <span className="font-semibold">{g.nome}</span>
+                      <span className="mono w-6 shrink-0 text-xs text-text-mute">{g.num}</span>
+                      <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{g.nome}</span>
+                      <span className="flex shrink-0 flex-wrap justify-end gap-2 lg:w-96">
                       {/* O CONTADOR E' DO GRUPO, sempre — nao do recorte na tela.
 
                           Com o filtro de travados ligado ela leu "13 de 8
@@ -7783,23 +7810,24 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                       <Badge tone="neutral">{compraveisDoGrupo(g).filter((x) => estaConcluido(x)).length} de {compraveisDoGrupo(g).length} concluído executivo</Badge>
                       <Badge tone="neutral">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberado para compra</Badge>
                       {filtrando && <Badge tone="warning">{g.itens.length} nesta busca</Badge>}
+                      </span>
                     </span>
                   </Button>
                 </CollapsibleTrigger>
                 <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                  <span className="mono text-xs text-text-mute">{fmtBRL(g.liberado)} de {fmtBRL(g.total)}</span>
+                  <span className="mono shrink-0 text-right text-xs tabular-nums text-text-mute md:w-48">{fmtBRL(g.liberado)} de {fmtBRL(g.total)}</span>
                   {podeEditar && onConcluir && aConcluir.length > 0 && (
                     <Button variant="outline" size="sm"
                       title="Marca a verba inteira como concluída pelo executivo"
                       onClick={() => onConcluir(aConcluir.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
-                      <Check size={16} /> Concluir executivo {aConcluir.length}
+                      <Check size={14} aria-hidden="true" /> Concluir executivo {aConcluir.length}
                     </Button>
                   )}
                   {/* SO' ADMINISTRADOR LIBERA (decisao dela, ADR-005) — e o botao
                       some pra quem nao e', em vez de aparecer e recusar no clique. */}
                   {podeEditar && souAdmin && faltam.length > 0 && (
                     <Button size="sm" onClick={() => onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
-                      <Check size={16} /> Liberar para compra {faltam.length}
+                      <Check size={14} aria-hidden="true" /> Liberar para compra {faltam.length}
                     </Button>
                   )}
                   {podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && (
@@ -7810,7 +7838,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                         onConferirVarios(alvos, true);
                         onLiberar(alvos, true);
                       }}>
-                      <AlertTriangle size={16} /> Conferi os alertas · liberar {travadosAqui.length}
+                      <AlertTriangle size={14} aria-hidden="true" /> Conferi os alertas · liberar {travadosAqui.length}
                     </Button>
                   )}
                 </div>
@@ -7841,8 +7869,8 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                         <TableHead className="hidden w-24 md:table-cell">Cód.</TableHead>
                         <TableHead>Produto</TableHead>
                         <TableHead className="hidden w-20 text-center md:table-cell">Qtd</TableHead>
-                        <TableHead className="hidden w-28 text-right md:table-cell">Custo unit.</TableHead>
-                        <TableHead className="w-28 text-right">Total</TableHead>
+                        <TableHead className="hidden w-28 text-center md:table-cell">Custo unit.</TableHead>
+                        <TableHead className="w-28 text-center">Total</TableHead>
                         {/* DUAS COLUNAS, e so' (correcao dela, 18/09/2026): "o fluxo
                             correto e': Concluido Executivo / Aprovado para Compra / e
                             so'. o aprovado para compra so' libera se o concluido
@@ -7884,7 +7912,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                           <TableCell>
                             {/* O texto inteiro fica no title: a descricao corta em
                                 duas linhas pra lista caber na tela. */}
-                            <div className="line-clamp-2 text-sm" title={x.it.desc}>{x.it.desc}</div>
+                            <div className="line-clamp-2 text-sm text-text" title={x.it.desc}>{x.it.desc}</div>
                             {/* Codigo, especificacao, fornecedor e ambiente: a linha de
                                 conferencia contra a planilha. Dentro da celula do produto,
                                 e nao em colunas proprias — sao dez informacoes por linha, e
@@ -7901,7 +7929,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 planilha aparece aqui dizendo por que, e por quem. */}
                             {x.it.excluido && (
                               <div className="mt-1 flex flex-wrap items-baseline gap-1 text-xs text-danger">
-                                <X size={12} /> <b>Removido do executivo</b>
+                                <X size={12} aria-hidden="true" /> <span>Removido do executivo</span>
                                 {x.it.excluidoMotivo ? <> — {x.it.excluidoMotivo}</> : <> — sem justificativa registrada</>}
                                 {x.it.excluidoPor ? <span className="text-text-mute"> · {x.it.excluidoPor}</span> : null}
                               </div>
@@ -7911,7 +7939,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 na mesma linha era o que engordava a lista. */}
                             {x.pendencia && x.pendencia.tipo !== "cliente" && (
                               <div className={`mt-1 flex flex-wrap items-center gap-1 text-xs ${x.it.alertaConferido ? "text-text-mute" : "text-alert"}`}>
-                                <AlertTriangle size={12} />
+                                <AlertTriangle size={12} aria-hidden="true" />
                                 <span>{x.pendencia.texto}</span>
                                 {podeEditar && !x.liberado && (
                                   <Button variant="ghost" size="sm" type="button"
@@ -7928,10 +7956,10 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                             )}
                           </TableCell>
                           <TableCell className="mono hidden text-center md:table-cell">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{x.it.un}</span></TableCell>
-                          <TableCell className="mono hidden text-right md:table-cell">{x.it.custoUnitario != null ? fmtBRL(x.it.custoUnitario) : "—"}</TableCell>
+                          <TableCell className="mono hidden text-right tabular-nums md:table-cell">{x.it.custoUnitario != null ? fmtBRL(x.it.custoUnitario) : "—"}</TableCell>
                           {/* O TOTAL e' o do item inteiro, material mais mao de obra: e'
                               o numero da planilha, e e' com ele que se confere. */}
-                          <TableCell className="mono text-right">{fmtBRL(x.valor)}</TableCell>
+                          <TableCell className="mono text-right tabular-nums">{fmtBRL(x.valor)}</TableCell>
 
                           {/* CONCLUIDO EXECUTIVO — quem trabalha a linha diz que terminou. */}
                           <TableCell className="text-center">
@@ -7942,7 +7970,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 <Badge tone="success" title={x.it.concluidoExecutivo
                                   ? `Concluído em ${new Date(x.it.concluidoExecutivo.em).toLocaleDateString("pt-BR")}${x.it.concluidoExecutivo.por ? ` por ${x.it.concluidoExecutivo.por}` : ""}`
                                   : "Concluído porque já está aprovado para compra"}>
-                                  <Check size={12} /> concluído
+                                  <Check size={12} aria-hidden="true" /> concluído
                                 </Badge>
                                 {podeEditar && onConcluir && x.it.concluidoExecutivo && (
                                   <Button variant="ghost" size="sm" type="button"
@@ -7988,7 +8016,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 <Badge tone="success" title={x.it.liberadoCompra?.em
                                   ? `Liberado em ${new Date(x.it.liberadoCompra.em).toLocaleDateString("pt-BR")}${x.it.liberadoCompra.por ? ` por ${x.it.liberadoCompra.por}` : ""}`
                                   : "Já estava no fluxo de compras"}>
-                                  <Check size={12} /> liberado
+                                  <Check size={12} aria-hidden="true" /> liberado
                                 </Badge>
                                 {podeEditar && souAdmin && x.it.liberadoCompra && !x.it.comprado && (
                                   <Button variant="ghost" size="sm" type="button"
@@ -9031,13 +9059,13 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     { rotulo: "Ambiente", classe: "w-20" },
     { rotulo: "Qtd.", classe: "w-14 text-center" },
     { rotulo: "Un.", classe: "w-12 text-center" },
-    { rotulo: "Custo material", classe: "w-24 text-right" },
-    { rotulo: "Custo M.O.", classe: "w-24 text-right" },
-    { rotulo: "Total material", classe: "w-24 text-right" },
-    { rotulo: "Total M.O.", classe: "w-24 text-right" },
-    { rotulo: "Custo total", classe: "w-24 text-right" },
-    { rotulo: "Vendido (criativo)", classe: "w-24 border-l-2 border-line-2 text-right" },
-    { rotulo: "Diferença", classe: "w-24 text-right" },
+    { rotulo: "Custo material", classe: "w-24 text-center" },
+    { rotulo: "Custo M.O.", classe: "w-24 text-center" },
+    { rotulo: "Total material", classe: "w-24 text-center" },
+    { rotulo: "Total M.O.", classe: "w-24 text-center" },
+    { rotulo: "Custo total", classe: "w-24 text-center" },
+    { rotulo: "Vendido (criativo)", classe: "w-24 border-l-2 border-line-2 text-center" },
+    { rotulo: "Diferença", classe: "w-24 text-center" },
     { rotulo: "", classe: "w-12" },
   ];
 
@@ -9112,7 +9140,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                 ))) return;
                 onPuxarDoCriativo();
               }}>
-                <Copy size={16} /> {temExecutivo ? "Recomeçar do criativo" : "Puxar do criativo"}
+                <Copy size={14} aria-hidden="true" /> {temExecutivo ? "Recomeçar do criativo" : "Puxar do criativo"}
               </Button>
             </AlertDescription>
           </Alert>
@@ -9122,7 +9150,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
 
         <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilhaExecutivo || [])} />
 
-        <div className="rounded-lg border border-line-1">
+        <Card>
           {verbas.map((c) => {
             const itens = c.itensPlanilhaExecutivo || [];
             /* Quantos itens desta verba casam com a busca. A LISTA NAO E'
@@ -9155,30 +9183,33 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
               /* abre mesmo sem itens: é onde se lança item manual */
               <Colapsavel key={c.num} aberto={aberto} podeAbrir
                 onAbrir={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}
-                cabecalho={<>
-                  <span className="mono w-6 shrink-0 text-xs font-semibold text-text-mute">{c.num}</span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-text">{c.nome}</span>
-                  {temItens && <Badge tone="neutral">{buscando ? `${nNaBusca} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</Badge>}
+                cabecalho={<span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="mono w-6 shrink-0 text-xs text-text-mute">{c.num}</span>
+                  <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text">{c.nome}</span>
                   {/* O vendido fica à vista: sem ele, "acima" e "abaixo" são
-                      afirmações sem referência na tela. */}
-                  {temItens && baseVerba > 0 && (
+                      afirmações sem referência na tela. Sem vendido, a coluna
+                      continua ali vazia, pra as outras não deslizarem. */}
+                  {temItens && baseVerba > 0 ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="mono shrink-0 cursor-help text-xs text-text-mute">vendido {fmtBRL(baseVerba)}</span>
+                        <span className="mono w-36 shrink-0 cursor-help text-right text-xs tabular-nums text-text-mute">vendido {fmtBRL(baseVerba)}</span>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs whitespace-normal">Valor vendido deste grupo no criativo — a referência da comparação</TooltipContent>
                     </Tooltip>
-                  )}
-                  {delta && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge tone={tomDoDelta[delta.tom] || "neutral"} className="cursor-help">{delta.texto}</Badge>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs whitespace-normal">Movimento desta verba em relação ao que foi vendido nela. Uma verba acima não é estouro do CMV — o CMV é o total da obra, e está no resumo acima.</TooltipContent>
-                    </Tooltip>
-                  )}
-                  <span className="mono w-32 shrink-0 text-right text-sm text-text">{temItens ? fmtBRL(subtotal) : "—"}</span>
-                </>}>
+                  ) : <span className="hidden w-36 shrink-0 sm:block" aria-hidden="true" />}
+                  <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-44">
+                    {temItens && <Badge tone="neutral">{buscando ? `${nNaBusca} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</Badge>}
+                    {delta && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge tone={tomDoDelta[delta.tom] || "neutral"} className="cursor-help">{delta.texto}</Badge>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs whitespace-normal">Movimento desta verba em relação ao que foi vendido nela. Uma verba acima não é estouro do CMV — o CMV é o total da obra, e está no resumo acima.</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </span>
+                  <span className="mono w-32 shrink-0 text-right text-sm font-semibold tabular-nums text-text">{temItens ? fmtBRL(subtotal) : "—"}</span>
+                </span>}>
                 {temItens && (
                   <div className="overflow-x-auto border-t border-line-1 bg-surface-2">
                     <Table className="w-full table-fixed">
@@ -9239,28 +9270,16 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                   <span className={`mono text-text-mute ${corte}`}>{it.codigo || "—"}</span>
                                   {!congelado && !it.excluido && (
                                     <span className="inline-flex">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button variant="ghost" size="icon" className="h-7 w-7"
-                                            onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
-                                            aria-label={`Inserir item abaixo do ${it.codigo || "item"}`}>
-                                            <Plus size={14} />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>Inserir item abaixo do {it.codigo || "item"}</TooltipContent>
-                                      </Tooltip>
+                                      <BotaoIcone rotulo={`Inserir item abaixo do ${it.codigo || "item"}`} variant="ghost" className="h-7 w-7"
+                                        onClick={() => setBuscandoEm({ verba: c.num, depois: i })}>
+                                        <Plus size={14} aria-hidden="true" />
+                                      </BotaoIcone>
                                       {/* Substituir: exclui este e encaixa o escolhido
                                           logo abaixo, ligado a ele. */}
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button variant="ghost" size="icon" className="h-7 w-7"
-                                            onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}
-                                            aria-label={`Substituir ${it.codigo || "este item"} por outro`}>
-                                            <ArrowLeftRight size={14} />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>Substituir {it.codigo || "este item"} por outro</TooltipContent>
-                                      </Tooltip>
+                                      <BotaoIcone rotulo={`Substituir ${it.codigo || "este item"} por outro`} variant="ghost" className="h-7 w-7"
+                                        onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}>
+                                        <ArrowLeftRight size={14} aria-hidden="true" />
+                                      </BotaoIcone>
                                     </span>
                                   )}
                                 </div>
@@ -9322,10 +9341,10 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                               {/* Referência, não é editável: borda própria e tom
                                   apagado, pra não competir com as colunas em que
                                   se digita. */}
-                              <TableCell className={`mono whitespace-nowrap border-l-2 border-line-2 align-middle text-right text-text-mute ${corte}`}>{it.vendido?.custo != null ? fmtBRL(it.vendido.custo) : "—"}</TableCell>
+                              <TableCell className={`mono whitespace-nowrap border-l-2 border-line-2 align-middle text-right tabular-nums text-text-mute ${corte}`}>{it.vendido?.custo != null ? fmtBRL(it.vendido.custo) : "—"}</TableCell>
                               {/* A coluna do veredito. É a única aqui que muda de
                                   cor, e é o que se procura ao varrer a lista. */}
-                              <TableCell className={`mono whitespace-nowrap align-middle text-right font-semibold ${corte}`}>
+                              <TableCell className={`mono whitespace-nowrap align-middle text-right font-semibold tabular-nums ${corte}`}>
                                 {(() => {
                                   const base = it.vendido?.custo;
                                   // Sem referência não há o que comparar — o traço
@@ -9340,19 +9359,14 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                               </TableCell>
                               <TableCell className="overflow-visible align-middle text-center">
                                 {!congelado && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7"
-                                        aria-label={it.excluido ? "Trazer de volta" : "Remover do executivo"}
+                                      <BotaoIcone variant="ghost" className="h-7 w-7"
+                                        rotulo={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}
                                         onClick={() => (it.excluido
                                           ? onEditarItem(c.num, i, { excluido: false })
                                           : setRemovendo(`${c.num}:${i}`))}
                                       >
-                                        {it.excluido ? <RotateCcw size={14} /> : <X size={14} />}
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>{it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}</TooltipContent>
-                                  </Tooltip>
+                                        {it.excluido ? <RotateCcw size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
+                                      </BotaoIcone>
                                 )}
                               </TableCell>
                             </TableRow>
@@ -9430,7 +9444,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                   ) : buscandoEm?.verba === c.num ? null : (
                     <div className="border-t border-line-1 px-4 py-2">
                       <Button variant="outline" size="sm" onClick={() => setBuscandoEm({ verba: c.num, depois: null })}>
-                        <Plus size={14} /> Adicionar item no fim desta verba
+                        <Plus size={14} aria-hidden="true" /> Adicionar item no fim desta verba
                       </Button>
                     </div>
                   )
@@ -9440,12 +9454,12 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
           })}
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t-2 border-text px-4 py-3">
-            <span className="text-sm font-bold">Total da planilha executivo</span>
-            <span className="flex flex-wrap items-baseline gap-4">
-              <span className="mono text-xs text-text-mute">
+            <span className="text-sm font-semibold text-text">Total da planilha executivo</span>
+            <span className="flex flex-wrap items-baseline justify-end gap-4">
+              <span className="mono text-xs tabular-nums text-text-mute">
                 material {fmtBRL(totalMaterial)} · mão de obra {fmtBRL(totalMO)}
               </span>
-              <span className="mono text-sm font-bold">{fmtBRL(total)}</span>
+              <span className="mono w-32 text-right text-sm font-semibold tabular-nums">{fmtBRL(total)}</span>
             </span>
           </div>
 
@@ -9528,7 +9542,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
               </Alert>
             )}
           </div>
-        </div>
+        </Card>
       </PageShell>
     </>
   );
@@ -22651,19 +22665,14 @@ export default function App() {
         /* Coluna propria, e estreita: com o rotulo longo ela encostava na
            tabela de itens logo abaixo e passava a ser lida como cabecalho
            dela — "Destino" cai bem embaixo. */
-        .grp-aditivo { display: inline-flex; align-items: center; gap: 4px; background: var(--purple-soft); color: var(--purple); border-radius: 20px; padding: 2px 9px; font-size: 10px; font-weight: 700; white-space: nowrap; }
         .item-aditivo { background: var(--purple-tint); }
         .chip-aditivo { display: inline-flex; align-items: center; gap: 3px; background: var(--purple-soft); color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: var(--font-mono); margin-left: 6px; }
         .cmv-aditivos { margin-top: 16px; padding-top: 4px; border-top: 1px dashed var(--border); }
-        .cmv-aditivos .cmv-grupos-titulo { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         .cmv-adit-total { font-size: 14px; font-weight: 700; color: var(--ink); }
         .cmv-adit-total.credito { color: var(--green); }
         .cmv-adit-nota { font-size: 11px; color: var(--ink-3); margin: -2px 0 8px; line-height: 1.45; }
         .cmv-tag-adit { display: inline-block; margin-left: 7px; background: var(--purple-soft); color: var(--purple); border-radius: 4px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; font-family: var(--font-mono); }
         .cmv-adit-parcelas { display: inline-flex; gap: 8px; font-size: 11px; }
-        .adit-mais { color: var(--blue); }
-        .adit-menos { color: var(--danger); }
-        .cmv-linha-valor.credito { color: var(--green); }
         /* O nome vinha em 17px/700 — do tamanho do titulo do cartao (18px)
            e mais pesado que ele. O texto mais forte do bloco passava a ser um
            dado, nao o cabecalho, e o nome ficava 1,7x o rotulo logo acima.
@@ -22699,7 +22708,6 @@ export default function App() {
         table.grp-itens th.c-qtd { width: 104px; }
         table.grp-itens th.right { width: 172px; }
         table.grp-itens th.center { width: 178px; }
-        .conf-cod { color: var(--text-soft); margin-right: 6px; font-size: 10.5px; }
         /* Bloqueado no Plano de Compras: cadeado e tom neutro. Nao e' erro —
            e' a linha esperando a aprovacao, e ela conta no dinheiro. */
         .pill-bloqueado { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); color: var(--text-soft); border: 1px solid var(--line-2); }
@@ -22759,7 +22767,6 @@ export default function App() {
         .ad-espec { display: block; margin-top: 7px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
         .ad-espec-in { margin-top: 3px; width: 100%; font-size: 12px; resize: vertical; }
         .ad-margem-g { font-size: 10.5px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
-        .adit-orcar { color: var(--alert); font-weight: 600; }
 
 
         /* ---- O DOCUMENTO ----
@@ -23083,13 +23090,9 @@ export default function App() {
         /* PLANO DE COMPRAS — grupo da EAP em forma de lista.
            A linha fechada carrega o que se pergunta primeiro (quanto de
            MAT, quanto de MO); o item so aparece ao abrir. */
-        .grp-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
         /* O cabecalho deixou de ser um botao pra caber controle
            dentro dele (o campo de dias do prazo). Quem abre o grupo agora
            e so a parte esquerda, que segue sendo a maior area da linha. */
-        .grp-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-right: 16px; }
-        .grp-head:hover { background: var(--surface-2); }
-        .grp-toggle { flex: 1; min-width: 0; background: transparent; border: none; padding: 12px 16px; cursor: pointer; font-family: inherit; text-align: left; }
         /* A ALTURA CEDE, O NOME NAO.
            Com a edicao ligada a barra ganha ate' tres botoes a' direita, e o
            nome da verba era o unico item sem trava de encolhimento — ia ate'
@@ -23097,28 +23100,12 @@ export default function App() {
            etiquetas, sem dizer de que verba se tratava. Agora as etiquetas
            descem de linha e o nome fica. Mesma regra do alerta da Conf.
            Executivo (18/09/2026): quem cede e' a altura. */
-        .grp-esq { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; row-gap: 6px; }
-        .grp-esq > svg { flex-shrink: 0; }
-        .grp-num { font-size: 11.5px; color: var(--ink-3); width: 20px; flex-shrink: 0; }
-        .grp-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 10ch; }
-        .grp-conta { font-size: 10.5px; color: var(--ink-3); background: var(--panel); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
-        .grp-avulsos { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--purple); background: var(--purple-soft); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         /* MAT e MO em colunas de largura fixa: com valores alinhados da
            direita, os grupos viram uma coluna so de cima a baixo e da pra
            comparar verba com verba sem ler numero por numero. */
-        .grp-dir { display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
-        .grp-tot { min-width: 108px; text-align: right; }
-        .grp-tot-rot { font-size: 9.5px; font-weight: 700; color: var(--ink-3); letter-spacing: 0.06em; }
-        .grp-tot-val { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
         /* PRAZO DE COMPRA — a data, nao o prazo do fornecedor.
            Ninguem subtrai 75 dias de cabeca no meio de uma conferencia de
            200 itens, entao a celula ja mostra a data e a contagem. */
-        .grp-prazo { min-width: 136px; text-align: right; }
-        .prazo-conta { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
-        .prazo-sem-data { font-size: 10.5px; max-width: 140px; line-height: 1.3; }
-        .grp-prazo.prazo-perto .grp-tot-val, .grp-prazo.prazo-perto .prazo-conta { color: var(--amber); }
-        .grp-prazo.prazo-vencido .grp-tot-val, .grp-prazo.prazo-vencido .prazo-conta { color: var(--red); font-weight: 700; }
-        .prazo-marca { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; background: var(--amber-bg); color: var(--amber); font-size: 9px; font-weight: 700; margin-left: 4px; vertical-align: middle; }
 
         /* Dashboard: a data que comanda os prazos, e as avulsas. */
         .entrega-panel { display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
@@ -23164,10 +23151,6 @@ export default function App() {
         .aloc-manual::after { content: ""; position: absolute; top: -2px; right: -2px; width: 5px; height: 5px; border-radius: 50%; background: var(--purple); }
         /* O select de verdade fica por cima da etiqueta, invisivel: a
            pessoa clica onde ja estava olhando e o teclado continua indo. */
-        .aloc-edit { position: relative; display: inline-block; }
-        .aloc-edit select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-family: inherit; }
-        .aloc-edit:hover .aloc { box-shadow: inset 0 0 0 1px var(--ink-3); }
-        .aloc-edit select:focus-visible + .aloc, .aloc-edit:focus-within .aloc { box-shadow: inset 0 0 0 2px var(--ink); }
 
         /* Avulso e a linha que NAO veio da planilha. Fica visivelmente
            diferente porque a pergunta "de onde saiu isto?" aparece toda
@@ -23186,7 +23169,6 @@ export default function App() {
         /* Separar a MO: acao pequena, ao lado da etiqueta que a motiva. */
         .btn-separar { display: inline-flex; align-items: center; gap: 3px; margin-top: 4px; background: transparent; border: 1px dashed var(--border); border-radius: 5px; padding: 1px 6px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; font-family: inherit; white-space: nowrap; }
         .btn-separar:hover { border-color: var(--purple); color: var(--purple); border-style: solid; }
-        .grp-acao { display: flex; align-items: center; gap: 9px; padding: 9px 14px; background: var(--amber-bg); border-bottom: 1px solid var(--border); font-size: 11.5px; color: var(--ink-2); }
         .btn-separar-grupo { margin-left: auto; background: var(--ink); color: var(--bg); border: none; border-radius: 6px; padding: 5px 11px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
         .btn-separar-grupo:hover { background: var(--purple); }
         /* As duas pontas do vinculo. Sem elas sao duas linhas parecidas em
@@ -23238,7 +23220,6 @@ export default function App() {
         .tipo-produto { background: var(--blue-bg); color: var(--blue); }
         .tipo-servico { background: var(--panel); color: var(--ink-3); }
         .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 6px; }
-        .chip-red { background: var(--red-bg); color: var(--red); }
 
         .sienge-match { display: flex; align-items: flex-start; gap: 7px; margin-top: 7px; padding: 7px 10px; border-radius: 7px; font-size: 11.5px; line-height: 1.45; }
         .sienge-match-icon { flex-shrink: 0; margin-top: 2px; }
@@ -23384,17 +23365,6 @@ export default function App() {
         .compras-empty-title { font-size: 15px; font-weight: 700; color: var(--ink); }
         .compras-empty-sub { font-size: 12.5px; color: var(--ink-3); max-width: 440px; }
         /* ---- Vendido: Conferência Contrato × Planilha ---- */
-        .conf-row { padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
-        .conf-row:last-child { border-bottom: none; }
-        .conf-row-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .conf-codigo { font-size: 11.5px; }
-        .conf-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
-        .conf-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .conf-col-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin-bottom: 3px; }
-        .conf-desc { font-size: 12.5px; color: var(--ink); line-height: 1.35; }
-        .conf-meta { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
-        .conf-vazio { font-size: 12px; color: var(--ink-3); font-style: italic; }
-        .conf-acoes { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
         .btn-editar-linha { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
         .btn-editar-linha:hover { border-color: var(--blue); color: var(--blue); }
         .btn-aprovar-linha { display: inline-flex; align-items: center; gap: 5px; background: var(--green); border: none; border-radius: 7px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; color: var(--bg); cursor: pointer; }
@@ -23404,11 +23374,6 @@ export default function App() {
            ela atravessa, e isso tem que estar na cor. */
         .btn-conferir-liberar { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
         .btn-conferir-liberar:hover { filter: brightness(0.97); }
-        .conf-edit { display: flex; flex-direction: column; gap: 6px; }
-        .conf-edit-row { display: flex; gap: 6px; }
-        .conf-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
-        .conf-check { width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
-        .conf-motivo { font-size: 11.5px; color: var(--amber); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-soft); }
 
         .aprovacao-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); margin-bottom: 12px; cursor: pointer; }
         .btn-aprovar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 10px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
@@ -23480,28 +23445,8 @@ export default function App() {
 
         /* Alerta de conferência técnica: bate em custo e quantidade, mas
            pode não caber no elevador nem casar com a infraestrutura. */
-        .conf-row.com-alerta { background: var(--alert-soft); box-shadow: inset 3px 0 0 var(--alert); }
-        .alerta-conf b { color: var(--danger); text-transform: uppercase; font-weight: 700; letter-spacing: 0.01em; }
-        .conf-badge.nao-vendido { color: var(--danger); background: var(--danger-soft); }
 
         /* CMV liberado — o teto que sai do depara */
-        .cmv-painel { background: var(--panel); border-radius: 14px; padding: 16px 18px; margin-bottom: 18px; }
-        .cmv-topo { display: flex; gap: 28px; flex-wrap: wrap; }
-        .cmv-bloco { min-width: 150px; }
-        .cmv-rotulo { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
-        .cmv-provisorio { font-size: 9.5px; background: var(--amber-bg); color: var(--amber); border-radius: 20px; padding: 1px 7px; letter-spacing: 0; text-transform: none; font-weight: 600; }
-        .cmv-valor { font-size: 22px; font-weight: 600; color: var(--ink); margin-top: 4px; }
-        .cmv-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
-        .cmv-grupos { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
-        .cmv-grupos-titulo { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-        .cmv-linha { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 11.5px; }
-        .cmv-linha-num { color: var(--ink-3); width: 22px; flex-shrink: 0; }
-        .cmv-tag-na { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 1px 6px; white-space: nowrap; }
-        .cmv-tag-fora { display: inline-block; margin-left: 7px; font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 4px; background: var(--alert-soft); color: var(--alert); vertical-align: middle; }
-        .cmv-linha-nome { color: var(--ink-2); width: 260px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .cmv-linha-barra { flex: 1; height: 6px; background: var(--surface-1); border-radius: 20px; overflow: hidden; min-width: 40px; }
-        .cmv-linha-barra span { display: block; height: 100%; background: var(--blue); border-radius: 20px; }
-        .cmv-linha-valor { width: 110px; text-align: right; color: var(--ink); flex-shrink: 0; }
 
         /* Célula que vira campo ao clicar */
         .celula-valor { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 2px 5px; font-size: 11.5px; color: var(--ink); cursor: text; width: 100%; text-align: right; font-family: var(--font-mono); }
@@ -23970,20 +23915,20 @@ export default function App() {
         .alert-toggle.active { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
         /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
-        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-alterado, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
+        :is(.pill, .sg-badge, .gc-selo, .chip, .aloc, .tipo-tag, .chip-aditivo, .cmv-tag-adit, .tag-mo, .tag-alterado, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
         :is(.soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
-        :is(.nav-count, .grp-conta, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        :is(.nav-count, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         .ad-obra-n { background: var(--brand); color: var(--bg); }
 
         /* ---------- Cartões e números (Card · KPI) ---------- */
         :is(.big-card, .gc-total, .flat-panel) { border-radius: 14px; }
         :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
-        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .conf-col-label, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
-        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .gc-total-val, .arq-topo-n, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
            largura da tela em vez de estourar a caixa com reticencias. */
-        .ec-val, .big-card-value, .cmv-valor { font-size: 26px; }
+        .ec-val, .big-card-value { font-size: 26px; }
         .gc-total-val { font-size: 32px; }
         .mini-stat-value, .saldo-valor { font-size: 20px; }
         .saldo-bloco.destaque .saldo-valor { font-size: 24px; }
@@ -24017,7 +23962,7 @@ export default function App() {
         .escolha-aba, .empty-note { color: var(--text-mute); }
 
         /* ---------- Progresso (Progress) ---------- */
-        .progress-track, .gc-track, .cmv-linha-barra, .cbar-track { height: 6px; border-radius: 999px; background: var(--surface-3); }
+        .progress-track, .gc-track, .cbar-track { height: 6px; border-radius: 999px; background: var(--surface-3); }
         .progress-fill { height: 100%; border-radius: 999px; background: var(--brand); }
         .cbar-vendido, .cbar-exec { height: 6px; border-radius: 999px; }
 
@@ -24125,7 +24070,7 @@ export default function App() {
 
           /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
              sao duas colunas: sao duas fitas de uma palavra por linha. */
-          .dash, .conf-cols, .escopo-conta, .escopo-campos, .form-row-3, .cad-campos, .ad-item-campos, .ad-item-campos.com-custo {
+          .dash, .escopo-conta, .escopo-campos, .form-row-3, .cad-campos, .ad-item-campos, .ad-item-campos.com-custo {
             /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
                min-width auto, e com isso se RECUSA a encolher abaixo do
                proprio conteudo. Na Inicio, as duas colunas viravam uma so'

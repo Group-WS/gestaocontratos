@@ -111,13 +111,17 @@ conf("os seis cliques passam pelo hook", cliques, 6);
    ============================================================ */
 /* A regra dela, de 18/09/2026, sobre o alerta da Conf. Executivo: o texto
    aparece inteiro e não some — quem cede é a ALTURA. Vale igual aqui. */
+/* O cabeçalho do grupo do Plano de Compras virou Colapsavel do DS: nome e
+   etiquetas num contêiner que quebra linha, e o nome com piso de largura
+   (basis-64) em vez de ir a zero. O nome aparece inteiro — quebra, não corta. */
+const grupoPlano = src.slice(src.indexOf("function GrupoPlano("), src.indexOf("function FormAvulsa("));
 conf("as etiquetas descem de linha em vez de espremer o nome",
-  src.includes(".grp-esq { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; row-gap: 6px; }"), true);
-conf("a seta nunca encolhe", src.includes(".grp-esq > svg { flex-shrink: 0; }"), true);
+  grupoPlano.includes('<span className="flex min-w-0 flex-1 flex-wrap items-start gap-x-4 gap-y-2">'), true);
+conf("a seta nunca encolhe (Colapsavel)", grupoPlano.includes("<Colapsavel aberto={expanded} onAbrir={onToggle}"), true);
 conf("e o nome tem um piso, em vez de ir a zero",
-  /\.grp-nome \{[^}]*min-width: 10ch;/.test(src), true);
-/* O piso sem as reticências viraria texto cortado no seco. */
-conf("... continuando com reticências", /\.grp-nome \{[^}]*text-overflow: ellipsis;/.test(src), true);
+  grupoPlano.includes('<span className="flex min-w-0 flex-1 basis-64 items-start gap-2">'), true);
+/* Sem truncate: o nome quebra de linha em vez de ser cortado. */
+conf("... e aparece inteiro, sem corte", /min-w-0 flex-1 text-sm font-semibold text-text">\{cat\.nome\}/.test(grupoPlano), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
