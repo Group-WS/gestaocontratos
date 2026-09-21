@@ -71,7 +71,10 @@ export function BotaoIcone({ rotulo, lado = "top", children, ...props }) {
    grupo de cima (o cargo do papel). `vazio`: o texto da opcao de ninguem. */
 const semAcento = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = "Ninguém", rotulo = "Escolher pessoa", disabled }) {
+/* `compacto`: o nome e' o proprio gatilho (botao ghost, texto do tamanho do
+   valor ao redor, so' o nome) — para trocar a pessoa no meio de uma faixa de
+   fatos sem virar um campo de formulario. */
+export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = "Ninguém", rotulo = "Escolher pessoa", disabled, compacto = false }) {
   const [aberto, setAberto] = useState(false);
   const atual = pessoas.find((p) => p.email === valor);
   const linha = (p) => (
@@ -86,10 +89,12 @@ export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = 
   return (
     <Popover open={aberto} onOpenChange={setAberto}>
       <PopoverTrigger asChild>
-        <Button id={id} variant="outline" role="combobox" aria-expanded={aberto} aria-label={rotulo} disabled={disabled}
-          className="w-full min-w-0 justify-between gap-2 font-normal">
-          <span className={atual ? "min-w-0 truncate" : "min-w-0 truncate text-text-mute"}>
-            {atual ? `${atual.nome}${atual.cargo ? ` · ${atual.cargo}` : ""}` : vazio}
+        <Button id={id} variant={compacto ? "ghost" : "outline"} role="combobox" aria-expanded={aberto} aria-label={rotulo} disabled={disabled}
+          className={compacto
+            ? "h-auto w-full min-w-0 justify-start gap-1 px-1 py-0 -ml-1 text-left text-sm font-semibold leading-snug"
+            : "w-full min-w-0 justify-between gap-2 font-normal"}>
+          <span className={atual ? "min-w-0 truncate" : `min-w-0 truncate text-text-mute${compacto ? " font-normal italic" : ""}`}>
+            {atual ? (compacto ? atual.nome : `${atual.nome}${atual.cargo ? ` · ${atual.cargo}` : ""}`) : vazio}
           </span>
           <ChevronsUpDown size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
         </Button>

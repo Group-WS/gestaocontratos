@@ -899,6 +899,66 @@ function LinhaEquipe({ rotulo, valor, equipe, podeEditar, prioridade, onDefinir,
   );
 }
 
+/* UM PAPEL NA FAIXA DE FATOS do topo da obra (GC, Taylor Made, Executivo).
+   Em leitura so' mostra; com a edicao habilitada o nome vira o gatilho do
+   mesmo seletor do card "Equipe da obra" — mesma lista (ativos + quem ja'
+   esta no papel), mesmo sugerido, mesmo `onDefinir` — e grava ao escolher,
+   sem o Salvar/Cancelar do card, porque ali nao cabe um formulario. */
+function PessoaNoTopo({ rotulo, valor, equipe, podeEditar, prioridade, onDefinir }) {
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const nome = valor ? nomeNaEquipe(equipe, valor) : null;
+  const iniciais = nome ? nome.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() : "—";
+
+  if (!podeEditar) {
+    return (
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="label-mono text-text-mute">{rotulo}</span>
+        {!valor ? <span className="text-sm italic text-text-mute">a definir</span> : (
+          <span className="flex min-w-0 items-start gap-2">
+            <AvatarDS size="xs" className="shrink-0"><AvatarFallback>{iniciais}</AvatarFallback></AvatarDS>
+            <span className="min-w-0 text-sm font-semibold leading-snug text-text">{nome}</span>
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  const daLista = [...(equipe || [])].filter((p) => p.ativo || p.email === valor)
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  /* Quem esta no papel sem estar na Equipe continua aparecendo pelo nome,
+     e nao como "a definir". */
+  if (valor && !daLista.some((p) => p.email === valor)) daLista.unshift({ email: valor, nome, ativo: true });
+
+  async function escolher(email) {
+    if ((email || null) === (valor || null)) return;
+    setSalvando(true); setErro(null);
+    try {
+      await onDefinir(email || null);
+    } catch (e) {
+      setErro(e.message || String(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <span className="flex min-w-0 flex-col gap-1">
+      <span className="label-mono text-text-mute">{rotulo}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <AvatarDS size="xs" className="shrink-0"><AvatarFallback>{iniciais}</AvatarFallback></AvatarDS>
+        <span className="min-w-0 flex-1">
+          <EscolhaPessoa compacto valor={valor || ""} pessoas={daLista} onChange={escolher} disabled={salvando}
+            rotulo={`Trocar ${rotulo}`} vazio="a definir"
+            sugerido={prioridade ? (p) => prioridade.test(p.cargo || "") : undefined} />
+        </span>
+      </span>
+      {salvando && <span className="text-xs text-text-mute">Salvando…</span>}
+      {erro && <span className="text-xs text-danger">{erro}</span>}
+    </span>
+  );
+}
+
 /* Os arquivos que contam a evolução do projeto, na ordem da jornada.
    É o único lugar onde se anexam: Documentos lista os mesmos arquivos,
    do mesmo endereço — um arquivo, um lugar só. */
@@ -8857,11 +8917,11 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
   }
 
   async function abrir(baixar) {
-    if (arquivo?.url) { window.open(arquivo.url, "_blank"); return; }
+    if (arquivo?.url) { window.open(arquivo.url, "_blank", "noopener,noreferrer"); return; }
     setErro(null);
     setOcupado(baixar ? "baixar" : "ver");
     try {
-      window.open(await linkParaArquivo(arquivo.caminho, { baixar }), "_blank");
+      window.open(await linkParaArquivo(arquivo.caminho, { baixar }), "_blank", "noopener,noreferrer");
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -10554,10 +10614,10 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
   }
 
   async function baixarDocumento(arq) {
-    if (arq.url) { window.open(arq.url, "_blank"); return; }
+    if (arq.url) { window.open(arq.url, "_blank", "noopener,noreferrer"); return; }
     setBaixando(true);
     try {
-      window.open(await linkParaBaixar(arq.caminho), "_blank");
+      window.open(await linkParaBaixar(arq.caminho), "_blank", "noopener,noreferrer");
     } catch (err) {
       setErroArq(err.message);
     } finally {
@@ -18820,10 +18880,10 @@ function ArquivoLinha({ a, podeEditar, onExcluir, semFase = false }) {
   const perdido = !anexoRecuperavel(a);
 
   async function abrir(baixar) {
-    if (a.url) { window.open(a.url, "_blank"); return; }
+    if (a.url) { window.open(a.url, "_blank", "noopener,noreferrer"); return; }
     setErro(null); setOcupado(baixar ? "baixar" : "ver");
     try {
-      window.open(await linkParaArquivo(a.caminho, { baixar }), "_blank");
+      window.open(await linkParaArquivo(a.caminho, { baixar }), "_blank", "noopener,noreferrer");
     } catch (e) {
       setErro(e.message || String(e));
     } finally {
@@ -18976,10 +19036,10 @@ function CadernoBaixar({ titulo, arquivo }) {
   const [erro, setErro] = useState(null);
 
   async function abrir(baixar) {
-    if (arquivo?.url) { window.open(arquivo.url, "_blank"); return; }
+    if (arquivo?.url) { window.open(arquivo.url, "_blank", "noopener,noreferrer"); return; }
     setErro(null); setOcupado(baixar ? "baixar" : "ver");
     try {
-      window.open(await linkParaArquivo(arquivo.caminho, { baixar }), "_blank");
+      window.open(await linkParaArquivo(arquivo.caminho, { baixar }), "_blank", "noopener,noreferrer");
     } catch (e) {
       setErro(e.message || String(e));
     } finally {
@@ -20305,9 +20365,9 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
    especificações nascem. */
 function BotaoApresentacao({ onAbrir, arquivo }) {
   async function verPdf() {
-    if (arquivo?.url) { window.open(arquivo.url, "_blank"); return; }
+    if (arquivo?.url) { window.open(arquivo.url, "_blank", "noopener,noreferrer"); return; }
     try {
-      window.open(await linkParaArquivo(arquivo.caminho), "_blank");
+      window.open(await linkParaArquivo(arquivo.caminho), "_blank", "noopener,noreferrer");
     } catch (e) {
       avisar.erro("Não foi possível abrir o PDF.", String(e.message || e));
     }
@@ -24229,7 +24289,6 @@ export default function App() {
               tudo e mora so' no Dashboard dela; a Apresentacao, so' no
               Executivo — cada acao onde ela faz sentido. */}
           {(() => {
-            const nomeDe = (email) => (email ? (pessoas.find((p) => p.email === email)?.nome || nomeDoEmail(email)) : "a definir");
             const tailor = obra.tailorMade ?? registro.get(String(obra.codigo))?.tailor_made ?? null;
             const executivo = obra.responsavelExecutivo ?? registro.get(String(obra.codigo))?.responsavel_executivo ?? null;
             const squad = obra.squad || "Sem squad";
@@ -24274,17 +24333,14 @@ export default function App() {
                           );
                         })() : <span className="text-sm italic text-text-mute">sem data</span>}
                       </span>
-                      {[["GC", nomeDe(obra.gc)], ["Taylor Made", nomeDe(tailor)], ["Executivo", nomeDe(executivo)]].map(([rot, val]) => (
-                        <span key={rot} className="flex min-w-0 flex-col gap-1">
-                          <span className="label-mono text-text-mute">{rot}</span>
-                          {val === "a definir" ? <span className="text-sm italic text-text-mute">a definir</span> : (
-                            <span className="flex min-w-0 items-start gap-2">
-                              <AvatarDS size="xs" className="shrink-0"><AvatarFallback>{val.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</AvatarFallback></AvatarDS>
-                              <span className="min-w-0 text-sm font-semibold leading-snug text-text">{val}</span>
-                            </span>
-                          )}
-                        </span>
-                      ))}
+                      {/* Os papeis trocam aqui mesmo com a edicao habilitada —
+                          os mesmos handlers do card "Equipe da obra". */}
+                      <PessoaNoTopo rotulo="GC" valor={obra.gc} equipe={pessoas} podeEditar={edicao.minha}
+                        prioridade={/gc/i} onDefinir={(email) => definirGCdaObra(obra.codigo, email)} />
+                      <PessoaNoTopo rotulo={PAPEIS_DA_OBRA.find((x) => x.chave === "tailorMade").rotulo} valor={tailor} equipe={pessoas}
+                        podeEditar={edicao.minha} onDefinir={(email) => definirTailorMadeDaObra(obra.codigo, email)} />
+                      <PessoaNoTopo rotulo="Executivo" valor={executivo} equipe={pessoas} podeEditar={edicao.minha}
+                        onDefinir={(email) => definirResponsavelExecutivoDaObra(obra.codigo, email)} />
                     </span>
                     {obra.semDetalhe && <Badge tone="warning">Sem detalhe de executivo</Badge>}
                   </span>
