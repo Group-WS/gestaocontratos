@@ -507,3 +507,11 @@
 .rolagem-discreta::-webkit-scrollbar {
   display: none;
 }
+
+/* A busca do topo (⌘K) usa o CommandInput do DS, que traz uma linha
+   embaixo do campo — feita para quando a busca abre dentro de um diálogo.
+   Na barra do topo o campo já tem moldura própria e a linha sobrava. O
+   `style` inline do componente pinta a borda, por isso o `!important`. */
+header div:has(> [cmdk-input]) {
+  border-bottom-color: transparent !important;
+}

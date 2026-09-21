@@ -6722,7 +6722,10 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <CampoBusca valor={busca} aoMudar={setBusca}
-          contador={`${visiveis.length} de ${porStatus.length} linhas`} />
+          /* O contador conta a lista generica. Com `telaExtra` (Conf. Executivo)
+             quem aparece e' a planilha da tela extra, e o numero dizia "0 de 0
+             linhas" enquanto a lista filtrava certo — ai ele nao aparece. */
+          contador={telaExtra || mostrarResumo ? undefined : `${visiveis.length} de ${porStatus.length} linhas`} />
         <ToggleGroup type="single" value={chipAtivo} onValueChange={escolherChip} aria-label="Filtrar linhas">
           <ToggleGroupItem value="todos">Todos <Contador tom="neutral" className="ml-1">{linhas.length}</Contador></ToggleGroupItem>
           {/* OS DOIS FILTROS DO QUE FALTA (pedido dela, 18/09/2026): "criar um
