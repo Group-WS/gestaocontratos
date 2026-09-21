@@ -428,3 +428,25 @@
 .main > .espaco-da-obra ~ [class~="-my-6"] > .sticky > [class~="border-t"] {
   border-top-color: transparent !important;
 }
+
+/* O CABEÇALHO DA OBRA NÃO MUDA DE TAMANHO ENTRE AS ABAS (21/09/2026).
+
+   O PageShell põe descrição e ações lado a lado e limita a descrição a
+   max-w-2xl. Na obra, as ações mudam conforme a aba ("Concluir etapa",
+   "Etapa concluída por… em…", "Apresentação de especificações") — e o
+   endereço e a faixa Entrega/GC/Taylor Made/Executivo encolhiam e
+   quebravam de um jeito diferente em cada aba.
+
+   Aqui o título, o endereço e os fatos ocupam 100% da largura, e as ações
+   descem para uma linha própria, sempre à direita. Vale só para o
+   cabeçalho da obra (o PageShell seguido do respiro `.espaco-da-obra`). */
+.main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child {
+  flex-direction: column;
+  align-items: stretch;
+}
+.main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child > div:first-child p {
+  max-width: none;
+}
+.main > [class~="-my-6"]:has(+ .espaco-da-obra) > .border-b:first-child > div:last-child > div:last-child:not(:first-child) {
+  justify-content: flex-end;
+}
