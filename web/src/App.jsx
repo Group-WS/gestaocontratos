@@ -932,6 +932,15 @@ function PessoaNoTopo({ rotulo, valor, equipe, podeEditar, prioridade, onDefinir
 
   async function escolher(email) {
     if ((email || null) === (valor || null)) return;
+    /* Aqui grava ao escolher, sem o Salvar do card — e um Select se troca
+       sem querer. Quem esta no papel define quem ve e responde pela obra.
+       Preencher um papel vazio nao tira ninguem: esse vai direto. */
+    const novo = email ? nomeNaEquipe(equipe, email) : null;
+    if (valor && !(await confirmar({
+      titulo: `Trocar ${rotulo}?`,
+      mensagem: `${nome} → ${novo || "ninguém"}. Grava na hora para todo o time; dá para trocar de novo aqui.`,
+      confirmar: `Trocar ${rotulo}`, perigo: false,
+    }))) return;
     setSalvando(true); setErro(null);
     try {
       await onDefinir(email || null);
@@ -3755,7 +3764,14 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
                     onAlocar={(v) => onAlocar(it, idx, v)}
                     onSepararMO={onSepararMO ? () => onSepararMO(it.codigo) : null}
                     onJuntarMO={onJuntarMO ? () => onJuntarMO(it.codigo) : null}
-                    onAprovar={() => onItemChange(idx, { statusEscopo: "aprovado" })}
+                    onAprovar={async () => {
+                      // Sem "desfazer" na linha: aprovado, o item passa a mostrar o destino.
+                      if (await confirmar({
+                        titulo: "Aprovar este item para compra?",
+                        mensagem: `"${it.desc || it.codigo || "Item"}" sai do bloqueio de escopo e segue para o destino de compra. Esta tela não tem como desfazer.`,
+                        confirmar: "Aprovar para compra", perigo: false,
+                      })) onItemChange(idx, { statusEscopo: "aprovado" });
+                    }}
                     podeEditar={podeEditar}
                   />
                 );
@@ -6622,7 +6638,16 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   const toggleSel = (k) => setSelecionados((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const selecionarTodasPendentes = () => setSelecionados(new Set(pendentesVisiveis.map(chave)));
   const limparSelecao = () => setSelecionados(new Set());
-  const aprovarSelecionados = () => {
+  const aprovarSelecionados = async () => {
+    const n = selecionados.size;
+    // Em lote e sem volta pela tela: confirmar antes, dizendo o que a busca esconde.
+    if (!(await confirmar({
+      titulo: `Aprovar ${n} ${n === 1 ? "linha" : "linhas"}?`,
+      mensagem: (selecionadosEscondidos > 0
+        ? `${selecionadosEscondidos} ${selecionadosEscondidos === 1 ? "está fora" : "estão fora"} da busca e ${selecionadosEscondidos === 1 ? "entra" : "entram"} junto. `
+        : "") + "A aprovação de cada linha fica gravada na conferência e não se desfaz por aqui.",
+      confirmar: `Aprovar ${n}`, perigo: false,
+    }))) return;
     selecionados.forEach((k) => {
       const idx = k.lastIndexOf(":");
       onAprovarLinha && onAprovarLinha(k.slice(0, idx), k.slice(idx + 1));
@@ -7515,18 +7540,26 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
             <>
               {podeEditar && pendentes.length > 0 && (
                 <Button size="sm"
-                  onClick={() => onAprovar(pendentes.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
-                  <CheckCircle2 size={16} /> Aprovar {pendentes.length}
+                  onClick={async () => {
+                    if (!(await confirmar({
+                      titulo: `Aprovar pelo cliente ${pendentes.length} ${pendentes.length === 1 ? "produto" : "produtos"} da verba ${g.num}?`,
+                      mensagem: "Fica registrado no seu nome que o cliente aprovou, e eles passam a poder ser liberados para compra. Dá para desfazer depois, na linha ou em lote.",
+                      confirmar: `Aprovar ${pendentes.length}`, perigo: false,
+                    }))) return;
+                    onAprovar(pendentes.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true);
+                  }}>
+                  <CheckCircle2 size={14} aria-hidden="true" /> Aprovar {pendentes.length}
                 </Button>
               )}
               {podeEditar && aprovados.length > 0 && (
                 <Button variant="danger" size="sm"
                   title="Tira a aprovação do cliente destes produtos — eles voltam a esperar"
                   onClick={async () => {
-                    if (!(await confirmar(
-                      `Desfazer a aprovação do cliente em ${aprovados.length} ${aprovados.length === 1 ? "produto" : "produtos"} da verba ${g.num}?\n\n` +
-                      "Eles voltam a esperar a aprovação e não podem ser liberados para compra."
-                    ))) return;
+                    if (!(await confirmar({
+                      titulo: `Desfazer a aprovação do cliente em ${aprovados.length} ${aprovados.length === 1 ? "produto" : "produtos"} da verba ${g.num}?`,
+                      mensagem: "Eles voltam a esperar a aprovação e não podem ser liberados para compra.",
+                      confirmar: `Desfazer ${aprovados.length}`,
+                    }))) return;
                     onAprovar(aprovados.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), false);
                   }}>
                   <X size={12} /> Desfazer {aprovados.length}
@@ -7800,11 +7833,16 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           })()}
           <div className="ml-auto flex flex-wrap gap-2">
             {podeEditar && onConcluir && (
-              <Button onClick={() => {
+              <Button onClick={async () => {
                 const alvos = todosOsGrupos.flatMap((g) => g.itens)
                   .filter((x) => sel.has(x.chave) && !x.titulo)
                   .map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
                 if (!alvos.length) return;
+                if (!(await confirmar({
+                  titulo: `Concluir o executivo de ${alvos.length} ${alvos.length === 1 ? "linha" : "linhas"}?`,
+                  mensagem: "Cada linha recebe o carimbo de concluído executivo no seu nome, inclusive as selecionadas fora da tela. Dá para desfazer linha a linha.",
+                  confirmar: `Concluir ${alvos.length}`, perigo: false,
+                }))) return;
                 onConcluir(alvos, true);
                 setSel(new Set());
               }}><Check size={16} aria-hidden="true" /> Concluir {sel.size}</Button>
@@ -7890,22 +7928,41 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                   {podeEditar && onConcluir && aConcluir.length > 0 && (
                     <Button variant="outline" size="sm"
                       title="Marca a verba inteira como concluída pelo executivo"
-                      onClick={() => onConcluir(aConcluir.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
+                      onClick={async () => {
+                        if (!(await confirmar({
+                          titulo: `Concluir o executivo de ${aConcluir.length} ${aConcluir.length === 1 ? "item" : "itens"} da verba ${g.num}?`,
+                          mensagem: "Cada item recebe o carimbo de concluído executivo no seu nome. Dá para desfazer linha a linha.",
+                          confirmar: `Concluir ${aConcluir.length}`, perigo: false,
+                        }))) return;
+                        onConcluir(aConcluir.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true);
+                      }}>
                       <Check size={14} aria-hidden="true" /> Concluir executivo {aConcluir.length}
                     </Button>
                   )}
                   {/* SO' ADMINISTRADOR LIBERA (decisao dela, ADR-005) — e o botao
                       some pra quem nao e', em vez de aparecer e recusar no clique. */}
                   {podeEditar && souAdmin && faltam.length > 0 && (
-                    <Button size="sm" onClick={() => onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
+                    <Button size="sm" onClick={async () => {
+                      if (!(await confirmar({
+                        titulo: `Liberar para compra ${faltam.length} ${faltam.length === 1 ? "item" : "itens"} da verba ${g.num}?`,
+                        mensagem: "Eles vão para Compras com o seu nome, e o que ainda não tinha o executivo concluído é concluído junto. Dá para desfazer linha a linha.",
+                        confirmar: `Liberar ${faltam.length}`, perigo: false,
+                      }))) return;
+                      onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true);
+                    }}>
                       <Check size={14} aria-hidden="true" /> Liberar para compra {faltam.length}
                     </Button>
                   )}
                   {podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && (
                     <Button variant="outline" size="sm"
                       title={`Marca o alerta como conferido no seu nome nos ${travadosAqui.length} produtos e libera os ${travadosAqui.length} para compra`}
-                      onClick={() => {
+                      onClick={async () => {
                         const alvos = travadosAqui.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
+                        if (!(await confirmar({
+                          titulo: `Conferir os alertas e liberar ${alvos.length} ${alvos.length === 1 ? "item" : "itens"} da verba ${g.num}?`,
+                          mensagem: "O alerta de cada item fica marcado como conferido no seu nome e eles vão para Compras. Dá para desfazer linha a linha.",
+                          confirmar: `Conferir e liberar ${alvos.length}`, perigo: false,
+                        }))) return;
                         onConferirVarios(alvos, true);
                         onLiberar(alvos, true);
                       }}>
@@ -8330,7 +8387,13 @@ function FaseBloqueada({ onIrParaDepara, onComecarSemDepara }) {
               <p className="max-w-md text-sm text-text-soft">
                 Esta obra ainda não tem Vendido Contrato nem Vendido Planilha — não há com o que montar essa comparação.
               </p>
-              <Button variant="outline" onClick={onComecarSemDepara}>
+              <Button variant="outline" onClick={async () => {
+                if (await confirmar({
+                  titulo: "Começar pelo Executivo sem o CMV?",
+                  mensagem: "O Executivo e as etapas seguintes abrem para a equipe sem teto de custo. O Depara continua pendente e o CMV só é definido quando alguém liberar por lá.",
+                  confirmar: "Começar pelo Executivo", perigo: false,
+                })) onComecarSemDepara();
+              }}>
                 Começar direto pelo Executivo, sem CMV por enquanto
               </Button>
             </>
@@ -12493,7 +12556,20 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
      rotulo do botao tem que concordar com o que se ve'. */
   const selecionarTudo = () => setSel(new Set(naTelaTudo.filter((r) => !r.it.troca).map((r) => r.chave)));
 
-  function definirCanal(canal) {
+  async function definirCanal(canal) {
+    const n = selecionados.length;
+    if (!n) return;
+    // O canal decide para onde cada item vai (Sienge, Pipefy…): em lote, confirma.
+    const nome = CANAIS_COMPRA.find((c) => c.id === canal)?.nome;
+    if (!(await confirmar(canal ? {
+      titulo: `Comprar ${n} ${n === 1 ? "item" : "itens"} por ${nome || canal}?`,
+      mensagem: "O canal atual de cada item selecionado é trocado por este. Dá para trocar de novo depois.",
+      confirmar: `Definir ${nome || "canal"}`, perigo: false,
+    } : {
+      titulo: `Tirar o canal de ${n} ${n === 1 ? "item" : "itens"}?`,
+      mensagem: "Eles vão para Sem canal até alguém escolher um canal de novo.",
+      confirmar: "Tirar canal",
+    }))) return;
     selecionados.forEach((r) => mudar(r.catIdx, r.itemIdx, { canalCompra: canal }));
     setSel(new Set());
   }
@@ -13301,6 +13377,15 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 // foi fica), e item do Sienge só vira comprado depois de solicitado.
                 const aMarcar = comCanal.filter((r) => !r.it.comprado);
                 const vao = desmarcar ? comCanal : aMarcar.filter((r) => podeMarcarComprado(r.it));
+                if (vao.length && !(await confirmar(desmarcar ? {
+                  titulo: `Desmarcar ${vao.length} ${vao.length === 1 ? "item comprado" : "itens comprados"}?`,
+                  mensagem: "Eles voltam a pendentes, saem do total comprado do Dashboard e a data da compra é apagada.",
+                  confirmar: `Desmarcar ${vao.length}`,
+                } : {
+                  titulo: `Marcar ${vao.length} ${vao.length === 1 ? "item" : "itens"} como comprado?`,
+                  mensagem: "Eles entram no total comprado do Dashboard com a data de hoje. Dá para desmarcar depois.",
+                  confirmar: `Marcar ${vao.length}`, perigo: false,
+                }))) return;
                 vao.forEach((r) => mudar(r.catIdx, r.itemIdx, {
                   comprado: !desmarcar,
                   compradoEm: desmarcar ? null : new Date().toISOString(),
@@ -13321,6 +13406,15 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
                 // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
                 const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
+                if (vao.length && !(await confirmar(desmarcar ? {
+                  titulo: `Desmarcar ${vao.length} ${vao.length === 1 ? "item solicitado" : "itens solicitados"}?`,
+                  mensagem: "Eles voltam a não solicitados no Sienge e a data da solicitação é apagada. Nada muda no Sienge.",
+                  confirmar: `Desmarcar ${vao.length}`,
+                } : {
+                  titulo: `Marcar ${vao.length} ${vao.length === 1 ? "item" : "itens"} como solicitado?`,
+                  mensagem: "Fica registrado que já foram solicitados no Sienge, com a data de hoje. Nada é enviado ao Sienge e dá para desmarcar depois.",
+                  confirmar: `Marcar ${vao.length}`, perigo: false,
+                }))) return;
                 vao.forEach((r) => mudar(r.catIdx, r.itemIdx, {
                   solicitado: !desmarcar, solicitadoEm: desmarcar ? null : new Date().toISOString(),
                 }));
@@ -20234,7 +20328,13 @@ function ArquivoView({ obras, onReabrir, salvando }) {
               key={o.id}
               o={o}
               acao={
-                <Button size="sm" variant="outline" disabled={salvando === o.id} onClick={() => onReabrir(o)}>
+                <Button size="sm" variant="outline" disabled={salvando === o.id} onClick={async () => {
+                  if (await confirmar({
+                    titulo: `Reabrir a obra "${o.nome}"?`,
+                    mensagem: "Ela sai do Arquivo e volta para a lista de obras ativas, liberada para o time alterar. Dá para concluir de novo depois.",
+                    confirmar: "Reabrir obra", perigo: false,
+                  })) onReabrir(o);
+                }}>
                   {salvando === o.id ? "Reabrindo…" : <><RotateCcw size={14} aria-hidden="true" /> Reabrir</>}
                 </Button>
               }
@@ -20340,12 +20440,24 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
               {porQuem && <>por {porQuem}</>}
               {em && <> · {new Date(em).toLocaleDateString("pt-BR")}</>}
             </span>
-            {!congelado && <Button variant="ghost" onClick={() => onReabrirEtapa(etapaId)}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>}
+            {!congelado && <Button variant="ghost" onClick={async () => {
+              if (await confirmar({
+                titulo: `Reabrir a etapa "${nomeDaEtapa(etapaId)}"?`,
+                mensagem: "O registro de quem concluiu e quando é apagado e a etapa volta a pendente. Dá para concluir de novo depois.",
+                confirmar: "Reabrir etapa", perigo: false,
+              })) onReabrirEtapa(etapaId);
+            }}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>}
           </>
         ) : (
           <>
             {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
-            <Button disabled={congelado || !!bloqueio} onClick={() => onConcluir(etapaId)}
+            <Button disabled={congelado || !!bloqueio} onClick={async () => {
+              if (await confirmar({
+                titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
+                mensagem: "Fica registrado no seu nome, com a data de hoje, e a próxima etapa é liberada. Dá para reabrir depois.",
+                confirmar: "Concluir etapa", perigo: false,
+              })) onConcluir(etapaId);
+            }}
               title={bloqueio ? "Aprove as pendências para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
               <Play size={16} aria-hidden="true" /> Concluir etapa
             </Button>
