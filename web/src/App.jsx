@@ -64,12 +64,16 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard, RadioGroupItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
 import { useMediaQuery, LARGO, Contador, Choice, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
 import { LogoGroupWS } from "./marca.jsx";
+import iconeSienge from "./assets/icone-sienge.svg";
+// Papel dos documentos impressos (escopo, aditivo, relatório): cores fixas de
+// propósito, fora do tema — ver o cabeçalho de estilos/papel.css.
+import "./estilos/papel.css";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
@@ -807,13 +811,14 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
           <BotaoIcone rotulo="Fechar" variant="ghost" onClick={onCancelar}><X size={16} /></BotaoIcone>
         </div>
 
-        <div className="recorte-palco" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
+        <div className="recorte-palco" data-theme="dark" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
           {url && !erro && <img ref={imgRef} src={url} alt="" draggable={false} className="recorte-img"
             onLoad={aoCarregar}
             /* Sem isto, imagem que o navegador nao decodifica deixava a
                janela PRETA e calada — foi o que aconteceu com ela. */
             onError={falhou}
             onPointerDown={iniciar}
+            /* gate-allow DS-05: tamanho e posição da foto vêm do arquivo e do arrasto, em pixels calculados */
             style={img ? { width: larg, height: alt, transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))` } : { opacity: 0 }} />}
           {erro
             ? <div className="recorte-erro">
@@ -849,6 +854,7 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
           <div className="recorte-previa-bolinha">
             {img && url && (
               <img src={url} alt="" draggable={false}
+                /* gate-allow DS-05: a prévia repete o enquadramento do arrasto, na escala da bolinha de 40px */
                 style={{
                   width: larg * (40 / LADO_MASCARA), height: alt * (40 / LADO_MASCARA),
                   transform: `translate(calc(-50% + ${pos.x * (40 / LADO_MASCARA)}px), calc(-50% + ${pos.y * (40 / LADO_MASCARA)}px))`,
@@ -1710,15 +1716,6 @@ const FILTROS_ALOC = [
 ];
 const casaAloc = (it, f, cat) => f === "todos" || alocacaoDoItem(it, cat) === f;
 
-/* A etiqueta da alocacao — e, quando da pra corrigir, o proprio controle.
-
-   E um <select> de verdade por cima da etiqueta, transparente: a pessoa
-   clica onde ja estava olhando, o teclado navega e o leitor de tela
-   anuncia. Um botao que cicla MAT -> MO -> MAT/MO seria menos codigo e
-   obrigaria a passar pelas opcoes erradas ate chegar na certa.
-
-   Corrigida na mao, a etiqueta ganha um ponto: valor que nao e mais o
-   que a planilha disse nunca pode ficar calado na tela. */
 /* Verbas em que a empresa SEMPRE compra o material e contrata a mao de
    obra: iluminacao, climatizacao, moveis soltos e loucas/metais. Nelas o
    item que vem com as duas parcelas ja nasce partido em dois.
@@ -1986,15 +1983,15 @@ const fmtData = (d) => (d ? d.toLocaleDateString("pt-BR") : "—");
    iniciais em etiqueta colorida. Colar o logo do Sienge dentro do app
    seria usar marca alheia sem permissao, e uma sigla cumpre o papel — que
    e reconhecer o canal de relance numa lista de 200 linhas. */
+/* A cor de cada etiqueta mora no CSS (.tag-canal[data-canal="…"]), em
+   token do DS: canal novo aqui precisa da regra dele la. */
 const CANAIS_COMPRA = [
-  { id: "sienge",   sigla: "SG", nome: "Sienge",               cor: "var(--blue)",   bg: "var(--blue-bg)" },
-  { id: "mehoo",    sigla: "MH", nome: "Mehoo",                cor: "var(--purple)", bg: "var(--purple-soft)" },
-  { id: "automacao",sigla: "AU", nome: "Automação",            cor: "var(--green)",  bg: "var(--green-bg)" },
-  { id: "cortinas", sigla: "CP", nome: "Cortinas e Persianas", cor: "var(--alert)",  bg: "var(--alert-soft)" },
-  // O GC era um verde-azulado que, com o ciano do DS, virava a mesma cor do
-  // Sienge. Os dois ultimos saem das cores de modulo do proprio DS.
-  { id: "gc",       sigla: "GC", nome: "GC",                    cor: "var(--indigo)", bg: "var(--indigo-soft)" },
-  { id: "estoque",  sigla: "ES", nome: "Estoque",               cor: "var(--mod-settings)", bg: "color-mix(in srgb, var(--mod-settings) 14%, transparent)" },
+  { id: "sienge",   sigla: "SG", nome: "Sienge" },
+  { id: "mehoo",    sigla: "MH", nome: "Mehoo" },
+  { id: "automacao",sigla: "AU", nome: "Automação" },
+  { id: "cortinas", sigla: "CP", nome: "Cortinas e Persianas" },
+  { id: "gc",       sigla: "GC", nome: "GC" },
+  { id: "estoque",  sigla: "ES", nome: "Estoque" },
 ];
 const canalPorId = (id) => CANAIS_COMPRA.find((c) => c.id === id) || null;
 
@@ -3299,7 +3296,7 @@ function TagCanal({ id, comNome }) {
   const c = canalPorId(id);
   if (!c) return null;
   return (
-    <span className="tag-canal" style={{ color: c.cor, background: c.bg }} title={`Compra por ${c.nome}`}>
+    <span className="tag-canal" data-canal={c.id} title={`Compra por ${c.nome}`}>
       <b>{c.sigla}</b>{comNome ? ` ${c.nome}` : ""}
     </span>
   );
@@ -3358,6 +3355,15 @@ function DestinoCompra({ item, aloc }) {
   return <span className="pill pill-wait">não identificado</span>;
 }
 
+/* A etiqueta da alocacao — e, quando da pra corrigir, o proprio controle.
+
+   E o Select do DS com a propria etiqueta como valor: a pessoa clica onde
+   ja estava olhando, o teclado navega e o leitor de tela anuncia. Um botao
+   que cicla MAT -> MO -> MAT/MO seria menos codigo e obrigaria a passar
+   pelas opcoes erradas ate chegar na certa.
+
+   Corrigida na mao, a etiqueta ganha um ponto: valor que nao e mais o
+   que a planilha disse nunca pode ficar calado na tela. */
 function TagAloc({ aloc, manual, onChange, podeEditar = true }) {
   // alocacaoDoItem nunca devolve vazio; se devolver, e defeito e tem que
   // gritar na tela, nao virar um tracinho discreto que ninguem investiga.
@@ -8729,6 +8735,10 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado, coord, 
 // desmonta a tabela. Cortar resolve a vista, mas some com a informação;
 // por isso o "i" mostra tudo, selecionável e com botão de copiar (o
 // código do produto é justamente o que se copia pra comprar).
+//
+// O corte em N linhas vem das classes line-clamp do Tailwind, escritas por
+// extenso aqui para o build enxergar cada uma.
+const CORTE_EM_LINHAS = { 1: "line-clamp-1", 2: "line-clamp-2", 3: "line-clamp-3" };
 function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado, coord, onNavegar }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState("");
@@ -8768,8 +8778,7 @@ function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado, coord,
         ref={alvo}
         data-cel={editavel ? coord : undefined}
         onClick={abrir}
-        className={`celula-corte ${editavel ? "editavel" : ""}`}
-        style={{ WebkitLineClamp: linhas }}
+        className={`celula-corte ${CORTE_EM_LINHAS[linhas] || CORTE_EM_LINHAS[2]} ${editavel ? "editavel" : ""}`}
         title={editavel ? "Clique para editar · Tab e Enter andam pelas células" : undefined}
       >
         {texto || (editavel ? <span className="dim">clique para preencher</span> : "\u2014")}
@@ -8828,7 +8837,7 @@ function DetalheTexto({ item, onFechar }) {
           <span>{item.rotulo}</span>
           <BotaoIcone rotulo="Fechar" variant="ghost" onClick={onFechar}><X size={14} /></BotaoIcone>
         </div>
-        <textarea className="detalhe-texto" readOnly value={item.texto} onFocus={(e) => e.target.select()} />
+        <Textarea className="detalhe-texto" readOnly value={item.texto} aria-label={item.rotulo} onFocus={(e) => e.target.select()} />
         <div className="detalhe-acoes">
           <Button variant="outline" onClick={copiar}>
             <Copy size={12} /> {copiado ? "Copiado" : "Copiar"}
@@ -10012,22 +10021,18 @@ function IconeMehoo({ size = 16 }) {
 
 /* O "S" do Sienge, aproximado.
 
-   Desenhado aqui, e nao baixado: o logo oficial nao esta no projeto, e um
-   <img> de URL externa numa barra lateral quebra quando o site de la sai
-   do ar. E' uma aproximacao — duas meias-luas encaixadas com o quadrado
-   vago no meio, no vermelho da marca. Tendo o SVG oficial, e' so trocar
-   o miolo desta funcao.
+   Desenhado no proprio projeto (assets/icone-sienge.svg), e nao baixado:
+   o logo oficial nao esta no projeto, e um <img> de URL externa numa barra
+   lateral quebra quando o site de la sai do ar. E' uma aproximacao — duas
+   meias-luas encaixadas com o quadrado vago no meio, no vermelho da marca,
+   que e' cor da arte de terceiro e nao token do tema. Tendo o SVG oficial,
+   e' so trocar o arquivo.
 
    Ela recebe `size` porque a barra usa 16px e a tira recolhida tambem —
-   um <img> de tamanho fixo destoaria dos outros icones, que sao todos
-   traço de 16. */
+   um icone de tamanho fixo destoaria dos outros, que sao todos traço
+   de 16. */
 function IconeSienge({ size = 16 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20.5 3.5H12a5.2 5.2 0 0 0 0 10.4h-.9V10h4.1a5.2 5.2 0 0 0 5.2-5.2v-1a.3.3 0 0 0-.3-.3z" fill="#E30613" />
-      <path d="M3.5 20.5H12a5.2 5.2 0 0 0 0-10.4h.9V14H8.8a5.2 5.2 0 0 0-5.2 5.2v1a.3.3 0 0 0 .3.3z" fill="#B3000F" />
-    </svg>
-  );
+  return <img src={iconeSienge} width={size} height={size} alt="" aria-hidden="true" />;
 }
 
 /* Os cinco modulos, num lugar so: a barra os desenha em duas formas —
@@ -15179,13 +15184,17 @@ function FormNovoEscopo({ obra, servicos, onCriar, onCancelar }) {
   const [fornecedor, setFornecedor] = useState("");
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
+  // Tentou abrir sem modelo: o campo diz o que falta, em vez de o botao
+  // simplesmente nao fazer nada.
+  const [semModelo, setSemModelo] = useState(false);
+  const id = React.useId();
 
   const orcado = servicos.reduce((a, s) => a + s.mo, 0);
   const grupos = useMemo(() => modelosPorGrupo(), []);
 
   function submit(e) {
     e.preventDefault();
-    if (!modelo) return;
+    if (!modelo) { setSemModelo(true); return; }
     const m = MODELOS_ESCOPO[modelo];
     onCriar({
       modelo, nome: m.nome, banda: m.banda, modo: m.modo || "medicao",
@@ -15216,28 +15225,39 @@ function FormNovoEscopo({ obra, servicos, onCriar, onCancelar }) {
         {verbas.length === 1 ? "1 verba" : `${verbas.length} verbas`} ·
         orçado em <b>{fmtBRL(orcado)}</b> de mão de obra.
       </div>
-      <div className="form-row">
-        <label className="form-label">Modelo de escopo
-          <select className="form-select" value={modelo} onChange={(e) => setModelo(e.target.value)} required>
-            <option value="">Escolha o modelo…</option>
+      <Field className="form-row">
+        <Label htmlFor={`${id}-modelo`} required>Modelo de escopo</Label>
+        <Select value={modelo} onValueChange={(v) => { setModelo(v); setSemModelo(false); }}>
+          <SelectTrigger id={`${id}-modelo`} aria-invalid={semModelo || undefined}>
+            <SelectValue placeholder="Escolha o modelo…" />
+          </SelectTrigger>
+          <SelectContent>
             {grupos.map((g) => (
-              <optgroup key={g.grupo} label={g.grupo}>
-                {g.itens.map((i) => <option key={i.id} value={i.id}>{i.nome}</option>)}
-              </optgroup>
+              <SelectGroup key={g.grupo}>
+                <SelectLabel>{g.grupo}</SelectLabel>
+                {g.itens.map((i) => <SelectItem key={i.id} value={i.id}>{i.nome}</SelectItem>)}
+              </SelectGroup>
             ))}
-          </select>
-        </label>
-        {sugerido && modelo === sugerido && <div className="form-dica">Sugerido pela verba dos serviços selecionados.</div>}
-      </div>
-      <div className="form-row">
-        <label className="form-label">Fornecedor
-          <input className="form-input" type="text" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
-            placeholder="Deixe em branco se ainda não definiu" />
-        </label>
-      </div>
+          </SelectContent>
+        </Select>
+        {semModelo
+          ? <FieldHint state="error">Escolha o modelo de escopo.</FieldHint>
+          : sugerido && modelo === sugerido && <FieldHint state="success">Sugerido pela verba dos serviços selecionados.</FieldHint>}
+      </Field>
+      <Field className="form-row">
+        <Label htmlFor={`${id}-fornecedor`}>Fornecedor</Label>
+        <Input id={`${id}-fornecedor`} type="text" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
+          placeholder="Deixe em branco se ainda não definiu" />
+      </Field>
       <div className="form-row form-row-3">
-        <label className="form-label">Início<input className="form-input" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} /></label>
-        <label className="form-label">Fim<input className="form-input" type="date" value={fim} onChange={(e) => setFim(e.target.value)} /></label>
+        <Field>
+          <Label htmlFor={`${id}-inicio`}>Início</Label>
+          <Input id={`${id}-inicio`} type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+        </Field>
+        <Field>
+          <Label htmlFor={`${id}-fim`}>Fim</Label>
+          <Input id={`${id}-fim`} type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
+        </Field>
         <span />
       </div>
       <div className="form-actions">
@@ -15258,6 +15278,7 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
     escopo.valorContrato != null ? mascaraMoeda(String(Math.round(escopo.valorContrato * 100))).texto : ""
   );
   const somaMed = (escopo.medicoes || []).reduce((a, m) => a + (parseFloat(String(m.p).replace(",", ".")) || 0), 0);
+  const id = React.useId();
 
   return (
     <>
@@ -15287,9 +15308,10 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
           <div className="ec-sub">{escopo.servicos.length} {escopo.servicos.length === 1 ? "serviço" : "serviços"}</div>
         </div>
         <div className="ec-bloco">
-          <div className="ec-rot">Valor do contrato</div>
+          <div className="ec-rot" id={`${id}-valor`}>Valor do contrato</div>
           {podeEditar ? (
-            <input className="ec-input mono" type="text" placeholder="0,00" value={valorTxt}
+            <Input className="ec-input mono" type="text" inputMode="decimal" placeholder="0,00" value={valorTxt}
+              aria-labelledby={`${id}-valor`}
               onChange={(e) => {
               const m = mascaraMoeda(e.target.value);
               setValorTxt(m.texto);
@@ -15327,39 +15349,45 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
       )}
 
       <div className="escopo-campos naoimprime">
-        <label className="form-label">Fornecedor
-          <input className="form-input" type="text" value={escopo.fornecedor || ""} disabled={!podeEditar}
+        <Field>
+          <Label htmlFor={`${id}-fornecedor`}>Fornecedor</Label>
+          <Input id={`${id}-fornecedor`} type="text" value={escopo.fornecedor || ""} disabled={!podeEditar}
             onChange={(e) => onMudar({ fornecedor: e.target.value || null })} placeholder="—" />
-        </label>
-        <label className="form-label">Início
-          <input className="form-input" type="date" value={escopo.inicio || ""} disabled={!podeEditar}
+        </Field>
+        <Field>
+          <Label htmlFor={`${id}-inicio`}>Início</Label>
+          <Input id={`${id}-inicio`} type="date" value={escopo.inicio || ""} disabled={!podeEditar}
             onChange={(e) => onMudar({ inicio: e.target.value || null })} />
-        </label>
-        <label className="form-label">Fim
-          <input className="form-input" type="date" value={escopo.fim || ""} disabled={!podeEditar}
+        </Field>
+        <Field>
+          <Label htmlFor={`${id}-fim`}>Fim</Label>
+          <Input id={`${id}-fim`} type="date" value={escopo.fim || ""} disabled={!podeEditar}
             onChange={(e) => onMudar({ fim: e.target.value || null })} />
-        </label>
+        </Field>
       </div>
 
       {escopo.modo === "parcelado" && podeEditar && (
         <div className="parc-controles naoimprime">
           <div className="dash-rot">Parcelas</div>
           <div className="parc-linha">
-            <label className="form-label">Quantas
-              <input className="form-input" type="number" min="1" max="60"
+            <Field className="parc-campo">
+              <Label htmlFor={`${id}-quantas`}>Quantas</Label>
+              <Input id={`${id}-quantas`} type="number" min="1" max="60"
                 value={(escopo.parcelas || []).length || 1}
                 onChange={(e) => onMudar({
                   parcelas: ajustarQtdParcelas(escopo.parcelas, Number(e.target.value), escopo.valorContrato ?? escopo.orcado),
                 })} />
-            </label>
-            <label className="form-label">1º vencimento
-              <input className="form-input" type="date" value={escopo.venc1 || ""}
+            </Field>
+            <Field className="parc-campo">
+              <Label htmlFor={`${id}-venc1`}>1º vencimento</Label>
+              <Input id={`${id}-venc1`} type="date" value={escopo.venc1 || ""}
                 onChange={(e) => onMudar({ venc1: e.target.value })} />
-            </label>
-            <label className="form-label">Intervalo (dias)
-              <input className="form-input" type="number" min="0" value={escopo.intervalo || "30"}
+            </Field>
+            <Field className="parc-campo">
+              <Label htmlFor={`${id}-intervalo`}>Intervalo (dias)</Label>
+              <Input id={`${id}-intervalo`} type="number" min="0" value={escopo.intervalo || "30"}
                 onChange={(e) => onMudar({ intervalo: e.target.value })} />
-            </label>
+            </Field>
             {/* Vencimento cai sempre na sexta: a casa paga fornecedor
                 nesse dia, e data no meio da semana volta pro financeiro
                 pra ser remarcada. */}
@@ -15431,8 +15459,9 @@ function DocumentoEscopo({ escopo, obra, podeEditar, onMudar }) {
 
       <h3 className="doc-h">2. {escopo.modo === "parcelado" ? "Forma de pagamento — parcelas" : "Forma de pagamento — medições"}</h3>
       {escopo.modo === "parcelado" ? (
+        /* gate-allow DS-07: tabela da folha do escopo (papel e .doc); o Table do DS traria as cores do tema */
         <table className="doc-tab">
-          <thead><tr><th>Parcela</th><th style={{ width: 96 }}>Vencimento</th><th className="right" style={{ width: 110 }}>Valor</th><th style={{ width: 60 }}>Via</th></tr></thead>
+          <thead><tr><th>Parcela</th><th className="doc-col-venc">Vencimento</th><th className="right doc-col-valor">Valor</th><th className="doc-col-via">Via</th></tr></thead>
           <tbody>
             {(escopo.parcelas || []).map((p, k) => (
               <tr key={k}>
@@ -15452,6 +15481,7 @@ function DocumentoEscopo({ escopo, obra, podeEditar, onMudar }) {
           </tbody>
         </table>
       ) : (
+      /* gate-allow DS-07: tabela da folha do escopo (papel e .doc); o Table do DS traria as cores do tema */
       <table className="doc-tab">
         <thead><tr><th>Etapa</th><th className="center">%</th><th className="right">Valor</th><th>Via</th><th>Condição</th></tr></thead>
         <tbody>
@@ -15505,19 +15535,23 @@ function DocumentoEscopo({ escopo, obra, podeEditar, onMudar }) {
 function baixarEscopoWord(escopo, obra) {
   const doc = document.getElementById("doc-escopo");
   if (!doc) return;
+  /* A folha de estilo vai DENTRO do .doc: o Word nao le as variaveis CSS do
+     app nem tem as fontes do design system instaladas. Por isso cor e fonte
+     ficam literais aqui, com o escape do gate em cada linha que o pede. */
   const html = `<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8">
 <style>
- body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #111; }
+ body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #111; } /* gate-allow DS-04: fonte padrão do Word, a que existe na máquina de quem abre o .doc */
  h3 { font-size: 12pt; margin: 18pt 0 6pt; border-bottom: 1px solid #999; padding-bottom: 3pt; }
  table { width: 100%; border-collapse: collapse; margin: 6pt 0; }
- th, td { border: 1px solid #bbb; padding: 5pt 7pt; font-size: 10pt; text-align: left; vertical-align: top; }
- th { background: #eee; }
+ th, td { border: 1px solid #bbb; padding: 5pt 7pt; font-size: 10pt; text-align: left; vertical-align: top; } /* gate-allow DS-03: fio da tabela do .doc, que o Word desenha sem os tokens do app */
+ th { background: #eee; } /* gate-allow DS-03: fundo do cabeçalho da tabela do .doc, desenhado pelo Word */
  .doc-banda { font-size: 14pt; font-weight: bold; margin-bottom: 10pt; }
  .doc-rot { font-weight: bold; }
  .doc-grupo { font-weight: bold; margin: 10pt 0 4pt; }
  .doc-qtd { font-weight: bold; margin-right: 8pt; }
  .doc-item { margin-bottom: 5pt; }
  .center { text-align: center; } .right { text-align: right; }
+ .doc-col-venc { width: 96px; } .doc-col-valor { width: 110px; } .doc-col-via { width: 60px; }
 </style></head><body>${doc.innerHTML}</body></html>`;
   const nome = `escopo-${(escopo.nome || "").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").toLowerCase()}-${obra.codigo}.doc`;
   downloadFile(nome, html, "application/msword");
@@ -15767,31 +15801,6 @@ const HORIZONTES = [
   { dias: 56, rot: "8 semanas" },
   { dias: 84, rot: "12 semanas" },
 ];
-
-
-function GcBarra({ pct, cor }) {
-  return (
-    <div className="gc-track" title={`${Math.round(pct)}%`}>
-      <div className="gc-fill" style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: cor }} />
-    </div>
-  );
-}
-
-function GcTotal({ rot, feito, total, cor, legenda }) {
-  const pct = total > 0 ? (feito / total) * 100 : 0;
-  return (
-    <div className="gc-total">
-      <div className="gc-total-rot" style={{ color: cor }}>{rot}</div>
-      <div className="gc-total-val mono">{fmtBRL(total - feito)}</div>
-      <div className="gc-total-sub">{legenda}</div>
-      <GcBarra pct={pct} cor={cor} />
-      <div className="gc-total-pe">
-        <span className="mono">{fmtBRL(feito)}</span> de <span className="mono">{fmtBRL(total)}</span>
-        <b> · {Math.round(pct)}%</b>
-      </div>
-    </div>
-  );
-}
 
 /* A lista por verba somando todas as obras. É o pedido central: saber o
    volume de pintura das próximas semanas antes de precisar dele. */
@@ -16376,6 +16385,7 @@ function PedidoOrcamento({ obra, fornecedor, mostrarFornecedor = true, grupos, u
         ) : grupos.map((g) => (
           <div key={g.num} className="rel-obra">
             <div className="ad-sectitle">{g.num} · {g.nome}</div>
+            {/* gate-allow DS-07: tabela do papel do pedido de orçamento; o Table do DS traria as cores do tema */}
             <table className="ad-dt">
               <thead>
                 <tr>
@@ -16605,6 +16615,7 @@ function SimuladorEquipe({ g, prestadores, padrao = false, onFechar }) {
     return () => document.removeEventListener("keydown", esc);
   }, [onFechar]);
   const mudar = (chave, campo, valor) => setLinhas((ls) => ls.map((l) => (l.chave === chave ? { ...l, [campo]: valor } : l)));
+  const idObra = React.useId();
   const conta = (l) => ({
     diaria: parseBRL(l.diaria) ?? 0,
     dias: Number(String(l.dias).replace(",", ".")) || 0,
@@ -16626,14 +16637,20 @@ function SimuladorEquipe({ g, prestadores, padrao = false, onFechar }) {
           </div>
           <Button variant="outline" onClick={onFechar}><X size={13} /> Fechar</Button>
         </div>
-        <label className="sim-obra">Comparar com
-          <select className="cmp-forn-sel" value={obra} onChange={(e) => setObra(e.target.value)}>
-            <option value="">todas as obras da linha ({obrasDaLinha.length}) — {fmtBRL(g.total)}</option>
-            {obrasDaLinha.map((o) => (
-              <option key={o.codigo} value={String(o.codigo)}>#{o.codigo} · {o.nome} — {fmtBRL(o.valor)}</option>
-            ))}
-          </select>
-        </label>
+        <div className="sim-obra">
+          <Label htmlFor={idObra}>Comparar com</Label>
+          {/* O Select do DS nao aceita valor vazio: "todas" e' o sentinela
+              da linha inteira, e o estado continua "" como antes. */}
+          <Select value={obra || "todas"} onValueChange={(v) => setObra(v === "todas" ? "" : v)}>
+            <SelectTrigger id={idObra} className="min-w-0 flex-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">todas as obras da linha ({obrasDaLinha.length}) — {fmtBRL(g.total)}</SelectItem>
+              {obrasDaLinha.map((o) => (
+                <SelectItem key={o.codigo} value={String(o.codigo)}>#{o.codigo} · {o.nome} — {fmtBRL(o.valor)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         {padrao && (
           <div className="gc-nota">
             Valores padrão da equipe. Para mudar as diárias de vez, rode o
@@ -16641,49 +16658,49 @@ function SimuladorEquipe({ g, prestadores, padrao = false, onFechar }) {
           </div>
         )}
         <div className="sim-rolagem">
-          <table className="sim-tabela">
-            <thead>
-              <tr>
-                <th style={{ width: 28 }} />
-                <th>Prestador</th>
-                <th className="right">Diária (R$)</th>
-                <th className="center">Dias</th>
-                <th className="center">Pessoas</th>
-                <th className="right">Custo</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="sim-tabela" aria-label="Equipe interna na simulação">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-7"><span className="sr-only">Escolher</span></TableHead>
+                <TableHead>Prestador</TableHead>
+                <TableHead className="right">Diária (R$)</TableHead>
+                <TableHead className="center">Dias</TableHead>
+                <TableHead className="center">Pessoas</TableHead>
+                <TableHead className="right">Custo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {especialidades.map((esp) => (
                 <React.Fragment key={esp}>
-                  <tr className="sim-esp"><td colSpan={6}>{esp}</td></tr>
+                  <TableRow className="sim-esp"><TableCell colSpan={6}>{esp}</TableCell></TableRow>
                   {linhas.filter((l) => l.especialidade === esp).map((l) => (
-                    <tr key={l.chave} className={l.marcado ? "on" : ""}>
-                      <td>
-                        <input type="checkbox" checked={l.marcado} onChange={(e) => mudar(l.chave, "marcado", e.target.checked)}
+                    <TableRow key={l.chave} className={l.marcado ? "on" : ""}>
+                      <TableCell>
+                        <Checkbox checked={l.marcado} onCheckedChange={(v) => mudar(l.chave, "marcado", v === true)}
                           aria-label={`Escolher ${l.nome || l.funcao}`} />
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         <b>{l.nome || l.funcao}</b>{l.nome && <span className="dim"> · {l.funcao}</span>}
-                      </td>
-                      <td className="right">
-                        <input className="form-input sim-num" inputMode="decimal" value={l.diaria} disabled={!l.marcado}
+                      </TableCell>
+                      <TableCell className="right">
+                        <Input className="sim-num" inputMode="decimal" value={l.diaria} disabled={!l.marcado}
                           onChange={(e) => mudar(l.chave, "diaria", e.target.value)} aria-label="Diária" />
-                      </td>
-                      <td className="center">
-                        <input className="form-input sim-num sim-curto" inputMode="decimal" value={l.dias} placeholder="0" disabled={!l.marcado}
+                      </TableCell>
+                      <TableCell className="center">
+                        <Input className="sim-num sim-curto" inputMode="decimal" value={l.dias} placeholder="0" disabled={!l.marcado}
                           onChange={(e) => mudar(l.chave, "dias", e.target.value)} aria-label="Dias" />
-                      </td>
-                      <td className="center">
-                        <input className="form-input sim-num sim-curto" inputMode="numeric" value={l.pessoas} disabled={!l.marcado}
+                      </TableCell>
+                      <TableCell className="center">
+                        <Input className="sim-num sim-curto" inputMode="numeric" value={l.pessoas} disabled={!l.marcado}
                           onChange={(e) => mudar(l.chave, "pessoas", e.target.value.replace(/\D/g, ""))} aria-label="Pessoas" />
-                      </td>
-                      <td className="right mono">{l.marcado ? fmtBRL(custoEquipeInterna([conta(l)])) : "—"}</td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="right mono">{l.marcado ? fmtBRL(custoEquipeInterna([conta(l)])) : "—"}</TableCell>
+                    </TableRow>
                   ))}
                 </React.Fragment>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
         <div className="sim-resumo">
           <div><span>Com a equipe interna</span><b className="mono">{fmtBRL(interno)}</b></div>
@@ -17239,6 +17256,7 @@ function SecaoDoc({ grupos, titulo, classe }) {
   return (
     <div className={classe}>
       <div className="ad-sectitle">{titulo}</div>
+      {/* gate-allow DS-07: tabela do papel do aditivo (vai impressa ao cliente); o Table do DS traria as cores do tema */}
       <table className="ad-dt">
         <thead>
           <tr>
@@ -17297,6 +17315,7 @@ function FolhaAjustada({ children }) {
   }, []);
   return (
     <div ref={ref} className="ad-ajuste">
+      {/* gate-allow DS-05: a folha A4 encolhe para caber na prévia; a escala vem do ResizeObserver */}
       <div className="ad-ajuste-folha" style={{ zoom: escala }}>{children}</div>
     </div>
   );
@@ -18221,43 +18240,38 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
    Ver docs/SPEC-acessos.md §3.
    ============================================================ */
 function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
-  /* Estilo proprio, e nao as classes do app: esta tela aparece ANTES do
-     app existir na arvore, e depender da folha dele seria depender de
-     algo que a pessoa nesta tela nao tem direito de carregar. As cores
-     vem dos tokens globais (estilos/design-system.css). */
-  const caixa = {
-    width: "100%", maxWidth: 400, background: "var(--surface-1)", border: "1px solid var(--line-2)",
-    borderRadius: 14, padding: "32px 28px", boxSizing: "border-box", textAlign: "center",
-  };
+  /* So' componentes e classes do design system, e nao a folha do app: esta
+     tela aparece ANTES do app existir na arvore, e depender da folha dele
+     seria depender de algo que a pessoa nesta tela nao tem direito de
+     carregar. O DS e o Tailwind vem do CSS global (main.jsx), sempre
+     carregado — e' a mesma composicao do cartao de entrada (AuthGate). */
   const suspenso = pessoa?.ativo === false;
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      background: "var(--bg)", color: "var(--text)", fontFamily: "var(--font-sans)", padding: 20 }}>
-      <div style={caixa}>
-        <LogoGroupWS className="text-sm" />
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 600, letterSpacing: "1.3px",
-          textTransform: "uppercase", color: "var(--text-mute)", margin: "14px 0 22px" }}>
-          Gestão de Obras TKWS
-        </div>
+    <div className="flex min-h-dvh items-center justify-center bg-bg p-5 text-text">
+      <Card className="w-full max-w-md text-center">
+        <CardContent>
+          <div className="flex justify-center"><LogoGroupWS className="text-sm" /></div>
+          <p className="label-mono mt-4 mb-6 text-text-mute">Gestão de Obras TKWS</p>
 
-        <div style={{ fontSize: 20, fontWeight: 400, letterSpacing: "-0.01em", color: "var(--text)", marginBottom: 8 }}>
-          {suspenso ? "Seu acesso está suspenso" : "Seu acesso está em análise"}
-        </div>
-        <div style={{ fontSize: 13.5, color: "var(--text-soft)", lineHeight: 1.55 }}>
-          {suspenso
-            ? "Sua conta existe, mas foi desativada. Fale com a coordenação para reativar."
-            : <>Você entrou com <b style={{ color: "var(--text)" }}>{usuario}</b>. Um administrador precisa
-               definir o que você vai acessar — já avisamos. Assim que liberarem, é só recarregar.</>}
-        </div>
+          <h2 className="mb-2 text-xl font-normal leading-tight tracking-tight text-text">
+            {suspenso ? "Seu acesso está suspenso" : "Seu acesso está em análise"}
+          </h2>
+          <p className="text-sm leading-relaxed text-text-soft">
+            {suspenso
+              ? "Sua conta existe, mas foi desativada. Fale com a coordenação para reativar."
+              : <>Você entrou com <b className="text-text">{usuario}</b>. Um administrador precisa
+                 definir o que você vai acessar — já avisamos. Assim que liberarem, é só recarregar.</>}
+          </p>
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 24 }}>
-          {!suspenso && (
-            <Button onClick={onRecarregar}>Já liberaram, recarregar</Button>
-          )}
-          <Button variant="outline" onClick={onSair}>Sair</Button>
-        </div>
-      </div>
+          <div className="mt-6 flex justify-center gap-2">
+            {!suspenso && (
+              <Button onClick={onRecarregar}>Já liberaram, recarregar</Button>
+            )}
+            <Button variant="outline" onClick={onSair}>Sair</Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -22723,13 +22737,16 @@ export default function App() {
         .recorte-caixa { width: min(360px, 100%); }
         .recorte-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
         .recorte-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
-        .recorte-palco { position: relative; height: 256px; overflow: hidden; background: #171717; touch-action: none; cursor: grab; }
+        /* O palco e' sempre escuro, como visor de foto: o elemento leva
+           data-theme="dark", e os tokens abaixo resolvem no tema escuro
+           seja qual for o tema do app. */
+        .recorte-palco { position: relative; height: 256px; overflow: hidden; background: var(--bg); touch-action: none; cursor: grab; }
         .recorte-palco:active { cursor: grabbing; }
         .recorte-img { position: absolute; left: 50%; top: 50%; max-width: none; user-select: none; }
         /* O furo redondo e' uma sombra gigante: tudo fora do circulo
            escurece e o circulo fica limpo, sem precisar de svg nem mask. */
         .recorte-mascara { position: absolute; left: 50%; top: 50%; width: 176px; height: 176px; margin: -88px 0 0 -88px;
-                           border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.58); border: 2px solid rgba(255, 255, 255, 0.9);
+                           border-radius: 50%; box-shadow: 0 0 0 9999px var(--overlay-med); border: 2px solid var(--text-strong);
                            pointer-events: none; }
         .recorte-controles { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 12px 16px 4px; }
         .recorte-zoom { width: 30px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
@@ -22741,7 +22758,7 @@ export default function App() {
                                padding: 5px 10px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
         .recorte-centralizar:hover { background: var(--panel); }
         .recorte-erro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-                        justify-content: center; gap: 9px; padding: 24px; text-align: center; color: var(--bg);
+                        justify-content: center; gap: 9px; padding: 24px; text-align: center; color: var(--text-strong);
                         font-size: 12.5px; line-height: 1.45; }
         .recorte-erro-arq { font-size: 10.5px; opacity: 0.7; margin-top: 2px; word-break: break-all; }
         .recorte-previa { display: flex; align-items: center; gap: 10px; padding: 8px 20px 14px; }
@@ -22835,13 +22852,12 @@ export default function App() {
         .eq-bloco-toggle { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
         .eq-seta { color: var(--ink-3); flex-shrink: 0; transition: transform .15s ease; }
         .eq-seta.fechada { transform: rotate(-90deg); }
-        .sim-painel { max-width: 880px; margin: 24px auto; background: var(--surface-1); color: var(--ink); border-radius: 14px; padding: 18px 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); }
+        .sim-painel { max-width: 880px; margin: 24px auto; background: var(--surface-1); color: var(--ink); border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow-4); }
         .sim-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: var(--purple); }
         .sim-topo .btn-voltar { margin-left: auto; }
         .sim-tit { font-weight: 700; color: var(--ink); font-size: 15px; }
         .sim-sub { font-size: 12px; color: var(--ink-3); }
         .sim-obra { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-2); margin-bottom: 10px; }
-        .sim-obra .cmp-forn-sel { max-width: none; flex: 1; }
         .sim-rolagem { overflow-x: auto; }
         .sim-tabela { width: 100%; border-collapse: collapse; font-size: 12.5px; }
         .sim-tabela th { text-align: left; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); padding: 6px 8px; border-bottom: 1px solid var(--line-2); }
@@ -22926,30 +22942,33 @@ export default function App() {
 
         /* A FOLHA. Largura de A4 e fundo branco de proposito: a pessoa
            enxerga o documento que vai virar contrato, nao um formulario. */
-        .doc-escopo { background: #fff; border: 1px solid var(--border); border-radius: 4px; max-width: 210mm; margin: 0 auto; padding: 26mm 22mm; font-size: 12px; line-height: 1.6; color: #16181A; box-shadow: 0 2px 14px rgba(0,0,0,0.06); }
+        .doc-escopo { background: var(--papel); border: 1px solid var(--border); border-radius: 4px; max-width: 210mm; margin: 0 auto; padding: 26mm 22mm; font-size: 12px; line-height: 1.6; color: var(--esc-tinta); box-shadow: var(--shadow-2); }
         .doc-banda { font-family: var(--font-sans); font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 18px; }
-        .doc-cab { display: grid; gap: 3px; font-size: 12px; padding-bottom: 14px; border-bottom: 1px solid #DDD; margin-bottom: 6px; }
-        .doc-rot { font-weight: 700; display: inline-block; min-width: 82px; color: #55595E; }
-        .doc-h { font-family: var(--font-sans); font-size: 13.5px; font-weight: 700; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #DDD; }
-        .doc-item { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid #F0F0EE; }
-        .doc-qtd { flex-shrink: 0; width: 52px; font-family: var(--font-mono); font-size: 10.5px; color: #6A6E72; padding-top: 2px; }
+        .doc-cab { display: grid; gap: 3px; font-size: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--esc-traco); margin-bottom: 6px; }
+        .doc-rot { font-weight: 700; display: inline-block; min-width: 82px; color: var(--esc-rotulo); }
+        .doc-h { font-family: var(--font-sans); font-size: 13.5px; font-weight: 700; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--esc-traco); }
+        .doc-item { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--esc-traco-claro); }
+        .doc-qtd { flex-shrink: 0; width: 52px; font-family: var(--font-mono); font-size: 10.5px; color: var(--esc-suave); padding-top: 2px; }
         .doc-desc { flex: 1; }
         .doc-desc:focus, .doc-cond:focus { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 3px; }
-        .doc-amb { flex-shrink: 0; font-size: 10.5px; color: #85898D; }
+        .doc-amb { flex-shrink: 0; font-size: 10.5px; color: var(--esc-fraca); }
         .doc-grupo { font-weight: 700; margin: 16px 0 4px; font-size: 12px; }
-        .doc-nota { font-style: italic; color: #6A6E72; margin: 6px 0; }
+        .doc-nota { font-style: italic; color: var(--esc-suave); margin: 6px 0; }
         .doc-tab { width: 100%; border-collapse: collapse; margin-top: 4px; }
-        .doc-tab th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #55595E; padding: 6px 8px; border-bottom: 1px solid #CCC; }
-        .doc-tab td { padding: 8px; border-bottom: 1px solid #F0F0EE; vertical-align: top; font-size: 11.5px; }
+        .doc-tab th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--esc-rotulo); padding: 6px 8px; border-bottom: 1px solid var(--esc-traco-forte); }
+        .doc-tab td { padding: 8px; border-bottom: 1px solid var(--esc-traco-claro); vertical-align: top; font-size: 11.5px; }
         .doc-tab .center { text-align: center; } .doc-tab .right { text-align: right; }
+        /* Larguras das colunas de parcelas — repetidas na folha do .doc
+           (baixarEscopoWord), que leva as classes junto com o HTML. */
+        .doc-col-venc { width: 96px; } .doc-col-valor { width: 110px; } .doc-col-via { width: 60px; }
         .doc-cond { line-height: 1.5; }
         .parc-controles { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
         .parc-linha { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-        .parc-linha .form-label { flex: 1; min-width: 110px; }
-        .doc-total td { border-top: 1px solid #CCC; border-bottom: none; font-weight: 700; }
+        .parc-linha .parc-campo { flex: 1; min-width: 110px; }
+        .doc-total td { border-top: 1px solid var(--esc-traco-forte); border-bottom: none; font-weight: 700; }
         .doc-ul { margin: 4px 0 0; padding-left: 20px; }
         .doc-ul li { margin-bottom: 5px; }
-        .doc-rodape { margin-top: 26px; padding-top: 12px; border-top: 1px solid #DDD; font-size: 10px; color: #85898D; line-height: 1.5; }
+        .doc-rodape { margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--esc-traco); font-size: 10px; color: var(--esc-fraca); line-height: 1.5; }
 
         /* PDF sai daqui: o navegador imprime so a folha. */
         /* ---- ADITIVOS ---- */
@@ -23064,27 +23083,30 @@ export default function App() {
         /* ---- O DOCUMENTO ----
            Medidas em mm porque ele existe pra virar papel: o que se ve na
            tela e' a mesma caixa que sai do window.print(). */
-        .ad-page { width: 210mm; background: #fff; color: #1c2426; font-family: 'Century Gothic', 'Questrial', 'Montserrat', sans-serif; font-size: 8.4pt; line-height: 1.35; padding: 0 0 14mm; display: flex; flex-direction: column; box-shadow: 0 4px 18px rgba(0,0,0,.18); transform-origin: top left; }
+        /* gate-allow DS-04: tipografia do modelo de documento da casa, no papel do aditivo (não é tela do app) */
+        .ad-page { width: 210mm; background: var(--papel); color: var(--casa-tinta); font-family: 'Century Gothic', 'Questrial', 'Montserrat', sans-serif; font-size: 8.4pt; line-height: 1.35; padding: 0 0 14mm; display: flex; flex-direction: column; box-shadow: var(--shadow-3); transform-origin: top left; }
         .ad-brandbar { display: block; width: 100%; }
         .ad-inner { padding: 7mm 12mm 0; flex: 1 0 auto; }
-        .ad-dochead { display: flex; justify-content: space-between; align-items: flex-end; gap: 10mm; border-bottom: 2px solid #0E5F6B; padding-bottom: 3mm; margin-bottom: 5mm; }
-        .ad-dochead .t { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14pt; color: #0E5F6B; letter-spacing: -.01em; line-height: 1.1; }
+        .ad-dochead { display: flex; justify-content: space-between; align-items: flex-end; gap: 10mm; border-bottom: 2px solid var(--casa-verde); padding-bottom: 3mm; margin-bottom: 5mm; }
+        /* gate-allow DS-04: título do documento da casa, na fonte do modelo impresso do aditivo */
+        .ad-dochead .t { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14pt; color: var(--casa-verde); letter-spacing: -.01em; line-height: 1.1; }
         .ad-dochead .meta { font-size: 8.4pt; text-align: right; white-space: nowrap; }
         .ad-dochead .meta div { margin-top: 1.2mm; }
-        .ad-dochead .meta b { color: #6b7b7f; font-weight: 400; }
-        .ad-sectitle { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 10.5pt; color: #0E5F6B; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 2mm; display: flex; align-items: center; gap: 3mm; page-break-after: avoid; }
-        .ad-sectitle::after { content: ""; flex: 1; height: .5mm; background: #0E5F6B; opacity: .25; }
-        .ad-sec-sup .ad-sectitle { color: #7d4038; }
-        .ad-sec-sup .ad-sectitle::after { background: #7d4038; }
+        .ad-dochead .meta b { color: var(--casa-cinza); font-weight: 400; }
+        /* gate-allow DS-04: título de seção do documento da casa, na fonte do modelo impresso do aditivo */
+        .ad-sectitle { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 10.5pt; color: var(--casa-verde); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 2mm; display: flex; align-items: center; gap: 3mm; page-break-after: avoid; }
+        .ad-sectitle::after { content: ""; flex: 1; height: .5mm; background: var(--casa-verde); opacity: .25; }
+        .ad-sec-sup .ad-sectitle { color: var(--casa-vinho); }
+        .ad-sec-sup .ad-sectitle::after { background: var(--casa-vinho); }
         table.ad-dt { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
-        table.ad-dt th { background: #0E5F6B; color: #fff; font-weight: 700; font-size: 7.2pt; letter-spacing: .05em; text-transform: uppercase; padding: 1.8mm 2mm; text-align: left; border-right: 1px solid rgba(255,255,255,.25); }
+        table.ad-dt th { background: var(--casa-verde); color: var(--papel); font-weight: 700; font-size: 7.2pt; letter-spacing: .05em; text-transform: uppercase; padding: 1.8mm 2mm; text-align: left; border-right: 1px solid color-mix(in srgb, var(--papel) 25%, transparent); }
         table.ad-dt th:last-child { border-right: 0; }
-        table.ad-dt td { padding: 1.6mm 2mm; border-bottom: .3mm solid #dfe7e9; vertical-align: top; }
-        table.ad-dt tr.g td { background: #e9f2f4; font-weight: 700; text-transform: uppercase; font-size: 8pt; border-bottom: .3mm solid #b9ccd0; border-top: .3mm solid #b9ccd0; }
-        table.ad-dt tr.tot td { background: #0E5F6B; color: #fff; font-weight: 700; font-size: 9pt; text-transform: uppercase; letter-spacing: .04em; }
-        .ad-sec-sup table.ad-dt th { background: #7d4038; }
-        .ad-sec-sup table.ad-dt tr.g td { background: #f4ebe9; border-color: #dcc4bf; }
-        .ad-sec-sup table.ad-dt tr.tot td { background: #7d4038; }
+        table.ad-dt td { padding: 1.6mm 2mm; border-bottom: .3mm solid var(--casa-traco); vertical-align: top; }
+        table.ad-dt tr.g td { background: var(--casa-grupo-fundo); font-weight: 700; text-transform: uppercase; font-size: 8pt; border-bottom: .3mm solid var(--casa-grupo-traco); border-top: .3mm solid var(--casa-grupo-traco); }
+        table.ad-dt tr.tot td { background: var(--casa-verde); color: var(--papel); font-weight: 700; font-size: 9pt; text-transform: uppercase; letter-spacing: .04em; }
+        .ad-sec-sup table.ad-dt th { background: var(--casa-vinho); }
+        .ad-sec-sup table.ad-dt tr.g td { background: var(--casa-vinho-fundo); border-color: var(--casa-vinho-traco); }
+        .ad-sec-sup table.ad-dt tr.tot td { background: var(--casa-vinho); }
         .ad-page .c-cod { width: 12mm; } .ad-page .c-amb { width: 24mm; }
         .ad-page .c-qtd { width: 14mm; } .ad-page .c-un { width: 9mm; }
         .ad-page .c-vu { width: 24mm; } .ad-page .c-vt { width: 27mm; }
@@ -23093,19 +23115,19 @@ export default function App() {
         .ad-page td.c-un, .ad-page th.c-un { text-align: center; }
         .ad-desc { white-space: pre-line; }
         .ad-dt1 { font-weight: 700; }
-        .ad-saldo { margin-top: 2mm; margin-left: auto; width: 92mm; border: .4mm solid #0E5F6B; border-radius: 1.5mm; overflow: hidden; }
-        .ad-saldo .l { display: flex; justify-content: space-between; padding: 1.8mm 3mm; font-size: 8.6pt; border-bottom: .3mm solid #dfe7e9; }
+        .ad-saldo { margin-top: 2mm; margin-left: auto; width: 92mm; border: .4mm solid var(--casa-verde); border-radius: 1.5mm; overflow: hidden; }
+        .ad-saldo .l { display: flex; justify-content: space-between; padding: 1.8mm 3mm; font-size: 8.6pt; border-bottom: .3mm solid var(--casa-traco); }
         .ad-saldo .l:last-child { border-bottom: 0; }
-        .ad-saldo .l.f { background: #0E5F6B; color: #fff; font-weight: 700; font-size: 10pt; padding: 2.6mm 3mm; }
-        .ad-saldo .l.f.credito { background: #1f7a54; }
+        .ad-saldo .l.f { background: var(--casa-verde); color: var(--papel); font-weight: 700; font-size: 10pt; padding: 2.6mm 3mm; }
+        .ad-saldo .l.f.credito { background: var(--casa-credito); }
         .ad-saldo .l b { font-variant-numeric: tabular-nums; }
         .ad-cond { margin-top: 7mm; font-size: 8.4pt; page-break-inside: avoid; }
-        .ad-cond h4 { margin: 0 0 1.5mm; font-size: 8.4pt; color: #0E5F6B; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+        .ad-cond h4 { margin: 0 0 1.5mm; font-size: 8.4pt; color: var(--casa-verde); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
         .ad-cond p { margin: 0; white-space: pre-line; }
-        .ad-prevalencia { margin-top: 6mm; font-size: 6.6pt; line-height: 1.45; color: #9aa7aa; text-align: justify; page-break-inside: avoid; }
+        .ad-prevalencia { margin-top: 6mm; font-size: 6.6pt; line-height: 1.45; color: var(--casa-cinza-claro); text-align: justify; page-break-inside: avoid; }
         .ad-pagefoot { margin-top: auto; padding: 8mm 12mm 0; }
         .ad-pagefoot img { display: block; width: 100%; }
-        .ad-docwarn { border: 1px dashed #b9ccd0; border-radius: 2mm; padding: 8mm; text-align: center; color: #6b7b7f; font-size: 9pt; }
+        .ad-docwarn { border: 1px dashed var(--casa-grupo-traco); border-radius: 2mm; padding: 8mm; text-align: center; color: var(--casa-cinza); font-size: 9pt; }
         /* A folha do aditivo tem altura de A4: o rodapé fica no pé da página
            e as condições descem pra junto dele, em vez de tudo espremido no
            topo com meia folha em branco embaixo. */
@@ -23128,7 +23150,7 @@ export default function App() {
           /* O PageShell do editor (.ad-editor): cabecalho e toolbar somem, so' o conteudo vai pro papel. */
           .ad-editor > :not(:last-child) { display: none !important; }
           .ad-editor > :last-child { padding: 0 !important; }
-          .ad-prev, .ad-prev-box { position: static !important; max-height: none !important; overflow: visible !important; padding: 0 !important; background: #fff !important; }
+          .ad-prev, .ad-prev-box { position: static !important; max-height: none !important; overflow: visible !important; padding: 0 !important; background: var(--papel) !important; }
           .ad-page { width: auto !important; box-shadow: none !important; padding: 0 !important; display: block !important; }
           .ad-page .ad-inner { padding: 6mm 12mm 0; }
           /* A4 com 10 mm de margem (o @page vem do próprio documento):
@@ -23192,8 +23214,6 @@ export default function App() {
         .btn-canal:disabled { opacity: .45; cursor: not-allowed; }
         .det-opcao:disabled { cursor: default; }
         .det-opcao:disabled:not(.escolhida):hover { background: transparent; }
-        .cmp-forn-sel { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12px; padding: 6px 9px; background: var(--surface-1); color: var(--ink); max-width: 300px; }
-        .cmp-forn-sel:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
         .btn-sel-tudo { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-2); }
         .btn-sel-tudo:hover { border-color: var(--ink); color: var(--ink); }
         .btn-limpar-sel-claro { background: transparent; border: none; color: var(--ink-3); font-size: 11.5px; cursor: pointer; font-family: inherit; text-decoration: underline; }
@@ -23533,6 +23553,15 @@ export default function App() {
         .btn-approve:hover { background: var(--blue); }
         .tag-canal { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
         .tag-canal b { font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; }
+        /* Uma cor por canal (CANAIS_COMPRA). O GC era um verde-azulado que,
+           com o ciano do DS, virava a mesma cor do Sienge: GC e Estoque saem
+           das cores de modulo do proprio DS. */
+        .tag-canal[data-canal="sienge"] { color: var(--blue); background: var(--blue-bg); }
+        .tag-canal[data-canal="mehoo"] { color: var(--purple); background: var(--purple-soft); }
+        .tag-canal[data-canal="automacao"] { color: var(--green); background: var(--green-bg); }
+        .tag-canal[data-canal="cortinas"] { color: var(--alert); background: var(--alert-soft); }
+        .tag-canal[data-canal="gc"] { color: var(--indigo); background: var(--indigo-soft); }
+        .tag-canal[data-canal="estoque"] { color: var(--mod-settings); background: color-mix(in srgb, var(--mod-settings) 14%, transparent); }
         .pill { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-contratos { background: var(--panel); color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
@@ -23704,8 +23733,6 @@ export default function App() {
         .btn-linha-substituir:hover { color: var(--alert); border-color: var(--alert); background: var(--alert-soft); }
 
         .btn-linha-excluir:hover { color: var(--red); border-color: var(--red); }
-        .btn-linha-excluir-confirma { background: var(--danger); color: #fff; border: none; border-radius: 7px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
-        .btn-linha-excluir-confirma:disabled { opacity: 0.45; cursor: not-allowed; }
         .btn-linha-excluir.desfazer:hover { color: var(--green); border-color: var(--green); }
         .btn-reabrir-etapa { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 11px; color: var(--ink-2); cursor: pointer; font-family: inherit; flex-shrink: 0; }
         .btn-reabrir-etapa:hover { border-color: var(--ink-2); color: var(--ink); }
@@ -23903,25 +23930,17 @@ export default function App() {
         .fo-item.on { background: var(--blue-bg); }
         .fo-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gc-nota { font-size: 12px; color: var(--ink-3); margin: 6px 2px 10px; }
-        .gc-total { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--surface-1); }
-        .gc-total-rot { font-size: 10px; font-weight: 800; letter-spacing: .07em; }
-        .gc-total-val { font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-top: 6px; }
-        .gc-total-sub { font-size: 11.5px; color: var(--ink-3); margin-bottom: 12px; }
-        .gc-total-pe { font-size: 11px; color: var(--ink-3); margin-top: 7px; }
-
-        .gc-track { height: 8px; background: var(--panel); border-radius: 20px; overflow: hidden; min-width: 40px; }
-        .gc-fill { height: 100%; border-radius: 20px; }
 
         .gc-bloco { margin-bottom: 24px; }
         .gc-bloco-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
         .gc-bloco-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
         .gc-chevron { color: var(--ink-3); flex-shrink: 0; transition: transform .12s ease; }
         .gc-chevron.aberto { transform: rotate(90deg); }
-        .rel-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(20, 24, 26, 0.55); overflow: auto; padding: 16px 16px 40px; }
-        .rel-barra { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; max-width: 210mm; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px; background: var(--surface-1); color: var(--text); font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+        .rel-overlay { position: fixed; inset: 0; z-index: 1000; background: var(--overlay-strong); overflow: auto; padding: 16px 16px 40px; }
+        .rel-barra { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; max-width: 210mm; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px; background: var(--surface-1); color: var(--text); font-size: 12.5px; box-shadow: var(--shadow-2); }
         .rel-barra .btn-voltar { margin-left: auto; }
         .rel-folha { display: flex; justify-content: center; }
-        .pdf-visor { display: block; width: 100%; max-width: 1100px; height: calc(100vh - 120px); margin: 0 auto; border: 0; border-radius: 10px; background: #fff; }
+        .pdf-visor { display: block; width: 100%; max-width: 1100px; height: calc(100vh - 120px); margin: 0 auto; border: 0; border-radius: 10px; background: var(--surface-1); }
         .pdf-gerando { max-width: 210mm; margin: 40px auto; padding: 28px; text-align: center; color: var(--ink-2); background: var(--surface-1); border-radius: 10px; }
         .rel-barra a.btn-doc { text-decoration: none; }
         .eyebrow.obra-endereco { margin: 0 0 22px; line-height: 1.6; }
@@ -23929,13 +23948,13 @@ export default function App() {
         .obra-endereco-btn:hover { opacity: 1; background: var(--surface-2); color: var(--ink); }
         .obra-endereco-edita { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 22px; }
         .obra-endereco-edita .form-input { flex: 1 1 380px; margin: 0; }
-        .rel-doc .rel-sub { font-size: 10.5pt; font-weight: 600; color: #1c2426; margin-top: 1.5mm; letter-spacing: 0; }
-        .rel-doc .rel-extra { font-size: 7.4pt; color: #6b7b7f; margin-top: .6mm; }
-        .rel-doc .rel-entrega { font-size: 8pt; font-weight: 400; color: #6b7b7f; text-transform: none; letter-spacing: 0; }
+        .rel-doc .rel-sub { font-size: 10.5pt; font-weight: 600; color: var(--casa-tinta); margin-top: 1.5mm; letter-spacing: 0; }
+        .rel-doc .rel-extra { font-size: 7.4pt; color: var(--casa-cinza); margin-top: .6mm; }
+        .rel-doc .rel-entrega { font-size: 8pt; font-weight: 400; color: var(--casa-cinza); text-transform: none; letter-spacing: 0; }
         .rel-doc .rel-saldo { width: 120mm; }
         @media print {
           body:has(.rel-overlay) #root { display: none !important; }
-          .rel-overlay { position: static !important; background: #fff !important; padding: 0 !important; overflow: visible !important; }
+          .rel-overlay { position: static !important; background: none !important; padding: 0 !important; overflow: visible !important; }
           .rel-folha { display: block !important; }
         }
 

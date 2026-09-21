@@ -5,6 +5,7 @@ import { supabase, supabaseConfigurado, configuracaoAusente } from "./lib/supaba
 import { LogoGroupWS } from "./marca.jsx";
 import capa from "./assets/login-capa.jpg";
 import capaPequena from "./assets/login-capa-1000.jpg";
+import logoMicrosoft from "./assets/logo-microsoft.svg";
 
 /* "Precisa de ajuda?" cai no WhatsApp de quem administra o sistema. */
 const SUPORTE = "https://wa.me/5548999348866?text="
@@ -267,18 +268,12 @@ function LoginScreen({ derrubada }) {
   );
 }
 
-/* O quadriculado da Microsoft, desenhado aqui: quatro retangulos nao
-   valem uma dependencia nova, e um <img> de CDN nao carregaria — a
-   pagina de login e' a primeira coisa que abre, e ela nao pode depender
-   de terceiro pra ficar de pe. As cores sao a paleta oficial do logotipo
-   de terceiro, nao do design system. */
+/* O quadriculado da Microsoft, num arquivo do proprio projeto
+   (assets/logo-microsoft.svg): quatro retangulos nao valem uma dependencia
+   nova, e um <img> de CDN nao carregaria — a pagina de login e' a primeira
+   coisa que abre, e ela nao pode depender de terceiro pra ficar de pe. As
+   cores sao a paleta oficial do logotipo de terceiro, e por isso moram na
+   arte, e nao em token do design system. */
 function LogoMicrosoft() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 23 23" aria-hidden="true">
-      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
-      <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
-      <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
-      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
-    </svg>
-  );
+  return <img src={logoMicrosoft} width="16" height="16" alt="" aria-hidden="true" />;
 }

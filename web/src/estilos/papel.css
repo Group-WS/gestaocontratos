@@ -1,0 +1,54 @@
+/* PAPEL DOS DOCUMENTOS — a folha do escopo de contratação, o aditivo e o
+   relatório em PDF. O que se vê na tela é o documento que vai para o
+   fornecedor e para o cliente: ele sai impresso (ou em .doc), e o papel é
+   branco também no tema escuro do app. Por isso estas cores ficam fora dos
+   tokens do tema, cada uma declarada uma vez aqui, com o escape do gate
+   explicando — o mesmo acordo de `Apresentacao.css`.
+
+   Os valores são os que os documentos já usavam: trocar qualquer um muda o
+   papel que o cliente recebe. A tela em volta da folha (barras, sombras,
+   overlays) continua nos tokens do design system. */
+:root {
+  /* gate-allow DS-03: papel dos documentos impressos é branco em qualquer tema do app */
+  --papel: #fff;
+
+  /* Folha do escopo de contratação (e o .doc que sai dela) */
+  /* gate-allow DS-03: tinta do texto da folha do escopo, sobre o papel branco */
+  --esc-tinta: #16181A;
+  /* gate-allow DS-03: rótulos e cabeçalhos de tabela da folha do escopo */
+  --esc-rotulo: #55595E;
+  /* gate-allow DS-03: quantidade e notas da folha do escopo, cinza do papel */
+  --esc-suave: #6A6E72;
+  /* gate-allow DS-03: ambiente e rodapé da folha do escopo, cinza claro do papel */
+  --esc-fraca: #85898D;
+  /* gate-allow DS-03: fio de separação da folha do escopo, sobre o papel */
+  --esc-traco: #DDD;
+  /* gate-allow DS-03: fio entre itens da folha do escopo, sobre o papel */
+  --esc-traco-claro: #F0F0EE;
+  /* gate-allow DS-03: fio do cabeçalho e do total da tabela da folha do escopo */
+  --esc-traco-forte: #CCC;
+
+  /* Papel da casa: aditivo e relatório — a mesma paleta de lib/relatorioPdf.js */
+  /* gate-allow DS-03: verde dos documentos da casa (aditivo e relatório em PDF) */
+  --casa-verde: #0E5F6B;
+  /* gate-allow DS-03: tinta do texto dos documentos da casa, sobre o papel */
+  --casa-tinta: #1c2426;
+  /* gate-allow DS-03: cinza de metadados dos documentos da casa */
+  --casa-cinza: #6b7b7f;
+  /* gate-allow DS-03: cinza do texto de prevalência do aditivo, no papel */
+  --casa-cinza-claro: #9aa7aa;
+  /* gate-allow DS-03: fio entre linhas das tabelas dos documentos da casa */
+  --casa-traco: #dfe7e9;
+  /* gate-allow DS-03: fundo da linha de grupo das tabelas do aditivo */
+  --casa-grupo-fundo: #e9f2f4;
+  /* gate-allow DS-03: fio da linha de grupo e do aviso do aditivo */
+  --casa-grupo-traco: #b9ccd0;
+  /* gate-allow DS-03: vinho da seção de supressão do aditivo, no papel */
+  --casa-vinho: #7d4038;
+  /* gate-allow DS-03: fundo da linha de grupo da supressão do aditivo */
+  --casa-vinho-fundo: #f4ebe9;
+  /* gate-allow DS-03: fio da linha de grupo da supressão do aditivo */
+  --casa-vinho-traco: #dcc4bf;
+  /* gate-allow DS-03: verde do saldo a favor do cliente (crédito) no aditivo */
+  --casa-credito: #1f7a54;
+}

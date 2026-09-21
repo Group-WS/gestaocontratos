@@ -19,13 +19,16 @@ const ALTURA = 841.89;
 const MARGEM = 12 * MM;          // a mesma margem do relatório na tela
 const AREA = LARGURA - 2 * MARGEM;
 
-const VERDE = rgb(14 / 255, 95 / 255, 107 / 255);     // #0E5F6B, o verde dos relatórios
-const TINTA = rgb(28 / 255, 36 / 255, 38 / 255);      // #1c2426
-const CINZA = rgb(107 / 255, 123 / 255, 127 / 255);   // #6b7b7f
-const TRACO = rgb(223 / 255, 231 / 255, 233 / 255);   // #dfe7e9
-const BRANCO = rgb(1, 1, 1);
-const AVISO = rgb(249 / 255, 243 / 255, 230 / 255);
-const AVISO_BORDA = rgb(230 / 255, 204 / 255, 153 / 255);
+/* A paleta do papel dos relatórios — a mesma de estilos/papel.css (--casa-*).
+   O pdf-lib desenha em RGB e não conhece os tokens do tema: o PDF é papel,
+   igual em qualquer tema do app. */
+const VERDE = rgb(14 / 255, 95 / 255, 107 / 255);     // #0E5F6B · gate-allow DS-03: verde dos relatórios no papel do PDF, fora do tema
+const TINTA = rgb(28 / 255, 36 / 255, 38 / 255);      // #1c2426 · gate-allow DS-03: tinta do texto no papel do PDF, fora do tema
+const CINZA = rgb(107 / 255, 123 / 255, 127 / 255);   // #6b7b7f · gate-allow DS-03: cinza de metadados no papel do PDF, fora do tema
+const TRACO = rgb(223 / 255, 231 / 255, 233 / 255);   // #dfe7e9 · gate-allow DS-03: fio entre linhas no papel do PDF, fora do tema
+const BRANCO = rgb(1, 1, 1);                          // gate-allow DS-03: branco do papel e do texto sobre a faixa verde do PDF
+const AVISO = rgb(249 / 255, 243 / 255, 230 / 255);   // gate-allow DS-03: fundo do quadro de aviso impresso no PDF
+const AVISO_BORDA = rgb(230 / 255, 204 / 255, 153 / 255); // gate-allow DS-03: borda do quadro de aviso impresso no PDF
 
 const T = { titulo: 15, sub: 10.5, meta: 8, secao: 9.5, cab: 6.8, corpo: 8, cod: 7.4, extra: 7, total: 8.5, resumo: 8.6, final: 10, pagina: 7 };
 const ENTRELINHA = 1.25;

@@ -19,14 +19,18 @@ import { TEXTOS, ambienteEm, textoDoBloco } from "./apresentacaoIdioma.js";
  */
 const paraPdfY = (y, altura = 0) => ALTURA - y - altura;
 
-const BRANCO = rgb(1, 1, 1);
-const PRETO = rgb(0.09, 0.11, 0.13);
-const CINZA = rgb(0.42, 0.44, 0.46);
+/* As cores do papel da Apresentação — as mesmas de Apresentacao.css
+   (--ap-*). O pdf-lib desenha em RGB e não conhece os tokens do tema: o PDF
+   que vai para o cliente é igual em qualquer tema do app. */
+const BRANCO = rgb(1, 1, 1);                // gate-allow DS-03: papel do slide no PDF, branco em qualquer tema
+const PRETO = rgb(0.09, 0.11, 0.13);        // gate-allow DS-03: tinta do texto no papel do slide em PDF
+const CINZA = rgb(0.42, 0.44, 0.46);        // gate-allow DS-03: cinza da legenda do produto no PDF, igual à tela
 /* O azul do fundo da capa, medido no pixel do arquivo dela: #092737.
    Chutado, a tarja que cobre o ano apareceria como um retângulo. */
-const AZUL_CAPA = rgb(9 / 255, 39 / 255, 55 / 255);
-const CINZA_CAPA = rgb(0.55, 0.60, 0.63);
+const AZUL_CAPA = rgb(9 / 255, 39 / 255, 55 / 255); // gate-allow DS-03: cor da arte de abertura da casa, medida no pixel
+const CINZA_CAPA = rgb(0.55, 0.60, 0.63);   // gate-allow DS-03: tinta do ano sobre a arte de abertura da casa
 
+// gate-allow DS-03: conversor do hex das cores do papel (salvas no documento) para o RGB do pdf-lib
 const hex = (h) => rgb(
   parseInt(h.slice(1, 3), 16) / 255,
   parseInt(h.slice(3, 5), 16) / 255,
@@ -211,7 +215,7 @@ export async function gerarPdf(doc, artes, imagemDe, idioma = "pt") {
       else {
         pag.drawRectangle({
           x: b.x, y: paraPdfY(b.y + w), width: w, height: w,
-          color: rgb(0.95, 0.95, 0.94),
+          color: rgb(0.95, 0.95, 0.94), // gate-allow DS-03: fundo do bloco sem foto no papel do slide em PDF
         });
       }
 

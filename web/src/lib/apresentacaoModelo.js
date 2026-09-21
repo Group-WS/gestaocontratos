@@ -53,9 +53,10 @@ export const CAMPOS_CAPA = [
   { id: "titulo",  x: 64,  y: 176, w: 540, tamanho: 20, esquerda: true, forte: true },
 ];
 
-/* As cores, medidas no PDF original. */
-export const COR_VALOR = "#7F7F7F";
-export const COR_TITULO = "#A6A6A6";
+/* As cores, medidas no PDF original. São do papel da capa (PDF e PPTX), não
+   da tela: ficam iguais em qualquer tema do app. */
+export const COR_VALOR = "#7F7F7F";  // gate-allow DS-03: cinza dos valores na capa impressa, medido no PDF original
+export const COR_TITULO = "#A6A6A6"; // gate-allow DS-03: cinza do título na capa impressa, medido no PDF original
 
 /* A caixa efetiva de um campo: a que a pessoa moveu, ou a de fábrica. */
 export function caixaDoCampo(doc, campo) {
