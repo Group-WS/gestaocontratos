@@ -49,7 +49,7 @@ conf("o menu é um Popover do DS", app.includes('<Popover open={menuPerfil} onOp
 conf("... aberto abaixo do avatar, no topo", app.includes('<PopoverContent side="bottom" align="end"'));
 conf("... e o tema mora no menu", /<span>Tema<\/span>\s*<ThemeToggle \/>/.test(app));
 conf("... e largura própria", /<PopoverContent [^>]*className="w-64 p-2"/.test(app));
-conf("a .barra segue sticky, que é a referência", app.includes('<aside className="barra naoimprime sticky top-15 flex shrink-0" ref={barraRef}>'));
+conf("a .barra segue sticky, que é a referência", app.includes('<aside className="barra naoimprime sticky top-0 flex h-screen shrink-0" ref={barraRef}>'));
 // a regra que TINHA position mirava uma classe que nao existe mais
 conf("a regra morta .sidebar.recolhida saiu", app.includes(".sidebar.recolhida .perfil-menu {"), false);
 

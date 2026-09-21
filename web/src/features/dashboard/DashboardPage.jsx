@@ -129,7 +129,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
   return <PageShell title={title} description="Acompanhe prazos, compras e pontos críticos da operação." actions={controls} contentClassName="flex flex-col gap-4">
     {active && <div className="flex items-center gap-4"><span role="status">{filtered.length} obras encontradas{scope === "purchase" ? " · com compra pendente na tabela" : ""}</span><Button variant="ghost" size="sm" onClick={clear}>Limpar filtros</Button></div>}
     {error && <Card accent="danger"><CardContent><p role="alert">Não conseguimos carregar todos os dados das obras. Atualize para consultar os indicadores.</p><Button onClick={onRetry}>Tentar novamente</Button></CardContent></Card>}
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores das obras" aria-busy={loading}>
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4" aria-label="Indicadores das obras" aria-busy={loading}>
       {kpis.map(({ icon: Icon, ...kpi }) => <Card key={kpi.label}>
         <CardContent><div className="flex items-center gap-4">
           <Badge tone={kpi.tone} className="p-4"><Icon size={32} aria-hidden="true" /></Badge>
@@ -142,8 +142,8 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
     </div>
     {loading && <span role="status">Carregando as obras…</span>}
     <>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5 min-w-0">
-        <Card className="min-w-0 xl:col-span-3" ref={alertsRef} tabIndex={-1}>
+      <div className="grid min-w-0 grid-cols-1 gap-4 2xl:grid-cols-5">
+        <Card className="min-w-0 2xl:col-span-3" ref={alertsRef} tabIndex={-1}>
           <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-2"><CardTitle className="flex items-center gap-2"><TriangleAlert size={18} className="text-danger" />Prioridades de hoje <Badge tone="neutral">{visibleAlerts.length}</Badge></CardTitle><Button variant="ghost" size="sm" className="text-brand" onClick={() => setShowAlerts(!showAlerts)}>{showAlerts ? "Mostrar menos" : `Ver todos os ${alerts.length} alertas`} <ArrowRight size={14} /></Button></div><CardDescription>Itens que precisam da sua atenção para manter o cronograma.</CardDescription></CardHeader>
           <CardContent>
             {unavailable ? <p role="status">{loading ? "Carregando prioridades…" : "Prioridades indisponíveis. Tente carregar novamente."}</p> : !alerts.length ? <p role="status">Nenhuma pendência para as obras selecionadas.</p> : <Table aria-label="Prioridades de hoje">
@@ -159,9 +159,9 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
             </Table>}
           </CardContent>
         </Card>
-        <Card className="min-w-0 xl:col-span-2" ref={deliveriesRef} tabIndex={-1}>
+        <Card className="min-w-0 2xl:col-span-2" ref={deliveriesRef} tabIndex={-1}>
           <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-4"><CardTitle className="flex items-center gap-2"><ClipboardList size={18} className="text-brand" />Próximas entregas <Badge tone="neutral">{deliveries.length}</Badge></CardTitle><Button variant="ghost" size="sm" onClick={() => setShowDeliveries(!showDeliveries)}>{showDeliveries ? "Mostrar menos" : "Ver todas as entregas"} <ArrowRight size={14} /></Button></div><CardDescription>Obras com entrega prevista nos próximos 90 dias.</CardDescription></CardHeader>
-          <CardContent><div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <CardContent><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-2">
             {unavailable ? <p role="status">{loading ? "Carregando entregas…" : "Entregas indisponíveis. Tente carregar novamente."}</p> : !deliveries.length && <p role="status">Nenhuma entrega prevista neste período.</p>}
             {(unavailable ? [] : showDeliveries ? deliveries : deliveries.slice(0, 4)).map((row) => <Button key={row.id} variant="outline" className="h-auto w-full flex-col items-start gap-2 text-left" onClick={() => onOpen(row.id)} aria-label={`Abrir entrega de #${row.code} ${row.name}`}>
               <span className="flex items-center gap-2"><span className="text-3xl font-bold">{row.days < 0 ? `${-row.days}d atrás` : row.days === 0 ? "Hoje" : `${row.days}d`}</span><Status critical={row.days < 0} attention={row.alerts.length > 0} /></span>

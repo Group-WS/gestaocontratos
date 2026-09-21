@@ -65,8 +65,8 @@ conf("o trilho existe", src.includes('aria-label="Módulos">'), true);
    deixa o trilho só com ferramenta e área. */
 conf("novas e arquivo saem do trilho",
   src.includes('const DESTINOS_NO_PAINEL = new Set(["novas", "arquivo"]);'), true);
-conf("o trilho é filtrado por eles",
-  src.includes("const noTrilho = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));"), true);
+conf("o menu é filtrado por eles",
+  src.includes("const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));"), true);
 /* No trilho TODO destino é ícone sem rótulo — sem a dica de hover, a Equipe
    volta a ser impossível de achar, que era o defeito da barra antiga. */
 /* O rotulo e' um Tooltip do DS em cada destino (ItemTrilho), a' direita. */
@@ -76,7 +76,8 @@ conf("a dica de hover vale pro trilho inteiro", src.includes('<TooltipContent si
    "Obras" ficava colada em cima da lista, bem no bloco de novas obras, e o
    caminho que fazia isso era o de todo dia: clicar em Obras e escorregar pra
    direita pra escolher uma. Visto na tela em 20/09/2026. */
-conf("... e todo destino passa por ele", /const botaoDestino = \(m\) => \(\s*<ItemTrilho /.test(src), true);
+conf("... e todo destino passa pelo mesmo item", (src.match(/<ItemTrilho key=/g) || []).length, 2);
+conf("modulo fora de grupo nunca some do menu", src.includes("i === GRUPOS_DO_MENU.length - 1 ? semGrupo : []"), true);
 /* ... SEM PISCAR. A linha abaixo parece redundante ao lado da de cima e não
    é: ao mostrar a dica o `title` do botão é retirado, pra dica do navegador
    não subir por cima da nossa. Só que aí o botão deixa de ser achável por
@@ -101,8 +102,9 @@ conf("nem o botão de esconder a lista", src.includes("Esconder a lista de obras
 conf("o painel só aparece na obra", src.includes('const naObra = modulo === "comparativo";'), true);
 conf("... e, na obra, está sempre aberto", src.includes("const temPainel = naObra && mostrarObras;"), true);
 /* O destino ativo veste a cor do que abriu à direita. */
-conf("sem painel, o trilho ativo veste o campo",
-  src.includes('ativo && (semPainel ? "bg-bg" : "bg-surface-1")'), true);
+/* O destino ativo: fio da marca à esquerda e fundo suave (App Shell do DS). */
+conf("o item ativo leva o fio e o fundo da marca",
+  src.includes('ativo && "border-brand bg-brand-soft text-brand"'), true);
 
 conf("os dois modos existem", src.includes('localStorage.getItem(CHAVE_MODO_OBRAS) === "squad" ? "squad" : "numero"'), true);
 /* O símbolo do squad aparece UMA vez: na linha no modo número, no cabeçalho
@@ -135,7 +137,7 @@ conf("o texto da busca cabe no painel",
 
 /* O CAPACETE no lugar do prédio (escolha dela): num app de obra tudo é
    prédio, então o prédio não distinguia nada. */
-conf("o destino Obras usa o capacete", src.includes("<HardHat size={18} />"), true);
+conf("o destino Obras usa o capacete", src.includes("<HardHat size={16} />"), true);
 conf("... e ele entra pelo import", /MessageSquare, HardHat/.test(src), true);
 conf("o módulo se chama Finalizadas", src.includes('{ id: "arquivo", nome: "Finalizadas"'), true);
 /* O endereço continua /arquivo: trocar quebraria link salvo. */

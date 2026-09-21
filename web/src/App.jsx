@@ -9763,8 +9763,9 @@ function SinoDasObras({ obras, onObra }) {
   );
 }
 
-/* O TOPO: a marca e o nome do produto a' esquerda, a busca logo depois, e o
-   sino e a conta a' direita — no molde do Group WS Platform. */
+/* O TOPO, no molde do App Shell do DS: so' sobre a coluna do conteudo (a
+   marca e o nome do produto moram no alto da barra lateral), com a busca a'
+   esquerda e o sino e a conta a' direita. */
 function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modulos, obras, onModulo, onObra }) {
   return (
     <header className="naoimprime sticky top-0 z-20 flex h-15 shrink-0 items-center justify-between gap-4 border-b border-line-1 bg-surface-1 px-4 md:px-5">
@@ -9773,12 +9774,6 @@ function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modul
         <Menu size={18} />
       </Button>
       <div className="flex min-w-0 flex-1 items-center gap-4">
-        {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
-            primeiro lugar onde a pessoa clica quando se perde. */}
-        <Button variant="ghost" className="h-auto shrink-0 gap-3 px-2 py-1" onClick={onInicio} title="Ir para o Início">
-          <LogoGroupWS className="text-sm" />
-          <span className="label-mono hidden border-l border-line-2 pl-3 text-text-mute sm:inline">Gestão de Obras TKWS</span>
-        </Button>
         <BuscaGlobal modulos={modulos} obras={obras} onModulo={onModulo} onObra={onObra} />
       </div>
       <div className="flex items-center gap-2">
@@ -10097,25 +10092,29 @@ const porCodigo = (a, b) => {
    impossivel de achar na versao antiga — existia, no sexto icone, sem nome
    em lugar nenhum. O Tooltip do DS substitui a dica caseira que seguia o
    mouse (e o `title` do navegador, que demorava e aparecia por cima). */
-function ItemTrilho({ rotulo, ativo = false, semPainel = false, aberto = false, className = "", children, ...props }) {
-  const classe = cn("relative h-10 w-full rounded-none border-l-2 border-transparent text-text-mute hover:text-text",
-    ativo && "border-brand text-brand", ativo && (semPainel ? "bg-bg" : "bg-surface-1"), className);
-  /* Aberto, o nome ja' esta' na tela: o Tooltip sairia repetindo o rotulo. */
+function ItemTrilho({ rotulo, ativo = false, aberto = true, badge = null, className = "", children, ...props }) {
+  /* Aberto (240px), o nome esta' na tela; recolhido (60px), so' o icone,
+     com o nome no Tooltip do DS. O ativo leva o fio da marca a' esquerda e
+     o fundo suave, como no App Shell do DS. */
+  const classe = cn("relative h-auto min-h-8 w-full rounded-lg border-l-2 border-transparent text-sm font-medium text-text-soft hover:text-text",
+    ativo && "border-brand bg-brand-soft text-brand", className);
   if (aberto) {
     return (
       <Button variant="ghost" aria-current={ativo ? "page" : undefined}
-        className={cn(classe, "h-auto min-h-10 justify-start gap-3 px-4 py-2 text-left text-sm font-medium")} {...props}>
-        {children}
-        <span className="min-w-0 whitespace-normal">{rotulo}</span>
+        className={cn(classe, "justify-start gap-2 px-2 py-1 text-left")} {...props}>
+        <span className="flex w-5 shrink-0 items-center justify-center">{children}</span>
+        <span className="min-w-0 flex-1 whitespace-normal leading-snug">{rotulo}</span>
+        {badge}
       </Button>
     );
   }
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={rotulo} aria-current={ativo ? "page" : undefined}
-          className={classe} {...props}>
+        <Button variant="ghost" aria-label={rotulo} aria-current={ativo ? "page" : undefined}
+          className={cn(classe, "h-9 justify-center px-0")} {...props}>
           {children}
+          {badge && <span className="absolute right-1 top-0">{badge}</span>}
         </Button>
       </TooltipTrigger>
       <TooltipContent side="right">{rotulo}</TooltipContent>
@@ -10123,7 +10122,15 @@ function ItemTrilho({ rotulo, ativo = false, semPainel = false, aberto = false, 
   );
 }
 
-function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
+/* Os grupos do menu, no molde do App Shell do DS (21/09/2026). Modulo que
+   nao estiver em grupo nenhum cai no ultimo, pra nunca sumir do menu. */
+const GRUPOS_DO_MENU = [
+  { id: "operacao", rotulo: "Operação", ids: ["inicio", "obras", "a_contratar", "aditivos"] },
+  { id: "canais", rotulo: "Canais", ids: ["mehoo", "painel_canal"] },
+  { id: "referencia", rotulo: "Referência", ids: ["catalogo", "gerador", "precos", "eap"] },
+];
+
+function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
   /* Acima de lg a barra e' fixa ao lado do conteudo; abaixo, ela abre num
      Sheet pelo botao de menu do topo. Uma casca so' de cada vez. */
   const largo = useMediaQuery(LARGO);
@@ -10165,16 +10172,11 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
   const barraRef = useRef(null);
 
-  /* Os nomes do menu, a pedido (21/09/2026).
-
-     O trilho e' so' icone de proposito, com o nome no Tooltip. Mas o Tooltip
-     mostra um nome por vez, e quem ainda nao decorou os icones precisa passar
-     o mouse em todos pra achar o que procura. Aberto, cada destino mostra o
-     proprio nome.
-
-     Nao guarda a escolha no navegador de proposito — preferencia mora no
-     banco (NAV-02), e isso fica pra quando existir a tabela de preferencias. */
-  const [trilhoAberto, setTrilhoAberto] = useState(false);
+  /* O menu nasce ABERTO, com os nomes (App Shell do DS), e "Recolher" no pe
+     o reduz aos icones. Nao guarda a escolha no navegador de proposito —
+     preferencia mora no banco (NAV-02), e isso fica pra quando existir a
+     tabela de preferencias. */
+  const [trilhoAberto, setTrilhoAberto] = useState(true);
 
   const [search, setSearch] = useState("");
 
@@ -10204,24 +10206,43 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
      app decidindo pela pessoa. */
   const temPainel = naObra && mostrarObras;
 
-  const noTrilho = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
-  const destinosTopo = noTrilho.filter((m) => !DESTINOS_NO_PE.has(m.id));
-  const destinosPe = noTrilho.filter((m) => DESTINOS_NO_PE.has(m.id));
+  const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
+  const destinosPe = noMenu.filter((m) => DESTINOS_NO_PE.has(m.id));
+  const doCorpo = noMenu.filter((m) => !DESTINOS_NO_PE.has(m.id));
+  const semGrupo = doCorpo.filter((m) => !GRUPOS_DO_MENU.some((g) => g.ids.includes(m.id)));
+  /* "obras" nao e' modulo: e' o destino que abre a obra (e a lista ao lado).
+     So' existe pra quem abre obra — Mehoo e Canal de compra tem o painel
+     proprio, inteiro. */
+  const gruposNaTela = GRUPOS_DO_MENU.map((g, i) => ({
+    ...g,
+    itens: [
+      ...g.ids.flatMap((id) => (id === "obras" ? (mostrarObras ? [{ id: "obras" }] : []) : doCorpo.filter((m) => m.id === id))),
+      ...(i === GRUPOS_DO_MENU.length - 1 ? semGrupo : []),
+    ],
+  })).filter((g) => g.itens.length);
   /* Os dois do pe do painel, na ordem da vida da obra: as que vao comecar, e
      depois as que terminaram. So' aparecem pra quem tem o modulo. */
   const novasNoPainel = modulos.find((m) => m.id === "novas");
   const finalizadasNoPainel = modulos.find((m) => m.id === "arquivo");
 
   const badgeDoDestino = (m) => (m.id === "equipe" && pendentesCount > 0
-    ? <Contador tom="warning" className="absolute right-2 top-1">{pendentesCount}</Contador>
+    ? <Contador tom="warning">{pendentesCount}</Contador>
     : null);
 
-  const botaoDestino = (m) => (
-    <ItemTrilho key={m.id} rotulo={m.nome} ativo={modulo === m.id} semPainel={!temPainel} aberto={trilhoAberto} onClick={() => irPara(m.id)}>
-      <m.Icone size={18} />
-      {badgeDoDestino(m)}
+  const botaoDestino = (m) => (m.id === "obras" ? (
+    /* CLICAR EM "OBRAS" abre a obra, e com ela a lista de obras.
+       CAPACETE, e nao predio (escolha dela, 19/09/2026): num app de obra
+       tudo e' predio, entao o predio nao distinguia nada. */
+    <ItemTrilho key="obras" rotulo="Obras" ativo={naObra} aberto={trilhoAberto}
+      onClick={() => { if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id); }}
+      disabled={!obras.length}>
+      <HardHat size={16} />
     </ItemTrilho>
-  );
+  ) : (
+    <ItemTrilho key={m.id} rotulo={m.nome} ativo={modulo === m.id} aberto={trilhoAberto} badge={badgeDoDestino(m)} onClick={() => irPara(m.id)}>
+      <m.Icone size={16} />
+    </ItemTrilho>
+  ));
 
   /* O NOME DA OBRA NUNCA CORTA — pedido dela em 19/09/2026: "nunca corte o
      nome da obra, sempre mostre tudo". Quem cede e' a ALTURA, nao o texto.
@@ -10251,39 +10272,33 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     );
   };
 
+  /* O MENU, no molde do App Shell do DS: a marca no alto (com a altura do
+     topo), os modulos em grupos com rotulo, e Equipe e "Recolher" no pe. */
   const trilho = (
-    <nav className={cn("flex shrink-0 flex-col border-r border-line-1 bg-surface-3 py-2", trilhoAberto ? "w-56 items-stretch" : "w-14 items-center")} aria-label="Módulos">
-      {destinosTopo.map((m) => (
-        m.id === "inicio" ? (
-          <React.Fragment key={m.id}>
-            {botaoDestino(m)}
-            {/* Quem nao abre obra (Mehoo, Canal de compra) nao tem este
-                destino: a tela dele e' o painel proprio, inteiro. */}
-            {mostrarObras && (
-              /* CLICAR EM "OBRAS" abre a obra, e com ela a lista de obras. */
-              <ItemTrilho rotulo="Obras" ativo={naObra} semPainel={!temPainel} aberto={trilhoAberto}
-                onClick={() => {
-                  if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id);
-                }}
-                disabled={!obras.length}>
-                {/* CAPACETE, e nao predio (escolha dela, 19/09/2026): num app
-                    de obra tudo e' predio, entao o predio nao distinguia
-                    nada. Em portugues, capacete quer dizer obra sem precisar
-                    pensar, e nenhuma outra tela usa esse simbolo. */}
-                <HardHat size={18} />
-              </ItemTrilho>
-            )}
-          </React.Fragment>
-        ) : botaoDestino(m)
-      ))}
-
-      <div className="mt-auto flex w-full flex-col items-center gap-1 border-t border-line-1 pt-2">
+    <nav className={cn("flex min-h-0 shrink-0 flex-col border-r border-line-1 bg-surface-1", trilhoAberto ? "w-60" : "w-15")} aria-label="Módulos">
+      <div className={cn("flex h-15 shrink-0 items-center border-b border-line-1", trilhoAberto ? "px-4" : "justify-center")}>
+        <Button variant="ghost" className="h-auto flex-col items-start gap-1 px-2 py-1" onClick={() => { onInicio?.(); fechar(); }} title="Ir para o Início" aria-label="Gestão de Obras TKWS — ir para o Início">
+          <LogoGroupWS variante={trilhoAberto ? "completa" : "marca"} className={trilhoAberto ? "text-base" : "!size-auto !h-7"} />
+          {trilhoAberto && <span className="label-mono text-text-mute">Gestão de Obras TKWS</span>}
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {gruposNaTela.map((g, i) => (
+          <div key={g.id} className={cn(i > 0 && "mt-4")}>
+            {trilhoAberto
+              ? <p className="label-mono mb-1 px-2 text-text-mute">{g.rotulo}</p>
+              : i > 0 && <Separator className="mb-2" />}
+            <div className="flex flex-col gap-1">{g.itens.map(botaoDestino)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex shrink-0 flex-col gap-1 border-t border-line-1 px-3 py-2">
         {destinosPe.map(botaoDestino)}
-          <Button variant="ghost" size="icon" className={cn("mt-1 shrink-0 text-text-mute", trilhoAberto ? "ml-auto mr-2" : "mx-auto")}
-            onClick={() => setTrilhoAberto((v) => !v)} aria-expanded={trilhoAberto}
-            aria-label={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"} title={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"}>
-            {trilhoAberto ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
-          </Button>
+        <Button variant="ghost" size="sm" className={cn("w-full gap-2 text-xs font-normal text-text-mute", trilhoAberto ? "justify-start px-2" : "justify-center px-0")}
+          onClick={() => setTrilhoAberto((v) => !v)} aria-expanded={trilhoAberto}
+          aria-label={trilhoAberto ? "Recolher o menu" : "Expandir o menu"} title={trilhoAberto ? "Recolher o menu" : "Expandir o menu"}>
+          {trilhoAberto ? <><PanelLeftClose size={14} /> Recolher</> : <PanelLeftOpen size={14} />}
+        </Button>
       </div>
     </nav>
   );
@@ -10391,9 +10406,9 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   return (
     <>
       {largo ? (
-        /* A altura (100vh - topo) mora na regra .barra do <style>: e' a unica
-           medida que o Tailwind nao expressa sem valor arbitrario. */
-        <aside className="barra naoimprime sticky top-15 flex shrink-0" ref={barraRef}>
+        /* Altura cheia, do alto da janela: no App Shell do DS o topo mora so'
+           sobre a coluna do conteudo. */
+        <aside className="barra naoimprime sticky top-0 flex h-screen shrink-0" ref={barraRef}>
           {conteudo}
         </aside>
       ) : (
@@ -22693,8 +22708,6 @@ export default function App() {
         #doc-aditivo .ad-fecho .ad-pagefoot { padding: 8mm 0 0; }
 
 
-        .barra { height: calc(100vh - 60px); }
-
         @media print {
           .naoimprime, .sidebar, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
           .app, .main { background: transparent !important; padding: 0 !important; margin: 0 !important; display: block !important; }
@@ -24058,18 +24071,19 @@ export default function App() {
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
-      <TopBar onMenu={() => setMenuAberto(true)} onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} usuario={usuario}
-        equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
-        modulos={modulosVisiveis} obras={migracaoPendente || podeAbrirObras(eu) ? obrasAtivas : []} onModulo={setModulo}
-        onObra={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
       <div className="flex">
-        <Sidebar obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
+        <Sidebar onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))}
+          obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
         <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar onMenu={() => setMenuAberto(true)} onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} usuario={usuario}
+          equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
+          modulos={modulosVisiveis} obras={migracaoPendente || podeAbrirObras(eu) ? obrasAtivas : []} onModulo={setModulo}
+          onObra={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
         {/* Sem padding proprio: as margens da pagina sao do PageShell de cada tela. */}
