@@ -9757,21 +9757,21 @@ function SinoDasObras({ obras, onObra }) {
   );
 }
 
-/* O TOPO, no molde do Group WS Platform (21/09/2026): so' sobre a coluna do
-   conteudo — a marca mora no alto da barra lateral —, com a busca a'
-   esquerda e o sino e a conta a' direita. */
+/* O TOPO: a marca e o nome do produto a' esquerda, a busca logo depois, e o
+   sino e a conta a' direita — no molde do Group WS Platform. */
 function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modulos, obras, onModulo, onObra }) {
   return (
-    <header className="naoimprime sticky top-0 z-10 flex h-15 shrink-0 items-center justify-between gap-3 border-b border-line-1 bg-surface-1 px-4 md:px-5">
+    <header className="naoimprime sticky top-0 z-20 flex h-15 shrink-0 items-center justify-between gap-4 border-b border-line-1 bg-surface-1 px-4 md:px-5">
       {/* Abaixo de lg a barra lateral vive num Sheet, e este e' o botao que a abre. */}
       <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Abrir menu">
         <Menu size={18} />
       </Button>
       <div className="flex min-w-0 flex-1 items-center gap-4">
-        {/* O nome do produto continua no topo e continua levando pro Inicio:
-            e' o primeiro lugar onde a pessoa clica quando se perde. */}
-        <Button variant="ghost" className="hidden h-auto shrink-0 px-2 py-1 text-sm font-semibold sm:inline-flex" onClick={onInicio} title="Ir para o Início">
-          Gestão de Obras TKWS
+        {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
+            primeiro lugar onde a pessoa clica quando se perde. */}
+        <Button variant="ghost" className="h-auto shrink-0 gap-3 px-2 py-1" onClick={onInicio} title="Ir para o Início">
+          <LogoGroupWS className="text-sm" />
+          <span className="label-mono hidden border-l border-line-2 pl-3 text-text-mute sm:inline">Gestão de Obras TKWS</span>
         </Button>
         <BuscaGlobal modulos={modulos} obras={obras} onModulo={onModulo} onObra={onObra} />
       </div>
@@ -10118,7 +10118,7 @@ function ItemTrilho({ rotulo, ativo = false, semPainel = false, aberto = false, 
   );
 }
 
-function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
+function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
   /* Acima de lg a barra e' fixa ao lado do conteudo; abaixo, ela abre num
      Sheet pelo botao de menu do topo. Uma casca so' de cada vez. */
   const largo = useMediaQuery(LARGO);
@@ -10287,11 +10287,6 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
 
   const trilho = (
     <nav className={cn("flex shrink-0 flex-col border-r border-line-1 bg-surface-3 py-2", trilhoAberto ? "w-56 items-stretch" : "w-14 items-center")} aria-label="Módulos">
-      <Button variant="ghost" size="icon" className={cn("mb-1 shrink-0 text-text-mute", trilhoAberto ? "ml-auto mr-2" : "mx-auto")}
-        onClick={() => setTrilhoAberto((v) => !v)} aria-expanded={trilhoAberto}
-        aria-label={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"} title={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"}>
-        {trilhoAberto ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
-      </Button>
       {destinosTopo.map((m) => (
         m.id === "inicio" ? (
           <React.Fragment key={m.id}>
@@ -10333,6 +10328,11 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
           </ItemTrilho>
         )}
         {destinosPe.map(botaoDestino)}
+          <Button variant="ghost" size="icon" className={cn("mt-1 shrink-0 text-text-mute", trilhoAberto ? "ml-auto mr-2" : "mx-auto")}
+            onClick={() => setTrilhoAberto((v) => !v)} aria-expanded={trilhoAberto}
+            aria-label={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"} title={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"}>
+            {trilhoAberto ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+          </Button>
       </div>
     </nav>
   );
@@ -10430,31 +10430,19 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
     </div>
   );
 
-  /* A MARCA NO ALTO DA BARRA, como no Group WS Platform: a faixa tem a
-     altura do topo e leva pro Inicio. Com o trilho so' de icones e sem o
-     painel, cabe so' o monograma. */
-  const marcaInteira = trilhoAberto || temPainel || !largo;
   const conteudo = (
     <TooltipProvider delayDuration={200}>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className={cn("flex h-15 shrink-0 items-center border-b border-r border-line-1 bg-surface-1", marcaInteira ? "px-4" : "justify-center")}>
-          <Button variant="ghost" className="h-auto px-2 py-1" onClick={() => { onInicio?.(); fechar(); }} title="Ir para o Início" aria-label="Ir para o Início">
-            <LogoGroupWS variante={marcaInteira ? "completa" : "marca"} className={marcaInteira ? "text-sm" : "!size-auto !h-7"} />
-          </Button>
-        </div>
-        <div className="flex min-h-0 flex-1">
-          {trilho}
-          {painel}
-        </div>
-      </div>
+      {trilho}
+      {painel}
     </TooltipProvider>
   );
 
   return (
     <>
       {largo ? (
-        /* Altura cheia, do alto da janela: o topo agora mora so' sobre o conteudo. */
-        <aside className="barra naoimprime sticky top-0 flex h-screen shrink-0" ref={barraRef}>
+        /* A altura (100vh - topo) mora na regra .barra do <style>: e' a unica
+           medida que o Tailwind nao expressa sem valor arbitrario. */
+        <aside className="barra naoimprime sticky top-15 flex shrink-0" ref={barraRef}>
           {conteudo}
         </aside>
       ) : (
@@ -22698,6 +22686,8 @@ export default function App() {
         #doc-aditivo .ad-fecho .ad-pagefoot { padding: 8mm 0 0; }
 
 
+        .barra { height: calc(100vh - 60px); }
+
         @media print {
           .naoimprime, .sidebar, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
           .app, .main { background: transparent !important; padding: 0 !important; margin: 0 !important; display: block !important; }
@@ -24061,22 +24051,28 @@ export default function App() {
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
+      <TopBar onMenu={() => setMenuAberto(true)} onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} usuario={usuario}
+        equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
+        modulos={modulosVisiveis} obras={migracaoPendente || podeAbrirObras(eu) ? obrasAtivas : []} onModulo={setModulo}
+        onObra={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
       <div className="flex">
-        <Sidebar onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))}
-          obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
+        <Sidebar obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
         <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar onMenu={() => setMenuAberto(true)} onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} usuario={usuario} equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
-          modulos={modulosVisiveis} obras={migracaoPendente || podeAbrirObras(eu) ? obrasAtivas : []} onModulo={setModulo}
-          onObra={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
         {/* Sem padding proprio: as margens da pagina sao do PageShell de cada tela. */}
-        <main className={cn("main min-w-0 flex-1", !(modulo === "inicio" || ["executivo", "vendido_planilha"].includes(tab)) && "max-w-7xl")}>
+        {/* OS AVISOS GLOBAIS MORAM NA MOLDURA, fora do <main>.
+            O PageShell anula o padding do <main> com margem negativa, e isso
+            so' fecha se ele for o unico filho: com um aviso antes, o
+            cabecalho da tela subia 32px por cima do aviso. Aqui eles ganham
+            uma faixa propria, com o mesmo respiro da pagina, e somem quando
+            nao ha' nenhum. */}
+        <div className="px-4 pt-4 md:px-8 md:pt-6 empty:hidden">
           {/* O portao de perfil esta DESLIGADO ate a coluna existir. Dizer
           isso e' o que impede a janela virar um estado permanente que
           ninguem lembra de fechar. */}
@@ -24095,6 +24091,8 @@ export default function App() {
               <Button variant="ghost" size="icon" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></Button>
             </div>
           )}
+        </div>
+        <main className={cn("main min-w-0 flex-1", !(modulo === "inicio" || ["executivo", "vendido_planilha"].includes(tab)) && "max-w-7xl")}>
           {/* Enquanto nao se sabe quem entrou, nenhuma tela: sem isto a
               Mehoo via o Inicio piscar antes de cair no painel dela. */}
           {supabaseConfigurado && pessoasCarregando && !migracaoPendente ? (
