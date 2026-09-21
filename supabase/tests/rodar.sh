@@ -63,6 +63,9 @@ for f in pessoa-escrita-restrita.sql rls-perfis.sql rls-perfis-complemento.sql; 
   aplicar "$SQL/$f"
 done
 
+# 6. O reforco da varredura de 21/09/2026 — sempre depois do bloco 5.
+aplicar "$SQL/rls-reforco.sql"
+
 # Os testes. `finish(true)` faz o pgTAP levantar erro quando algo falha,
 # e o ON_ERROR_STOP transforma isso no codigo de saida que o CI enxerga.
 falhou=0

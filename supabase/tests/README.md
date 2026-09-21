@@ -1,8 +1,9 @@
 # Testes de policy
 
-Provam que o RLS nega o que tem que negar. São `pgTAP`, o padrão do
-Supabase — cada arquivo abre uma transação, troca de identidade várias
-vezes e dá `rollback` no fim, então rodar não suja o banco.
+Provam que o RLS nega o que tem que negar — e que o uso normal continua
+passando. São `pgTAP`, o padrão do Supabase: cada arquivo abre uma
+transação, troca de identidade várias vezes e dá `rollback` no fim, então
+rodar não suja o banco.
 
 O que eles cobrem hoje:
 
@@ -12,26 +13,33 @@ O que eles cobrem hoje:
 | `01-pessoa.sql` | ninguém se promove a master |
 | `02-obra.sql` | o GC vê as obras dele e as sem dono — e o histórico acompanha |
 | `03-referencia.sql` | quem está na fila, sem perfil, ainda não lê nada |
+| `04-aditivo.sql` | quem vê o aditivo é quem vê a obra; apagar, só o criador ou o admin |
+| `05-comentario.sql` | o recado é assinado: ninguém escreve em nome de outra pessoa |
+| `06-referencia-completa.sql` | as tabelas de referência: anônimo e fila não leem; a Mehoo não apaga |
+| `07-por-obra.sql` | o caderno e as solicitações seguem a obra |
+| `08-so-admin-escreve.sql` | compradores e prestadores: o time lê, só o admin escreve |
+| `09-reforco.sql` | o reforço de 21/09/2026 (`rls-reforco.sql`): ninguém apaga obra nem reescreve o histórico, aditivo só na própria obra e com autoria do login, arquivos por obra, catálogo sem listagem anônima, a fila fora do que é do time, `sienge_obra` só no status, funções fechadas para anônimo |
 
 ## Como rodar
 
-Com o Supabase CLI e Docker:
+O jeito que o CI usa — monta um banco novo com os scripts na ordem do
+[README da pasta acima](../README.md), roda tudo e apaga o banco no fim:
 
 ```bash
-supabase start
-supabase db reset          # aplica os scripts da pasta acima, na ordem do README
-psql "$(supabase status -o env | grep DB_URL | cut -d= -f2-)" -f supabase/tests/00-massa.sql
-supabase test db
+docker run -d --name confere-teste -e POSTGRES_PASSWORD=teste -p 55432:5432 supabase/postgres:15.8.1.060
+PGHOST=localhost PGPORT=55432 PGUSER=postgres PGPASSWORD=teste supabase/tests/rodar.sh
 ```
 
-Sem o CLI, contra um Postgres qualquer com a extensão `pgtap`: aplique os
-scripts na ordem do [README da pasta acima](../README.md), depois
-`00-massa.sql`, e rode cada arquivo de teste com `psql -f`.
+Sem `psql` na máquina, o mesmo roda dentro do contêiner, com a pasta
+`supabase/` montada em `/sql`:
 
-## O que ainda falta
+```bash
+docker run -d --name confere-teste -e POSTGRES_PASSWORD=teste -v "$PWD/supabase:/sql:ro" supabase/postgres:15.8.1.060
+docker exec -e PGHOST=localhost -e PGUSER=postgres -e PGPASSWORD=teste confere-teste bash /sql/tests/rodar.sh
+```
 
-Sete tabelas expostas ainda não têm teste próprio (`catalogo_*`,
-`sienge_eap_*`, `apresentacao`, `sienge_solicitacao`, `comprador_grupo`,
-`prestador_interno`, `obra_comentario`). O gate de qualidade cobra uma
-asserção de acesso negado por tabela (TST-03) — estes quatro arquivos são o
-começo, não o fim.
+## Script novo, teste novo
+
+O `rodar.sh` tem a lista executável da ordem de aplicação. Script de
+estrutura novo entra nela, no bloco certo — e, se mexe em acesso, com um
+arquivo de teste que prove o "não" **e** o "sim".

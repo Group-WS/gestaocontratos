@@ -48,6 +48,33 @@ a rodar, de propósito.
 > banco aberto; rodar só os dois primeiros deixa o histórico da obra, o
 > caderno e as solicitações abertos.
 
+**6. O reforço da varredura de segurança (21/09/2026)**
+`rls-reforco.sql` — logo depois do bloco 5, e de novo **sempre** que o
+bloco 5 rodar.
+
+> Fecha o que o bloco 5 ainda deixava: apagar obra (as policies eram
+> `for all`), reescrever o histórico, aditivo em obra alheia e autoria
+> vinda do navegador, os arquivos de todas as obras abertos a qualquer
+> logado, o bucket `catalogo` listável por anônimo, a sala de espera lendo
+> recados e compradores, e as funções `security definer` sem `search_path`
+> vazio. Se o bloco 5 não tiver rodado, ele se recusa, de propósito. O
+> teste é o `tests/09-reforco.sql`.
+>
+> **Reaplicar um script dos blocos 3 a 5 desfaz parte do reforço** (eles
+> recriam funções e policies com a versão antiga). Rodou algum deles de
+> novo? Rode o bloco 5 inteiro e depois este.
+
+**Antes do bloco 6, confira se o bloco 5 rodou em produção.** Os
+comentários do `taylor-made.sql` indicam que o `rls-perfis.sql` pode nunca
+ter sido aplicado lá. Esta consulta mostra o que vale hoje:
+
+```sql
+select tablename, policyname, roles, cmd
+  from pg_policies
+ where schemaname in ('public', 'storage')
+ order by 1, 2;
+```
+
 ## Scripts que NÃO são de estrutura
 
 Estes são operações pontuais, de uma vez só, e não entram na montagem de um
