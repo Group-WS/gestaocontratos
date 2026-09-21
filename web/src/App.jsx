@@ -1210,19 +1210,18 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
 
   return (
     <div className="space-y-6">
-      {/* Sete indicadores: quatro na primeira linha e tres na segunda, cada
-          linha ocupando a largura inteira (grade de 12) — sem o buraco que a
-          grade de 4 deixava no fim. */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-12" aria-label="Indicadores da obra">
-        {kpis.map((k, i) => <KpiMini key={k.label} label={k.label} value={k.value} hint={k.hint} tone={k.tone}
-          className={cn(i < 4 ? "lg:col-span-3" : "lg:col-span-4", i === kpis.length - 1 && kpis.length % 2 && "col-span-2 lg:col-span-4")} />)}
+      {/* A MESMA GRADE DE INDICADORES EM TODA A OBRA: 4 colunas, todos do
+          mesmo tamanho e da mesma altura (auto-rows-fr). Cards de largura
+          diferente na mesma tela liam como pesos diferentes. */}
+      <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Indicadores da obra">
+        {kpis.map((k) => <KpiMini key={k.label} label={k.label} value={k.value} hint={k.hint} tone={k.tone} className="h-full" />)}
       </div>
 
       {/* O QUE SE RESOLVE HOJE vem logo depois dos numeros: pendencias,
           equipe e progresso. A data de entrega (ajuste raro) e a jornada
           (consulta) descem. */}
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
-        <Card>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <Card className="h-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertTriangle size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Pendências e alertas
@@ -1307,7 +1306,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="h-full">
           <CardHeader>
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2">
@@ -1323,7 +1322,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="h-full">
           <CardHeader>
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2">
@@ -4162,7 +4161,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       )}
 
       {temItens && !obra.comprasLiberadas && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Resumo do plano">
+        <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Resumo do plano">
           <KpiMini label="Material no plano" value={fmtBRL(plano.materialNoPlano)} tone="brand"
             hint={`${plano.nItens} ${plano.nItens === 1 ? "item" : "itens"}`} />
           {plano.moForaDoPlano > 0 && (
@@ -6553,7 +6552,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
 
   return (
     <>
-      <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <div className="mb-4 grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4">
         {/* Os cartoes da planilha vem primeiro: sao as duas decisoes da tela,
             na ordem do fluxo. O "Entrou, saiu ou mudou" fecha a barra — ele
             responde a comparacao com o vendido, que e' outra pergunta. */}
@@ -6576,8 +6575,12 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
                Entrou e mudou viram filtro da planilha — sao itens que estao
                la'. SAIU nao: ele so' existe no vendido, entao continua
                abrindo o painel, que e' o unico lugar onde da' pra ve-lo. */
-            <Card key={st} className={filtroES ? "ring-2 ring-brand" : ""}>
-              <CardContent className="flex flex-col gap-2 p-4">
+            /* Mesmo formato dos indicadores ao lado (KpiMini): rotulo em cima,
+               os numeros no lugar do valor, a explicacao embaixo — e a mesma
+               altura, pra barra ler como uma fila so'. */
+            <KpiMini key={st} tone="neutral" label={m.label} hint={m.sub}
+              className={cn("h-full", filtroES && "ring-2 ring-brand")}
+              value={(
                 <ToggleGroup type="single" value={filtroES} aria-label={m.label}
                   onValueChange={(v) => setFiltro(v || "todos")}>
                   <ToggleGroupItem value="es_entrou" size="sm" title="Ver só o que entrou no executivo" className="mono text-success">+{resumoEntrouSaiu.nEntrou}</ToggleGroupItem>
@@ -6586,10 +6589,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
                     <ToggleGroupItem value="es_mudou" size="sm" title="Ver só o que mudou de quantidade ou valor" className="mono text-warning">~{resumoEntrouSaiu.nMudou}</ToggleGroupItem>
                   )}
                 </ToggleGroup>
-                <div className="text-sm font-semibold">{m.label}</div>
-                <div className="text-xs text-text-mute">{m.sub}</div>
-              </CardContent>
-            </Card>
+              )} />
           ) : (
             <KpiBotao key={st} ativo={filtro === st} tone={tomDaCor(m.color)}
               label={m.label} value={cnt(st)} hint={m.sub}
@@ -8703,24 +8703,26 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
     });
   });
 
+  /* Os mesmos quatro cartoes (KpiMini) do resto da obra, na mesma grade de
+     4 colunas e com a mesma altura — antes era uma faixa propria, com
+     tamanhos de fonte e espacos que so' ela tinha. */
+  const movimento = (
+    <span className="flex flex-col gap-1 text-sm">
+      <span className="inline-flex items-center gap-1"><ArrowDownRight size={14} aria-hidden="true" /> retirado {fmtBRL(retirado)}{nExcluidos > 0 && ` · ${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"}`}</span>
+      <span className="inline-flex items-center gap-1"><ArrowUpRight size={14} aria-hidden="true" /> acrescido {fmtBRL(acrescido)}{nNovos > 0 && ` · ${nNovos} nov${nNovos > 1 ? "os" : "o"}`}</span>
+    </span>
+  );
+  const grade = "mb-4 grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4";
+
   // Sem CMV liberado não há teto, e portanto não há saldo. Mas o que a
   // equipe já mexeu continua sendo informação útil — some o veredito, não
   // o painel. Antes isto era `return null` e a faixa inteira desaparecia.
   if (!cmvLiberado || cmvLiberado <= 0) {
     return (
-      <div className="saldo-exec sem-cmv">
-        <div className="saldo-bloco">
-          <div className="saldo-rotulo">Executivo hoje</div>
-          <div className="saldo-valor mono">{fmtBRL(atual)}</div>
-        </div>
-        <div className="saldo-bloco destaque">
-          <div className="saldo-rotulo">CMV liberado</div>
-          <div className="saldo-valor mono dim">ainda não liberado</div>
-        </div>
-        <div className="saldo-mov">
-          <span className="saldo-mov-item"><ArrowDownRight size={12} /> retirado {fmtBRL(retirado)}{nExcluidos > 0 && ` · ${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"}`}</span>
-          <span className="saldo-mov-item"><ArrowUpRight size={12} /> acrescido {fmtBRL(acrescido)}{nNovos > 0 && ` · ${nNovos} nov${nNovos > 1 ? "os" : "o"}`}</span>
-        </div>
+      <div className={grade} aria-label="Saldo do executivo">
+        <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)} />
+        <KpiMini className="h-full" label="CMV liberado" value="—" hint="ainda não liberado" />
+        <KpiMini className="col-span-2 h-full" label="Movimentação" value={movimento} />
       </div>
     );
   }
@@ -8729,25 +8731,13 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
   const estourou = sobra < 0;
 
   return (
-    <div className={`saldo-exec ${estourou ? "estourou" : ""}`}>
-      <div className="saldo-bloco">
-        <div className="saldo-rotulo">CMV liberado</div>
-        <div className="saldo-valor mono">{fmtBRL(cmvLiberado)}</div>
-      </div>
-      <div className="saldo-bloco">
-        <div className="saldo-rotulo">Executivo hoje</div>
-        <div className="saldo-valor mono">{fmtBRL(atual)}</div>
-      </div>
-      <div className="saldo-bloco destaque">
-        <div className="saldo-rotulo">{estourou ? "Acima do CMV" : "Ainda cabe"}{recuperado ? " · recalculado" : ""}</div>
-        <div className="saldo-valor mono" style={{ color: estourou ? "var(--red)" : "var(--green)" }}>
-          {estourou ? "−" : ""}{fmtBRL(Math.abs(sobra))}
-        </div>
-      </div>
-      <div className="saldo-mov">
-        <span className="saldo-mov-item"><ArrowDownRight size={12} /> retirado {fmtBRL(retirado)}{nExcluidos > 0 && ` · ${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"}`}</span>
-        <span className="saldo-mov-item"><ArrowUpRight size={12} /> acrescido {fmtBRL(acrescido)}{nNovos > 0 && ` · ${nNovos} nov${nNovos > 1 ? "os" : "o"}`}</span>
-      </div>
+    <div className={grade} aria-label="Saldo do executivo">
+      <KpiMini className="h-full" label="CMV liberado" value={fmtBRL(cmvLiberado)} />
+      <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)} />
+      <KpiMini className="h-full" tone={estourou ? "danger" : "success"}
+        label={`${estourou ? "Acima do CMV" : "Ainda cabe"}${recuperado ? " · recalculado" : ""}`}
+        value={`${estourou ? "−" : ""}${fmtBRL(Math.abs(sobra))}`} />
+      <KpiMini className="h-full" label="Movimentação" value={movimento} />
     </div>
   );
 }
@@ -10813,13 +10803,20 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
                   && !etapaConcluida(anterior.id, obra)
                   // Com item aprovado pra compra, as telas da compra abrem.
                   && !(ETAPAS_QUE_ABREM_COM_COMPRA.has(t.id) && temCompraAprovada(obra));
+                /* O aviso de trava e' so' visual — a aba sempre abre. Etapa ja'
+                   cumprida nao se apaga nem ganha cadeado (a obra pode ter o CMV
+                   liberado antes de o Vendido ser marcado), e a aba aberta
+                   nunca fica esmaecida: parecia desabilitada. */
+                const avisaTrava = travada && !feita;
                 return (
                   <TabsTrigger key={t.id} value={t.id}
-                    className={cn("gap-2 whitespace-nowrap", feita && "text-text-soft", travada && "opacity-50")}
-                    title={travada ? `Conclua "${anterior.label}" primeiro` : undefined}>
-                    {feita ? <CheckCircle2 size={14} className="text-success" /> : <Icon size={14} />}
+                    className={cn("gap-2 whitespace-nowrap", feita && tab !== t.id && "text-text-soft",
+                      avisaTrava && tab !== t.id && "opacity-60")}
+                    title={avisaTrava ? `Conclua "${anterior.label}" primeiro` : undefined}>
+                    {feita ? <CheckCircle2 size={14} className={tab === t.id ? undefined : "text-success"} aria-hidden="true" /> : <Icon size={14} aria-hidden="true" />}
                     {t.label}
-                    {travada && <Lock size={11} className="text-text-mute" />}
+                    {feita && <span className="sr-only">(concluída)</span>}
+                    {avisaTrava && <><Lock size={12} aria-hidden="true" /><span className="sr-only">(conclua {anterior.label} primeiro)</span></>}
                   </TabsTrigger>
                 );
               })}
@@ -12548,22 +12545,25 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     <PageShell title="Compras de Produtos"
       description="Escolha por onde comprar cada material do executivo e acompanhe o que já foi solicitado e comprado."
       toolbar={toolbar} contentClassName="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiMini label="Material no executivo" value={fmtBRL(soma(() => true))} hint={`${ativos.length} produtos`} tone="brand" />
-        <KpiMini label="Já com canal definido" value={fmtBRL(soma((r) => !!r.it.canalCompra))} tone="neutral" />
-        <KpiMini label="Ainda sem canal" value={fmtBRL(soma((r) => !r.it.canalCompra))} tone="warning" />
-        <KpiMini label="Já comprado" value={fmtBRL(soma((r) => r.it.comprado))} hint="vai pro Dashboard" tone="success" />
+      <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiMini className="h-full" label="Material no executivo" value={fmtBRL(soma(() => true))} hint={`${ativos.length} produtos`} tone="brand" />
+        <KpiMini className="h-full" label="Já com canal definido" value={fmtBRL(soma((r) => !!r.it.canalCompra))} tone="neutral" />
+        <KpiMini className="h-full" label="Ainda sem canal" value={fmtBRL(soma((r) => !r.it.canalCompra))} tone="warning" />
+        <KpiMini className="h-full" label="Já comprado" value={fmtBRL(soma((r) => r.it.comprado))} hint="vai pro Dashboard" tone="success" />
       </div>
 
       {/* O funil. Cada aba e um estagio, e o numero embaixo diz quanto
           dinheiro esta parado ali — que e o que decide por onde comecar. */}
       <Tabs value={etapa} onValueChange={setEtapa} activationMode="manual">
         <div className="overflow-x-auto">
-          <TabsList variant="pill" className="h-auto w-max items-stretch" aria-label="Etapas da compra">
+          {/* O funil ocupa a largura dos cartoes de cima, e cada estagio tem a
+              mesma largura; quem nao tem canal guarda o lugar da etiqueta, pra
+              os numeros ficarem na mesma linha. */}
+          <TabsList variant="pill" className="h-auto w-max min-w-full items-stretch" aria-label="Etapas da compra">
             {etapas.map((e, i) => (
               <React.Fragment key={e.id}>
-                <TabsTrigger value={e.id} className="h-auto min-w-24 flex-col items-center gap-1 px-4 py-2 whitespace-nowrap">
-                  {e.canal && <TagCanal id={e.canal} />}
+                <TabsTrigger value={e.id} className="h-auto min-w-24 flex-1 basis-0 flex-col items-center justify-start gap-1 px-4 py-2 whitespace-nowrap">
+                  {e.canal ? <TagCanal id={e.canal} /> : <span className="invisible" aria-hidden="true"><TagCanal id="sienge" /></span>}
                   <span className="text-lg font-bold leading-none">{e.n}</span>
                   <span className="text-xs">{e.rot}</span>
                   <span className="mono text-xs opacity-80">{fmtCompactBRL(e.v)}</span>
@@ -19842,7 +19842,7 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
     );
   }
   return (
-    <span className="flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+    <span className="flex w-full min-w-0 items-center gap-2">
       <MapPin size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
       <span className="sr-only">Endereço:</span>
       {/* O PROPRIO ENDERECO copia ao clicar (o Tooltip diz isso), e editar
@@ -19851,7 +19851,7 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-auto min-w-0 justify-start whitespace-normal px-1 py-0 text-left font-normal text-text-soft"
+              <Button variant="ghost" size="sm" className="h-auto min-w-0 shrink justify-start whitespace-normal px-1 py-0 text-left font-normal text-text-soft"
                 aria-label={`Copiar endereço: ${atual}`} onClick={async () => {
                   try { await navigator.clipboard.writeText(atual); avisar.ok("Endereço copiado."); }
                   catch { avisar.erro("Não foi possível copiar o endereço.", "Selecione o texto e copie manualmente."); }

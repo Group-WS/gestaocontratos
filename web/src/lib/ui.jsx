@@ -193,8 +193,8 @@ export function tomDaCor(cor) {
 export function KpiBotao({ ativo, onClick, label, value, hint, tone = "neutral", title, className = "" }) {
   return (
     <Button variant="ghost" type="button" aria-pressed={!!ativo} title={title} onClick={onClick}
-      className={`block h-auto w-full rounded-lg p-0 text-left font-normal whitespace-normal ${ativo ? "ring-2 ring-brand" : ""} ${className}`}>
-      <KpiMini label={label} value={String(value)} hint={hint} tone={tone} className="w-full" />
+      className={`block h-full w-full rounded-lg p-0 text-left font-normal whitespace-normal ${ativo ? "ring-2 ring-brand" : ""} ${className}`}>
+      <KpiMini label={label} value={String(value)} hint={hint} tone={tone} className="h-full w-full" />
     </Button>
   );
 }

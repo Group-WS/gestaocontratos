@@ -642,13 +642,6 @@
     {
       "regra": "DS-05",
       "arquivo": "web/src/App.jsx",
-      "linha": 8619,
-      "trecho": "<div className=\"saldo-valor mono\" style={{ color: estourou ? \"var(--red)\" : \"var(--green)\" }}>",
-      "impressao": "df4844bbefc950c2"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
       "linha": 11500,
       "trecho": "<span className=\"dim\" style={{ fontSize: 11 }}>Nenhum insumo com esse nome na base do Sienge.</span>",
       "impressao": "3f5bf4ddee3bbdde"
