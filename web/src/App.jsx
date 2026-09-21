@@ -58,9 +58,9 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertDescription, EmptyState, Progress, Checkbox, PageShell,
-  TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
+  Table, TableHeader, TableBody, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, Colapsavel } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -2967,13 +2967,13 @@ function historicoDaTela(eventos, tela) {
    e' remontado a cada render, e o campo perderia o foco a cada tecla. */
 function CampoBusca({ valor, aoMudar, dica, contador }) {
   return (
-    <div className="obra-search busca-lista">
-      <Search size={13} className="dim" />
-      <input placeholder={dica || "Buscar insumo, codigo ou fornecedor…"} value={valor || ""}
-             onChange={(e) => aoMudar(e.target.value)} />
-      {!!valor && !!contador && <span className="busca-conta">{contador}</span>}
+    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+      <Input className="w-full sm:max-w-xs" icon={<Search size={16} />} aria-label="Buscar"
+        placeholder={dica || "Buscar insumo, codigo ou fornecedor…"} value={valor || ""}
+        onChange={(e) => aoMudar(e.target.value)} />
+      {!!valor && !!contador && <span className="text-xs text-text-mute" role="status">{contador}</span>}
       {!!valor && (
-        <Button variant="ghost" size="icon" title="Limpar a busca" onClick={() => aoMudar("")} aria-label="Limpar a busca"><X size={12} /></Button>
+        <Button variant="ghost" size="sm" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} /> Limpar busca</Button>
       )}
     </div>
   );
@@ -4890,28 +4890,12 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
     }
   }
 
+  /* Desenhado pra morar no `actions` do PageShell: a fila de botoes com o
+     importar como primario, a dica embaixo, e o retorno da leitura logo
+     abaixo — sem sair do lugar em que a pessoa clicou. */
   return (
-    <div className="import-card">
-      <div className="import-bar">
-        <div className="import-info">
-          {congelado ? <Lock size={14} /> : <Upload size={14} />}
-          {/* Dizer "está congelada" sem dizer como sair é beco sem saída:
-              o botão de reabrir mora em OUTRA aba, e quem chega aqui pra
-              trocar um arquivo errado não tem como adivinhar isso. */}
-          {/* `motivoCongelado` vem na frente porque ele e' o motivo MAIS
-              especifico: quem chega aqui numa obra com compra aprovada
-              precisa ler isso, e nao "modo leitura". */}
-          <span>{congelado
-            ? (motivoCongelado
-                || (compraLiberada
-                ? <>Plano de Compras já liberado — esta etapa está congelada. Para <b>substituir ou remover</b> este documento, reabra as etapas.</>
-                : "Modo leitura — habilite a edição desta obra para importar ou remover."))
-            : dica}</span>
-        </div>
-        <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
-          <Upload size={13} /> {carregando ? "Lendo…" : label}
-        </Button>
-        <input ref={inputRef} type="file" accept={accept} className="sr-only" onChange={aoEscolher} />
+    <div className="flex w-full flex-col gap-2 sm:w-auto sm:max-w-md">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
         {/* Subir o arquivo errado tem que ter volta. Sem isto, o unico
             jeito de desfazer era subir outro por cima — e se o certo
             ainda nao existisse, a obra ficava com dado errado. */}
@@ -4925,7 +4909,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
               confirmar: "Reabrir etapas", perigo: false,
             })) onReabrir();
           }}>
-            <RotateCcw size={12} /> Reabrir etapas
+            <RotateCcw size={16} /> Reabrir etapas
           </Button>
         )}
         {/* O REMOVER APARECE SEMPRE QUE HA' O QUE REMOVER — desabilitado
@@ -4949,12 +4933,31 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
               "Não dá pra desfazer — depois é só subir o arquivo de novo."
             )) { setOk(null); setErro(null); onLimpar(); }
           }}>
-            <Trash2 size={13} /> Remover
+            <Trash2 size={16} /> Remover
           </Button>
         )}
+        <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
+          <Upload size={16} /> {carregando ? "Lendo…" : label}
+        </Button>
+        <input ref={inputRef} type="file" accept={accept} className="sr-only" onChange={aoEscolher} />
       </div>
-      {ok && <div className="import-ok"><CheckCircle2 size={14} /> {ok}</div>}
-      {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
+      <p className="flex items-start gap-2 text-xs text-text-soft">
+        {congelado ? <Lock size={14} className="mt-px shrink-0" /> : <Upload size={14} className="mt-px shrink-0" />}
+        {/* Dizer "está congelada" sem dizer como sair é beco sem saída:
+            o botão de reabrir mora em OUTRA aba, e quem chega aqui pra
+            trocar um arquivo errado não tem como adivinhar isso. */}
+        {/* `motivoCongelado` vem na frente porque ele e' o motivo MAIS
+            especifico: quem chega aqui numa obra com compra aprovada
+            precisa ler isso, e nao "modo leitura". */}
+        <span>{congelado
+          ? (motivoCongelado
+              || (compraLiberada
+              ? <>Plano de Compras já liberado — esta etapa está congelada. Para <b>substituir ou remover</b> este documento, reabra as etapas.</>
+              : "Modo leitura — habilite a edição desta obra para importar ou remover."))
+          : dica}</span>
+      </p>
+      {ok && <Alert tone="success"><AlertDescription>{ok}</AlertDescription></Alert>}
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
     </div>
   );
 }
@@ -5233,109 +5236,110 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
     <>
       <DetalheTexto item={verTexto} onFechar={() => setVerTexto(null)} />
 
-      <ImportButton congelado={congelado} label="Importar Contrato (PDF)" accept=".pdf"
-        onLimpar={onLimpar} oQueLimpa="os itens e valores do Contrato"
-        onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
-        temConteudo={obra.categorias.some((c) => (c.itensContrato || []).length)}
-        dica={<>Suba o <b>Vendido Contrato</b> — o PDF da proposta, exatamente como ele é hoje. Traz só <b>descrição e quantidade</b> (o contrato é fechado por verba, sem valor por item).</>}
-        onFile={aoImportar} />
-
-      <div className="flat-panel">
-        <div className="flat-panel-header">
-          <div>
-            <div className="flat-panel-title">Verbas conforme contrato / proposta {obra.codigo}/00</div>
-            <div className="flat-panel-sub">Descrição e quantidade por item, dentro de cada grupo — sem valores. Clique na verba pra expandir.</div>
+      <PageShell title={`Verbas conforme contrato / proposta ${obra.codigo}/00`}
+        description="Descrição e quantidade por item, dentro de cada grupo — sem valores. Clique na verba pra expandir."
+        contentClassName="flex flex-col gap-6"
+        actions={(
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-end">
+            <Button variant="outline" onClick={() => exportVendidoCSV(obra)}><Download size={16} /> Baixar tabela (.csv)</Button>
+            <ImportButton congelado={congelado} label="Importar Contrato (PDF)" accept=".pdf"
+              onLimpar={onLimpar} oQueLimpa="os itens e valores do Contrato"
+              onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
+              temConteudo={obra.categorias.some((c) => (c.itensContrato || []).length)}
+              dica={<>Suba o <b>Vendido Contrato</b> — o PDF da proposta, exatamente como ele é hoje. Traz só <b>descrição e quantidade</b> (o contrato é fechado por verba, sem valor por item).</>}
+              onFile={aoImportar} />
           </div>
-          <Button onClick={() => exportVendidoCSV(obra)}><Download size={13} /> Baixar tabela (.csv)</Button>
-        </div>
+        )}
+        /* O filtro esconde grupos, nunca reorganiza: a ordem da EAP é a
+           mesma nos três estados. */
+        toolbar={(
+          <div className="flex flex-wrap items-center gap-2">
+            <ClipboardList size={16} className="text-text-mute" />
+            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
+              {FILTROS_VENDA.map((f) => (
+                <ToggleGroupItem key={f.id} value={f.id} size="sm">
+                  {f.label}
+                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+        )}>
 
-        {/* O filtro esconde grupos, nunca reorganiza: a ordem da EAP é a
-            mesma nos três estados. */}
-        <div className="filter-bar venda-bar">
-          <ClipboardList size={13} className="dim" />
-          {FILTROS_VENDA.map((f) => (
-            <Button variant="ghost" key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
-              onClick={() => setFiltroVenda(f.id)}>
-              {f.label}
-              <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
-            </Button>
-          ))}
-        </div>
-
-        <div className="vend-list">
+        <div className="rounded-lg border border-line-1">
           {verbas.map((c) => {
             const itens = c.itensContrato || [];
             const temItens = itens.length > 0;
             const aberto = abertos.has(c.num);
+            const semVenda = itens.filter((it) => !itemFoiVendido(it)).length;
             return (
-              <div key={c.num} className="vend-grupo">
-                <Button variant="ghost" className="vend-head" onClick={() => temItens && toggle(c.num)}>
-                  {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
-                  <span className="vend-num mono">{c.num}</span>
-                  <span className="vend-nome">{c.nome}</span>
-                  {temItens && <span className="vend-count">{itens.length} {itens.length === 1 ? "item" : "itens"}</span>}
+              <Colapsavel key={c.num} aberto={aberto} podeAbrir={temItens} onAbrir={() => toggle(c.num)}
+                cabecalho={<>
+                  <span className="mono w-6 shrink-0 text-xs font-semibold text-text-mute">{c.num}</span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-text">{c.nome}</span>
+                  {temItens && <Badge tone="neutral">{itens.length} {itens.length === 1 ? "item" : "itens"}</Badge>}
                   {/* Grupo da EAP em que esta obra não vendeu nada. Não é
                       falha nem dado faltando — é o escopo da obra. */}
-                  {!grupoFoiVendido(itens) && <span className="vend-nao-vendido">não vendido</span>}
-                  {temItens && grupoFoiVendido(itens) && itens.filter((it) => !itemFoiVendido(it)).length > 0 && (
-                    <span className="vend-nao-vendido leve">
-                      {itens.filter((it) => !itemFoiVendido(it)).length} sem venda
-                    </span>
+                  {!grupoFoiVendido(itens) && <Badge tone="outline">não vendido</Badge>}
+                  {temItens && grupoFoiVendido(itens) && semVenda > 0 && (
+                    <Badge tone="outline" className="border-dashed font-medium normal-case tracking-normal">{semVenda} sem venda</Badge>
                   )}
-                </Button>
-                {aberto && temItens && (
-                  <table className="vend-itens">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 62 }}>Cód.</th>
-                        <th>Descrição</th>
-                        <th style={{ width: 150 }}>Ambiente</th>
-                        <th style={{ width: 104 }} className="center">Qtd. vendida</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                </>}>
+                <div className="overflow-x-auto border-t border-line-1 bg-surface-2">
+                  <Table className="min-w-lg table-fixed">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">Cód.</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="hidden w-40 md:table-cell">Ambiente</TableHead>
+                        <TableHead className="w-28 text-center">Qtd. vendida</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {itens.map((it, i) => (
-                        <tr key={it.codigo || i}>
-                          <td className="mono dim">{it.codigo || "—"}</td>
+                        <TableRow key={it.codigo || i}>
+                          <TableCell className="mono whitespace-nowrap text-text-mute">{it.codigo || "—"}</TableCell>
                           {/* Editáveis: o leitor de PDF acerta a maioria, nunca
                               todas. Sem poder corrigir na tela, cada linha
                               torta virava uma rodada minha de conserto — e a
                               obra ficava parada esperando deploy. */}
-                          <td className="col-desc"><CelulaTexto texto={it.desc} linhas={2}
+                          <TableCell className="wrap-anywhere"><CelulaTexto texto={it.desc} linhas={2}
                             onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })}
                             onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { desc: v }) : undefined}
-                            congelado={congelado} /></td>
-                          <td className="mono center dim col-amb"><CelulaTexto texto={it.ambiente} linhas={1}
+                            congelado={congelado} /></TableCell>
+                          <TableCell className="mono hidden whitespace-nowrap text-center text-text-mute md:table-cell"><CelulaTexto texto={it.ambiente} linhas={1}
                             onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })}
                             onEditar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { ambiente: v }) : undefined}
-                            congelado={congelado} /></td>
+                            congelado={congelado} /></TableCell>
                           {/* Quantidade que veio colada na descrição: foi lida
                               por palpite. Marcada na própria linha, porque o
                               aviso da importação some quando a pessoa sai da
                               tela — e o número errado fica. */}
-                          <td className={`mono center col-qtd ${it.qtdColada && !it.editadoNaMao ? "qtd-palpite" : ""}`}
+                          <TableCell className={`mono whitespace-nowrap text-center ${it.qtdColada && !it.editadoNaMao ? "cursor-help border-l-2 border-alert bg-alert/10" : ""}`}
                             title={it.qtdColada && !it.editadoNaMao ? "No PDF esta quantidade estava colada na descrição — confira e corrija se precisar" : undefined}>
                             {/* Valor e unidade lado a lado, cada um com seu
                                 espaço. Antes o botão de editar ocupava 100% da
                                 célula e a unidade vinha depois, empurrada pra
                                 fora dos 92px: aparecia "1 v", "30 u". */}
-                            <div className="qtd-celula">
-                              <CelulaEditavel valor={it.qtdVendida} formato="numero"
-                                onSalvar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { qtdVendida: v }) : undefined}
-                                congelado={congelado} />
-                              <span className="unit">{it.un || ""}</span>
+                            <div className="flex items-baseline justify-end gap-1">
+                              <div className="min-w-10 flex-1">
+                                <CelulaEditavel valor={it.qtdVendida} formato="numero"
+                                  onSalvar={onEditarItem ? (v) => onEditarItem(c.num, it.codigo, { qtdVendida: v }) : undefined}
+                                  congelado={congelado} />
+                              </div>
+                              <span className="w-6 shrink-0 text-left">{it.un || ""}</span>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                    </TableBody>
+                  </Table>
+                </div>
+              </Colapsavel>
             );
           })}
         </div>
-      </div>
+      </PageShell>
     </>
   );
 }
@@ -5425,40 +5429,39 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
 
   return (
     <>
-      <ImportButton congelado={congelado} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
-        onLimpar={onLimpar} oQueLimpa="os itens do Vendido Planilha"
-        onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
-        temConteudo={obra.categorias.some((c) => (c.itensPlanilha || []).length)}
-        dica={<>Suba o <b>Vendido Planilha</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e o valor total; fornecedor, ambiente, especificação e a separação material/mão de obra existem como coluna e não sobrevivem à conversão.</>}
-        onFile={aoImportar} />
-
       <DetalheTexto item={verTexto} onFechar={() => setVerTexto(null)} />
 
-      <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilha || [])} />
-
-      <div className="flat-panel">
-        <div className="flat-panel-header">
-          <div>
-            <div className="flat-panel-title">Itens da planilha de venda — {obra.codigo}/00</div>
-            <div className="flat-panel-sub">Descrição, marca e custo por item, conforme a planilha. Clique na verba pra expandir.</div>
+      <PageShell title={`Itens da planilha de venda — ${obra.codigo}/00`}
+        description="Descrição, marca e custo por item, conforme a planilha. Clique na verba pra expandir."
+        contentClassName="flex flex-col gap-6"
+        actions={(
+          <ImportButton congelado={congelado} label="Importar Planilha (Excel ou PDF)" accept=".xlsx,.xlsm,.xlsb,.xls,.csv,.pdf"
+            onLimpar={onLimpar} oQueLimpa="os itens do Vendido Planilha"
+            onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
+            temConteudo={obra.categorias.some((c) => (c.itensPlanilha || []).length)}
+            dica={<>Suba o <b>Vendido Planilha</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e o valor total; fornecedor, ambiente, especificação e a separação material/mão de obra existem como coluna e não sobrevivem à conversão.</>}
+            onFile={aoImportar} />
+        )}
+        toolbar={(
+          <div className="flex flex-wrap items-center gap-2">
+            <ClipboardList size={16} className="text-text-mute" />
+            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
+              {FILTROS_VENDA.map((f) => (
+                <ToggleGroupItem key={f.id} value={f.id} size="sm">
+                  {f.label}
+                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
+            <CampoBusca valor={busca} aoMudar={setBusca}
+              contador={`${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens`} />
           </div>
-        </div>
+        )}>
 
-        <div className="filter-bar venda-bar">
-          <ClipboardList size={13} className="dim" />
-          {FILTROS_VENDA.map((f) => (
-            <Button variant="ghost" key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
-              onClick={() => setFiltroVenda(f.id)}>
-              {f.label}
-              <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
-            </Button>
-          ))}
-          <span className="filter-sep" />
-          <CampoBusca valor={busca} aoMudar={setBusca}
-            contador={`${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens`} />
-        </div>
+        <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilha || [])} />
 
-        <div className="vend-list">
+        <div className="rounded-lg border border-line-1">
           {verbas.map((c) => {
             const itens = c.itensPlanilha || [];
             /* O que a busca deixa na tela. O `subtotal` abaixo continua
@@ -5470,75 +5473,77 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             const temItens = itens.length > 0;
             const aberto = abreNaBusca.aberto(c.num, abertos.has(c.num));
             const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
+            const semVenda = itens.filter((it) => !itemFoiVendido(it)).length;
             return (
-              <div key={c.num} className="vend-grupo">
-                <Button variant="ghost" className="vend-head" onClick={() => temItens && abreNaBusca.alternar(c.num, () => toggle(c.num))}>
-                  {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
-                  <span className="vend-num mono">{c.num}</span>
-                  <span className="vend-nome">{c.nome}</span>
-                  {temItens && <span className="vend-count">{buscando ? `${naTela.length} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</span>}
-                  {!grupoFoiVendido(itens) && <span className="vend-nao-vendido">não vendido</span>}
-                  {temItens && itens.filter((it) => !itemFoiVendido(it)).length > 0 && (
-                    <span className="vend-nao-vendido leve">
-                      {itens.filter((it) => !itemFoiVendido(it)).length} sem venda
-                    </span>
+              <Colapsavel key={c.num} aberto={aberto} podeAbrir={temItens}
+                onAbrir={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}
+                cabecalho={<>
+                  <span className="mono w-6 shrink-0 text-xs font-semibold text-text-mute">{c.num}</span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-text">{c.nome}</span>
+                  {temItens && <Badge tone="neutral">{buscando ? `${naTela.length} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</Badge>}
+                  {!grupoFoiVendido(itens) && <Badge tone="outline">não vendido</Badge>}
+                  {temItens && semVenda > 0 && (
+                    <Badge tone="outline" className="border-dashed font-medium normal-case tracking-normal">{semVenda} sem venda</Badge>
                   )}
-                  <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
-                </Button>
-                {aberto && temItens && (
-                  /* Mesmas colunas do Executivo, na mesma ordem da
-                     planilha de origem — os dois documentos usam o mesmo
-                     cabeçalho, e manter o padrão é o que deixa comparar
-                     um com o outro sem procurar onde cada coisa está. */
-                  <table className="vend-itens exec-itens">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 46 }}>Item</th>
-                        <th>Descrição</th>
-                        <th style={{ width: 130 }}>Código / especif. / Obs.</th>
-                        <th style={{ width: 96 }}>Fornecedor</th>
-                        <th style={{ width: 80 }}>Ambiente</th>
-                        <th style={{ width: 54 }} className="center">Qtd.</th>
-                        <th style={{ width: 38 }} className="center">Un.</th>
-                        <th style={{ width: 88 }} className="right">Custo<br />Material</th>
-                        <th style={{ width: 88 }} className="right">Custo<br />Mão de Obra</th>
-                        <th style={{ width: 96 }} className="right">Custo Total<br />Material</th>
-                        <th style={{ width: 96 }} className="right">Custo Total<br />Mão de Obra</th>
-                        <th style={{ width: 100 }} className="right">Custo<br />Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <span className="mono w-32 shrink-0 text-right text-sm text-text">{temItens ? fmtBRL(subtotal) : "—"}</span>
+                </>}>
+                {/* Mesmas colunas do Executivo, na mesma ordem da
+                    planilha de origem — os dois documentos usam o mesmo
+                    cabeçalho, e manter o padrão é o que deixa comparar
+                    um com o outro sem procurar onde cada coisa está. */}
+                <div className="overflow-x-auto border-t border-line-1 bg-surface-2">
+                  <Table className="min-w-5xl table-fixed">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">Item</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="w-32">Código / especif. / Obs.</TableHead>
+                        <TableHead className="w-24">Fornecedor</TableHead>
+                        <TableHead className="w-20">Ambiente</TableHead>
+                        <TableHead className="w-14 text-center">Qtd.</TableHead>
+                        <TableHead className="w-10 text-center">Un.</TableHead>
+                        <TableHead className="w-24 text-right">Custo<br />Material</TableHead>
+                        <TableHead className="w-24 text-right">Custo<br />Mão de Obra</TableHead>
+                        <TableHead className="w-24 text-right">Custo Total<br />Material</TableHead>
+                        <TableHead className="w-24 text-right">Custo Total<br />Mão de Obra</TableHead>
+                        <TableHead className="w-24 text-right">Custo<br />Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {naTela.map((it, i) => (
-                        <tr key={it.codigo || i} className={it.ehTitulo ? "linha-titulo" : ""}>
-                          <td className="mono dim">{it.codigo || "—"}</td>
-                          <td>
+                        <TableRow key={it.codigo || i} className={it.ehTitulo ? "bg-surface-2 text-text-mute" : ""}>
+                          <TableCell className="mono whitespace-nowrap text-text-mute">{it.codigo || "—"}</TableCell>
+                          <TableCell className="wrap-anywhere">
                             <CelulaTexto texto={it.desc} onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
-                            {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
-                          </td>
-                          <td className="dim">
+                            {it.ehTitulo && <Badge tone="neutral" className="ml-2">N/A — título, não entra na conferência</Badge>}
+                          </TableCell>
+                          <TableCell className="text-text-mute">
                             <CelulaTexto texto={it.especificacao} onVerTudo={(t) => setVerTexto({ rotulo: "Código / especificação / Obs.", texto: t })} />
-                          </td>
-                          <td className="dim"><span className="celula-corte" style={{ WebkitLineClamp: 2 }}>{it.marca || "—"}</span></td>
-                          <td className="dim"><span className="celula-corte" style={{ WebkitLineClamp: 2 }}>{it.ambiente || "—"}</span></td>
-                          <td className="mono center">{it.qtdVendida ?? "—"}</td>
-                          <td className="mono center dim">{it.un || "—"}</td>
-                          <td className="mono right dim">{it.custoMaterial != null ? fmtBRL(it.custoMaterial) : "—"}</td>
-                          <td className="mono right dim">{it.custoMO != null ? fmtBRL(it.custoMO) : "—"}</td>
-                          <td className="mono right">{it.totalMaterial != null ? fmtBRL(it.totalMaterial) : "—"}</td>
-                          <td className="mono right">{it.totalMO != null ? fmtBRL(it.totalMO) : "—"}</td>
-                          <td className="mono right forte">{it.custo != null ? fmtBRL(it.custo) : "—"}</td>
-                        </tr>
+                          </TableCell>
+                          <TableCell className="text-text-mute"><span className="line-clamp-2">{it.marca || "—"}</span></TableCell>
+                          <TableCell className="text-text-mute"><span className="line-clamp-2">{it.ambiente || "—"}</span></TableCell>
+                          <TableCell className="mono text-center">{it.qtdVendida ?? "—"}</TableCell>
+                          <TableCell className="mono text-center text-text-mute">{it.un || "—"}</TableCell>
+                          <TableCell className="mono text-right text-text-mute">{it.custoMaterial != null ? fmtBRL(it.custoMaterial) : "—"}</TableCell>
+                          <TableCell className="mono text-right text-text-mute">{it.custoMO != null ? fmtBRL(it.custoMO) : "—"}</TableCell>
+                          <TableCell className="mono text-right">{it.totalMaterial != null ? fmtBRL(it.totalMaterial) : "—"}</TableCell>
+                          <TableCell className="mono text-right">{it.totalMO != null ? fmtBRL(it.totalMO) : "—"}</TableCell>
+                          <TableCell className="mono text-right font-semibold">{it.custo != null ? fmtBRL(it.custo) : "—"}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                    </TableBody>
+                  </Table>
+                </div>
+              </Colapsavel>
             );
           })}
-        </div>
 
-        <div className="vend-total"><span className="total-label">Total da planilha</span><span className="mono total-value">{fmtBRL(totalPlanilha)}</span></div>
-      </div>
+          <div className="flex items-center justify-between border-t-2 border-text px-4 py-3">
+            <span className="text-sm font-bold">Total da planilha</span>
+            <span className="mono text-sm font-bold">{fmtBRL(totalPlanilha)}</span>
+          </div>
+        </div>
+      </PageShell>
     </>
   );
 }
@@ -22982,8 +22987,6 @@ export default function App() {
         .tipo-chip-conta { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: var(--panel); color: var(--ink-3); }
         .tipo-chip.active .tipo-chip-conta { background: var(--on-inverse-hover); color: var(--bg); }
         .venda-bar { margin-bottom: 10px; }
-        .vend-nao-vendido { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; flex-shrink: 0; }
-        .vend-nao-vendido.leve { text-transform: none; letter-spacing: 0; font-weight: 500; border-style: dashed; }
 
         /* PLANO DE COMPRAS — grupo da EAP em forma de lista.
            A linha fechada carrega o que se pergunta primeiro (quanto de
@@ -23262,25 +23265,6 @@ export default function App() {
            sem isso cada uma calcularia larguras pelo próprio conteúdo —
            as colunas deixavam de alinhar de um grupo pro outro. */
         .vend-itens { width: 100%; border-collapse: collapse; background: var(--surface-2); border-top: 1px solid var(--border-soft); table-layout: fixed; }
-        /* Quebra agressiva SÓ onde o texto é longo de verdade.
-           Valia pra toda célula — existia pra impedir que uma URL de 357
-           caracteres esticasse a tabela — e numa coluna estreita partia
-           "Circulação" ao meio, virando "Circulaçã / o". */
-        .vend-itens td.col-desc { overflow-wrap: anywhere; word-break: break-word; }
-        /* Ambiente e quantidade cabem numa linha; o que não couber vira
-           reticências e sai pelo "i", em vez de esticar a linha inteira. */
-        .vend-itens td.col-amb { white-space: nowrap; }
-        .vend-itens td.col-amb .celula-corte { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .vend-itens td.col-qtd { white-space: nowrap; }
-        /* Valor à direita, unidade à esquerda, larguras próprias. */
-        .qtd-celula { display: flex; align-items: baseline; justify-content: flex-end; gap: 5px; }
-        .qtd-celula .celula-valor, .qtd-celula .celula-input { width: auto; min-width: 40px; flex: 0 1 auto; text-align: right; }
-        .qtd-celula .unit { flex: 0 0 24px; text-align: left; }
-        /* Marca de palpite: risco na borda, não caixa em volta.
-           Como boa parte das linhas vem com a quantidade colada, a caixa
-           laranja em cada célula virava uma parede — e parede não sinaliza
-           nada, porque não tem contraste com o resto. */
-        .vend-itens td.qtd-palpite { background: var(--alert-tint); box-shadow: inset 3px 0 0 var(--alert); cursor: help; }
         /* A quebra livre acima existe pela especificação gigante, que sem
            ela estica a coluna e desalinha a tabela. Mas ela também
            autoriza partir "1.10" em "1.1" e "0" — código de item não é
@@ -24119,10 +24103,6 @@ export default function App() {
         .obra-search:focus-within { border-color: var(--brand); background: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
         .obra-search input { font-family: inherit; font-size: 12.5px; color: var(--text); }
         .obra-search input::placeholder { color: var(--text-mute); }
-        /* A caixa de busca dentro de barra de filtros: sem a margem de baixo
-           que o .obra-search traz, senao desalinha dos chips ao lado. */
-        .busca-lista { margin-bottom: 0; flex: 0 1 300px; min-width: 170px; }
-        .busca-conta { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-mute); flex-shrink: 0; white-space: nowrap; }
         /* O HISTORICO. Tamanho de legenda e cor apagada: ele fecha a pagina,
            nao disputa com ela. Quem precisa, abre. */
         .ad-icon:disabled { opacity: 0.3; cursor: default; }
@@ -24281,8 +24261,8 @@ export default function App() {
         .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
         /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
-        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .vend-nao-vendido, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
-        :is(.vend-nao-vendido, .soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
+        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
+        :is(.soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
         :is(.nav-count, .grp-conta, .vend-count, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         .ad-obra-n { background: var(--brand); color: var(--bg); }
 
@@ -24486,7 +24466,6 @@ export default function App() {
           /* Alvo de toque: 16px de fonte no campo impede o zoom automatico do
              iPhone ao focar, que e' o que faz a pagina "pular" ao digitar. */
           input, select, textarea { font-size: 16px; }
-          .busca-lista { flex: 1 1 100%; }
 
           /* Linha de caderno: titulo em cima, arquivo e botoes embaixo.
 

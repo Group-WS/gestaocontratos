@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
-import { Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
+import { Button, Collapsible, CollapsibleTrigger, CollapsibleContent, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 /* Breakpoint `lg` do Tailwind: acima dele a barra lateral fica fixa na
    tela; abaixo, ela abre num Sheet pelo botão de menu do topo. */
@@ -47,5 +48,29 @@ export function Choice({ label, value, opcoes, onChange, placeholder, required, 
         </SelectContent>
       </Select>
     </div>
+  );
+}
+
+/* Grupo que abre e fecha (uma verba da EAP, um bloco de alertas): o
+   cabecalho inteiro e' o gatilho, com a seta na frente, e o conteudo so'
+   monta quando aberto. `podeAbrir` falso deixa o cabecalho parado, sem
+   seta — grupo sem item nao tem o que mostrar, mas continua na lista
+   porque a EAP inteira aparece sempre. Substitui o `.vend-head`/`.grp-head`. */
+export function Colapsavel({ aberto, onAbrir, podeAbrir = true, cabecalho, className = "", children }) {
+  const abertoDeFato = !!aberto && podeAbrir;
+  return (
+    <Collapsible open={abertoDeFato} onOpenChange={(v) => { if (podeAbrir && onAbrir) onAbrir(v); }}
+      className={`border-b border-line-1 last:border-b-0 ${className}`}>
+      <CollapsibleTrigger asChild>
+        <Button variant="ghost" aria-disabled={!podeAbrir}
+          className={`h-auto w-full justify-start gap-2 rounded-none px-4 py-3 text-left font-normal whitespace-normal ${podeAbrir ? "" : "cursor-default hover:bg-transparent"}`}>
+          {podeAbrir
+            ? (abertoDeFato ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />)
+            : <span className="w-4 shrink-0" aria-hidden="true" />}
+          {cabecalho}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>{children}</CollapsibleContent>
+    </Collapsible>
   );
 }

@@ -109,12 +109,16 @@ const execAteOFim = src.slice(src.indexOf("function ExecutivoView("), src.indexO
 conf("Executivo ainda mapeia o array inteiro", execAteOFim.includes("{itens.map((it, i) => {"), true);
 conf("Executivo NÃO filtra o array de itens", /itensPlanilhaExecutivo \|\| \[\]\)\.filter\(/.test(execAteOFim), false);
 
-/* ---- 8. Trava de CSS ----
-   O CSS vive num template literal; a regra precisa existir e vir depois do
-   restyle do design system, senão o campo desalinha dentro da barra. */
+/* ---- 8. Trava de desenho ----
+   O campo é o `Input` do design system (com ícone e rótulo acessível), e o
+   CSS caseiro que o alinhava na barra (.busca-lista/.busca-conta) foi
+   embora com a migração — não pode voltar. */
+const campoBusca = src.slice(src.indexOf("function CampoBusca("), src.indexOf("function contaItensDaObra("));
+conf("CampoBusca usa o Input do DS", campoBusca.includes("<Input "), true);
+conf("CampoBusca tem rótulo acessível", campoBusca.includes('aria-label="Buscar"'), true);
 const css = src.slice(src.indexOf("<style>{`"), src.indexOf("`}</style>"));
-conf(".busca-lista existe no CSS", css.includes(".busca-lista {"), true);
-conf(".busca-conta existe no CSS", css.includes(".busca-conta {"), true);
+conf(".busca-lista não existe mais no CSS", css.includes(".busca-lista {"), false);
+conf(".busca-conta não existe mais no CSS", css.includes(".busca-conta {"), false);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
