@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
+import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 
 /* Breakpoint `lg` do Tailwind: acima dele a barra lateral fica fixa na
@@ -147,5 +147,18 @@ export function SecaoRotulo({ conta, className = "", children }) {
       <span className="label-mono">{children}</span>
       {conta && <span className="text-xs font-normal normal-case tracking-normal text-text-mute">{conta}</span>}
     </h2>
+  );
+}
+
+/* KpiMini com a barra de avanco embaixo: o numero grande e' o que FALTA
+   (a comprar, a contratar) e a barra diz quanto do total ja' foi feito.
+   Substitui o `.gc-total` do painel de compras. */
+export function KpiProgresso({ label, value, hint, tone = "neutral", pct = 0, rotuloBarra, className = "" }) {
+  const cheio = Math.min(100, Math.max(0, pct));
+  return (
+    <div className={`flex flex-col gap-2 ${className}`}>
+      <KpiMini label={label} value={value} hint={hint} tone={tone} className="w-full" />
+      <Progress value={cheio} aria-label={rotuloBarra || label} />
+    </div>
   );
 }

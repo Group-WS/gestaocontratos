@@ -60,8 +60,9 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
-  Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor, EstadoAcao, SecaoRotulo } from "./lib/ui.jsx";
+  Command, CommandInput, CommandList, CommandEmpty, CommandItem,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
+import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -15700,19 +15701,6 @@ function EscolherObra({ obras, numeroDe, onEscolher, onFechar }) {
 function FiltroObras({ obras, escolhidas, onMudar }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
-  const caixa = useRef(null);
-
-  useEffect(() => {
-    if (!aberto) return;
-    const fora = (e) => { if (caixa.current && !caixa.current.contains(e.target)) setAberto(false); };
-    const esc = (e) => { if (e.key === "Escape") setAberto(false); };
-    document.addEventListener("mousedown", fora);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("mousedown", fora);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [aberto]);
 
   const achadas = useMemo(() => {
     const t = busca.trim().toLowerCase();
@@ -15733,57 +15721,58 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
       : `${escolhidas.size} de ${obras.length} obras`;
 
   return (
-    <div className="fo-caixa" ref={caixa}>
-      <Button variant="ghost" className={`fo-btn ${escolhidas.size ? "on" : ""}`} onClick={() => setAberto((x) => !x)}>
-        <Building2 size={13} />
-        <span className="fo-rot">{rotulo}</span>
-        <ChevronDown size={13} />
-      </Button>
+    <div className="flex flex-wrap items-center gap-2">
+      {/* O Popover cuida do clique fora e do Escape — antes era um par de
+          listeners no document. */}
+      <Popover open={aberto} onOpenChange={setAberto}>
+        <PopoverTrigger asChild>
+          <Button variant={escolhidas.size ? "secondary" : "outline"} size="sm" aria-label={`Filtrar obras: ${rotulo}`}>
+            <Building2 size={14} />
+            <span className="max-w-60 truncate">{rotulo}</span>
+            <ChevronDown size={14} />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-80 p-3">
+          <div className="flex flex-col gap-2">
+            <Input icon={<Search size={16} />} autoFocus value={busca} aria-label="Buscar obra"
+              placeholder="nome ou código da obra…" onChange={(e) => setBusca(e.target.value)} />
 
-      {aberto && (
-        <div className="fo-menu">
-          <input className="form-input fo-busca" autoFocus value={busca}
-            placeholder="nome ou código da obra…" onChange={(e) => setBusca(e.target.value)} />
-
-          <div className="fo-acoes">
-            <Button variant="ghost" size="sm" onClick={() => onMudar(new Set())} disabled={escolhidas.size === 0}>Todas</Button>
-            {/* "Marcar as encontradas" e' o que torna a busca util: filtrar
-                por "Salt" e marcar as tres de uma vez, em vez de tres
-                cliques mirados numa lista de quarenta. */}
-            <Button variant="ghost" size="sm" onClick={() => onMudar(new Set([...escolhidas, ...achadas.map((o) => o.codigo)]))}
-              disabled={!busca.trim() || achadas.length === 0}>
-              Marcar as {achadas.length} encontradas
-            </Button>
-          </div>
-
-          <div className="fo-lista">
-            {achadas.length === 0 && <div className="empty-note">Nenhuma obra com esse nome ou código.</div>}
-            {achadas.map((o) => (
-              <Button variant="ghost" key={o.codigo} className={`fo-item ${escolhidas.has(o.codigo) ? "on" : ""}`}
-                onClick={() => alternar(o.codigo)} title={o.nome}>
-                <span className="fo-check">{escolhidas.has(o.codigo) && <Check size={11} />}</span>
-                <span className="mono dim">#{o.codigo}</span>
-                <span className="fo-nome">{o.nome}</span>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" onClick={() => onMudar(new Set())} disabled={escolhidas.size === 0}>Todas</Button>
+              {/* "Marcar as encontradas" e' o que torna a busca util: filtrar
+                  por "Salt" e marcar as tres de uma vez, em vez de tres
+                  cliques mirados numa lista de quarenta. */}
+              <Button variant="ghost" size="sm" onClick={() => onMudar(new Set([...escolhidas, ...achadas.map((o) => o.codigo)]))}
+                disabled={!busca.trim() || achadas.length === 0}>
+                Marcar as {achadas.length} encontradas
               </Button>
-            ))}
+            </div>
+
+            <div className="max-h-64 overflow-y-auto" role="group" aria-label="Obras">
+              {achadas.length === 0 && <p className="px-2 py-1 text-sm text-text-mute">Nenhuma obra com esse nome ou código.</p>}
+              {achadas.map((o) => {
+                const marcada = escolhidas.has(o.codigo);
+                return (
+                  <label key={o.codigo} title={o.nome}
+                    className={cn("flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-brand-soft", marcada && "text-brand")}>
+                    <Checkbox checked={marcada} onCheckedChange={() => alternar(o.codigo)} aria-label={`${o.nome} (#${o.codigo})`} />
+                    <span className="mono text-text-mute">#{o.codigo}</span>
+                    <span className="min-w-0 flex-1 truncate">{o.nome}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        </PopoverContent>
+      </Popover>
 
       {/* As escolhidas ficam a vista e sao removiveis com um clique. Ate
           seis; passando disso o resumo cabe melhor que a fileira. */}
-      {escolhidas.size > 0 && escolhidas.size <= 6 && (
-        <div className="fo-marcadas">
-          {obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
-            <Button variant="ghost" key={o.codigo} className="fo-tag" onClick={() => alternar(o.codigo)}
-              title="Tirar do filtro">
-              <span className="mono">#{o.codigo}</span> <X size={10} />
-            </Button>
-          ))}
-        </div>
-      )}
+      {escolhidas.size > 0 && escolhidas.size <= 6 && obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
+        <FilterChip key={o.codigo} label="Obra" value={<span className="mono">#{o.codigo}</span>} onClear={() => alternar(o.codigo)} />
+      ))}
       {escolhidas.size > 6 && (
-        <Button variant="ghost" className="fo-limpar" onClick={() => onMudar(new Set())}>limpar filtro</Button>
+        <Button variant="ghost" size="sm" onClick={() => onMudar(new Set())}>Limpar filtro</Button>
       )}
     </div>
   );
@@ -16124,6 +16113,11 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
   const semTabela = !!compradores.faltaTabela;
   const visiveis = grupos.filter((g) => !filtro
     || (compradores.mapa.get(chaveDoGrupo(g.nome))?.email || SEM_COMPRADOR) === filtro);
+  /* O Select do DS nao aceita item com valor vazio: "" (todos / sem
+     comprador) vira uma sentinela so' na tela; o estado continua "". */
+  const TODOS = "__todos__";
+  const NENHUM = "__nenhum__";
+  const idFiltro = React.useId();
 
   async function trocar(g, email) {
     const pessoa = email ? pessoas.find((p) => p.email === email) : null;
@@ -16143,62 +16137,78 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
   }
 
   return (
-    <div className="gc-bloco gc-compradores">
-      <div className="gc-bloco-head">
-        <Users size={15} />
-        <span className="gc-bloco-titulo">Compradores por grupo de compra</span>
-        <select className="cmp-forn-sel" value={filtro} onChange={(e) => setFiltro(e.target.value)} aria-label="Filtrar por comprador">
-          <option value="">Todos os compradores</option>
-          {donos.map((c) => <option key={c.email} value={c.email}>{c.nome}</option>)}
-          <option value={SEM_COMPRADOR}>Sem comprador</option>
-        </select>
-      </div>
-      {semTabela && (
-        <div className="aviso-migracao"><AlertTriangle size={14} />
-          <span>Falta rodar o <b>supabase/compradores.sql</b> no Supabase. Até lá dá pra ver a lista, mas não dá pra salvar.</span>
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2"><Users size={16} /> Compradores por grupo de compra</CardTitle>
+            {!podeEditar && <CardDescription>Só administrador troca o comprador de um grupo.</CardDescription>}
+          </div>
+          <Field className="w-full sm:w-64">
+            <Label htmlFor={idFiltro}>Comprador</Label>
+            <Select value={filtro || TODOS} onValueChange={(v) => setFiltro(v === TODOS ? "" : v)}>
+              <SelectTrigger id={idFiltro} aria-label="Filtrar por comprador"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS}>Todos os compradores</SelectItem>
+                {donos.map((c) => <SelectItem key={c.email} value={c.email}>{c.nome}</SelectItem>)}
+                <SelectItem value={SEM_COMPRADOR}>Sem comprador</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
-      )}
-      {compradores.erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{compradores.erro}</span></div>}
-      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>Não consegui salvar: {erro}</span></div>}
-      {!podeEditar && <div className="gc-nota">Só administrador troca o comprador de um grupo.</div>}
-      <div className="grp-itens gc-tabela">
-        <table>
-          <thead>
-            <tr>
-              <th style={{ width: 70 }}>Verba</th>
-              <th>Grupo de compra</th>
-              <th style={{ width: 320 }}>Comprador</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visiveis.map((g) => {
-              const atual = compradores.mapa.get(chaveDoGrupo(g.nome));
-              return (
-                <tr key={g.nome}>
-                  <td className="mono dim">{g.num}</td>
-                  <td>{g.nome}</td>
-                  <td>
-                    <select className="cmp-forn-sel" value={atual?.email || ""}
-                      disabled={!podeEditar || semTabela || salvando === g.nome}
-                      onChange={(e) => trocar(g, e.target.value)} aria-label={`Comprador de ${g.nome}`}>
-                      <option value="">— sem comprador —</option>
-                      {atual && !pessoas.some((p) => p.email === atual.email) && <option value={atual.email}>{atual.nome}</option>}
-                      {pessoas.map((p) => (
-                        <option key={p.email} value={p.email}>{p.nome || p.email}{p.cargo ? ` · ${p.cargo}` : ""}</option>
-                      ))}
-                    </select>
-                    {salvando === g.nome && <span className="dim"> salvando…</span>}
-                  </td>
-                </tr>
-              );
-            })}
-            {visiveis.length === 0 && (
-              <tr><td colSpan={3} className="dim">Nenhum grupo com esse comprador.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {semTabela && (
+          <Alert tone="warning">
+            <AlertDescription>Falta rodar o <b>supabase/compradores.sql</b> no Supabase. Até lá dá pra ver a lista, mas não dá pra salvar.</AlertDescription>
+          </Alert>
+        )}
+        {compradores.erro && <Alert tone="danger"><AlertDescription>{compradores.erro}</AlertDescription></Alert>}
+        {erro && <Alert tone="danger"><AlertTitle>Não consegui salvar</AlertTitle><AlertDescription>{erro}</AlertDescription></Alert>}
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="hidden w-20 md:table-cell">Verba</TableHead>
+                <TableHead>Grupo de compra</TableHead>
+                <TableHead className="w-80">Comprador</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visiveis.map((g) => {
+                const atual = compradores.mapa.get(chaveDoGrupo(g.nome));
+                return (
+                  <TableRow key={g.nome}>
+                    <TableCell className="mono hidden text-text-mute md:table-cell">{g.num}</TableCell>
+                    <TableCell>{g.nome}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select value={atual?.email || NENHUM}
+                          disabled={!podeEditar || semTabela || salvando === g.nome}
+                          onValueChange={(v) => trocar(g, v === NENHUM ? "" : v)}>
+                          <SelectTrigger aria-label={`Comprador de ${g.nome}`} className="w-full sm:w-72"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NENHUM}>— sem comprador —</SelectItem>
+                            {atual && !pessoas.some((p) => p.email === atual.email) && <SelectItem value={atual.email}>{atual.nome}</SelectItem>}
+                            {pessoas.map((p) => (
+                              <SelectItem key={p.email} value={p.email}>{p.nome || p.email}{p.cargo ? ` · ${p.cargo}` : ""}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {salvando === g.nome && <span className="text-xs text-text-mute" role="status">salvando…</span>}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {visiveis.length === 0 && (
+                <TableRow><TableCell colSpan={3} className="text-text-mute">Nenhum grupo com esse comprador.</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -16326,6 +16336,9 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
   const [novo, setNovo] = useState({ especialidade: "", funcao: "", diaria: "" });
   const [salvando, setSalvando] = useState(null);
   const [erro, setErro] = useState(null);
+  const idEsp = React.useId();
+  const idFuncao = React.useId();
+  const idDiaria = React.useId();
   const especialidades = useMemo(
     () => [...new Set([...PRESTADORES_PADRAO.map((p) => p.especialidade), ...lista.map((p) => p.especialidade)])],
     [lista]);
@@ -16347,7 +16360,7 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
     }
   }
   async function tirar(p) {
-    if (!(await confirmar(`Tirar ${p.nome || p.funcao} da equipe interna?`))) return;
+    if (!(await confirmar({ titulo: `Tirar ${p.nome || p.funcao} da equipe interna?`, mensagem: "A pessoa sai da lista e a calculadora deixa de usar a diária dela.", confirmar: "Tirar da equipe" }))) return;
     setSalvando(p.id); setErro(null);
     try {
       await excluirPrestador(p.id);
@@ -16368,83 +16381,100 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
   }
 
   return (
-    <div className="gc-bloco mop">
-      <div className="gc-bloco-head">
-        <Users size={15} />
-        <span className="gc-bloco-titulo">Mão de obra própria</span>
-      </div>
-      <div className="gc-nota">
-        A equipe interna: especialidade, função e diária. A calculadora da mão de obra a contratar usa estes valores.
-      </div>
-      {semTabela && (
-        <div className="aviso-migracao"><AlertTriangle size={14} />
-          <span>Falta rodar o <b>supabase/mao-de-obra-propria.sql</b> no Supabase. Até lá aparece a equipe padrão e a
-            calculadora já funciona com ela; cadastrar e mudar, só depois do SQL.</span>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Users size={16} /> Mão de obra própria</CardTitle>
+        <CardDescription>
+          A equipe interna: especialidade, função e diária. A calculadora da mão de obra a contratar usa estes valores.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {semTabela && (
+          <Alert tone="warning">
+            <AlertDescription>Falta rodar o <b>supabase/mao-de-obra-propria.sql</b> no Supabase. Até lá aparece a equipe padrão e a
+              calculadora já funciona com ela; cadastrar e mudar, só depois do SQL.</AlertDescription>
+          </Alert>
+        )}
+        {prestadores.erro && <Alert tone="danger"><AlertDescription>{prestadores.erro}</AlertDescription></Alert>}
+        {erro && <Alert tone="danger"><AlertTitle>Não consegui salvar</AlertTitle><AlertDescription>{erro}</AlertDescription></Alert>}
+        {!podeEditar && !semTabela && <p className="text-sm text-text-soft">Só administrador cadastra e muda a equipe interna.</p>}
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-40">Especialidade</TableHead>
+                <TableHead>Função</TableHead>
+                <TableHead className="w-40 text-right">Diária (R$)</TableHead>
+                <TableHead className="w-12"><span className="sr-only">Ações</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {especialidades.filter((esp) => mostrar.some((p) => p.especialidade === esp)).map((esp) => (
+                mostrar.filter((p) => p.especialidade === esp).map((p, k) => (
+                  <TableRow key={p.id || p.chave}>
+                    <TableCell className={k ? "" : "font-semibold text-purple"}>{k ? "" : esp}</TableCell>
+                    <TableCell>
+                      <CampoRascunho as={Input} valor={p.funcao} aoSair readOnly={trava || !p.id} aria-label={`Função (${esp})`}
+                        onSalvar={(v) => { if (v.trim() && v.trim() !== p.funcao) gravar(p, { funcao: v.trim() }); }} />
+                    </TableCell>
+                    <TableCell>
+                      <CampoRascunho as={Input} className="mono text-right" valor={numBR(Number(p.diaria) || 0)} aoSair readOnly={trava || !p.id}
+                        aria-label={`Diária de ${p.nome || p.funcao}`}
+                        onSalvar={(v) => { const n = parseBRL(v); if (n != null && n !== p.diaria) gravar(p, { diaria: n }); }} />
+                    </TableCell>
+                    <TableCell>
+                      {!trava && p.id && (
+                        <Button variant="danger" size="icon" title="Tirar da equipe interna" disabled={salvando === p.id} onClick={() => tirar(p)}
+                          aria-label={`Tirar ${p.nome || p.funcao} da equipe interna`}>
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              ))}
+              {mostrar.length === 0 && (
+                <TableRow><TableCell colSpan={4} className="text-text-mute">Ninguém cadastrado ainda.</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
         </div>
-      )}
-      {prestadores.erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{prestadores.erro}</span></div>}
-      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>Não consegui salvar: {erro}</span></div>}
-      {!podeEditar && !semTabela && <div className="gc-nota">Só administrador cadastra e muda a equipe interna.</div>}
-      <div className="grp-itens gc-tabela">
-        <table>
-          <thead>
-            <tr>
-              <th style={{ width: 150 }}>Especialidade</th>
-              <th>Função</th>
-              <th style={{ width: 160 }} className="right">Diária (R$)</th>
-              <th style={{ width: 44 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {especialidades.filter((esp) => mostrar.some((p) => p.especialidade === esp)).map((esp) => (
-              mostrar.filter((p) => p.especialidade === esp).map((p, k) => (
-                <tr key={p.id || p.chave}>
-                  <td className={k ? "" : "mop-esp"}>{k ? "" : esp}</td>
-                  <td>
-                    <CampoRascunho className="form-input" valor={p.funcao} aoSair readOnly={trava || !p.id}
-                      onSalvar={(v) => { if (v.trim() && v.trim() !== p.funcao) gravar(p, { funcao: v.trim() }); }} />
-                  </td>
-                  <td className="right">
-                    <CampoRascunho className="form-input mono mop-valor" valor={numBR(Number(p.diaria) || 0)} aoSair readOnly={trava || !p.id}
-                      onSalvar={(v) => { const n = parseBRL(v); if (n != null && n !== p.diaria) gravar(p, { diaria: n }); }} />
-                  </td>
-                  <td>
-                    {!trava && p.id && (
-                      <Button variant="ghost" size="icon" className="text-danger" title="Tirar da equipe interna" disabled={salvando === p.id} onClick={() => tirar(p)} aria-label="Tirar da equipe interna">
-                        <Trash2 size={13} />
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            ))}
-            {mostrar.length === 0 && (
-              <tr><td colSpan={4} className="dim">Ninguém cadastrado ainda.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {!trava && (
-        <div className="mop-novo">
-          <div className="mop-novo-tit">Adicionar à equipe</div>
-          <input className="form-input" value={novo.especialidade} placeholder="Especialidade (ex: Pintura)"
-            onChange={(e) => setNovo((n) => ({ ...n, especialidade: e.target.value }))} />
-          <input className="form-input" value={novo.funcao} placeholder="Função (ex: Pintor)"
-            onChange={(e) => setNovo((n) => ({ ...n, funcao: e.target.value }))} />
-          <input className="form-input mono mop-valor" value={novo.diaria} placeholder="Diária: 450,00" inputMode="decimal"
-            onChange={(e) => setNovo((n) => ({ ...n, diaria: e.target.value }))} />
-          <Button disabled={salvando === "novo"} onClick={adicionar}>
-            {salvando === "novo" ? "Salvando…" : "Adicionar"}
-          </Button>
-          <div className="cargo-chips">
-            {especialidades.map((esp) => (
-              <Button variant="ghost" key={esp} type="button" className={`cargo-chip ${novo.especialidade === esp ? "on" : ""}`}
-                onClick={() => setNovo((n) => ({ ...n, especialidade: esp }))}>{esp}</Button>
-            ))}
+        {!trava && (
+          <div className="space-y-4 border-t border-line-1 pt-4">
+            <h3 className="text-sm font-semibold">Adicionar à equipe</h3>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field>
+                <Label htmlFor={idEsp}>Especialidade</Label>
+                <Input id={idEsp} value={novo.especialidade} placeholder="ex: Pintura"
+                  onChange={(e) => setNovo((n) => ({ ...n, especialidade: e.target.value }))} />
+              </Field>
+              <Field>
+                <Label htmlFor={idFuncao}>Função</Label>
+                <Input id={idFuncao} value={novo.funcao} placeholder="ex: Pintor"
+                  onChange={(e) => setNovo((n) => ({ ...n, funcao: e.target.value }))} />
+              </Field>
+              <Field>
+                <Label htmlFor={idDiaria}>Diária (R$)</Label>
+                <Input id={idDiaria} className="mono" value={novo.diaria} placeholder="450,00" inputMode="decimal"
+                  onChange={(e) => setNovo((n) => ({ ...n, diaria: e.target.value }))} />
+              </Field>
+            </div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              {/* As especialidades ja' cadastradas, pra reaproveitar em vez de digitar de novo. */}
+              <div className="overflow-x-auto">
+                <ToggleGroup type="single" value={novo.especialidade} aria-label="Especialidades já cadastradas" className="w-max"
+                  onValueChange={(v) => { if (v) setNovo((n) => ({ ...n, especialidade: v })); }}>
+                  {especialidades.map((esp) => <ToggleGroupItem key={esp} value={esp} size="sm">{esp}</ToggleGroupItem>)}
+                </ToggleGroup>
+              </div>
+              <Button disabled={salvando === "novo"} onClick={adicionar} className="shrink-0">
+                <Plus size={16} /> {salvando === "novo" ? "Salvando…" : "Adicionar"}
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -16567,31 +16597,105 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
     return alvo ? gruposInsumo.filter((g) => semAcentos(g.nome).includes(alvo)) : gruposInsumo;
   }, [gruposInsumo, buscaInsumo]);
 
-  if (carregando) return <div className="empty-note">Carregando as obras…</div>;
+  const titulo = "Gestão de compras e contratações";
+  const descricao = "Todas as obras lado a lado: o que falta comprar, o que falta contratar, e quais prazos já venceram";
+
+  if (carregando) {
+    return (
+      <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
+        <p className="sr-only" role="status">Carregando as obras…</p>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Skeleton className="h-28" /><Skeleton className="h-28" /></div>
+        <Skeleton className="h-64" />
+      </PageShell>
+    );
+  }
 
   if (tela === "mao_propria") {
     return (
-      <>
+      <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
         <GcTelas tela={tela} onTela={setTela} />
         <MaoDeObraPropriaView prestadores={prestadores} podeEditar={podeEditarCompradores} usuario={usuario}
           onMudou={(lista) => setPrestadores((p) => ({ ...p, lista }))} />
-      </>
+      </PageShell>
     );
   }
 
   if (tela === "compradores") {
     return (
-      <>
+      <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
         <GcTelas tela={tela} onTela={setTela} />
         <CompradoresView compradores={compradores} equipe={equipe} podeEditar={podeEditarCompradores} usuario={usuario}
           onMudou={(mapa) => setCompradores((c) => ({ ...c, mapa }))} />
-      </>
+      </PageShell>
     );
   }
 
+  /* O Select do DS nao aceita item com valor vazio: "" (todos) vira uma
+     sentinela so' na tela; o estado continua "". */
+  const TODOS = "__todos__";
+  const nomeFornecedor = fornecedor ? (fornecedoresDoPainel.find((f) => f.chave === fornecedor)?.nome || fornecedor) : "";
+  const nomeComprador = comprador === SEM_COMPRADOR ? "sem comprador" : (listaCompradores.find((c) => c.email === comprador)?.nome || comprador);
+  const temFiltro = horizonte != null || escolhidas.size > 0 || status !== "pendente" || !!fornecedor || !!comprador;
+  const limparFiltros = () => { setHorizonte(null); setEscolhidas(new Set()); setStatus("pendente"); setFornecedor(""); setComprador(""); };
+  const pctMat = t.matTotal > 0 ? (t.matFeito / t.matTotal) * 100 : 0;
+  const pctMo = t.moTotal > 0 ? (t.moFeito / t.moTotal) * 100 : 0;
+
+  const toolbar = (
+    <div className="flex flex-wrap items-end gap-4">
+      {comDados.length > 1 && (
+        <div className="flex flex-col gap-1">
+          <span className="label-mono">Obras</span>
+          <FiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
+        </div>
+      )}
+      <div className="flex flex-col gap-1">
+        <span className="label-mono">Mostrar</span>
+        <ToggleGroup type="single" value={status} onValueChange={(v) => { if (v) setStatus(v); }} aria-label="O que o painel mostra">
+          {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
+            <ToggleGroupItem key={id} value={id} size="sm">{rot}</ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+      {status === "pendente" ? (
+        <div className="flex flex-col gap-1">
+          <span className="label-mono">Preciso resolver nas</span>
+          <ToggleGroup type="single" value={horizonte == null ? "tudo" : String(horizonte)} aria-label="Horizonte de prazo"
+            onValueChange={(v) => { if (!v) return; setHorizonte(v === "tudo" ? null : Number(v)); }}>
+            {HORIZONTES.map((h) => (
+              <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)} size="sm">{h.rot}</ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+      ) : (
+        <p className="text-sm text-text-soft">O prazo vale pro que falta; aqui aparece {status === "comprado" ? "o que já foi comprado" : "o comprado e o pendente"}.</p>
+      )}
+      <Choice label="Fornecedor" className="w-full sm:w-64" value={fornecedor || TODOS} onChange={(v) => setFornecedor(v === TODOS ? "" : v)}
+        opcoes={[{ value: TODOS, label: "Todos os fornecedores" },
+          ...fornecedoresDoPainel.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` }))]} />
+      <Choice label="Comprador" className="w-full sm:w-64" value={comprador || TODOS} onChange={(v) => setComprador(v === TODOS ? "" : v)}
+        opcoes={[{ value: TODOS, label: "Todos os compradores" },
+          ...listaCompradores.map((c) => ({ value: c.email, label: c.nome })),
+          { value: SEM_COMPRADOR, label: "Sem comprador" }]} />
+    </div>
+  );
+
+  const filtrosAtivos = (
+    <ActiveFilters count={r.linhas.length} noun="obra" hasFilters={temFiltro} onClearAll={limparFiltros}>
+      {status === "pendente" && horizonte != null && (
+        <FilterChip label="Resolver nas" value={HORIZONTES.find((h) => h.dias === horizonte)?.rot || `${horizonte} dias`} onClear={() => setHorizonte(null)} />
+      )}
+      {status !== "pendente" && <FilterChip label="Mostrar" value={status === "comprado" ? "só o que já foi comprado" : "comprado e pendente"} onClear={() => setStatus("pendente")} />}
+      {escolhidas.size > 0 && (
+        <FilterChip label="Obras" value={`${escolhidas.size} ${escolhidas.size === 1 ? "obra escolhida" : "obras escolhidas"}`} onClear={() => setEscolhidas(new Set())} />
+      )}
+      {fornecedor && <FilterChip label="Fornecedor" value={nomeFornecedor} onClear={() => setFornecedor("")} />}
+      {comprador && <FilterChip label="Comprador" value={nomeComprador} onClear={() => setComprador("")} />}
+    </ActiveFilters>
+  );
+
   return (
-    <>
-      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+    <PageShell title={titulo} description={descricao} toolbar={toolbar} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-6">
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
       {pdf && <PdfSobreposto pdf={pdf} onFechar={fecharPdf} />}
       {simulando && (
         <SimuladorEquipe g={simulando} onFechar={() => setSimulando(null)}
@@ -16600,57 +16704,20 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
       )}
 
       <GcTelas tela={tela} onTela={setTela} />
-      <div className="gc-topo">
-        {status === "pendente" ? (
-          <div className="gc-horizonte">
-            <span className="gc-horizonte-rot">Preciso resolver nas</span>
-            {HORIZONTES.map((h) => (
-              <Button variant="ghost" key={h.rot} className={`gc-chip ${horizonte === h.dias ? "on" : ""}`}
-                onClick={() => setHorizonte(h.dias)}>{h.rot}</Button>
-            ))}
-          </div>
-        ) : (
-          <span className="gc-horizonte-rot">O prazo vale pro que falta; aqui aparece {status === "comprado" ? "o que já foi comprado" : "o comprado e o pendente"}.</span>
-        )}
-        <span className="gc-topo-info">
+
+      <p className="flex flex-wrap items-center gap-2 text-sm text-text-soft">
+        <span>
           {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"}
           {escolhidas.size > 0 ? " no filtro" : " com planilha"}
-          {t.obrasAtrasadas > 0 && <b className="gc-topo-alerta"> · {t.obrasAtrasadas} com compra atrasada</b>}
         </span>
-      </div>
+        {t.obrasAtrasadas > 0 && <Badge tone="danger">{t.obrasAtrasadas} com compra atrasada</Badge>}
+      </p>
 
-      {comDados.length > 1 && (
-        <div className="gc-obras-filtro">
-          <span className="gc-horizonte-rot">Obras</span>
-          <FiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
-        </div>
-      )}
-
-      <div className="gc-filtros">
-        <div className="gc-horizonte">
-          <span className="gc-horizonte-rot">Mostrar</span>
-          {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
-            <Button variant="ghost" key={id} className={`gc-chip ${status === id ? "on" : ""}`} onClick={() => setStatus(id)}>{rot}</Button>
-          ))}
-        </div>
-        <select className="cmp-forn-sel" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} aria-label="Filtrar por fornecedor">
-          <option value="">Todos os fornecedores</option>
-          {fornecedoresDoPainel.map((f) => (
-            <option key={f.chave} value={f.chave}>{f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} ({f.n})</option>
-          ))}
-        </select>
-        <select className="cmp-forn-sel" value={comprador} onChange={(e) => setComprador(e.target.value)} aria-label="Filtrar por comprador">
-          <option value="">Todos os compradores</option>
-          {listaCompradores.map((c) => <option key={c.email} value={c.email}>{c.nome}</option>)}
-          <option value={SEM_COMPRADOR}>Sem comprador</option>
-        </select>
-      </div>
-
-      <div className="gc-totais">
-        <GcTotal rot="A COMPRAR — MATERIAL" cor={COR_MAT} legenda="ainda não comprado"
-          feito={t.matFeito} total={t.matTotal} />
-        <GcTotal rot="A CONTRATAR — MÃO DE OBRA" cor={COR_MO} legenda="ainda não solicitado"
-          feito={t.moFeito} total={t.moTotal} />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <KpiProgresso label="A COMPRAR — MATERIAL" tone="brand" value={fmtBRL(t.matTotal - t.matFeito)} pct={pctMat}
+          hint={`ainda não comprado · ${fmtBRL(t.matFeito)} de ${fmtBRL(t.matTotal)} · ${Math.round(pctMat)}%`} rotuloBarra="Material já comprado" />
+        <KpiProgresso label="A CONTRATAR — MÃO DE OBRA" tone="neutral" value={fmtBRL(t.moTotal - t.moFeito)} pct={pctMo}
+          hint={`ainda não solicitado · ${fmtBRL(t.moFeito)} de ${fmtBRL(t.moTotal)} · ${Math.round(pctMo)}%`} rotuloBarra="Mão de obra já contratada" />
       </div>
 
       {/* O que ela mais pediu vem primeiro: o volume por verba, somando
@@ -16686,41 +16753,47 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
       )}
 
       {r.semData > 0 && (
-        <div className="gc-nota-semdata">
-          <AlertTriangle size={13} />
-          <span>
+        <Alert tone="warning">
+          <AlertDescription>
             <b>{fmtBRL(r.semData)}</b> ficou fora do recorte por estar em obra <b>sem data de entrega</b>.
             Sem a data não há como saber se cai nessas semanas — preencha a entrega no Dashboard da obra.
-          </span>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
-      <div className="gc-bloco">
-        <div className="gc-bloco-head">
-          <Building2 size={15} />
-          <span className="gc-bloco-titulo">Obra por obra</span>
-        </div>
-        <div className="grp-itens gc-tabela">
-          <table>
-            <thead>
-              <tr>
-                <th>Obra</th>
-                <th style={{ width: 130 }} className="center">Entrega</th>
-                <th style={{ width: 190 }}>Comprado · falta</th>
-                <th style={{ width: 190 }}>Contratado · falta</th>
-                <th style={{ width: 130 }} className="center">Prazos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.linhas.length === 0 && (
-                <tr><td colSpan={5}><div className="empty-note">Nenhuma obra ativa tem planilha carregada ainda.</div></td></tr>
-              )}
-              {r.linhas.map((L) => <GcLinhaObra key={L.codigo} L={L} onAbrir={onAbrir} />)}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Building2 size={16} /> Obra por obra</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* `grp-itens gc-tabela` fica ate' a GcLinhaObra migrar: as linhas
+              dela ainda sao <tr>/<td> crus e dependem desse CSS pro respiro. */}
+          <div className="grp-itens gc-tabela overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Obra</TableHead>
+                  <TableHead className="w-32 text-center">Entrega</TableHead>
+                  <TableHead className="w-48">Comprado · falta</TableHead>
+                  <TableHead className="w-48">Contratado · falta</TableHead>
+                  <TableHead className="w-32 text-center">Prazos</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {r.linhas.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <EmptyState icon={<Building2 size={24} />} title="Nenhuma obra ativa tem planilha carregada ainda." as="h3" />
+                    </TableCell>
+                  </TableRow>
+                )}
+                {r.linhas.map((L) => <GcLinhaObra key={L.codigo} L={L} onAbrir={onAbrir} />)}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }
 
@@ -22197,14 +22270,6 @@ export default function App() {
         .sim-dif { font-weight: 700; }
         .sim-dif.economia { background: var(--green-bg); color: color-mix(in srgb, var(--green) 75%, var(--ink)); }
         .sim-dif.mais { background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--red); }
-        .mop .gc-nota { margin: 6px 0 10px; }
-        .mop .mop-esp { font-weight: 700; color: var(--purple); }
-        .mop .form-input { margin: 0; }
-        .mop .mop-valor { text-align: right; }
-        .mop-novo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
-        .mop-novo-tit { flex-basis: 100%; font-size: 12px; font-weight: 600; color: var(--ink-2); }
-        .mop-novo .form-input { width: auto; flex: 1 1 150px; }
-        .mop-novo .cargo-chips { flex-basis: 100%; }
 
         .title-acoes { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
         .btn-apres { display: inline-flex; align-items: center; gap: 6px; background: var(--brand-tint); color: var(--brand); border: 1px solid var(--brand-line); border-radius: 8px; font-size: 11.5px; font-weight: 600; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
@@ -23387,44 +23452,26 @@ export default function App() {
         /* A frase diz o que falta AGORA — a esteira mostra o caminho
            inteiro, a frase poupa de reler os chips pra saber o motivo. */
         /* ---- Painel geral de compras e contratacoes ---- */
-        .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }
-        .gc-horizonte { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .gc-horizonte-rot { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-right: 4px; }
         .gc-chip { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 20px; padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
         .gc-chip:hover { border-color: var(--ink-3); }
         .gc-chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-        .gc-topo-info { font-size: 12px; color: var(--ink-3); }
         .gc-topo-alerta { color: var(--red); }
 
         .fo-caixa { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .fo-btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
-        .fo-btn:hover { border-color: var(--ink-3); }
-        .fo-btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-        .fo-rot { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .fo-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 330px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-3); padding: 10px; }
         .fo-busca { margin-top: 0; width: 100%; font-size: 12.5px; }
-        .fo-acoes { display: flex; gap: 8px; margin: 8px 0 6px; }
-        .fo-acoes button { background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--blue); cursor: pointer; padding: 0; }
-        .fo-acoes button:disabled { color: var(--ink-3); cursor: default; }
         .fo-lista { max-height: 260px; overflow-y: auto; margin: 0 -4px; }
         .fo-item { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; background: none; border: none; border-radius: 6px; padding: 5px 6px; font-family: inherit; font-size: 12px; color: var(--ink); cursor: pointer; }
         .fo-item:hover { background: var(--panel); }
         .fo-item.on { background: var(--blue-bg); }
-        .fo-check { width: 14px; height: 14px; border: 1.5px solid var(--ink-3); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--bg); }
-        .fo-item.on .fo-check { background: var(--blue); border-color: var(--blue); }
         .fo-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .fo-marcadas { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-        .fo-tag { display: inline-flex; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 3px 8px; font-size: 11px; color: var(--ink-2); font-family: inherit; cursor: pointer; }
-        .fo-tag:hover { border-color: var(--red); color: var(--red); }
-        .fo-limpar { background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--blue); cursor: pointer; }
         .gc-obras-filtro { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 20px; }
         .gc-obras-filtro .gc-chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gc-obras-filtro .gc-chip .mono { opacity: .6; margin-right: 3px; }
         .gc-selo-seta { margin-left: 3px; transition: transform .15s ease; }
         .gc-selo-seta.aberta { transform: rotate(180deg); }
         .gc-detalhe-tit { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 2px 0 6px; }
-        .gc-filtros { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -6px 0 20px; }
-        .gc-compradores .gc-bloco-head .cmp-forn-sel { margin-left: auto; }
         .gc-nota { font-size: 12px; color: var(--ink-3); margin: 6px 2px 10px; }
         .gc-totais { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
         .gc-total { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--surface-1); }
@@ -23515,7 +23562,6 @@ export default function App() {
         .gc-prazo-quando { flex: 1; color: var(--ink-2); }
         .gc-prazo.atraso .gc-prazo-quando { color: var(--red); }
         .gc-prazo-val { color: var(--ink); font-weight: 600; }
-        .gc-nota-semdata { display: flex; align-items: flex-start; gap: 8px; background: var(--amber-bg); color: var(--text); border-radius: 8px; padding: 10px 13px; font-size: 12px; margin-bottom: 22px; }
 
         @media (max-width: 900px) { .gc-totais { grid-template-columns: 1fr; } }
 
@@ -23681,17 +23727,15 @@ export default function App() {
         .check { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--line-3); background: var(--surface-2); color: var(--bg); }
         .check:hover { border-color: var(--brand); }
         .check.check-on { background: var(--brand); border-color: var(--brand); }
-        .fo-check { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--line-3); color: var(--bg); }
-        .fo-item.on .fo-check { background: var(--brand); border-color: var(--brand); }
         .det-radio { border-color: var(--line-3); }
         .det-opcao.escolhida { border-color: var(--brand-line); background: var(--brand-soft); }
         .det-opcao.escolhida .det-radio { border-color: var(--brand); background: var(--brand); box-shadow: inset 0 0 0 2px var(--surface-1); }
 
         /* ---------- Filtros em chip (SavedViewChips) ---------- */
-        :is(.squad-chip, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+        :is(.squad-chip, .gc-chip, .cargo-chip, .ac-chip, .ad-tag) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
         .squad-chip.neutro { background: var(--surface-2); color: var(--text-soft); }
-        :is(.squad-chip, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag):hover { border-color: var(--line-3); color: var(--text); }
-        :is(.squad-chip.active, .squad-chip.neutro.on, .gc-chip.on, .fo-btn.on, .cargo-chip.on, .ac-chip.on) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); box-shadow: none; }
+        :is(.squad-chip, .gc-chip, .cargo-chip, .ac-chip, .ad-tag):hover { border-color: var(--line-3); color: var(--text); }
+        :is(.squad-chip.active, .squad-chip.neutro.on, .gc-chip.on, .cargo-chip.on, .ac-chip.on) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); box-shadow: none; }
         .squad-chip.active.alerta { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
         .alert-toggle { border-radius: 999px; border-color: var(--line-2); font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-soft); }
         .alert-toggle.active { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
@@ -23731,8 +23775,8 @@ export default function App() {
         /* ---------- Avisos (Alert · Banner) ----------
            O texto fica em --text: o tom mora no fundo, na borda e no ícone.
            Amarelo sobre amarelo claro não passa no contraste. */
-        :is(.aviso-monday, .aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-box) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
-        :is(.aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-topo) svg { color: var(--warning); }
+        :is(.aviso-monday, .aviso-pobre, .aviso-migracao, .eq-migracao, .pf-box) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
+        :is(.aviso-pobre, .aviso-migracao, .eq-migracao, .pf-topo) svg { color: var(--warning); }
         .import-erro { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
         .import-erro svg { color: var(--danger); }
         .pf-topo, .pf-nota, .aviso-pobre-sub { color: var(--text); }
