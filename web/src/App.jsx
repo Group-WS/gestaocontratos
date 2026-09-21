@@ -58,7 +58,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
   NotificationBell, CommandGroup, Kbd,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
-  TkwsHeader, Avatar as AvatarDS, AvatarFallback, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
+  TkwsHeader, Avatar as AvatarDS, AvatarFallback, AvatarImage, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard, RadioGroupItem,
@@ -505,23 +505,25 @@ function PapelDaObra({ obraId, valor: valorAtual, rotulo, vazio, equipe, podeEdi
 
   if (!editando) {
     return (
-      <>
-        {valorAtual ? (
-          <>
-            <div className="text-sm font-semibold text-text">{nomeNaEquipe(equipe, valorAtual)}</div>
-            <div className="truncate font-mono text-xs text-text-mute" title={valorAtual}>{valorAtual}</div>
-          </>
-        ) : (
-          <div className="text-sm italic text-text-mute">{vazio}</div>
-        )}
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1">
+          {valorAtual ? (
+            <>
+              <div className="text-sm font-semibold text-text">{nomeNaEquipe(equipe, valorAtual)}</div>
+              <div className="truncate font-mono text-xs text-text-mute" title={valorAtual}>{valorAtual}</div>
+            </>
+          ) : (
+            <div className="text-sm italic text-text-mute">{vazio}</div>
+          )}
+        </div>
         {/* Trocar o responsavel e' ajuste raro: botao discreto, com o papel
             no nome, e nao um botao cheio disputando com a acao da tela. */}
         {podeEditar && (
-          <Button variant="outline" size="sm" className="mt-2" onClick={() => setEditando(true)}>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => setEditando(true)}>
             <Pencil size={14} aria-hidden="true" /> {valorAtual ? `Trocar ${rotulo}` : `Definir ${rotulo}`}
           </Button>
         )}
-      </>
+      </div>
     );
   }
 
@@ -581,20 +583,20 @@ function jornadaDaObra(obra) {
 
 function JornadaStepper({ passos, atualIndex }) {
   return (
-    <div className="jornada">
-      {passos.map((p, i) => (
-        <React.Fragment key={p.chave}>
-          {i > 0 && <div className={`jornada-linha ${passos[i - 1].feito ? "feita" : ""}`} />}
-          <div className="jornada-passo">
-            <div className={`jornada-bola ${p.feito ? "feita" : i === atualIndex || p.andamento ? "atual" : ""}`}>
-              {p.feito ? <Check size={14} /> : i === atualIndex || p.andamento ? <span className="jornada-ponto" /> : null}
-            </div>
-            <div className="jornada-nome">{p.nome}</div>
-            <div className="jornada-status">{p.feito ? "Concluído" : i === atualIndex || p.andamento ? "Em andamento" : "Aguardando"}</div>
-          </div>
-        </React.Fragment>
-      ))}
-    </div>
+    <ol className="flex flex-wrap gap-4">
+      {passos.map((p, i) => {
+        const atual = i === atualIndex || p.andamento;
+        return (
+          <li key={p.chave} className="flex min-w-0 flex-1 basis-32 flex-col items-center gap-1 text-center">
+            <Badge tone={p.feito ? "success" : atual ? "brand" : "neutral"}>
+              {p.feito ? <Check size={14} aria-hidden="true" /> : i + 1}
+            </Badge>
+            <span className="text-sm text-text">{p.nome}</span>
+            <span className="text-xs text-text-mute">{p.feito ? "Concluído" : atual ? "Em andamento" : "Aguardando"}</span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -602,7 +604,7 @@ function BarraFrente({ nome, pct }) {
   const p = Math.max(0, Math.min(100, pct));
   return (
     <div className="flex items-center gap-3">
-      <span className="w-24 shrink-0 text-sm text-text-soft">{nome}</span>
+      <span className="w-24 shrink-0 text-sm text-text">{nome}</span>
       <Progress value={p} aria-label={`${nome}: ${Math.round(p)}% concluído`} className="flex-1" />
       <span className="mono w-10 shrink-0 text-right text-sm tabular-nums">{Math.round(p)}%</span>
     </div>
@@ -883,11 +885,13 @@ function LinhaEquipe({ rotulo, valor, equipe, podeEditar, prioridade, onDefinir,
   const nome = valor ? nomeNaEquipe(equipe, valor) : null;
   const pessoa = valor ? (equipe || []).find((x) => x.email === String(valor).toLowerCase()) : null;
   return (
-    <div className="equipe-linha">
-      <Avatar pessoa={pessoa} nome={nome} vazio={valor ? undefined : "—"}
-        classe={`equipe-avatar ${valor ? "" : "vazio"}`} />
-      <div className="equipe-corpo">
-        <div className="equipe-rotulo">{rotulo}</div>
+    <div className="flex items-start gap-3">
+      <AvatarDS size="sm" className="shrink-0">
+        {urlDaFoto(pessoa?.foto) && <AvatarImage src={urlDaFoto(pessoa?.foto)} alt="" />}
+        <AvatarFallback>{valor ? iniciaisDe(nome) : "—"}</AvatarFallback>
+      </AvatarDS>
+      <div className="min-w-0 flex-1">
+        <div className="label-mono text-text-mute">{rotulo}</div>
         <PapelDaObra obraId={obraId} valor={valor} rotulo={rotulo} vazio={vazio} equipe={equipe}
           podeEditar={podeEditar} prioridade={prioridade} onDefinir={onDefinir} />
       </div>
@@ -1229,10 +1233,13 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="h-full">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Pendências e alertas
-              {pendencias.length > 0 && <Badge tone="neutral">{pendencias.length}</Badge>}
-            </CardTitle>
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Pendências e alertas
+                {pendencias.length > 0 && <Badge tone="neutral">{pendencias.length}</Badge>}
+              </CardTitle>
+              <CardDescription>O que pede atenção nesta obra.</CardDescription>
+            </div>
           </CardHeader>
           <CardContent className="space-y-2">
             {/* FALTA APROVAR PRA COMPRA — pedido dela em 19/09/2026: "tem que
@@ -1251,7 +1258,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
                     estreita, o botao espremia o texto a uma palavra por linha. */}
                 <AlertDescription className="flex flex-col items-start gap-2">
                   <span>
-                    <b className="tabular-nums">{faltaAprovar}</b> {faltaAprovar === 1 ? "item espera" : "itens esperam"} aprovação para compra
+                    <span className="tabular-nums">{faltaAprovar}</span> {faltaAprovar === 1 ? "item espera" : "itens esperam"} aprovação para compra
                   </span>
                   <Button variant="outline" size="sm" type="button" onClick={onIrParaLiberacao}
                     title="Abre a Conf. Executivo já filtrada em 'Falta aprovar p/ compra'">
@@ -1279,13 +1286,13 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
                     <CollapsibleContent>
                       <ul className="mt-2 divide-y divide-line-1 border-t border-line-1">
                         {a.detalhe.map((c) => (
-                          <li key={`${c.num}-${c.nome}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 py-1 text-xs">
-                            <span className="mono text-text-mute">{c.num}</span>
-                            <span className="min-w-0 flex-1 font-semibold">{c.nome}</span>
-                            <span className="tabular-nums text-text-mute">
+                          <li key={`${c.num}-${c.nome}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-xs">
+                            <span className="mono w-8 shrink-0 text-text-mute">{c.num}</span>
+                            <span className="min-w-0 flex-1 text-sm font-semibold text-text">{c.nome}</span>
+                            <span className="w-48 shrink-0 text-right font-mono tabular-nums text-text-mute">
                               executivo {fmtBRL(c.executivo)}{c.vendido > 0 ? ` · vendido ${fmtBRL(c.vendido)}` : ""}
                             </span>
-                            <span className="whitespace-nowrap font-bold text-danger">{c.motivo}</span>
+                            <Badge tone="danger" className="w-32 shrink-0 justify-center">{c.motivo}</Badge>
                           </li>
                         ))}
                       </ul>
@@ -1407,21 +1414,15 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
           <CardContent className="space-y-3">
             {adit.aprovados.length > 0 ? (
               <>
-                <div>
-                  <div className={cn("mono text-2xl font-light tabular-nums", adit.saldo < 0 && "text-success")}>
-                    {adit.saldo >= 0 ? "+" : ""}{fmtBRL(adit.saldo)}
-                  </div>
-                  <div className="text-sm text-text-soft">
-                    {adit.aprovados.length} {adit.aprovados.length === 1 ? "aditivo aprovado" : "aditivos aprovados"} ·
-                    {" "}{fmtBRL(adit.adicao)} de adição e {fmtBRL(adit.supressao)} de supressão
-                  </div>
-                </div>
+                <KpiMini label="Saldo dos aditivos" value={`${adit.saldo >= 0 ? "+" : ""}${fmtBRL(adit.saldo)}`}
+                  hint={`${adit.aprovados.length} ${adit.aprovados.length === 1 ? "aditivo aprovado" : "aditivos aprovados"} · ${fmtBRL(adit.adicao)} de adição e ${fmtBRL(adit.supressao)} de supressão`}
+                  tone={adit.saldo < 0 ? "success" : "brand"} />
                 <ul className="divide-y divide-line-1 border-t border-line-1">
                   {adit.aprovados.map((a) => (
-                    <li key={a.id} className="flex items-center gap-2 py-2 text-sm">
-                      <span className="mono text-xs font-bold">{a.numero}</span>
-                      <span className="min-w-0 flex-1 truncate text-text-soft">{a.descricao || "sem descrição"}</span>
-                      <span className={cn("mono tabular-nums", a.totalAdicao - a.totalSupressao < 0 && "text-success")}>
+                    <li key={a.id} className="flex items-center gap-3 py-3 text-sm">
+                      <span className="mono w-16 shrink-0 text-xs text-text-mute">{a.numero}</span>
+                      <span className="min-w-0 flex-1 truncate font-semibold text-text">{a.descricao || "sem descrição"}</span>
+                      <span className={cn("mono w-32 shrink-0 text-right tabular-nums", a.totalAdicao - a.totalSupressao < 0 && "text-success")}>
                         {fmtBRL(a.totalAdicao - a.totalSupressao)}
                       </span>
                     </li>
@@ -1429,7 +1430,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
                 </ul>
               </>
             ) : (
-              <p className="text-sm text-text-soft">
+              <p className="text-sm text-text">
                 {adit.pendentes.length} {adit.pendentes.length === 1 ? "aditivo em aberto" : "aditivos em aberto"} —
                 em rascunho ou aguardando o cliente. Nenhum dos dois entra no orçamento: só o aprovado conta.
               </p>
@@ -1440,7 +1441,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
             {adit.soltos.length > 0 && (
               <Alert tone="warning">
                 <AlertDescription>
-                  <b>{adit.soltos.length}</b> {adit.soltos.length === 1 ? "grupo aprovado está" : "grupos aprovados estão"} sem
+                  <span className="tabular-nums">{adit.soltos.length}</span> {adit.soltos.length === 1 ? "grupo aprovado está" : "grupos aprovados estão"} sem
                   verba da EAP — {fmtBRL(adit.soltos.reduce((a, x) => a + x.valor, 0))} que não entra no CMV nem no Plano de Compras.
                 </AlertDescription>
               </Alert>
@@ -15599,25 +15600,24 @@ function GcPorVerba({ titulo, Icone, tipo, grupos, vazio, busca, onBusca, buscaP
      uma lista de barras roxas gritava mais alto que os numeros da tela. */
   return (
     <Card>
-      <CardHeader className="flex-row flex-wrap items-center gap-3">
-        <CardTitle className="flex items-center gap-2 text-base"><Icone size={16} className="text-text-soft" /> {titulo}</CardTitle>
-        {tipo && <Badge tone={tipo === "mo" ? "purple" : "brand"}>{tipo === "mo" ? "Mão de obra" : "Material"}</Badge>}
-        {abas && (
-          <ToggleGroup type="single" size="sm" value={abas.valor} onValueChange={(v) => { if (v) abas.onMudar(v); }} aria-label="Agrupar a lista">
-            {abas.opcoes.map((op) => <ToggleGroupItem key={op.id} value={op.id}>{op.label}</ToggleGroupItem>)}
-          </ToggleGroup>
-        )}
-        <span className="ml-auto font-mono text-base font-semibold text-text-strong">{fmtBRL(total)}</span>
+      <CardHeader className="flex-wrap">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <CardTitle className="flex items-center gap-2"><Icone size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> {titulo}</CardTitle>
+          {tipo && <Badge tone={tipo === "mo" ? "purple" : "brand"}>{tipo === "mo" ? "Mão de obra" : "Material"}</Badge>}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {abas && (
+            <ToggleGroup type="single" size="sm" value={abas.valor} onValueChange={(v) => { if (v) abas.onMudar(v); }} aria-label="Agrupar a lista">
+              {abas.opcoes.map((op) => <ToggleGroupItem key={op.id} value={op.id}>{op.label}</ToggleGroupItem>)}
+            </ToggleGroup>
+          )}
+          <span className="font-mono text-base font-semibold tabular-nums text-text">{fmtBRL(total)}</span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {onBusca && (
-          <div className="flex max-w-md items-center gap-1">
-            <Input icon={<Search size={14} />} value={busca} onChange={(e) => onBusca(e.target.value)}
-              placeholder={buscaPlaceholder || "Buscar…"} aria-label={buscaPlaceholder || "Buscar"} />
-            {busca && (
-              <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => onBusca("")}><X size={14} /></BotaoIcone>
-            )}
-          </div>
+          <CampoBusca valor={busca} aoMudar={onBusca} dica={buscaPlaceholder || "Buscar…"}
+            contador={`${grupos.length} ${grupos.length === 1 ? "resultado" : "resultados"}`} />
         )}
         {grupos.length === 0 ? (
           <p className="py-4 text-sm text-text-mute">{busca ? `Nenhum resultado para “${busca}”.` : vazio}</p>
@@ -15632,19 +15632,6 @@ function GcPorVerba({ titulo, Icone, tipo, grupos, vazio, busca, onBusca, buscaP
         )}
       </CardContent>
     </Card>
-  );
-}
-
-/* Acao de icone na ponta da linha: o nome aparece no Tooltip do DS e vai no
-   aria-label — icone sozinho nao diz o que faz. */
-function AcaoDaLinha({ rotulo, onClick, children }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={onClick} aria-label={rotulo}>{children}</Button>
-      </TooltipTrigger>
-      <TooltipContent>{rotulo}</TooltipContent>
-    </Tooltip>
   );
 }
 
@@ -15671,34 +15658,34 @@ function GcLinhaVerba({ g, max, onAbrir, onImprimir, onSimular }) {
   return (
     <li>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start gap-3 px-2 py-2 font-normal"
+        <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start gap-3 px-4 py-3 font-normal"
           onClick={() => setAberto((x) => !x)} aria-expanded={aberto} title={aberto ? "Esconder as obras" : "Ver de qual obra vem o total"}>
-          <ChevronRight size={14} className={cn("shrink-0 text-text-mute transition-transform", aberto && "rotate-90")} />
+          <ChevronRight size={14} className={cn("shrink-0 text-text-mute transition-transform", aberto && "rotate-90")} aria-hidden="true" />
           {g.num != null && <span className="w-6 shrink-0 text-left font-mono text-xs text-text-mute">{g.num}</span>}
-          <span className="min-w-0 flex-1 whitespace-normal text-left text-sm text-text-strong md:w-64 md:flex-none">{g.nome}</span>
+          <span className="min-w-0 flex-1 whitespace-normal text-left text-sm text-text md:w-64 md:flex-none">{g.nome}</span>
           <span className="hidden w-16 shrink-0 text-left text-xs text-text-mute md:inline">{nObras}</span>
           <Progress className="hidden min-w-16 flex-1 md:block" value={Math.min(100, (g.total / max) * 100)} aria-label={`Peso de ${g.nome} no total`} />
-          {qtdTxt && <span className="hidden shrink-0 font-mono text-xs text-text-mute lg:inline">{qtdTxt}</span>}
-          <span className="w-32 shrink-0 text-right font-mono text-sm text-text-strong">{fmtBRL(g.total)}</span>
+          <span className="hidden w-32 shrink-0 text-right font-mono text-xs tabular-nums text-text-mute lg:inline">{qtdTxt || ""}</span>
+          <span className="w-32 shrink-0 text-right font-mono text-sm tabular-nums text-text">{fmtBRL(g.total)}</span>
         </Button>
         {/* A calculadora: quanto custaria esta verba com a equipe interna. */}
         {onSimular && (
-          <AcaoDaLinha rotulo="Simular com a mão de obra própria" onClick={() => onSimular(g)}><Calculator size={16} /></AcaoDaLinha>
+          <BotaoIcone rotulo="Simular com a mão de obra própria" variant="ghost" onClick={() => onSimular(g)}><Calculator size={16} aria-hidden="true" /></BotaoIcone>
         )}
         {/* O PDF desta linha: item a item, por obra e total. Abre na tela e já baixa. */}
         {onImprimir && (
-          <AcaoDaLinha rotulo={`Gerar PDF ${g.num != null ? "desta verba" : "deste insumo"}`} onClick={() => onImprimir(g)}><FileDown size={16} /></AcaoDaLinha>
+          <BotaoIcone rotulo={`Gerar PDF ${g.num != null ? "desta verba" : "deste insumo"}`} variant="ghost" onClick={() => onImprimir(g)}><FileDown size={16} aria-hidden="true" /></BotaoIcone>
         )}
       </div>
       {aberto && (
         <div className="mb-2 ml-8 flex flex-col border-l-2 border-line-2 pl-2">
           {porObra.map((o) => (
-            <Button variant="ghost" key={o.codigo} className="h-auto justify-start gap-3 px-2 py-1 font-normal"
+            <Button variant="ghost" key={o.codigo} className="h-auto justify-start gap-3 px-4 py-2 font-normal"
               onClick={() => onAbrir && onAbrir(o.id)} disabled={!onAbrir}>
-              <span className="font-mono text-xs text-text-mute">#{o.codigo}</span>
+              <span className="w-12 shrink-0 font-mono text-xs text-text-mute">#{o.codigo}</span>
               <span className="min-w-0 flex-1 whitespace-normal text-left text-sm">{o.nome}</span>
-              {o.qtds && <span className="font-mono text-xs text-text-mute">{fmtQtds(o.qtds)}</span>}
-              <span className="font-mono text-sm">{fmtBRL(o.valor)}</span>
+              {o.qtds && <span className="w-32 shrink-0 text-right font-mono text-xs tabular-nums text-text-mute">{fmtQtds(o.qtds)}</span>}
+              <span className="w-32 shrink-0 text-right font-mono text-sm tabular-nums">{fmtBRL(o.valor)}</span>
             </Button>
           ))}
         </div>
@@ -15727,7 +15714,7 @@ function GcLinhaObra({ L, onAbrir }) {
           {entrega ? (
             <>
               <div>{entrega}</div>
-              <div className={cn("text-xs", L.faltamEntrega < 0 ? "font-semibold text-danger" : "text-text-mute")}>
+              <div className={cn("text-xs", L.faltamEntrega < 0 ? "text-danger" : "text-text-mute")}>
                 {L.faltamEntrega < 0 ? `${-L.faltamEntrega} d atrás` : `em ${L.faltamEntrega} d`}
               </div>
             </>
@@ -15736,12 +15723,12 @@ function GcLinhaObra({ L, onAbrir }) {
         <TableCell>
           <div className="flex flex-col gap-1">
             <Progress value={L.mat.pct} aria-label="Material já comprado" />
-            <div className="flex flex-wrap items-baseline gap-2">
-              <span className="font-mono text-sm">{fmtBRL(L.mat.faltaReal)}</span>
+            <div className="flex flex-col items-end">
+              <span className="font-mono text-sm tabular-nums">{fmtBRL(L.mat.faltaReal)}</span>
               {/* A estimativa fica ao lado, em tom claro: ela conta pra
                   previsao de compra, mas ninguem pode comprar ainda. */}
               {L.mat.faltaEstimativa > 0 && (
-                <span className="font-mono text-xs text-text-mute" title="Estimativa: itens que o executivo ainda não liberou para compra">
+                <span className="font-mono text-xs tabular-nums text-text-mute" title="Estimativa: itens que o executivo ainda não liberou para compra">
                   + {fmtBRL(L.mat.faltaEstimativa)} est.
                 </span>
               )}
@@ -15751,21 +15738,21 @@ function GcLinhaObra({ L, onAbrir }) {
         <TableCell>
           <div className="flex flex-col gap-1">
             <Progress value={L.mo.pct} aria-label="Mão de obra já contratada" />
-            <span className="font-mono text-sm">{fmtBRL(L.mo.falta)}</span>
+            <span className="self-end font-mono text-sm tabular-nums">{fmtBRL(L.mo.falta)}</span>
           </div>
         </TableCell>
         <TableCell className="text-center">
           {atrasada ? (
-            <Button variant="outline" size="sm" className="gap-1 border-danger text-danger" onClick={alternar}
+            <Button variant="danger" size="sm" className="gap-1" onClick={alternar}
               title={aberto ? "Esconder o que está atrasado" : "Ver o que está atrasado nesta obra"} aria-expanded={aberto}>
-              <AlertTriangle size={14} /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
-              <ChevronDown size={14} className={cn("transition-transform", aberto && "rotate-180")} />
+              <AlertTriangle size={14} aria-hidden="true" /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
+              <ChevronDown size={14} className={cn("transition-transform", aberto && "rotate-180")} aria-hidden="true" />
             </Button>
           ) : L.perto.length > 0 ? (
-            <Button variant="outline" size="sm" className="gap-1 border-warning text-warning" onClick={alternar}
+            <Button variant="outline" size="sm" className="gap-1" onClick={alternar}
               title={aberto ? "Esconder" : "Ver o que está perto do prazo"} aria-expanded={aberto}>
-              <Clock size={14} /> {L.perto.length} perto do prazo
-              <ChevronDown size={14} className={cn("transition-transform", aberto && "rotate-180")} />
+              <Clock size={14} className="text-warning" aria-hidden="true" /> {L.perto.length} perto do prazo
+              <ChevronDown size={14} className={cn("transition-transform", aberto && "rotate-180")} aria-hidden="true" />
             </Button>
           ) : <span className="text-text-mute">—</span>}
         </TableCell>
@@ -15773,15 +15760,15 @@ function GcLinhaObra({ L, onAbrir }) {
       {aberto && (
         <TableRow>
           <TableCell colSpan={5} className="bg-surface-2">
-            <p className="label-mono mb-2">O que está atrasado ou perto do prazo nesta obra</p>
+            <SecaoRotulo className="mb-2">O que está atrasado ou perto do prazo nesta obra</SecaoRotulo>
             <ul className="m-0 list-none space-y-2 p-0">
               {[...L.atrasos.map((v) => ({ ...v, tipo: "atraso" })),
                 ...L.perto.map((v) => ({ ...v, tipo: "perto" }))].map((v) => (
-                <li key={v.num + v.tipo} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                  <Badge tone={v.tipo === "atraso" ? "danger" : "warning"}>{v.tipo === "atraso" ? "Atrasada" : "Perto do prazo"}</Badge>
-                  <span className="font-mono text-xs text-text-mute">{v.num}</span>
-                  <span className="font-semibold">{v.nome}</span>
-                  <span className="text-xs text-text-soft">
+                <li key={v.num + v.tipo} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                  <Badge tone={v.tipo === "atraso" ? "danger" : "warning"} className="w-28 shrink-0 justify-center">{v.tipo === "atraso" ? "Atrasada" : "Perto do prazo"}</Badge>
+                  <span className="w-8 shrink-0 font-mono text-xs text-text-mute">{v.num}</span>
+                  <span className="font-semibold text-text">{v.nome}</span>
+                  <span className="text-xs text-text-mute">
                     comprar até {v.quandoMat.toLocaleDateString("pt-BR")}
                     {v.prazo?.fornecedor ? ` (${v.prazo.fornecedor}, ${v.prazo.dias} d)` : ` (${v.prazo.dias} d antes da entrega)`}
                     {v.dias < 0 ? ` — venceu há ${-v.dias} dias` : ` — faltam ${v.dias} dias`}
@@ -15793,9 +15780,9 @@ function GcLinhaObra({ L, onAbrir }) {
                       {v.solicitadosFalta === v.siengeFalta ? "tudo solicitado" : `${v.solicitadosFalta} de ${v.siengeFalta} solicitados`}
                     </Badge>
                   )}
-                  <span className="ml-auto font-mono">{fmtBRL(v.matFaltaReal)}</span>
+                  <span className="ml-auto w-32 shrink-0 text-right font-mono tabular-nums">{fmtBRL(v.matFaltaReal)}</span>
                   {v.matFaltaEstimativa > 0 && (
-                    <span className="font-mono text-xs text-text-mute" title="Estimativa: ainda não liberado para compra">
+                    <span className="font-mono text-xs tabular-nums text-text-mute" title="Estimativa: ainda não liberado para compra">
                       + {fmtBRL(v.matFaltaEstimativa)} est.
                     </span>
                   )}
@@ -16828,38 +16815,29 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
   const toolbar = (
     <div className="flex flex-col gap-4">
     {abasTelas}
-    <div className="flex flex-wrap items-end gap-4">
+    <div className="flex flex-wrap items-center gap-4">
       {comDados.length > 1 && (
-        <div className="flex flex-col gap-1">
-          <span className="label-mono">Obras</span>
-          <FiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
-        </div>
+        <FiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
       )}
-      <div className="flex flex-col gap-1">
-        <span className="label-mono">Mostrar</span>
-        <ToggleGroup type="single" value={status} onValueChange={(v) => { if (v) setStatus(v); }} aria-label="O que o painel mostra">
-          {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
-            <ToggleGroupItem key={id} value={id}>{rot}</ToggleGroupItem>
+      <ToggleGroup type="single" value={status} onValueChange={(v) => { if (v) setStatus(v); }} aria-label="Mostrar: o que o painel mostra">
+        {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
+          <ToggleGroupItem key={id} value={id}>{rot}</ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      {status === "pendente" ? (
+        <ToggleGroup type="single" value={horizonte == null ? "tudo" : String(horizonte)} aria-label="Preciso resolver nas: horizonte de prazo"
+          onValueChange={(v) => { if (!v) return; setHorizonte(v === "tudo" ? null : Number(v)); }}>
+          {HORIZONTES.map((h) => (
+            <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)}>{h.rot}</ToggleGroupItem>
           ))}
         </ToggleGroup>
-      </div>
-      {status === "pendente" ? (
-        <div className="flex flex-col gap-1">
-          <span className="label-mono">Preciso resolver nas</span>
-          <ToggleGroup type="single" value={horizonte == null ? "tudo" : String(horizonte)} aria-label="Horizonte de prazo"
-            onValueChange={(v) => { if (!v) return; setHorizonte(v === "tudo" ? null : Number(v)); }}>
-            {HORIZONTES.map((h) => (
-              <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)}>{h.rot}</ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
       ) : (
-        <p className="text-sm text-text-soft">O prazo vale pro que falta; aqui aparece {status === "comprado" ? "o que já foi comprado" : "o comprado e o pendente"}.</p>
+        <p className="text-xs text-text-mute">O prazo vale pro que falta; aqui aparece {status === "comprado" ? "o que já foi comprado" : "o comprado e o pendente"}.</p>
       )}
-      <Choice label="Fornecedor" className="w-full sm:w-64" value={fornecedor || TODOS} onChange={(v) => setFornecedor(v === TODOS ? "" : v)}
+      <Choice label="Fornecedor" rotuloVisivel={false} className="w-full sm:w-64" value={fornecedor || TODOS} onChange={(v) => setFornecedor(v === TODOS ? "" : v)}
         opcoes={[{ value: TODOS, label: "Todos os fornecedores" },
           ...fornecedoresDoPainel.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` }))]} />
-      <Choice label="Comprador" className="w-full sm:w-64" value={comprador || TODOS} onChange={(v) => setComprador(v === TODOS ? "" : v)}
+      <Choice label="Comprador" rotuloVisivel={false} className="w-full sm:w-64" value={comprador || TODOS} onChange={(v) => setComprador(v === TODOS ? "" : v)}
         opcoes={[{ value: TODOS, label: "Todos os compradores" },
           ...listaCompradores.map((c) => ({ value: c.email, label: c.nome })),
           { value: SEM_COMPRADOR, label: "Sem comprador" }]} />
@@ -16892,24 +16870,24 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
           padrao={!prestadores.lista.some((p) => p.ativo)} />
       )}
 
-      <p className="flex flex-wrap items-center gap-2 text-sm text-text-soft">
+      <p className="flex flex-wrap items-center gap-2 text-sm text-text">
         <span>
           {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"}
           {escolhidas.size > 0 ? " no filtro" : " com planilha"}
           {nAtivas != null && !escolhidas.size ? ` de ${nAtivas} ativas` : ""}
         </span>
         {t.obrasAtrasadas > 0 && (
-          <Button variant="outline" size="sm" className="gap-1 border-danger text-danger" onClick={verAtrasadas}
+          <Button variant="danger" size="sm" className="gap-1" onClick={verAtrasadas}
             title="Ver na tabela só as obras com compra atrasada">
-            <AlertTriangle size={14} /> {t.obrasAtrasadas} com compra atrasada
+            <AlertTriangle size={14} aria-hidden="true" /> {t.obrasAtrasadas} com compra atrasada
           </Button>
         )}
       </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <KpiProgresso label="A COMPRAR — MATERIAL" tone="brand" value={fmtBRL(t.matTotal - t.matFeito)} pct={pctMat}
+        <KpiProgresso label="A comprar — material" tone="brand" value={fmtBRL(t.matTotal - t.matFeito)} pct={pctMat}
           hint={`ainda não comprado · ${fmtBRL(t.matFeito)} de ${fmtBRL(t.matTotal)} · ${Math.round(pctMat)}%`} rotuloBarra="Material já comprado" />
-        <KpiProgresso label="A CONTRATAR — MÃO DE OBRA" tone="neutral" value={fmtBRL(t.moTotal - t.moFeito)} pct={pctMo}
+        <KpiProgresso label="A contratar — mão de obra" tone="neutral" value={fmtBRL(t.moTotal - t.moFeito)} pct={pctMo}
           hint={`ainda não solicitado · ${fmtBRL(t.moFeito)} de ${fmtBRL(t.moTotal)} · ${Math.round(pctMo)}%`} rotuloBarra="Mão de obra já contratada" />
       </div>
 
@@ -16956,18 +16934,20 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
 
       <Card ref={obraPorObraRef} className="scroll-mt-24">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Building2 size={16} /> Obra por obra</CardTitle>
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2"><Building2 size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Obra por obra</CardTitle>
+            <CardDescription>Entrega, o que falta comprar e contratar e os prazos de cada obra.</CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Obra</TableHead>
                   <TableHead className="w-32 text-center">Entrega</TableHead>
-                  <TableHead className="w-48">Comprado · falta</TableHead>
-                  <TableHead className="w-48">Contratado · falta</TableHead>
-                  <TableHead className="w-32 text-center">Prazos</TableHead>
+                  <TableHead className="w-48 text-center">Comprado · falta</TableHead>
+                  <TableHead className="w-48 text-center">Contratado · falta</TableHead>
+                  <TableHead className="w-40 text-center">Prazos</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -16982,7 +16962,6 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
                 {linhasDaTabela.map((L) => <GcLinhaObra key={L.codigo} L={L} onAbrir={onAbrir} />)}
               </TableBody>
             </Table>
-          </div>
         </CardContent>
       </Card>
     </PageShell>
@@ -19932,8 +19911,8 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
           placeholder="Rua, número - complemento - bairro - cidade - UF - CEP"
           onChange={(e) => setValor(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") setEditando(false); }} />
-        <Button size="sm" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar endereço"}</Button>
-        <Button size="sm" variant="outline" disabled={salvando} onClick={() => setEditando(false)}>Cancelar</Button>
+        <Button disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar endereço"}</Button>
+        <Button variant="outline" disabled={salvando} onClick={() => setEditando(false)}>Cancelar</Button>
         <span className="w-full text-xs text-text-mute">Em branco, volta o endereço do cadastro do Sienge.</span>
         {erro && <span className="w-full text-xs text-danger">{erro}</span>}
       </span>
@@ -19949,7 +19928,7 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-auto min-w-0 shrink justify-start whitespace-normal px-1 py-0 text-left font-normal text-text-soft"
+              <Button variant="ghost" size="sm" className="h-auto min-w-0 shrink justify-start whitespace-normal px-1 py-0 text-left text-sm font-normal text-text"
                 aria-label={`Copiar endereço: ${atual}`} onClick={async () => {
                   try { await navigator.clipboard.writeText(atual); avisar.ok("Endereço copiado."); }
                   catch { avisar.erro("Não foi possível copiar o endereço.", "Selecione o texto e copie manualmente."); }
@@ -19960,10 +19939,10 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
             <TooltipContent>Copiar endereço</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-      ) : <span className="italic text-text-mute">Endereço não informado</span>}
+      ) : <span className="text-sm italic text-text-mute">Endereço não informado</span>}
       {podeEditar && (
-        <BotaoIcone rotulo="Editar endereço" variant="ghost" size="sm" onClick={() => { setValor(atual); setEditando(true); }}>
-          <Pencil size={14} aria-hidden="true" />
+        <BotaoIcone rotulo="Editar endereço" variant="ghost" onClick={() => { setValor(atual); setEditando(true); }}>
+          <Pencil size={16} aria-hidden="true" />
         </BotaoIcone>
       )}
     </span>
@@ -20209,7 +20188,7 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
     estado = (
       <span className="flex items-center gap-2 text-sm" title={`Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração`}>
         <Badge tone="warning"><Lock size={12} aria-hidden="true" /> Em edição por outra pessoa</Badge>
-        <span className="text-text-soft"><b>{edicao.por}</b> está editando{desde ? ` desde ${desde}` : ""}</span>
+        <span className="text-text-soft"><span className="text-text">{edicao.por}</span> está editando{desde ? ` desde ${desde}` : ""}</span>
       </span>
     );
   } else if (edicao.minha) {
@@ -20239,14 +20218,14 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
   }
 
   return (
-    <div className="naoimprime flex flex-wrap items-center gap-2">
+    <div className="naoimprime flex flex-wrap items-center justify-end gap-2">
       {estado}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {mostraEtapa && (feita ? (
           <>
             <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Etapa concluída</Badge>
             <span className="text-xs text-text-mute">
-              {porQuem && <>por <b>{porQuem}</b></>}
+              {porQuem && <>por {porQuem}</>}
               {em && <> · {new Date(em).toLocaleDateString("pt-BR")}</>}
             </span>
             {!congelado && <Button variant="ghost" onClick={() => onReabrirEtapa(etapaId)}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>}
@@ -24359,7 +24338,7 @@ export default function App() {
                           {val === "a definir" ? <span className="text-sm italic text-text-mute">a definir</span> : (
                             <span className="flex min-w-0 items-start gap-2">
                               <AvatarDS size="xs" className="shrink-0"><AvatarFallback>{val.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</AvatarFallback></AvatarDS>
-                              <span className="min-w-0 text-sm font-medium leading-snug text-text">{val}</span>
+                              <span className="min-w-0 text-sm font-semibold leading-snug text-text">{val}</span>
                             </span>
                           )}
                         </span>
@@ -24369,7 +24348,7 @@ export default function App() {
                   </span>
                 )}
                 actions={(
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <BarraEtapa
                       edicao={edicao} salvando={salvando} carregando={carregandoDados}
                       falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}

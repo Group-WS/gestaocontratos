@@ -87,7 +87,7 @@ conf("modulo fora de grupo nunca some do menu", src.includes("i === GRUPOS_DO_ME
    "quando eu passo o mouse em cima dos botões ele fica piscando". */
 conf("... sem listener caseiro de mouse", src.includes('addEventListener("mouseover"'), false);
 /* A ordem é o conserto: a saída antecipada tem que vir ANTES da limpeza. */
-conf("... e o rótulo também vai no aria-label", src.includes("aria-label={rotulo}"), true);
+conf("... e o rótulo também vai no aria-label", src.includes("aria-label={aberto ? undefined : rotulo}"), true);
 
 /* A LISTA DE OBRAS FICA ABERTA (21/09/2026): dentro da obra ela aparece
    sempre, e não existe mais jeito de escondê-la — nem botão, nem recolher

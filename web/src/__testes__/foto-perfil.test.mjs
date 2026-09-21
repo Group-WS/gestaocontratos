@@ -72,7 +72,7 @@ conf("trilho usa o componente", app.includes('<Avatar pessoa={euNaEquipe} nome={
    fotos iguais na mesma tela fazem quem olha procurar a diferença entre elas,
    e a única diferença era que uma funcionava e a outra não. */
 conf("o topo não repete a foto", /<div className="topbar-right">[\s\S]{0,900}<Avatar/.test(app), false);
-conf("equipe da obra usa", app.includes("classe={`equipe-avatar ${valor ? \"\" : \"vazio\"}`}"));
+conf("equipe da obra usa", app.includes("<AvatarImage src={urlDaFoto(pessoa?.foto)}"));
 conf("tela Equipe usa", app.includes("classe={`eq-avatar ${estaOnline(p) ? \"online\" : \"\"}`}"));
 conf("a foto é recortada, nunca esticada", app.includes(".avatar-foto { object-fit: cover;"));
 

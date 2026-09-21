@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState,
   Input, Label, PageShell, Progress, Skeleton, ActiveFilters, FilterChip, KpiHero, KpiMini,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell, cn,
 } from "@group-ws/ws-ui";
 import { BotaoIcone } from "../../lib/ui.jsx";
 import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, Search } from "lucide-react";
@@ -17,7 +17,7 @@ const options = (rows, key) => [...new Set(rows.map((row) => row[key]))].sort((a
 function Choice({ label, value, values, onChange, disabled = false, allLabel = "Todas" }) {
   const id = React.useId();
   return <div className="flex w-full min-w-0 flex-col gap-1 sm:w-40">
-    <Label htmlFor={id}>{label}</Label>
+    <Label htmlFor={id} className="sr-only">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={label}><SelectValue /></SelectTrigger>
       <SelectContent><SelectItem value="all">{allLabel}</SelectItem>
@@ -47,8 +47,8 @@ function Percentage({ value, label }) {
    lacuna se le' de relance e no lugar certo. */
 function Equipe({ team = [] }) {
   return <div className="flex flex-wrap gap-x-2 text-xs">
-    {team.map((p) => <span key={p.chave} className={p.nome ? "text-text-soft" : "italic text-text-mute"} title={p.rotulo}>
-      <span className="font-semibold">{p.rotulo}</span> {p.nome || "a definir"}
+    {team.map((p) => <span key={p.chave} className={p.nome ? "text-text" : "italic text-text-mute"} title={p.rotulo}>
+      <span className="text-text-mute">{p.rotulo}</span> {p.nome || "a definir"}
     </span>)}
   </div>;
 }
@@ -58,7 +58,7 @@ function Equipe({ team = [] }) {
 function ReguaDos90({ days }) {
   if (days == null || days > 90) return null;
   const dentro = Math.min(90, Math.max(0, 90 - days));
-  return <Progress className="mt-1 h-1 w-24" value={(dentro / 90) * 100} aria-label={`${Math.round((dentro / 90) * 100)}% da janela de 90 dias`} />;
+  return <Progress className="mx-auto mt-1 h-1 w-24" value={(dentro / 90) * 100} aria-label={`${Math.round((dentro / 90) * 100)}% da janela de 90 dias`} />;
 }
 
 export default function DashboardPage({ title = "Visão geral das obras", rows, loading, error, onRetry, onOpen, extraAlerts = [], memory }) {
@@ -132,12 +132,12 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
   const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   /* Filtro mora na TOOLBAR do PageShell, abaixo do titulo — o lado direito
      do titulo e' das acoes (App Shell do DS, nivel 6). */
-  const controls = <div className="flex flex-wrap items-end gap-3" role="group" aria-label="Filtros do dashboard">
+  const controls = <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Filtros do dashboard">
+    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-72"><Label htmlFor="dashboard-search" className="sr-only">Buscar obra</Label><Input icon={<Search size={16} aria-hidden="true" />} id="dashboard-search" placeholder="Código ou nome" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div>
     <Choice label="Unidade" disabled={!rows.some((row) => row.unit !== "Não informada")} value={filters.unit} values={options(rows, "unit")} onChange={(value) => update("unit", value)} />
     <Choice label="Squad" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} />
     <Choice label="GC" allLabel="Todos" value={filters.gc} values={options(rows, "gc")} onChange={(value) => update("gc", value)} />
     <Choice label="Taylor Made" allLabel="Todas" value={filters.taylor || "all"} values={options(rows, "taylor")} onChange={(value) => update("taylor", value)} />
-    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-64"><Label htmlFor="dashboard-search">Buscar obra</Label><Input icon={<Search size={16} />} id="dashboard-search" placeholder="Código ou nome" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div>
   </div>;
   const filtrosAtivos = active ? <ActiveFilters count={filtered.length} noun="obra" hasFilters onClearAll={clear}>
     {filters.unit !== "all" && <FilterChip label="Unidade" value={filters.unit} onClear={() => update("unit", "all")} />}
@@ -153,7 +153,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
     italic={unavailable ? undefined : `${compactMoney(pending)} a comprar · ${filtered.length} ${filtered.length === 1 ? "obra" : "obras"}`}
     description={`Prazos, compras e pontos críticos da operação · ${hoje}`}
     toolbar={controls} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-4">
-    {error && <Card accent="danger"><CardContent><p role="alert">Não conseguimos carregar todos os dados das obras. Atualize para consultar os indicadores.</p><Button onClick={onRetry}>Tentar novamente</Button></CardContent></Card>}
+    {error && <Card accent="danger"><CardContent className="flex flex-col items-start gap-3"><p role="alert" className="text-sm text-text">Não conseguimos carregar todos os dados das obras. Atualize para consultar os indicadores.</p><Button onClick={onRetry}>Tentar novamente</Button></CardContent></Card>}
     <div className="grid grid-cols-12 gap-4" aria-label="Indicadores das obras" aria-busy={loading}>
       <div className="col-span-12 flex flex-col gap-2 xl:col-span-5">
         {unavailable
@@ -169,11 +169,11 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
         {kpis.map(({ icon: Icon, ...kpi }) => <Card key={kpi.label}>
           <CardContent className="flex h-full flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
-              <Badge tone={kpi.tone} className="p-2"><Icon size={18} aria-hidden="true" /></Badge>
+              <Badge tone={kpi.tone} className="p-2"><Icon size={16} aria-hidden="true" /></Badge>
               <BotaoIcone rotulo={`Ver ${kpi.label.toLowerCase()}`} variant="ghost" disabled={unavailable} onClick={kpi.action}><ChevronRight size={16} aria-hidden="true" /></BotaoIcone>
             </div>
             <div className="label-mono text-text-mute">{kpi.label}</div>
-            {unavailable ? <Skeleton className="h-8 w-20" /> : <><div className="text-2xl font-semibold text-text-strong">{kpi.value}</div><div className="text-xs text-text-mute">{kpi.hint}</div></>}
+            {unavailable ? <Skeleton className="h-8 w-20" /> : <><div className="text-2xl font-semibold text-text">{kpi.value}</div><div className="text-xs text-text-mute">{kpi.hint}</div></>}
           </CardContent>
         </Card>)}
       </div>
@@ -183,27 +183,28 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
         ? <Skeleton key={k.label} className="h-20" />
         : <KpiMini key={k.label} label={k.label} value={String(k.value)} hint={`de ${filtered.length} obras`} tone={k.tone} />)}
     </div>
-    {loading && <span role="status">Carregando as obras…</span>}
+    {loading && <span role="status" className="sr-only">Carregando as obras…</span>}
     <>
       <div className="grid min-w-0 grid-cols-12 gap-4">
         <Card className="col-span-12 min-w-0 xl:col-span-8" ref={alertsRef} tabIndex={-1}>
-          <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-2"><CardTitle className="flex items-center gap-2"><TriangleAlert size={18} className="text-danger" />Prioridades de hoje <Badge tone="neutral">{visibleAlerts.length}</Badge></CardTitle><Button variant="ghost" size="sm" className="text-brand" onClick={() => setShowAlerts(!showAlerts)}>{showAlerts ? "Mostrar menos" : `Ver todos os ${alerts.length} alertas`} <ArrowRight size={14} /></Button></div><CardDescription>Itens que precisam da sua atenção para manter o cronograma.</CardDescription></CardHeader>
+          <CardHeader><div className="min-w-0"><CardTitle className="flex items-center gap-2"><TriangleAlert size={16} className="shrink-0 text-danger" aria-hidden="true" />Prioridades de hoje <Badge tone="neutral">{visibleAlerts.length}</Badge></CardTitle><CardDescription>Itens que precisam da sua atenção para manter o cronograma.</CardDescription></div><Button variant="ghost" size="sm" className="shrink-0" onClick={() => setShowAlerts(!showAlerts)}>{showAlerts ? "Mostrar menos" : `Ver todos os ${alerts.length} alertas`} <ArrowRight size={14} aria-hidden="true" /></Button></CardHeader>
           <CardContent>
             {unavailable ? <p role="status">{loading ? "Carregando prioridades…" : "Prioridades indisponíveis. Tente carregar novamente."}</p> : !alerts.length ? <p role="status">Nenhuma pendência para as obras selecionadas.</p> : <Table aria-label="Prioridades de hoje">
-              <TableHeader className="sr-only"><TableRow>{["Prioridade", "Obra", "Pendência", "Prazo e valor", "GC", "Ação"].map((label) => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
+              <TableHeader className="sr-only"><TableRow>{["Prioridade", "Obra", "Pendência", "Prazo", "Valor", "GC", "Ação"].map((label) => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
               <TableBody>{visibleAlerts.map((alert, index) => <TableRow key={alert.id || index}>
-                <TableCell><Badge tone={alert.critical ? "danger" : alert.upcoming ? "neutral" : "warning"}>{alert.critical ? "Crítica" : alert.upcoming ? "A vencer" : "Atenção"}</Badge></TableCell>
-                <TableCell className="text-xs font-semibold text-text-strong">{alert.row ? `#${alert.row.code} ${alert.row.name}` : "Equipe e operação"}</TableCell>
-                <TableCell className="text-xs">{alert.text}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs"><div className={alert.upcoming ? "font-semibold text-text-soft" : "font-semibold text-danger"}>{alert.days != null ? `• ${Math.abs(alert.days)} ${Math.abs(alert.days) === 1 ? "dia" : "dias"}` : "—"}</div>{alert.amount != null && <div className="text-text-mute">{money(alert.amount)}</div>}</TableCell>
+                <TableCell className="w-24"><Badge tone={alert.critical ? "danger" : alert.upcoming ? "neutral" : "warning"}>{alert.critical ? "Crítica" : alert.upcoming ? "A vencer" : "Atenção"}</Badge></TableCell>
+                <TableCell className="text-sm font-semibold text-text">{alert.row ? `#${alert.row.code} ${alert.row.name}` : "Equipe e operação"}</TableCell>
+                <TableCell className="text-sm text-text">{alert.text}</TableCell>
+                <TableCell className={cn("w-24 whitespace-nowrap text-center text-xs", alert.upcoming ? "text-text-mute" : "text-danger")}>{alert.days != null ? `• ${Math.abs(alert.days)} ${Math.abs(alert.days) === 1 ? "dia" : "dias"}` : "—"}</TableCell>
+                <TableCell className="w-32 whitespace-nowrap text-right font-mono text-sm tabular-nums">{alert.amount != null ? money(alert.amount) : "—"}</TableCell>
                 <TableCell className="text-xs text-text-mute">{alert.row ? `GC ${alert.row.gc}` : "—"}</TableCell>
-                <TableCell><Button size="sm" variant="secondary" onClick={alert.action}>{alert.button || "Abrir"} <ArrowRight size={14} /></Button></TableCell>
+                <TableCell className="text-right"><Button size="sm" variant="outline" onClick={alert.action}>{alert.button || "Abrir"} <ArrowRight size={14} aria-hidden="true" /></Button></TableCell>
               </TableRow>)}</TableBody>
             </Table>}
           </CardContent>
         </Card>
         <Card className="col-span-12 min-w-0 xl:col-span-4" ref={deliveriesRef} tabIndex={-1}>
-          <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-4"><CardTitle className="flex items-center gap-2"><ClipboardList size={18} className="text-brand" />Próximas entregas <Badge tone="neutral">{deliveries.length}</Badge></CardTitle><Button variant="ghost" size="sm" onClick={() => setShowDeliveries(!showDeliveries)}>{showDeliveries ? "Mostrar menos" : "Ver todas"} <ArrowRight size={14} /></Button></div><CardDescription>Obras com entrega prevista nos próximos 90 dias.</CardDescription></CardHeader>
+          <CardHeader><div className="min-w-0"><CardTitle className="flex items-center gap-2"><CalendarDays size={16} className="shrink-0 text-brand" aria-hidden="true" />Próximas entregas <Badge tone="neutral">{deliveries.length}</Badge></CardTitle><CardDescription>Obras com entrega prevista nos próximos 90 dias.</CardDescription></div><Button variant="ghost" size="sm" className="shrink-0" onClick={() => setShowDeliveries(!showDeliveries)}>{showDeliveries ? "Mostrar menos" : "Ver todas"} <ArrowRight size={14} aria-hidden="true" /></Button></CardHeader>
           {/* UMA LISTA, e nao uma grade de caixas: numa coluna estreita a
               caixa cortava o nome da obra. A data vira um bloco curto de dia e
               mes, e o prazo vai num selo que diz o que e' ("em 60 dias", "8
@@ -218,17 +219,17 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
                   const atencao = !critica && row.alerts.length > 0;
                   const prazo = row.days < 0 ? `${-row.days} ${-row.days === 1 ? "dia atrasada" : "dias atrasada"}` : row.days === 0 ? "hoje" : `em ${row.days} ${row.days === 1 ? "dia" : "dias"}`;
                   return <li key={row.id}>
-                    <Button variant="ghost" className="h-auto w-full justify-start gap-3 whitespace-normal px-2 py-3 text-left font-normal"
+                    <Button variant="ghost" className="h-auto w-full justify-start gap-3 whitespace-normal px-4 py-3 text-left font-normal"
                       onClick={() => onOpen(row.id)} aria-label={`Abrir entrega de #${row.code} ${row.name}`}>
                       <span className="flex w-10 shrink-0 flex-col items-center leading-none">
-                        <span className="text-lg font-semibold text-text-strong">{String(d.getDate()).padStart(2, "0")}</span>
+                        <span className="text-lg font-semibold text-text">{String(d.getDate()).padStart(2, "0")}</span>
                         <span className="label-mono mt-1 text-text-mute">{d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</span>
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold text-text-strong"><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</span>
+                        <span className="block text-sm font-semibold text-text"><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</span>
                         <span className="mt-1 block text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</span>
                       </span>
-                      <Badge tone={critica ? "danger" : atencao ? "warning" : "success"} className="shrink-0"
+                      <Badge tone={critica ? "danger" : atencao ? "warning" : "success"} className="w-28 shrink-0 justify-center"
                         title={critica ? "Obra com pendência crítica" : atencao ? "Obra com pendência de atenção" : "Obra no prazo"}>{prazo}</Badge>
                     </Button>
                   </li>;
@@ -238,20 +239,30 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
         </Card>
       </div>
       <Card className="min-w-0" ref={projectsRef} tabIndex={-1}>
-        <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-4"><div><CardTitle className="flex items-center gap-2"><ClipboardList size={18} className="text-brand" />Obras ativas <Badge tone="neutral">{tableRows.length}</Badge></CardTitle><CardDescription>Acompanhe o andamento de todas as obras, ordenadas por maior risco.</CardDescription></div>
-          <div><Label htmlFor="dashboard-order">Ordenar por</Label><Select value={filters.order} onValueChange={(value) => update("order", value)}><SelectTrigger id="dashboard-order"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="risk">Maior risco</SelectItem><SelectItem value="delivery">Entrega mais próxima</SelectItem><SelectItem value="name">Nome da obra</SelectItem><SelectItem value="purchase">Maior valor a comprar</SelectItem></SelectContent></Select></div>
-        </div></CardHeader>
+        <CardHeader><div className="min-w-0"><CardTitle className="flex items-center gap-2"><ClipboardList size={16} className="shrink-0 text-brand" aria-hidden="true" />Obras ativas <Badge tone="neutral">{tableRows.length}</Badge></CardTitle><CardDescription>Acompanhe o andamento de todas as obras, ordenadas por maior risco.</CardDescription></div>
+          <div className="shrink-0"><Label htmlFor="dashboard-order" className="sr-only">Ordenar por</Label><Select value={filters.order} onValueChange={(value) => update("order", value)}><SelectTrigger id="dashboard-order" className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="risk">Maior risco</SelectItem><SelectItem value="delivery">Entrega mais próxima</SelectItem><SelectItem value="name">Nome da obra</SelectItem><SelectItem value="purchase">Maior valor a comprar</SelectItem></SelectContent></Select></div>
+        </CardHeader>
         <CardContent>
-          {loading ? <Skeleton className="h-32 w-full" /> : !tableRows.length && error ? <p role="status">Não foi possível carregar as obras. Use “Tentar novamente” para atualizar.</p> : !tableRows.length ? <div role="status"><p>{active ? "Nenhum resultado para os filtros aplicados." : "Nenhuma obra ativa no momento."}</p>{active && <Button variant="outline" onClick={clear}>Limpar filtros</Button>}</div> : <Table aria-label="Obras ativas">
-            <TableHeader><TableRow>{["Obra", "Cronograma", "Etapa atual", "Progresso", "Compras", "Próxima pendência", "Ações"].map((label) => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
+          {loading ? <Skeleton className="h-32 w-full" /> : !tableRows.length && error ? <p role="status">Não foi possível carregar as obras. Use “Tentar novamente” para atualizar.</p> : !tableRows.length ? <div role="status"><EmptyState title={active ? "Nenhum resultado para os filtros aplicados." : "Nenhuma obra ativa no momento."} action={active ? <Button variant="outline" size="sm" onClick={clear}>Limpar filtros</Button> : undefined} /></div> : <Table aria-label="Obras ativas">
+            <TableHeader><TableRow>
+              <TableHead>Obra</TableHead>
+              <TableHead className="w-24 text-center">Situação</TableHead>
+              <TableHead className="w-32 text-center">Cronograma</TableHead>
+              <TableHead>Etapa atual</TableHead>
+              <TableHead className="w-32">Progresso</TableHead>
+              <TableHead className="w-32">Compras</TableHead>
+              <TableHead>Próxima pendência</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow></TableHeader>
             <TableBody>{tableRows.map((row) => <TableRow key={row.id}>
-              <TableCell className="min-w-52"><div className="flex flex-wrap items-center gap-1"><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-xs" onClick={() => onOpen(row.id)}>#{row.code} {row.name}</Button><Status critical={row.alerts.some((a) => a.critical)} attention={row.alerts.length > 0} /></div><div className="text-xs text-text-soft">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div><Equipe team={row.team} /></TableCell>
-              <TableCell><span className="flex items-center gap-1 whitespace-nowrap text-xs"><CalendarDays size={12} />{date(row.delivery)}</span>{row.days !== null && <div className="text-xs font-semibold text-danger">• {row.days < 0 ? `${-row.days} dias de atraso` : `${row.days} dias`}</div>}<ReguaDos90 days={row.days} /></TableCell>
-              <TableCell><div className="flex items-center gap-0"><span className="mr-2 whitespace-nowrap text-xs text-text-mute">{row.steps.filter((step) => step.feito).length} de {row.steps.length}</span>{row.steps.map((step, index) => <React.Fragment key={step.chave}><Badge className="gap-1 px-1 py-1 font-sans text-xs normal-case tracking-normal" tone={step.feito ? "success" : row.overdueSteps?.includes(step.chave) ? "danger" : step.chave === row.currentStep ? "brand" : "neutral"} title={`${step.rotulo}: ${step.feito ? "concluído" : "pendente"}`}>{step.feito ? <CheckCircle2 size={12} /> : <Circle size={12} />}{step.chave === "execucao" ? "Execução" : step.curto}</Badge>{index < row.steps.length - 1 && <ArrowRight size={10} className="shrink-0 text-text-mute" aria-hidden="true" />}</React.Fragment>)}</div></TableCell>
+              <TableCell className="min-w-52"><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-sm font-semibold text-text" onClick={() => onOpen(row.id)}><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</Button><div className="text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div><Equipe team={row.team} /></TableCell>
+              <TableCell className="w-24 text-center"><Status critical={row.alerts.some((a) => a.critical)} attention={row.alerts.length > 0} /></TableCell>
+              <TableCell className="w-32 text-center"><span className="flex items-center justify-center gap-1 whitespace-nowrap text-xs"><CalendarDays size={12} aria-hidden="true" />{date(row.delivery)}</span>{row.days !== null && <div className={cn("text-xs", row.days < 0 ? "text-danger" : "text-text-mute")}>• {row.days < 0 ? `${-row.days} dias de atraso` : `${row.days} dias`}</div>}<ReguaDos90 days={row.days} /></TableCell>
+              <TableCell><div className="flex flex-wrap items-center gap-1"><span className="whitespace-nowrap text-xs text-text-mute">{row.steps.filter((step) => step.feito).length} de {row.steps.length}</span>{row.steps.map((step, index) => <React.Fragment key={step.chave}><Badge className="gap-1" tone={step.feito ? "success" : row.overdueSteps?.includes(step.chave) ? "danger" : step.chave === row.currentStep ? "brand" : "neutral"} title={`${step.rotulo}: ${step.feito ? "concluído" : "pendente"}`}>{step.feito ? <CheckCircle2 size={12} aria-hidden="true" /> : <Circle size={12} aria-hidden="true" />}{step.chave === "execucao" ? "Execução" : step.curto}</Badge>{index < row.steps.length - 1 && <ArrowRight size={10} className="shrink-0 text-text-mute" aria-hidden="true" />}</React.Fragment>)}</div></TableCell>
               <TableCell><Percentage value={row.steps.length ? row.steps.filter((step) => step.feito).length / row.steps.length * 100 : 0} label="Etapas concluídas da jornada; não representa avanço físico" /></TableCell>
               <TableCell><Percentage value={row.summary?.mat.pct ?? null} label="Percentual do valor de material comprado" /></TableCell>
-              <TableCell className="min-w-44"><span className="text-xs">{row.alerts[0]?.title || row.alerts[0]?.text || row.stage}</span><div className="text-xs font-semibold text-danger">{row.alerts[0]?.days != null ? `• ${Math.abs(row.alerts[0].days)} dias` : row.days != null && row.alerts.length ? `• ${Math.abs(row.days)} dias` : ""}</div>{row.alerts[0]?.amount != null && <div className="text-sm text-danger">{money(row.alerts[0].amount)}</div>}</TableCell>
-              <TableCell><Button variant="secondary" size="sm" onClick={() => onOpen(row.id)}>Ver detalhes <ArrowRight size={14} /></Button></TableCell>
+              <TableCell className="min-w-44"><span className="text-sm text-text">{row.alerts[0]?.title || row.alerts[0]?.text || row.stage}</span><div className="text-xs text-danger">{row.alerts[0]?.days != null ? `• ${Math.abs(row.alerts[0].days)} dias` : row.days != null && row.alerts.length ? `• ${Math.abs(row.days)} dias` : ""}</div>{row.alerts[0]?.amount != null && <div className="text-right font-mono text-sm tabular-nums text-danger">{money(row.alerts[0].amount)}</div>}</TableCell>
+              <TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onOpen(row.id)}>Ver detalhes <ArrowRight size={14} aria-hidden="true" /></Button></TableCell>
             </TableRow>)}</TableBody>
           </Table>}
         </CardContent>

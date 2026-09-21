@@ -53,7 +53,7 @@ conf("a linha da obra leva os tres papeis", app.includes("const team = equipeDaO
 conf("o componente existe", painel.includes("function Equipe({ team"));
 conf("... e entra na linha da obra", painel.includes("<Equipe team={row.team} />"));
 conf("a vaga vazia aparece, e nao some", painel.includes('"a definir"'));
-conf("... com estilo proprio, pra ler como lacuna", /p\.nome \? "text-text-soft" : "italic text-text-mute"/.test(painel));
+conf("... com estilo proprio, pra ler como lacuna", /p\.nome \? "text-text" : "italic text-text-mute"/.test(painel));
 conf("o 'GC Fulano' solto saiu", painel.includes("· GC {row.gc}"), false);
 
 console.log("\n=== o filtro ===");
