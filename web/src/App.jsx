@@ -58,7 +58,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
   NotificationBell, CommandGroup, Kbd,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
-  DetailHero, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
+  TkwsHeader, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
@@ -24276,26 +24276,21 @@ export default function App() {
                     <BreadcrumbItem><BreadcrumbPage>#{obra.codigo} {obra.nome}</BreadcrumbPage></BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
-                <DetailHero
-                  /* A capa e' o simbolo do squad: o DetailHero reserva o
-                     espaco dela, e vazio ele virava um bloco cinza. */
-                  cover={<span className="flex h-full w-full items-center justify-center text-brand"><IconeSquad nome={squad} size={48} /></span>}
-                  code={`Obra #${obra.codigo}`}
-                  title={obra.nome}
-                  subtitle={/^squad\b/i.test(squad) ? squad : `Squad ${squad}`}
-                  /* O selo e' ESTADO da obra, nao contagem: as pendencias tem
-                     regua propria no painel logo abaixo, e repetir a conta aqui
-                     com outra regra era o topo dizendo "sem pendencias" ao lado
-                     de um "2 pendencias". */
-                  status={obra.semDetalhe ? { label: "Sem detalhe de executivo", tone: "warning" } : undefined}
-                  meta={[
-                    { label: "GC", value: nomeDe(obra.gc) },
-                    { label: "Taylor Made", value: nomeDe(tailor) },
-                    { label: "Executivo", value: nomeDe(executivo) },
-                    { label: "Entrega", value: obra.dataEntrega ? new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR") : "sem data" },
-                  ]}
-                  actions={(
-                    <div className="flex flex-wrap gap-2">
+                {/* COMPACTO: a proporcao do cabecalho de pagina do DS (titulo
+                    de 24px), sem capa. O DetailHero e' o topo de apresentacao
+                    de um registro — capa de 160px e titulo de 40px — e numa
+                    tela de trabalho, aberta o dia todo, empurrava o conteudo
+                    para baixo da dobra. */}
+                {/* COMPACTO, com o Header do DS (TkwsHeader): crumb, titulo e a
+                    acao — sem a capa de 160px e o titulo de 40px do DetailHero,
+                    que numa tela de trabalho empurravam o conteudo para baixo.
+                    A equipe e a entrega vao numa linha so', logo abaixo. */}
+                <div>
+                  <TkwsHeader className="mb-0 pb-2"
+                    crumb={`Obra #${obra.codigo} · ${/^squad\b/i.test(squad) ? squad : `Squad ${squad}`}`}
+                    title={obra.nome}
+                    description={obra.semDetalhe ? "Sem detalhe de executivo — só o cadastro do Monday" : undefined}
+                    actions={<div className="flex flex-wrap gap-2">
                       {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
                         && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
                         <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
@@ -24305,8 +24300,18 @@ export default function App() {
                           {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={16} /> Concluir obra</>}
                         </Button>
                       )}
-                    </div>
-                  )} />
+                    </div>} />
+                  <dl className="m-0 flex flex-wrap gap-x-6 gap-y-1 border-b border-line-1 pb-3 text-sm">
+                    {[["GC", nomeDe(obra.gc)], ["Taylor Made", nomeDe(tailor)], ["Executivo", nomeDe(executivo)],
+                      ["Entrega", obra.dataEntrega ? new Date(`${obra.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR") : "sem data"]]
+                      .map(([rot, val]) => (
+                        <div key={rot} className="flex items-baseline gap-2">
+                          <dt className="label-mono text-text-mute">{rot}</dt>
+                          <dd className={cn("m-0", val === "a definir" || val === "sem data" ? "italic text-text-mute" : "text-text")}>{val}</dd>
+                        </div>
+                      ))}
+                  </dl>
+                </div>
               </div>
             );
           })()}
