@@ -18019,7 +18019,7 @@ function passosCriticosAtrasados(o) {
   return { dias, passos };
 }
 
-function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
+function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const rows = useMemo(() => {
     const summaries = new Map(r.linhas.map((line) => [String(line.codigo), line]));
@@ -18068,7 +18068,7 @@ function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendente
   if (nPendentes) extraAlerts.push({ id: "acessos", text: `${nPendentes} pessoas aguardando liberação de acesso`, action: () => onModulo("equipe") });
   if (novas.length) extraAlerts.push({ id: "novas", text: `${novas.length} obras ainda não iniciadas`, action: () => onModulo("novas") });
   // "Início" é o rótulo do menu: o título da página repete o mesmo termo.
-  return <DashboardPage title="Início" rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
+  return <DashboardPage title="Início" memory={memory} rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
 }
 
 /* ============================================================
@@ -20032,6 +20032,7 @@ export default function App() {
      lista, escolhida por ordem alfabetica — que quase nunca e' a que pede
      atencao hoje, e obrigava a fechar o que abriu antes de comecar. */
   const [modulo, setModulo] = useState("inicio");
+  const dashboardMemory = useRef({});
   // Registro das obras no nosso banco: código -> { situacao, ... }.
   // É isso que decide quem aparece na sidebar (ativa), quem está no
   // Arquivo (concluida) e quem ainda é só sugestão do Monday (ausente).
@@ -23985,7 +23986,7 @@ export default function App() {
               descrevia o que a propria tela mostra logo abaixo. Tres
               linhas pra dizer onde a pessoa esta quando ela ja sabe —
               elas empurravam pra baixo o unico conteudo que importa. */}
-          <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={loading || !registroCarregado || painelCarregando}
+          <InicioView memory={dashboardMemory} obras={obrasDoPainel} novas={obrasNovas} carregando={loading || !registroCarregado || painelCarregando}
             erro={painelErro || erroBanco || avisoMonday} onRetry={() => { if (erroBanco || avisoMonday) window.location.reload(); else setPainelRevisao((value) => value + 1); }}
             usuario={usuario} equipe={pessoas} nPendentes={nPendentes}
             dadosLocalizacao={dadosLocalizacao} localizacaoCarregando={siengeCarregando}
