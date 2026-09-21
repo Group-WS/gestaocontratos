@@ -1,157 +1,10 @@
-/* ============================================================================
-   Group WS · Design System — a fundação do Confere
-   ============================================================================
-
-   Tokens, base e utilitários do @group-ws/ws-ui v1.1.0 (repositório
-   Group-WS/groupws-design-system), trazidos para cá SEM instalar o pacote:
-   ele exige React 19 e Tailwind, e o Confere é React 18 com CSS próprio.
-   Veio a linguagem — os valores, um por um — e não o código. Quem mudar um
-   token aqui precisa mudar lá também, e vice-versa.
-
-   Regras que valem aqui como valem lá:
-     - Cor sempre por token. Hex cru só no que vira papel (escopo, aditivo,
-       pedido) e no slide da apresentação: papel é branco nos dois temas.
-     - Token novo entra nos DOIS temas.
-     - Tipografia: Host Grotesk para tudo, JetBrains Mono para código,
-       rótulo e número de tabela. Nada de Inter, Space Grotesk ou serifada.
-
-   O tema é o atributo data-theme do <html>. O claro (Ice frio / Carbon) é
-   o padrão do Confere; o escuro (navy + ciano) é o de referência do DS.
-   ============================================================================ */
-
-/* ---------- Tokens · escuro (referência do DS) ---------- */
-:root,
-[data-theme='dark'] {
-  color-scheme: dark;
-
-  --bg: #061828;
-  --canvas: #061828;
-  --surface-1: #08263f;
-  --surface-2: #0a2f4d;
-  --surface-3: #0e3a5e;
-  --surface-4: #103e66;
-  --field: var(--surface-2);
-
-  --brand: #74c7e4;
-  --brand-h: #7fd3f0;
-  --brand-p: #5ba5c2;
-  --brand-soft: rgba(116, 199, 228, 0.14);
-  --accent: #74c7e4;
-
-  --text: #f5fafc;
-  --text-strong: #ffffff;
-  --text-soft: #b6c5d4;
-  --text-mute: #7f94a8;
-
-  --overlay-strong: rgba(6, 24, 40, 0.78);
-  --overlay-med: rgba(6, 24, 40, 0.65);
-  --overlay-soft: rgba(6, 24, 40, 0.4);
-  --overlay-blur: blur(8px);
-
-  --line-1: rgba(157, 200, 222, 0.1);
-  --line-2: rgba(157, 200, 222, 0.2);
-  --line-3: rgba(157, 200, 222, 0.32);
-  --rule: rgba(157, 200, 222, 0.1);
-  --rule-strong: rgba(157, 200, 222, 0.2);
-
-  --success: #5fd9a5;
-  --warning: #f2c94c;
-  --alert: #f2994a;
-  --danger: #eb5757;
-  --purple: #bb6bd9;
-  --pink: #f178b6;
-
-  --mod-crm: #74c7e4;
-  --mod-marketing: #e0a341;
-  --mod-criativos: #e08a6f;
-  --mod-orcamentos: #5fd9a5;
-  --mod-organizacao: #8fa0e0;
-  --mod-catalogo: #bb6bd9;
-  --mod-settings: #90a4ae;
-
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.18);
-  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.28);
-  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.32);
-  --shadow-4: 0 24px 64px rgba(0, 0, 0, 0.5);
-
-  --gutter-lg: 140px;
-  --gutter-md: 100px;
-  --gutter-sm: 60px;
-
-  --radius: 0.625rem;
-  --radius-pill: 999px;
-}
-
-/* ---------- Tokens · claro (Ice frio / Carbon) ---------- */
-[data-theme='light'] {
-  color-scheme: light;
-
-  --bg: #eef1f3;
-  --canvas: #eef1f3;
-  --surface-1: #ffffff;
-  --surface-2: #f4f6f8;
-  --surface-3: #e6eaee;
-  --surface-4: #dae0e5;
-  --field: #ffffff;
-
-  --brand: #0e8194;
-  --brand-h: #11a0b8;
-  --brand-p: #0a6877;
-  --brand-soft: rgba(98, 196, 221, 0.16);
-  --accent: #0e8194;
-
-  --text: #1a1a1a;
-  --text-strong: #111111;
-  --text-soft: #5c5c5c;
-  --text-mute: #8f8f8f;
-
-  --overlay-strong: rgba(26, 26, 26, 0.5);
-  --overlay-med: rgba(26, 26, 26, 0.38);
-  --overlay-soft: rgba(26, 26, 26, 0.18);
-
-  --line-1: rgba(24, 24, 27, 0.08);
-  --line-2: rgba(24, 24, 27, 0.14);
-  --line-3: rgba(24, 24, 27, 0.22);
-  --rule: rgba(24, 24, 27, 0.08);
-  --rule-strong: rgba(24, 24, 27, 0.14);
-
-  --success: #2ba371;
-  --warning: #b98e1a;
-  --alert: #c77027;
-  --danger: #c4373a;
-  --purple: #8e4eaa;
-  --pink: #c84e8a;
-
-  --mod-crm: #0e8194;
-  --mod-marketing: #b26a1f;
-  --mod-criativos: #b05a45;
-  --mod-orcamentos: #2f7d5b;
-  --mod-organizacao: #4a5da8;
-  --mod-catalogo: #8e4eaa;
-  --mod-settings: #5c6b73;
-
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.07);
-  --shadow-3: 0 8px 24px rgba(0, 0, 0, 0.09);
-  --shadow-4: 0 16px 48px rgba(0, 0, 0, 0.14);
-}
-
-/* ---------- Tokens neutros de tema: tipo e raio (theme.css do DS) ---------- */
-:root {
-  --font-sans: 'Host Grotesk', -apple-system, system-ui, sans-serif;
-  --font-serif: 'Host Grotesk', -apple-system, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
-
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
-  --radius-2xl: 18px;
-}
+/* Compatibilidade com os nomes legados do Confere.
+   Os tokens, temas, tipografia e raios vêm de @group-ws/ws-ui/styles.css.
+   Não redefina a paleta do pacote neste arquivo. */
 
 /* ---------- Tons derivados ----------
    O DS escreve os fundos suaves como rgba fixo tirado do tema escuro
-   (rgba(95,217,165,.14)...) e repete o mesmo valor no claro. Aqui eles
+   (valores fixos) e repete o mesmo valor no claro. Aqui eles
    saem do próprio token com color-mix: mesma intensidade, e acompanham o
    tema sozinhos.
      soft  14% transparente — selo, fundo de aviso (Badge, Banner)
@@ -235,15 +88,15 @@
      (19/09/2026). Índigo de propósito: laranja, verde e vermelho já
      significam estado do item no app (conferir, concluído, erro), e recado
      não é estado do item. */
-  --obs: #5b5bd6;
-  --obs-bg: rgba(91, 91, 214, 0.08);
+  --obs: var(--mod-organizacao);
+  --obs-bg: color-mix(in srgb, var(--obs) 8%, transparent);
 }
 
 /* No tema escuro o índigo cheio afunda no fundo: sobe o brilho e mantém o
    mesmo lugar na paleta. */
 [data-theme='dark'] {
-  --obs: #a5a5f5;
-  --obs-bg: rgba(165, 165, 245, 0.12);
+  --obs: var(--mod-organizacao);
+  --obs-bg: color-mix(in srgb, var(--obs) 12%, transparent);
 }
 
 /* ---------- Base (base.css do DS) ----------
@@ -339,7 +192,8 @@
   }
   html,
   body {
-    background: #ffffff !important;
+    color-scheme: light;
+    background: Canvas !important;
   }
 }
 

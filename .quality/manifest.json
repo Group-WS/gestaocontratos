@@ -7,22 +7,42 @@
     "npm --prefix web run build"
   ],
   "caminhos": {
-    "frontend": ["web/src"],
-    "api": ["web/api"],
-    "regrasDeNegocio": ["web/src/regras"],
+    "frontend": [
+      "web/src"
+    ],
+    "api": [
+      "web/api"
+    ],
+    "regrasDeNegocio": [
+      "web/src/regras"
+    ],
     "catalogoDeRegras": "docs/regras-de-negocio",
     "migrations": "supabase",
     "testesDoBanco": "supabase/tests",
-    "testesE2E": ["e2e"],
-    "ignorar": ["**/database.types.ts"]
+    "testesE2E": [
+      "e2e"
+    ],
+    "ignorar": [
+      "**/database.types.ts"
+    ]
   },
   "designSystem": {
     "pacote": "@group-ws/ws-ui",
-    "vinculo": "copia",
-    "pastasDoDesignSystem": ["web/src/estilos/design-system.css"],
-    "templatesDePagina": ["PageShell", "SystemFrame"],
-    "arquivosDePagina": ["web/src/features/**/*Page.jsx"],
-    "fontes": ["Host Grotesk", "JetBrains Mono"],
+    "vinculo": "pacote",
+    "pastasDoDesignSystem": [
+      "web/src/estilos/design-system.css"
+    ],
+    "templatesDePagina": [
+      "PageShell",
+      "SystemFrame"
+    ],
+    "arquivosDePagina": [
+      "web/src/features/**/*Page.jsx"
+    ],
+    "fontes": [
+      "Host Grotesk",
+      "JetBrains Mono"
+    ],
     "exigirLogo": "LogoGroupWS"
   },
   "navegador": {
@@ -36,12 +56,21 @@
     ]
   },
   "seguranca": {
-    "helpersDeAutenticacao": ["exigirLogin"],
-    "pastasDeRotas": ["web/api/_lib/mondayApp.js"],
-    "clientesAdministrativos": ["supabaseAdmin", "createAdminClient"],
+    "helpersDeAutenticacao": [
+      "exigirLogin"
+    ],
+    "pastasDeRotas": [
+      "web/api/_lib/mondayApp.js"
+    ],
+    "clientesAdministrativos": [
+      "supabaseAdmin",
+      "createAdminClient"
+    ],
     "rotasPublicas": []
   },
   "supabase": {
-    "schemasExpostos": ["public"]
+    "schemasExpostos": [
+      "public"
+    ]
   }
 }

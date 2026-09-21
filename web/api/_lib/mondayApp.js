@@ -15,6 +15,7 @@
 
 const express = require("express");
 const cors = require("cors");
+const { publicError } = require("./publicError.js");
 const { exigirLogin, exigirObra } = require("./auth.js");
 
 // Importa o miolo do pdf-parse em vez do index.js. O index tem um
@@ -120,7 +121,7 @@ app.get("/api/monday/boards", async (req, res) => {
     );
     res.json(data.boards);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    publicError(res, err);
   }
 });
 
@@ -143,7 +144,7 @@ app.get("/api/monday/columns", async (req, res) => {
     );
     res.json(data.boards[0]?.columns || []);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    publicError(res, err);
   }
 });
 
@@ -229,7 +230,7 @@ app.get("/api/monday/obras", async (req, res) => {
 
     res.json(filtradas);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    publicError(res, err);
   }
 });
 
@@ -352,7 +353,7 @@ app.get("/api/monday/obras-execucao", async (req, res) => {
 
     res.json(obras);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    publicError(res, err);
   }
 });
 
@@ -368,7 +369,7 @@ app.get("/api/monday/workspaces", async (req, res) => {
     );
     res.json(data.workspaces);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    publicError(res, err);
   }
 });
 
@@ -645,7 +646,7 @@ app.post("/api/vendido/parse", express.raw({ type: "*/*", limit: "30mb" }), asyn
     const resultado = parseVendidoTexto(data.text);
     res.json({ paginas: data.numpages, ...resultado });
   } catch (err) {
-    res.status(500).json({ error: "Falha ao ler o PDF: " + err.message });
+    publicError(res, err, { message: "Não foi possível ler o PDF. Confira o arquivo e tente novamente." });
   }
 });
 
@@ -665,15 +666,15 @@ app.post("/api/vendido/parse", express.raw({ type: "*/*", limit: "30mb" }), asyn
 
    Traduzir erro tecnico nao e' enfeite: sem isso a pessoa acha que o
    arquivo dela nao serve e desiste. */
-function erroDePDF(msg) {
-  const m = String(msg || "");
+function erroDePDF(error) {
+  const m = String(error?.message || "");
   if (/xref|invalid pdf structure|startxref|corrupt/i.test(m)) {
     return "Este PDF está com a estrutura interna danificada (comum em arquivo gerado por sistema). " +
       "Abra ele e salve de novo — no Mac, Visualizar > Arquivo > Exportar como PDF; no navegador, Imprimir > Salvar como PDF. " +
       "Isso reconstrói o arquivo e costuma resolver. Se o relatório tiver versão em Excel, ela é mais confiável.";
   }
   if (/password|encrypt/i.test(m)) return "Este PDF está protegido por senha — remova a proteção e tente de novo.";
-  return "Falha ao ler o PDF: " + m;
+  return "Não foi possível ler o PDF. Confira o arquivo e tente novamente.";
 }
 
 /* Aceita o PDF de dois jeitos: cru, e em base64 dentro de JSON.
@@ -703,7 +704,7 @@ app.post("/api/sienge/texto",
       const data = await pdfParse(buf);
       res.json({ paginas: data.numpages, texto: data.text });
     } catch (err) {
-      res.status(422).json({ error: erroDePDF(err.message), podeBase64: true });
+      publicError(res, err, { status: 422, message: erroDePDF(err), extra: { podeBase64: true } });
     }
   });
 
@@ -796,7 +797,7 @@ app.post("/api/executivo/parse", express.raw({ type: "*/*", limit: "30mb" }), as
     const resultado = parseExecutivoTexto(data.text);
     res.json({ paginas: data.numpages, ...resultado });
   } catch (err) {
-    res.status(500).json({ error: "Falha ao ler o PDF: " + err.message });
+    publicError(res, err, { message: "Não foi possível ler o PDF. Confira o arquivo e tente novamente." });
   }
 });
 

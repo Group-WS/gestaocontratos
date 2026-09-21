@@ -5017,34 +5017,6 @@
     {
       "regra": "DS-07",
       "arquivo": "web/src/App.jsx",
-      "linha": 17905,
-      "trecho": "<button key={o.id} type=\"button\" className={`ini-entrega ${dias < 0 ? \"vencida\" : dias <= 30 ? \"perto\" : \"\"}`}",
-      "impressao": "b8db7b4c04b5cc75"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 17930,
-      "trecho": "<button key={i} className={`ini-alerta ${a.tom}`} onClick={a.ir}>",
-      "impressao": "420659cc23bdfd0e"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 17945,
-      "trecho": "<button type=\"button\" className=\"ini-link-finalizadas\" onClick={() => onModulo(\"arquivo\")}>",
-      "impressao": "19e2466854ee6049"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 17955,
-      "trecho": "<button key={o.id} className=\"ini-obra\" onClick={() => onAbrirObra(o.id)}>",
-      "impressao": "161228a4b334f935"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
       "linha": 18066,
       "trecho": "<input type=\"radio\" name={`perfil-${p.email}`} checked={!perfil} onChange={() => setPerfil(\"\")} />",
       "impressao": "d245fbd5939010a6"

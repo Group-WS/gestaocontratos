@@ -17,3 +17,6 @@ e2e/playwright-report/
 
 # estado local do Supabase CLI (supabase link) — muda por maquina
 supabase/.temp/
+
+# tem token do GitHub Packages escrito dentro — use ${NODE_AUTH_TOKEN} se precisar versionar
+web/.npmrc

@@ -169,8 +169,11 @@ conf("não sobrou nenhum rótulo pela metade",
 
 /* A cor é própria: laranja, verde e vermelho já significam estado do item. */
 const ds = fs.readFileSync(path.join(aqui, "..", "estilos", "design-system.css"), "utf8");
-conf("a observação tem cor própria no design system", ds.includes("--obs: #5b5bd6;"), true);
-conf("... e uma versão pro tema escuro", ds.includes("--obs: #a5a5f5;"), true);
+conf("a observação usa o token de organização do design system",
+  ds.includes("--obs: var(--mod-organizacao);"), true);
+const tokens = fs.readFileSync(path.join(aqui, "..", "..", "node_modules", "@group-ws", "ws-ui", "src", "styles", "tokens.css"), "utf8");
+conf("o pacote define o token de organização nos dois temas",
+  (tokens.match(/--mod-organizacao:/g) || []).length === 2, true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
