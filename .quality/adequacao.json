@@ -691,20 +691,6 @@
     {
       "regra": "DS-05",
       "arquivo": "web/src/App.jsx",
-      "linha": 15207,
-      "trecho": "<Icone size={15} style={{ color: cor }} />",
-      "impressao": "1ce310bd5663d88a"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 15217,
-      "trecho": "<span className=\"gc-bloco-total mono\" style={{ color: cor }}>{fmtBRL(total)}</span>",
-      "impressao": "d8b408e401f579e2"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
       "linha": 16040,
       "trecho": "<th style={{ width: 28 }} />",
       "impressao": "8955848e8e67a3fb"
@@ -1135,13 +1121,6 @@
       "linha": 14864,
       "trecho": "<table className=\"doc-tab\">",
       "impressao": "85cd3dc0295ce5dd#2"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 15222,
-      "trecho": "<input value={busca} onChange={(e) => onBusca(e.target.value)}",
-      "impressao": "1f57beffb7b38d52"
     },
     {
       "regra": "DS-07",

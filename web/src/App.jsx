@@ -10831,7 +10831,7 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
                   // Com item aprovado pra compra, as telas da compra abrem.
                   && !(ETAPAS_QUE_ABREM_COM_COMPRA.has(t.id) && temCompraAprovada(obra));
                 return (
-                  <TabsTrigger key={t.id} value={t.id}
+                  <TabsTrigger underline key={t.id} value={t.id}
                     className={cn("gap-2 whitespace-nowrap", feita && "text-text-soft", travada && "opacity-50")}
                     title={travada ? `Conclua "${anterior.label}" primeiro` : undefined}>
                     {feita ? <CheckCircle2 size={14} className="text-success" /> : <Icon size={14} />}
@@ -15492,10 +15492,6 @@ const HORIZONTES = [
   { dias: 84, rot: "12 semanas" },
 ];
 
-/* MAT azul, MO roxo. O crachá de alocação usa azul e CINZA, e cinza não
-   lê como cor num painel — as duas metades precisam pesar igual aqui. */
-const COR_MAT = "var(--blue)";
-const COR_MO = "var(--purple)";
 
 function GcBarra({ pct, cor }) {
   return (
@@ -15529,46 +15525,60 @@ function GcTotal({ rot, feito, total, cor, legenda }) {
    e' opcional tambem: {valor, onMudar, opcoes:[{id,label}]} — quando
    existe mais de um jeito de agrupar a MESMA lista (por categoria, por
    produto), o alternador fica junto do titulo, "la em cima". */
-function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPlaceholder, onAbrir, abas, onImprimir, onSimular }) {
+function GcPorVerba({ titulo, Icone, tipo, grupos, vazio, busca, onBusca, buscaPlaceholder, onAbrir, abas, onImprimir, onSimular }) {
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const max = grupos.length ? grupos[0].total : 1;
+  /* Material e mao de obra se distinguem pelo selo do cabecalho (o Badge do
+     DS tem o tom purple; o Progress nao), e as barras ficam no tom da marca:
+     uma lista de barras roxas gritava mais alto que os numeros da tela. */
   return (
-    <div className="gc-bloco">
-      <div className="gc-bloco-head">
-        <Icone size={15} style={{ color: cor }} />
-        <span className="gc-bloco-titulo">{titulo}</span>
+    <Card>
+      <CardHeader className="flex-row flex-wrap items-center gap-3">
+        <CardTitle className="flex items-center gap-2 text-base"><Icone size={16} className="text-text-soft" /> {titulo}</CardTitle>
+        {tipo && <Badge tone={tipo === "mo" ? "purple" : "brand"}>{tipo === "mo" ? "Mão de obra" : "Material"}</Badge>}
         {abas && (
-          <div className="gc-abas">
-            {abas.opcoes.map((op) => (
-              <Button variant="ghost" key={op.id} type="button" className={`gc-aba ${abas.valor === op.id ? "on" : ""}`}
-                onClick={() => abas.onMudar(op.id)}>{op.label}</Button>
-            ))}
+          <ToggleGroup type="single" size="sm" value={abas.valor} onValueChange={(v) => { if (v) abas.onMudar(v); }} aria-label="Agrupar a lista">
+            {abas.opcoes.map((op) => <ToggleGroupItem key={op.id} value={op.id}>{op.label}</ToggleGroupItem>)}
+          </ToggleGroup>
+        )}
+        <span className="ml-auto font-mono text-base font-semibold text-text-strong">{fmtBRL(total)}</span>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {onBusca && (
+          <div className="flex max-w-md items-center gap-1">
+            <Input icon={<Search size={14} />} value={busca} onChange={(e) => onBusca(e.target.value)}
+              placeholder={buscaPlaceholder || "Buscar…"} aria-label={buscaPlaceholder || "Buscar"} />
+            {busca && (
+              <Button variant="ghost" size="icon" onClick={() => onBusca("")} aria-label="Limpar busca"><X size={14} /></Button>
+            )}
           </div>
         )}
-        <span className="gc-bloco-total mono" style={{ color: cor }}>{fmtBRL(total)}</span>
-      </div>
-      {onBusca && (
-        <div className="gc-busca">
-          <Search size={13} className="dim" />
-          <input value={busca} onChange={(e) => onBusca(e.target.value)}
-            placeholder={buscaPlaceholder || "Buscar…"} />
-          {busca && (
-            <Button variant="ghost" size="icon" type="button" onClick={() => onBusca("")} aria-label="Limpar busca">
-              <X size={13} />
-            </Button>
-          )}
-        </div>
-      )}
-      {grupos.length === 0 ? (
-        <div className="empty-note">{busca ? `Nada encontrado para "${busca}".` : vazio}</div>
-      ) : (
-        <div className="gc-list">
-          {grupos.map((g) => (
-            <GcLinhaVerba key={g.num ?? g.nome} g={g} cor={cor} max={max} onAbrir={onAbrir} onImprimir={onImprimir} onSimular={onSimular} />
-          ))}
-        </div>
-      )}
-    </div>
+        {grupos.length === 0 ? (
+          <p className="py-4 text-sm text-text-mute">{busca ? `Nenhum resultado para “${busca}”.` : vazio}</p>
+        ) : (
+          <TooltipProvider delayDuration={200}>
+            <ul className="m-0 list-none divide-y divide-line-1 p-0">
+              {grupos.map((g) => (
+                <GcLinhaVerba key={g.num ?? g.nome} g={g} max={max} onAbrir={onAbrir} onImprimir={onImprimir} onSimular={onSimular} />
+              ))}
+            </ul>
+          </TooltipProvider>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* Acao de icone na ponta da linha: o nome aparece no Tooltip do DS e vai no
+   aria-label — icone sozinho nao diz o que faz. */
+function AcaoDaLinha({ rotulo, onClick, children }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={onClick} aria-label={rotulo}>{children}</Button>
+      </TooltipTrigger>
+      <TooltipContent>{rotulo}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -15585,53 +15595,49 @@ function fmtQtds(qtds) {
     .join(" · ");
 }
 
-function GcLinhaVerba({ g, cor, max, onAbrir, onImprimir, onSimular }) {
+function GcLinhaVerba({ g, max, onAbrir, onImprimir, onSimular }) {
   const [aberto, setAberto] = useState(false);
   const porObra = useMemo(
     () => [...g.obras.values()].sort((a, b) => b.valor - a.valor),
     [g.obras]);
   const qtdTxt = g.qtds && fmtQtds(g.qtds);
+  const nObras = `${g.obras.size} ${g.obras.size === 1 ? "obra" : "obras"}`;
   return (
-    <div className="gc-verba">
-      <div className="gc-row-linha">
-      <Button variant="ghost" type="button" className="gc-row gc-row-clic" onClick={() => setAberto((x) => !x)}>
-        <ChevronRight size={13} className={`gc-chevron ${aberto ? "aberto" : ""}`} />
-        {g.num != null && <span className="gc-num mono">{g.num}</span>}
-        <span className="gc-nome">{g.nome}</span>
-        <span className="gc-obras">{g.obras.size} {g.obras.size === 1 ? "obra" : "obras"}</span>
-        <GcBarra pct={(g.total / max) * 100} cor={cor} />
-        {g.qtds && <span className="gc-qtd mono dim">{qtdTxt}</span>}
-        <span className="gc-val mono">{fmtBRL(g.total)}</span>
-      </Button>
-      {/* A calculadora: quanto custaria esta verba com a equipe interna. */}
-      {onSimular && (
-        <Button variant="ghost" size="icon" type="button" onClick={() => onSimular(g)} aria-label="Simular com a mão de obra própria"
-          title="Simular com a mão de obra própria: escolha a equipe e os dias, e compare com o valor a contratar">
-          <Calculator size={14} />
+    <li>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start gap-3 px-2 py-2 font-normal"
+          onClick={() => setAberto((x) => !x)} aria-expanded={aberto} title={aberto ? "Esconder as obras" : "Ver de qual obra vem o total"}>
+          <ChevronRight size={14} className={cn("shrink-0 text-text-mute transition-transform", aberto && "rotate-90")} />
+          {g.num != null && <span className="w-6 shrink-0 text-left font-mono text-xs text-text-mute">{g.num}</span>}
+          <span className="min-w-0 flex-1 whitespace-normal text-left text-sm text-text-strong md:w-64 md:flex-none">{g.nome}</span>
+          <span className="hidden w-16 shrink-0 text-left text-xs text-text-mute md:inline">{nObras}</span>
+          <Progress className="hidden min-w-16 flex-1 md:block" value={Math.min(100, (g.total / max) * 100)} aria-label={`Peso de ${g.nome} no total`} />
+          {qtdTxt && <span className="hidden shrink-0 font-mono text-xs text-text-mute lg:inline">{qtdTxt}</span>}
+          <span className="w-32 shrink-0 text-right font-mono text-sm text-text-strong">{fmtBRL(g.total)}</span>
         </Button>
-      )}
-      {/* O PDF desta linha: item a item, por obra e total. Abre na tela e já baixa. */}
-      {onImprimir && (
-        <Button variant="ghost" size="icon" type="button" onClick={() => onImprimir(g)} aria-label="Gerar PDF"
-          title={`PDF ${g.num != null ? "desta verba" : "deste insumo"} — item a item, por obra e total. Abre na tela e já baixa o arquivo.`}>
-          <FileDown size={14} />
-        </Button>
-      )}
+        {/* A calculadora: quanto custaria esta verba com a equipe interna. */}
+        {onSimular && (
+          <AcaoDaLinha rotulo="Simular com a mão de obra própria" onClick={() => onSimular(g)}><Calculator size={16} /></AcaoDaLinha>
+        )}
+        {/* O PDF desta linha: item a item, por obra e total. Abre na tela e já baixa. */}
+        {onImprimir && (
+          <AcaoDaLinha rotulo={`Gerar PDF ${g.num != null ? "desta verba" : "deste insumo"}`} onClick={() => onImprimir(g)}><FileDown size={16} /></AcaoDaLinha>
+        )}
       </div>
       {aberto && (
-        <div className="gc-verba-obras">
+        <div className="mb-2 ml-8 flex flex-col border-l-2 border-line-2 pl-2">
           {porObra.map((o) => (
-            <Button variant="ghost" key={o.codigo} type="button" className="gc-verba-obra"
+            <Button variant="ghost" key={o.codigo} className="h-auto justify-start gap-3 px-2 py-1 font-normal"
               onClick={() => onAbrir && onAbrir(o.id)} disabled={!onAbrir}>
-              <span className="mono dim">#{o.codigo}</span>
-              <span className="gc-verba-obra-nome">{o.nome}</span>
-              {o.qtds && <span className="mono dim gc-verba-obra-qtd">{fmtQtds(o.qtds)}</span>}
-              <span className="mono">{fmtBRL(o.valor)}</span>
+              <span className="font-mono text-xs text-text-mute">#{o.codigo}</span>
+              <span className="min-w-0 flex-1 whitespace-normal text-left text-sm">{o.nome}</span>
+              {o.qtds && <span className="font-mono text-xs text-text-mute">{fmtQtds(o.qtds)}</span>}
+              <span className="font-mono text-sm">{fmtBRL(o.valor)}</span>
             </Button>
           ))}
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -15641,94 +15647,97 @@ function GcLinhaObra({ L, onAbrir }) {
   const entrega = L.dataEntrega
     ? new Date(`${L.dataEntrega}T12:00:00`).toLocaleDateString("pt-BR")
     : null;
+  const alternar = (e) => { e.stopPropagation(); setAberto((x) => !x); };
 
   return (
     <>
-      <tr className={atrasada ? "gc-obra atrasada" : "gc-obra"}>
-        <td>
-          <Button variant="ghost" className="gc-obra-nome" onClick={() => onAbrir(L.id)} title="Abrir esta obra">
-            <span className="mono dim">#{L.codigo}</span> {L.nome}
+      <TableRow>
+        <TableCell>
+          <Button variant="ghost" size="sm" className="h-auto justify-start gap-2 whitespace-normal p-0 text-left font-semibold" onClick={() => onAbrir(L.id)} title="Abrir esta obra">
+            <span className="font-mono text-xs font-normal text-text-mute">#{L.codigo}</span> {L.nome}
           </Button>
-        </td>
-        <td className="center">
+        </TableCell>
+        <TableCell className="text-center text-sm">
           {entrega ? (
-            <span className={L.faltamEntrega < 0 ? "gc-venceu" : ""}>
-              {entrega}
-              <span className="gc-dias">{L.faltamEntrega < 0
-                ? `${-L.faltamEntrega} d atrás`
-                : `em ${L.faltamEntrega} d`}</span>
-            </span>
-          ) : <span className="gc-sem-data">sem data</span>}
-        </td>
-        {/* O flex vai num <div>, nunca no proprio <td>: celula de tabela
-            com display:flex deixa de se comportar como celula, e as duas
-            colunas de valor caem uma embaixo da outra. */}
-        <td>
-          <div className="gc-cel-barra">
-            <GcBarra pct={L.mat.pct} cor={COR_MAT} />
-            <span className="gc-cel-txt mono">{fmtBRL(L.mat.faltaReal)}</span>
-            {/* A estimativa fica ao lado, em tom claro: ela conta pra
-                previsao de compra, mas ninguem pode comprar ainda. */}
-            {L.mat.faltaEstimativa > 0 && (
-              <span className="gc-cel-est mono" title="Estimativa: itens que o executivo ainda não liberou para compra">
-                + {fmtBRL(L.mat.faltaEstimativa)} est.
-              </span>
-            )}
+            <>
+              <div>{entrega}</div>
+              <div className={cn("text-xs", L.faltamEntrega < 0 ? "font-semibold text-danger" : "text-text-mute")}>
+                {L.faltamEntrega < 0 ? `${-L.faltamEntrega} d atrás` : `em ${L.faltamEntrega} d`}
+              </div>
+            </>
+          ) : <span className="text-xs italic text-text-mute">sem data</span>}
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-col gap-1">
+            <Progress value={L.mat.pct} aria-label="Material já comprado" />
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="font-mono text-sm">{fmtBRL(L.mat.faltaReal)}</span>
+              {/* A estimativa fica ao lado, em tom claro: ela conta pra
+                  previsao de compra, mas ninguem pode comprar ainda. */}
+              {L.mat.faltaEstimativa > 0 && (
+                <span className="font-mono text-xs text-text-mute" title="Estimativa: itens que o executivo ainda não liberou para compra">
+                  + {fmtBRL(L.mat.faltaEstimativa)} est.
+                </span>
+              )}
+            </div>
           </div>
-        </td>
-        <td>
-          <div className="gc-cel-barra">
-            <GcBarra pct={L.mo.pct} cor={COR_MO} />
-            <span className="gc-cel-txt mono">{fmtBRL(L.mo.falta)}</span>
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-col gap-1">
+            <Progress value={L.mo.pct} aria-label="Mão de obra já contratada" />
+            <span className="font-mono text-sm">{fmtBRL(L.mo.falta)}</span>
           </div>
-        </td>
-        <td className="center">
+        </TableCell>
+        <TableCell className="text-center">
           {atrasada ? (
-            <Button variant="ghost" className="gc-selo atraso" onClick={(e) => { e.stopPropagation(); setAberto((x) => !x); }}
+            <Button variant="outline" size="sm" className="gap-1 border-danger text-danger" onClick={alternar}
               title={aberto ? "Esconder o que está atrasado" : "Ver o que está atrasado nesta obra"} aria-expanded={aberto}>
-              <AlertTriangle size={11} /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
-              <ChevronDown size={11} className={`gc-selo-seta ${aberto ? "aberta" : ""}`} />
+              <AlertTriangle size={14} /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
+              <ChevronDown size={14} className={cn("transition-transform", aberto && "rotate-180")} />
             </Button>
           ) : L.perto.length > 0 ? (
-            <Button variant="ghost" className="gc-selo perto" onClick={(e) => { e.stopPropagation(); setAberto((x) => !x); }}
+            <Button variant="outline" size="sm" className="gap-1 border-warning text-warning" onClick={alternar}
               title={aberto ? "Esconder" : "Ver o que está perto do prazo"} aria-expanded={aberto}>
-              <Clock size={11} /> {L.perto.length} perto do prazo
-              <ChevronDown size={11} className={`gc-selo-seta ${aberto ? "aberta" : ""}`} />
+              <Clock size={14} /> {L.perto.length} perto do prazo
+              <ChevronDown size={14} className={cn("transition-transform", aberto && "rotate-180")} />
             </Button>
-          ) : <span className="dim">—</span>}
-        </td>
-      </tr>
+          ) : <span className="text-text-mute">—</span>}
+        </TableCell>
+      </TableRow>
       {aberto && (
-        <tr className="gc-detalhe">
-          <td colSpan={5}>
-            <div className="gc-detalhe-tit">O que está atrasado ou perto do prazo nesta obra</div>
-            {[...L.atrasos.map((v) => ({ ...v, tipo: "atraso" })),
-              ...L.perto.map((v) => ({ ...v, tipo: "perto" }))].map((v) => (
-              <div key={v.num + v.tipo} className={`gc-prazo ${v.tipo}`}>
-                <span className="mono">{v.num}</span>
-                <span className="gc-prazo-nome">{v.nome}</span>
-                <span className="gc-prazo-quando">
-                  comprar até {v.quandoMat.toLocaleDateString("pt-BR")}
-                  {v.prazo?.fornecedor ? ` (${v.prazo.fornecedor}, ${v.prazo.dias} d)` : ` (${v.prazo.dias} d antes da entrega)`}
-                  {v.dias < 0 ? ` — venceu há ${-v.dias} dias` : ` — faltam ${v.dias} dias`}
-                </span>
-                {/* Solicitar vem antes de comprar: do que falta pelo Sienge, quanto já foi pedido. */}
-                {v.siengeFalta > 0 && (
-                  <span className={`gc-prazo-solic ${v.solicitadosFalta === v.siengeFalta ? "tudo" : v.solicitadosFalta ? "parte" : ""}`}
-                    title="Dos itens do Sienge que faltam comprar nesta verba, quantos já foram solicitados">
-                    {v.solicitadosFalta === v.siengeFalta ? "tudo solicitado" : `${v.solicitadosFalta} de ${v.siengeFalta} solicitados`}
+        <TableRow>
+          <TableCell colSpan={5} className="bg-surface-2">
+            <p className="label-mono mb-2">O que está atrasado ou perto do prazo nesta obra</p>
+            <ul className="m-0 list-none space-y-2 p-0">
+              {[...L.atrasos.map((v) => ({ ...v, tipo: "atraso" })),
+                ...L.perto.map((v) => ({ ...v, tipo: "perto" }))].map((v) => (
+                <li key={v.num + v.tipo} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  <Badge tone={v.tipo === "atraso" ? "danger" : "warning"}>{v.tipo === "atraso" ? "Atrasada" : "Perto do prazo"}</Badge>
+                  <span className="font-mono text-xs text-text-mute">{v.num}</span>
+                  <span className="font-semibold">{v.nome}</span>
+                  <span className="text-xs text-text-soft">
+                    comprar até {v.quandoMat.toLocaleDateString("pt-BR")}
+                    {v.prazo?.fornecedor ? ` (${v.prazo.fornecedor}, ${v.prazo.dias} d)` : ` (${v.prazo.dias} d antes da entrega)`}
+                    {v.dias < 0 ? ` — venceu há ${-v.dias} dias` : ` — faltam ${v.dias} dias`}
                   </span>
-                )}
-                <span className="mono gc-prazo-val">{fmtBRL(v.matFaltaReal)}</span>
-                {v.matFaltaEstimativa > 0 && (
-                  <span className="mono gc-cel-est" title="Estimativa: ainda não liberado para compra">
-                    + {fmtBRL(v.matFaltaEstimativa)} est.
-                  </span>
-                )}
-              </div>
-            ))}
-          </td>
-        </tr>
+                  {/* Solicitar vem antes de comprar: do que falta pelo Sienge, quanto já foi pedido. */}
+                  {v.siengeFalta > 0 && (
+                    <Badge tone={v.solicitadosFalta === v.siengeFalta ? "success" : v.solicitadosFalta ? "warning" : "neutral"}
+                      title="Dos itens do Sienge que faltam comprar nesta verba, quantos já foram solicitados">
+                      {v.solicitadosFalta === v.siengeFalta ? "tudo solicitado" : `${v.solicitadosFalta} de ${v.siengeFalta} solicitados`}
+                    </Badge>
+                  )}
+                  <span className="ml-auto font-mono">{fmtBRL(v.matFaltaReal)}</span>
+                  {v.matFaltaEstimativa > 0 && (
+                    <span className="font-mono text-xs text-text-mute" title="Estimativa: ainda não liberado para compra">
+                      + {fmtBRL(v.matFaltaEstimativa)} est.
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </TableCell>
+        </TableRow>
       )}
     </>
   );
@@ -16196,12 +16205,12 @@ function fornecedoresDasObras(obras) {
 
 function GcTelas({ tela, onTela }) {
   return (
-    <Tabs value={tela} onValueChange={onTela} activationMode="manual" className="mb-4">
+    <Tabs value={tela} onValueChange={onTela} activationMode="manual">
       <div className="overflow-x-auto">
-        <TabsList variant="pill" className="w-max" aria-label="Telas da gestão de compras">
-          <TabsTrigger value="painel">Painel</TabsTrigger>
-          <TabsTrigger value="compradores">Compradores</TabsTrigger>
-          <TabsTrigger value="mao_propria">Mão de obra própria</TabsTrigger>
+        <TabsList variant="underline" className="w-max" aria-label="Telas da gestão de compras">
+          <TabsTrigger underline value="painel">Painel</TabsTrigger>
+          <TabsTrigger underline value="compradores">Compradores</TabsTrigger>
+          <TabsTrigger underline value="mao_propria">Mão de obra própria</TabsTrigger>
         </TabsList>
       </div>
     </Tabs>
@@ -16591,7 +16600,7 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
   );
 }
 
-function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], podeEditarCompradores = false, usuario }) {
+function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe = [], podeEditarCompradores = false, usuario }) {
   const [horizonte, setHorizonte] = useState(null);
   /* Vazio quer dizer TODAS. Guardar o conjunto das escolhidas, e nao um
      "todas: sim/nao" separado, evita o estado impossivel de estar em
@@ -16602,6 +16611,10 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
   const [fornecedor, setFornecedor] = useState("");   // "" = todos
   const [comprador, setComprador] = useState("");     // "" = todos
   const [tela, setTela] = useState("painel");          // "painel" | "compradores" | "mao_propria"
+  /* "N com compra atrasada" deixou de ser so' texto: clicar recorta a
+     tabela Obra por obra nas atrasadas e leva ate' ela. */
+  const [soAtrasadas, setSoAtrasadas] = useState(false);
+  const obraPorObraRef = useRef(null);
   const [compradores, setCompradores] = useState({ mapa: new Map(), carregando: true });
   useEffect(() => {
     let vivo = true;
@@ -16711,11 +16724,17 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
   }, [gruposInsumo, buscaInsumo]);
 
   const titulo = "Gestão de compras e contratações";
+  /* O cabecalho de fora ("OBRAS ATIVAS · 7" + titulo repetido) saiu. A
+     contagem de obras ativas continua, na linha de resumo do painel. */
+  const crumb = undefined;
+  /* As tres telas sao TELAS, nao filtros: abas sublinhadas logo abaixo do
+     titulo, antes de qualquer filtro. */
+  const abasTelas = <GcTelas tela={tela} onTela={setTela} />;
   const descricao = "Todas as obras lado a lado: o que falta comprar, o que falta contratar, e quais prazos já venceram";
 
   if (carregando) {
     return (
-      <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
+      <PageShell crumb={crumb} title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
         <p className="sr-only" role="status">Carregando as obras…</p>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Skeleton className="h-28" /><Skeleton className="h-28" /></div>
         <Skeleton className="h-64" />
@@ -16725,8 +16744,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
 
   if (tela === "mao_propria") {
     return (
-      <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
-        <GcTelas tela={tela} onTela={setTela} />
+      <PageShell crumb={crumb} title={titulo} description={descricao} toolbar={abasTelas} contentClassName="flex flex-col gap-6">
         <MaoDeObraPropriaView prestadores={prestadores} podeEditar={podeEditarCompradores} usuario={usuario}
           onMudou={(lista) => setPrestadores((p) => ({ ...p, lista }))} />
       </PageShell>
@@ -16735,8 +16753,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
 
   if (tela === "compradores") {
     return (
-      <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
-        <GcTelas tela={tela} onTela={setTela} />
+      <PageShell crumb={crumb} title={titulo} description={descricao} toolbar={abasTelas} contentClassName="flex flex-col gap-6">
         <CompradoresView compradores={compradores} equipe={equipe} podeEditar={podeEditarCompradores} usuario={usuario}
           onMudou={(mapa) => setCompradores((c) => ({ ...c, mapa }))} />
       </PageShell>
@@ -16748,12 +16765,19 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
   const TODOS = "__todos__";
   const nomeFornecedor = fornecedor ? (fornecedoresDoPainel.find((f) => f.chave === fornecedor)?.nome || fornecedor) : "";
   const nomeComprador = comprador === SEM_COMPRADOR ? "sem comprador" : (listaCompradores.find((c) => c.email === comprador)?.nome || comprador);
-  const temFiltro = horizonte != null || escolhidas.size > 0 || status !== "pendente" || !!fornecedor || !!comprador;
-  const limparFiltros = () => { setHorizonte(null); setEscolhidas(new Set()); setStatus("pendente"); setFornecedor(""); setComprador(""); };
+  const temFiltro = horizonte != null || escolhidas.size > 0 || status !== "pendente" || !!fornecedor || !!comprador || soAtrasadas;
+  const limparFiltros = () => { setHorizonte(null); setEscolhidas(new Set()); setStatus("pendente"); setFornecedor(""); setComprador(""); setSoAtrasadas(false); };
+  const linhasDaTabela = soAtrasadas ? r.linhas.filter((L) => L.atrasos.length > 0) : r.linhas;
+  const verAtrasadas = () => {
+    setSoAtrasadas(true);
+    requestAnimationFrame(() => obraPorObraRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
   const pctMat = t.matTotal > 0 ? (t.matFeito / t.matTotal) * 100 : 0;
   const pctMo = t.moTotal > 0 ? (t.moFeito / t.moTotal) * 100 : 0;
 
   const toolbar = (
+    <div className="flex flex-col gap-4">
+    {abasTelas}
     <div className="flex flex-wrap items-end gap-4">
       {comDados.length > 1 && (
         <div className="flex flex-col gap-1">
@@ -16790,6 +16814,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
           ...listaCompradores.map((c) => ({ value: c.email, label: c.nome })),
           { value: SEM_COMPRADOR, label: "Sem comprador" }]} />
     </div>
+    </div>
   );
 
   const filtrosAtivos = (
@@ -16803,11 +16828,12 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
       )}
       {fornecedor && <FilterChip label="Fornecedor" value={nomeFornecedor} onClear={() => setFornecedor("")} />}
       {comprador && <FilterChip label="Comprador" value={nomeComprador} onClear={() => setComprador("")} />}
+      {soAtrasadas && <FilterChip label="Obras" value="só com compra atrasada" onClear={() => setSoAtrasadas(false)} />}
     </ActiveFilters>
   );
 
   return (
-    <PageShell title={titulo} description={descricao} toolbar={toolbar} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-6">
+    <PageShell crumb={crumb} title={titulo} description={descricao} toolbar={toolbar} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-6">
       {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
       {pdf && <PdfSobreposto pdf={pdf} onFechar={fecharPdf} />}
       {simulando && (
@@ -16816,14 +16842,18 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
           padrao={!prestadores.lista.some((p) => p.ativo)} />
       )}
 
-      <GcTelas tela={tela} onTela={setTela} />
-
       <p className="flex flex-wrap items-center gap-2 text-sm text-text-soft">
         <span>
           {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"}
           {escolhidas.size > 0 ? " no filtro" : " com planilha"}
+          {nAtivas != null && !escolhidas.size ? ` de ${nAtivas} ativas` : ""}
         </span>
-        {t.obrasAtrasadas > 0 && <Badge tone="danger">{t.obrasAtrasadas} com compra atrasada</Badge>}
+        {t.obrasAtrasadas > 0 && (
+          <Button variant="outline" size="sm" className="gap-1 border-danger text-danger" onClick={verAtrasadas}
+            title="Ver na tabela só as obras com compra atrasada">
+            <AlertTriangle size={14} /> {t.obrasAtrasadas} com compra atrasada
+          </Button>
+        )}
       </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -16836,12 +16866,12 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
       {/* O que ela mais pediu vem primeiro: o volume por verba, somando
           todas as obras, é o que permite chegar no fornecedor com
           previsão em vez de pedido urgente. */}
-      <GcPorVerba titulo={`${rotMo}, por verba`} Icone={FileText}
-        grupos={r.aContratar} cor={COR_MO} onAbrir={onAbrir} onImprimir={imprimir("mo")}
+      <GcPorVerba titulo={`${rotMo}, por verba`} Icone={FileText} tipo="mo"
+        grupos={r.aContratar} onAbrir={onAbrir} onImprimir={imprimir("mo")}
         onSimular={status === "pendente" ? setSimulando : undefined}
         vazio={status !== "pendente" ? "Nada nesse recorte." : horizonte ? "Nada a contratar dentro desse prazo." : "Nada a contratar."} />
-      <GcPorVerba titulo={`${rotMat}, por verba`} Icone={ShoppingCart}
-        grupos={r.aComprar} cor={COR_MAT} onAbrir={onAbrir} onImprimir={imprimir("mat")}
+      <GcPorVerba titulo={`${rotMat}, por verba`} Icone={ShoppingCart} tipo="mat"
+        grupos={r.aComprar} onAbrir={onAbrir} onImprimir={imprimir("mat")}
         vazio={status !== "pendente" ? "Nada nesse recorte." : horizonte ? "Nada a comprar dentro desse prazo." : "Nada a comprar."} />
       {/* Mesma pergunta, outro corte: nao "quanto falta na verba 27" e
           sim "quanto falta comprar de colchão" — pra isso a linha precisa
@@ -16854,8 +16884,8 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
       {status === "pendente" && (
         <GcPorVerba
           titulo={visaoInsumo === "produto" ? "Material a comprar, por produto" : "Material a comprar, por insumo"}
-          Icone={Package}
-          grupos={gruposInsumoFiltrado} cor={COR_MAT} onAbrir={onAbrir} onImprimir={imprimirInsumo}
+          Icone={Package} tipo="mat"
+          grupos={gruposInsumoFiltrado} onAbrir={onAbrir} onImprimir={imprimirInsumo}
           busca={buscaInsumo} onBusca={setBuscaInsumo}
           buscaPlaceholder={visaoInsumo === "produto" ? "Buscar produto — ex: colchão" : "Buscar insumo — ex: colchão"}
           vazio="Nada a comprar."
@@ -16874,14 +16904,12 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
         </Alert>
       )}
 
-      <Card>
+      <Card ref={obraPorObraRef} className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Building2 size={16} /> Obra por obra</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* `grp-itens gc-tabela` fica ate' a GcLinhaObra migrar: as linhas
-              dela ainda sao <tr>/<td> crus e dependem desse CSS pro respiro. */}
-          <div className="grp-itens gc-tabela overflow-x-auto">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -16893,14 +16921,15 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {r.linhas.length === 0 && (
+                {linhasDaTabela.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5}>
-                      <EmptyState icon={<Building2 size={24} />} title="Nenhuma obra ativa tem planilha carregada ainda." as="h3" />
+                      <EmptyState icon={<Building2 size={24} />} as="h3"
+                        title={r.linhas.length ? "Nenhum resultado para os filtros aplicados" : "Nenhuma obra ativa tem planilha carregada ainda."} />
                     </TableCell>
                   </TableRow>
                 )}
-                {r.linhas.map((L) => <GcLinhaObra key={L.codigo} L={L} onAbrir={onAbrir} />)}
+                {linhasDaTabela.map((L) => <GcLinhaObra key={L.codigo} L={L} onAbrir={onAbrir} />)}
               </TableBody>
             </Table>
           </div>
@@ -24255,10 +24284,7 @@ export default function App() {
           </>
           ) : modulo === "a_contratar" ? (
           <>
-          <div className="eyebrow">OBRAS ATIVAS · {obrasAtivas.length}</div>
-          <div className="title-row"><span className="title-accent">Gestão de compras e contratações</span></div>
-          <div className="obra-meta">Todas as obras lado a lado: o que falta comprar, o que falta contratar, e quais prazos já venceram</div>
-          <GestaoComprasView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro}
+          <GestaoComprasView nAtivas={obrasAtivas.length} obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro}
             equipe={pessoas} podeEditarCompradores={souAdmin} usuario={usuario}
             onAbrir={(id) => { setSelectedId(id); setModulo("comparativo"); }} />
           </>
