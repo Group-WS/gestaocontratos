@@ -1292,7 +1292,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
       {/* A MESMA GRADE DE INDICADORES EM TODA A OBRA: 4 colunas, todos do
           mesmo tamanho e da mesma altura (auto-rows-fr). Cards de largura
           diferente na mesma tela liam como pesos diferentes. */}
-      <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Indicadores da obra">
+      <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Indicadores da obra">
         {kpis.map((k) => <KpiMini key={k.label} label={k.label} value={k.value} hint={k.hint} tone={k.tone} className="h-full" />)}
       </div>
 
@@ -1573,10 +1573,10 @@ function SiengeMatch({ sienge }) {
 function ItemTags({ item, alertas }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1">
-      {alertas.includes("escopo") && <Badge tone="danger"><XCircle size={11} /> Fora do escopo vendido</Badge>}
-      {alertas.includes("qtd") && <Badge tone="danger"><AlertTriangle size={11} /> Quantidade excede o vendido</Badge>}
+      {alertas.includes("escopo") && <Badge tone="danger"><XCircle size={14} aria-hidden="true" /> Fora do escopo vendido</Badge>}
+      {alertas.includes("qtd") && <Badge tone="danger"><AlertTriangle size={14} aria-hidden="true" /> Quantidade excede o vendido</Badge>}
       {alertas.includes("novo") && <Badge tone="brand">Novo item — sem código no vendido</Badge>}
-      {item.foraDeEscopo && item.statusEscopo === "aprovado" && <Badge tone="success"><CheckCircle2 size={11} /> Aprovado — incluído no escopo</Badge>}
+      {item.foraDeEscopo && item.statusEscopo === "aprovado" && <Badge tone="success"><CheckCircle2 size={14} aria-hidden="true" /> Aprovado — incluído no escopo</Badge>}
     </div>
   );
 }
@@ -3044,9 +3044,14 @@ function historicoDaTela(eventos, tela) {
 function CampoBusca({ valor, aoMudar, dica, contador }) {
   return (
     <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-      <Input className="w-full sm:w-72" icon={<Search size={16} aria-hidden="true" />} aria-label="Buscar"
-        placeholder={dica || "Buscar insumo, codigo ou fornecedor…"} value={valor || ""}
-        onChange={(e) => aoMudar(e.target.value)} />
+      {/* Com icone, o Input do DS se embrulha num div relativo, e a largura
+          vai no input de dentro: sem o div de fora, o embrulho ficava do
+          tamanho do conteudo e cortava a dica no celular. */}
+      <div className="w-full sm:w-72">
+        <Input className="w-full" icon={<Search size={16} aria-hidden="true" />} aria-label="Buscar"
+          placeholder={dica || "Buscar insumo, código ou fornecedor…"} value={valor || ""}
+          onChange={(e) => aoMudar(e.target.value)} />
+      </div>
       {!!valor && !!contador && <span className="text-xs text-text-mute" role="status">{contador}</span>}
       {!!valor && (
         <Button variant="ghost" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>
@@ -3240,7 +3245,7 @@ function HistoricoDaObra({ obra, tela, podeRestaurar = false, usuario }) {
     <div className="hist">
       <Button variant="ghost" size="sm" type="button" onClick={() => setAberto((v) => !v)}
         title="Quem fez o que nesta obra, e quando">
-        {aberto ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        {aberto ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         Histórico{daTela.length ? ` · ${daTela.length}` : ""}
       </Button>
       {aberto && (
@@ -3319,7 +3324,7 @@ function DestinoCompra({ item, aloc }) {
       <span className="pill pill-ok status-pill" title={item.compradoEm
         ? `Comprado em ${new Date(item.compradoEm).toLocaleDateString("pt-BR")}${item.canalCompra ? ` por ${canalPorId(item.canalCompra)?.nome}` : ""}`
         : "Comprado"}>
-        <Check size={11} /> comprado{item.canalCompra ? ` · ${canalPorId(item.canalCompra)?.sigla}` : ""}
+        <Check size={14} aria-hidden="true" /> comprado{item.canalCompra ? ` · ${canalPorId(item.canalCompra)?.sigla}` : ""}
       </span>
     );
   }
@@ -3337,7 +3342,7 @@ function DestinoCompra({ item, aloc }) {
   if (!liberadoParaCompra(item)) {
     return (
       <span className="pill pill-bloqueado" title="Bloqueado até o administrador aprovar para compra, na Conf. Executivo">
-        <Lock size={10} /> bloqueado
+        <Lock size={14} aria-hidden="true" /> bloqueado
       </span>
     );
   }
@@ -3346,7 +3351,7 @@ function DestinoCompra({ item, aloc }) {
     const etapa = item.statusContrato ? CONTRATO_STAGES[item.statusContrato]?.label : null;
     return (
       <span className="pill pill-contratos" title={etapa || "Mão de obra segue para Contratos"}>
-        <Link2 size={10} /> Contratos{etapa ? ` · ${etapa.toLowerCase()}` : ""}
+        <Link2 size={14} aria-hidden="true" /> Contratos{etapa ? ` · ${etapa.toLowerCase()}` : ""}
       </span>
     );
   }
@@ -4189,7 +4194,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       /* Duas dimensões, duas filas. A de cima é a ALOCAÇÃO do recurso —
          MAT, MO ou os dois; a de baixo é em que pé o item está. */
       toolbar={(
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
           <CampoBusca valor={busca} aoMudar={setBusca} dica="Buscar insumo, código ou fornecedor…"
             contador={`${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens`} />
           <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => { if (v) setTipoFilter(v); }} aria-label="Alocação de recurso"
@@ -4207,7 +4212,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
         </div>
       )}
       toolbarSecondary={(
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
           <ToggleGroup type="single" value={itemFilter} onValueChange={(v) => { if (v) setItemFilter(v); }} aria-label="Situação do item">
             {FILTERS.map((f) => (
               <ToggleGroupItem key={f.id} value={f.id}>{f.label}</ToggleGroupItem>
@@ -4248,7 +4253,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       )}
 
       {temItens && !obra.comprasLiberadas && (
-        <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Resumo do plano">
+        <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Resumo do plano">
           <KpiMini label="Material no plano" value={fmtBRL(plano.materialNoPlano)} tone="brand"
             hint={`${plano.nItens} ${plano.nItens === 1 ? "item" : "itens"}`} />
           {plano.moForaDoPlano > 0 && (
@@ -5012,7 +5017,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             leitura e na etapa congelada — e botao que some nao se procura,
             se conclui que nao existe. */}
         {onLimpar && temConteudo && (
-          <Button variant="danger" disabled={carregando || congelado}
+          <Button variant="outline" className="text-danger" disabled={carregando || congelado}
             title={congelado
               ? (compraLiberada
                   ? "O Plano de Compras já foi liberado e congelou esta etapa. Use \"Reabrir etapas\" antes de remover."
@@ -5345,7 +5350,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
         /* O filtro esconde grupos, nunca reorganiza: a ordem da EAP é a
            mesma nos três estados. */
         toolbar={(
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
               className="max-w-full overflow-x-auto">
               {FILTROS_VENDA.map((f) => (
@@ -5537,7 +5542,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             onFile={aoImportar} />
         )}
         toolbar={(
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             {/* PADRAO DA BARRA DE ETAPA: busca primeiro (largura fixa), depois
                 os filtros no tamanho padrao do DS — mesma altura da busca. */}
             <CampoBusca valor={busca} aoMudar={setBusca}
@@ -6669,7 +6674,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
 
   return (
     <>
-      <div className="mb-4 grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
         {/* Os cartoes da planilha vem primeiro: sao as duas decisoes da tela,
             na ordem do fluxo. O "Entrou, saiu ou mudou" fecha a barra — ele
             responde a comparacao com o vendido, que e' outra pergunta. */}
@@ -6991,7 +6996,7 @@ function ResumoCMV({ linhas, categorias }) {
             <CardTitle>CMV por grupo</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="flex gap-2 px-4 py-2 text-xs text-text-mute" aria-hidden="true">
+            <div className="label-mono flex gap-2 px-4 py-2 text-text-mute" aria-hidden="true">
               <span className="w-6 shrink-0" />
               <span className="min-w-0 flex-1">Grupo</span>
               <span className="w-32 shrink-0 text-center">CMV</span>
@@ -7643,7 +7648,11 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                                 </Badge>
                                 {podeEditar && x.it.aprovadoCliente && !x.liberado && (
                                   <Button variant="ghost" size="sm" type="button"
-                                    onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
+                                    onClick={async () => {
+                                      /* Desfazer apaga o registro de quando e por quem o cliente aprovou. */
+                                      if (!(await confirmar({ titulo: "Desfazer a aprovação do cliente", mensagem: "O item volta a esperar a aprovação do cliente, e a data e o nome de quem registrou somem.", confirmar: "Desfazer" }))) return;
+                                      onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false);
+                                    }}>Desfazer</Button>
                                 )}
                               </div>
                             ) : (
@@ -7903,7 +7912,9 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                           os 8 eram o que tinha sobrado na tela. Agora o de
                           dentro diz o grupo, e o que esta' na tela vira um
                           segundo numero, dito com o nome do filtro. */}
-                      <Badge tone="neutral">{g.nProdutos ?? g.itens.length} produtos</Badge>
+                      {/* Largura fixa (lg) por selo: sem ela a fila de selos mudava
+                          de lugar de uma verba para outra conforme os numeros. */}
+                      <Badge tone="neutral" className="lg:w-28 lg:justify-center">{g.nProdutos ?? g.itens.length} {(g.nProdutos ?? g.itens.length) === 1 ? "produto" : "produtos"}</Badge>
                       {/* OS NOMES INTEIROS, E NA ORDEM DO FLUXO — pedido dela em
                           19/09/2026: "vamos padronizar os nomes: sempre colocar
                           'Concluido executivo' e 'Liberado para compra' mesmo aqui
@@ -7916,8 +7927,8 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                           outro sem. Os dois olham a MESMA lista — todo item passa
                           pelas duas decisões, independente da alocação —, entao
                           mostrar os dois como "X de Y" e' o que deixa comparar. */}
-                      <Badge tone="neutral">{compraveisDoGrupo(g).filter((x) => estaConcluido(x)).length} de {compraveisDoGrupo(g).length} concluído executivo</Badge>
-                      <Badge tone="neutral">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberado para compra</Badge>
+                      <Badge tone="neutral" className="lg:w-56 lg:justify-center">{compraveisDoGrupo(g).filter((x) => estaConcluido(x)).length} de {compraveisDoGrupo(g).length} concluído executivo</Badge>
+                      <Badge tone="neutral" className="lg:w-60 lg:justify-center">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberado para compra</Badge>
                       {filtrando && <Badge tone="warning">{g.itens.length} nesta busca</Badge>}
                       </span>
                     </span>
@@ -8892,7 +8903,7 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
       <span className="inline-flex items-center gap-1"><ArrowUpRight size={14} aria-hidden="true" /> acrescido {fmtBRL(acrescido)}{nNovos > 0 && ` · ${nNovos} nov${nNovos > 1 ? "os" : "o"}`}</span>
     </span>
   );
-  const grade = "mb-4 grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4";
+  const grade = "mb-4 grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4";
 
   // Sem CMV liberado não há teto, e portanto não há saldo. Mas o que a
   // equipe já mexeu continua sendo informação útil — some o veredito, não
@@ -9235,7 +9246,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             onFile={aoImportar} />
         )}
         toolbar={(
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             {/* Digitar na busca fecha o painel de insercao: nao da' pra estar
                 inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
                 de referencia sumiria por baixo da busca. */}
@@ -9432,7 +9443,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                 {it.substituidoPorDesc && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Badge tone="purple" className="ml-2 cursor-help"><ArrowDown size={10} /> trocado</Badge>
+                                      <Badge tone="purple" className="ml-2 cursor-help"><ArrowDown size={14} aria-hidden="true" /> trocado</Badge>
                                     </TooltipTrigger>
                                     <TooltipContent className="max-w-xs whitespace-normal">Substituído por: {it.substituidoPorDesc}</TooltipContent>
                                   </Tooltip>
@@ -9440,7 +9451,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                 {it.substituiDesc && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Badge tone="purple" className="ml-2 cursor-help"><CornerDownRight size={10} /> entrou no lugar</Badge>
+                                      <Badge tone="purple" className="ml-2 cursor-help"><CornerDownRight size={14} aria-hidden="true" /> entrou no lugar</Badge>
                                     </TooltipTrigger>
                                     <TooltipContent className="max-w-xs whitespace-normal">Entrou no lugar de: {it.substituiDesc}</TooltipContent>
                                   </Tooltip>
@@ -9450,7 +9461,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                     na lateral da linha já diz isso, e a etiqueta
                                     aparecia em quase toda linha — repetida assim, ela
                                     parava de informar e só ocupava espaço. */}
-                                {it.precoNaoRevisado && <Badge tone="danger" className="ml-2"><AlertTriangle size={10} /> preço não revisado</Badge>}
+                                {it.precoNaoRevisado && <Badge tone="danger" className="ml-2"><AlertTriangle size={14} aria-hidden="true" /> preço não revisado</Badge>}
                                 {/* Só no hover: em trinta linhas seguidas, trinta
                                     links iguais viram textura, não ação. */}
                                 {it.precoNaoRevisado && !obra.comprasLiberadas && (
@@ -10340,6 +10351,15 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
 
   const barraRef = useRef(null);
 
+  /* A OBRA ABERTA FICA A VISTA na lista: com 185 obras, abrir uma pelo
+     Inicio ou por link deixava a linha dela la' embaixo, fora da tela.
+     So' rola a lista (block "nearest"): se a obra ja' aparece, nada mexe. */
+  const listaObrasRef = useRef(null);
+  useEffect(() => {
+    const ativa = listaObrasRef.current?.querySelector('[aria-current="page"]');
+    if (ativa) ativa.scrollIntoView({ block: "nearest" });
+  }, [selected, modo]);
+
   /* O menu nasce RECOLHIDO, so' com os icones (nome no Tooltip), a pedido
      (21/09/2026): sobra largura pro conteudo e pra lista de obras. "Expandir"
      no pe mostra os nomes. Nao guarda a escolha no navegador de proposito —
@@ -10468,11 +10488,19 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
       </div>
       <div className="flex shrink-0 flex-col gap-1 border-t border-line-1 px-3 py-2">
         {destinosPe.map(botaoDestino)}
-        <Button variant="ghost" size="sm" className={cn("w-full gap-2 text-xs font-normal text-text-mute", trilhoAberto ? "justify-start px-2" : "justify-center px-0")}
-          onClick={() => setTrilhoAberto((v) => !v)} aria-expanded={trilhoAberto}
-          aria-label={trilhoAberto ? "Recolher o menu" : "Expandir o menu"} title={trilhoAberto ? "Recolher o menu" : "Expandir o menu"}>
-          {trilhoAberto ? <><PanelLeftClose size={14} /> Recolher</> : <PanelLeftOpen size={14} />}
-        </Button>
+        {/* Recolhido, o botao e' so' icone: vira BotaoIcone, com o nome no
+            Tooltip do DS (o title nativo nao aparece no teclado). */}
+        {trilhoAberto ? (
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2 px-2 text-xs font-normal text-text-mute"
+            onClick={() => setTrilhoAberto(false)} aria-expanded={true}>
+            <PanelLeftClose size={14} aria-hidden="true" /> Recolher
+          </Button>
+        ) : (
+          <BotaoIcone rotulo="Expandir o menu" lado="right" variant="ghost" className="w-full text-text-mute"
+            onClick={() => setTrilhoAberto(true)} aria-expanded={false}>
+            <PanelLeftOpen size={16} aria-hidden="true" />
+          </BotaoIcone>
+        )}
       </div>
     </nav>
   );
@@ -10526,7 +10554,7 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
         <ShieldCheck size={14} aria-hidden="true" /> Só as minhas{nMinhas > 0 ? ` (${nMinhas})` : ""}
       </Toggle>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+      <div ref={listaObrasRef} className="min-h-0 flex-1 overflow-y-auto pb-3">
         {obras.length === 0 && (
           <p className="px-2 py-3 text-xs text-text-mute">
             Nenhuma obra iniciada ainda.
@@ -10752,8 +10780,10 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
 
       <Card>
         <CardHeader>
-          <CardTitle>Registrar aprovação do cliente</CardTitle>
-          <CardDescription>Data em que o cliente assinou, mais o documento assinado.</CardDescription>
+          <div className="min-w-0">
+            <CardTitle>Registrar aprovação do cliente</CardTitle>
+            <CardDescription>Data em que o cliente assinou, mais o documento assinado.</CardDescription>
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="grid gap-4 md:grid-cols-2">
@@ -10935,7 +10965,7 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
   return (
     <div className="naoimprime w-full space-y-3">
       <Tabs value={grupo} onValueChange={onGrupo} activationMode="manual">
-        <div className="overflow-x-auto">
+        <div className="rolagem-discreta overflow-x-auto">
           <TabsList variant="underline" className="w-max min-w-full" aria-label="Áreas da obra">
             {GRUPOS_OBRA.map((g) => {
               const Icon = g.icon;
@@ -10954,7 +10984,7 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
 
       {etapas.length > 0 && (
         <Tabs value={tab ?? ""} onValueChange={onChange} activationMode="manual">
-          <div className="overflow-x-auto">
+          <div className="rolagem-discreta overflow-x-auto">
             <TabsList variant="pill" className="w-max" aria-label="Etapas">
               {etapas.map((t, i) => {
                 const Icon = t.icon;
@@ -11674,7 +11704,7 @@ function GeradorSiengeView() {
         </div>
       )}
       toolbar={(
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
           {linhas && (
             <>
               <ToggleGroup type="single" value={modoForn} onValueChange={(v) => { if (v) setModoForn(v); }} aria-label="Origem do fornecedor">
@@ -11729,8 +11759,10 @@ function GeradorSiengeView() {
       {!linhas && (
         <Card>
           <CardHeader>
-            <CardTitle>Formatos aceitos</CardTitle>
-            <CardDescription>Nada é guardado: o arquivo é lido aqui e some quando você sair.</CardDescription>
+            <div className="min-w-0">
+              <CardTitle>Formatos aceitos</CardTitle>
+              <CardDescription>Nada é guardado: o arquivo é lido aqui e some quando você sair.</CardDescription>
+            </div>
           </CardHeader>
           <CardContent>
             <dl className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
@@ -12728,7 +12760,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     <PageShell title="Compras de Produtos"
       description="Escolha por onde comprar cada material do executivo e acompanhe o que já foi solicitado e comprado."
       toolbar={toolbar} contentClassName="flex flex-col gap-6">
-      <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiMini className="h-full" label="Material no executivo" value={fmtBRL(soma(() => true))} hint={`${ativos.length} produtos`} tone="brand" />
         <KpiMini className="h-full" label="Já com canal definido" value={fmtBRL(soma((r) => !!r.it.canalCompra))} tone="neutral" />
         <KpiMini className="h-full" label="Ainda sem canal" value={fmtBRL(soma((r) => !r.it.canalCompra))} tone="warning" />
@@ -13562,7 +13594,8 @@ function juntarResultado(antes, novo) {
  *
  * Teclado: digita pra filtrar, ↑↓ anda, Enter escolhe, Esc fecha.
  */
-function SelectBusca({ valor, onChange, opcoes, placeholder = "selecione…", vazio, aria, className = "", disabled }) {
+/* `pequeno`: dentro de linha de tabela o gatilho vai em size="sm". */
+function SelectBusca({ valor, onChange, opcoes, placeholder = "selecione…", vazio, aria, className = "", disabled, pequeno = false }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
 
@@ -13588,7 +13621,7 @@ function SelectBusca({ valor, onChange, opcoes, placeholder = "selecione…", va
     <div className={cn("min-w-0 flex-1", className)}>
       <Popover open={aberto} onOpenChange={(v) => { setAberto(v); if (v) setBusca(""); }}>
         <PopoverTrigger asChild>
-          <Button variant="outline" type="button" role="combobox" disabled={disabled}
+          <Button variant="outline" size={pequeno ? "sm" : undefined} type="button" role="combobox" disabled={disabled}
             aria-label={aria} aria-expanded={aberto}
             className="w-full justify-between font-normal">
             <span className={cn("truncate", escolhida ? "" : "text-text-mute")}>
@@ -14667,9 +14700,15 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
         </div>
       ))}
       <div className="grid gap-4 md:grid-cols-2">
-        <Choice label="Aprovado por" required value={aprovador} placeholder="aprovado por…"
-          opcoes={pessoas.map((p) => ({ value: p.email, label: `${p.nome || p.email}${p.email === executivo ? " (executivo da obra)" : ""}` }))}
-          onChange={(v) => { setErro(null); setAprovador(v); }} />
+        {/* Com busca: a lista e' a equipe inteira. O executivo da obra vem
+            primeiro, no grupo "Sugeridos". */}
+        <Field>
+          <Label htmlFor={`${id}-aprovador`} required>Aprovado por</Label>
+          <EscolhaPessoa id={`${id}-aprovador`} valor={aprovador || ""} rotulo="Aprovado por" vazio="Escolha quem aprovou"
+            pessoas={pessoas.map((p) => ({ ...p, nome: p.nome || p.email }))}
+            sugerido={executivo ? (p) => p.email === executivo : undefined}
+            onChange={(v) => { setErro(null); setAprovador(v); }} />
+        </Field>
         <Field>
           <Label htmlFor={`${id}-motivo`}>Motivo</Label>
           <Input id={`${id}-motivo`} value={motivo} placeholder="motivo (opcional)" onChange={(e) => setMotivo(e.target.value)} />
@@ -15590,7 +15629,7 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
       description="Cada serviço do executivo, da solicitação ao contrato assinado. Clique numa etapa para filtrar."
       actions={<NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />}
       contentClassName="flex flex-col gap-6">
-      <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Resumo da mão de obra">
+      <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Resumo da mão de obra">
         {kpis.map((k) => <KpiMini key={k.label} className="h-full" label={k.label} value={k.value} hint={k.hint} tone={k.tone} />)}
       </div>
 
@@ -15829,13 +15868,18 @@ function GcLinhaVerba({ g, max, onAbrir, onImprimir, onSimular }) {
           onClick={() => setAberto((x) => !x)} aria-expanded={aberto} title={aberto ? "Esconder as obras" : "Ver de qual obra vem o total"}>
           <ChevronRight size={14} className={cn("shrink-0 text-text-mute transition-transform", aberto && "rotate-90")} aria-hidden="true" />
           {g.num != null && <span className="w-6 shrink-0 text-left font-mono text-xs text-text-mute">{g.num}</span>}
-          <span className="min-w-0 flex-1 whitespace-normal text-left text-sm text-text md:w-64 md:flex-none">{g.nome}</span>
+          {/* No celular o valor desce para baixo do nome: lado a lado, o valor e os
+              dois botões comiam a largura e o nome ficava com 0px, por baixo do valor. */}
+          <span className="flex min-w-0 flex-1 flex-col gap-1 md:w-64 md:flex-none">
+            <span className="whitespace-normal text-left text-sm text-text">{g.nome}</span>
+            <span className="text-left font-mono text-xs tabular-nums text-text md:hidden">{fmtBRL(g.total)}</span>
+          </span>
           <span className="hidden w-16 shrink-0 text-left text-xs text-text-mute md:inline">{nObras}</span>
           <Progress className="hidden min-w-16 flex-1 md:block" value={Math.min(100, (g.total / max) * 100)} aria-label={`Peso de ${g.nome} no total`} />
           {/* "Sem categoria" soma varias unidades ("12 m² · 3 un · 40 m"): sem
               truncar, o texto invadia a coluna do valor. O inteiro fica no title. */}
           <span className="hidden w-32 shrink-0 truncate text-right font-mono text-xs tabular-nums text-text-mute lg:block" title={qtdTxt || undefined}>{qtdTxt || ""}</span>
-          <span className="w-32 shrink-0 text-right font-mono text-sm tabular-nums text-text">{fmtBRL(g.total)}</span>
+          <span className="hidden w-32 shrink-0 text-right font-mono text-sm tabular-nums text-text md:block">{fmtBRL(g.total)}</span>
         </Button>
         {/* A calculadora: quanto custaria esta verba com a equipe interna. */}
         {onSimular && (
@@ -15912,9 +15956,9 @@ function GcLinhaObra({ L, onAbrir }) {
         </TableCell>
         <TableCell className="text-center">
           {atrasada ? (
-            <Button variant="danger" size="sm" className="gap-1" onClick={alternar}
+            <Button variant="outline" size="sm" className="gap-1" onClick={alternar}
               title={aberto ? "Esconder o que está atrasado" : "Ver o que está atrasado nesta obra"} aria-expanded={aberto}>
-              <AlertTriangle size={14} aria-hidden="true" /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
+              <AlertTriangle size={14} className="text-danger" aria-hidden="true" /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
               <ChevronDown size={14} className={cn("transition-transform", aberto && "rotate-180")} aria-hidden="true" />
             </Button>
           ) : L.perto.length > 0 ? (
@@ -16413,7 +16457,7 @@ function fornecedoresDasObras(obras) {
 function GcTelas({ tela, onTela }) {
   return (
     <Tabs value={tela} onValueChange={onTela} activationMode="manual" className="w-full">
-      <div className="overflow-x-auto">
+      <div className="rolagem-discreta overflow-x-auto">
         <TabsList variant="underline" className="w-max min-w-full" aria-label="Telas da gestão de compras">
           <TabsTrigger underline value="painel">Painel</TabsTrigger>
           <TabsTrigger underline value="compradores">Compradores</TabsTrigger>
@@ -16445,7 +16489,6 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
   /* O Select do DS nao aceita item com valor vazio: "" (todos / sem
      comprador) vira uma sentinela so' na tela; o estado continua "". */
   const TODOS = "__todos__";
-  const NENHUM = "__nenhum__";
   const idFiltro = React.useId();
 
   async function trocar(g, email) {
@@ -16468,7 +16511,7 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
             <CardTitle className="flex items-center gap-2"><Users size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Compradores por grupo de compra</CardTitle>
             {!podeEditar && <CardDescription>Só administrador troca o comprador de um grupo.</CardDescription>}
@@ -16496,10 +16539,10 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
         {compradores.erro && <Alert tone="danger"><AlertDescription>{compradores.erro}</AlertDescription></Alert>}
         {erro && <Alert tone="danger"><AlertTitle>Não consegui salvar</AlertTitle><AlertDescription>{erro}</AlertDescription></Alert>}
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="min-w-xl">
             <TableHeader>
               <TableRow>
-                <TableHead className="hidden w-20 md:table-cell">Verba</TableHead>
+                <TableHead className="w-20">Verba</TableHead>
                 <TableHead>Grupo de compra</TableHead>
                 <TableHead className="w-80">Comprador</TableHead>
               </TableRow>
@@ -16509,22 +16552,21 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
                 const atual = compradores.mapa.get(chaveDoGrupo(g.nome));
                 return (
                   <TableRow key={g.nome}>
-                    <TableCell className="mono hidden text-text-mute md:table-cell">{g.num}</TableCell>
+                    <TableCell className="mono text-text-mute">{g.num}</TableCell>
                     <TableCell>{g.nome}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Select value={atual?.email || NENHUM}
-                          disabled={!podeEditar || semTabela || salvando === g.nome}
-                          onValueChange={(v) => trocar(g, v === NENHUM ? "" : v)}>
-                          <SelectTrigger aria-label={`Comprador de ${g.nome}`} className="w-full sm:w-72"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NENHUM}>— sem comprador —</SelectItem>
-                            {atual && !pessoas.some((p) => p.email === atual.email) && <SelectItem value={atual.email}>{atual.nome}</SelectItem>}
-                            {pessoas.map((p) => (
-                              <SelectItem key={p.email} value={p.email}>{p.nome || p.email}{p.cargo ? ` · ${p.cargo}` : ""}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {/* Com busca (Popover + Command): a lista tem dezenas de
+                            nomes. "Ninguém" grava vazio, como o antigo "sem comprador". */}
+                        <div className="w-full sm:w-72">
+                          <EscolhaPessoa pequeno valor={atual?.email || ""}
+                            pessoas={[
+                              ...(atual && !pessoas.some((p) => p.email === atual.email) ? [{ email: atual.email, nome: atual.nome }] : []),
+                              ...pessoas.map((p) => ({ ...p, nome: p.nome || p.email })),
+                            ]}
+                            disabled={!podeEditar || semTabela || salvando === g.nome}
+                            onChange={(v) => trocar(g, v)} vazio="— sem comprador —" rotulo={`Comprador de ${g.nome}`} />
+                        </div>
                         {salvando === g.nome && <span className="text-xs text-text-mute" role="status">salvando…</span>}
                       </div>
                     </TableCell>
@@ -16713,10 +16755,12 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Users size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Mão de obra própria</CardTitle>
-        <CardDescription>
-          A equipe interna: especialidade, função e diária. A calculadora da mão de obra a contratar usa estes valores.
-        </CardDescription>
+        <div className="min-w-0">
+          <CardTitle className="flex items-center gap-2"><Users size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Mão de obra própria</CardTitle>
+          <CardDescription>
+            A equipe interna: especialidade, função e diária. A calculadora da mão de obra a contratar usa estes valores.
+          </CardDescription>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {semTabela && (
@@ -16729,11 +16773,11 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
         {erro && <Alert tone="danger"><AlertTitle>Não consegui salvar</AlertTitle><AlertDescription>{erro}</AlertDescription></Alert>}
         {!podeEditar && !semTabela && <p className="text-xs text-text-mute">Só administrador cadastra e muda a equipe interna.</p>}
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="min-w-xl">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-40">Especialidade</TableHead>
-                <TableHead>Função</TableHead>
+                <TableHead className="min-w-48">Função</TableHead>
                 <TableHead className="w-40 text-center">Diária (R$)</TableHead>
                 <TableHead className="w-12 text-right"><span className="sr-only">Ações</span></TableHead>
               </TableRow>
@@ -16744,11 +16788,11 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
                   <TableRow key={p.id || p.chave}>
                     <TableCell className={k ? "" : "label-mono"}>{k ? "" : esp}</TableCell>
                     <TableCell>
-                      <CampoRascunho as={Input} valor={p.funcao} aoSair readOnly={trava || !p.id} aria-label={`Função (${esp})`}
+                      <CampoRascunho as={Input} className="h-8" valor={p.funcao} aoSair readOnly={trava || !p.id} aria-label={`Função (${esp})`}
                         onSalvar={(v) => { if (v.trim() && v.trim() !== p.funcao) gravar(p, { funcao: v.trim() }); }} />
                     </TableCell>
                     <TableCell>
-                      <CampoRascunho as={Input} className="mono text-right tabular-nums" valor={numBR(Number(p.diaria) || 0)} aoSair readOnly={trava || !p.id}
+                      <CampoRascunho as={Input} className="mono h-8 text-right tabular-nums" valor={numBR(Number(p.diaria) || 0)} aoSair readOnly={trava || !p.id}
                         aria-label={`Diária de ${p.nome || p.funcao}`}
                         onSalvar={(v) => { const n = parseBRL(v); if (n != null && n !== p.diaria) gravar(p, { diaria: n }); }} />
                     </TableCell>
@@ -16994,34 +17038,40 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
         {comDados.length > 1 && (
           <FiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
         )}
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 max-w-full flex-col gap-1">
           <Label id="gc-rotulo-mostrar">Mostrar</Label>
-          <ToggleGroup type="single" value={status} onValueChange={(v) => { if (v) setStatus(v); }} aria-labelledby="gc-rotulo-mostrar">
+          <ToggleGroup type="single" value={status} onValueChange={(v) => { if (v) setStatus(v); }} aria-labelledby="gc-rotulo-mostrar"
+            className="max-w-full overflow-x-auto">
             {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
-              <ToggleGroupItem key={id} value={id}>{rot}</ToggleGroupItem>
+              <ToggleGroupItem key={id} value={id} className="shrink-0 whitespace-nowrap">{rot}</ToggleGroupItem>
             ))}
           </ToggleGroup>
         </div>
         {status === "pendente" ? (
-          <div className="flex flex-col gap-1">
+          <div className="flex min-w-0 max-w-full flex-col gap-1">
             <Label id="gc-rotulo-horizonte">Preciso resolver nas</Label>
             <ToggleGroup type="single" value={horizonte == null ? "tudo" : String(horizonte)} aria-labelledby="gc-rotulo-horizonte"
+              className="max-w-full overflow-x-auto"
               onValueChange={(v) => { if (!v) return; setHorizonte(v === "tudo" ? null : Number(v)); }}>
               {HORIZONTES.map((h) => (
-                <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)}>{h.rot}</ToggleGroupItem>
+                <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)} className="shrink-0 whitespace-nowrap">{h.rot}</ToggleGroupItem>
               ))}
             </ToggleGroup>
           </div>
         ) : (
           <p className="max-w-xs self-center text-xs text-text-mute">O prazo vale pro que falta; aqui aparece {status === "comprado" ? "o que já foi comprado" : "o comprado e o pendente"}.</p>
         )}
-        <Choice label="Fornecedor" rotuloVisivel={false} className="w-full sm:w-64" value={fornecedor || TODOS} onChange={(v) => setFornecedor(v === TODOS ? "" : v)}
+        {/* No celular os dois selects dividem a linha (grade de 2): um embaixo
+            do outro, a barra fixa passava de metade da tela. */}
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:gap-3">
+        <Choice label="Fornecedor" rotuloVisivel={false} className="min-w-0 sm:w-64" value={fornecedor || TODOS} onChange={(v) => setFornecedor(v === TODOS ? "" : v)}
           opcoes={[{ value: TODOS, label: "Todos os fornecedores" },
             ...fornecedoresDoPainel.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` }))]} />
-        <Choice label="Comprador" rotuloVisivel={false} className="w-full sm:w-64" value={comprador || TODOS} onChange={(v) => setComprador(v === TODOS ? "" : v)}
+        <Choice label="Comprador" rotuloVisivel={false} className="min-w-0 sm:w-64" value={comprador || TODOS} onChange={(v) => setComprador(v === TODOS ? "" : v)}
           opcoes={[{ value: TODOS, label: "Todos os compradores" },
             ...listaCompradores.map((c) => ({ value: c.email, label: c.nome })),
             { value: SEM_COMPRADOR, label: "Sem comprador" }]} />
+        </div>
       </div>
     </div>
   );
@@ -17041,8 +17091,8 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
       {/* O atalho pras atrasadas mora junto da contagem de obras: e' um
           recorte da mesma lista, e clicar leva ate' a tabela. */}
       {t.obrasAtrasadas > 0 && !soAtrasadas && (
-        <Button variant="danger" size="sm" onClick={verAtrasadas} title="Ver na tabela só as obras com compra atrasada">
-          <AlertTriangle size={14} aria-hidden="true" /> {t.obrasAtrasadas} com compra atrasada
+        <Button variant="outline" size="sm" onClick={verAtrasadas} title="Ver na tabela só as obras com compra atrasada">
+          <AlertTriangle size={14} className="text-danger" aria-hidden="true" /> {t.obrasAtrasadas} com compra atrasada
         </Button>
       )}
     </ActiveFilters>
@@ -18349,7 +18399,7 @@ function PainelLocalizacao({ dados, carregando, onToggleStatus }) {
                       <Button variant="ghost" key={o.codigo} type="button" className={`loc-obra-chip ${o.status}`}
                         onClick={() => onToggleStatus(o.codigo, o.status)}
                         title={`#${o.codigo} — clique pra marcar como ${o.status === "finalizada" ? "ativa" : "finalizada"}`}>
-                        {o.status === "finalizada" && <Check size={9} />} {o.nome}
+                        {o.status === "finalizada" && <Check size={14} aria-hidden="true" />} {o.nome}
                       </Button>
                     ))}
                   </div>
@@ -19102,8 +19152,10 @@ function ArquivosObraView({ obra, usuario, podeEditar, souAdmin, onArquivos }) {
       ) : porFase.map(({ f, itens }) => (
         <Card key={f.id}>
           <CardHeader>
-            <CardTitle>{f.nome}</CardTitle>
-            <CardDescription>{itens.length} {itens.length === 1 ? "arquivo" : "arquivos"}</CardDescription>
+            <div className="min-w-0">
+              <CardTitle>{f.nome}</CardTitle>
+              <CardDescription>{itens.length} {itens.length === 1 ? "arquivo" : "arquivos"}</CardDescription>
+            </div>
           </CardHeader>
           <CardContent className="divide-y divide-line-1 p-0">
             {itens.map((a) => (
@@ -19320,7 +19372,7 @@ function PainelCanalView({ obras, carregando, erro, canalId, crumb, title, descr
       {carregando ? (
         <>
           <p className="sr-only" role="status">Carregando as obras…</p>
-          <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
             <Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" />
           </div>
           <Skeleton className="h-64 w-full" />
@@ -19329,7 +19381,7 @@ function PainelCanalView({ obras, carregando, erro, canalId, crumb, title, descr
         <>
           {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
-          <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4" aria-label={`Resumo — ${canal.nome}`}>
+          <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4" aria-label={`Resumo — ${canal.nome}`}>
             <KpiMini label={`Material a comprar — ${canal.nome}`} value={fmtBRL(p.total - p.comprado)} tone="brand"
               hint="ainda não comprado" className="h-full" />
             <KpiMini label="Já comprado" value={fmtBRL(p.comprado)} tone="success"
@@ -19682,7 +19734,7 @@ function EapSiengeView({ usuario }) {
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
             <CardTitle>Relatório de orçamento</CardTitle>
             <CardDescription>
@@ -19707,7 +19759,7 @@ function EapSiengeView({ usuario }) {
 
       {previa && (
         <Card>
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
               <CardTitle>Confira antes de gravar — {previa.arquivo}</CardTitle>
               <CardDescription>Nada foi gravado ainda.</CardDescription>
@@ -19743,7 +19795,7 @@ function EapSiengeView({ usuario }) {
       )}
 
       <Card className="p-0">
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+        <CardHeader className="px-4 pt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
             <CardTitle className="flex flex-wrap items-center gap-2">
               Verbas da casa → item do orçamento do Sienge
@@ -19758,7 +19810,7 @@ function EapSiengeView({ usuario }) {
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               <Choice label="Versão da EAP" rotuloVisivel={false} value={versaoId == null ? undefined : String(versaoId)}
                 opcoes={versoes.map((v) => ({ value: String(v.id), label: `${v.nome} · un. ${v.unidade_id}${v.padrao ? " · padrão" : ""}` }))}
-                onChange={(v) => setVersaoId(Number(v))} className="w-full sm:w-72" />
+                onChange={(v) => setVersaoId(Number(v))} compacto className="w-full sm:w-96" />
               {versao && !versao.padrao && (
                 <Button variant="outline" size="sm" onClick={tornarPadrao}>Tornar padrão</Button>
               )}
@@ -19799,7 +19851,7 @@ function EapSiengeView({ usuario }) {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col items-start gap-2">
-                          <SelectBusca valor={atual} onChange={(x) => ligar(v.num, x || null)}
+                          <SelectBusca pequeno valor={atual} onChange={(x) => ligar(v.num, x || null)}
                             vazio="— sem ligação (bloqueia o envio) —" aria={`Item do orçamento para ${v.nome}`}
                             className="w-full"
                             opcoes={folhas.map((f) => ({ valor: f.codigo, rotulo: `${f.codigo} · ${f.descricao}` }))} />
@@ -19823,13 +19875,15 @@ function EapSiengeView({ usuario }) {
 
       {versao && (
         <Card className="p-0">
-          <CardHeader>
-            <CardTitle>A EAP como o Sienge mostra — {folhas.length} itens apropriáveis</CardTitle>
-            <CardDescription>
-              Unidade construtiva {versao.unidade_id} · orçamento {versao.versao_orcamento || "—"} ·
-              importada {versao.importado_em ? new Date(versao.importado_em).toLocaleDateString("pt-BR") : "—"}
-              {versao.importado_por ? ` por ${versao.importado_por}` : ""}
-            </CardDescription>
+          <CardHeader className="px-4 pt-4">
+            <div className="min-w-0">
+              <CardTitle>A EAP como o Sienge mostra — {folhas.length} itens apropriáveis</CardTitle>
+              <CardDescription>
+                Unidade construtiva {versao.unidade_id} · orçamento {versao.versao_orcamento || "—"} ·
+                importada {versao.importado_em ? new Date(versao.importado_em).toLocaleDateString("pt-BR") : "—"}
+                {versao.importado_por ? ` por ${versao.importado_por}` : ""}
+              </CardDescription>
+            </div>
           </CardHeader>
           <div className="px-4 pb-3">
             <CampoBusca valor={busca} aoMudar={setBusca} dica="Buscar por código ou descrição…" />
@@ -19987,7 +20041,7 @@ function BancoPrecosView({ usuario }) {
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
             <CardTitle>Importar do Sienge</CardTitle>
             <CardDescription>
@@ -20003,11 +20057,13 @@ function BancoPrecosView({ usuario }) {
       {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
       <Card className="p-0">
-        <CardHeader>
-          <CardTitle>Preços por insumo</CardTitle>
-          <CardDescription>
-            Última compra de cada insumo. Reimportar atualiza os preços sem duplicar.{total > 0 && ` · ${total.toLocaleString("pt-BR")} cadastrados`}
-          </CardDescription>
+        <CardHeader className="px-4 pt-4">
+          <div className="min-w-0">
+            <CardTitle>Preços por insumo</CardTitle>
+            <CardDescription>
+              Última compra de cada insumo. Reimportar atualiza os preços sem duplicar.{total > 0 && ` · ${total.toLocaleString("pt-BR")} cadastrados`}
+            </CardDescription>
+          </div>
         </CardHeader>
 
         <div className="px-4 pb-3">
@@ -20028,7 +20084,7 @@ function BancoPrecosView({ usuario }) {
               : "Nenhum insumo encontrado com esse termo."} />
         ) : (
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-2xl">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-24">Código</TableHead>
@@ -20262,7 +20318,7 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
       toolbar={obras.length > 0 ? (
         <CampoBusca valor={search} aoMudar={setSearch} dica="Filtrar por nome, código, squad…" />
       ) : undefined}>
-      <p className="max-w-3xl text-sm text-text-mute">
+      <p className="max-w-3xl text-sm text-text">
         Estas obras existem no Monday mas ainda não foram iniciadas aqui. Ao dar start,
         a obra passa a ser gravada no banco — a partir daí, o que você fizer dentro dela
         (PDFs, conferências, aprovações) fica salvo e não se perde ao recarregar.
@@ -24351,11 +24407,17 @@ export default function App() {
             crumb="Canais de compra" title="Painel por canal"
             description="Cada obra com item do canal escolhido: quando ela entrega, quem é o GC, os cadernos pra baixar e o que já foi comprado."
             seletorCanal={!canalPreso && (
-              <ToggleGroup type="single" value={canalDoPainel} onValueChange={(v) => { if (v) setCanalDoPainel(v); }} aria-label="Canal de compra" className="flex-wrap">
-                {CANAIS_COMPRA.map((c) => (
-                  <ToggleGroupItem key={c.id} value={c.id} className="gap-1"><span className="mono">{c.sigla}</span> {c.nome}</ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+              /* Canal e' aba de nivel de pagina: mesmo padrao das abas da obra
+                 (underline), rolando na propria faixa no celular. */
+              <Tabs value={canalDoPainel} onValueChange={(v) => { if (v) setCanalDoPainel(v); }} activationMode="manual" className="w-full">
+                <div className="rolagem-discreta overflow-x-auto">
+                  <TabsList variant="underline" className="w-max min-w-full" aria-label="Canal de compra">
+                    {CANAIS_COMPRA.map((c) => (
+                      <TabsTrigger underline key={c.id} value={c.id} className="gap-1 whitespace-nowrap"><span className="mono">{c.sigla}</span> {c.nome}</TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
+              </Tabs>
             )} />
           </>
           ) : modulo === "mehoo" ? (
@@ -24535,7 +24597,7 @@ export default function App() {
             <PageShell title={`Diário de Obra — ${obra.codigo}/00`}
               description="O registro do dia a dia da obra.">
               <EmptyState icon={<BookOpen size={30} />} title="Diário de Obra"
-                description="Ainda não construímos esta tela — o menu está aqui pra a estrutura ficar de pé. Me diga o que a equipe registra no dia a dia da obra e eu desenho a partir disso." />
+                description="Esta área ainda está em construção. Em breve a equipe vai registrar aqui o dia a dia da obra." />
             </PageShell>
           )}
           {tab === "comparativo" && (

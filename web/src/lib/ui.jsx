@@ -74,7 +74,8 @@ const semAcento = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036
 /* `compacto`: o nome e' o proprio gatilho (botao ghost, texto do tamanho do
    valor ao redor, so' o nome) — para trocar a pessoa no meio de uma faixa de
    fatos sem virar um campo de formulario. */
-export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = "Ninguém", rotulo = "Escolher pessoa", disabled, compacto = false }) {
+/* `pequeno`: dentro de linha de tabela, o gatilho vai no tamanho sm (h-8). */
+export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = "Ninguém", rotulo = "Escolher pessoa", disabled, compacto = false, pequeno = false }) {
   const [aberto, setAberto] = useState(false);
   const atual = pessoas.find((p) => p.email === valor);
   const linha = (p) => (
@@ -92,7 +93,7 @@ export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = 
         <Button id={id} variant={compacto ? "ghost" : "outline"} role="combobox" aria-expanded={aberto} aria-label={rotulo} disabled={disabled}
           className={compacto
             ? "h-auto w-full min-w-0 justify-start gap-1 px-1 py-0 -ml-1 text-left text-sm font-semibold leading-snug"
-            : "w-full min-w-0 justify-between gap-2 font-normal"}>
+            : `w-full min-w-0 justify-between gap-2 font-normal${pequeno ? " h-8" : ""}`}>
           <span className={atual ? "min-w-0 truncate" : `min-w-0 truncate text-text-mute${compacto ? " font-normal italic" : ""}`}>
             {atual ? (compacto ? atual.nome : `${atual.nome}${atual.cargo ? ` · ${atual.cargo}` : ""}`) : vazio}
           </span>
@@ -123,13 +124,15 @@ export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = 
 
 /* `rotuloVisivel` falso: dentro de barra de ferramentas o rotulo fica so'
    para leitor de tela, e o campo alinha com a busca e os filtros. */
-export function Choice({ label, value, opcoes, onChange, placeholder, required, disabled, className = "", rotuloVisivel = true }) {
+/* `compacto`: dentro de card ou de linha, o select vai no tamanho sm (h-8),
+   o mesmo dos Button size="sm" ao lado. Na barra fica o padrao (h-10). */
+export function Choice({ label, value, opcoes, onChange, placeholder, required, disabled, className = "", rotuloVisivel = true, compacto = false }) {
   const id = useId();
   return (
     <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
       <Label htmlFor={id} required={required} className={rotuloVisivel ? undefined : "sr-only"}>{label}</Label>
       <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger id={id} aria-label={label}><SelectValue placeholder={placeholder} /></SelectTrigger>
+        <SelectTrigger id={id} aria-label={label} className={compacto ? "h-8" : undefined}><SelectValue placeholder={placeholder} /></SelectTrigger>
         <SelectContent>
           {opcoes.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
         </SelectContent>

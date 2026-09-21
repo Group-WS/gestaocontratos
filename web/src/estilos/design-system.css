@@ -472,3 +472,38 @@
     justify-content: flex-end;
   }
 }
+
+/* CABEÇALHO DE PÁGINA NO CELULAR E AÇÃO NO TOPO (21/09/2026).
+
+   O PageShell do DS põe título e ações na mesma linha com `flex-wrap
+   items-end`, e o bloco do título é `min-w-0 flex-1`: no celular, com uma
+   ação ("Novo aditivo", "Subir lista de produtos"), o título encolhia para
+   ~40% da largura, uma palavra por linha, em vez de quebrar a linha. E a
+   ação alinhava pela base do título, não pelo topo.
+
+   Aqui, em toda página: ações no topo (flex-start); abaixo de 640px o
+   título ocupa a linha inteira e as ações descem, encostadas à direita.
+   O cabeçalho da obra tem a grade própria acima (seletor mais específico,
+   com :has) e não é afetado. Lacuna registrada do DS: quando o PageShell
+   empilhar sozinho no celular e alinhar pelo topo, esta regra sai. */
+[class~="-mx-4"][class~="-my-6"] > .border-b:first-child > div:last-child {
+  align-items: flex-start;
+}
+@media (max-width: 639px) {
+  [class~="-mx-4"][class~="-my-6"] > .border-b:first-child > div:last-child > div:first-child:not(:last-child) {
+    flex-basis: 100%;
+  }
+  [class~="-mx-4"][class~="-my-6"] > .border-b:first-child > div:last-child > div:last-child:not(:first-child) {
+    margin-left: auto;
+  }
+}
+
+/* Faixa de abas que rola na horizontal no celular (abas da obra, da Gestão,
+   canais): a rolagem continua pelo toque, mas sem a barra cinza por baixo
+   das abas, que parecia um fio a mais e cortava a linha do sublinhado. */
+.rolagem-discreta {
+  scrollbar-width: none;
+}
+.rolagem-discreta::-webkit-scrollbar {
+  display: none;
+}

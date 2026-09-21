@@ -18,7 +18,7 @@ const options = (rows, key) => [...new Set(rows.map((row) => row[key]))].sort((a
    leitor de tela, e um "Todas" solto na barra nao dizia de que filtro era. */
 function Choice({ label, value, values, onChange, disabled = false, allLabel }) {
   const id = React.useId();
-  return <div className="flex w-full min-w-0 flex-col gap-1 sm:w-48">
+  return <div className="flex min-w-0 flex-col gap-1 sm:w-48">
     <Label htmlFor={id} className="sr-only">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={label}><SelectValue /></SelectTrigger>
@@ -134,8 +134,10 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
   const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   /* Filtro mora na TOOLBAR do PageShell, abaixo do titulo — o lado direito
      do titulo e' das acoes (App Shell do DS, nivel 6). */
-  const controls = <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Filtros do dashboard">
-    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-72"><Label htmlFor="dashboard-search" className="sr-only">Buscar obra</Label><Input icon={<Search size={16} aria-hidden="true" />} id="dashboard-search" placeholder="Código ou nome" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div>
+  /* No celular os quatro selects vao numa grade de 2 colunas: um por linha,
+     a barra fixa comia um terco da tela antes da primeira obra. */
+  const controls = <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3" role="group" aria-label="Filtros do dashboard">
+    <div className="col-span-2 flex w-full min-w-0 flex-col gap-1 sm:w-72"><Label htmlFor="dashboard-search" className="sr-only">Buscar obra</Label><Input icon={<Search size={16} aria-hidden="true" />} id="dashboard-search" placeholder="Código ou nome" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div>
     <Choice label="Unidade" allLabel="Todas as unidades" disabled={!rows.some((row) => row.unit !== "Não informada")} value={filters.unit} values={options(rows, "unit")} onChange={(value) => update("unit", value)} />
     <Choice label="Squad" allLabel="Todos os squads" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} />
     <Choice label="GC" allLabel="Todos os GCs" value={filters.gc} values={options(rows, "gc")} onChange={(value) => update("gc", value)} />
@@ -167,7 +169,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
           Ver obras com compra pendente <ArrowRight size={14} aria-hidden="true" />
         </Button>
       </div>
-      <div className="col-span-12 grid grid-cols-1 gap-4 sm:grid-cols-3 xl:col-span-7">
+      <div className="col-span-12 grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-3 xl:col-span-7">
         {kpis.map(({ icon: Icon, ...kpi }) => <Card key={kpi.label}>
           <CardContent className="flex h-full flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
@@ -195,12 +197,12 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
               <TableHeader className="sr-only"><TableRow>{["Prioridade", "Obra", "Pendência", "Prazo", "Valor", "GC", "Ação"].map((label) => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
               <TableBody>{visibleAlerts.map((alert, index) => <TableRow key={alert.id || index}>
                 <TableCell className="w-24"><Badge tone={alert.critical ? "danger" : alert.upcoming ? "neutral" : "warning"}>{alert.critical ? "Crítica" : alert.upcoming ? "A vencer" : "Atenção"}</Badge></TableCell>
-                <TableCell className="text-sm font-semibold text-text">{alert.row ? `#${alert.row.code} ${alert.row.name}` : "Equipe e operação"}</TableCell>
-                <TableCell className="text-sm text-text">{alert.text}</TableCell>
+                <TableCell className="w-56 min-w-48 text-sm font-semibold text-text">{alert.row ? `#${alert.row.code} ${alert.row.name}` : "Equipe e operação"}</TableCell>
+                <TableCell className="min-w-56 text-sm text-text">{alert.text}</TableCell>
                 <TableCell className={cn("w-24 whitespace-nowrap text-center text-xs", alert.upcoming ? "text-text-mute" : "text-danger")}>{alert.days != null ? `• ${Math.abs(alert.days)} ${Math.abs(alert.days) === 1 ? "dia" : "dias"}` : "—"}</TableCell>
                 <TableCell className="w-32 whitespace-nowrap text-right font-mono text-sm tabular-nums">{alert.amount != null ? money(alert.amount) : "—"}</TableCell>
-                <TableCell className="text-xs text-text-mute">{alert.row ? `GC ${alert.row.gc}` : "—"}</TableCell>
-                <TableCell className="text-right"><Button size="sm" variant="outline" onClick={alert.action}>{alert.button || "Abrir"} <ArrowRight size={14} aria-hidden="true" /></Button></TableCell>
+                <TableCell className="w-32 whitespace-nowrap text-xs text-text-mute">{alert.row ? `GC ${alert.row.gc}` : "—"}</TableCell>
+                <TableCell className="w-32 whitespace-nowrap text-right"><Button size="sm" variant="outline" onClick={alert.action}>{alert.button || "Abrir"} <ArrowRight size={14} aria-hidden="true" /></Button></TableCell>
               </TableRow>)}</TableBody>
             </Table>}
           </CardContent>
@@ -241,8 +243,8 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
         </Card>
       </div>
       <Card className="min-w-0" ref={projectsRef} tabIndex={-1}>
-        <CardHeader><div className="min-w-0"><CardTitle className="flex items-center gap-2"><ClipboardList size={16} className="shrink-0 text-brand" aria-hidden="true" />Obras ativas <Badge tone="neutral">{tableRows.length}</Badge></CardTitle><CardDescription>Acompanhe o andamento de todas as obras, ordenadas por maior risco.</CardDescription></div>
-          <div className="shrink-0"><Label htmlFor="dashboard-order" className="sr-only">Ordenar por</Label><Select value={filters.order} onValueChange={(value) => update("order", value)}><SelectTrigger id="dashboard-order" className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="risk">Maior risco</SelectItem><SelectItem value="delivery">Entrega mais próxima</SelectItem><SelectItem value="name">Nome da obra</SelectItem><SelectItem value="purchase">Maior valor a comprar</SelectItem></SelectContent></Select></div>
+        <CardHeader className="flex-col sm:flex-row"><div className="min-w-0"><CardTitle className="flex items-center gap-2"><ClipboardList size={16} className="shrink-0 text-brand" aria-hidden="true" />Obras ativas <Badge tone="neutral">{tableRows.length}</Badge></CardTitle><CardDescription>Acompanhe o andamento de todas as obras, ordenadas por maior risco.</CardDescription></div>
+          <div className="w-full sm:w-auto sm:shrink-0"><Label htmlFor="dashboard-order" className="sr-only">Ordenar por</Label><Select value={filters.order} onValueChange={(value) => update("order", value)}><SelectTrigger id="dashboard-order" className="h-8 w-full sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="risk">Maior risco</SelectItem><SelectItem value="delivery">Entrega mais próxima</SelectItem><SelectItem value="name">Nome da obra</SelectItem><SelectItem value="purchase">Maior valor a comprar</SelectItem></SelectContent></Select></div>
         </CardHeader>
         <CardContent>
           {loading ? <Skeleton className="h-32 w-full" /> : !tableRows.length && error ? <p role="status">Não foi possível carregar as obras. Use “Tentar novamente” para atualizar.</p> : !tableRows.length ? <div role="status"><EmptyState title={active ? "Nenhum resultado para os filtros aplicados." : "Nenhuma obra ativa no momento."} action={active ? <Button variant="outline" size="sm" onClick={clear}>Limpar filtros</Button> : undefined} /></div> : <Table aria-label="Obras ativas">

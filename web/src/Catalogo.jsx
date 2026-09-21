@@ -197,12 +197,14 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
           usoDe={(nome) => produtos.filter((p) => p.fornecedor === nome).length} />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
             {/* Produto e acabamento no MESMO lugar viram palheiro: 216
                 amostras de MDF e tecido enterram as 74 pecas. */}
             <div className="flex w-full items-center gap-2 sm:w-auto">
-              <Input icon={<Search size={16} aria-hidden="true" />} value={termo} onChange={(e) => setTermo(e.target.value)}
-                className="w-full sm:w-72" placeholder="nome, código, fornecedor…" aria-label="Buscar no catálogo" />
+              <div className="min-w-0 flex-1 sm:w-72 sm:flex-none">
+                <Input icon={<Search size={16} aria-hidden="true" />} value={termo} onChange={(e) => setTermo(e.target.value)}
+                  className="w-full" placeholder="Nome, código, fornecedor…" aria-label="Buscar no catálogo" />
+              </div>
               {termo && (
                 <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => setTermo("")}>
                   <X size={16} aria-hidden="true" />
@@ -223,24 +225,26 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
               <Select value={forn || TODOS} onValueChange={(v) => setForn(v === TODOS ? "" : v)}>
                 <SelectTrigger className="w-full sm:w-56" aria-label="Fornecedor"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={TODOS}>todos os fornecedores</SelectItem>
+                  <SelectItem value={TODOS}>Todos os fornecedores</SelectItem>
                   {fornecedores.map((f) => <SelectItem key={f.id} value={f.nome}>{f.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}
           </div>
 
-          <ToggleGroup type="single" value={verba || TODOS} aria-label="Grupo" className="flex flex-wrap"
+          {/* No celular os grupos rolam na propria faixa (quebrando, eram 5
+              linhas de botao antes do primeiro produto); do sm para cima quebram. */}
+          <ToggleGroup type="single" value={verba || TODOS} aria-label="Grupo" className="flex max-w-full overflow-x-auto sm:flex-wrap"
             onValueChange={(v) => { if (v) { setVerba(v === TODOS ? "" : v); setSubgrupo(""); } }}>
-            <ToggleGroupItem value={TODOS}>Todos</ToggleGroupItem>
-            {verbas.map((v) => <ToggleGroupItem key={v.num} value={v.num}>{v.nome}</ToggleGroupItem>)}
+            <ToggleGroupItem value={TODOS} className="shrink-0 whitespace-nowrap">Todos</ToggleGroupItem>
+            {verbas.map((v) => <ToggleGroupItem key={v.num} value={v.num} className="shrink-0 whitespace-nowrap">{v.nome}</ToggleGroupItem>)}
           </ToggleGroup>
 
           {subgrupos.length > 0 && (
-            <ToggleGroup type="single" value={subgrupo || TODOS} aria-label="Subgrupo" className="flex flex-wrap"
+            <ToggleGroup type="single" value={subgrupo || TODOS} aria-label="Subgrupo" className="flex max-w-full overflow-x-auto sm:flex-wrap"
               onValueChange={(v) => { if (v) setSubgrupo(v === TODOS ? "" : v); }}>
-              <ToggleGroupItem value={TODOS}>todos</ToggleGroupItem>
-              {subgrupos.map((s) => <ToggleGroupItem key={s} value={s}>{s}</ToggleGroupItem>)}
+              <ToggleGroupItem value={TODOS} className="shrink-0 whitespace-nowrap">Todos</ToggleGroupItem>
+              {subgrupos.map((s) => <ToggleGroupItem key={s} value={s} className="shrink-0 whitespace-nowrap">{s}</ToggleGroupItem>)}
             </ToggleGroup>
           )}
 

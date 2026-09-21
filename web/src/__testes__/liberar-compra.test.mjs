@@ -301,7 +301,7 @@ conf("a tela repassa para a lista", /onConferirVarios=\{onConferirAlertaEmVarios
    quantos produtos, quantos liberados, quantos concluídos —, porque agora
    são duas decisões na mesma tela. */
 conf("o contador usa os produtos do grupo",
-  src.includes("{g.nProdutos ?? g.itens.length} produtos"), true);
+  src.includes('{g.nProdutos ?? g.itens.length} {(g.nProdutos ?? g.itens.length) === 1 ? "produto" : "produtos"}'), true);
 /* OS NOMES INTEIROS E NA ORDEM DO FLUXO (pedido dela, 19/09/2026):
    "sempre colocar 'Concluido executivo' e 'Liberado para compra' mesmo aqui
    na barra. e sempre na ordem, primeiro vem o concluido e depois o liberado."
