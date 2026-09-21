@@ -927,32 +927,35 @@ function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno,
   }
 
   return (
-    <div className="jornada-anexos">
-      <div className="jornada-grupo">
-        <div className="jornada-grupo-rot">
-          Contrato <span className="jornada-grupo-nota"><Lock size={10} /> só administrador</span>
-        </div>
-        <div className="caderno-lista">
-          {souAdmin ? slot(CADERNO_CONTRATO) : (
-            <div className="caderno-slot">
-              <Lock size={14} className="dim" />
-              <span className="caderno-slot-titulo">Contrato</span>
-              <span className="caderno-slot-vazio">
-                {cad.contrato ? "anexado — acesso restrito ao administrador" : "acesso restrito ao administrador"}
-              </span>
-            </div>
-          )}
-        </div>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <SecaoRotulo conta={<><Lock size={12} aria-hidden="true" /> só administrador</>}>Contrato</SecaoRotulo>
+        <Card className="p-0">
+          <CardContent className="divide-y divide-line-1 p-0">
+            {souAdmin ? slot(CADERNO_CONTRATO) : (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+                <Lock size={16} aria-hidden="true" className="shrink-0 text-text-mute" />
+                <span className="min-w-0 flex-1 text-sm font-semibold text-text">Contrato</span>
+                <span className="text-xs text-text-mute">
+                  {cad.contrato ? "anexado — acesso restrito ao administrador" : "acesso restrito ao administrador"}
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="jornada-grupo">
-        <div className="jornada-grupo-rot">Criativo</div>
-        <div className="caderno-lista">{slot(cadernoPorChave("criativo"), congeladoProjeto)}</div>
+      <div className="flex flex-col gap-2">
+        <SecaoRotulo>Criativo</SecaoRotulo>
+        <Card className="p-0">
+          <CardContent className="divide-y divide-line-1 p-0">{slot(cadernoPorChave("criativo"), congeladoProjeto)}</CardContent>
+        </Card>
       </div>
 
-      <div className="jornada-grupo">
-        <div className="jornada-grupo-rot">Executivo</div>
-        <div className="caderno-lista">
+      <div className="flex flex-col gap-2">
+        <SecaoRotulo>Executivo</SecaoRotulo>
+        <Card className="p-0">
+          <CardContent className="divide-y divide-line-1 p-0">
           {["especificacao", "marcenaria", "projeto"].map((k) => slot(cadernoPorChave(k), congeladoProjeto))}
           {/* "Apresentação de Especificações" SAIU daqui em 18/09/2026, a
               pedido dela: "esta duplicado... vou manter somente o caderno de
@@ -963,19 +966,22 @@ function AnexosDaJornada({ obra, usuario, podeEditar, souAdmin, onImportCaderno,
               deixa de ter caminho na tela vira arquivo perdido. Quem apaga o
               vinculo e' ela, pelo `supabase/limpar-apresentacao-caderno.sql`
               — e ate' la' o que existe continua alcancavel. */}
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="jornada-grupo">
-        <div className="jornada-grupo-rot">Outros</div>
+      <div className="flex flex-col gap-2">
+        <SecaoRotulo>Outros</SecaoRotulo>
         {outros.length > 0 && (
-          <div className="caderno-lista">
-            {outros.map((a) => <ArquivoLinha key={a.id} a={a} semFase podeEditar={podeEditar} onExcluir={excluir} />)}
-          </div>
+          <Card className="p-0">
+            <CardContent className="divide-y divide-line-1 p-0">
+              {outros.map((a) => <ArquivoLinha key={a.id} a={a} semFase podeEditar={podeEditar} onExcluir={excluir} />)}
+            </CardContent>
+          </Card>
         )}
-        {outros.length === 0 && !podeEditar && <div className="jornada-vazio">Nenhum outro arquivo.</div>}
+        {outros.length === 0 && !podeEditar && <div className="text-xs text-text-mute">Nenhum outro arquivo.</div>}
         {podeEditar && <AnexarAvulso obra={obra} usuario={usuario} fase="outros" onArquivos={onArquivos} />}
-        {erro && <div className="caderno-erro">{erro}</div>}
+        {erro && <FieldHint state="error">{erro}</FieldHint>}
       </div>
     </div>
   );
@@ -1014,15 +1020,15 @@ function AnexarAvulso({ obra, usuario, fase, onArquivos, rotulo = "Anexar arquiv
   }
 
   return (
-    <div className="jornada-anexar">
-      <input className="form-input jornada-anexar-desc" value={titulo} maxLength={80}
+    <div className="flex flex-wrap items-center gap-2">
+      <Input className="w-full sm:w-72" aria-label="Descrição do arquivo" value={titulo} maxLength={80}
         placeholder="Descrição do arquivo (ex: Memorial descritivo)"
         onChange={(e) => setTitulo(e.target.value)} />
       <Button variant="outline" size="sm" type="button" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
-        <Upload size={12} /> {enviando ? "Enviando…" : rotulo}
+        <Upload size={14} aria-hidden="true" /> {enviando ? "Enviando…" : rotulo}
       </Button>
       <SeletorDeArquivo ref={inputRef} accept={EXTENSOES_ACEITAS} onChange={aoEscolher} />
-      {erro && <span className="caderno-erro">{erro}</span>}
+      {erro && <FieldHint state="error" className="w-full">{erro}</FieldHint>}
     </div>
   );
 }
@@ -8829,28 +8835,27 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
   const perdido = arquivo && !anexoRecuperavel(arquivo);
 
   return (
-    <div className="caderno-slot">
-      <BookOpen size={14} className={arquivo ? "" : "dim"} />
-      <span className="caderno-slot-titulo">{titulo}</span>
+    <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+      <BookOpen size={16} aria-hidden="true" className="shrink-0 text-text-mute" />
+      <span className="min-w-0 flex-1 text-sm font-semibold text-text">{titulo}</span>
       {arquivo ? (
-        <>
-          <span className="caderno-slot-arquivo">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
-          {perdido ? (
-            <span className="caderno-slot-vazio">arquivo não guardado — anexe de novo</span>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={() => abrir(false)} disabled={!!ocupado}>
-                <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => abrir(true)} disabled={!!ocupado}>
-                <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
-              </Button>
-            </>
-          )}
-        </>
+        <span className="truncate text-xs text-text-mute">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
       ) : (
-        <span className="caderno-slot-vazio">sem arquivo</span>
+        <span className="text-xs text-text-mute">sem arquivo</span>
       )}
+      <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+      {arquivo && (perdido ? (
+        <span className="text-xs text-text-mute">arquivo não guardado — anexe de novo</span>
+      ) : (
+        <>
+          <Button variant="outline" size="sm" onClick={() => abrir(false)} disabled={!!ocupado}>
+            <Search size={14} aria-hidden="true" /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => abrir(true)} disabled={!!ocupado}>
+            <Download size={14} aria-hidden="true" /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
+          </Button>
+        </>
+      ))}
       {/* CONGELAR E' NAO TROCAR — NAO E' NAO ANEXAR (17/09/2026).
 
           Ela abriu a 2204 com a edicao na mao dela e nao achou como subir os
@@ -8864,16 +8869,17 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
           garante que o documento nunca entra no sistema. */}
       {podeEditar && (!congelado || !arquivo) && (
         <Button variant="outline" size="sm" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
-          <Upload size={12} /> {enviando ? "Enviando…" : arquivo ? "Trocar" : "Anexar"}
+          <Upload size={14} aria-hidden="true" /> {enviando ? "Enviando…" : arquivo ? "Trocar" : "Anexar"}
         </Button>
       )}
       {podeEditar && congelado && arquivo && !perdido && (
-        <span className="caderno-slot-vazio" title="As compras já foram liberadas: este arquivo é a prova do que foi mandado para o fornecedor e não pode ser trocado.">
-          <Lock size={10} /> compras liberadas
-        </span>
+        <Badge tone="neutral" title="As compras já foram liberadas: este arquivo é a prova do que foi mandado para o fornecedor e não pode ser trocado.">
+          <Lock size={12} aria-hidden="true" /> compras liberadas
+        </Badge>
       )}
+      </div>
       <SeletorDeArquivo ref={inputRef} accept={EXTENSOES_ACEITAS} onChange={aoEscolher} />
-      {erro && <span className="caderno-erro">{erro}</span>}
+      {erro && <FieldHint state="error" className="w-full">{erro}</FieldHint>}
     </div>
   );
 }
@@ -12481,7 +12487,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   if (rows.length === 0) {
     return (
       <PageShell title="Compras de Produtos" description="Escolha por onde comprar cada material do executivo e acompanhe o que já foi solicitado e comprado.">
-        <EmptyState icon={<ShoppingCart size={30} />} title="Esta obra ainda não tem material no executivo"
+        <EmptyState icon={<ShoppingCart size={30} aria-hidden="true" />} title="Esta obra ainda não tem material no executivo"
           description="Quando o executivo for carregado, tudo que tem parcela de material aparece aqui pra você escolher por onde comprar." />
       </PageShell>
     );
@@ -12512,10 +12518,6 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
 
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant="outline" onClick={selecionarTudo}>
-        <Check size={16} /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
-      </Button>
-      {sel.size > 0 && <Button variant="ghost" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
       <CampoBusca valor={busca} aoMudar={setBusca}
         contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
       {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
@@ -12523,15 +12525,19 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
       {obs.length > 0 && (
         <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}
           title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
-          <MessageSquare size={16} /> com observação interna ({obs.length})
+          <MessageSquare size={16} aria-hidden="true" /> com observação interna <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
         </Toggle>
       )}
+      {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
+          ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
+          cima desalinhava a fila inteira. */}
+      <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
+        onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-full sm:w-72" />
       <div className="flex w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto">
-        {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
-            ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
-            cima desalinhava a fila inteira. */}
-        <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
-          onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-full sm:w-72" />
+        <Button variant="outline" onClick={selecionarTudo}>
+          <Check size={16} aria-hidden="true" /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
+        </Button>
+        {sel.size > 0 && <Button variant="ghost" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
         {fornecedor && fornecedor !== SEM_FORNECEDOR && (
           <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
             <Checkbox id={idNomeNoPdf} checked={nomeNoPdf} onCheckedChange={(v) => setNomeNoPdf(v === true)} />
@@ -12548,7 +12554,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             : !fornecedor || fornecedor === SEM_FORNECEDOR
             ? "Escolha um fornecedor pra gerar o pedido"
             : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
-          <Printer size={16} /> Pedido de orçamento
+          <Printer size={16} aria-hidden="true" /> Pedido de orçamento
         </Button>
       </div>
     </div>
@@ -12577,12 +12583,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               <React.Fragment key={e.id}>
                 <TabsTrigger value={e.id} className="h-auto min-w-24 flex-1 basis-0 flex-col items-center justify-start gap-1 px-4 py-2 whitespace-nowrap">
                   {e.canal ? <TagCanal id={e.canal} /> : <span className="invisible" aria-hidden="true"><TagCanal id="sienge" /></span>}
-                  <span className="text-lg font-bold leading-none">{e.n}</span>
+                  <span className="text-lg font-semibold leading-none tabular-nums">{e.n}</span>
                   <span className="text-xs">{e.rot}</span>
                   <span className="mono text-xs opacity-80">{fmtCompactBRL(e.v)}</span>
                   {e.canal && e.n > 0 && (
-                    <span className={`flex items-center gap-1 text-xs ${e.feitos === e.n ? "font-semibold text-success" : "opacity-80"}`}>
-                      {e.feitos === e.n ? <><Check size={12} /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
+                    <span className={`flex items-center gap-1 text-xs ${e.feitos === e.n ? "text-success" : "opacity-80"}`}>
+                      {e.feitos === e.n ? <><Check size={12} aria-hidden="true" /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
                     </span>
                   )}
                 </TabsTrigger>
@@ -12606,7 +12612,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   : "Modo leitura: o seu perfil consulta as Compras, sem marcar."}
             </span>
             {onHabilitar && !editandoPor && (
-              <Button onClick={onHabilitar} className="shrink-0"><Lock size={16} /> Habilitar edição</Button>
+              <Button size="sm" onClick={onHabilitar} className="shrink-0"><Lock size={14} aria-hidden="true" /> Habilitar edição</Button>
             )}
           </AlertDescription>
         </Alert>
@@ -12622,8 +12628,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   : "Os produtos já estão aqui. A busca do insumo no Sienge roda por grupo, no botão “Associar insumos” da barra de cada um."}
             </span>
             {baseSienge && (
-              <Button variant="outline" onClick={recarregarBase} disabled={carregando} className="shrink-0">
-                <PackageSearch size={16} /> {carregando ? "Recarregando…" : "Recarregar base"}
+              <Button variant="outline" size="sm" onClick={recarregarBase} disabled={carregando} className="shrink-0">
+                <PackageSearch size={14} aria-hidden="true" /> {carregando ? "Recarregando…" : "Recarregar base"}
               </Button>
             )}
           </AlertDescription>
@@ -12638,11 +12644,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         <Card>
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start">
             <div className="min-w-0 flex-1 space-y-2">
-              <CardTitle className="flex items-center gap-2"><PackageSearch size={16} /> Conferência com o Sienge</CardTitle>
+              <CardTitle className="flex items-center gap-2"><PackageSearch size={16} aria-hidden="true" /> Conferência com o Sienge</CardTitle>
               <CardDescription className="flex flex-wrap items-center gap-2">
                 {doSienge.docs.map((d) => (
                   <Badge tone="neutral" key={d.nome} className="gap-1 pr-1">
-                    {d.nome} <b>{d.n}</b>{d.numero ? ` · nº ${d.numero}` : ""}
+                    {d.nome} <span className="tabular-nums">{d.n}</span>{d.numero ? ` · nº ${d.numero}` : ""}
                     {/* Tirar um arquivo sem recomecar: as vezes so um deles
                         estava errado, e refazer a selecao inteira e caro. */}
                     <BotaoIcone rotulo="Tirar este arquivo da conferência" variant="ghost" className="h-5 w-5 text-danger"
@@ -12656,7 +12662,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 ))}
               </CardDescription>
             </div>
-            <Button variant="outline" onClick={() => setDoSienge(null)} className="shrink-0"><X size={16} /> Limpar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDoSienge(null)} className="shrink-0 sm:ml-auto"><X size={14} aria-hidden="true" /> Limpar</Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -12671,12 +12677,19 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 <h3 className="label-mono text-danger">Falta lançar no Sienge</h3>
                 <div className="overflow-x-auto">
                   <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">Verba</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="w-28 text-center">Material</TableHead>
+                      </TableRow>
+                    </TableHeader>
                     <TableBody>
                       {confronto.faltaLancar.map((r) => (
                         <TableRow key={r.chave}>
                           <TableCell className="mono w-16 text-text-mute">{r.catNum}</TableCell>
-                          <TableCell>{r.it.desc}</TableCell>
-                          <TableCell className="mono w-28 text-right">{fmtBRL(r.material)}</TableCell>
+                          <TableCell className="text-sm text-text">{r.it.desc}</TableCell>
+                          <TableCell className="mono w-28 text-right tabular-nums">{fmtBRL(r.material)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -12692,12 +12705,19 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 <h3 className="label-mono text-warning">Não listado aqui — está no Sienge e não na planilha</h3>
                 <div className="overflow-x-auto">
                   <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">Código</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="w-28 text-center">Qtd. prevista</TableHead>
+                      </TableRow>
+                    </TableHeader>
                     <TableBody>
                       {confronto.naoListados.map((s, k) => (
                         <TableRow key={k}>
                           <TableCell className="mono w-16 text-text-mute">{s.codigo}</TableCell>
-                          <TableCell>{s.descricao}</TableCell>
-                          <TableCell className="mono w-28 text-right text-text-mute">{s.qtdPrevista ?? "—"} {s.un}</TableCell>
+                          <TableCell className="text-sm text-text">{s.descricao}</TableCell>
+                          <TableCell className="mono w-28 text-center tabular-nums text-text-mute">{s.qtdPrevista ?? "—"} {s.un}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -12726,9 +12746,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         </RelatorioSobreposto>
       )}
 
-      {porVerba.length === 0 && <EmptyState icon={<ShoppingCart size={26} />} title="Nada nesta etapa." />}
+      {porVerba.length === 0 && <EmptyState icon={<ShoppingCart size={26} aria-hidden="true" />} title="Nada nesta etapa." />}
       {porVerba.length > 0 && naTelaTudo.length === 0 && (
-        <EmptyState icon={<Search size={26} />} title={`Nada encontrado para "${busca.trim()}" nesta etapa.`} />
+        <EmptyState icon={<Search size={26} aria-hidden="true" />} title={`Nada encontrado para "${busca.trim()}" nesta etapa.`} />
       )}
       {porVerba.length > 0 && naTelaTudo.length > 0 && (
         <Card>
@@ -12789,18 +12809,19 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 }
                 cabecalho={
                   <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <span className="mono text-text-mute">{g.num}</span>
-                    <span className="min-w-0 font-semibold">{g.nome}</span>
+                    <span className="mono w-10 shrink-0 text-xs text-text-mute">{g.num}</span>
+                    <span className="min-w-0 flex-1 text-sm font-semibold text-text">{g.nome}</span>
+                    <span className="flex w-full flex-wrap items-center gap-2 lg:w-96 lg:shrink-0">
                     <Badge tone="neutral">{buscando ? `${nNaTela} de ${nItens}` : nItens} {nItens === 1 && !buscando ? "produto" : "produtos"}</Badge>
                     {/* No Sienge, solicitar vem antes de comprar: quanto do grupo já foi solicitado. */}
                     {noSienge && (
                       <Badge tone={tomContagem(nSolicitados)} title="Solicitados no Sienge — o passo antes da compra">
-                        {nSolicitados === nItens ? <><Check size={12} /> tudo solicitado</> : `${nSolicitados} de ${nItens} solicitados`}
+                        {nSolicitados === nItens ? <><Check size={12} aria-hidden="true" /> tudo solicitado</> : `${nSolicitados} de ${nItens} solicitados`}
                       </Badge>
                     )}
                     {/* Quanto do grupo já foi comprado, sem precisar abrir: */}
                     <Badge tone={tomContagem(nComprados)} title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
-                      {nComprados === nItens ? <><Check size={12} /> tudo comprado</> : `${nComprados} de ${nItens} comprados`}
+                      {nComprados === nItens ? <><Check size={12} aria-hidden="true" /> tudo comprado</> : `${nComprados} de ${nItens} comprados`}
                     </Badge>
                     {/* TEVE TROCA AQUI (pedido dela, 18/09/2026): "sinalizar no
                         grupo se teve alguma troca". Sem isto, a troca so'
@@ -12809,10 +12830,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                       <Badge tone="warning" title={nTrocas === 1
                         ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
                         : `${nTrocas} produtos desta verba foram trocados — as linhas antigas ficam riscadas, sem contar`}>
-                        <ArrowLeftRight size={12} /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
+                        <ArrowLeftRight size={12} aria-hidden="true" /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
                       </Badge>
                     )}
                     {nSel > 0 && <Badge tone="purple">{nSel} selecionados</Badge>}
+                    </span>
                   </span>
                 }
                 acoes={
@@ -12821,25 +12843,25 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                         obra inteira de uma vez congelava a tela. */}
                     {etapa === "sienge" && (grupoAssociado ? (
                       <>
-                        <span className="flex items-center gap-1 text-xs font-semibold whitespace-nowrap text-success"><Check size={12} /> insumos sugeridos</span>
+                        <span className="flex items-center gap-1 text-xs whitespace-nowrap text-success"><Check size={12} aria-hidden="true" /> insumos sugeridos</span>
                         {/* O mesmo CSV do Gerador de códigos, só com o que
                             precisa de cadastro neste grupo. */}
                         {template.length > 0 && (
                           <Button variant="outline" size="sm" type="button" onClick={() => baixarTemplateDoGrupo(g, template)}
                             title={`CSV no padrão do Sienge (cadastro de detalhe), igual ao do Gerador de códigos.${semInsumo ? ` ${semInsumo} sem insumo mãe: o código do insumo sai em branco.` : ""} O código do detalhe sai em branco — preencha antes de subir.`}>
-                            <Download size={16} /> Template Sienge ({template.length})
+                            <Download size={14} aria-hidden="true" /> Template Sienge ({template.length})
                           </Button>
                         )}
                       </>
                     ) : (
                       <Button variant="outline" size="sm" type="button" disabled={associando != null}
                         onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
-                        <PackageSearch size={16} /> {associando === g.num ? "Associando…" : "Associar insumos"}
+                        <PackageSearch size={14} aria-hidden="true" /> {associando === g.num ? "Associando…" : "Associar insumos"}
                       </Button>
                     ))}
-                    <div className="min-w-24 text-right">
-                      <div className="label-mono">Material</div>
-                      <div className="mono text-sm font-semibold">{fmtBRL(g.total)}</div>
+                    <div className="w-32 shrink-0">
+                      <div className="label-mono text-center">Material</div>
+                      <div className="mono text-right text-sm font-semibold tabular-nums">{fmtBRL(g.total)}</div>
                     </div>
                   </>
                 }
@@ -12859,7 +12881,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                         <TableHead className="w-16">Cód.</TableHead>
                         <TableHead>Descrição</TableHead>
                         <TableHead className="w-20 text-center">Qtd.</TableHead>
-                        <TableHead className="w-28 text-right">Material</TableHead>
+                        <TableHead className="w-28 text-center">Material</TableHead>
                         {/* Na etapa Sienge o canal é sempre Sienge: a coluna dá lugar ao
                             status da solicitação, que é o passo antes da compra. */}
                         {!noSienge && <TableHead className="w-28 text-center">Canal</TableHead>}
@@ -12976,9 +12998,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
           <Collapsible open={verHistorico} onOpenChange={setVerHistorico}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="h-auto w-full justify-start gap-2 px-2 py-2 text-left font-normal whitespace-normal">
-                {verHistorico ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />}
+                {verHistorico ? <ChevronDown size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" aria-hidden="true" />}
                 <span className="min-w-0 flex-1">
-                  <b>{historico.length}</b>
+                  <span className="tabular-nums">{historico.length}</span>
                   {historico.length === 1 ? " solicitação enviada" : " solicitações enviadas"} ao Sienge
                 </span>
                 <span className="text-xs whitespace-nowrap text-text-mute">
@@ -12992,9 +13014,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-24">Solicitação</TableHead>
-                      <TableHead className="w-32">Quando</TableHead>
+                      <TableHead className="w-32 text-center">Quando</TableHead>
                       <TableHead className="hidden w-40 md:table-cell">Quem</TableHead>
-                      <TableHead>Resultado</TableHead>
+                      <TableHead className="w-40">Resultado</TableHead>
+                      <TableHead className="w-32 text-center">Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -13021,11 +13044,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                               <Button variant="ghost" size="sm"
                                 onClick={() => setEnvioAberto(aberta ? null : h.id)}
                                 title={aberta ? "Fechar" : "Ver o que foi pedido"}>
-                                {aberta ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                {aberta ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
                                 <span className="mono">{h.solicitacao_id || "—"}</span>
                               </Button>
                             </TableCell>
-                            <TableCell className="text-text-mute">{dataCurta(h.enviado_em)}</TableCell>
+                            <TableCell className="text-center text-text-mute tabular-nums">{dataCurta(h.enviado_em)}</TableCell>
                             {/* O e-mail inteiro é a mesma informação com o
                                 dobro da largura — o nome basta, e o endereço
                                 fica no title. */}
@@ -13040,14 +13063,14 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                                   ? `${entraram} de ${entraram + recusados}`
                                   : `${entraram} ${entraram === 1 ? "item" : "itens"}`}
                               </Badge>
-                              {itensPedidos.length > 0 && (
-                                <span className="ml-2 text-xs text-text-mute">{fmtBRL(totalDoEnvio(h))}</span>
-                              )}
+                            </TableCell>
+                            <TableCell className="mono w-32 text-right tabular-nums">
+                              {itensPedidos.length > 0 ? fmtBRL(totalDoEnvio(h)) : "—"}
                             </TableCell>
                           </TableRow>
                           {aberta && (
                             <TableRow className="bg-surface-2 hover:bg-surface-2">
-                              <TableCell colSpan={4} className="p-0">
+                              <TableCell colSpan={5} className="p-0">
                                 {itensPedidos.length === 0 ? (
                                   <div className="p-4 text-text-mute">Este envio não registrou os itens.</div>
                                 ) : (
@@ -13057,10 +13080,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                                         <TableRow>
                                           <TableHead className="w-16">Insumo</TableHead>
                                           <TableHead>O que foi pedido</TableHead>
-                                          <TableHead className="w-16 text-right">Qtd.</TableHead>
+                                          <TableHead className="w-16 text-center">Qtd.</TableHead>
                                           <TableHead className="w-12 text-center">Un.</TableHead>
-                                          <TableHead className="hidden w-24 text-right md:table-cell">Preço unit.</TableHead>
-                                          <TableHead className="w-28 text-right">Total</TableHead>
+                                          <TableHead className="hidden w-24 text-center md:table-cell">Preço unit.</TableHead>
+                                          <TableHead className="w-28 text-center">Total</TableHead>
                                           <TableHead className="w-32">Resultado</TableHead>
                                         </TableRow>
                                       </TableHeader>
@@ -13084,10 +13107,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                                                   {Number.isInteger(it.detailId) && <> · detalhe <span className="mono">{it.detailId}</span></>}
                                                 </span>
                                               </TableCell>
-                                              <TableCell className="text-right">{it.quantity}</TableCell>
+                                              <TableCell className="text-center tabular-nums">{it.quantity}</TableCell>
                                               <TableCell className="mono text-center">{it.unitySymbol}</TableCell>
-                                              <TableCell className="hidden text-right md:table-cell">{fmtBRL(it.estimatedPrice)}</TableCell>
-                                              <TableCell className="text-right">{fmtBRL(total)}</TableCell>
+                                              <TableCell className="mono hidden text-right tabular-nums md:table-cell">{fmtBRL(it.estimatedPrice)}</TableCell>
+                                              <TableCell className="mono text-right tabular-nums">{fmtBRL(total)}</TableCell>
                                               <TableCell className={r && !r.ok ? "text-danger" : "text-text-mute"}>
                                                 {!r ? "—" : r.ok ? "entrou" : (r.erro || "recusado")}
                                               </TableCell>
@@ -13099,7 +13122,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                                         <TableRow>
                                           <TableCell colSpan={4} className="text-right font-semibold">Total pedido</TableCell>
                                           <TableCell className="hidden md:table-cell" />
-                                          <TableCell className="text-right font-semibold">{fmtBRL(totalDoEnvio(h))}</TableCell>
+                                          <TableCell className="mono text-right font-semibold tabular-nums">{fmtBRL(totalDoEnvio(h))}</TableCell>
                                           <TableCell />
                                         </TableRow>
                                       </TableFooter>
@@ -13143,10 +13166,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
           o LOTE, nao sobre uma linha. Marcar 40 produtos e ter que
           escolher o canal 40 vezes e a mesma decisao repetida 40 vezes. */}
       {selecionados.length > 0 && (
-        <Card className="sticky bottom-4 z-10 flex flex-col gap-4 shadow-lg sm:flex-row sm:items-center">
+        <Card accent="brand" className="sticky bottom-4 z-10 shadow-lg">
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="shrink-0">
-            <div className="mono text-2xl font-bold">{fmtBRL(totalSel)}</div>
-            <div className="text-xs text-text-soft">
+            <div className="mono text-2xl font-semibold tabular-nums">{fmtBRL(totalSel)}</div>
+            <div className="text-xs text-text-mute">
               {selecionados.length} {selecionados.length === 1 ? "produto selecionado" : "produtos selecionados"}
               {/* Os botoes desta barra marcam comprado e abrem solicitacao no
                   Sienge. Se a busca escondeu parte da selecao, tem que estar
@@ -13154,7 +13178,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               {buscando && (() => {
                 const naTela = new Set(naTelaTudo.map((r) => r.chave));
                 const fora = selecionados.filter((r) => !naTela.has(r.chave)).length;
-                return fora > 0 ? <b className="font-semibold text-warning">{" · "}{fora} fora da busca</b> : null;
+                return fora > 0 ? <span className="text-warning">{" · "}{fora} fora da busca</span> : null;
               })()}
             </div>
           </div>
@@ -13166,18 +13190,18 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               setPedido({ itens: selecionados });
               setTimeout(() => window.print(), 300);
             }} title="Abre a impressão do navegador — escolha Salvar como PDF">
-              <FileText size={16} /> PDF
+              <FileText size={14} aria-hidden="true" /> PDF
             </Button>
             <Button variant="outline" size="sm" onClick={() => baixarPedidoExcel(
               obra,
               etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
               selecionados, usuario)
             } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
-              <Download size={16} /> Excel
+              <Download size={14} aria-hidden="true" /> Excel
             </Button>
             <Button variant="outline" size="sm" onClick={solicitarNoPipefy}
               title="Copia a lista dos selecionados e abre a solicitação de compra no Pipefy">
-              <ExternalLink size={16} /> Solicitar no Pipefy
+              <ExternalLink size={14} aria-hidden="true" /> Solicitar no Pipefy
             </Button>
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
@@ -13200,7 +13224,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 });
                 setSel(new Set());
               }} title={podeEditar ? "Marca os selecionados que já têm canal — entra no total do Dashboard. No Sienge, só o que já foi solicitado." : `Em ${MODO_LEITURA_DICA}`}>
-                <Check size={16} /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
+                <Check size={14} aria-hidden="true" /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
                   ? "Desmarcar comprado" : "Marcar comprado"}
               </Button>
             )}
@@ -13218,13 +13242,13 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   mensagem: `${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`,
                 });
               }} title={podeEditar ? "Marca os selecionados como já solicitados no Sienge" : `Em ${MODO_LEITURA_DICA}`}>
-                <Check size={16} /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
+                <Check size={14} aria-hidden="true" /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
               </Button>
             )}
             {etapa === "sienge" && baseSienge && (
               <Button variant="outline" size="sm" onClick={associarSelecionados} disabled={!podeEditar}
                 title={podeEditar ? "Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão" : `Em ${MODO_LEITURA_DICA}`}>
-                <PackageSearch size={16} /> Associar {selecionados.length}
+                <PackageSearch size={14} aria-hidden="true" /> Associar {selecionados.length}
               </Button>
             )}
             {/* Solicitar no Sienge: o único botão daqui que ESCREVE em
@@ -13236,7 +13260,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 funcionalidade depende de um cadastro procura um botão que
                 não está em lugar nenhum, e conclui que não foi entregue. */}
             {etapa === "sienge" && (
-              <Button variant="outline" size="sm"
+              <Button size="sm"
                 disabled={!podeEditar || !eapSienge?.versao}
                 onClick={() => setSolicitacao(selecionados.map((r) => {
                   // A situação do insumo é resolvida aqui, com a base na
@@ -13258,11 +13282,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   : eapSienge.erro ? `Não deu pra ler a EAP do Sienge: ${eapSienge.erro}`
                   : !eapSienge.versao ? "Nenhuma EAP do Sienge cadastrada — vá em EAP Sienge (menu lateral) e importe o relatório de orçamento. Sem ela não há como apropriar a compra no orçamento."
                   : "Cria a solicitação de compra direto no Sienge — você confere tudo antes de enviar"}>
-                <ExternalLink size={16} /> Solicitar Compra no Sienge
+                <ExternalLink size={14} aria-hidden="true" /> Solicitar Compra no Sienge
                 {/* O motivo fica no RÓTULO, não só no title: botão
                     desabilitado sem motivo à vista vira "não funciona". */}
                 {(!podeEditar || !eapSienge?.versao) && (
-                  <span className="text-text-mute"> · {
+                  <span className="opacity-80"> · {
                     !podeEditar ? "habilite a edição"
                       : !eapSienge ? "carregando a EAP…"
                       : eapSienge.erro ? "erro ao ler a EAP"
@@ -13276,7 +13300,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 onClick={() => baixarResumoCadastroSienge(obra,
                   resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}
                 title="Excel pra quem lança o pedido no Sienge: insumo, detalhe, códigos e quantidade — iguais somam numa linha">
-                <Download size={16} /> Resumo p/ cadastro
+                <Download size={14} aria-hidden="true" /> Resumo p/ cadastro
               </Button>
             )}
             {/* O canal do lote: cada item e' uma acao (define e limpa a
@@ -13294,6 +13318,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 title={podeEditar ? "Tirar o canal dos selecionados" : `Em ${MODO_LEITURA_DICA}`}>tirar canal</ToggleGroupItem>
             </ToggleGroup>
           </div>
+          </CardContent>
         </Card>
       )}
     </PageShell>
@@ -14534,14 +14559,14 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
     <div className={cn("flex flex-col gap-1", ondeFica === "verba" ? "px-4 pb-3 pl-10" : "mt-1")} onClick={(e) => e.stopPropagation()}>
       {lista.map((c) => (
         <div key={c.id} className="flex items-center gap-1 text-xs text-obs">
-          <MessageSquare size={12} className="shrink-0 opacity-75" />
-          <span className="min-w-0"><b>{nomeDoEmail(c.autor)}</b> · {c.texto}</span>
+          <MessageSquare size={12} className="shrink-0 opacity-75" aria-hidden="true" />
+          <span className="min-w-0">{nomeDoEmail(c.autor)} · {c.texto}</span>
           <span className="num-tabular shrink-0 opacity-70">{quando(c.criado_em)}</span>
           {/* Apagar aparece pra quem pode — o banco confere de novo na
               politica de delete, entao a tela nao e' a unica barreira. */}
           {(meu(c) || souAdmin) && onApagar && (
             <BotaoIcone rotulo="Apagar esta observação interna" variant="ghost" className="h-6 w-6 text-danger" type="button"
- onClick={() => onApagar(c.id)}><X size={12} /></BotaoIcone>
+ onClick={() => onApagar(c.id)}><X size={12} aria-hidden="true" /></BotaoIcone>
           )}
         </div>
       ))}
@@ -14568,7 +14593,7 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
         onAdicionar && (
           <Button variant="ghost" size="sm" type="button" className="self-start" onClick={() => setEscrevendo(true)}
             title={ondeFica === "item" ? "Deixar uma observação interna neste produto" : "Deixar uma observação interna nesta verba"}>
-            <Plus size={10} /> observação interna
+            <Plus size={14} aria-hidden="true" /> observação interna
           </Button>
         )
       )}
@@ -14599,11 +14624,11 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
     return (
       <TableRow className="text-text-mute">
         <TableCell />
-        <TableCell className="mono">{codigoVisivel(it)}</TableCell>
+        <TableCell className="mono text-xs">{codigoVisivel(it)}</TableCell>
         <TableCell>
-          <div className="line-through">{it.desc}</div>
+          <div className="text-sm line-through">{it.desc}</div>
           {troca?.novas?.length > 0 && (
-            <div className="mt-1 text-xs text-text-soft">trocado por {troca.novas.join(" + ")}</div>
+            <div className="mt-1 text-xs text-text-mute">trocado por {troca.novas.join(" + ")}</div>
           )}
           {qtdLinha > 0 && (
             <div className="mt-1 text-xs">antes: {qtdFmt} {it.un} × {fmtBRL((row.materialOriginal || 0) / qtdLinha)}</div>
@@ -14616,12 +14641,12 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
             )}
           </div>
         </TableCell>
-        <TableCell className="mono text-center"><s>{it.qtdExecutivo ?? it.qtdVendida ?? "—"} {it.un}</s></TableCell>
-        <TableCell className="mono text-right"><s>{fmtBRL(row.materialOriginal || 0)}</s></TableCell>
+        <TableCell className="mono text-center tabular-nums"><s>{it.qtdExecutivo ?? it.qtdVendida ?? "—"} {it.un}</s></TableCell>
+        <TableCell className="mono text-right tabular-nums"><s>{fmtBRL(row.materialOriginal || 0)}</s></TableCell>
         {/* No lugar dos status, a troca: em branco parecia linha esquecida (15/09/2026). */}
         <TableCell colSpan={nCols - 5} className="text-center">
           <Badge tone="outline" title={troca?.novas?.length ? `Trocado por ${troca.novas.join(" + ")}` : "Trocado"}>
-            <ArrowLeftRight size={10} /> trocado
+            <ArrowLeftRight size={12} aria-hidden="true" /> trocado
           </Badge>
         </TableCell>
       </TableRow>
@@ -14634,13 +14659,13 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       <TableCell className="text-center">
         <Checkbox checked={!!selecionado} onCheckedChange={onSelecionar} aria-label="Selecionar produto" />
       </TableCell>
-      <TableCell className="mono text-text-mute">{codigoVisivel(it)}</TableCell>
+      <TableCell className="mono text-xs text-text-mute">{codigoVisivel(it)}</TableCell>
       <TableCell>
-        <div className="text-text-strong">{it.desc}</div>
+        <div className="text-sm font-semibold text-text">{it.desc}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1">
           {it.aditivo && (
             <Badge tone="purple" title={it.descCompleta ? `Texto do cliente: ${it.descCompleta}` : undefined}>
-              <FileText size={10} /> aditivo {it.aditivo}
+              <FileText size={12} aria-hidden="true" /> aditivo {it.aditivo}
             </Badge>
           )}
           {it.ambiente && <span className="text-xs text-text-mute">{it.ambiente}</span>}
@@ -14648,7 +14673,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               Fornecedor e vira `marca` no item; importado de PDF ela vem vazia. */}
           {it.marca
             ? <Badge tone="neutral" title={it.marca}>Fornecedor: {nomeDoFornecedor(it)}</Badge>
-            : <span className="text-xs italic text-text-mute">sem fornecedor</span>}
+            : <span className="text-xs text-text-mute">sem fornecedor</span>}
           {troca?.tipo === "nova" && (
             <span className="inline-flex items-center gap-1 text-xs text-text-mute">
               troca de {troca.de}{troca.dif != null && Math.abs(troca.dif) >= 0.005
@@ -14660,7 +14685,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
           )}
           {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
             <Button variant="ghost" size="sm" type="button" onClick={onAbrirTroca} title="Trocar por outro produto (aprovado com o executivo da obra)">
-              <ArrowLeftRight size={10} /> trocar
+              <ArrowLeftRight size={14} aria-hidden="true" /> trocar
             </Button>
           )}
         </div>
@@ -14671,14 +14696,14 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         )}
         {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
             "Cuba de apoio" e todas as cubas de apoio que existem. */}
-        {it.especificacao && <div className="mt-1 text-xs text-text-soft">{it.especificacao}</div>}
+        {it.especificacao && <div className="mt-1 text-xs text-text-mute">{it.especificacao}</div>}
         {/* A OBSERVACAO DO PRODUTO, na propria linha — e' aqui que quem vai
             comprar esta' olhando. */}
         <Observacoes lista={obs} semTabela={obsSemTabela} usuario={usuario} souAdmin={souAdmin}
           ondeFica="item" onAdicionar={onAdicionarObs} onApagar={onApagarObs} />
       </TableCell>
-      <TableCell className="mono text-center">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{it.un}</span></TableCell>
-      <TableCell className="mono text-right">{fmtBRL(material)}</TableCell>
+      <TableCell className="mono text-center tabular-nums">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{it.un}</span></TableCell>
+      <TableCell className="mono text-right tabular-nums">{fmtBRL(material)}</TableCell>
       {!noSienge && (
         <TableCell className="text-center">
           {it.canalCompra ? <TagCanal id={it.canalCompra} comNome /> : <span className="text-text-mute">—</span>}
@@ -14723,7 +14748,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         <TableCell className="text-center">
           {lancado ? (
             <Badge tone="success" title={lancado.descricao}>
-              <Check size={12} /> {lancado.codigo || "sim"}
+              <Check size={12} aria-hidden="true" /> {lancado.codigo || "sim"}
             </Badge>
           ) : (
             <Badge tone="alert" title="Está no plano e não apareceu no relatório do Sienge">
@@ -14799,20 +14824,20 @@ function ContratosRow({ row, onItemChange }) {
   const bloqueado = contratoBloqueado(it);
   const prox = PROXIMA_ETAPA[contratoEtapa(it)];
   return (
-    <div className="compras-row">
-      <div className="compras-row-main">
-        <div className="compras-desc">{it.desc}</div>
-        <div className="compras-meta mono">{catNum} · {catNome} · {it.qtdExecutivo ?? "—"} {it.un}</div>
+    <div className="flex flex-wrap items-center gap-4">
+      <div className="min-w-0 flex-1 basis-48">
+        <div className="text-sm font-semibold text-text">{it.desc}</div>
+        <div className="mono text-xs text-text-mute">{catNum} · {catNome} · {it.qtdExecutivo ?? "—"} {it.un}</div>
       </div>
-      <div className="compras-custo mono">{fmtBRL(it.custo)}</div>
-      <div className="contrato-etapa-cell"><ContratoStatus item={it} /></div>
-      <div className="compras-acao">
+      <div className="mono w-32 shrink-0 text-right text-sm tabular-nums">{fmtBRL(it.custo)}</div>
+      <div className="w-48 shrink-0"><ContratoStatus item={it} /></div>
+      <div className="flex w-40 shrink-0 justify-end">
         {bloqueado ? (
-          <span className="dim" style={{ fontSize: 11 }}>bloqueado</span>
+          <span className="text-xs text-text-mute">bloqueado</span>
         ) : prox ? (
-          <Button onClick={() => onItemChange({ statusContrato: prox })}><ArrowUpRight size={13} /> Avançar etapa</Button>
+          <Button variant="outline" size="sm" onClick={() => onItemChange({ statusContrato: prox })}><ArrowUpRight size={14} aria-hidden="true" /> Avançar etapa</Button>
         ) : (
-          <span className="pill pill-ok"><Check size={12} /> Concluído</span>
+          <Badge tone="success"><Check size={12} aria-hidden="true" /> Concluído</Badge>
         )}
       </div>
     </div>
@@ -14849,7 +14874,7 @@ function NovaSolicitacaoForm({ obra, onCriar }) {
   return (
     <>
       <Button onClick={() => setAberto(true)}>
-        <Plus size={14} /> Nova solicitação de contrato
+        <Plus size={16} aria-hidden="true" /> Nova solicitação de contrato
       </Button>
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent size="md">
@@ -15335,10 +15360,13 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
 
   if (rows.length === 0) {
     return (
-      <EmptyState icon={<FileText size={30} aria-hidden="true" />}
-        title="Esta obra ainda não tem mão de obra no executivo"
-        description="Quando o executivo for carregado, todos os serviços aparecem aqui com o valor de MO — que é a base de orçado de cada escopo. Ou crie uma solicitação avulsa abaixo."
-        action={<NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />} />
+      <PageShell title={`Contratos de mão de obra — ${obra.codigo}/00`}
+        description="Cada serviço do executivo, da solicitação ao contrato assinado."
+        actions={<NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />}>
+        <EmptyState icon={<FileText size={30} aria-hidden="true" />}
+          title="Esta obra ainda não tem mão de obra no executivo"
+          description="Quando o executivo for carregado, todos os serviços aparecem aqui com o valor de MO — que é a base de orçado de cada escopo. Ou crie uma solicitação avulsa abaixo." />
+      </PageShell>
     );
   }
 
@@ -15392,7 +15420,7 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
           <React.Fragment key={st.id}>
             <ToggleGroupItem value={st.id} className="h-auto min-w-24 flex-1 flex-col gap-1 px-2 py-2 text-center">
               <span className={cn("text-lg font-semibold leading-none tabular-nums", COR_ETAPA_MO[st.id])}>{cntEtapa(st.id)}</span>
-              <span className="text-xs font-semibold">{st.curto}</span>
+              <span className="text-xs">{st.curto}</span>
               <span className="mono text-xs text-text-mute">{fmtCompactBRL(somaEtapa(st.id))}</span>
             </ToggleGroupItem>
             {i < CONTRATO_PIPELINE.length - 1 && <ChevronRight size={14} className="hidden self-center text-text-mute md:block" aria-hidden="true" />}
@@ -15409,79 +15437,92 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
       )}
 
       {porVerba.length === 0 && <EmptyState title="Nada nesta etapa." />}
-      <div className="space-y-2">
-        {porVerba.map((g) => {
-          const aberto = abertos.has(g.num);
-          const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
-          return (
-            <Collapsible key={g.num} open={aberto} onOpenChange={() => abrir(g.num)}>
-              <Card className="p-0">
-                <div className="flex flex-wrap items-center gap-2 px-4 py-2">
+      {porVerba.length > 0 && (
+        <Card className="p-0">
+          {porVerba.map((g) => {
+            const aberto = abertos.has(g.num);
+            const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
+            return (
+              <Colapsavel key={g.num} aberto={aberto} onAbrir={() => abrir(g.num)}
+                antes={
                   <Checkbox checked={nSel === g.itens.length ? true : nSel > 0 ? "indeterminate" : false}
                     onCheckedChange={() => alternarGrupo(g)} aria-label="Selecionar grupo"
                     title={nSel === g.itens.length ? "Tirar o grupo da seleção" : "Selecionar o grupo inteiro"} />
-                  <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className="h-auto min-w-0 flex-1 flex-wrap justify-start gap-2 px-2 py-2 text-left whitespace-normal">
-                      {aberto ? <ChevronDown size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" aria-hidden="true" />}
-                      <span className="mono text-xs text-text-mute">{g.num}</span>
-                      <span className="text-sm font-semibold">{g.nome}</span>
+                }
+                cabecalho={
+                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <span className="mono w-10 shrink-0 text-xs text-text-mute">{g.num}</span>
+                    <span className="min-w-0 flex-1 text-sm font-semibold text-text">{g.nome}</span>
+                    <span className="flex w-full flex-wrap items-center gap-2 md:w-64 md:shrink-0">
                       <Badge tone="neutral">{g.itens.length} {g.itens.length === 1 ? "serviço" : "serviços"}</Badge>
                       {nSel > 0 && <Badge tone="purple">{nSel} no escopo</Badge>}
-                    </Button>
-                  </CollapsibleTrigger>
-                  <div className="ml-auto text-right">
-                    <div className="label-mono">Mão de obra</div>
-                    <div className="mono text-sm font-semibold tabular-nums">{fmtBRL(g.total)}</div>
+                    </span>
+                  </span>
+                }
+                acoes={
+                  <div className="w-32 shrink-0">
+                    <div className="label-mono text-center">Mão de obra</div>
+                    <div className="mono text-right text-sm font-semibold tabular-nums">{fmtBRL(g.total)}</div>
                   </div>
+                }>
+                {/* Rótulo das colunas da linha: os dois valores em R$ (custo
+                    e mão de obra) precisam dizer o que são. */}
+                <div className="hidden border-t border-line-1 lg:block" aria-hidden="true">
+                <div className="flex items-center gap-4 border-l-2 border-transparent px-4 py-2">
+                  <span className="w-4 shrink-0" />
+                  <span className="label-mono min-w-0 flex-1">Serviço</span>
+                  <span className="label-mono w-32 shrink-0 text-center">Custo</span>
+                  <span className="label-mono w-48 shrink-0">Etapa</span>
+                  <span className="w-40 shrink-0" />
+                  <span className="label-mono w-28 shrink-0 text-center">Mão de obra</span>
+                  <span className="w-8 shrink-0" />
                 </div>
-                <CollapsibleContent>
-                  <ul className="divide-y divide-line-1 border-t border-line-1 bg-surface-2">
-                    {g.itens.map((r) => {
-                      const esc = escopoDoServico.get(`${r.catNum}|${r.it.codigo}`);
-                      return (
-                        <li key={r.chave} className={cn("flex items-center gap-2 pr-4", sel.has(r.chave) && "bg-brand-soft", esc && "border-l-2 border-success")}>
-                          <Checkbox className="ml-4" checked={sel.has(r.chave)} onCheckedChange={() => alternar(r.chave)} aria-label="Selecionar serviço" />
-                          <div className="min-w-0 flex-1">
-                            <ContratosRow row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
-                          </div>
-                          <div className="mono w-28 shrink-0 text-right text-sm font-semibold tabular-nums">{fmtBRL(r.mo)}</div>
-                          {esc ? (
-                            <BotaoIcone rotulo="Ver o escopo" variant="ghost" onClick={() => setEscopoAberto(esc.id)}
- >
-                              <Search size={14} />
-                            </BotaoIcone>
-                          ) : <span className="w-8 shrink-0" aria-hidden="true" />}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </CollapsibleContent>
-              </Card>
-            </Collapsible>
-          );
-        })}
-      </div>
+                </div>
+                <ul className="divide-y divide-line-1 border-t border-line-1 bg-surface-2">
+                  {g.itens.map((r) => {
+                    const esc = escopoDoServico.get(`${r.catNum}|${r.it.codigo}`);
+                    return (
+                      <li key={r.chave} className={cn("flex flex-wrap items-center gap-4 border-l-2 border-transparent px-4 py-3", sel.has(r.chave) && "bg-brand-tint", esc && "border-success")}>
+                        <Checkbox checked={sel.has(r.chave)} onCheckedChange={() => alternar(r.chave)} aria-label="Selecionar serviço" />
+                        <div className="min-w-0 flex-1">
+                          <ContratosRow row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
+                        </div>
+                        <div className="mono w-28 shrink-0 text-right text-sm font-semibold tabular-nums">{fmtBRL(r.mo)}</div>
+                        {esc ? (
+                          <BotaoIcone rotulo="Ver o escopo" variant="ghost" onClick={() => setEscopoAberto(esc.id)}>
+                            <Search size={14} aria-hidden="true" />
+                          </BotaoIcone>
+                        ) : <span className="w-8 shrink-0" aria-hidden="true" />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Colapsavel>
+            );
+          })}
+        </Card>
+      )}
 
       {/* A barra de escopo so existe quando ha selecao. Ela e o unico
           lugar da tela onde o numero que importa aparece somado: e contra
           ele que a proposta do fornecedor vai ser comparada. */}
       {selecionados.length > 0 && (
-        <Card accent="brand" className="sticky bottom-4 shadow-lg">
+        <Card accent="brand" className="sticky bottom-4 z-10 shadow-lg">
           <CardContent className="flex flex-wrap items-center gap-4">
             <div className="min-w-0 flex-1">
-              <div className="mono text-2xl font-light tabular-nums">{fmtBRL(orcado)}</div>
-              <div className="text-sm text-text-soft">
+              <div className="mono text-2xl font-semibold tabular-nums">{fmtBRL(orcado)}</div>
+              <div className="text-xs text-text-mute">
                 orçado em {selecionados.length} {selecionados.length === 1 ? "serviço" : "serviços"}
                 {verbasNaSelecao > 1 ? ` de ${verbasNaSelecao} verbas` : ""}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 sm:ml-auto sm:justify-end">
               {podeEditar && (
-                <Button onClick={() => setAbrindoEscopo(true)}>
+                <Button size="sm" onClick={() => setAbrindoEscopo(true)}>
                   <FileText size={14} aria-hidden="true" /> Abrir escopo
                 </Button>
               )}
-              <Button variant="outline" onClick={() => setSel(new Set())}>Limpar seleção</Button>
+              <Button variant="ghost" size="sm" onClick={() => setSel(new Set())}>Limpar seleção</Button>
             </div>
           </CardContent>
         </Card>
@@ -18766,39 +18807,44 @@ function ArquivoLinha({ a, podeEditar, onExcluir, semFase = false }) {
   }
 
   return (
-    <div className="arq-linha">
-      <FileText size={15} className={perdido ? "dim" : ""} />
-      <div className="arq-id">
-        <div className="arq-titulo">{a.titulo || a.nome}</div>
-        <div className="arq-sub">
-          {a.titulo && a.nome !== a.titulo ? `${a.nome} · ` : ""}
-          {a.tamanhoKB ? `${a.tamanhoKB} KB · ` : ""}
-          {a.em ? new Date(a.em).toLocaleDateString("pt-BR") : "data não registrada"}
-          {a.por ? ` · ${a.por}` : ""}
+    <div className="flex flex-wrap items-center gap-4 px-4 py-3">
+      <FileText size={16} aria-hidden="true" className="shrink-0 text-text-mute" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-semibold text-text">{a.titulo || a.nome}</div>
+        <div className="text-xs text-text-mute">
+          {[a.titulo && a.nome !== a.titulo ? a.nome : "", a.tamanhoKB ? `${a.tamanhoKB} KB` : "", a.por || ""].filter(Boolean).join(" · ")}
         </div>
-        {erro && <div className="arq-erro">{erro}</div>}
+        {erro && <FieldHint state="error">{erro}</FieldHint>}
       </div>
 
-      {!semFase && <span className="arq-fase" style={{ color: f.cor, background: f.bg }}>{f.nome}</span>}
+      <span className="w-24 shrink-0 text-center text-xs text-text-mute tabular-nums" title={a.em ? undefined : "data não registrada"}>
+        {a.em ? new Date(a.em).toLocaleDateString("pt-BR") : "—"}
+      </span>
+
+      {!semFase && (
+        <span className="w-40 shrink-0">
+          <Badge tone={{ contrato: "purple", criativo: "brand", executivo: "brand", cliente: "success" }[f.id] || "neutral"}>{f.nome}</Badge>
+        </span>
+      )}
 
       {perdido ? (
         /* Anexo de antes de o app guardar arquivo: só o nome ficou
            gravado. Dizer isso é melhor que oferecer um "Baixar" que abre
            nada e faz a pessoa achar que o sistema quebrou. */
-        <span className="arq-perdido">arquivo não guardado — anexe de novo</span>
+        <span className="w-56 shrink-0 text-right text-xs text-warning">arquivo não guardado — anexe de novo</span>
       ) : (
-        <div className="arq-acoes">
+        <div className="flex w-56 shrink-0 justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => abrir(false)} disabled={!!ocupado}>
-            <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
+            <Search size={14} aria-hidden="true" /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
           </Button>
           <Button variant="outline" size="sm" onClick={() => abrir(true)} disabled={!!ocupado}>
-            <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
+            <Download size={14} aria-hidden="true" /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
           </Button>
           {/* Só o avulso se apaga aqui. Caderno e assinatura têm dono na
               esteira, e sumir com eles por esta tela deixaria a etapa de
               lá dizendo que tem anexo quando não tem mais. */}
           {podeEditar && !a.fixo && (
-            <BotaoIcone rotulo="Excluir arquivo" variant="ghost" className="text-danger" onClick={() => onExcluir(a)}><Trash2 size={13} /></BotaoIcone>
+            <BotaoIcone rotulo="Excluir arquivo" variant="ghost" className="text-danger" onClick={() => onExcluir(a)}><Trash2 size={14} aria-hidden="true" /></BotaoIcone>
           )}
         </div>
       )}
@@ -18867,28 +18913,25 @@ function ArquivosObraView({ obra, usuario, podeEditar, souAdmin, onArquivos }) {
           <SeletorDeArquivo ref={inputRef} accept={EXTENSOES_ACEITAS} onChange={subir} />
         </div>
       )}>
-      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
       {todos.length === 0 ? (
-        <div className="compras-empty">
-          <Archive size={30} className="dim" />
-          <div className="compras-empty-title">Nenhum arquivo ainda</div>
-          <div className="compras-empty-sub">
-            O que for anexado na <b>Jornada da obra</b> (Visão geral) e a aprovação assinada do
+        <EmptyState icon={<Archive size={30} aria-hidden="true" />} title="Nenhum arquivo ainda"
+          description={<>O que for anexado na <b>Jornada da obra</b> (Visão geral) e a aprovação assinada do
             cliente aparecem aqui sozinhos. Qualquer outro arquivo da obra pode ser anexado por
-            este botão.
-          </div>
-        </div>
+            este botão.</>} />
       ) : porFase.map(({ f, itens }) => (
-        <div key={f.id} className="arq-bloco">
-          <div className="arq-bloco-h">
-            <span className="arq-bloco-tit">{f.nome}</span>
-            <span className="arq-bloco-n">{itens.length}</span>
-          </div>
-          {itens.map((a) => (
-            <ArquivoLinha key={a.id} a={a} podeEditar={podeEditar} onExcluir={excluir} />
-          ))}
-        </div>
+        <Card key={f.id}>
+          <CardHeader>
+            <CardTitle>{f.nome}</CardTitle>
+            <CardDescription>{itens.length} {itens.length === 1 ? "arquivo" : "arquivos"}</CardDescription>
+          </CardHeader>
+          <CardContent className="divide-y divide-line-1 p-0">
+            {itens.map((a) => (
+              <ArquivoLinha key={a.id} a={a} podeEditar={podeEditar} onExcluir={excluir} />
+            ))}
+          </CardContent>
+        </Card>
       ))}
     </PageShell>
   );

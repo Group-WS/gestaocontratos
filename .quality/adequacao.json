@@ -649,13 +649,6 @@
     {
       "regra": "DS-05",
       "arquivo": "web/src/App.jsx",
-      "linha": 14476,
-      "trecho": "<span className=\"dim\" style={{ fontSize: 11 }}>bloqueado</span>",
-      "impressao": "61cae6ef51d3412c"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
       "linha": 14844,
       "trecho": "<thead><tr><th>Parcela</th><th style={{ width: 96 }}>Vencimento</th><th className=\"right\" style={{ width: 110 }}>Valor</th><th style={{ width: 60 }}>Via</th></tr></thead>",
       "impressao": "1a6bfaba77ff0d43"
@@ -743,13 +736,6 @@
       "linha": 18095,
       "trecho": "style={canal === c.id ? { color: c.cor, borderColor: c.cor, background: c.bg } : undefined}>",
       "impressao": "c4120ad4b259d8e2"
-    },
-    {
-      "regra": "DS-05",
-      "arquivo": "web/src/App.jsx",
-      "linha": 18536,
-      "trecho": "{!semFase && <span className=\"arq-fase\" style={{ color: f.cor, background: f.bg }}>{f.nome}</span>}",
-      "impressao": "54713f7e2a325c7b"
     },
     {
       "regra": "DS-05",
@@ -904,13 +890,6 @@
       "linha": 19523,
       "trecho": "<th style={{ width: 170 }}>Fornecedor</th>",
       "impressao": "b8ec53e5e09d9d9f"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 1019,
-      "trecho": "<input className=\"form-input jornada-anexar-desc\" value={titulo} maxLength={80}",
-      "impressao": "9d7f2a3a6fa09807"
     },
     {
       "regra": "DS-07",
