@@ -122,33 +122,14 @@ conf("caminho vazio apaga a foto", sql.includes("set foto = nullif(caminho, '')"
 conf("só autenticado executa", sql.includes("grant execute on function public.definir_foto(text) to authenticated;"));
 conf("e ninguém mais", sql.includes("revoke all on function public.definir_foto(text) from public;"));
 
-/* ---- A BARRA RECOLHE SOZINHA DEPOIS DA ESCOLHA (19/09/2026) ----
+/* ---- A LISTA DE OBRAS NÃO RECOLHE MAIS (21/09/2026) ----
  *
- * "depois que eu seleciono a obra, no primeiro clique fora da side bar deve
- * recolher a side bar."
- *
- * UMA VEZ POR OBRA. Se ela reabrir a lista pelo botão de dobrar, é porque
- * quer a lista aberta — recolher de novo no clique seguinte seria o app
- * discutindo com ela. O rearme só volta quando outra obra for escolhida.
- *
- * Não confundir com o relato anterior, do mesmo dia: "no primeiro clique
- * DENTRO a barra recolhe", que era defeito. Dentro não recolhe; fora sim.
+ * Em 19/09 a lista recolhia sozinha no primeiro clique fora dela, uma vez
+ * por obra. Em 21/09 o pedido virou o contrário: dentro da obra a lista fica
+ * aberta por padrão, sem opção de esconder. O ouvinte de clique saiu.
  */
-conf("o recolher olha a obra escolhida", app.includes("const recolhidoPor = useRef(null);"));
-conf("... e não repete na mesma obra", app.includes("if (recolhidoPor.current === selected) return;"));
-conf("clique DENTRO da barra não recolhe", app.includes("if (barraRef.current && barraRef.current.contains(e.target)) return;"));
-conf("marca a obra antes de recolher", /recolhidoPor\.current = selected;\s*\n\s*setPainelEscondido\(true\);/.test(app));
-conf("só arma com painel aberto e obra escolhida", app.includes("if (!largo || !temPainel || !selected) return;"));
-/* CLICK, nao mousedown: recolher no mousedown tirava o painel e jogava o
-   conteudo 280px pra esquerda antes do mouseup, entao o alvo fugia de
-   baixo do cursor. "clico em Planejamento, ele recolhe a tela e eu tenho
-   que clicar em Planejamento novamente". */
-conf("ouve o click, pra o alvo resolver primeiro", app.includes('document.addEventListener("click", fora);'));
-conf("... e nao o mousedown, que engolia o clique", /recolhidoPor[\s\S]{0,700}addEventListener\("mousedown"/.test(app), false);
-conf("e solta o ouvinte ao sair", app.includes('return () => document.removeEventListener("click", fora);'));
-// o botao Obras continua so' mostrando: era defeito dela, ja' corrigido antes
-conf("o capacete Obras segue só mostrando, nunca escondendo",
-  /rotulo="Obras"[\s\S]{0,200}setPainelEscondido\(false\);/.test(app));
+conf("o recolher automático saiu", app.includes("const recolhidoPor = useRef(null);"), false);
+conf("... e com ele o ouvinte de clique fora da barra", app.includes('document.addEventListener("click", fora);'), false);
 
 /* ---- O RECORTADOR CIRCULAR (20/09/2026) ----
  *

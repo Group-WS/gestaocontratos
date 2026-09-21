@@ -88,18 +88,18 @@ conf("... sem listener caseiro de mouse", src.includes('addEventListener("mouseo
 /* A ordem é o conserto: a saída antecipada tem que vir ANTES da limpeza. */
 conf("... e o rótulo também vai no aria-label", src.includes("aria-label={rotulo}"), true);
 
-/* CLICAR EM "OBRAS" SÓ MOSTRA. Relato dela: "depois que eu entrar na obra, no
-   primeiro clique dentro a barra da sidebar recolhe" — era o botão Obras
-   dobrando a lista. Esconder tem botão próprio. */
-conf("clicar em Obras nunca esconde", src.includes("setPainelEscondido(false);"), true);
-conf("esconder tem botão próprio", src.includes('rotulo={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}'), true);
+/* A LISTA DE OBRAS FICA ABERTA (21/09/2026): dentro da obra ela aparece
+   sempre, e não existe mais jeito de escondê-la — nem botão, nem recolher
+   sozinho. Clicar em Obras abre a obra, e com ela a lista. */
+conf("não existe mais estado de lista escondida", /painelEscondido/.test(src), false);
+conf("nem o botão de esconder a lista", src.includes("Esconder a lista de obras"), false);
 
 /* ============================================================
    3. O PAINEL
    ============================================================ */
 /* O painel só existe onde há o que percorrer: hoje, dentro da obra. */
 conf("o painel só aparece na obra", src.includes('const naObra = modulo === "comparativo";'), true);
-conf("... e some quando escondido", src.includes("const temPainel = naObra && mostrarObras && !painelEscondido;"), true);
+conf("... e, na obra, está sempre aberto", src.includes("const temPainel = naObra && mostrarObras;"), true);
 /* O destino ativo veste a cor do que abriu à direita. */
 conf("sem painel, o trilho ativo veste o campo",
   src.includes('ativo && (semPainel ? "bg-bg" : "bg-surface-1")'), true);

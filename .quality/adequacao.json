@@ -1440,20 +1440,6 @@
     {
       "regra": "NAV-03",
       "arquivo": "web/src/App.jsx",
-      "linha": 9822,
-      "trecho": "try { return localStorage.getItem(CHAVE_SIDEBAR) === \"1\"; } catch { return false; }",
-      "impressao": "f82bb5c2725041c2"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 9825,
-      "trecho": "try { localStorage.setItem(CHAVE_SIDEBAR, painelEscondido ? \"1\" : \"0\"); } catch { /* modo anonimo */ }",
-      "impressao": "f03c093048c5c8df"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
       "linha": 18175,
       "trecho": "try { return new Set(JSON.parse(localStorage.getItem(\"equipe-grupos-fechados\") || \"[]\")); } catch { return new Set(); }",
       "impressao": "e79a09ae38639719"

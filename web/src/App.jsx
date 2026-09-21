@@ -9789,7 +9789,6 @@ function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modul
   );
 }
 
-const CHAVE_SIDEBAR = "confere:sidebar-recolhida";
 const CHAVE_MINHAS = "tkws.so.minhas";
 const CHAVE_SQUADS = "tkws.squads.fechados";
 const CHAVE_OBRAS_ABERTAS = "confere:obras-abertas";
@@ -10164,16 +10163,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     return n;
   });
 
-  /* Recolher deixou de encolher a barra inteira: agora esconde so' o PAINEL,
-     e o trilho nunca some. Era o encolhimento que fazia a barra virar outro
-     app a 62px. A chave continua a mesma, com sentido novo. */
-  const [painelEscondido, setPainelEscondido] = useState(() => {
-    try { return localStorage.getItem(CHAVE_SIDEBAR) === "1"; } catch { return false; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(CHAVE_SIDEBAR, painelEscondido ? "1" : "0"); } catch { /* modo anonimo */ }
-  }, [painelEscondido]);
-
   const barraRef = useRef(null);
 
   /* Os nomes do menu, a pedido (21/09/2026).
@@ -10209,40 +10198,11 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   /* O painel so' existe onde ha' o que percorrer — hoje, so' dentro da obra.
      Catalogo, Aditivos e Painel por canal entram depois. */
   const naObra = modulo === "comparativo";
-  const temPainel = naObra && mostrarObras && !painelEscondido;
-
-  /* Escolhida a obra, o primeiro clique fora da barra recolhe o painel.
-
-     A lista ja' cumpriu o papel dela: quem escolheu a obra vai trabalhar
-     na obra, e o painel fica ocupando 240px do que a pessoa foi ler.
-
-     "click", e NAO "mousedown". Recolher no mousedown tirava o painel e
-     jogava o conteudo pra esquerda ANTES do mouseup, entao o alvo fugia de
-     baixo do cursor e o clique se perdia. Relato dela: "clico em
-     Planejamento, ele recolhe a tela e eu tenho que clicar em Planejamento
-     novamente". Ouvindo o click, o alvo resolve o dele primeiro e o painel
-     recolhe depois.
-
-     UMA VEZ POR OBRA, e nao a cada clique. Se ela reabrir a lista pelo
-     botao de dobrar, e' porque quer a lista aberta — recolher de novo no
-     proximo clique seria o app discutindo com ela. O recolher volta a
-     valer quando outra obra for escolhida.
-
-     So' na barra fixa: no Sheet, escolher a obra ja' fecha a barra inteira. */
-  const recolhidoPor = useRef(null);
-  useEffect(() => {
-    if (!largo || !temPainel || !selected) return;
-    if (recolhidoPor.current === selected) return;
-    const fora = (e) => {
-      if (barraRef.current && barraRef.current.contains(e.target)) return;
-      /* O menu de perfil (no topo) abre num portal: clicar nele nao e' "fora". */
-      if (e.target.closest?.("[data-radix-popper-content-wrapper]")) return;
-      recolhidoPor.current = selected;
-      setPainelEscondido(true);
-    };
-    document.addEventListener("click", fora);
-    return () => document.removeEventListener("click", fora);
-  }, [largo, temPainel, selected]);
+  /* A LISTA DE OBRAS FICA ABERTA dentro da obra, sempre (21/09/2026).
+     Saiu o botao de esconder e o recolher automatico no primeiro clique:
+     quem esta' na obra usa a lista pra pular entre obras, e ela sumir era o
+     app decidindo pela pessoa. */
+  const temPainel = naObra && mostrarObras;
 
   const noTrilho = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
   const destinosTopo = noTrilho.filter((m) => !DESTINOS_NO_PE.has(m.id));
@@ -10300,15 +10260,9 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             {/* Quem nao abre obra (Mehoo, Canal de compra) nao tem este
                 destino: a tela dele e' o painel proprio, inteiro. */}
             {mostrarObras && (
-              /* CLICAR EM "OBRAS" SO' MOSTRA — nunca esconde.
-                 Relato dela em 19/09/2026 sobre a barra antiga: "depois que
-                 eu entrar na obra, no primeiro clique dentro a barra da
-                 sidebar recolhe". Era o botao "Obras" dobrando a lista: a
-                 pessoa clica em Obras esperando VER as obras, e some tudo.
-                 Esconder tem botao proprio, no pe do trilho. */
+              /* CLICAR EM "OBRAS" abre a obra, e com ela a lista de obras. */
               <ItemTrilho rotulo="Obras" ativo={naObra} semPainel={!temPainel} aberto={trilhoAberto}
                 onClick={() => {
-                  setPainelEscondido(false);
                   if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id);
                 }}
                 disabled={!obras.length}>
@@ -10324,15 +10278,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
       ))}
 
       <div className="mt-auto flex w-full flex-col items-center gap-1 border-t border-line-1 pt-2">
-        {/* Esconder o painel e' decisao sobre a BARRA, entao mora na barra —
-            e e' o unico jeito de esconder, pra clicar num destino nunca
-            tirar nada da tela. So' aparece quando ha' painel pra esconder. */}
-        {mostrarObras && naObra && (
-          <ItemTrilho rotulo={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"} aberto={trilhoAberto}
-            onClick={() => setPainelEscondido((v) => !v)}>
-            {painelEscondido ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-          </ItemTrilho>
-        )}
         {destinosPe.map(botaoDestino)}
           <Button variant="ghost" size="icon" className={cn("mt-1 shrink-0 text-text-mute", trilhoAberto ? "ml-auto mr-2" : "mx-auto")}
             onClick={() => setTrilhoAberto((v) => !v)} aria-expanded={trilhoAberto}
@@ -24154,7 +24099,7 @@ export default function App() {
             </div>
           )}
         </div>
-        <main className={cn("main min-w-0 flex-1", !(modulo === "inicio" || ["executivo", "vendido_planilha"].includes(tab)) && "max-w-7xl")}>
+        <main className="main w-full min-w-0 flex-1">
           {/* Enquanto nao se sabe quem entrou, nenhuma tela: sem isto a
               Mehoo via o Inicio piscar antes de cair no painel dela. */}
           {supabaseConfigurado && pessoasCarregando && !migracaoPendente ? (
