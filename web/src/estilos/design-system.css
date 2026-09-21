@@ -415,6 +415,11 @@
 }
 .main > .espaco-da-obra ~ [class~="-my-6"] > .border-b:first-child > div {
   margin-top: 0;
+  /* Titulo e descricao sempre no topo a esquerda, acoes no topo a direita.
+     O PageShell alinha pela base (items-end): quando a acao tem uma dica
+     embaixo (Importar + "Modo leitura…"), o titulo descia e cada etapa
+     ficava numa altura. */
+  align-items: flex-start;
 }
 .main > .espaco-da-obra ~ [class~="-my-6"] > .sticky {
   background: var(--bg) !important;

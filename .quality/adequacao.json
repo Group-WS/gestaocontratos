@@ -1279,20 +1279,6 @@
     {
       "regra": "DS-07",
       "arquivo": "web/src/App.jsx",
-      "linha": 18616,
-      "trecho": "<input className=\"form-input\" value={titulo} placeholder=\"nome do arquivo (opcional)\"",
-      "impressao": "7aaf47b223e07e9f"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
-      "linha": 18618,
-      "trecho": "<select className=\"form-input\" value={fase} onChange={(e) => setFase(e.target.value)}",
-      "impressao": "f60df23a6d73f16a"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
       "linha": 19253,
       "trecho": "<select value={versaoId ?? \"\"} onChange={(e) => setVersaoId(Number(e.target.value))}>",
       "impressao": "e314878ca25cbbf4"

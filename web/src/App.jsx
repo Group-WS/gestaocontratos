@@ -2968,12 +2968,12 @@ function historicoDaTela(eventos, tela) {
 function CampoBusca({ valor, aoMudar, dica, contador }) {
   return (
     <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-      <Input className="w-full sm:max-w-xs" icon={<Search size={16} />} aria-label="Buscar"
+      <Input className="w-full sm:w-72" icon={<Search size={16} />} aria-label="Buscar"
         placeholder={dica || "Buscar insumo, codigo ou fornecedor…"} value={valor || ""}
         onChange={(e) => aoMudar(e.target.value)} />
       {!!valor && !!contador && <span className="text-xs text-text-mute" role="status">{contador}</span>}
       {!!valor && (
-        <Button variant="ghost" size="sm" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} /> Limpar busca</Button>
+        <Button variant="ghost" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>
       )}
     </div>
   );
@@ -4102,13 +4102,13 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
          MAT, MO ou os dois; a de baixo é em que pé o item está. */
       toolbar={(
         <div className="flex flex-wrap items-center gap-2">
-          <Input className="w-full sm:max-w-xs" icon={<Search size={16} />} placeholder="Buscar insumo, código ou fornecedor…"
+          <Input className="w-full sm:w-72" icon={<Search size={16} />} placeholder="Buscar insumo, código ou fornecedor…"
             aria-label="Buscar item do plano" value={busca} onChange={(e) => setBusca(e.target.value)} />
           {!!busca && <span className="text-xs text-text-mute" role="status">{contaItens(grupos)} de {contaItens(gruposSemBusca)} itens</span>}
-          {!!busca && <Button variant="ghost" size="sm" onClick={() => setBusca("")}><X size={16} /> Limpar busca</Button>}
+          {!!busca && <Button variant="ghost" onClick={() => setBusca("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>}
           <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => { if (v) setTipoFilter(v); }} aria-label="Alocação de recurso">
             {FILTROS_ALOC.map((t) => (
-              <ToggleGroupItem key={t.id} value={t.id} size="sm" title={t.destino ? `Estes ${t.destino}` : undefined}>
+              <ToggleGroupItem key={t.id} value={t.id} title={t.destino ? `Estes ${t.destino}` : undefined}>
                 {t.label}
                 <Contador tom="neutral" className="ml-1">{contaPorAloc[t.id]}</Contador>
               </ToggleGroupItem>
@@ -4123,10 +4123,10 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
         <div className="flex flex-wrap items-center gap-2">
           <ToggleGroup type="single" value={itemFilter} onValueChange={(v) => { if (v) setItemFilter(v); }} aria-label="Situação do item">
             {FILTERS.map((f) => (
-              <ToggleGroupItem key={f.id} value={f.id} size="sm">{f.label}</ToggleGroupItem>
+              <ToggleGroupItem key={f.id} value={f.id}>{f.label}</ToggleGroupItem>
             ))}
           </ToggleGroup>
-          <Toggle size="sm" pressed={soVendido} onPressedChange={(v) => setSoVendido(v)}
+          <Toggle pressed={soVendido} onPressedChange={(v) => setSoVendido(v)}
             title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
             {soVendido ? "Só o vendido" : "Vendido e não vendido"}
             {soVendido && ocultosNaoVendidos > 0 && <Contador tom="neutral" className="ml-1">{ocultosNaoVendidos} ocultos</Contador>}
@@ -5254,10 +5254,9 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
            mesma nos três estados. */
         toolbar={(
           <div className="flex flex-wrap items-center gap-2">
-            <ClipboardList size={16} className="text-text-mute" />
             <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
               {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} size="sm">
+                <ToggleGroupItem key={f.id} value={f.id}>
                   {f.label}
                   <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
                 </ToggleGroupItem>
@@ -5444,18 +5443,18 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
         )}
         toolbar={(
           <div className="flex flex-wrap items-center gap-2">
-            <ClipboardList size={16} className="text-text-mute" />
+            {/* PADRAO DA BARRA DE ETAPA: busca primeiro (largura fixa), depois
+                os filtros no tamanho padrao do DS — mesma altura da busca. */}
+            <CampoBusca valor={busca} aoMudar={setBusca}
+              contador={`${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens`} />
             <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
               {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} size="sm">
+                <ToggleGroupItem key={f.id} value={f.id}>
                   {f.label}
                   <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
-            <Separator orientation="vertical" className="hidden h-6 sm:block" />
-            <CampoBusca valor={busca} aoMudar={setBusca}
-              contador={`${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens`} />
           </div>
         )}>
 
@@ -6599,8 +6598,10 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <CampoBusca valor={busca} aoMudar={setBusca}
+          contador={`${visiveis.length} de ${porStatus.length} linhas`} />
         <ToggleGroup type="single" value={chipAtivo} onValueChange={escolherChip} aria-label="Filtrar linhas">
-          <ToggleGroupItem value="todos" size="sm">Todos <Badge tone="neutral">{linhas.length}</Badge></ToggleGroupItem>
+          <ToggleGroupItem value="todos">Todos <Contador tom="neutral" className="ml-1">{linhas.length}</Contador></ToggleGroupItem>
           {/* OS DOIS FILTROS DO QUE FALTA (pedido dela, 18/09/2026): "criar um
               bloco de filtro mostrando oque falta concluir executivo e um bloco
               de filtro mostrando oque falta aprovar pra compra".
@@ -6609,11 +6610,9 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
               SOBROU pra fazer, que e' o numero com que se trabalha. Sao o mesmo
               filtro dos cartoes — clicar num ou noutro leva ao mesmo lugar. */}
           {(telaExtra?.filtros || []).map((ff) => (
-            <ToggleGroupItem key={ff.id} value={ff.id} size="sm">{ff.label} <Badge tone="neutral">{ff.contador}</Badge></ToggleGroupItem>
+            <ToggleGroupItem key={ff.id} value={ff.id}>{ff.label} <Contador tom="neutral" className="ml-1">{ff.contador}</Contador></ToggleGroupItem>
           ))}
         </ToggleGroup>
-        <CampoBusca valor={busca} aoMudar={setBusca}
-          contador={`${visiveis.length} de ${porStatus.length} linhas`} />
       </div>
 
       {/* TUDO NA MESMA TELA (pedido dela, 18/09/2026): "ai clicar no filtro
@@ -9069,21 +9068,19 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
         )}
         toolbar={(
           <div className="flex flex-wrap items-center gap-2">
-            <ClipboardList size={16} className="text-text-mute" />
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
-              {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} size="sm">
-                  {f.label}
-                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-            <Separator orientation="vertical" className="hidden h-6 sm:block" />
             {/* Digitar na busca fecha o painel de insercao: nao da' pra estar
                 inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
                 de referencia sumiria por baixo da busca. */}
             <CampoBusca valor={busca} aoMudar={(v) => { setBusca(v); setBuscandoEm(null); }}
               contador={`${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens`} />
+            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
+              {FILTROS_VENDA.map((f) => (
+                <ToggleGroupItem key={f.id} value={f.id}>
+                  {f.label}
+                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
           </div>
         )}>
 
@@ -11526,8 +11523,8 @@ function GeradorSiengeView() {
           {linhas && (
             <>
               <ToggleGroup type="single" value={modoForn} onValueChange={(v) => { if (v) setModoForn(v); }} aria-label="Origem do fornecedor">
-                <ToggleGroupItem value="mesmo" size="sm">Mesmo fornecedor</ToggleGroupItem>
-                <ToggleGroupItem value="planilha" size="sm" disabled={!temLaterais}
+                <ToggleGroupItem value="mesmo">Mesmo fornecedor</ToggleGroupItem>
+                <ToggleGroupItem value="planilha" disabled={!temLaterais}
                   title={temLaterais ? "Cada linha usa o fornecedor da própria coluna"
                     : "Esta planilha não trouxe uma coluna de fornecedor"}>
                   Vários fornecedores
@@ -12514,23 +12511,26 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   ];
 
   const toolbar = (
-    <div className="flex flex-wrap items-end gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Button variant="outline" onClick={selecionarTudo}>
         <Check size={16} /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
       </Button>
-      {sel.size > 0 && <Button variant="ghost" size="sm" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
+      {sel.size > 0 && <Button variant="ghost" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
       <CampoBusca valor={busca} aoMudar={setBusca}
         contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
       {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
           obra: filtro que nunca filtra nada é ruído na barra. */}
       {obs.length > 0 && (
-        <Toggle size="sm" pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}
+        <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}
           title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
           <MessageSquare size={16} /> com observação interna ({obs.length})
         </Toggle>
       )}
-      <div className="flex w-full flex-wrap items-end gap-2 lg:ml-auto lg:w-auto">
-        <Choice label="Fornecedor" value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
+      <div className="flex w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto">
+        {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
+            ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
+            cima desalinhava a fila inteira. */}
+        <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
           onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-full sm:w-72" />
         {fornecedor && fornecedor !== SEM_FORNECEDOR && (
           <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
@@ -16800,7 +16800,7 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
         <span className="label-mono">Mostrar</span>
         <ToggleGroup type="single" value={status} onValueChange={(v) => { if (v) setStatus(v); }} aria-label="O que o painel mostra">
           {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
-            <ToggleGroupItem key={id} value={id} size="sm">{rot}</ToggleGroupItem>
+            <ToggleGroupItem key={id} value={id}>{rot}</ToggleGroupItem>
           ))}
         </ToggleGroup>
       </div>
@@ -16810,7 +16810,7 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
           <ToggleGroup type="single" value={horizonte == null ? "tudo" : String(horizonte)} aria-label="Horizonte de prazo"
             onValueChange={(v) => { if (!v) return; setHorizonte(v === "tudo" ? null : Number(v)); }}>
             {HORIZONTES.map((h) => (
-              <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)} size="sm">{h.rot}</ToggleGroupItem>
+              <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)}>{h.rot}</ToggleGroupItem>
             ))}
           </ToggleGroup>
         </div>
@@ -18847,33 +18847,26 @@ function ArquivosObraView({ obra, usuario, podeEditar, souAdmin, onArquivos }) {
     }
   }
 
+  /* Mesmo cabecalho das outras abas da obra: titulo e contagem a esquerda,
+     o anexar a direita — com campos do DS no lugar do input/select nativos. */
+  const contagem = `${todos.length} ${todos.length === 1 ? "arquivo nesta obra" : "arquivos nesta obra"}`
+    + (guardados < todos.length ? ` · ${todos.length - guardados} sem o arquivo guardado` : "");
   return (
-    <>
-      <div className="arq-topo">
-        <div>
-          <div className="arq-topo-n mono">{todos.length}</div>
-          <div className="arq-topo-rot">
-            {todos.length === 1 ? "arquivo nesta obra" : "arquivos nesta obra"}
-            {guardados < todos.length && ` · ${todos.length - guardados} sem o arquivo guardado`}
-          </div>
+    <PageShell title={`Documentos — ${obra.codigo}/00`} description={contagem}
+      contentClassName="flex flex-col gap-6"
+      actions={podeEditar && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input className="w-full sm:w-56" value={titulo} placeholder="Nome do arquivo (opcional)"
+            aria-label="Nome do arquivo" onChange={(e) => setTitulo(e.target.value)} />
+          <Choice label="Fase do arquivo" rotuloVisivel={false} className="w-full sm:w-48" value={fase}
+            onChange={setFase} opcoes={fasesDeAvulso.map((f) => ({ value: f.id, label: f.nome }))} />
+          <Button disabled={enviando}
+            onClick={() => inputRef.current && inputRef.current.click()}>
+            <Upload size={16} aria-hidden="true" /> {enviando ? "Enviando…" : "Anexar arquivo"}
+          </Button>
+          <SeletorDeArquivo ref={inputRef} accept={EXTENSOES_ACEITAS} onChange={subir} />
         </div>
-        {podeEditar && (
-          <div className="arq-subir">
-            <input className="form-input" value={titulo} placeholder="nome do arquivo (opcional)"
-              onChange={(e) => setTitulo(e.target.value)} />
-            <select className="form-input" value={fase} onChange={(e) => setFase(e.target.value)}
-              title="Em que fase este arquivo entra">
-              {fasesDeAvulso.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-            </select>
-            <Button disabled={enviando}
-              onClick={() => inputRef.current && inputRef.current.click()}>
-              <Upload size={13} /> {enviando ? "Enviando…" : "Anexar arquivo"}
-            </Button>
-            <SeletorDeArquivo ref={inputRef} accept={EXTENSOES_ACEITAS} onChange={subir} />
-          </div>
-        )}
-      </div>
-
+      )}>
       {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
 
       {todos.length === 0 ? (
@@ -18897,7 +18890,7 @@ function ArquivosObraView({ obra, usuario, podeEditar, souAdmin, onArquivos }) {
           ))}
         </div>
       ))}
-    </>
+    </PageShell>
   );
 }
 
@@ -20143,7 +20136,7 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
         <span className={cn("text-xs", salvando === "parcial" ? "text-warning" : "text-text-mute")}>
           {salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo" : salvando === "parcial" ? "salvo em parte" : ""}
         </span>
-        <Button variant="outline" size="sm" onClick={onFinalizar} disabled={salvando === "salvando"}>
+        <Button variant="outline" onClick={onFinalizar} disabled={salvando === "salvando"}>
           <Check size={16} aria-hidden="true" /> Finalizar edição
         </Button>
       </span>
@@ -20152,7 +20145,7 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
     estado = (
       <span className="flex items-center gap-2 text-sm">
         <Badge tone="neutral">Modo leitura</Badge>
-        <Button variant="outline" size="sm" onClick={onHabilitar}>
+        <Button variant="outline" onClick={onHabilitar}>
           <Pencil size={16} aria-hidden="true" /> Habilitar edição
         </Button>
       </span>
@@ -20170,7 +20163,7 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
               {porQuem && <>por <b>{porQuem}</b></>}
               {em && <> · {new Date(em).toLocaleDateString("pt-BR")}</>}
             </span>
-            {!congelado && <Button variant="ghost" size="sm" onClick={() => onReabrirEtapa(etapaId)}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>}
+            {!congelado && <Button variant="ghost" onClick={() => onReabrirEtapa(etapaId)}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>}
           </>
         ) : (
           <>
@@ -24247,7 +24240,7 @@ export default function App() {
             toolbar={!canalPreso && (
               <ToggleGroup type="single" value={canalDoPainel} onValueChange={(v) => { if (v) setCanalDoPainel(v); }} aria-label="Canal de compra" className="flex-wrap">
                 {CANAIS_COMPRA.map((c) => (
-                  <ToggleGroupItem key={c.id} value={c.id} size="sm" className="gap-1"><b>{c.sigla}</b> {c.nome}</ToggleGroupItem>
+                  <ToggleGroupItem key={c.id} value={c.id} className="gap-1"><b>{c.sigla}</b> {c.nome}</ToggleGroupItem>
                 ))}
               </ToggleGroup>
             )}

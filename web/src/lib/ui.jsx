@@ -116,11 +116,13 @@ export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = 
   );
 }
 
-export function Choice({ label, value, opcoes, onChange, placeholder, required, disabled, className = "" }) {
+/* `rotuloVisivel` falso: dentro de barra de ferramentas o rotulo fica so'
+   para leitor de tela, e o campo alinha com a busca e os filtros. */
+export function Choice({ label, value, opcoes, onChange, placeholder, required, disabled, className = "", rotuloVisivel = true }) {
   const id = useId();
   return (
     <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
-      <Label htmlFor={id} required={required}>{label}</Label>
+      <Label htmlFor={id} required={required} className={rotuloVisivel ? undefined : "sr-only"}>{label}</Label>
       <Select value={value} onValueChange={onChange} disabled={disabled}>
         <SelectTrigger id={id} aria-label={label}><SelectValue placeholder={placeholder} /></SelectTrigger>
         <SelectContent>
