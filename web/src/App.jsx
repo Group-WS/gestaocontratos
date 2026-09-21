@@ -57,7 +57,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
-  Alert, AlertDescription, EmptyState, Progress, Checkbox } from "@group-ws/ws-ui";
+  Alert, AlertDescription, EmptyState, Progress, Checkbox, PageShell } from "@group-ws/ws-ui";
 import { useMediaQuery, LARGO, Contador } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
@@ -19376,22 +19376,23 @@ function BancoPrecosView({ usuario }) {
    ============================================================ */
 
 function ObraCard({ o, acao, children }) {
+  const endereco = o.endereco && o.endereco !== "—" ? o.endereco : "";
   return (
-    <div className="obra-card">
-      <div className="obra-card-info">
-        <div className="obra-card-nome">{o.nome}</div>
-        <div className="obra-card-sub mono">
-          #{o.codigo}
-          {o.squad && <> · {o.squad}</>}
-          {o.cliente && o.cliente !== "—" && <> · {o.cliente}</>}
+    <Card className="flex h-full flex-col gap-4">
+      <div className="min-w-0 space-y-1">
+        <div className="text-sm font-semibold text-text">{o.nome}</div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-mute">
+          <span className="font-mono">#{o.codigo}</span>
+          {o.squad && <Badge tone="neutral">{o.squad}</Badge>}
+          {o.cliente && o.cliente !== "—" && <span className="min-w-0 truncate">{o.cliente}</span>}
         </div>
         {children}
       </div>
-      {/* O endereço ao lado, numa coluna (o da obra ou o do cadastro do
-          Sienge): sem nenhum dos dois, fica em branco em vez de um traço. */}
-      <div className="obra-card-end">{o.endereco && o.endereco !== "—" ? o.endereco : ""}</div>
-      {acao}
-    </div>
+      {/* O endereço (o da obra ou o do cadastro do Sienge): sem nenhum dos
+          dois, fica em branco em vez de um traço. */}
+      <div className="min-w-0 flex-1 text-xs text-text-soft">{endereco}</div>
+      {acao && <div className="flex flex-wrap gap-2">{acao}</div>}
+    </Card>
   );
 }
 
@@ -19547,89 +19548,91 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
   const nomes = Object.keys(grupos).sort();
 
   return (
-    <>
-      <div className="secao-intro">
-        <p>
-          Estas obras existem no Monday mas ainda não foram iniciadas aqui. Ao dar start,
-          a obra passa a ser gravada no banco — a partir daí, o que você fizer dentro dela
-          (PDFs, conferências, aprovações) fica salvo e não se perde ao recarregar.
-        </p>
-      </div>
+    <PageShell crumb="Do Monday" title="Novas obras"
+      description={`Obras que ainda não foram iniciadas aqui · ${obras.length}`}
+      contentClassName="flex flex-col gap-6"
+      toolbar={obras.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input className="w-full max-w-sm" icon={<Search size={16} />} placeholder="Filtrar por nome, código, squad..."
+            aria-label="Buscar obra" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {search && <Button variant="ghost" size="sm" onClick={() => setSearch("")}><X size={16} /> Limpar busca</Button>}
+        </div>
+      ) : undefined}>
+      <p className="max-w-3xl text-sm text-text-soft">
+        Estas obras existem no Monday mas ainda não foram iniciadas aqui. Ao dar start,
+        a obra passa a ser gravada no banco — a partir daí, o que você fizer dentro dela
+        (PDFs, conferências, aprovações) fica salvo e não se perde ao recarregar.
+      </p>
 
       {semBanco && (
-        <div className="aviso-banco">
-          Banco de dados não configurado neste ambiente — o start não vai gravar nada.
-        </div>
+        <Alert tone="warning">
+          <AlertDescription>Banco de dados não configurado neste ambiente — o start não vai gravar nada.</AlertDescription>
+        </Alert>
       )}
 
       <CadastroManualObra onCriar={onCriarManual} salvando={salvando === "manual"} jaExistem={codigosUsados}
         equipe={equipe} usuario={usuario} />
 
-      {obras.length > 0 && (
-        <div className="obra-search obra-search-wide">
-          <Search size={13} className="dim" />
-          <input placeholder="Filtrar por nome, código, squad..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <Button variant="ghost" size="icon" onClick={() => setSearch("")} aria-label="Limpar busca"><X size={12} /></Button>}
-        </div>
-      )}
-
       {obras.length === 0 && (
-        <div className="vazio-box">
-          <Sparkle size={26} className="dim" />
-          <div className="vazio-titulo">Nenhuma obra nova</div>
-          <div className="vazio-sub">Todas as obras do Monday já foram iniciadas ou concluídas aqui.</div>
-        </div>
+        <EmptyState icon={<Sparkle size={24} />} title="Nenhuma obra nova"
+          description="Todas as obras do Monday já foram iniciadas ou concluídas aqui." />
       )}
 
-      {obras.length > 0 && filtradas.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
+      {obras.length > 0 && filtradas.length === 0 && (
+        <EmptyState icon={<Search size={24} />} title="Nenhuma obra encontrada."
+          description="Nenhum resultado para os filtros aplicados."
+          action={<Button variant="outline" onClick={() => setSearch("")}>Limpar filtros</Button>} />
+      )}
 
       {nomes.map((squad) => (
-        <div key={squad} className="obra-card-grupo">
-          <div className="squad-group-label">{squad} · {grupos[squad].length}</div>
-          {grupos[squad].map((o) => (
-            <ObraCard
-              key={o.id}
-              o={o}
-              acao={
-                <Button disabled={salvando === o.id || semBanco} onClick={() => onStart(o)}>
-                  {salvando === o.id ? "Iniciando…" : <><Play size={13} /> Dar start</>}
-                </Button>
-              }
-            />
-          ))}
-        </div>
+        <section key={squad} className="space-y-2" aria-label={squad}>
+          <h2 className="label-mono">{squad} · {grupos[squad].length}</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {grupos[squad].map((o) => (
+              <ObraCard
+                key={o.id}
+                o={o}
+                acao={
+                  <Button disabled={salvando === o.id || semBanco} onClick={() => onStart(o)}>
+                    {salvando === o.id ? "Iniciando…" : <><Play size={16} /> Dar start</>}
+                  </Button>
+                }
+              />
+            ))}
+          </div>
+        </section>
       ))}
-    </>
+    </PageShell>
   );
 }
 
 function ArquivoView({ obras, onReabrir, salvando }) {
   return (
-    <>
-      <div className="secao-intro">
-        <p>Obras concluídas. Ficam guardadas para consulta e saem da lista do dia a dia.</p>
-      </div>
+    <PageShell crumb="Concluídas" title="Finalizadas"
+      description={`Obras encerradas, mantidas para consulta · ${obras.length}`}
+      contentClassName="flex flex-col gap-6">
+      <p className="max-w-3xl text-sm text-text-soft">Obras concluídas. Ficam guardadas para consulta e saem da lista do dia a dia.</p>
 
       {obras.length === 0 && (
-        <div className="vazio-box">
-          <Archive size={26} className="dim" />
-          <div className="vazio-titulo">Arquivo vazio</div>
-          <div className="vazio-sub">Nenhuma obra foi concluída ainda.</div>
-        </div>
+        <EmptyState icon={<Archive size={24} />} title="Arquivo vazio" description="Nenhuma obra foi concluída ainda." />
       )}
 
-      {obras.map((o) => (
-        <ObraCard
-          key={o.id}
-          o={o}
-          acao={
-            <Button variant="outline" disabled={salvando === o.id} onClick={() => onReabrir(o)}>
-              {salvando === o.id ? "Reabrindo…" : <><RotateCcw size={13} /> Reabrir</>}
-            </Button>
-          }
-        />
-      ))}
-    </>
+      {obras.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {obras.map((o) => (
+            <ObraCard
+              key={o.id}
+              o={o}
+              acao={
+                <Button disabled={salvando === o.id} onClick={() => onReabrir(o)}>
+                  {salvando === o.id ? "Reabrindo…" : <><RotateCcw size={16} /> Reabrir</>}
+                </Button>
+              }
+            />
+          ))}
+        </div>
+      )}
+    </PageShell>
   );
 }
 
@@ -21899,7 +21902,6 @@ export default function App() {
            lista rola, e o modulo tem que continuar a um clique. */
         .nav-modulos { margin-top: auto; position: sticky; bottom: 0; background: var(--surface-1); padding-bottom: 2px; }
         .nav-modulos::before { content: ""; display: block; height: 10px; margin: 0 -14px; background: linear-gradient(to bottom, transparent, var(--surface-1)); }
-        .no-results { font-size: 11.5px; color: var(--ink-3); padding: 10px 6px; }
         .nav-group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; cursor: pointer; }
         .nav-group-toggle:hover { color: var(--ink-2); }
         .nav-group-toggle span:first-child { flex: 1; text-align: left; }
@@ -22018,7 +22020,6 @@ export default function App() {
         .sidebar.recolhida .alert-toggle,
         .sidebar.recolhida .nav-item-text,
         .sidebar.recolhida .nav-item-chevron,
-        .sidebar.recolhida .no-results,
         .sidebar.recolhida .profile-text,
         .sidebar.recolhida .profile > .lucide-chevron-right { display: none; }
         .sidebar.recolhida .nav-item { justify-content: center; padding: 10px 0; width: 44px; }
@@ -22047,15 +22048,8 @@ export default function App() {
         .nav-count { background: var(--panel); color: var(--ink-3); font-size: 10px; font-weight: 600; border-radius: 20px; padding: 1px 6px; font-family: var(--font-mono); flex-shrink: 0; }
         .link-inline { background: none; border: none; padding: 0; font: inherit; color: var(--blue); cursor: pointer; text-decoration: underline; }
 
-        .secao-intro { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; background: var(--panel); border-radius: 10px; padding: 12px 15px; margin-bottom: 18px; max-width: 720px; }
-        .secao-intro p { margin: 0; }
-        .aviso-banco { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
         .obra-search-wide { max-width: 380px; margin-bottom: 18px; }
 
-        .obra-card-grupo { margin-bottom: 22px; }
-        .obra-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 12px; padding: 13px 16px; margin-bottom: 8px; max-width: 720px; }
-        .obra-card-info { min-width: 0; flex: 0 0 36%; }
-        .obra-card-end { flex: 1; min-width: 0; font-size: 12px; line-height: 1.4; color: var(--ink-2); }
         .eq-bloco-toggle { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
         .eq-seta { color: var(--ink-3); flex-shrink: 0; transition: transform .15s ease; }
         .eq-seta.fechada { transform: rotate(-90deg); }
@@ -22090,17 +22084,7 @@ export default function App() {
         .mop-novo-tit { flex-basis: 100%; font-size: 12px; font-weight: 600; color: var(--ink-2); }
         .mop-novo .form-input { width: auto; flex: 1 1 150px; }
         .mop-novo .cargo-chips { flex-basis: 100%; }
-        @media (max-width: 720px) { .obra-card { flex-wrap: wrap; } .obra-card-info { flex-basis: 100%; } .obra-card-end { flex-basis: 100%; order: 3; } }
-        .obra-card-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
-        .obra-card-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
 
-        .btn-start, .btn-reabrir, .btn-concluir { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 7px 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0; font-family: inherit; }
-        .btn-start { background: var(--blue); color: var(--bg); border: 1px solid var(--blue); }
-        .btn-start:hover:not(:disabled) { filter: brightness(1.08); }
-        .btn-reabrir { background: var(--surface-1); color: var(--ink-2); border: 1px solid var(--border); }
-        .btn-reabrir:hover:not(:disabled) { background: var(--panel); }
-        .btn-concluir { background: var(--surface-1); color: var(--ink-2); border: 1px solid var(--border); font-size: 11.5px; padding: 6px 11px; }
-        .btn-concluir:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
         .title-acoes { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
         .btn-apres { display: inline-flex; align-items: center; gap: 6px; background: var(--brand-tint); color: var(--brand); border: 1px solid var(--brand-line); border-radius: 8px; font-size: 11.5px; font-weight: 600; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
         .btn-apres:hover { background: var(--brand-soft); }
@@ -22114,11 +22098,7 @@ export default function App() {
            exemplo) não tem onde quebrar e esticava a tabela pra fora da
            tela: aqui ele quebra onde precisar. */
         .grp-itens .item-desc, .grp-itens .det-espec { overflow-wrap: anywhere; }
-        .btn-start:disabled, .btn-reabrir:disabled, .btn-concluir:disabled { opacity: 0.55; cursor: default; }
 
-        .vazio-box { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; background: var(--panel); border-radius: 12px; padding: 40px 20px; max-width: 720px; }
-        .vazio-titulo { font-size: 14px; font-weight: 600; color: var(--ink); margin-top: 4px; }
-        .vazio-sub { font-size: 12px; color: var(--ink-3); }
         .title-accent { font-family: var(--font-sans); font-style: italic; font-weight: 500; color: var(--ink); }
         .obra-meta { font-size: 13px; color: var(--ink-2); margin-bottom: 26px; }
         .sg-sub { font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--ink-2); margin: -2px 0 14px; }
@@ -24239,12 +24219,11 @@ export default function App() {
         .title-row { font-size: 30px; line-height: 1.1; margin-bottom: 6px; }
         .title-plain, .title-accent { font-family: var(--font-sans); font-style: normal; font-weight: 400; letter-spacing: -0.02em; color: var(--text); }
         .obra-meta { font-size: 13px; color: var(--text-soft); margin-bottom: 22px; }
-        .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .escopo-nome, .assinatura-titulo, .vazio-titulo, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
+        .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .escopo-nome, .assinatura-titulo, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
         .gc-bloco-titulo { font-size: 18px; }
         .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .assinatura-titulo { font-size: 16px; }
         .escopo-nome { font-size: 22px; }
         .gc-bloco-head, .arq-bloco-h { padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
-        .secao-intro { background: var(--surface-2); border: 1px solid var(--line-1); border-radius: 10px; color: var(--text-soft); }
 
         /* ---------- Abas (Tabs · pill no nível 1, underline no nível 2) ---------- */
         .gc-abas, .ger-modo { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
@@ -24258,23 +24237,23 @@ export default function App() {
            primário = default do DS (brand) · contorno = outline ·
            tracejado = adicionar · fantasma = só ícone. O tamanho sm (30px)
            é o padrão aqui; o default (38px) fica para a ação principal. */
-        :is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template) {
+        :is(.btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template) {
           display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 8px;
           font-family: var(--font-sans); font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap;
           background: var(--brand); color: var(--bg); border: 1px solid var(--brand); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
         }
-        :is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
-        :is(.btn-start, .btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
-        :is(.btn-start, .btn-import, .btn-aprovar, .btn-nova-solicitacao, .btn-avulsa, .btn-download, .btn-criar) { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
+        :is(.btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
+        :is(.btn-import, .btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-download, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
+        :is(.btn-import, .btn-aprovar, .btn-nova-solicitacao, .btn-avulsa, .btn-download, .btn-criar) { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
         .pf-box.compacto .btn-doc { min-height: 24px; }
 
-        :is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel) {
+        :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel) {
           display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 8px;
           font-family: var(--font-sans); font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap;
           background: transparent; color: var(--text); border: 1px solid var(--line-2); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         }
-        :is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo):hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-3); color: var(--text); }
-        :is(.btn-reabrir, .btn-concluir, .btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel):disabled { opacity: 0.5; cursor: not-allowed; }
+        :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo):hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-3); color: var(--text); }
+        :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-limpar-import, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel):disabled { opacity: 0.5; cursor: not-allowed; }
         :is(.btn-lupa, .btn-copiar, .btn-apagar-escopo) { width: 30px; padding: 0; color: var(--text-mute); }
         .btn-cancelar { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
         :is(.btn-limpar-import, .btn-cadastrar) { color: var(--danger); }
@@ -24370,7 +24349,7 @@ export default function App() {
         /* ---------- Avisos (Alert · Banner) ----------
            O texto fica em --text: o tom mora no fundo, na borda e no ícone.
            Amarelo sobre amarelo claro não passa no contraste. */
-        :is(.aviso-monday, .aviso-banco, .aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-box) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
+        :is(.aviso-monday, .aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-box) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
         :is(.aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-topo) svg { color: var(--warning); }
         :is(.import-erro, .estouro-aviso) { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
         :is(.import-erro, .estouro-aviso) svg { color: var(--danger); }
@@ -24383,10 +24362,10 @@ export default function App() {
         .aviso-deslocamento, .etapa-pendente { border: 1px solid var(--line-1); background: var(--surface-2); color: var(--text-soft); }
 
         /* ---------- Estado vazio (EmptyState) ---------- */
-        .vazio-box, .compras-empty { gap: 12px; padding: 48px 24px; border: 1px solid var(--line-1); border-radius: 18px; background: var(--surface-1); }
-        .vazio-box > svg:first-child, .compras-empty > svg:first-child { box-sizing: content-box; padding: 12px; border-radius: 18px; background: var(--surface-2); color: var(--text-mute); }
-        .vazio-titulo, .compras-empty-title { font-size: 20px; }
-        .vazio-sub, .compras-empty-sub { max-width: 448px; font-size: 13.5px; line-height: 1.6; color: var(--text-soft); }
+        .compras-empty { gap: 12px; padding: 48px 24px; border: 1px solid var(--line-1); border-radius: 18px; background: var(--surface-1); }
+        .compras-empty > svg:first-child { box-sizing: content-box; padding: 12px; border-radius: 18px; background: var(--surface-2); color: var(--text-mute); }
+        .compras-empty-title { font-size: 20px; }
+        .compras-empty-sub { max-width: 448px; font-size: 13.5px; line-height: 1.6; color: var(--text-soft); }
         .escolha-aba, .empty-note { color: var(--text-mute); }
 
         /* ---------- Progresso (Progress) ---------- */
@@ -24625,18 +24604,13 @@ export default function App() {
           </>
           ) : modulo === "novas" ? (
           <>
-          <div className="eyebrow">DO MONDAY · {obrasNovas.length}</div>
-          <div className="title-row"><span className="title-accent">Novas obras</span></div>
-          <div className="obra-meta">Obras que ainda não foram iniciadas aqui</div>
+          {/* Título, contagem e busca ficam no PageShell da própria tela. */}
           <NovasObrasView obras={obrasNovas} onStart={darStart} onCriarManual={criarObraManual}
             salvando={salvandoObra} semBanco={!supabaseConfigurado}
             codigosUsados={new Set(obras.map((o) => String(o.codigo)))} usuario={usuario} equipe={pessoas} />
           </>
           ) : modulo === "arquivo" ? (
           <>
-          <div className="eyebrow">CONCLUÍDAS · {obrasConcluidas.length}</div>
-          <div className="title-row"><span className="title-accent">Finalizadas</span></div>
-          <div className="obra-meta">Obras encerradas, mantidas para consulta</div>
           <ArquivoView obras={obrasConcluidas} onReabrir={marcarAtiva} salvando={salvandoObra} />
           </>
           ) : modulo === "gerador" ? (
