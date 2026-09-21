@@ -10390,7 +10390,8 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
   const [enviando, setEnviando] = useState(false);
   const [erroArq, setErroArq] = useState(null);
   const [baixando, setBaixando] = useState(false);
-  const inputRef = useRef(null);
+  const idData = React.useId();
+  const idObs = React.useId();
   const congelado = obra.comprasLiberadas || !podeEditar;
 
   /* O documento sobe ANTES de a aprovação ser registrada.
@@ -10434,106 +10435,121 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
     }
   }
 
+  const avisoArq = (texto) => (
+    <span className="inline-flex items-center gap-2 text-xs text-warning"><AlertTriangle size={14} className="shrink-0" /> {texto}</span>
+  );
+
   if (jaAssinou) {
     const arq = obra.clienteAssinaturaArq;
     return (
-      <div className="assinatura-ok">
-        <div className="assinatura-selo"><ShieldCheck size={22} /></div>
-        <div className="assinatura-corpo">
-          <div className="assinatura-titulo">Projeto executivo aprovado pelo cliente</div>
-          <div className="assinatura-linha">
-            Assinado em <b>{new Date(obra.clienteAssinouEm + "T12:00:00").toLocaleDateString("pt-BR")}</b>
-            {obra.clienteAssinaturaPor && <> · registrado por <b>{obra.clienteAssinaturaPor}</b></>}
-          </div>
-          {obra.clienteAssinaturaObs && <div className="assinatura-obs">{obra.clienteAssinaturaObs}</div>}
-          {arq && (
-            <div className="assinatura-arq">
-              <FileText size={13} /> {arq.nome}
-              {arq.tamanhoKB ? <span className="dim"> · {arq.tamanhoKB} KB</span>
-                : arq.tamanho ? <span className="dim"> · {(arq.tamanho / 1024).toFixed(0)} KB</span> : null}
-              {anexoRecuperavel(arq)
-                ? <Button variant="outline" size="sm" onClick={() => baixarDocumento(arq)} disabled={baixando}>
-                    <Download size={12} /> {baixando ? "Abrindo…" : "Baixar"}
-                  </Button>
-                /* Registro de antes de o app guardar o arquivo: ficou o
-                   nome, não a prova. Some quando um novo for anexado. */
-                : <span className="assinatura-sem-arq"><AlertTriangle size={13} /> só o nome ficou guardado</span>}
-            </div>
-          )}
-          {!arq && <div className="assinatura-sem-arq"><AlertTriangle size={13} /> Registrado sem o documento anexado.</div>}
-          {erroArq && <div className="assinatura-sem-arq"><AlertTriangle size={13} /> {erroArq}</div>}
-        </div>
-        {!congelado && (
-          <Button variant="danger" onClick={async () => {
+      <PageShell title="Aprovação do Cliente"
+        description="Assinatura do cliente no projeto executivo — é ela que destrava o Plano de Compras."
+        actions={!congelado && (
+          <Button variant="ghost" className="text-danger" onClick={async () => {
             if (await confirmar(
               "Remover o registro de aprovação do cliente?\n\n" +
               "O Plano de Compras volta a ficar bloqueado até um novo registro."
             )) onRemover();
-          }}><Trash2 size={13} /> Remover</Button>
+          }}><Trash2 size={16} /> Remover registro</Button>
+        )}>
+        <Alert tone="success">
+          <AlertTitle>Projeto executivo aprovado pelo cliente</AlertTitle>
+          <AlertDescription>
+            <div className="flex flex-col gap-2">
+              <div>
+                Assinado em <b>{new Date(obra.clienteAssinouEm + "T12:00:00").toLocaleDateString("pt-BR")}</b>
+                {obra.clienteAssinaturaPor && <> · registrado por <b>{obra.clienteAssinaturaPor}</b></>}
+              </div>
+              {obra.clienteAssinaturaObs && <div className="italic">{obra.clienteAssinaturaObs}</div>}
+              {arq && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <FileText size={14} className="shrink-0" /> {arq.nome}
+                  {arq.tamanhoKB ? <span className="text-text-mute"> · {arq.tamanhoKB} KB</span>
+                    : arq.tamanho ? <span className="text-text-mute"> · {(arq.tamanho / 1024).toFixed(0)} KB</span> : null}
+                  {anexoRecuperavel(arq)
+                    ? <Button variant="outline" size="sm" onClick={() => baixarDocumento(arq)} disabled={baixando}>
+                        <Download size={14} /> {baixando ? "Abrindo…" : "Baixar documento"}
+                      </Button>
+                    /* Registro de antes de o app guardar o arquivo: ficou o
+                       nome, não a prova. Some quando um novo for anexado. */
+                    : avisoArq("só o nome ficou guardado")}
+                </div>
+              )}
+              {!arq && avisoArq("Registrado sem o documento anexado.")}
+            </div>
+          </AlertDescription>
+        </Alert>
+        {erroArq && (
+          <Alert tone="danger" className="mt-4">
+            <AlertTitle>Não foi possível abrir o documento</AlertTitle>
+            <AlertDescription>{erroArq}</AlertDescription>
+          </Alert>
         )}
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="assinatura-form">
-      <div className="import-bar" style={{ marginBottom: 14 }}>
-        <div className="import-info">
-          <Lock size={14} />
-          <span>O <b>Plano de Compras não libera</b> enquanto o cliente não aprovar o projeto executivo. Registre aqui a assinatura.</span>
-        </div>
-      </div>
+    <PageShell title="Aprovação do Cliente"
+      description="Registre aqui a assinatura do cliente no projeto executivo."
+      contentClassName="flex flex-col gap-6">
+      <Alert tone="info">
+        <AlertDescription>O <b>Plano de Compras não libera</b> enquanto o cliente não aprovar o projeto executivo. Registre aqui a assinatura.</AlertDescription>
+      </Alert>
 
-      <div className="flat-panel">
-        <div className="flat-panel-header">
-          <div>
-            <div className="flat-panel-title">Registrar aprovação do cliente</div>
-            <div className="flat-panel-sub">Data em que o cliente assinou, mais o documento assinado.</div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Registrar aprovação do cliente</CardTitle>
+          <CardDescription>Data em que o cliente assinou, mais o documento assinado.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field>
+              <Label htmlFor={idData}>Data da assinatura</Label>
+              <Input id={idData} type="date" value={data} disabled={congelado}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setData(e.target.value)} />
+            </Field>
+
+            <Field className="md:col-span-2">
+              <Label htmlFor={idObs}>Observação <span className="font-normal text-text-mute">(opcional)</span></Label>
+              <Input id={idObs} type="text" value={obs} disabled={congelado} placeholder="ex: assinado na reunião de 12/08, com ressalva no item 7.3"
+                onChange={(e) => setObs(e.target.value)} />
+            </Field>
+
+            <Field className="md:col-span-2">
+              <Label>Documento assinado</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button asChild variant="outline" aria-disabled={congelado} className={congelado ? "pointer-events-none opacity-50" : ""}>
+                  <label>
+                    <Upload size={16} /> {arquivo ? "Trocar arquivo" : "Anexar documento"}
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="sr-only" disabled={congelado}
+                      onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setArquivo(f); }} />
+                  </label>
+                </Button>
+                {arquivo
+                  ? <span className="inline-flex items-center gap-2 text-xs text-text-soft"><FileText size={14} className="shrink-0" /> {arquivo.name} <span className="text-text-mute">· {(arquivo.size / 1024).toFixed(0)} KB</span></span>
+                  : <span className="text-xs text-text-mute">Nenhum arquivo escolhido</span>}
+              </div>
+            </Field>
           </div>
-        </div>
 
-        <div className="assinatura-campos">
-          <label className="campo">
-            <span className="campo-rotulo">Data da assinatura</span>
-            <input type="date" value={data} disabled={congelado}
-              max={new Date().toISOString().slice(0, 10)}
-              onChange={(e) => setData(e.target.value)} />
-          </label>
-
-          <label className="campo campo-largo">
-            <span className="campo-rotulo">Observação <span className="dim">(opcional)</span></span>
-            <input type="text" value={obs} disabled={congelado} placeholder="ex: assinado na reunião de 12/08, com ressalva no item 7.3"
-              onChange={(e) => setObs(e.target.value)} />
-          </label>
-
-          <div className="campo campo-largo">
-            <span className="campo-rotulo">Documento assinado</span>
-            <div className="assinatura-upload">
-              <Button disabled={congelado} onClick={() => inputRef.current?.click()}>
-                <Upload size={13} /> {arquivo ? "Trocar arquivo" : "Anexar documento"}
-              </Button>
-              <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="sr-only"
-                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setArquivo(f); }} />
-              {arquivo
-                ? <span className="assinatura-arq"><FileText size={13} /> {arquivo.name} <span className="dim">· {(arquivo.size / 1024).toFixed(0)} KB</span></span>
-                : <span className="dim">Nenhum arquivo escolhido</span>}
-            </div>
-          </div>
-        </div>
-
-        <div className="assinatura-acoes">
-          {!arquivo && (
-            <span className="assinatura-aviso">
-              <AlertTriangle size={13} /> Sem o documento anexado o registro vale, mas fica sem prova.
-            </span>
+          {erroArq && (
+            <Alert tone="danger">
+              <AlertTitle>Não foi possível guardar o documento</AlertTitle>
+              <AlertDescription>{erroArq}</AlertDescription>
+            </Alert>
           )}
-          {erroArq && <span className="assinatura-aviso"><AlertTriangle size={13} /> {erroArq}</span>}
-          <Button disabled={congelado || !data || enviando} onClick={registrar}>
-            <ShieldCheck size={14} /> {enviando ? "Guardando documento…" : "Registrar aprovação"}
-          </Button>
-        </div>
-      </div>
-    </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            {!arquivo && avisoArq("Sem o documento anexado o registro vale, mas fica sem prova.")}
+            <Button disabled={congelado || !data || enviando} onClick={registrar}>
+              <ShieldCheck size={16} /> {enviando ? "Guardando documento…" : "Registrar aprovação"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }
 
@@ -22950,26 +22966,6 @@ export default function App() {
         .etapa-concluida svg { color: var(--green); flex-shrink: 0; }
         .etapa-concluida span { flex: 1; }
 
-        .assinatura-ok { display: flex; align-items: flex-start; gap: 16px; padding: 20px; background: var(--green-bg); border: 1px solid var(--green); border-radius: 12px; }
-        .assinatura-selo { color: var(--green); flex-shrink: 0; }
-        .assinatura-corpo { flex: 1; }
-        .assinatura-titulo { font-size: 15px; font-weight: 700; margin-bottom: 5px; }
-        .assinatura-linha { font-size: 13px; color: var(--ink-2); }
-        .assinatura-obs { font-size: 13px; color: var(--ink-2); margin-top: 7px; font-style: italic; }
-        .assinatura-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); margin-top: 8px; }
-        .assinatura-sem-arq { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--alert); margin-top: 8px; }
-        /* Quando o aviso vem na mesma linha do nome do arquivo, o
-           respiro de cima é do bloco, não dele. */
-        .assinatura-arq .assinatura-sem-arq { margin-top: 0; font-size: 11.5px; }
-        .assinatura-campos { display: grid; grid-template-columns: 200px 1fr; gap: 16px; padding: 18px 20px; }
-        .campo { display: flex; flex-direction: column; gap: 6px; }
-        .campo-largo { grid-column: 1 / -1; }
-        .campo-rotulo { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
-        .campo input { font: inherit; font-size: 13px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; }
-        .assinatura-upload { display: flex; align-items: center; gap: 12px; }
-        .assinatura-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 20px 18px; }
-        .assinatura-aviso { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--alert); }
-
         .filter-chip { background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .filter-chip:hover { border-color: var(--blue); }
         .filter-chip.active { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
@@ -23866,9 +23862,9 @@ export default function App() {
         .title-row { font-size: 30px; line-height: 1.1; margin-bottom: 6px; }
         .title-plain, .title-accent { font-family: var(--font-sans); font-style: normal; font-weight: 400; letter-spacing: -0.02em; color: var(--text); }
         .obra-meta { font-size: 13px; color: var(--text-soft); margin-bottom: 22px; }
-        .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .escopo-nome, .assinatura-titulo, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
+        .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .escopo-nome, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
         .gc-bloco-titulo { font-size: 18px; }
-        .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .assinatura-titulo { font-size: 16px; }
+        .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome { font-size: 16px; }
         .escopo-nome { font-size: 22px; }
         .gc-bloco-head, .arq-bloco-h { padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
 
@@ -23921,10 +23917,8 @@ export default function App() {
            brand com anel suave, raio 10, 14px. Os campos pequenos de tabela
            mantêm o tamanho e herdam só a linguagem. */
         :is(.form-input, .form-select, .detalhe-texto) { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
-        .campo input { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
         :is(.ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit) { border-color: var(--line-2); border-radius: 8px; background-color: var(--field); color: var(--text); transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
         :is(.form-input, .form-select, .detalhe-texto, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit, .ad-obs):focus,
-        .campo input:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
         :is(.form-input, .form-select, .detalhe-texto, .ad-obs)::placeholder { color: var(--text-mute); }
         :is(.form-input, .form-select):disabled { opacity: 0.5; cursor: not-allowed; }
         select.form-input, .form-select, .casa-sel { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px; }
@@ -23967,7 +23961,7 @@ export default function App() {
         /* ---------- Cartões e números (Card · KPI) ---------- */
         :is(.big-card, .gc-total, .flat-panel) { border-radius: 14px; }
         :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
-        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .campo-rotulo, .conf-col-label, .ad-prev-h, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .conf-col-label, .ad-prev-h, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .ad-cab label, .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .funil-n, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
@@ -24000,7 +23994,7 @@ export default function App() {
         .assoc-resultado.ok { background: var(--success-soft); border: 1px solid var(--success-line); border-radius: 10px; color: var(--text); }
         .assoc-resultado.ok svg { color: var(--success); }
         .pf-topo, .pf-nota, .aviso-pobre-sub { color: var(--text); }
-        .etapa-concluida, .assinatura-ok, .barra-etapa.feita { border-color: var(--success-line); }
+        .etapa-concluida, .barra-etapa.feita { border-color: var(--success-line); }
         .bucket-falta { border-color: var(--warning-line); }
         .ac-painel, .assoc-barra { border-color: var(--brand-line); }
         .aviso-deslocamento, .etapa-pendente { border: 1px solid var(--line-1); background: var(--surface-2); color: var(--text-soft); }
@@ -24128,7 +24122,7 @@ export default function App() {
              sao duas colunas: sao duas fitas de uma palavra por linha. */
           .dash, .ad-wrap, .ad-cab, .conf-cols,
           .escopo-conta, .escopo-campos, .confronto-placar, .ger-placar,
-          .sol-campos, .assinatura-campos, .form-row-3, .cad-campos,
+          .sol-campos, .form-row-3, .cad-campos,
           .ad-item-campos, .ad-item-campos.com-custo {
             /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
                min-width auto, e com isso se RECUSA a encolher abaixo do
