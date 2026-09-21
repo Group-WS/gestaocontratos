@@ -138,7 +138,7 @@ conf("a observação da verba fica FORA do botão que abre o grupo",
   app.indexOf('<Observacoes lista={obsDaVerba(g.num)}') > app.indexOf('</button>'), true);
 
 /* O filtro que ela pediu. Só aparece quando há o que filtrar. */
-conf("existe o chip de filtrar por observação", app.includes('className={`filter-chip ${soComObs ? "active" : ""} chip-obs`}'), true);
+conf("existe o chip de filtrar por observação", app.includes('<Toggle size="sm" pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}'), true);
 conf("... e ele some quando não há nenhuma", app.includes("{obs.length > 0 && ("), true);
 conf("com o filtro, a verba sem observação nenhuma sai",
   app.includes("if (soComObs && naTela.length === 0 && obsDaVerba(g.num).length === 0) return null;"), true);

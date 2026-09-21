@@ -53,7 +53,11 @@ conf("a linha recebe a edição", i >= 0 && compras.slice(i, compras.indexOf("/>
 conf("solicitado trava em modo leitura", linha.includes("disabled={!podeEditar || !podeMudarSolicitado(it)}"));
 conf("comprado trava em modo leitura", linha.includes("disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}"));
 conf("insumo do Sienge fica só pra consulta", linha.includes("somenteLeitura={!podeEditar}") && /somenteLeitura = false/.test(escolha));
-conf("canal e marcações em massa travam", (compras.match(/disabled=\{!podeEditar\}/g) || []).length >= 5);
+/* Os canais viraram UM ToggleGroup com um so' disabled (antes eram cinco
+   botoes, cada um com o seu): marcar comprado, marcar solicitado, associar
+   e o grupo de canais — quatro travas, e a do canal tem que estar no grupo. */
+conf("canal e marcações em massa travam", (compras.match(/disabled=\{!podeEditar\}/g) || []).length >= 4
+  && /<ToggleGroup type="single" value="" disabled=\{!podeEditar\}/.test(compras));
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

@@ -55,8 +55,14 @@ export function Choice({ label, value, opcoes, onChange, placeholder, required, 
    cabecalho inteiro e' o gatilho, com a seta na frente, e o conteudo so'
    monta quando aberto. `podeAbrir` falso deixa o cabecalho parado, sem
    seta — grupo sem item nao tem o que mostrar, mas continua na lista
-   porque a EAP inteira aparece sempre. Substitui o `.vend-head`/`.grp-head`. */
-export function Colapsavel({ aberto, onAbrir, podeAbrir = true, cabecalho, acoes, className = "", children }) {
+   porque a EAP inteira aparece sempre. Substitui o `.vend-head`/`.grp-head`.
+
+   `antes` fica A ESQUERDA do gatilho (o check que seleciona a verba
+   inteira) e `fixo` fica ENTRE o cabecalho e o conteudo, sempre visivel
+   (as observacoes da verba) — os dois fora do botao, pelo mesmo motivo
+   das `acoes`: controle dentro de botao e' HTML invalido e o clique
+   abriria o grupo junto. */
+export function Colapsavel({ aberto, onAbrir, podeAbrir = true, cabecalho, antes, acoes, fixo, className = "", children }) {
   const abertoDeFato = !!aberto && podeAbrir;
   const gatilho = (
     <CollapsibleTrigger asChild>
@@ -76,12 +82,14 @@ export function Colapsavel({ aberto, onAbrir, podeAbrir = true, cabecalho, acoes
           LADO do gatilho, nunca dentro: botao dentro de botao e' HTML
           invalido e o clique na acao abriria o grupo junto. No celular a
           faixa de acoes desce pra baixo do cabecalho. */}
-      {acoes ? (
+      {acoes || antes ? (
         <div className="flex flex-wrap items-center">
+          {antes && <div className="flex shrink-0 items-center pl-4">{antes}</div>}
           <div className="min-w-0 flex-1 basis-64">{gatilho}</div>
-          <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-3 sm:py-2">{acoes}</div>
+          {acoes && <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-3 sm:py-2">{acoes}</div>}
         </div>
       ) : gatilho}
+      {fixo}
       <CollapsibleContent>{children}</CollapsibleContent>
     </Collapsible>
   );

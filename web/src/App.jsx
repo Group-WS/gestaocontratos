@@ -58,7 +58,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
-  Table, TableHeader, TableBody, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
+  Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@group-ws/ws-ui";
 import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor } from "./lib/ui.jsx";
@@ -11988,6 +11988,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     try { await apagarComentario(id); } catch { setObs(antes); }
   }
   const [nomeNoPdf, setNomeNoPdf] = useState(true);   // às vezes o pedido sai sem dizer pra quem
+  const idNomeNoPdf = React.useId();
   const [pipefy, setPipefy] = useState(null);   // o aviso depois de abrir a solicitação no Pipefy
   const [sel, setSel] = useState(() => new Set());
   /* A busca por insumo (pedido dela, 17/09/2026). CUIDADO: ela NAO pode chegar
@@ -12362,11 +12363,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
 
   if (rows.length === 0) {
     return (
-      <div className="compras-empty">
-        <ShoppingCart size={30} className="dim" />
-        <div className="compras-empty-title">Esta obra ainda não tem material no executivo</div>
-        <div className="compras-empty-sub">Quando o executivo for carregado, tudo que tem parcela de material aparece aqui pra você escolher por onde comprar.</div>
-      </div>
+      <PageShell title="Compras de Produtos" description="Escolha por onde comprar cada material do executivo e acompanhe o que já foi solicitado e comprado.">
+        <EmptyState icon={<ShoppingCart size={30} />} title="Esta obra ainda não tem material no executivo"
+          description="Quando o executivo for carregado, tudo que tem parcela de material aparece aqui pra você escolher por onde comprar." />
+      </PageShell>
     );
   }
 
@@ -12385,391 +12385,402 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     })),
   ];
 
+  /* O Select do DS nao aceita "" como valor de item: "todos" e' o
+     sentinela da tela e vira "" (= todos) no estado, como sempre foi. */
+  const TODOS_FORNECEDORES = "__todos";
+  const opcoesFornecedor = [
+    { value: TODOS_FORNECEDORES, label: `Todos os fornecedores (${doCanal.length})` },
+    ...fornecedores.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` })),
+  ];
+
+  const toolbar = (
+    <div className="flex flex-wrap items-end gap-2">
+      <Button variant="outline" onClick={selecionarTudo}>
+        <Check size={16} /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
+      </Button>
+      {sel.size > 0 && <Button variant="ghost" size="sm" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
+      <CampoBusca valor={busca} aoMudar={setBusca}
+        contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
+      {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
+          obra: filtro que nunca filtra nada é ruído na barra. */}
+      {obs.length > 0 && (
+        <Toggle size="sm" pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}
+          title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
+          <MessageSquare size={16} /> com observação interna ({obs.length})
+        </Toggle>
+      )}
+      <div className="flex w-full flex-wrap items-end gap-2 lg:ml-auto lg:w-auto">
+        <Choice label="Fornecedor" value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
+          onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-full sm:w-72" />
+        {fornecedor && fornecedor !== SEM_FORNECEDOR && (
+          <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
+            <Checkbox id={idNomeNoPdf} checked={nomeNoPdf} onCheckedChange={(v) => setNomeNoPdf(v === true)} />
+            <Label htmlFor={idNomeNoPdf} className="whitespace-nowrap">nome no PDF</Label>
+          </div>
+        )}
+        {/* Com busca ligada o botao fica apagado (decisao dela,
+            17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
+            tela mostrando tres linhas enquanto o pedido leva sessenta e' a
+            pagina afirmando duas coisas. */}
+        <Button onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+          title={buscando
+            ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
+            : !fornecedor || fornecedor === SEM_FORNECEDOR
+            ? "Escolha um fornecedor pra gerar o pedido"
+            : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
+          <Printer size={16} /> Pedido de orçamento
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <>
-      <div className="mo-topo">
-        <div className="mo-num">
-          <div className="mo-num-val mono">{fmtBRL(soma(() => true))}</div>
-          <div className="mo-num-rot">de material no executivo · {ativos.length} produtos</div>
-        </div>
-        <div className="mo-num">
-          <div className="mo-num-val mono dim">{fmtBRL(soma((r) => !!r.it.canalCompra))}</div>
-          <div className="mo-num-rot">já com canal definido</div>
-        </div>
-        <div className="mo-num">
-          <div className="mo-num-val mono">{fmtBRL(soma((r) => !r.it.canalCompra))}</div>
-          <div className="mo-num-rot">ainda sem canal</div>
-        </div>
-        <div className="mo-num mo-num-ok">
-          <div className="mo-num-val mono">{fmtBRL(soma((r) => r.it.comprado))}</div>
-          <div className="mo-num-rot">já comprado · vai pro Dashboard</div>
-        </div>
+    <PageShell title="Compras de Produtos"
+      description="Escolha por onde comprar cada material do executivo e acompanhe o que já foi solicitado e comprado."
+      toolbar={toolbar} contentClassName="flex flex-col gap-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiMini label="Material no executivo" value={fmtBRL(soma(() => true))} hint={`${ativos.length} produtos`} tone="brand" />
+        <KpiMini label="Já com canal definido" value={fmtBRL(soma((r) => !!r.it.canalCompra))} tone="neutral" />
+        <KpiMini label="Ainda sem canal" value={fmtBRL(soma((r) => !r.it.canalCompra))} tone="warning" />
+        <KpiMini label="Já comprado" value={fmtBRL(soma((r) => r.it.comprado))} hint="vai pro Dashboard" tone="success" />
       </div>
 
-      {/* O funil. Cada chip e um estagio, e o numero embaixo diz quanto
+      {/* O funil. Cada aba e um estagio, e o numero embaixo diz quanto
           dinheiro esta parado ali — que e o que decide por onde comecar. */}
-      <div className="funil">
-        {etapas.map((e, i) => (
-          <React.Fragment key={e.id}>
-            <Button variant="ghost" className={`funil-no ${etapa === e.id ? "ativo" : ""}`} onClick={() => setEtapa(e.id)}>
-              {e.canal && <TagCanal id={e.canal} />}
-              <div className="funil-n">{e.n}</div>
-              <div className="funil-rot">{e.rot}</div>
-              <div className="funil-v mono">{fmtCompactBRL(e.v)}</div>
-              {e.canal && e.n > 0 && (
-                <div className={`funil-feitos ${e.feitos === e.n ? "tudo" : ""}`}>
-                  {e.feitos === e.n ? <><Check size={9} /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
-                </div>
-              )}
-            </Button>
-            {i === 1 && <ChevronRight size={14} className="pipe-arrow dim" />}
-          </React.Fragment>
-        ))}
-      </div>
+      <Tabs value={etapa} onValueChange={setEtapa} activationMode="manual">
+        <div className="overflow-x-auto">
+          <TabsList variant="pill" className="h-auto w-max items-stretch" aria-label="Etapas da compra">
+            {etapas.map((e, i) => (
+              <React.Fragment key={e.id}>
+                <TabsTrigger value={e.id} className="h-auto min-w-24 flex-col items-center gap-1 px-4 py-2 whitespace-nowrap">
+                  {e.canal && <TagCanal id={e.canal} />}
+                  <span className="text-lg font-bold leading-none">{e.n}</span>
+                  <span className="text-xs">{e.rot}</span>
+                  <span className="mono text-xs opacity-80">{fmtCompactBRL(e.v)}</span>
+                  {e.canal && e.n > 0 && (
+                    <span className={`flex items-center gap-1 text-xs ${e.feitos === e.n ? "font-semibold text-success" : "opacity-80"}`}>
+                      {e.feitos === e.n ? <><Check size={12} /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
+                    </span>
+                  )}
+                </TabsTrigger>
+                {i === 1 && <ChevronRight size={16} className="shrink-0 self-center text-text-mute" aria-hidden="true" />}
+              </React.Fragment>
+            ))}
+          </TabsList>
+        </div>
+      </Tabs>
 
       {/* Em modo leitura nada daqui grava: o salvamento automático só roda
           pra quem está com a edição da obra. */}
       {!podeEditar && (
-        <div className="assoc-barra cmp-leitura">
-          <Lock size={15} className="dim" />
-          <span>
-            {editandoPor
-              ? <><b>{editandoPor}</b> está editando esta obra. Até terminar, solicitado, comprado, canal e insumo ficam só para consulta.</>
-              : onHabilitar
-                ? "Modo leitura: para marcar solicitado, comprado, canal ou insumo, habilite a edição da obra."
-                : "Modo leitura: o seu perfil consulta as Compras, sem marcar."}
-          </span>
-          {onHabilitar && !editandoPor && (
-            <Button onClick={onHabilitar}>Habilitar edição</Button>
-          )}
-        </div>
+        <Alert tone="info">
+          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span className="min-w-0 flex-1">
+              {editandoPor
+                ? <><b>{editandoPor}</b> está editando esta obra. Até terminar, solicitado, comprado, canal e insumo ficam só para consulta.</>
+                : onHabilitar
+                  ? "Modo leitura: para marcar solicitado, comprado, canal ou insumo, habilite a edição da obra."
+                  : "Modo leitura: o seu perfil consulta as Compras, sem marcar."}
+            </span>
+            {onHabilitar && !editandoPor && (
+              <Button onClick={onHabilitar} className="shrink-0"><Lock size={16} /> Habilitar edição</Button>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
       {etapa === "sienge" && (
-        <div className="assoc-barra">
-          <PackageSearch size={15} className="dim" />
-          <span>
-            {carregando ? "Recarregando a base do Sienge…"
-              : baseSienge
-                ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Associe grupo a grupo; depois escolha a mãe e a variante em cada linha, ou selecione e associe em massa.`
-                : "Os produtos já estão aqui. A busca do insumo no Sienge roda por grupo, no botão “Associar insumos” da barra de cada um."}
-          </span>
-          {baseSienge && (
-            <Button onClick={recarregarBase} disabled={carregando}>
-              <PackageSearch size={13} /> {carregando ? "Recarregando…" : "Recarregar base"}
-            </Button>
-          )}
-        </div>
+        <Alert tone="info">
+          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span className="min-w-0 flex-1">
+              {carregando ? "Recarregando a base do Sienge…"
+                : baseSienge
+                  ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Associe grupo a grupo; depois escolha a mãe e a variante em cada linha, ou selecione e associe em massa.`
+                  : "Os produtos já estão aqui. A busca do insumo no Sienge roda por grupo, no botão “Associar insumos” da barra de cada um."}
+            </span>
+            {baseSienge && (
+              <Button variant="outline" onClick={recarregarBase} disabled={carregando} className="shrink-0">
+                <PackageSearch size={16} /> {carregando ? "Recarregando…" : "Recarregar base"}
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* O aviso ficava no FIM da pagina, depois de quinze grupos: quando
           a leitura do arquivo falhava, a tela parecia nao ter feito nada. */}
-      {erroBase && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erroBase}</span></div>}
+      {erroBase && <Alert tone="danger"><AlertDescription>{erroBase}</AlertDescription></Alert>}
 
       {confronto && (
-        <div className="confronto">
-          <div className="confronto-topo">
-            <PackageSearch size={15} />
-            <span className="cf-docs">
-              Conferência com o Sienge —{" "}
-              {doSienge.docs.map((d) => (
-                <span className="cf-doc" key={d.nome}>
-                  {d.nome} <b>{d.n}</b>{d.numero ? ` · nº ${d.numero}` : ""}
-                  {/* Tirar um arquivo sem recomecar: as vezes so um deles
-                      estava errado, e refazer a selecao inteira e caro. */}
-                  <Button variant="ghost" size="icon" className="text-danger" title="Tirar este arquivo da conferência"
-                    onClick={async () => !(await confirmar(`Tirar "${d.nome}" da conferência?`)) ? null : setDoSienge((a2) => {
-                      const docs = a2.docs.filter((x) => x.nome !== d.nome);
-                      return docs.length
-                        ? { docs, itens: a2.itens.filter((i) => i.arquivo !== d.nome) }
-                        : null;
-                    })} aria-label="Tirar este arquivo da conferência"><X size={10} /></Button>
-                </span>
-              ))}
-            </span>
-            <Button variant="outline" onClick={() => setDoSienge(null)}><X size={13} /> Limpar</Button>
-          </div>
-          <div className="confronto-placar">
-            <div className="cf-bloco ok">
-              <div className="cf-n">{confronto.confirmados.length}</div>
-              <div className="cf-rot">confirmados no Sienge</div>
+        <Card>
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start">
+            <div className="min-w-0 flex-1 space-y-2">
+              <CardTitle className="flex items-center gap-2"><PackageSearch size={16} /> Conferência com o Sienge</CardTitle>
+              <CardDescription className="flex flex-wrap items-center gap-2">
+                {doSienge.docs.map((d) => (
+                  <Badge tone="neutral" key={d.nome} className="gap-1 pr-1">
+                    {d.nome} <b>{d.n}</b>{d.numero ? ` · nº ${d.numero}` : ""}
+                    {/* Tirar um arquivo sem recomecar: as vezes so um deles
+                        estava errado, e refazer a selecao inteira e caro. */}
+                    <Button variant="ghost" size="icon" className="h-5 w-5 text-danger" title="Tirar este arquivo da conferência"
+                      onClick={async () => !(await confirmar(`Tirar "${d.nome}" da conferência?`)) ? null : setDoSienge((a2) => {
+                        const docs = a2.docs.filter((x) => x.nome !== d.nome);
+                        return docs.length
+                          ? { docs, itens: a2.itens.filter((i) => i.arquivo !== d.nome) }
+                          : null;
+                      })} aria-label="Tirar este arquivo da conferência"><X size={12} /></Button>
+                  </Badge>
+                ))}
+              </CardDescription>
             </div>
-            {/* O numero que motiva tudo: alguem achou que pediu e nao pediu. */}
-            <div className={`cf-bloco ${confronto.faltaLancar.length ? "ruim" : "ok"}`}>
-              <div className="cf-n">{confronto.faltaLancar.length}</div>
-              <div className="cf-rot">falta lançar no Sienge</div>
+            <Button variant="outline" onClick={() => setDoSienge(null)} className="shrink-0"><X size={16} /> Limpar</Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <KpiMini label="confirmados no Sienge" value={String(confronto.confirmados.length)} tone="success" />
+              {/* O numero que motiva tudo: alguem achou que pediu e nao pediu. */}
+              <KpiMini label="falta lançar no Sienge" value={String(confronto.faltaLancar.length)} tone={confronto.faltaLancar.length ? "danger" : "success"} />
+              <KpiMini label="no Sienge e não na planilha" value={String(confronto.naoListados.length)} tone={confronto.naoListados.length ? "warning" : "success"} />
             </div>
-            <div className={`cf-bloco ${confronto.naoListados.length ? "aviso" : "ok"}`}>
-              <div className="cf-n">{confronto.naoListados.length}</div>
-              <div className="cf-rot">no Sienge e não na planilha</div>
-            </div>
-          </div>
 
-          {confronto.faltaLancar.length > 0 && (
-            <div className="cf-lista">
-              <div className="cf-tit ruim">Falta lançar no Sienge</div>
-              {confronto.faltaLancar.map((r) => (
-                <div className="cf-linha" key={r.chave}>
-                  <span className="mono dim">{r.catNum}</span>
-                  <span className="cf-desc">{r.it.desc}</span>
-                  <span className="mono">{fmtBRL(r.material)}</span>
+            {confronto.faltaLancar.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="label-mono text-danger">Falta lançar no Sienge</h3>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableBody>
+                      {confronto.faltaLancar.map((r) => (
+                        <TableRow key={r.chave}>
+                          <TableCell className="mono w-16 text-text-mute">{r.catNum}</TableCell>
+                          <TableCell>{r.it.desc}</TableCell>
+                          <TableCell className="mono w-28 text-right">{fmtBRL(r.material)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              ))}
-            </div>
-          )}
-          {confronto.naoListados.length > 0 && (
-            <div className="cf-lista">
-              {/* Aparece em vez de sumir: pode ser compra que nasceu fora
-                  da planilha, ou a mesma coisa escrita diferente — e as
-                  duas coisas alguem precisa ver. */}
-              <div className="cf-tit aviso">Não listado aqui — está no Sienge e não na planilha</div>
-              {confronto.naoListados.map((s, k) => (
-                <div className="cf-linha" key={k}>
-                  <span className="mono dim">{s.codigo}</span>
-                  <span className="cf-desc">{s.descricao}</span>
-                  <span className="mono dim">{s.qtdPrevista ?? "—"} {s.un}</span>
+              </div>
+            )}
+            {confronto.naoListados.length > 0 && (
+              <div className="space-y-2">
+                {/* Aparece em vez de sumir: pode ser compra que nasceu fora
+                    da planilha, ou a mesma coisa escrita diferente — e as
+                    duas coisas alguem precisa ver. */}
+                <h3 className="label-mono text-warning">Não listado aqui — está no Sienge e não na planilha</h3>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableBody>
+                      {confronto.naoListados.map((s, k) => (
+                        <TableRow key={k}>
+                          <TableCell className="mono w-16 text-text-mute">{s.codigo}</TableCell>
+                          <TableCell>{s.descricao}</TableCell>
+                          <TableCell className="mono w-28 text-right text-text-mute">{s.qtdPrevista ?? "—"} {s.un}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
       {resultado && (
-        <div className={`assoc-resultado ${resultado.revisar ? "parcial" : "ok"}`}>
-          {resultado.revisar ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
-          <span>
-            <b>{resultado.certos}</b> {resultado.certos === 1 ? "associado" : "associados"} automaticamente
-            {resultado.revisar > 0 && <> · <b>{resultado.revisar}</b> {resultado.revisar === 1 ? "ficou" : "ficaram"} pra escolher à mão, porque faltou casar alguma palavra</>}
-          </span>
-          <Button variant="ghost" size="icon" onClick={() => setResultado(null)} aria-label="Fechar"><X size={13} /></Button>
-        </div>
+        <Alert tone={resultado.revisar ? "warning" : "success"}>
+          <AlertDescription className="flex items-start gap-2">
+            <span className="min-w-0 flex-1">
+              <b>{resultado.certos}</b> {resultado.certos === 1 ? "associado" : "associados"} automaticamente
+              {resultado.revisar > 0 && <> · <b>{resultado.revisar}</b> {resultado.revisar === 1 ? "ficou" : "ficaram"} pra escolher à mão, porque faltou casar alguma palavra</>}
+            </span>
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setResultado(null)} aria-label="Fechar"><X size={16} /></Button>
+          </AlertDescription>
+        </Alert>
       )}
 
-      <div className="sel-barra-topo">
-        <Button variant="outline" onClick={selecionarTudo}>
-          <Check size={12} /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
-        </Button>
-        {sel.size > 0 && <Button variant="ghost" size="sm" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
-        <CampoBusca valor={busca} aoMudar={setBusca}
-          contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
-        {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
-            obra: filtro que nunca filtra nada é ruído na barra. */}
-        {obs.length > 0 && (
-          <Button variant="ghost" type="button" className={`filter-chip ${soComObs ? "active" : ""} chip-obs`}
-            onClick={() => setSoComObs((v) => !v)}
-            title="Mostrar só as verbas e produtos com observação interna">
-            <MessageSquare size={11} /> com observação interna ({obs.length})
-          </Button>
-        )}
-        <div className="cmp-filtro-forn">
-          <select className="cmp-forn-sel" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
-            aria-label="Filtrar por fornecedor">
-            <option value="">Todos os fornecedores ({doCanal.length})</option>
-            {fornecedores.map((f) => (
-              <option key={f.chave} value={f.chave}>{f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} ({f.n})</option>
-            ))}
-          </select>
-          {fornecedor && fornecedor !== SEM_FORNECEDOR && (
-            <label className="cmp-forn-nome" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
-              <input type="checkbox" checked={nomeNoPdf} onChange={(e) => setNomeNoPdf(e.target.checked)} />
-              nome no PDF
-            </label>
-          )}
-          {/* Com busca ligada o botao fica apagado (decisao dela,
-              17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
-              tela mostrando tres linhas enquanto o pedido leva sessenta e' a
-              pagina afirmando duas coisas. */}
-          <Button onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
-            title={buscando
-              ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
-              : !fornecedor || fornecedor === SEM_FORNECEDOR
-              ? "Escolha um fornecedor pra gerar o pedido"
-              : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
-            <Printer size={13} /> Pedido de orçamento
-          </Button>
-        </div>
-      </div>
       {orcamento && (
         <RelatorioSobreposto onFechar={() => setOrcamento(null)} pronto="Pedido de orçamento pronto">
           <PedidoOrcamento obra={obra} usuario={usuario} {...orcamento} />
         </RelatorioSobreposto>
       )}
 
-      {porVerba.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
+      {porVerba.length === 0 && <EmptyState icon={<ShoppingCart size={26} />} title="Nada nesta etapa." />}
       {porVerba.length > 0 && naTelaTudo.length === 0 && (
-        <div className="empty-note">{`Nada encontrado para "${busca.trim()}" nesta etapa.`}</div>
+        <EmptyState icon={<Search size={26} />} title={`Nada encontrado para "${busca.trim()}" nesta etapa.`} />
       )}
-      {porVerba.map((g) => {
-        /* O que a busca deixa aparecer NESTE grupo. Tudo o que vem depois —
-           `nItens`, `nComprados`, `g.total`, os auxiliares e o template do
-           Sienge — continua lendo `g.itens`, a verba inteira. */
-        /* A BUSCA e o filtro de observacao peneiram a MESMA lista. Com o
-           filtro ligado, a verba so' aparece se ela mesma tiver observacao
-           ou se algum produto dela tiver — e, dentro, ficam so' os produtos
-           que tem. */
-        const comBusca = buscando ? g.itens.filter(casaRow) : g.itens;
-        const naTela = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;
-        if (buscando && comBusca.length === 0) return null;
-        if (soComObs && naTela.length === 0 && obsDaVerba(g.num).length === 0) return null;
-        const aberto = abreNaBusca.aberto(g.num, abertos.has(g.num));
-        /* A LINHA TROCADA NAO CONTA EM NADA — e' historico (18/09/2026).
+      {porVerba.length > 0 && naTelaTudo.length > 0 && (
+        <Card>
+          {porVerba.map((g) => {
+            /* O que a busca deixa aparecer NESTE grupo. Tudo o que vem depois —
+               `nItens`, `nComprados`, `g.total`, os auxiliares e o template do
+               Sienge — continua lendo `g.itens`, a verba inteira. */
+            /* A BUSCA e o filtro de observacao peneiram a MESMA lista. Com o
+               filtro ligado, a verba so' aparece se ela mesma tiver observacao
+               ou se algum produto dela tiver — e, dentro, ficam so' os produtos
+               que tem. */
+            const comBusca = buscando ? g.itens.filter(casaRow) : g.itens;
+            const naTela = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;
+            if (buscando && comBusca.length === 0) return null;
+            if (soComObs && naTela.length === 0 && obsDaVerba(g.num).length === 0) return null;
+            const aberto = abreNaBusca.aberto(g.num, abertos.has(g.num));
+            /* A LINHA TROCADA NAO CONTA EM NADA — e' historico (18/09/2026).
 
-           Ela trocou um produto na 24 e a barra continuou dizendo "tudo
-           solicitado", escondendo o item novo que entrou pendente. O total
-           de produtos ja' descartava a linha trocada, mas os contadores de
-           solicitado e comprado nao: a linha antiga estava solicitada de
-           antes, entao 22 solicitados + 1 trocada fechavam os 23 e o selo
-           dizia que nao faltava nada.
+               Ela trocou um produto na 24 e a barra continuou dizendo "tudo
+               solicitado", escondendo o item novo que entrou pendente. O total
+               de produtos ja' descartava a linha trocada, mas os contadores de
+               solicitado e comprado nao: a linha antiga estava solicitada de
+               antes, entao 22 solicitados + 1 trocada fechavam os 23 e o selo
+               dizia que nao faltava nada.
 
-           Uma lista so' pra todos os contadores: e' quando cada um filtra
-           do seu jeito que a barra afirma duas coisas. */
-        const ativos = g.itens.filter((r) => !r.it.troca);
-        const nItens = ativos.length;
-        const nTrocas = g.itens.length - ativos.length;
-        const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
-        /* O check da verba age sobre o que esta' na tela: com busca ligada,
-           marcar a verba nao pode selecionar 40 linhas enquanto 3 aparecem. */
-        const nNaTela = naTela.filter((r) => !r.it.troca).length;
-        const nSelNaTela = naTela.filter((r) => sel.has(r.chave)).length;
-        const nComprados = ativos.filter((r) => r.it.comprado).length;
-        const nSolicitados = ativos.filter((r) => estaSolicitado(r.it)).length;
-        const valorComprado = ativos.reduce((t, r) => t + (r.it.comprado ? r.material : 0), 0);
-        // Linha trocada nao se cadastra no Sienge: exigir insumo nela fazia a
-        // verba inteira parecer nao associada.
-        const grupoAssociado = ativos.every((r) => casamentos.has(r.chave));
-        // As colunas do Sienge só aparecem na etapa Sienge. Em Tudo, Sem
-        // canal e nos outros canais elas respondiam uma pergunta que ali
-        // ninguém fez — e "não lançado" em produto sem canal é falso.
-        const noSienge = etapa === "sienge";
-        const mostrarInsumo = noSienge && grupoAssociado;
-        const auxiliares = mostrarInsumo ? auxiliaresDoGrupo(g.itens, obra.codigo) : null;
-        const template = mostrarInsumo ? templateComprasDoGrupo(g.itens, casamentos, grupos, auxiliares) : [];
-        const semInsumo = template.filter((l) => !l.maeCodigo).length;
-        return (
-          <div className="grp-block" key={g.num}>
-            <div className="grp-head">
-              <Button variant="ghost" size="sm" onClick={() => alternarGrupo({ ...g, itens: naTela })}
-                title={nSelNaTela === nNaTela ? "Tirar da seleção" : buscando ? "Selecionar o que a busca mostra" : "Selecionar a verba inteira"}
-                aria-label="Selecionar verba">
-                {nSelNaTela === nNaTela ? <Check size={13} /> : nSelNaTela > 0 ? <Minus size={13} /> : null}
-              </Button>
-              <Button variant="ghost" className="grp-toggle" onClick={() => abreNaBusca.alternar(g.num, () => abrir(g.num))}>
-                <div className="grp-esq">
-                  {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
-                  <span className="grp-num mono">{g.num}</span>
-                  <span className="grp-nome">{g.nome}</span>
-                  <span className="grp-conta">{buscando ? `${nNaTela} de ${nItens}` : nItens} {nItens === 1 && !buscando ? "produto" : "produtos"}</span>
-                  {/* No Sienge, solicitar vem antes de comprar: quanto do grupo já foi solicitado. */}
-                  {noSienge && (
-                    <span className={`grp-comprados ${nSolicitados === nItens ? "tudo" : nSolicitados ? "parte" : ""}`}
-                      title="Solicitados no Sienge — o passo antes da compra">
-                      {nSolicitados === nItens ? <><Check size={11} /> tudo solicitado</> : `${nSolicitados} de ${nItens} solicitados`}
-                    </span>
-                  )}
-                  {/* Quanto do grupo já foi comprado, sem precisar abrir: */}
-                  <span className={`grp-comprados ${nComprados === nItens ? "tudo" : nComprados ? "parte" : ""}`}
-                    title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
-                    {nComprados === nItens ? <><Check size={11} /> tudo comprado</> : `${nComprados} de ${nItens} comprados`}
-                  </span>
-                  {/* TEVE TROCA AQUI (pedido dela, 18/09/2026): "sinalizar no
-                      grupo se teve alguma troca". Sem isto, a troca so'
-                      aparecia abrindo a verba e achando a linha riscada. */}
-                  {nTrocas > 0 && (
-                    <span className="grp-troca" title={nTrocas === 1
-                      ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
-                      : `${nTrocas} produtos desta verba foram trocados — as linhas antigas ficam riscadas, sem contar`}>
-                      <ArrowLeftRight size={11} /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
-                    </span>
-                  )}
-                  {nSel > 0 && <span className="grp-avulsos">{nSel} selecionados</span>}
-                </div>
-              </Button>
-              <div className="grp-dir">
-                {/* A busca do insumo é por grupo e só quando pedida: casar a
-                    obra inteira de uma vez congelava a tela. */}
-                {etapa === "sienge" && (grupoAssociado ? (
-                  <>
-                    <span className="grp-assoc-ok"><Check size={12} /> insumos sugeridos</span>
-                    {/* O mesmo CSV do Gerador de códigos, só com o que
-                        precisa de cadastro neste grupo. */}
-                    {template.length > 0 && (
-                      <Button variant="outline" size="sm" type="button" onClick={() => baixarTemplateDoGrupo(g, template)}
-                        title={`CSV no padrão do Sienge (cadastro de detalhe), igual ao do Gerador de códigos.${semInsumo ? ` ${semInsumo} sem insumo mãe: o código do insumo sai em branco.` : ""} O código do detalhe sai em branco — preencha antes de subir.`}>
-                        <Download size={13} /> Template Sienge ({template.length})
-                      </Button>
+               Uma lista so' pra todos os contadores: e' quando cada um filtra
+               do seu jeito que a barra afirma duas coisas. */
+            const ativos = g.itens.filter((r) => !r.it.troca);
+            const nItens = ativos.length;
+            const nTrocas = g.itens.length - ativos.length;
+            const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
+            /* O check da verba age sobre o que esta' na tela: com busca ligada,
+               marcar a verba nao pode selecionar 40 linhas enquanto 3 aparecem. */
+            const nNaTela = naTela.filter((r) => !r.it.troca).length;
+            const nSelNaTela = naTela.filter((r) => sel.has(r.chave)).length;
+            const nComprados = ativos.filter((r) => r.it.comprado).length;
+            const nSolicitados = ativos.filter((r) => estaSolicitado(r.it)).length;
+            const valorComprado = ativos.reduce((t, r) => t + (r.it.comprado ? r.material : 0), 0);
+            // Linha trocada nao se cadastra no Sienge: exigir insumo nela fazia a
+            // verba inteira parecer nao associada.
+            const grupoAssociado = ativos.every((r) => casamentos.has(r.chave));
+            // As colunas do Sienge só aparecem na etapa Sienge. Em Tudo, Sem
+            // canal e nos outros canais elas respondiam uma pergunta que ali
+            // ninguém fez — e "não lançado" em produto sem canal é falso.
+            const noSienge = etapa === "sienge";
+            const mostrarInsumo = noSienge && grupoAssociado;
+            const auxiliares = mostrarInsumo ? auxiliaresDoGrupo(g.itens, obra.codigo) : null;
+            const template = mostrarInsumo ? templateComprasDoGrupo(g.itens, casamentos, grupos, auxiliares) : [];
+            const semInsumo = template.filter((l) => !l.maeCodigo).length;
+            const tomContagem = (feitos) => (feitos === nItens ? "success" : feitos ? "brand" : "neutral");
+            return (
+              <Colapsavel key={g.num} aberto={aberto} onAbrir={() => abreNaBusca.alternar(g.num, () => abrir(g.num))}
+                antes={
+                  <Checkbox aria-label="Selecionar verba"
+                    checked={nNaTela > 0 && nSelNaTela === nNaTela ? true : nSelNaTela > 0 ? "indeterminate" : false}
+                    onCheckedChange={() => alternarGrupo({ ...g, itens: naTela })}
+                    title={nSelNaTela === nNaTela ? "Tirar da seleção" : buscando ? "Selecionar o que a busca mostra" : "Selecionar a verba inteira"} />
+                }
+                cabecalho={
+                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <span className="mono text-text-mute">{g.num}</span>
+                    <span className="min-w-0 font-semibold">{g.nome}</span>
+                    <Badge tone="neutral">{buscando ? `${nNaTela} de ${nItens}` : nItens} {nItens === 1 && !buscando ? "produto" : "produtos"}</Badge>
+                    {/* No Sienge, solicitar vem antes de comprar: quanto do grupo já foi solicitado. */}
+                    {noSienge && (
+                      <Badge tone={tomContagem(nSolicitados)} title="Solicitados no Sienge — o passo antes da compra">
+                        {nSolicitados === nItens ? <><Check size={12} /> tudo solicitado</> : `${nSolicitados} de ${nItens} solicitados`}
+                      </Badge>
                     )}
-                  </>
-                ) : (
-                  <Button variant="outline" size="sm" type="button" disabled={associando != null}
-                    onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
-                    <PackageSearch size={13} /> {associando === g.num ? "Associando…" : "Associar insumos"}
-                  </Button>
-                ))}
-                <div className="grp-tot">
-                  <div className="grp-tot-rot">MATERIAL</div>
-                  <div className="grp-tot-val mono">{fmtBRL(g.total)}</div>
-                </div>
-              </div>
-            </div>
-            {/* A OBSERVACAO DA VERBA fica embaixo do nome, FORA do botao
-                que abre o grupo: dentro dele cada clique no campo fecharia a
-                verba, e form dentro de button nem e' HTML valido. */}
-            <Observacoes lista={obsDaVerba(g.num)} semTabela={obsSemTabela}
-              usuario={usuario} souAdmin={souAdmin} ondeFica="verba"
-              onAdicionar={(t) => adicionarObs(g.num, null, t)} onApagar={apagarObs} />
-            {aberto && (
-              <div className="grp-itens">
-                <table className="tab-compras">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 34 }} />
-                      <th style={{ width: 62 }}>Cód.</th>
-                      <th>Descrição</th>
-                      <th style={{ width: 74 }} className="center">Qtd.</th>
-                      <th style={{ width: 104 }} className="right">Material</th>
-                      {/* Na etapa Sienge o canal é sempre Sienge: a coluna dá lugar ao
-                          status da solicitação, que é o passo antes da compra. */}
-                      {!noSienge && <th style={{ width: 112 }} className="center">Canal</th>}
-                      {noSienge && <th style={{ width: 118 }} className="center">Status solicitado</th>}
-                      <th style={{ width: noSienge ? 112 : 104 }} className="center">{noSienge ? "Status comprado" : "Status"}</th>
-                      {noSienge && doSienge && <th style={{ width: 122 }} className="center">Lançado Sienge</th>}
-                      {/* A mae virou a primeira linha do detalhe: eram
-                          duas colunas contando a mesma historia, e a
-                          tabela so cabia rolando pro lado. */}
-                      {mostrarInsumo && <th style={{ width: 320 }}>Insumo no Sienge</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {naTela.map((r) => (
-                      <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)} noSienge={noSienge}
-                        /* A observacao segue a DESCRICAO do produto, nao a
-                           posicao da linha: posicao desgruda na primeira
-                           insercao e o recado passa pro produto errado. */
-                        obs={obsDoItem(g.num, r.it.desc)} obsSemTabela={obsSemTabela}
-                        usuario={usuario} souAdmin={souAdmin}
-                        onAdicionarObs={(t) => adicionarObs(g.num, r.it.desc, t)}
-                        onApagarObs={apagarObs}
-                        onSelecionar={() => alternar(r.chave)}
-                        casamento={casamentos.get(r.chave)}
-                        grupos={grupos} aux={auxiliares ? auxiliares.get(r.chave) : null}
-                        mostrarSienge={mostrarInsumo}
-                        lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
-                        podeEditar={podeEditar}
-                        trocando={trocando === r.chave} equipe={equipe} executivo={obra.responsavelExecutivo}
-                        /* Linha de aditivo nao troca de produto: a troca cria itens novos
-                           na planilha, e o item do aditivo mora no documento aprovado. */
-                        onAbrirTroca={r.it.aditivo ? undefined : () => setTrocando(r.chave)} onFecharTroca={() => setTrocando(null)}
-                        onRegistrarTroca={registrarTroca(r)} troca={infoTroca.get(r.chave) || null}
-                        onDesfazerTroca={infoTroca.get(r.chave) ? desfazerTroca(r, infoTroca.get(r.chave)) : undefined}
-                        onItemChange={(patch) => mudar(r.catIdx, r.itemIdx, patch)} />
+                    {/* Quanto do grupo já foi comprado, sem precisar abrir: */}
+                    <Badge tone={tomContagem(nComprados)} title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
+                      {nComprados === nItens ? <><Check size={12} /> tudo comprado</> : `${nComprados} de ${nItens} comprados`}
+                    </Badge>
+                    {/* TEVE TROCA AQUI (pedido dela, 18/09/2026): "sinalizar no
+                        grupo se teve alguma troca". Sem isto, a troca so'
+                        aparecia abrindo a verba e achando a linha riscada. */}
+                    {nTrocas > 0 && (
+                      <Badge tone="warning" title={nTrocas === 1
+                        ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
+                        : `${nTrocas} produtos desta verba foram trocados — as linhas antigas ficam riscadas, sem contar`}>
+                        <ArrowLeftRight size={12} /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
+                      </Badge>
+                    )}
+                    {nSel > 0 && <Badge tone="purple">{nSel} selecionados</Badge>}
+                  </span>
+                }
+                acoes={
+                  <>
+                    {/* A busca do insumo é por grupo e só quando pedida: casar a
+                        obra inteira de uma vez congelava a tela. */}
+                    {etapa === "sienge" && (grupoAssociado ? (
+                      <>
+                        <span className="flex items-center gap-1 text-xs font-semibold whitespace-nowrap text-success"><Check size={12} /> insumos sugeridos</span>
+                        {/* O mesmo CSV do Gerador de códigos, só com o que
+                            precisa de cadastro neste grupo. */}
+                        {template.length > 0 && (
+                          <Button variant="outline" size="sm" type="button" onClick={() => baixarTemplateDoGrupo(g, template)}
+                            title={`CSV no padrão do Sienge (cadastro de detalhe), igual ao do Gerador de códigos.${semInsumo ? ` ${semInsumo} sem insumo mãe: o código do insumo sai em branco.` : ""} O código do detalhe sai em branco — preencha antes de subir.`}>
+                            <Download size={16} /> Template Sienge ({template.length})
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <Button variant="outline" size="sm" type="button" disabled={associando != null}
+                        onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
+                        <PackageSearch size={16} /> {associando === g.num ? "Associando…" : "Associar insumos"}
+                      </Button>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        );
-      })}
+                    <div className="min-w-24 text-right">
+                      <div className="label-mono">Material</div>
+                      <div className="mono text-sm font-semibold">{fmtBRL(g.total)}</div>
+                    </div>
+                  </>
+                }
+                /* A OBSERVACAO DA VERBA fica embaixo do nome, FORA do botao
+                   que abre o grupo: dentro dele cada clique no campo fecharia a
+                   verba, e form dentro de button nem e' HTML valido. */
+                fixo={
+                  <Observacoes lista={obsDaVerba(g.num)} semTabela={obsSemTabela}
+                    usuario={usuario} souAdmin={souAdmin} ondeFica="verba"
+                    onAdicionar={(t) => adicionarObs(g.num, null, t)} onApagar={apagarObs} />
+                }>
+                <div className="overflow-x-auto border-t border-line-1">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8" />
+                        <TableHead className="w-16">Cód.</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="w-20 text-center">Qtd.</TableHead>
+                        <TableHead className="w-28 text-right">Material</TableHead>
+                        {/* Na etapa Sienge o canal é sempre Sienge: a coluna dá lugar ao
+                            status da solicitação, que é o passo antes da compra. */}
+                        {!noSienge && <TableHead className="w-28 text-center">Canal</TableHead>}
+                        {noSienge && <TableHead className="w-32 text-center">Status solicitado</TableHead>}
+                        <TableHead className="w-28 text-center">{noSienge ? "Status comprado" : "Status"}</TableHead>
+                        {noSienge && doSienge && <TableHead className="w-32 text-center">Lançado Sienge</TableHead>}
+                        {/* A mae virou a primeira linha do detalhe: eram
+                            duas colunas contando a mesma historia, e a
+                            tabela so cabia rolando pro lado. */}
+                        {mostrarInsumo && <TableHead className="w-80">Insumo no Sienge</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {naTela.map((r) => (
+                        <LinhaCompra key={r.chave} row={r} selecionado={sel.has(r.chave)} noSienge={noSienge}
+                          /* A observacao segue a DESCRICAO do produto, nao a
+                             posicao da linha: posicao desgruda na primeira
+                             insercao e o recado passa pro produto errado. */
+                          obs={obsDoItem(g.num, r.it.desc)} obsSemTabela={obsSemTabela}
+                          usuario={usuario} souAdmin={souAdmin}
+                          onAdicionarObs={(t) => adicionarObs(g.num, r.it.desc, t)}
+                          onApagarObs={apagarObs}
+                          onSelecionar={() => alternar(r.chave)}
+                          casamento={casamentos.get(r.chave)}
+                          grupos={grupos} aux={auxiliares ? auxiliares.get(r.chave) : null}
+                          mostrarSienge={mostrarInsumo}
+                          lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
+                          podeEditar={podeEditar}
+                          trocando={trocando === r.chave} equipe={equipe} executivo={obra.responsavelExecutivo}
+                          /* Linha de aditivo nao troca de produto: a troca cria itens novos
+                             na planilha, e o item do aditivo mora no documento aprovado. */
+                          onAbrirTroca={r.it.aditivo ? undefined : () => setTrocando(r.chave)} onFecharTroca={() => setTrocando(null)}
+                          onRegistrarTroca={registrarTroca(r)} troca={infoTroca.get(r.chave) || null}
+                          onDesfazerTroca={infoTroca.get(r.chave) ? desfazerTroca(r, infoTroca.get(r.chave)) : undefined}
+                          onItemChange={(patch) => mudar(r.catIdx, r.itemIdx, patch)} />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Colapsavel>
+            );
+          })}
+        </Card>
+      )}
 
       {pedido && (
         <RelatorioSobreposto onFechar={() => setPedido(null)} pronto="Pedido pronto">
@@ -12778,61 +12789,59 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
       )}
 
       {pipefy && (
-        <div className="assoc-resultado pipefy-aviso">
-          <div className="pipefy-aviso-txt">
-            <div>
-              <b>{pipefy.copiado
-                ? `Lista de ${pipefy.n} ${pipefy.n === 1 ? "item copiada" : "itens copiada"}.`
-                : "Não consegui copiar sozinho: copie a lista abaixo."}</b>{" "}
-              No Pipefy: marque <b>Compra de Produto</b>, escolha a obra <b>#{obra.codigo}</b>
-              {pipefy.squad && <> e o squad <b>{pipefy.squad}</b></>}, e cole em <b>Descrição dos itens</b> (Ctrl+V).
-              {pipefy.verbas.length > 0 && <> Apropriação: {pipefy.verbas.join(", ")}.</>}
-              {" "}<a href={PIPEFY_SOLICITACAO} target="_blank" rel="noopener noreferrer">
-                {pipefy.abriu ? "Abrir o formulário de novo" : "Abrir o formulário"}
-              </a>
+        <Alert tone={pipefy.copiado ? "success" : "warning"}>
+          <AlertDescription className="flex items-start gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <div>
+                <b>{pipefy.copiado
+                  ? `Lista de ${pipefy.n} ${pipefy.n === 1 ? "item copiada" : "itens copiada"}.`
+                  : "Não consegui copiar sozinho: copie a lista abaixo."}</b>{" "}
+                No Pipefy: marque <b>Compra de Produto</b>, escolha a obra <b>#{obra.codigo}</b>
+                {pipefy.squad && <> e o squad <b>{pipefy.squad}</b></>}, e cole em <b>Descrição dos itens</b> (Ctrl+V).
+                {pipefy.verbas.length > 0 && <> Apropriação: {pipefy.verbas.join(", ")}.</>}
+                {" "}<a className="font-semibold text-brand underline-offset-2 hover:underline" href={PIPEFY_SOLICITACAO} target="_blank" rel="noopener noreferrer">
+                  {pipefy.abriu ? "Abrir o formulário de novo" : "Abrir o formulário"}
+                </a>
+              </div>
+              {!pipefy.copiado && (
+                <Textarea className="mono text-xs" readOnly value={pipefy.texto} rows={6} onFocus={(e) => e.target.select()} aria-label="Lista dos itens para o Pipefy" />
+              )}
             </div>
-            {!pipefy.copiado && (
-              <textarea className="pipefy-texto" readOnly value={pipefy.texto} rows={6} onFocus={(e) => e.target.select()} />
-            )}
-          </div>
-          <Button variant="ghost" size="icon" onClick={() => setPipefy(null)} aria-label="Fechar"><X size={13} /></Button>
-        </div>
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setPipefy(null)} aria-label="Fechar"><X size={16} /></Button>
+          </AlertDescription>
+        </Alert>
       )}
 
-      {/* A escolha do canal fica na barra da selecao: e uma decisao sobre
-          o LOTE, nao sobre uma linha. Marcar 40 produtos e ter que
-          escolher o canal 40 vezes e a mesma decisao repetida 40 vezes. */}
       {/* Envio sem resposta: a pergunta fica à vista até ser respondida.
           É o gate que impede um reenvio às cegas virar duplicata. */}
       {etapa === "sienge" && pendentes.length > 0 && (
-        <div className="import-erro erro-detalhado" style={{ marginBottom: 10 }}>
-          <AlertTriangle size={14} />
-          <div>
-            <div><b>
-              {pendentes.length === 1
-                ? "Um envio ao Sienge ficou sem confirmação."
-                : `${pendentes.length} envios ao Sienge ficaram sem confirmação.`}
-            </b></div>
-            <div className="erro-acao">
+        <Alert tone="warning">
+          <AlertTitle>
+            {pendentes.length === 1
+              ? "Um envio ao Sienge ficou sem confirmação."
+              : `${pendentes.length} envios ao Sienge ficaram sem confirmação.`}
+          </AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>
               Não dá pra saber daqui se {pendentes.length === 1 ? "ele entrou" : "eles entraram"} —
               reenviar sem conferir pode criar solicitação duplicada.
-            </div>
+            </p>
             {pendentes.map((p) => (
-              <div key={p.id} className="sol-pendente">
+              <div key={p.id} className="flex flex-col gap-2 border-t border-line-1 pt-2 sm:flex-row sm:items-center sm:justify-between">
                 <span>
                   {dataCurta(p.enviado_em)}
                   {p.solicitacao_id ? <> · solicitação <b className="mono">{p.solicitacao_id}</b></> : " · sem número"}
                   {p.enviado_por ? ` · ${nomeDoEmail(p.enviado_por)}` : ""}
                   {" · "}{(p.payload?.itens || []).length} {(p.payload?.itens || []).length === 1 ? "item" : "itens"}
                 </span>
-                <Button variant="outline" disabled={conferindo === p.id}
+                <Button variant="outline" size="sm" disabled={conferindo === p.id}
                   onClick={() => conferirNoSienge(p)}>
                   {conferindo === p.id ? "conferindo…" : "conferir no Sienge"}
                 </Button>
               </div>
             ))}
-          </div>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* O que esta obra já pediu ao Sienge. Fica fechado por padrão (é
@@ -12840,148 +12849,155 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
           quantas houve — é o bastante pra alguém desconfiar antes de
           criar a terceira solicitação do mesmo produto. */}
       {etapa === "sienge" && historico.length > 0 && (
-        <div className="hist-sienge">
-          <Button variant="ghost" size="sm" onClick={() => setVerHistorico((v) => !v)}>
-            {verHistorico ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            <span className="hist-sienge-titulo">
-              <b>{historico.length}</b>
-              {historico.length === 1 ? " solicitação enviada" : " solicitações enviadas"} ao Sienge
-            </span>
-            <span className="dim hist-sienge-quando">
-              última {dataCurta(historico[0].enviado_em)}
-            </span>
-          </Button>
-          {verHistorico && (
-            <div className="sol-rolagem">
-              <table className="vend-itens sol-tabela hist-sienge-tabela">
-                <thead>
-                  <tr>
-                    <th style={{ width: 88 }}>Solicitação</th>
-                    <th style={{ width: 132 }}>Quando</th>
-                    <th style={{ width: 150 }}>Quem</th>
-                    <th>Resultado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historico.map((h) => {
-                    const res = h.resposta || {};
-                    const entraram = res.ok ?? 0;
-                    const recusados = (res.resultados || []).filter((r) => !r.ok).length;
-                    const itensPedidos = h.payload?.itens || [];
-                    const aberta = envioAberto === h.id;
-                    /* A cor diz de longe o que aconteceu: tudo entrou,
-                       entrou em parte, ou não entrou nada. Numa lista de
-                       dez linhas, ler dez frases pra descobrir isso é o
-                       que faz ninguém olhar o histórico. */
-                    const selo = h.status === "enviando" || h.status === "abandonado" ? "pill-falta"
-                      : entraram > 0 && recusados === 0 ? "pill-ok"
-                      : entraram > 0 ? "pill-falta" : "pill-erro";
-                    return (
-                      <React.Fragment key={h.id}>
-                        <tr className={aberta ? "hist-sienge-aberta" : ""}>
-                          {/* A linha inteira abre o conteúdo: o número
-                              sozinho não dizia o que foi pedido, e era a
-                              única coisa que a tabela mostrava dele. */}
-                          <td>
-                            <Button variant="ghost" size="sm"
-                              onClick={() => setEnvioAberto(aberta ? null : h.id)}
-                              title={aberta ? "Fechar" : "Ver o que foi pedido"}>
-                              {aberta ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                              <span className="mono">{h.solicitacao_id || "—"}</span>
-                            </Button>
-                          </td>
-                          <td className="dim">{dataCurta(h.enviado_em)}</td>
-                          {/* O e-mail inteiro é a mesma informação com o
-                              dobro da largura — o nome basta, e o endereço
-                              fica no title. */}
-                          <td className="dim" title={h.enviado_por || ""}>
-                            {h.enviado_por ? nomeDoEmail(h.enviado_por) : "—"}
-                          </td>
-                          <td>
-                            <span className={`pill ${selo}`}>
-                              {h.status === "enviando" ? "sem confirmação"
-                                : h.status === "abandonado" ? "não criada"
-                                : recusados > 0
-                                ? `${entraram} de ${entraram + recusados}`
-                                : `${entraram} ${entraram === 1 ? "item" : "itens"}`}
-                            </span>
-                            {itensPedidos.length > 0 && (
-                              <span className="dim hist-sienge-nota">{fmtBRL(totalDoEnvio(h))}</span>
-                            )}
-                          </td>
-                        </tr>
-                        {aberta && (
-                          <tr className="hist-sienge-detalhe">
-                            <td colSpan={4}>
-                              {itensPedidos.length === 0 ? (
-                                <div className="dim">Este envio não registrou os itens.</div>
-                              ) : (
-                                <table className="vend-itens sol-tabela">
-                                  <thead>
-                                    <tr>
-                                      <th style={{ width: 58 }}>Insumo</th>
-                                      <th>O que foi pedido</th>
-                                      <th style={{ width: 56 }} className="right">Qtd.</th>
-                                      <th style={{ width: 42 }} className="center">Un.</th>
-                                      <th style={{ width: 100 }} className="right">Preço unit.</th>
-                                      <th style={{ width: 104 }} className="right">Total</th>
-                                      <th style={{ width: 132 }}>Resultado</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {itensPedidos.map((it, k) => {
-                                      /* Casa o item enviado com o que o Sienge
-                                         respondeu, pelas chaves das linhas da
-                                         obra — é o que liga "pedi isto" a
-                                         "entrou" ou "recusado por isto". */
-                                      const r = (res.resultados || []).find((x) =>
-                                        (x.chaves || []).join("|") === (it.chaves || []).join("|"));
-                                      const total = (Number(it.estimatedPrice) || 0) * (Number(it.quantity) || 0);
-                                      return (
-                                        <tr key={k} className={r && !r.ok ? "row-falta" : ""}>
-                                          <td className="mono">{it.productId}</td>
-                                          <td>
-                                            <span className="sol-corte" title={it.notes}>{it.notes}</span>
-                                            <span className="dim sol-sub">
-                                              <span className="mono">{it.costEstimationItemReference}</span>
-                                              {" · un. "}{it.buildingUnitId}
-                                              {Number.isInteger(it.detailId) && <> · detalhe <span className="mono">{it.detailId}</span></>}
-                                            </span>
-                                          </td>
-                                          <td className="right">{it.quantity}</td>
-                                          <td className="center mono">{it.unitySymbol}</td>
-                                          <td className="right">{fmtBRL(it.estimatedPrice)}</td>
-                                          <td className="right">{fmtBRL(total)}</td>
-                                          <td className={r && !r.ok ? "sol-motivo" : "dim"}>
-                                            {!r ? "—" : r.ok ? "entrou" : (r.erro || "recusado")}
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                  <tfoot>
-                                    <tr className="sol-total">
-                                      <td colSpan={5} className="right">Total pedido</td>
-                                      <td className="right">{fmtBRL(totalDoEnvio(h))}</td>
-                                      <td />
-                                    </tr>
-                                  </tfoot>
-                                </table>
+        <Card>
+          <Collapsible open={verHistorico} onOpenChange={setVerHistorico}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="h-auto w-full justify-start gap-2 px-2 py-2 text-left font-normal whitespace-normal">
+                {verHistorico ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />}
+                <span className="min-w-0 flex-1">
+                  <b>{historico.length}</b>
+                  {historico.length === 1 ? " solicitação enviada" : " solicitações enviadas"} ao Sienge
+                </span>
+                <span className="text-xs whitespace-nowrap text-text-mute">
+                  última {dataCurta(historico[0].enviado_em)}
+                </span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="overflow-x-auto pt-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-24">Solicitação</TableHead>
+                      <TableHead className="w-32">Quando</TableHead>
+                      <TableHead className="hidden w-40 md:table-cell">Quem</TableHead>
+                      <TableHead>Resultado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {historico.map((h) => {
+                      const res = h.resposta || {};
+                      const entraram = res.ok ?? 0;
+                      const recusados = (res.resultados || []).filter((r) => !r.ok).length;
+                      const itensPedidos = h.payload?.itens || [];
+                      const aberta = envioAberto === h.id;
+                      /* A cor diz de longe o que aconteceu: tudo entrou,
+                         entrou em parte, ou não entrou nada. Numa lista de
+                         dez linhas, ler dez frases pra descobrir isso é o
+                         que faz ninguém olhar o histórico. */
+                      const selo = h.status === "enviando" || h.status === "abandonado" ? "warning"
+                        : entraram > 0 && recusados === 0 ? "success"
+                        : entraram > 0 ? "warning" : "danger";
+                      return (
+                        <React.Fragment key={h.id}>
+                          <TableRow className={aberta ? "bg-surface-2" : ""}>
+                            {/* A linha inteira abre o conteúdo: o número
+                                sozinho não dizia o que foi pedido, e era a
+                                única coisa que a tabela mostrava dele. */}
+                            <TableCell>
+                              <Button variant="ghost" size="sm"
+                                onClick={() => setEnvioAberto(aberta ? null : h.id)}
+                                title={aberta ? "Fechar" : "Ver o que foi pedido"}>
+                                {aberta ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                <span className="mono">{h.solicitacao_id || "—"}</span>
+                              </Button>
+                            </TableCell>
+                            <TableCell className="text-text-mute">{dataCurta(h.enviado_em)}</TableCell>
+                            {/* O e-mail inteiro é a mesma informação com o
+                                dobro da largura — o nome basta, e o endereço
+                                fica no title. */}
+                            <TableCell className="hidden text-text-mute md:table-cell" title={h.enviado_por || ""}>
+                              {h.enviado_por ? nomeDoEmail(h.enviado_por) : "—"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge tone={selo}>
+                                {h.status === "enviando" ? "sem confirmação"
+                                  : h.status === "abandonado" ? "não criada"
+                                  : recusados > 0
+                                  ? `${entraram} de ${entraram + recusados}`
+                                  : `${entraram} ${entraram === 1 ? "item" : "itens"}`}
+                              </Badge>
+                              {itensPedidos.length > 0 && (
+                                <span className="ml-2 text-xs text-text-mute">{fmtBRL(totalDoEnvio(h))}</span>
                               )}
-                              {h.payload?.notes && (
-                                <div className="dim hist-sienge-obs">Observação: {h.payload.notes}</div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                            </TableCell>
+                          </TableRow>
+                          {aberta && (
+                            <TableRow className="bg-surface-2 hover:bg-surface-2">
+                              <TableCell colSpan={4} className="p-0">
+                                {itensPedidos.length === 0 ? (
+                                  <div className="p-4 text-text-mute">Este envio não registrou os itens.</div>
+                                ) : (
+                                  <div className="overflow-x-auto">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead className="w-16">Insumo</TableHead>
+                                          <TableHead>O que foi pedido</TableHead>
+                                          <TableHead className="w-16 text-right">Qtd.</TableHead>
+                                          <TableHead className="w-12 text-center">Un.</TableHead>
+                                          <TableHead className="hidden w-24 text-right md:table-cell">Preço unit.</TableHead>
+                                          <TableHead className="w-28 text-right">Total</TableHead>
+                                          <TableHead className="w-32">Resultado</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {itensPedidos.map((it, k) => {
+                                          /* Casa o item enviado com o que o Sienge
+                                             respondeu, pelas chaves das linhas da
+                                             obra — é o que liga "pedi isto" a
+                                             "entrou" ou "recusado por isto". */
+                                          const r = (res.resultados || []).find((x) =>
+                                            (x.chaves || []).join("|") === (it.chaves || []).join("|"));
+                                          const total = (Number(it.estimatedPrice) || 0) * (Number(it.quantity) || 0);
+                                          return (
+                                            <TableRow key={k} className={r && !r.ok ? "bg-warning/10" : ""}>
+                                              <TableCell className="mono">{it.productId}</TableCell>
+                                              <TableCell>
+                                                <span className="block max-w-md truncate" title={it.notes}>{it.notes}</span>
+                                                <span className="block text-xs text-text-mute">
+                                                  <span className="mono">{it.costEstimationItemReference}</span>
+                                                  {" · un. "}{it.buildingUnitId}
+                                                  {Number.isInteger(it.detailId) && <> · detalhe <span className="mono">{it.detailId}</span></>}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="text-right">{it.quantity}</TableCell>
+                                              <TableCell className="mono text-center">{it.unitySymbol}</TableCell>
+                                              <TableCell className="hidden text-right md:table-cell">{fmtBRL(it.estimatedPrice)}</TableCell>
+                                              <TableCell className="text-right">{fmtBRL(total)}</TableCell>
+                                              <TableCell className={r && !r.ok ? "text-danger" : "text-text-mute"}>
+                                                {!r ? "—" : r.ok ? "entrou" : (r.erro || "recusado")}
+                                              </TableCell>
+                                            </TableRow>
+                                          );
+                                        })}
+                                      </TableBody>
+                                      <TableFooter>
+                                        <TableRow>
+                                          <TableCell colSpan={4} className="text-right font-semibold">Total pedido</TableCell>
+                                          <TableCell className="hidden md:table-cell" />
+                                          <TableCell className="text-right font-semibold">{fmtBRL(totalDoEnvio(h))}</TableCell>
+                                          <TableCell />
+                                        </TableRow>
+                                      </TableFooter>
+                                    </Table>
+                                  </div>
+                                )}
+                                {h.payload?.notes && (
+                                  <div className="px-4 pb-4 pt-2 text-xs text-text-mute">Observação: {h.payload.notes}</div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
       )}
 
       {solicitacao && eapSienge?.versao && (
@@ -13000,11 +13016,14 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             setSel((p) => { const n = new Set(p); aceitas.forEach((c) => n.delete(c)); return n; });
           }} />
       )}
+      {/* A escolha do canal fica na barra da selecao: e uma decisao sobre
+          o LOTE, nao sobre uma linha. Marcar 40 produtos e ter que
+          escolher o canal 40 vezes e a mesma decisao repetida 40 vezes. */}
       {selecionados.length > 0 && (
-        <div className="mo-escopo-barra">
-          <div>
-            <div className="mo-escopo-val mono">{fmtBRL(totalSel)}</div>
-            <div className="mo-escopo-rot">
+        <Card className="sticky bottom-4 z-10 flex flex-col gap-4 shadow-lg sm:flex-row sm:items-center">
+          <div className="shrink-0">
+            <div className="mono text-2xl font-bold">{fmtBRL(totalSel)}</div>
+            <div className="text-xs text-text-soft">
               {selecionados.length} {selecionados.length === 1 ? "produto selecionado" : "produtos selecionados"}
               {/* Os botoes desta barra marcam comprado e abrem solicitacao no
                   Sienge. Se a busca escondeu parte da selecao, tem que estar
@@ -13012,35 +13031,35 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               {buscando && (() => {
                 const naTela = new Set(naTelaTudo.map((r) => r.chave));
                 const fora = selecionados.filter((r) => !naTela.has(r.chave)).length;
-                return fora > 0 ? <b className="selecao-escondidos">{" · "}{fora} fora da busca</b> : null;
+                return fora > 0 ? <b className="font-semibold text-warning">{" · "}{fora} fora da busca</b> : null;
               })()}
             </div>
           </div>
-          <div className="canal-escolha">
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">
             {/* O pedido sai de qualquer canal — inclusive de quem ainda
                 nao tem um: as vezes a lista e pra pedir cotacao antes de
                 decidir por onde comprar. */}
-            <Button variant="outline" onClick={() => {
+            <Button variant="outline" size="sm" onClick={() => {
               setPedido({ itens: selecionados });
               setTimeout(() => window.print(), 300);
             }} title="Abre a impressão do navegador — escolha Salvar como PDF">
-              <FileText size={13} /> PDF
+              <FileText size={16} /> PDF
             </Button>
-            <Button variant="outline" onClick={() => baixarPedidoExcel(
+            <Button variant="outline" size="sm" onClick={() => baixarPedidoExcel(
               obra,
               etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
               selecionados, usuario)
             } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
-              <Download size={13} /> Excel
+              <Download size={16} /> Excel
             </Button>
-            <Button variant="outline" onClick={solicitarNoPipefy}
+            <Button variant="outline" size="sm" onClick={solicitarNoPipefy}
               title="Copia a lista dos selecionados e abre a solicitação de compra no Pipefy">
-              <ExternalLink size={13} /> Solicitar no Pipefy
+              <ExternalLink size={16} /> Solicitar no Pipefy
             </Button>
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
             {selecionados.some((r) => r.it.canalCompra) && (
-              <Button variant="outline" disabled={!podeEditar} onClick={async () => {
+              <Button variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
                 const comCanal = selecionados.filter((r) => r.it.canalCompra);
                 const desmarcar = comCanal.every((r) => r.it.comprado);
                 // Marcar só mexe em quem ainda não foi comprado (a data de quem já
@@ -13058,12 +13077,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 });
                 setSel(new Set());
               }} title={podeEditar ? "Marca os selecionados que já têm canal — entra no total do Dashboard. No Sienge, só o que já foi solicitado." : `Em ${MODO_LEITURA_DICA}`}>
-                <Check size={13} /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
+                <Check size={16} /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
                   ? "Desmarcar comprado" : "Marcar comprado"}
               </Button>
             )}
             {etapa === "sienge" && (
-              <Button variant="outline" disabled={!podeEditar} onClick={async () => {
+              <Button variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
                 const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
                 // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
                 const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
@@ -13076,13 +13095,13 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   mensagem: `${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`,
                 });
               }} title={podeEditar ? "Marca os selecionados como já solicitados no Sienge" : `Em ${MODO_LEITURA_DICA}`}>
-                <Check size={13} /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
+                <Check size={16} /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
               </Button>
             )}
             {etapa === "sienge" && baseSienge && (
-              <Button variant="outline" onClick={associarSelecionados} disabled={!podeEditar}
+              <Button variant="outline" size="sm" onClick={associarSelecionados} disabled={!podeEditar}
                 title={podeEditar ? "Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão" : `Em ${MODO_LEITURA_DICA}`}>
-                <PackageSearch size={13} /> Associar {selecionados.length}
+                <PackageSearch size={16} /> Associar {selecionados.length}
               </Button>
             )}
             {/* Solicitar no Sienge: o único botão daqui que ESCREVE em
@@ -13094,7 +13113,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 funcionalidade depende de um cadastro procura um botão que
                 não está em lugar nenhum, e conclui que não foi entregue. */}
             {etapa === "sienge" && (
-              <Button variant="outline"
+              <Button variant="outline" size="sm"
                 disabled={!podeEditar || !eapSienge?.versao}
                 onClick={() => setSolicitacao(selecionados.map((r) => {
                   // A situação do insumo é resolvida aqui, com a base na
@@ -13116,11 +13135,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   : eapSienge.erro ? `Não deu pra ler a EAP do Sienge: ${eapSienge.erro}`
                   : !eapSienge.versao ? "Nenhuma EAP do Sienge cadastrada — vá em EAP Sienge (menu lateral) e importe o relatório de orçamento. Sem ela não há como apropriar a compra no orçamento."
                   : "Cria a solicitação de compra direto no Sienge — você confere tudo antes de enviar"}>
-                <ExternalLink size={13} /> Solicitar Compra no Sienge
+                <ExternalLink size={16} /> Solicitar Compra no Sienge
                 {/* O motivo fica no RÓTULO, não só no title: botão
                     desabilitado sem motivo à vista vira "não funciona". */}
                 {(!podeEditar || !eapSienge?.versao) && (
-                  <span className="dim"> · {
+                  <span className="text-text-mute"> · {
                     !podeEditar ? "habilite a edição"
                       : !eapSienge ? "carregando a EAP…"
                       : eapSienge.erro ? "erro ao ler a EAP"
@@ -13130,25 +13149,31 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               </Button>
             )}
             {etapa === "sienge" && (
-              <Button variant="outline"
+              <Button variant="outline" size="sm"
                 onClick={() => baixarResumoCadastroSienge(obra,
                   resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}
                 title="Excel pra quem lança o pedido no Sienge: insumo, detalhe, códigos e quantidade — iguais somam numa linha">
-                <Download size={13} /> Resumo p/ cadastro
+                <Download size={16} /> Resumo p/ cadastro
               </Button>
             )}
-            {CANAIS_COMPRA.map((c) => (
-              <Button variant="outline" size="sm" key={c.id} onClick={() => definirCanal(c.id)} disabled={!podeEditar}
-                title={podeEditar ? `Marcar os selecionados como compra por ${c.nome}` : `Em ${MODO_LEITURA_DICA}`}>
-                <TagCanal id={c.id} comNome />
-              </Button>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => definirCanal(null)} disabled={!podeEditar}
-              title={podeEditar ? "Tirar o canal dos selecionados" : `Em ${MODO_LEITURA_DICA}`}>tirar canal</Button>
+            {/* O canal do lote: cada item e' uma acao (define e limpa a
+                selecao), por isso o grupo nunca fica "ligado" — o valor
+                vazio e' de proposito. */}
+            <ToggleGroup type="single" value="" disabled={!podeEditar} aria-label="Canal de compra dos selecionados"
+              onValueChange={(v) => { if (v) definirCanal(v === "__nenhum" ? null : v); }}>
+              {CANAIS_COMPRA.map((c) => (
+                <ToggleGroupItem key={c.id} value={c.id} size="sm"
+                  title={podeEditar ? `Marcar os selecionados como compra por ${c.nome}` : `Em ${MODO_LEITURA_DICA}`}>
+                  <TagCanal id={c.id} comNome />
+                </ToggleGroupItem>
+              ))}
+              <ToggleGroupItem value="__nenhum" size="sm"
+                title={podeEditar ? "Tirar o canal dos selecionados" : `Em ${MODO_LEITURA_DICA}`}>tirar canal</ToggleGroupItem>
+            </ToggleGroup>
           </div>
-        </div>
+        </Card>
       )}
-    </>
+    </PageShell>
   );
 }
 
@@ -22189,7 +22214,6 @@ export default function App() {
         /* ESCOPO DE CONTRATACAO */
         .btn-abrir-escopo { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; background: var(--surface-1); color: var(--ink); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
         .btn-abrir-escopo:hover { background: var(--green-bg); color: var(--green); }
-        .mo-escopo-barra .btn-limpar-sel { margin-left: 0; }
         .form-escopo { max-width: 560px; }
         .form-dica { font-size: 10.5px; color: var(--green); margin-top: 5px; }
         .btn-lupa { flex-shrink: 0; background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 5px 7px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
@@ -22496,25 +22520,6 @@ export default function App() {
         @media (max-width: 900px) { .escopo-conta, .escopo-campos { grid-template-columns: 1fr; } }
 
         /* COMPRAS DE PRODUTOS — o funil. */
-        .funil { display: flex; align-items: stretch; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
-        .funil-no { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; cursor: pointer; font-family: inherit; text-align: center; min-width: 96px; }
-        .funil-no:hover { border-color: var(--ink-3); }
-        .funil-no.ativo { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
-        .funil-n { font-family: var(--font-sans); font-size: 19px; font-weight: 700; }
-        .funil-rot { font-size: 10.5px; color: var(--ink-2); margin-top: 1px; }
-        .funil-v { font-size: 10px; color: var(--ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
-        .assoc-barra { display: flex; align-items: center; gap: 10px; background: var(--blue-bg); border: 1px solid var(--brand-line); border-radius: 10px; padding: 11px 15px; font-size: 12px; color: var(--ink-2); margin-bottom: 12px; }
-        .assoc-barra .btn-doc { margin-left: auto; flex-shrink: 0; }
-        .funil-feitos { font-size: 9px; color: var(--ink-3); margin-top: 3px; display: inline-flex; align-items: center; gap: 3px; }
-        .funil-feitos.tudo { color: var(--green); font-weight: 700; }
-        .mo-num-ok .mo-num-val { color: var(--green); }
-        .assoc-resultado { display: flex; align-items: center; gap: 9px; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
-        .assoc-resultado.ok { background: var(--green-bg); border: 1px solid var(--success-line); color: var(--green); }
-        .assoc-resultado.parcial { background: var(--amber-bg); border: 1px solid var(--warning-line); color: var(--text); }
-        .pipefy-aviso { align-items: flex-start; background: var(--brand-tint); border: 1px solid var(--brand-line); color: var(--ink-2); line-height: 1.55; }
-        .pipefy-aviso-txt { display: grid; gap: 8px; flex: 1; min-width: 0; }
-        .pipefy-aviso a { color: var(--brand); font-weight: 600; }
-        .pipefy-texto { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface-1); color: var(--ink); resize: vertical; }
         .btn-associar-sel { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); color: var(--ink); border: none; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-right: 6px; }
         .btn-associar-sel:hover { background: var(--blue-bg); color: var(--blue); }
         /* ---------- EAP do Sienge ---------- */
@@ -22590,30 +22595,8 @@ export default function App() {
           border: 1px solid var(--line-1); font-family: var(--font-mono); font-size: 11px;
           line-height: 1.5; max-height: 240px; overflow: auto; white-space: pre-wrap;
           word-break: break-word; color: var(--text-soft); }
-        .hist-sienge { border: 1px solid var(--line-2); border-radius: var(--radius);
-          margin-bottom: 16px; overflow: hidden; background: var(--bg); }
-        .hist-sienge-topo { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-          background: var(--surface-1); border: none; padding: 12px 16px; font: inherit; font-size: 13px;
-          color: var(--text); cursor: pointer; }
-        .hist-sienge-topo:hover { background: var(--surface-2); }
         /* O título não quebra em três linhas: ele ocupa o espaço que
            sobra e empurra a data pra direita. */
-        .hist-sienge-titulo { flex: 1; min-width: 0; }
-        .hist-sienge-quando { font-size: 11.5px; white-space: nowrap; }
-        .hist-sienge-tabela td { padding-top: 10px; padding-bottom: 10px; vertical-align: middle; }
-        .hist-sienge-num { display: inline-flex; align-items: center; gap: 5px; background: none;
-          border: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer; }
-        .hist-sienge-num:hover { color: var(--brand); }
-        .hist-sienge-aberta > td { background: var(--surface-1); }
-        .hist-sienge-detalhe > td { padding: 0 0 12px; background: var(--surface-1); }
-        .hist-sienge-detalhe .vend-itens { background: var(--bg); border-top: 1px solid var(--line-1); }
-        .hist-sienge-obs { padding: 10px 12px 0; font-size: 11.5px; }
-        .hist-sienge-nota { margin-left: 8px; font-size: 11px; }
-        .pill-erro { background: var(--danger-soft); color: var(--danger); }
-        .sol-pendente { display: flex; align-items: center; justify-content: space-between;
-          gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-1);
-          font-size: 12px; font-weight: 400; }
-        .sol-pendente:first-of-type { border-top: none; }
         .sol-verba-linha { display: flex; align-items: center; gap: 8px; }
         .sol-verba-num { width: 76px; flex-shrink: 0; }
         .sol-verba-qtd { width: 64px; flex-shrink: 0; text-align: right; }
@@ -22642,25 +22625,15 @@ export default function App() {
           .sol-campos { grid-template-columns: 1fr; }
           .sobreposto-topo, .sobreposto-corpo, .sobreposto-rodape { padding-left: 16px; padding-right: 16px; }
         }
-
-        .sel-barra-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .sel-barra-topo { flex-wrap: wrap; }
-        .grp-comprados { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line-2); white-space: nowrap; }
-        .grp-comprados.parte { color: var(--brand); background: var(--brand-tint); border-color: var(--brand-line); }
         /* Teve troca nesta verba: mesma forma dos outros selos, cor do
            trocado (a mesma da etiqueta da linha riscada). */
-        .grp-troca { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; color: var(--amber); background: var(--amber-bg); border: 1px solid var(--amber); }
-        .grp-comprados.tudo { color: color-mix(in srgb, var(--green) 75%, var(--ink)); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
         .pill.pill-btn:disabled { cursor: not-allowed; }
         .pill.pill-btn.pill-wait:disabled { opacity: .45; }
         .btn-canal:disabled { opacity: .45; cursor: not-allowed; }
         .det-opcao:disabled { cursor: default; }
         .det-opcao:disabled:not(.escolhida):hover { background: transparent; }
-        .cmp-leitura b { color: var(--ink); font-weight: 600; }
-        .cmp-filtro-forn { margin-left: auto; display: flex; align-items: center; gap: 8px; }
         .cmp-forn-sel { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12px; padding: 6px 9px; background: var(--surface-1); color: var(--ink); max-width: 300px; }
         .cmp-forn-sel:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
-        .cmp-forn-nome { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
         .btn-sel-tudo { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-2); }
         .btn-sel-tudo:hover { border-color: var(--ink); color: var(--ink); }
         .btn-limpar-sel-claro { background: transparent; border: none; color: var(--ink-3); font-size: 11.5px; cursor: pointer; font-family: inherit; text-decoration: underline; }
@@ -22707,7 +22680,6 @@ export default function App() {
         .padrao-txt { font-family: var(--font-mono); font-size: 10px; line-height: 1.45; background: var(--panel); border-radius: 4px; padding: 4px 6px; flex: 1; word-break: break-word; }
         .btn-copiar { background: transparent; border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; cursor: pointer; color: var(--ink-3); display: inline-flex; flex-shrink: 0; }
         .btn-copiar:hover { border-color: var(--ink); color: var(--ink); }
-        .canal-escolha { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
         .btn-canal { background: var(--on-inverse-soft); border: none; border-radius: 8px; padding: 5px 7px; cursor: pointer; font-family: inherit; }
         .btn-canal:hover { background: var(--on-inverse-hover); }
         .btn-canal-limpar { color: var(--bg); font-size: 11px; font-weight: 600; padding: 7px 11px; opacity: 0.75; }
@@ -22715,26 +22687,6 @@ export default function App() {
 
         /* Conferencia com o Sienge: o que a planilha diz que tem pra
            comprar chegou mesmo la? */
-        .confronto { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
-        .confronto-topo { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink-2); padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
-        .confronto-topo span { flex: 1; }
-        .cf-docs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .cf-doc { display: inline-flex; align-items: center; gap: 5px; background: var(--panel); border-radius: 20px; padding: 3px 5px 3px 10px; font-size: 11px; }
-        .cf-doc-x { display: inline-flex; background: transparent; border: none; color: var(--ink-3); cursor: pointer; padding: 2px; border-radius: 50%; }
-        .cf-doc-x:hover { color: var(--red); background: var(--surface-1); }
-        .confronto-placar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
-        .cf-bloco { border-radius: 10px; padding: 10px 14px; }
-        .cf-bloco.ok { background: var(--green-bg); color: var(--green); }
-        .cf-bloco.ruim { background: var(--red-bg); color: var(--red); }
-        .cf-bloco.aviso { background: var(--amber-bg); color: var(--text); }
-        .cf-n { font-family: var(--font-sans); font-size: 22px; font-weight: 700; }
-        .cf-rot { font-size: 10.5px; opacity: 0.85; }
-        .cf-lista { margin-top: 12px; }
-        .cf-tit { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-        .cf-tit.ruim { color: var(--red); }
-        .cf-tit.aviso { color: var(--text); }
-        .cf-linha { display: flex; align-items: baseline; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
-        .cf-desc { flex: 1; min-width: 0; }
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
         .btn-template { background: var(--green); }
         .btn-template:hover { background: var(--success); }
@@ -22762,17 +22714,10 @@ export default function App() {
         .ger-busca { display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--panel); border-radius: 8px; }
         .ger-busca .form-input { margin-top: 0; font-size: 12px; padding: 5px 8px; }
         /* DASHBOARD MO — a base de orcado de um escopo. */
-        .mo-topo { display: flex; align-items: center; gap: 30px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
-        .mo-num-val { font-family: var(--font-sans); font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
-        .mo-num-rot { font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
-        .mo-topo .btn-nova-solicitacao { margin-left: auto; }
         .mo-check { width: 19px; height: 19px; flex-shrink: 0; border-radius: 5px; border: 1.5px solid var(--border); background: var(--surface-1); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--bg); padding: 0; margin-left: 16px; }
         .mo-check:hover { border-color: var(--blue); }
         /* A soma so aparece quando ha selecao: e o unico numero da tela
            contra o qual a proposta do fornecedor vai ser comparada. */
-        .mo-escopo-barra { position: sticky; bottom: 14px; display: flex; align-items: center; gap: 18px; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 13px 20px; margin-top: 14px; box-shadow: var(--shadow-3); }
-        .mo-escopo-val { font-family: var(--font-sans); font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
-        .mo-escopo-rot { font-size: 11px; opacity: 0.75; margin-top: 1px; }
         .btn-limpar-sel { margin-left: auto; background: var(--on-inverse-soft); color: var(--bg); border: none; border-radius: 7px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
         .btn-limpar-sel:hover { background: var(--on-inverse-hover); }
 
@@ -22876,10 +22821,6 @@ export default function App() {
         .etapa-concluida { background: var(--green-bg); border: 1px solid var(--green); color: var(--ink-1); }
         .etapa-concluida svg { color: var(--green); flex-shrink: 0; }
         .etapa-concluida span { flex: 1; }
-
-        .filter-chip { background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
-        .filter-chip:hover { border-color: var(--blue); }
-        .filter-chip.active { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
         /* Fila de cima: o que o item É. Fica acima e mais encorpada que a
            de situação, porque decide qual das duas rotinas — compra no
            Sienge ou contrato — você está tocando. */
@@ -22971,8 +22912,6 @@ export default function App() {
         .grp-itens th:nth-child(2), .grp-itens td:nth-child(2) { min-width: 230px; }
         /* Nas Compras a 2ª coluna é o Cód. (a 1ª é a caixa de seleção): quem
            precisa de largura mínima ali é a Descrição. */
-        .grp-itens table.tab-compras th:nth-child(2), .grp-itens table.tab-compras td:nth-child(2) { min-width: 0; }
-        .grp-itens table.tab-compras th:nth-child(3), .grp-itens table.tab-compras td:nth-child(3) { min-width: 230px; }
         /* A situacao virou o controle de incluir/tirar do plano. */
         .pill-btn { border: none; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
         .pill-btn:hover { filter: brightness(0.95); box-shadow: inset 0 0 0 1px currentColor; }
@@ -23200,7 +23139,6 @@ export default function App() {
         .btn-avancar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
         .btn-avancar:hover { background: var(--blue); }
         .contrato-etapa-cell { width: 210px; flex-shrink: 0; }
-        .pipe-arrow { align-self: center; flex-shrink: 0; }
         .contratos-toolbar { margin: 4px 0 4px; }
         .btn-nova-solicitacao { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
         .btn-nova-solicitacao:hover { background: var(--blue); }
@@ -23746,7 +23684,6 @@ export default function App() {
         .hist-erro { color: var(--red); }
         /* A fila da obra. Fica abaixo da pilula de fase, mais discreta que a
            esteira: a esteira e' o caminho, isto e' o que esta' parado agora. */
-        .selecao-escondidos { color: var(--warning); font-weight: 600; }
         .nav-badge { background: var(--danger); color: var(--bg); font-family: var(--font-mono); font-size: 10px; font-weight: 700; border-radius: 999px; }
         .nav-badge-novo { background: var(--brand); }
         .nav-count { font-family: var(--font-mono); background: var(--surface-2); color: var(--text-mute); border-radius: 999px; }
@@ -23819,7 +23756,7 @@ export default function App() {
         :is(.ad-addbtn, .btn-add-item, .btn-separar) { border: 1px dashed var(--line-3); border-radius: 8px; background: transparent; color: var(--text-soft); font-family: var(--font-sans); transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease; }
         :is(.ad-addbtn, .btn-add-item, .btn-separar):hover { border-color: var(--brand); border-style: dashed; background: var(--brand-soft); color: var(--brand); }
 
-        :is(.btn-linha-excluir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn, .gc-busca-limpar, .cf-doc-x) { border-radius: 6px; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+        :is(.btn-linha-excluir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn, .gc-busca-limpar) { border-radius: 6px; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
 
         /* ---------- Campos (Input · Select · Textarea) ----------
            Padrão obrigatório do DS: fundo --field, borda --line-2, foco em
@@ -23849,10 +23786,10 @@ export default function App() {
         .det-opcao.escolhida .det-radio { border-color: var(--brand); background: var(--brand); box-shadow: inset 0 0 0 2px var(--surface-1); }
 
         /* ---------- Filtros em chip (SavedViewChips) ---------- */
-        :is(.squad-chip, .filter-chip, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+        :is(.squad-chip, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
         .squad-chip.neutro { background: var(--surface-2); color: var(--text-soft); }
-        :is(.squad-chip, .filter-chip, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag):hover { border-color: var(--line-3); color: var(--text); }
-        :is(.squad-chip.active, .squad-chip.neutro.on, .filter-chip.active, .gc-chip.on, .fo-btn.on, .cargo-chip.on, .ac-chip.on) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); box-shadow: none; }
+        :is(.squad-chip, .gc-chip, .fo-btn, .cargo-chip, .ac-chip, .ad-tag):hover { border-color: var(--line-3); color: var(--text); }
+        :is(.squad-chip.active, .squad-chip.neutro.on, .gc-chip.on, .fo-btn.on, .cargo-chip.on, .ac-chip.on) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); box-shadow: none; }
         .squad-chip.active.alerta { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
         .alert-toggle { border-radius: 999px; border-color: var(--line-2); font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-soft); }
         .alert-toggle.active { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
@@ -23870,22 +23807,18 @@ export default function App() {
         /* ---------- Cartões e números (Card · KPI) ---------- */
         :is(.big-card, .gc-total, .flat-panel) { border-radius: 14px; }
         :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
-        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .conf-col-label, .ad-prev-h, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .conf-col-label, .ad-prev-h, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .ad-cab label, .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
-        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .funil-n, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
            largura da tela em vez de estourar a caixa com reticencias. */
         .ec-val, .big-card-value, .cmv-valor { font-size: 26px; }
         .gc-total-val { font-size: 32px; }
         .mini-stat-value, .saldo-valor { font-size: 20px; }
         .saldo-bloco.destaque .saldo-valor { font-size: 24px; }
-        .bucket-num, .cf-n { font-size: 30px; }
-        .funil-n, .mo-num-val { font-size: 22px; }
-        .mo-escopo-val { font-size: 24px; }
+        .bucket-num { font-size: 30px; }
         .arq-topo-n { font-size: 36px; }
-        .cf-bloco.aviso, .cf-tit.aviso { color: var(--warning); }
-        .funil-no.ativo, .ad-obra.on { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
-        .mo-escopo-barra { border-radius: 14px; }
+        .ad-obra.on { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
 
         /* ---------- Tabelas (Table) ---------- */
         .grp-itens th, .cat-items th, .flat-table th, .vend-itens th { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute); background: var(--surface-2); border-bottom: 1px solid var(--line-1); }
@@ -23900,12 +23833,10 @@ export default function App() {
         :is(.aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-topo) svg { color: var(--warning); }
         .import-erro { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
         .import-erro svg { color: var(--danger); }
-        .assoc-resultado.ok { background: var(--success-soft); border: 1px solid var(--success-line); border-radius: 10px; color: var(--text); }
-        .assoc-resultado.ok svg { color: var(--success); }
         .pf-topo, .pf-nota, .aviso-pobre-sub { color: var(--text); }
         .etapa-concluida, .barra-etapa.feita { border-color: var(--success-line); }
         .bucket-falta { border-color: var(--warning-line); }
-        .ac-painel, .assoc-barra { border-color: var(--brand-line); }
+        .ac-painel { border-color: var(--brand-line); }
         .aviso-deslocamento, .etapa-pendente { border: 1px solid var(--line-1); background: var(--surface-2); color: var(--text-soft); }
 
         /* ---------- Estado vazio (EmptyState) ---------- */
@@ -23991,10 +23922,6 @@ export default function App() {
         .es-val { text-align: right; white-space: nowrap; font-weight: 600; }
         @media (max-width: 900px) { .es-topo { grid-template-columns: 1fr; } .es-linha { grid-template-columns: 16px minmax(0, 1fr) auto; } .es-qtd { display: none; } }
         /* ---------- Compras: associar insumos por grupo ---------- */
-        .grp-associar { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border: 1px solid var(--brand); border-radius: 8px; background: transparent; color: var(--brand); font-family: var(--font-sans); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 0.15s ease; }
-        .grp-associar:hover:not(:disabled) { background: var(--brand-soft); }
-        .grp-associar:disabled { opacity: 0.6; cursor: progress; }
-        .grp-assoc-ok { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--success); white-space: nowrap; }
 
         /* ==================================================================
            CELULAR
@@ -24022,17 +23949,13 @@ export default function App() {
           .barra-etapa { flex-wrap: wrap; gap: 8px 12px; }
           .be-dir { flex-wrap: wrap; flex-shrink: 1; min-width: 0; }
           .title-row { flex-wrap: wrap; gap: 8px; }
-          .sel-barra-topo { flex-wrap: wrap; }
 
           /* Os grupos da obra rolam dentro da propria faixa, como as abas ja'
              faziam. Quebrar em duas linhas partiria a pastilha no meio. */
 
           /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
              sao duas colunas: sao duas fitas de uma palavra por linha. */
-          .dash, .ad-wrap, .ad-cab, .conf-cols,
-          .escopo-conta, .escopo-campos, .confronto-placar,
-          .sol-campos, .form-row-3, .cad-campos,
-          .ad-item-campos, .ad-item-campos.com-custo {
+          .dash, .ad-wrap, .ad-cab, .conf-cols, .escopo-conta, .escopo-campos, .sol-campos, .form-row-3, .cad-campos, .ad-item-campos, .ad-item-campos.com-custo {
             /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
                min-width auto, e com isso se RECUSA a encolher abaixo do
                proprio conteudo. Na Inicio, as duas colunas viravam uma so'

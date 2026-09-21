@@ -110,7 +110,7 @@ conf("a associação do grupo ignora a trocada", src.includes("const grupoAssoci
 conf("a barra conta as trocas", src.includes("const nTrocas = g.itens.length - ativos.length;"), true);
 conf("e mostra o selo quando houve", /\{nTrocas > 0 && \(/.test(src), true);
 conf("com o plural certo", src.includes('{nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}'), true);
-conf("e o CSS do selo existe", src.includes(".grp-troca {"), true);
+conf("e o selo é um Badge de aviso", src.includes('<Badge tone="warning" title={nTrocas === 1'), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
