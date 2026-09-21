@@ -23,7 +23,7 @@ await page.goto('file://' + path.join(output, 'index.html'));
 await page.getByRole('heading',{name:'Visão geral das obras'}).waitFor();
 await page.screenshot({path:path.join(output, 'desktop.png'),fullPage:true});
 assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),7);
-assert.deepEqual(await page.getByLabel('Indicadores das obras').getByRole('button').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-label'))), ['Ver obras ativas','Ver entregas em até 90 dias','Ver valor pendente de compra','Ver pendências críticas']);
+assert.deepEqual(await page.getByLabel('Indicadores das obras').getByRole('button').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-label'))), ['Ver valor pendente de compra','Ver obras ativas','Ver entregas em até 90 dias','Ver pendências críticas']);
 assert.equal(await page.getByRole('table',{name:'Prioridades de hoje',exact:true}).locator('tbody tr').count(),4);
 assert.equal(await page.getByRole('table',{name:'Prioridades de hoje',exact:true}).locator('tbody tr').first().locator('td').count(),6);
 assert.equal(await page.getByRole('button',{name:/Abrir entrega de/}).count(),4);

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Input, Label, PageShell, Progress, Skeleton, ActiveFilters, FilterChip,
+  Input, Label, PageShell, Progress, Skeleton, ActiveFilters, FilterChip, KpiHero, KpiMini,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@group-ws/ws-ui";
-import { ArrowRight, Building2, CalendarDays, CircleDollarSign, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, Search } from "lucide-react";
+import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, Search } from "lucide-react";
 
 const money = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const compactMoney = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2 }).format(value);
@@ -113,12 +113,22 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
   const clear = () => { setFilters({ unit: "all", squad: "all", gc: "all", taylor: "all", search: "", order: "risk" }); setSearch(""); setScope("all"); };
   const reveal = (ref) => { ref.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); ref.current?.focus({ preventScroll: true }); };
   const unavailable = loading || !!error;
+  /* O COCKPIT do DS (pattern Dashboard): um numero em destaque — o que
+     falta comprar, que e' o que segura obra —, tres indicadores medios que
+     levam ao bloco certo, e uma faixa curta de contagens de saude. */
+  const pctComprado = material > 0 ? Math.round(((material - pending) / material) * 100) : 0;
   const kpis = [
     { label: "Obras ativas", value: String(filtered.length), hint: `${filtered.filter((row) => row.summary).length} com planilha carregada`, icon: Building2, tone: "brand", action: () => { setScope("all"); reveal(projectsRef); } },
     { label: "Entregas em até 90 dias", value: String(deliveries.length), hint: `de ${filtered.length} obras ativas`, icon: CalendarDays, tone: "success", action: () => { setShowDeliveries(true); reveal(deliveriesRef); } },
-    { label: "Valor pendente de compra", value: compactMoney(pending), hint: `de ${money(material)} em material`, icon: CircleDollarSign, tone: "brand", action: () => { setScope("purchase"); reveal(projectsRef); } },
     { label: "Pendências críticas", value: String(critical.length), hint: "requerem atenção imediata", icon: TriangleAlert, tone: "danger", action: () => { setShowAlerts(true); reveal(alertsRef); } },
   ];
+  const saude = [
+    { label: "Sem pendência crítica", value: filtered.filter((row) => !row.alerts.some((a) => a.critical)).length, tone: "success" },
+    { label: "Com compra atrasada", value: filtered.filter((row) => row.summary?.atrasos?.length).length, tone: "danger" },
+    { label: "Sem data de entrega", value: filtered.filter((row) => !row.delivery).length, tone: "warning" },
+    { label: "Sem GC", value: filtered.filter((row) => row.gc === "Não atribuído").length, tone: "neutral" },
+  ];
+  const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
   /* Filtro mora na TOOLBAR do PageShell, abaixo do titulo — o lado direito
      do titulo e' das acoes (App Shell do DS, nivel 6). */
   const controls = <div className="flex flex-wrap items-end gap-3" role="group" aria-label="Filtros do dashboard">
@@ -136,23 +146,46 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
     {filters.search && <FilterChip label="Busca" value={filters.search} onClear={() => update("search", "")} />}
     {scope === "purchase" && <FilterChip label="Tabela" value="com compra pendente" onClear={() => setScope("all")} />}
   </ActiveFilters> : null;
-  return <PageShell title={title} description="Acompanhe prazos, compras e pontos críticos da operação." toolbar={controls} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-4">
+  /* Header editorial do DS: crumb -> titulo (o nome do menu) -> o resumo do
+     momento em italico -> uma linha de contexto. */
+  return <PageShell crumb="Operação" title={title}
+    italic={unavailable ? undefined : `${compactMoney(pending)} a comprar · ${filtered.length} ${filtered.length === 1 ? "obra" : "obras"}`}
+    description={`Prazos, compras e pontos críticos da operação · ${hoje}`}
+    toolbar={controls} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-4">
     {error && <Card accent="danger"><CardContent><p role="alert">Não conseguimos carregar todos os dados das obras. Atualize para consultar os indicadores.</p><Button onClick={onRetry}>Tentar novamente</Button></CardContent></Card>}
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4" aria-label="Indicadores das obras" aria-busy={loading}>
-      {kpis.map(({ icon: Icon, ...kpi }) => <Card key={kpi.label}>
-        <CardContent><div className="flex items-center gap-4">
-          <Badge tone={kpi.tone} className="p-4"><Icon size={32} aria-hidden="true" /></Badge>
-          <div className="min-w-0 flex-1"><div className="text-xs font-semibold uppercase tracking-wider text-text-mute">{kpi.label}</div>
-            {unavailable ? <><Skeleton className="h-8 w-full" /><span>{loading ? "Carregando…" : "Dados indisponíveis"}</span></> : <><div className="text-3xl font-bold text-text-strong" title={kpi.label === "Valor pendente de compra" ? money(pending) : undefined}>{kpi.value}</div><div className="text-xs text-text-mute">{kpi.hint}</div></>}
-          </div>
-          <Button variant="ghost" size="icon" disabled={unavailable} onClick={kpi.action} aria-label={`Ver ${kpi.label.toLowerCase()}`}><ChevronRight size={16} aria-hidden="true" /></Button>
-        </div></CardContent>
-      </Card>)}
+    <div className="grid grid-cols-12 gap-4" aria-label="Indicadores das obras" aria-busy={loading}>
+      <div className="col-span-12 flex flex-col gap-2 xl:col-span-5">
+        {unavailable
+          ? <Card className="h-full"><CardContent className="space-y-2"><Skeleton className="h-4 w-40" /><Skeleton className="h-12 w-56" /><span className="text-xs text-text-mute">{loading ? "Carregando…" : "Dados indisponíveis"}</span></CardContent></Card>
+          : <KpiHero className="h-full" label="Valor pendente de compra" value={compactMoney(pending)}
+              hint={`de ${money(material)} em material · ${pctComprado}% já comprado`} />}
+        <Button variant="outline" size="sm" className="self-start" disabled={unavailable}
+          onClick={() => { setScope("purchase"); reveal(projectsRef); }} aria-label="Ver valor pendente de compra">
+          Ver obras com compra pendente <ArrowRight size={14} aria-hidden="true" />
+        </Button>
+      </div>
+      <div className="col-span-12 grid grid-cols-1 gap-4 sm:grid-cols-3 xl:col-span-7">
+        {kpis.map(({ icon: Icon, ...kpi }) => <Card key={kpi.label}>
+          <CardContent className="flex h-full flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <Badge tone={kpi.tone} className="p-2"><Icon size={18} aria-hidden="true" /></Badge>
+              <Button variant="ghost" size="icon" disabled={unavailable} onClick={kpi.action} aria-label={`Ver ${kpi.label.toLowerCase()}`}><ChevronRight size={16} aria-hidden="true" /></Button>
+            </div>
+            <div className="label-mono text-text-mute">{kpi.label}</div>
+            {unavailable ? <Skeleton className="h-8 w-20" /> : <><div className="text-2xl font-semibold text-text-strong">{kpi.value}</div><div className="text-xs text-text-mute">{kpi.hint}</div></>}
+          </CardContent>
+        </Card>)}
+      </div>
+    </div>
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Saúde das obras">
+      {saude.map((k) => unavailable
+        ? <Skeleton key={k.label} className="h-20" />
+        : <KpiMini key={k.label} label={k.label} value={String(k.value)} hint={`de ${filtered.length} obras`} tone={k.tone} />)}
     </div>
     {loading && <span role="status">Carregando as obras…</span>}
     <>
-      <div className="grid min-w-0 grid-cols-1 gap-4 2xl:grid-cols-5">
-        <Card className="min-w-0 2xl:col-span-3" ref={alertsRef} tabIndex={-1}>
+      <div className="grid min-w-0 grid-cols-12 gap-4">
+        <Card className="col-span-12 min-w-0 xl:col-span-8" ref={alertsRef} tabIndex={-1}>
           <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-2"><CardTitle className="flex items-center gap-2"><TriangleAlert size={18} className="text-danger" />Prioridades de hoje <Badge tone="neutral">{visibleAlerts.length}</Badge></CardTitle><Button variant="ghost" size="sm" className="text-brand" onClick={() => setShowAlerts(!showAlerts)}>{showAlerts ? "Mostrar menos" : `Ver todos os ${alerts.length} alertas`} <ArrowRight size={14} /></Button></div><CardDescription>Itens que precisam da sua atenção para manter o cronograma.</CardDescription></CardHeader>
           <CardContent>
             {unavailable ? <p role="status">{loading ? "Carregando prioridades…" : "Prioridades indisponíveis. Tente carregar novamente."}</p> : !alerts.length ? <p role="status">Nenhuma pendência para as obras selecionadas.</p> : <Table aria-label="Prioridades de hoje">
@@ -168,9 +201,9 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
             </Table>}
           </CardContent>
         </Card>
-        <Card className="min-w-0 2xl:col-span-2" ref={deliveriesRef} tabIndex={-1}>
+        <Card className="col-span-12 min-w-0 xl:col-span-4" ref={deliveriesRef} tabIndex={-1}>
           <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-4"><CardTitle className="flex items-center gap-2"><ClipboardList size={18} className="text-brand" />Próximas entregas <Badge tone="neutral">{deliveries.length}</Badge></CardTitle><Button variant="ghost" size="sm" onClick={() => setShowDeliveries(!showDeliveries)}>{showDeliveries ? "Mostrar menos" : "Ver todas as entregas"} <ArrowRight size={14} /></Button></div><CardDescription>Obras com entrega prevista nos próximos 90 dias.</CardDescription></CardHeader>
-          <CardContent><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-2">
+          <CardContent><div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {unavailable ? <p role="status">{loading ? "Carregando entregas…" : "Entregas indisponíveis. Tente carregar novamente."}</p> : !deliveries.length && <p role="status">Nenhuma entrega prevista neste período.</p>}
             {(unavailable ? [] : showDeliveries ? deliveries : deliveries.slice(0, 4)).map((row) => <Button key={row.id} variant="outline" className="h-auto w-full flex-col items-start gap-2 text-left" onClick={() => onOpen(row.id)} aria-label={`Abrir entrega de #${row.code} ${row.name}`}>
               <span className="flex items-center gap-2"><span className="text-3xl font-bold">{row.days < 0 ? `${-row.days}d atrás` : row.days === 0 ? "Hoje" : `${row.days}d`}</span><Status critical={row.days < 0} attention={row.alerts.length > 0} /></span>
