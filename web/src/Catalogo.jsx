@@ -1,8 +1,16 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { confirmar } from "./lib/confirmar.jsx";
+import React, { useEffect, useMemo, useState, useCallback, useId } from "react";
+import { confirmar, avisar } from "./lib/confirmar.jsx";
+import {
+  Alert, AlertTitle, AlertDescription, Badge, BulkActionBar, Button,
+  Card, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  DialogBody, DialogFooter, EmptyState, Field, FieldHint, Input, Label, KpiMini,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Skeleton,
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Tabs, TabsList, TabsTrigger, Textarea, ToggleGroup, ToggleGroupItem,
+} from "@group-ws/ws-ui";
 import {
   Search, Plus, Image as ImageIcon, Trash2, Pencil, X, Store,
-  AlertTriangle, Check, ArrowRight, Upload, Presentation,
+  Check, ArrowRight, Upload, Presentation, PackageOpen,
 } from "lucide-react";
 import {
   listarProdutos, salvarProduto, excluirProduto,
@@ -21,16 +29,20 @@ import { carregarDadosObra, salvarDadosObra } from "./lib/dadosObra";
 /**
  * CATÁLOGO TKWS — o que a casa especifica.
  *
- * Mora em arquivo próprio, e não dentro do App.jsx, por dois motivos
- * práticos: o App já passa de 14 mil linhas, e o CSS dele é um template
- * literal onde uma crase perdida derruba o build inteiro — coisa que já
- * aconteceu duas vezes. Aqui o estilo é local e o risco fica local.
+ * Mora em arquivo próprio, e não dentro do App.jsx, porque o App já passa
+ * de 14 mil linhas. Toda a aparência vem do design system (@group-ws/ws-ui)
+ * e de classes de token do Tailwind: não há CSS local neste arquivo.
  */
 
 const fmt = (c) => (c == null ? null
   : (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 
 const hoje = () => new Date().toISOString().slice(0, 10);
+
+/* Valor que representa "sem filtro" nos grupos de chips e selects do DS:
+   o Radix não aceita item com valor vazio, então "" vira este marcador só
+   na borda com o componente — o estado continua guardando "". */
+const TODOS = "__todos__";
 
 /* As verbas que o catálogo usa: as que têm subgrupo desenhado, mais
    qualquer outra em que já exista produto. Mostrar as 32 verbas da EAP
@@ -46,7 +58,6 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
   const [fornecedores, setFornecedores] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
-  const [aviso, setAviso] = useState(null);
 
   const [termo, setTermo] = useState("");
   const [verba, setVerba] = useState("");
@@ -93,6 +104,9 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
     return n;
   });
 
+  const limparFiltros = () => { setTermo(""); setVerba(""); setSubgrupo(""); setForn(""); };
+  const temFiltro = Boolean(termo || verba || subgrupo || forn);
+
   async function salvar(p) {
     const salvo = await salvarProduto({ ...p, criadoPor: usuario }, usuario);
     setProdutos((l) => {
@@ -124,43 +138,55 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
     } catch (e) { setErro(mensagemDeErro(e)); }
   }
 
+  const subgrupos = verba ? subgruposDaVerba(verba) : [];
+
   return (
-    <div className="cat">
-      <EstiloCatalogo />
+    <div className="space-y-6">
+      {erro && (
+        <Alert tone="danger">
+          <AlertTitle>Não foi possível concluir a ação</AlertTitle>
+          <AlertDescription>{erro}</AlertDescription>
+          <Button variant="ghost" size="icon" aria-label="Fechar aviso" onClick={() => setErro(null)}><X size={16} /></Button>
+        </Alert>
+      )}
 
-      {erro && <div className="cat-erro"><AlertTriangle size={14} /> <span>{erro}</span></div>}
-      {aviso && <div className="cat-ok"><Check size={14} /> <span>{aviso}</span></div>}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <Tabs value={aba} onValueChange={setAba}>
+          <TabsList variant="underline" aria-label="Seções do catálogo">
+            <TabsTrigger underline value="produtos">
+              Produtos <Badge tone="neutral">{produtos.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger underline value="fornecedores">
+              Fornecedores <Badge tone="neutral">{fornecedores.length}</Badge>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-      <div className="cat-abas">
-        <button className={aba === "produtos" ? "on" : ""} onClick={() => setAba("produtos")}>
-          Produtos <span className="cat-cont">{produtos.length}</span>
-        </button>
-        <button className={aba === "fornecedores" ? "on" : ""} onClick={() => setAba("fornecedores")}>
-          Fornecedores <span className="cat-cont">{fornecedores.length}</span>
-        </button>
-        {/* A apresentação vive aqui porque é daqui que ela se alimenta:
-            é o catálogo que tem foto e descrição de cada peça. */}
-        <button className="cat-apresentar" style={{ marginLeft: "auto" }}
-          onClick={() => setApresentando(true)}>
-          <Presentation size={13} /> Apresentação de especificações
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {/* A apresentação vive aqui porque é daqui que ela se alimenta:
+              é o catálogo que tem foto e descrição de cada peça. */}
+          <Button variant="outline" onClick={() => setApresentando(true)}>
+            <Presentation size={16} /> Apresentação de especificações
+          </Button>
 
-        {podeEditar && aba === "produtos" && (
-          <>
-            <label className="cat-importar">
-              <Upload size={13} /> Importar planilha
-              <input type="file" accept=".xlsx,.xlsm,.pptx" style={{ display: "none" }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0]; e.target.value = "";
-                  if (f) setImportando(f);
-                }} />
-            </label>
-            <button className="cat-novo" style={{ marginLeft: 0 }}
-              onClick={() => setEditando({ verba: verba || "05", unidade: "un" })}>
-              <Plus size={13} /> Novo produto
-            </button>
-          </>
-        )}
+          {podeEditar && aba === "produtos" && (
+            <>
+              <Button asChild variant="outline">
+                <label>
+                  <Upload size={16} /> Importar planilha
+                  <input type="file" accept=".xlsx,.xlsm,.pptx" className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]; e.target.value = "";
+                      if (f) setImportando(f);
+                    }} />
+                </label>
+              </Button>
+              <Button onClick={() => setEditando({ verba: verba || "05", unidade: "un" })}>
+                <Plus size={16} /> Novo produto
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {aba === "fornecedores" ? (
@@ -170,79 +196,89 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
           usoDe={(nome) => produtos.filter((p) => p.fornecedor === nome).length} />
       ) : (
         <>
-          <div className="cat-filtros">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Produto e acabamento no MESMO lugar viram palheiro: 216
                 amostras de MDF e tecido enterram as 74 pecas. */}
-            <div className="cat-tipos">
+            <ToggleGroup type="single" value={tipoItem} aria-label="Tipo de item"
+              onValueChange={(v) => { if (v) { setTipoItem(v); setVerba(""); setSubgrupo(""); } }}>
               {TIPOS.map((t) => (
-                <button key={t.id} className={tipoItem === t.id ? "on" : ""}
-                  onClick={() => { setTipoItem(t.id); setVerba(""); setSubgrupo(""); }}
-                  title={t.sub}>
-                  {t.nome} <span>{quantos[t.id]}</span>
-                </button>
+                <ToggleGroupItem key={t.id} value={t.id} size="sm" title={t.sub}>
+                  {t.nome} <span className="text-xs opacity-70">{quantos[t.id]}</span>
+                </ToggleGroupItem>
               ))}
+            </ToggleGroup>
+
+            <div className="flex w-full items-center gap-2 sm:w-auto sm:min-w-64">
+              <Input icon={<Search size={16} />} value={termo} onChange={(e) => setTermo(e.target.value)}
+                placeholder="nome, código, fornecedor…" aria-label="Buscar no catálogo" />
+              {termo && (
+                <Button variant="ghost" size="icon" aria-label="Limpar busca" onClick={() => setTermo("")}>
+                  <X size={16} />
+                </Button>
+              )}
             </div>
-
-            <label className="cat-busca">
-              <Search size={14} className="dim" />
-              <input value={termo} onChange={(e) => setTermo(e.target.value)}
-                placeholder="nome, código, fornecedor…" />
-              {termo && <button onClick={() => setTermo("")}><X size={13} /></button>}
-            </label>
-
-            <div className="cat-chips">
-              <button className={!verba ? "on" : ""}
-                onClick={() => { setVerba(""); setSubgrupo(""); }}>Todos</button>
-              {verbas.map((v) => (
-                <button key={v.num} className={verba === v.num ? "on" : ""}
-                  onClick={() => { setVerba(v.num); setSubgrupo(""); }}>{v.nome}</button>
-              ))}
-            </div>
-
-            {verba && subgruposDaVerba(verba).length > 0 && (
-              <div className="cat-chips cat-chips-sub">
-                <button className={!subgrupo ? "on" : ""} onClick={() => setSubgrupo("")}>todos</button>
-                {subgruposDaVerba(verba).map((s) => (
-                  <button key={s} className={subgrupo === s ? "on" : ""}
-                    onClick={() => setSubgrupo(s)}>{s}</button>
-                ))}
-              </div>
-            )}
 
             {fornecedores.length > 0 && (
-              <select className="cat-sel" value={forn} onChange={(e) => setForn(e.target.value)}>
-                <option value="">todos os fornecedores</option>
-                {fornecedores.map((f) => <option key={f.id} value={f.nome}>{f.nome}</option>)}
-              </select>
+              <Select value={forn || TODOS} onValueChange={(v) => setForn(v === TODOS ? "" : v)}>
+                <SelectTrigger className="w-full sm:w-56" aria-label="Fornecedor"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TODOS}>todos os fornecedores</SelectItem>
+                  {fornecedores.map((f) => <SelectItem key={f.id} value={f.nome}>{f.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
             )}
           </div>
+
+          <ToggleGroup type="single" value={verba || TODOS} aria-label="Grupo" className="flex flex-wrap"
+            onValueChange={(v) => { if (v) { setVerba(v === TODOS ? "" : v); setSubgrupo(""); } }}>
+            <ToggleGroupItem value={TODOS} size="sm">Todos</ToggleGroupItem>
+            {verbas.map((v) => <ToggleGroupItem key={v.num} value={v.num} size="sm">{v.nome}</ToggleGroupItem>)}
+          </ToggleGroup>
+
+          {subgrupos.length > 0 && (
+            <ToggleGroup type="single" value={subgrupo || TODOS} aria-label="Subgrupo" className="flex flex-wrap"
+              onValueChange={(v) => { if (v) setSubgrupo(v === TODOS ? "" : v); }}>
+              <ToggleGroupItem value={TODOS} size="sm">todos</ToggleGroupItem>
+              {subgrupos.map((s) => <ToggleGroupItem key={s} value={s} size="sm">{s}</ToggleGroupItem>)}
+            </ToggleGroup>
+          )}
 
           {/* O que falta classificar vira fila de trabalho, e não um
               "Outros" onde some. */}
           {semSubgrupo > 0 && !termo && (
-            <div className="cat-pendente">
-              {semSubgrupo} {semSubgrupo === 1 ? "produto ainda sem subgrupo" : "produtos ainda sem subgrupo"} —
-              eles aparecem no fim de cada grupo.
-            </div>
+            <Alert tone="warning">
+              <AlertDescription>
+                {semSubgrupo} {semSubgrupo === 1 ? "produto ainda sem subgrupo" : "produtos ainda sem subgrupo"} —
+                eles aparecem no fim de cada grupo.
+              </AlertDescription>
+            </Alert>
           )}
 
-          {carregando ? <div className="cat-vazio">Carregando o catálogo…</div>
+          {carregando ? <GradeSkeleton />
             : achados.length === 0 ? (
-              <div className="cat-vazio">
-                {produtos.length === 0
-                  ? "O catálogo está vazio. Cadastre um produto ou importe a planilha de padronização."
-                  : "Nenhum produto com esse filtro."}
-              </div>
+              produtos.length === 0 ? (
+                <EmptyState icon={<PackageOpen size={24} />} title="Nenhum produto cadastrado ainda"
+                  description="O catálogo está vazio. Cadastre um produto ou importe a planilha de padronização."
+                  action={podeEditar && (
+                    <Button onClick={() => setEditando({ verba: verba || "05", unidade: "un" })}>
+                      <Plus size={16} /> Novo produto
+                    </Button>
+                  )} />
+              ) : (
+                <EmptyState icon={<Search size={24} />} title="Nenhum resultado para os filtros aplicados"
+                  description="Nenhum produto com esse filtro."
+                  action={temFiltro && <Button variant="outline" onClick={limparFiltros}>Limpar filtros</Button>} />
+              )
             ) : prateleiras.map((pr) => (
-              <div key={pr.verba} className="cat-verba">
-                <div className="cat-verba-nome">{nomeVerba(pr.verba)}</div>
+              <section key={pr.verba} className="space-y-4">
+                <h2 className="border-b border-line-2 pb-2 text-base font-semibold">{nomeVerba(pr.verba)}</h2>
                 {pr.subgrupos.map((sg) => (
-                  <div key={sg.nome || "_"} className="cat-sub">
-                    <div className="cat-sub-nome">
-                      {sg.nome || <span className="cat-sem">sem subgrupo</span>}
-                      <span className="cat-cont">{sg.itens.length}</span>
+                  <div key={sg.nome || "_"} className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-mute">
+                      {sg.nome || <span className="normal-case italic tracking-normal">sem subgrupo</span>}
+                      <Badge tone="neutral">{sg.itens.length}</Badge>
                     </div>
-                    <div className="cat-grade">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                       {sg.itens.map((p) => (
                         <Cartao key={p.id} p={p}
                           escolhido={escolhidos.has(p.id)}
@@ -254,7 +290,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
                     </div>
                   </div>
                 ))}
-              </div>
+              </section>
             ))}
         </>
       )}
@@ -269,11 +305,12 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
           onFechar={() => setApresentando(false)} />
       )}
 
-      {escolhidos.size > 0 && aba === "produtos" && (
-        <BarraEscolha
-          n={escolhidos.size}
-          onLimpar={() => setEscolhidos(new Set())}
-          onEnviar={() => setEnviando(true)} />
+      {aba === "produtos" && (
+        <BulkActionBar count={escolhidos.size} onClear={() => setEscolhidos(new Set())}>
+          <Button size="sm" onClick={() => setEnviando(true)}>
+            Enviar para uma obra <ArrowRight size={14} />
+          </Button>
+        </BulkActionBar>
       )}
 
       {importando && (
@@ -282,7 +319,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
           onPronto={(novos, msg) => {
             setProdutos((l) => [...l, ...novos]);
             setImportando(null);
-            setAviso(msg);
+            avisar.ok(msg);
           }} />
       )}
 
@@ -291,7 +328,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
           produtos={produtos.filter((p) => escolhidos.has(p.id))}
           obras={obras} usuario={usuario} nomeVerba={nomeVerba}
           onFechar={() => setEnviando(false)}
-          onPronto={(msg) => { setEnviando(false); setEscolhidos(new Set()); setAviso(msg); }} />
+          onPronto={(msg) => { setEnviando(false); setEscolhidos(new Set()); avisar.ok(msg); }} />
       )}
     </div>
   );
@@ -310,43 +347,71 @@ function mensagemDeErro(e) {
   return m;
 }
 
+/* Carregando com a forma da grade final: o layout não pula quando os
+   produtos chegam. */
+function GradeSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Carregando o catálogo">
+      <Skeleton className="h-6 w-48" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="space-y-2">
+            <Skeleton className="aspect-square w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Cartao({ p, escolhido, onEscolher, podeEditar, onEditar, onExcluir }) {
   const url = urlDaImagem(p.imagem);
   const velho = precoVelho(p.precoEm);
   return (
-    <div className={`cat-card ${escolhido ? "on" : ""}`}>
-      <button className="cat-foto" onClick={onEscolher} title="Escolher">
-        {url ? <img src={url} alt="" loading="lazy" />
-          : <span className="cat-sem-foto"><ImageIcon size={22} /></span>}
-        <span className="cat-marca">{escolhido && <Check size={12} />}</span>
-      </button>
+    <Card variant={escolhido ? "selected" : "default"} className="flex flex-col overflow-hidden p-0">
+      <Button variant="ghost" onClick={onEscolher} title="Escolher" aria-pressed={escolhido}
+        className="relative block aspect-square h-auto w-full rounded-none bg-surface-2 p-0">
+        {url ? <img src={url} alt="" loading="lazy" className="h-full w-full object-contain" />
+          : <span className="flex h-full w-full items-center justify-center text-line-3"><ImageIcon size={22} /></span>}
+        {escolhido && (
+          <span className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-md bg-brand text-bg">
+            <Check size={12} />
+          </span>
+        )}
+      </Button>
 
-      <div className="cat-corpo">
-        <div className="cat-desc" title={p.descricao}>{p.descricao}</div>
-        <div className="cat-linha">
-          {p.fornecedor && <span className="cat-forn">{p.fornecedor}</span>}
-          {p.codigo && <span className="mono cat-cod">{p.codigo}</span>}
+      <div className="flex flex-1 flex-col gap-1 p-3">
+        <div className="line-clamp-3 text-sm font-semibold leading-snug" title={p.descricao}>{p.descricao}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {p.fornecedor && <Badge tone="brand">{p.fornecedor}</Badge>}
+          {p.codigo && <span className="mono text-xs text-text-mute">{p.codigo}</span>}
         </div>
-        {p.observacoes && <div className="cat-obs">{p.observacoes}</div>}
-        <div className="cat-rodape">
-          {ehAcabamento(p) ? <span className="cat-acab">acabamento</span>
+        {p.observacoes && <div className="text-xs leading-relaxed text-text-mute">{p.observacoes}</div>}
+        <div className="mt-auto flex items-center gap-2 pt-2">
+          {ehAcabamento(p) ? <Badge tone="neutral">acabamento</Badge>
             : p.precoRef != null
-            ? <span className={`cat-preco ${velho ? "velho" : ""}`}>
+            ? <span className="flex flex-col text-sm font-semibold tabular-nums leading-tight">
                 {fmt(p.precoRef)}
                 {/* Preço a mão envelhece. Dizer de quando ele é custa uma
                     linha e evita orçar com número de dois anos atrás. */}
-                {p.precoEm && <em>{velho ? `de ${mesesDesde(p.precoEm)} meses atrás` : "atualizado"}</em>}
+                {p.precoEm && (
+                  <span className={`text-xs font-medium ${velho ? "text-alert" : "text-text-mute"}`}>
+                    {velho ? `de ${mesesDesde(p.precoEm)} meses atrás` : "atualizado"}
+                  </span>
+                )}
               </span>
-            : <span className="cat-sem-preco">sem preço</span>}
+            : <span className="text-xs text-text-mute">sem preço</span>}
           {podeEditar && (
-            <span className="cat-acoes">
-              <button onClick={onEditar} title="Editar"><Pencil size={12} /></button>
-              <button onClick={onExcluir} title="Tirar do catálogo"><Trash2 size={12} /></button>
+            <span className="ml-auto flex">
+              <Button variant="ghost" size="icon" onClick={onEditar} aria-label="Editar" title="Editar"><Pencil size={14} /></Button>
+              <Button variant="ghost" size="icon" onClick={onExcluir} aria-label="Tirar do catálogo" title="Tirar do catálogo" className="text-danger"><Trash2 size={14} /></Button>
             </span>
           )}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -358,6 +423,7 @@ function FormProduto({ p, produtos, fornecedores, verbas, onFechar, onSalvar, on
   const [salvando, setSalvando] = useState(false);
   const [arquivo, setArquivo] = useState(null);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const id = useId();
 
   /* O subgrupo se sugere sozinho a partir da descrição, e continua
      editável: "SPOT SNELLO" vira Spots sem ninguém escolher, e quem
@@ -390,138 +456,159 @@ function FormProduto({ p, produtos, fornecedores, verbas, onFechar, onSalvar, on
   }
 
   return (
-    <div className="cat-modal" onClick={(e) => e.target === e.currentTarget && onFechar()}>
-      <div className="cat-caixa">
-        <div className="cat-caixa-topo">
-          <b>{p.id ? "Editar produto" : "Novo produto"}</b>
-          <button onClick={onFechar}><X size={16} /></button>
-        </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onFechar(); }}>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>{p.id ? "Editar produto" : "Novo produto"}</DialogTitle>
+        </DialogHeader>
 
-        <div className="cat-campos">
+        <DialogBody className="grid gap-4 md:grid-cols-2">
           {/* Duas descrições porque são dois leitores. A técnica precisa
               bastar pra comprar; a do criativo é o que o cliente lê na
               apresentação, e ali a ficha técnica atrapalha. Só a
               primeira é obrigatória: sem a segunda, a apresentação usa a
               primeira — feia, mas presente. */}
-          <label className="cat-largo">Descrição — Executivo
-            <textarea rows={2} value={f.descricao || ""}
+          <Field className="md:col-span-2">
+            <Label htmlFor={`${id}-desc`} required>Descrição — Executivo</Label>
+            <Textarea id={`${id}-desc`} rows={2} value={f.descricao || ""}
               onChange={(e) => set("descricao", e.target.value)}
               placeholder="SPOT EMBUTIDO POWERUS 3 LEDS BRANCO 6W 3000K" />
-            <small>a técnica, que vai pro Executivo da obra e pro Sienge</small>
-          </label>
+            <FieldHint>a técnica, que vai pro Executivo da obra e pro Sienge</FieldHint>
+          </Field>
 
           {duplicatas.length > 0 && (
-            <div className="cat-largo cat-duplicata">
-              <AlertTriangle size={13} />
-              <div>
-                <b>Já existe {duplicatas.length === 1 ? "um produto" : `${duplicatas.length} produtos`} com essa descrição:</b>
-                <ul>
+            <Alert tone="warning" className="md:col-span-2">
+              <AlertTitle>Já existe {duplicatas.length === 1 ? "um produto" : `${duplicatas.length} produtos`} com essa descrição:</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc pl-4">
                   {duplicatas.slice(0, 4).map((d) => (
                     <li key={d.id}>{d.fornecedor ? `${d.fornecedor} · ` : ""}{d.descricao}{d.codigo ? ` (${d.codigo})` : ""}</li>
                   ))}
                 </ul>
                 Salvar mesmo assim cria um segundo cadastro do mesmo item.
-              </div>
-            </div>
+              </AlertDescription>
+            </Alert>
           )}
 
-          <label className="cat-largo">Descrição — Criativo
-            <input value={f.descricaoCriativo || ""}
+          <Field className="md:col-span-2">
+            <Label htmlFor={`${id}-cri`}>Descrição — Criativo</Label>
+            <Input id={`${id}-cri`} value={f.descricaoCriativo || ""}
               onChange={(e) => set("descricaoCriativo", e.target.value)}
               placeholder={f.descricao ? f.descricao.slice(0, 40) : "Spot embutido branco"} />
-            <small>
+            <FieldHint>
               a curta, que o cliente lê na apresentação.
               {!String(f.descricaoCriativo || "").trim() && " Em branco, sai a de cima."}
-            </small>
-          </label>
+            </FieldHint>
+          </Field>
 
-          <label className="cat-largo">Descrição — inglês
-            <input value={f.descricaoEn || ""}
+          <Field className="md:col-span-2">
+            <Label htmlFor={`${id}-en`}>Descrição — inglês</Label>
+            <Input id={`${id}-en`} value={f.descricaoEn || ""}
               onChange={(e) => set("descricaoEn", e.target.value)}
               placeholder="Recessed white spotlight" />
-            <small>só para apresentação emitida em inglês. Em branco, sai em português.</small>
-          </label>
+            <FieldHint>só para apresentação emitida em inglês. Em branco, sai em português.</FieldHint>
+          </Field>
 
-          <label>Tipo
-            <select value={f.tipoItem || "produto"} onChange={(e) => set("tipoItem", e.target.value)}>
-              {TIPOS.map((t) => <option key={t.id} value={t.id}>{t.nome.replace(/s$/, "")}</option>)}
-            </select>
-            <small>{f.tipoItem === "acabamento"
+          <Field>
+            <Label htmlFor={`${id}-tipo`}>Tipo</Label>
+            <Select value={f.tipoItem || "produto"} onValueChange={(v) => set("tipoItem", v)}>
+              <SelectTrigger id={`${id}-tipo`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TIPOS.map((t) => <SelectItem key={t.id} value={t.id}>{t.nome.replace(/s$/, "")}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <FieldHint>{f.tipoItem === "acabamento"
               ? "cor e material — não vai pro orçamento da obra"
-              : "peça que se compra e vira linha no Executivo"}</small>
-          </label>
+              : "peça que se compra e vira linha no Executivo"}</FieldHint>
+          </Field>
 
-          <label>Grupo
-            <select value={f.verba || ""} onChange={(e) => { set("verba", e.target.value); set("subgrupo", null); }}>
-              {verbas.map((v) => <option key={v.num} value={v.num}>{v.nome}</option>)}
-            </select>
-          </label>
+          <Field>
+            <Label htmlFor={`${id}-verba`}>Grupo</Label>
+            <Select value={f.verba || ""} onValueChange={(v) => { set("verba", v); set("subgrupo", null); }}>
+              <SelectTrigger id={`${id}-verba`}><SelectValue placeholder="escolha o grupo…" /></SelectTrigger>
+              <SelectContent>
+                {verbas.map((v) => <SelectItem key={v.num} value={v.num}>{v.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
 
-          <label>Subgrupo
-            <input value={subEfetivo} list="cat-subs"
+          <Field>
+            <Label htmlFor={`${id}-sub`}>Subgrupo</Label>
+            <Input id={`${id}-sub`} value={subEfetivo} list={`${id}-subs`}
               onChange={(e) => set("subgrupo", e.target.value)}
               placeholder={sugerido || "sem subgrupo"} />
-            <datalist id="cat-subs">
+            <datalist id={`${id}-subs`}>
               {subgruposDaVerba(f.verba).map((s) => <option key={s} value={s} />)}
             </datalist>
-            {sugerido && f.subgrupo == null && <small>sugerido pela descrição</small>}
-          </label>
+            {sugerido && f.subgrupo == null && <FieldHint>sugerido pela descrição</FieldHint>}
+          </Field>
 
-          <label>Fornecedor
-            <input value={f.fornecedor || ""} list="cat-forns"
+          <Field>
+            <Label htmlFor={`${id}-forn`}>Fornecedor</Label>
+            <Input id={`${id}-forn`} value={f.fornecedor || ""} list={`${id}-forns`}
               onChange={(e) => set("fornecedor", e.target.value)} />
-            <datalist id="cat-forns">
+            <datalist id={`${id}-forns`}>
               {fornecedores.map((x) => <option key={x.id} value={x.nome} />)}
             </datalist>
-          </label>
+          </Field>
 
-          <label>Código
-            <input value={f.codigo || ""} onChange={(e) => set("codigo", e.target.value)}
+          <Field>
+            <Label htmlFor={`${id}-cod`}>Código</Label>
+            <Input id={`${id}-cod`} value={f.codigo || ""} onChange={(e) => set("codigo", e.target.value)}
               placeholder="6730" />
-          </label>
+          </Field>
 
-          <label>Preço de referência
-            <input value={f.precoTxt} onChange={(e) => set("precoTxt", e.target.value)}
+          <Field>
+            <Label htmlFor={`${id}-preco`}>Preço de referência</Label>
+            <Input id={`${id}-preco`} value={f.precoTxt} onChange={(e) => set("precoTxt", e.target.value)}
               placeholder="0,00" inputMode="decimal" />
-            {f.precoEm && <small>anotado em {new Date(`${f.precoEm}T12:00:00`).toLocaleDateString("pt-BR")}</small>}
-          </label>
+            {f.precoEm && <FieldHint>anotado em {new Date(`${f.precoEm}T12:00:00`).toLocaleDateString("pt-BR")}</FieldHint>}
+          </Field>
 
-          <label>Unidade
-            <input value={f.unidade || "un"} onChange={(e) => set("unidade", e.target.value)} />
-          </label>
+          <Field>
+            <Label htmlFor={`${id}-un`}>Unidade</Label>
+            <Input id={`${id}-un`} value={f.unidade || "un"} onChange={(e) => set("unidade", e.target.value)} />
+          </Field>
 
-          <label className="cat-largo">Observações
-            <input value={f.observacoes || ""} onChange={(e) => set("observacoes", e.target.value)}
+          <Field className="md:col-span-2">
+            <Label htmlFor={`${id}-obs`}>Observações</Label>
+            <Input id={`${id}-obs`} value={f.observacoes || ""} onChange={(e) => set("observacoes", e.target.value)}
               placeholder="SEMPRE USAR ESCOVADO" />
-          </label>
+          </Field>
 
-          <label className="cat-largo">Foto
-            <div className="cat-foto-campo">
+          <Field className="md:col-span-2">
+            <Label>Foto</Label>
+            <div className="flex flex-wrap items-center gap-3">
               {(arquivo || f.imagem) && (
-                <div className="cat-foto-prev">
-                  <img alt="" src={arquivo ? URL.createObjectURL(arquivo) : urlDaImagem(f.imagem)} />
-                  <button type="button" className="cat-foto-x" title="Remover foto"
+                <div className="relative">
+                  <img alt="" src={arquivo ? URL.createObjectURL(arquivo) : urlDaImagem(f.imagem)}
+                    className="h-16 w-20 rounded-lg bg-surface-2 object-contain" />
+                  <Button type="button" variant="danger" size="icon" aria-label="Remover foto" title="Remover foto"
+                    className="absolute -right-2 -top-2 h-6 w-6 rounded-full"
                     onClick={async () => { if (await confirmar("Remover a foto deste produto?")) { setArquivo(null); set("imagem", null); } }}>
-                    <X size={13} />
-                  </button>
+                    <X size={12} />
+                  </Button>
                 </div>
               )}
-              <label className="cat-btn-arq">
-                <Upload size={13} /> {f.imagem || arquivo ? "Trocar foto" : "Escolher foto"}
-                <input type="file" accept="image/*" style={{ display: "none" }}
-                  onChange={(e) => setArquivo(e.target.files?.[0] || null)} />
-              </label>
+              <Button asChild variant="outline" size="sm">
+                <label>
+                  <Upload size={14} /> {f.imagem || arquivo ? "Trocar foto" : "Escolher foto"}
+                  <input type="file" accept="image/*" className="sr-only"
+                    onChange={(e) => setArquivo(e.target.files?.[0] || null)} />
+                </label>
+              </Button>
             </div>
-          </label>
-        </div>
+          </Field>
+        </DialogBody>
 
-        <div className="cat-caixa-pe">
-          <button className="cat-primario" disabled={salvando || !String(f.descricao || "").trim()}
-            onClick={enviar}>{salvando ? "Salvando…" : "Salvar"}</button>
-          <button onClick={onFechar}>cancelar</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onFechar}>Cancelar</Button>
+          <Button disabled={salvando || !String(f.descricao || "").trim()} onClick={enviar}>
+            {salvando ? "Salvando…" : "Salvar produto"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -553,32 +640,57 @@ function Fornecedores({ lista, setLista, usuario, podeEditar, onErro, usoDe }) {
     } catch (e) { onErro(mensagemDeErro(e)); }
   }
 
+  const botaoNovo = podeEditar && (
+    <Button onClick={() => setNovo({})}><Plus size={16} /> Novo fornecedor</Button>
+  );
+
   return (
-    <div className="cat-forns">
-      {podeEditar && (
-        <button className="cat-novo cat-novo-solto" onClick={() => setNovo({})}>
-          <Plus size={13} /> Novo fornecedor
-        </button>
-      )}
-      {lista.length === 0 && <div className="cat-vazio">Nenhum fornecedor cadastrado ainda.</div>}
-      {lista.map((f) => (
-        <div key={f.id} className="cat-forn-linha">
-          <span className="cat-forn-icone"><Store size={14} /></span>
-          <div className="cat-forn-id">
-            <b>{f.nome}</b>
-            <small>
-              {[f.contato, f.telefone, f.email].filter(Boolean).join(" · ") || "sem contato cadastrado"}
-            </small>
+    <div className="space-y-4">
+      {lista.length > 0 && podeEditar && <div className="flex justify-end">{botaoNovo}</div>}
+      {lista.length === 0 ? (
+        <EmptyState icon={<Store size={24} />} title="Nenhum fornecedor cadastrado ainda" action={botaoNovo} />
+      ) : (
+        <Card className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fornecedor</TableHead>
+                  <TableHead className="hidden md:table-cell">No catálogo</TableHead>
+                  {podeEditar && <TableHead className="w-24 text-right">Ações</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lista.map((f) => (
+                  <TableRow key={f.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <span className="flex text-text-mute"><Store size={16} /></span>
+                        <div className="flex min-w-0 flex-col">
+                          <span className="text-sm font-semibold">{f.nome}</span>
+                          <span className="text-xs text-text-mute">
+                            {[f.contato, f.telefone, f.email].filter(Boolean).join(" · ") || "sem contato cadastrado"}
+                          </span>
+                          <span className="text-xs text-text-mute md:hidden">{usoDe(f.nome)} no catálogo</span>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden text-sm text-text-soft md:table-cell">{usoDe(f.nome)} no catálogo</TableCell>
+                    {podeEditar && (
+                      <TableCell className="text-right">
+                        <span className="inline-flex">
+                          <Button variant="ghost" size="icon" aria-label={`Editar ${f.nome}`} onClick={() => setNovo(f)}><Pencil size={14} /></Button>
+                          <Button variant="ghost" size="icon" aria-label={`Excluir ${f.nome}`} className="text-danger" onClick={() => remover(f)}><Trash2 size={14} /></Button>
+                        </span>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-          <span className="cat-forn-uso">{usoDe(f.nome)} no catálogo</span>
-          {podeEditar && (
-            <span className="cat-acoes">
-              <button onClick={() => setNovo(f)}><Pencil size={12} /></button>
-              <button onClick={() => remover(f)}><Trash2 size={12} /></button>
-            </span>
-          )}
-        </div>
-      ))}
+        </Card>
+      )}
       {novo && <FormFornecedor f={novo} onFechar={() => setNovo(null)} onSalvar={salvar} />}
     </div>
   );
@@ -587,49 +699,48 @@ function Fornecedores({ lista, setLista, usuario, podeEditar, onErro, usoDe }) {
 function FormFornecedor({ f, onFechar, onSalvar }) {
   const [x, setX] = useState(f);
   const set = (k, v) => setX((o) => ({ ...o, [k]: v }));
+  const id = useId();
   return (
-    <div className="cat-modal" onClick={(e) => e.target === e.currentTarget && onFechar()}>
-      <div className="cat-caixa cat-caixa-fina">
-        <div className="cat-caixa-topo">
-          <b>{f.id ? "Editar fornecedor" : "Novo fornecedor"}</b>
-          <button onClick={onFechar}><X size={16} /></button>
-        </div>
-        <div className="cat-campos">
-          <label className="cat-largo">Nome
-            <input value={x.nome || ""} onChange={(e) => set("nome", e.target.value)}
-              placeholder="Nordecor" autoFocus /></label>
-          <label>Contato
-            <input value={x.contato || ""} onChange={(e) => set("contato", e.target.value)}
-              placeholder="quem atende a gente" /></label>
-          <label>Telefone
-            <input value={x.telefone || ""} onChange={(e) => set("telefone", e.target.value)} /></label>
-          <label>E-mail
-            <input value={x.email || ""} onChange={(e) => set("email", e.target.value)} /></label>
-          <label>Site
-            <input value={x.site || ""} onChange={(e) => set("site", e.target.value)} /></label>
-          <label className="cat-largo">Observações
-            <input value={x.observacoes || ""} onChange={(e) => set("observacoes", e.target.value)}
-              placeholder="prazo de entrega, condição de pagamento…" /></label>
-        </div>
-        <div className="cat-caixa-pe">
-          <button className="cat-primario" disabled={!String(x.nome || "").trim()}
-            onClick={() => onSalvar(x)}>Salvar</button>
-          <button onClick={onFechar}>cancelar</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BarraEscolha({ n, onLimpar, onEnviar }) {
-  return (
-    <div className="cat-barra">
-      <span><b>{n}</b> {n === 1 ? "produto escolhido" : "produtos escolhidos"}</span>
-      <button className="cat-limpar" onClick={onLimpar}>limpar</button>
-      <button className="cat-primario" onClick={onEnviar}>
-        Enviar para uma obra <ArrowRight size={13} />
-      </button>
-    </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onFechar(); }}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>{f.id ? "Editar fornecedor" : "Novo fornecedor"}</DialogTitle>
+        </DialogHeader>
+        <DialogBody className="grid gap-4 md:grid-cols-2">
+          <Field className="md:col-span-2">
+            <Label htmlFor={`${id}-nome`} required>Nome</Label>
+            <Input id={`${id}-nome`} value={x.nome || ""} onChange={(e) => set("nome", e.target.value)}
+              placeholder="Nordecor" autoFocus />
+          </Field>
+          <Field>
+            <Label htmlFor={`${id}-contato`}>Contato</Label>
+            <Input id={`${id}-contato`} value={x.contato || ""} onChange={(e) => set("contato", e.target.value)}
+              placeholder="quem atende a gente" />
+          </Field>
+          <Field>
+            <Label htmlFor={`${id}-tel`}>Telefone</Label>
+            <Input id={`${id}-tel`} value={x.telefone || ""} onChange={(e) => set("telefone", e.target.value)} />
+          </Field>
+          <Field>
+            <Label htmlFor={`${id}-email`}>E-mail</Label>
+            <Input id={`${id}-email`} value={x.email || ""} onChange={(e) => set("email", e.target.value)} />
+          </Field>
+          <Field>
+            <Label htmlFor={`${id}-site`}>Site</Label>
+            <Input id={`${id}-site`} value={x.site || ""} onChange={(e) => set("site", e.target.value)} />
+          </Field>
+          <Field className="md:col-span-2">
+            <Label htmlFor={`${id}-obs`}>Observações</Label>
+            <Input id={`${id}-obs`} value={x.observacoes || ""} onChange={(e) => set("observacoes", e.target.value)}
+              placeholder="prazo de entrega, condição de pagamento…" />
+          </Field>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" onClick={onFechar}>Cancelar</Button>
+          <Button disabled={!String(x.nome || "").trim()} onClick={() => onSalvar(x)}>Salvar fornecedor</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -644,6 +755,7 @@ function EnviarParaObra({ produtos, obras, usuario, nomeVerba, onFechar, onPront
   const [qtds, setQtds] = useState(() => new Map(produtos.map((p) => [p.id, 1])));
   const [indo, setIndo] = useState(false);
   const [erro, setErro] = useState(null);
+  const id = useId();
 
   const porVerba = useMemo(() => {
     const m = new Map();
@@ -682,56 +794,62 @@ function EnviarParaObra({ produtos, obras, usuario, nomeVerba, onFechar, onPront
   }
 
   return (
-    <div className="cat-modal" onClick={(e) => e.target === e.currentTarget && onFechar()}>
-      <div className="cat-caixa">
-        <div className="cat-caixa-topo">
-          <b>Enviar {produtos.length} {produtos.length === 1 ? "produto" : "produtos"} para a obra</b>
-          <button onClick={onFechar}><X size={16} /></button>
-        </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onFechar(); }}>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>Enviar {produtos.length} {produtos.length === 1 ? "produto" : "produtos"} para a obra</DialogTitle>
+          <DialogDescription>
+            As linhas entram no <b>Executivo</b> da obra, cada uma na sua verba. O Vendido
+            não é tocado — ele é o que foi vendido ao cliente.
+          </DialogDescription>
+        </DialogHeader>
 
-        {erro && <div className="cat-erro"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+        <DialogBody className="space-y-4">
+          {erro && (
+            <Alert tone="danger">
+              <AlertTitle>Não foi possível enviar para a obra</AlertTitle>
+              <AlertDescription>{erro}</AlertDescription>
+            </Alert>
+          )}
 
-        <div className="cat-envio">
-          <label className="cat-largo">Obra
-            <select value={obra} onChange={(e) => setObra(e.target.value)} autoFocus>
-              <option value="">escolha a obra…</option>
-              {obras.map((o) => (
-                <option key={o.codigo} value={o.codigo}>#{o.codigo} {o.nome}</option>
-              ))}
-            </select>
-          </label>
+          <Field>
+            <Label htmlFor={`${id}-obra`} required>Obra</Label>
+            <Select value={obra} onValueChange={setObra}>
+              <SelectTrigger id={`${id}-obra`} autoFocus><SelectValue placeholder="escolha a obra…" /></SelectTrigger>
+              <SelectContent>
+                {obras.map((o) => (
+                  <SelectItem key={o.codigo} value={String(o.codigo)}>#{o.codigo} {o.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
 
-          <div className="cat-envio-lista">
+          <div className="max-h-64 overflow-auto rounded-lg border border-line-2">
             {porVerba.map(([verba, ps]) => (
               <div key={verba}>
-                <div className="cat-envio-verba">{nomeVerba(verba)}</div>
+                <div className="bg-surface-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-mute">{nomeVerba(verba)}</div>
                 {ps.map((p) => (
-                  <div key={p.id} className="cat-envio-item">
-                    <span className="cat-envio-desc">{p.descricao}</span>
-                    <input className="cat-qtd" type="number" min="1" step="1"
+                  <div key={p.id} className="flex items-center gap-3 border-t border-line-1 px-3 py-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate">{p.descricao}</span>
+                    <Input type="number" min="1" step="1" className="w-20 text-right" aria-label={`Quantidade de ${p.descricao}`}
                       value={qtds.get(p.id) || 1}
                       onChange={(e) => setQtds((m) => new Map(m).set(p.id, Number(e.target.value) || 1))} />
-                    <span className="cat-envio-un">{p.unidade || "un"}</span>
+                    <span className="w-8 text-xs text-text-mute">{p.unidade || "un"}</span>
                   </div>
                 ))}
               </div>
             ))}
           </div>
+        </DialogBody>
 
-          <p className="cat-nota">
-            As linhas entram no <b>Executivo</b> da obra, cada uma na sua verba. O Vendido
-            não é tocado — ele é o que foi vendido ao cliente.
-          </p>
-        </div>
-
-        <div className="cat-caixa-pe">
-          <button className="cat-primario" disabled={!obra || indo} onClick={enviar}>
+        <DialogFooter>
+          <Button variant="outline" onClick={onFechar}>Cancelar</Button>
+          <Button disabled={!obra || indo} onClick={enviar}>
             {indo ? "Enviando…" : "Enviar para o Executivo"}
-          </button>
-          <button onClick={onFechar}>cancelar</button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -753,6 +871,7 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
   const [erro, setErro] = useState(null);
   const [gravando, setGravando] = useState(null);   // {feitos, de}
   const [dePptx, setDePptx] = useState(false);
+  const id = useId();
   /* Muita amostra vem sem fornecedor no arquivo (o título do slide nem
      sempre nomeia a casa). Um campo só, aplicado a todas, poupa 123
      edições à mão. */
@@ -897,271 +1016,111 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
     onPronto(salvos, msg);
   }
 
+  const quantosEntram = (pularRepetidos ? unicos : itens).filter((p) => p.verba).length;
+
   return (
-    <div className="cat-modal">
-      <div className="cat-caixa">
-        <div className="cat-caixa-topo">
-          <b>Importar planilha de padronização</b>
-          <button onClick={onFechar}><X size={16} /></button>
-        </div>
+    /* O modal legado não fechava por clique fora — e durante a gravação
+       em massa fechar no meio deixaria metade do lote sem aviso. */
+    <Dialog open onOpenChange={(open) => { if (!open && !gravando) onFechar(); }}>
+      <DialogContent size="lg" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle>Importar planilha de padronização</DialogTitle>
+          <DialogDescription>
+            As fotos vêm de dentro do arquivo — elas não estão em célula nenhuma, estão
+            ancoradas às linhas. Nada é sobrescrito: produtos repetidos com o mesmo código e
+            fornecedor são recusados pelo banco.
+          </DialogDescription>
+        </DialogHeader>
 
-        {erro && <div className="cat-erro"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+        <DialogBody className="space-y-4">
+          {erro && (
+            <Alert tone="danger">
+              <AlertTitle>Não foi possível ler a planilha</AlertTitle>
+              <AlertDescription>{erro}</AlertDescription>
+            </Alert>
+          )}
 
-        <div className="cat-envio">
-          {lendo ? <div className="cat-vazio">Lendo a planilha…</div> : (
+          {lendo ? (
+            <div className="space-y-4" aria-busy="true" aria-label="Lendo a planilha">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+              </div>
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ) : (
             <>
-              <div className="cat-imp-placar">
-                <div><b>{r.validos}</b><span>itens entram</span></div>
-                {dePptx && <div><b>{r.produtos}</b><span>produtos</span></div>}
-                {dePptx && <div><b>{r.acabamentos}</b><span>acabamentos</span></div>}
-                <div><b>{r.comFoto}</b><span>com foto</span></div>
-                {!dePptx && <div><b>{r.comPreco}</b><span>com preço</span></div>}
-                <div><b>{r.fornecedores.length}</b><span>fornecedores</span></div>
-                {r.semSubgrupo > 0 && <div><b>{r.semSubgrupo}</b><span>sem subgrupo</span></div>}
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <KpiMini label="itens entram" value={String(r.validos)} />
+                {dePptx && <KpiMini label="produtos" value={String(r.produtos)} />}
+                {dePptx && <KpiMini label="acabamentos" value={String(r.acabamentos)} />}
+                <KpiMini label="com foto" value={String(r.comFoto)} />
+                {!dePptx && <KpiMini label="com preço" value={String(r.comPreco)} />}
+                <KpiMini label="fornecedores" value={String(r.fornecedores.length)} />
+                {r.semSubgrupo > 0 && <KpiMini label="sem subgrupo" value={String(r.semSubgrupo)} tone="warning" />}
               </div>
 
               {/* Amostra costuma vir sem fornecedor: o título do slide nem
                   sempre nomeia a casa. Um campo só evita 100 edições. */}
               {r.semFornecedor > 0 && (
-                <label className="cat-imp-forn">
-                  {r.semFornecedor} {r.semFornecedor === 1 ? "item veio" : "itens vieram"} sem fornecedor — usar
-                  <input value={fornPadrao} onChange={(e) => setFornPadrao(e.target.value)}
+                <Field>
+                  <Label htmlFor={`${id}-forn`}>
+                    {r.semFornecedor} {r.semFornecedor === 1 ? "item veio" : "itens vieram"} sem fornecedor — usar
+                  </Label>
+                  <Input id={`${id}-forn`} value={fornPadrao} onChange={(e) => setFornPadrao(e.target.value)}
                     placeholder="ex: Bess Tecidos" />
-                  <small>em branco, entram sem fornecedor e você preenche depois</small>
-                </label>
+                  <FieldHint>em branco, entram sem fornecedor e você preenche depois</FieldHint>
+                </Field>
               )}
 
               {r.gruposSemVerba.length > 0 && (
-                <div className="cat-pendente">
-                  <b>{r.total - r.validos} produtos ficam de fora.</b> Estes grupos não casaram com
-                  nenhuma verba da EAP: {r.gruposSemVerba.join(", ")}. Renomeie o título do grupo na
-                  planilha para o nome da verba e importe de novo.
-                </div>
+                <Alert tone="warning">
+                  <AlertTitle>{r.total - r.validos} produtos ficam de fora.</AlertTitle>
+                  <AlertDescription>
+                    Estes grupos não casaram com nenhuma verba da EAP: {r.gruposSemVerba.join(", ")}. Renomeie
+                    o título do grupo na planilha para o nome da verba e importe de novo.
+                  </AlertDescription>
+                </Alert>
               )}
 
               {/* A regra dela: descrição repetida se avisa, e ela decide.
                   Repetido aqui é ou já estar no catálogo, ou aparecer
                   duas vezes dentro do próprio arquivo. */}
               {repetidos.length > 0 && (
-                <div className="cat-duplicata cat-largo">
-                  <AlertTriangle size={13} />
-                  <div>
-                    <b>{repetidos.length} {repetidos.length === 1 ? "já está" : "já estão"} no catálogo (ou repetido no próprio arquivo).</b>
-                    <ul>
+                <Alert tone="warning">
+                  <AlertTitle>{repetidos.length} {repetidos.length === 1 ? "já está" : "já estão"} no catálogo (ou repetido no próprio arquivo).</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc pl-4">
                       {repetidos.slice(0, 5).map((it, i) => <li key={i}>{it.descricao}</li>)}
                       {repetidos.length > 5 && <li>e mais {repetidos.length - 5}…</li>}
                     </ul>
-                    <label className="cat-duplicata-opcao">
-                      <input type="checkbox" checked={!pularRepetidos}
-                        onChange={(e) => setPularRepetidos(!e.target.checked)} />
-                      Importar mesmo assim (cria um segundo cadastro de cada um)
-                    </label>
-                  </div>
-                </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Checkbox id={`${id}-rep`} checked={!pularRepetidos}
+                        onCheckedChange={(v) => setPularRepetidos(!(v === true))} />
+                      <Label htmlFor={`${id}-rep`}>Importar mesmo assim (cria um segundo cadastro de cada um)</Label>
+                    </div>
+                  </AlertDescription>
+                </Alert>
               )}
 
-              <div className="cat-envio-lista">
-                {r.porGrupo.map(([g, n]) => (
-                  <div key={g} className="cat-envio-item">
-                    <span className="cat-envio-desc">{g}</span>
-                    <span className="cat-envio-un">{n}</span>
+              <div className="max-h-64 overflow-auto rounded-lg border border-line-2">
+                {r.porGrupo.map(([g, n], i) => (
+                  <div key={g} className={`flex items-center gap-3 px-3 py-2 text-sm ${i > 0 ? "border-t border-line-1" : ""}`}>
+                    <span className="min-w-0 flex-1 truncate">{g}</span>
+                    <span className="text-xs text-text-mute">{n}</span>
                   </div>
                 ))}
               </div>
-
-              <p className="cat-nota">
-                As fotos vêm de dentro do arquivo — elas não estão em célula nenhuma, estão
-                ancoradas às linhas. Nada é sobrescrito: produtos repetidos com o mesmo código e
-                fornecedor são recusados pelo banco.
-              </p>
             </>
           )}
-        </div>
+        </DialogBody>
 
-        <div className="cat-caixa-pe">
-          <button className="cat-primario"
-            disabled={lendo || !(pularRepetidos ? unicos : itens).filter((p) => p.verba).length || !!gravando}
-            onClick={gravar}>
-            {gravando ? `Gravando ${gravando.feitos} de ${gravando.de}…`
-              : `Importar ${(pularRepetidos ? unicos : itens).filter((p) => p.verba).length} produtos`}
-          </button>
-          <button onClick={onFechar}>cancelar</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onFechar} disabled={!!gravando}>Cancelar</Button>
+          <Button disabled={lendo || !quantosEntram || !!gravando} onClick={gravar}>
+            {gravando ? `Gravando ${gravando.feitos} de ${gravando.de}…` : `Importar ${quantosEntram} produtos`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
-}
-
-/* Estilo local. Fica junto do componente de propósito: o CSS do App.jsx
-   é um template literal de 1.800 linhas onde uma crase perdida derruba o
-   build — e derrubou, duas vezes. */
-function EstiloCatalogo() {
-  return <style>{`
-    .cat { --card: var(--surface-1); }
-    .cat-abas { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; }
-    .cat-abas > button { background: none; border: 1px solid transparent; border-radius: 8px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-3); padding: 6px 12px; cursor: pointer; }
-    .cat-abas > button:hover { color: var(--ink); }
-    .cat-abas > button.on { background: var(--panel); border-color: var(--border); color: var(--ink); }
-    .cat-cont { display: inline-block; margin-left: 6px; background: var(--panel); border-radius: 20px; padding: 1px 7px; font-size: 10.5px; color: var(--ink-3); }
-    .cat-abas > button.on .cat-cont { background: var(--surface-1); }
-    .cat-novo { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 13px; cursor: pointer; }
-    .cat-novo-solto { margin: 0 0 12px; }
-
-    .cat-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
-    .cat-busca { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-1); padding: 6px 10px; min-width: 260px; }
-    .cat-busca input { border: none; outline: none; font-family: inherit; font-size: 12.5px; background: none; flex: 1; color: var(--ink); }
-    .cat-busca > button { background: none; border: none; color: var(--ink-3); cursor: pointer; padding: 0; display: flex; }
-    .cat-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-    .cat-chips button { background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; font-family: inherit; font-size: 11px; font-weight: 500; color: var(--ink-2); padding: 4px 11px; cursor: pointer; }
-    .cat-chips button:hover { border-color: var(--blue); }
-    .cat-chips button.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
-    .cat-chips-sub button.on { background: var(--blue); border-color: var(--blue); }
-    .cat-sel { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); font-family: inherit; font-size: 12px; color: var(--ink-2); padding: 6px 9px; }
-
-    .cat-pendente { background: var(--warning-soft); border: 1px solid var(--warning-line); color: var(--text); border-radius: 9px; padding: 9px 13px; font-size: 12px; margin-bottom: 14px; }
-    .cat-erro { display: flex; align-items: flex-start; gap: 8px; background: var(--danger-soft); border: 1px solid var(--danger-line); color: var(--danger); border-radius: 9px; padding: 10px 13px; font-size: 12.5px; margin-bottom: 12px; }
-    .cat-ok { display: flex; align-items: center; gap: 8px; background: var(--success-soft); border: 1px solid var(--success-line); color: var(--success); border-radius: 9px; padding: 10px 13px; font-size: 12.5px; margin-bottom: 12px; }
-    .cat-vazio { color: var(--ink-3); font-size: 12.5px; padding: 30px 0; }
-
-    .cat-verba { margin-bottom: 22px; }
-    .cat-verba-nome { font-size: 13px; font-weight: 700; color: var(--ink); padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
-    .cat-sub { margin-bottom: 16px; }
-    .cat-sub-nome { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
-    .cat-sem { font-style: italic; text-transform: none; letter-spacing: 0; }
-
-    .cat-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
-    .cat-card { border: 1px solid var(--border); border-radius: 11px; background: var(--card); overflow: hidden; display: flex; flex-direction: column; }
-    .cat-card.on { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue-bg); }
-    .cat-foto { position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--panel); border: none; padding: 0; cursor: pointer; overflow: hidden; }
-    .cat-foto img { width: 100%; height: 100%; object-fit: contain; display: block; }
-    .cat-sem-foto { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--line-3); }
-    .cat-marca { position: absolute; top: 7px; left: 7px; width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid #fff; background: rgba(255,255,255,.75); display: flex; align-items: center; justify-content: center; color: #fff; }
-    .cat-card.on .cat-marca { background: var(--blue); border-color: var(--blue); }
-    .cat-corpo { padding: 9px 11px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
-    .cat-desc { font-size: 12px; font-weight: 600; color: var(--ink); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-    .cat-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-    .cat-forn { background: var(--blue-bg); color: var(--blue); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
-    .cat-cod { font-size: 10.5px; color: var(--ink-3); }
-    .cat-obs { font-size: 10.5px; color: var(--ink-3); line-height: 1.4; }
-    .cat-rodape { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 6px; }
-    .cat-preco { font-size: 12.5px; font-weight: 700; color: var(--ink); display: flex; flex-direction: column; line-height: 1.2; }
-    .cat-preco em { font-style: normal; font-size: 9.5px; font-weight: 500; color: var(--ink-3); }
-    .cat-preco.velho em { color: var(--alert); }
-    .cat-sem-preco { font-size: 11px; color: var(--ink-3); }
-    .cat-acoes { margin-left: auto; display: flex; gap: 2px; }
-    .cat-acoes button { background: none; border: none; color: var(--ink-3); cursor: pointer; padding: 3px; display: flex; border-radius: 5px; }
-    .cat-acoes button:hover { background: var(--panel); color: var(--ink); }
-
-    .cat-forn-linha { display: flex; align-items: center; gap: 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 10px 13px; margin-bottom: 7px; }
-    .cat-forn-icone { color: var(--ink-3); display: flex; }
-    .cat-forn-id { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .cat-forn-id b { font-size: 12.5px; color: var(--ink); }
-    .cat-forn-id small { font-size: 11px; color: var(--ink-3); }
-    .cat-forn-uso { font-size: 11px; color: var(--ink-3); }
-
-    .cat-modal { position: fixed; inset: 0; z-index: 200; background: var(--overlay-strong); display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .cat-caixa { background: var(--surface-1); border-radius: 14px; width: 100%; max-width: 660px; max-height: 88vh; overflow: auto; box-shadow: var(--shadow-4); }
-    .cat-caixa-fina { max-width: 480px; }
-    .cat-caixa-topo { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; border-bottom: 1px solid var(--border); font-size: 13.5px; color: var(--ink); position: sticky; top: 0; background: var(--surface-1); }
-    .cat-caixa-topo button { background: none; border: none; color: var(--ink-3); cursor: pointer; display: flex; }
-    .cat-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; padding: 16px 18px; }
-    .cat-largo { grid-column: 1 / -1; }
-    .cat-campos label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
-    .cat-campos input, .cat-campos select, .cat-campos textarea { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12.5px; color: var(--ink); padding: 7px 9px; background: var(--surface-1); font-weight: 400; resize: vertical; }
-    .cat-campos small { font-size: 10px; font-weight: 400; color: var(--ink-3); }
-    .cat-foto-campo { display: flex; align-items: center; gap: 12px; }
-    .cat-foto-prev { position: relative; width: 80px; height: 62px; }
-    .cat-foto-prev img { width: 80px; height: 62px; object-fit: contain; background: var(--panel); border-radius: 7px; }
-    .cat-foto-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: var(--danger); color: var(--bg); cursor: pointer; box-shadow: var(--shadow-1); }
-    .cat-foto-x:hover { background: var(--danger); }
-    .cat-btn-arq { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
-    .cat-duplicata { display: flex; gap: 9px; background: var(--warning-soft); border: 1px solid var(--warning-line); color: var(--text); border-radius: 9px; padding: 10px 12px; font-size: 11.5px; line-height: 1.5; }
-    .cat-duplicata svg { flex-shrink: 0; margin-top: 1px; }
-    .cat-duplicata b { display: block; font-weight: 700; margin-bottom: 3px; }
-    .cat-duplicata ul { margin: 2px 0 4px; padding-left: 16px; }
-    .cat-duplicata-opcao { display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; margin-top: 4px; }
-    .cat-caixa-pe { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--surface-1); }
-    .cat-caixa-pe button { background: none; border: none; font-family: inherit; font-size: 12px; color: var(--ink-3); cursor: pointer; }
-    .cat-primario { background: var(--ink) !important; color: var(--bg) !important; border-radius: 8px !important; font-weight: 600 !important; padding: 8px 15px !important; display: inline-flex; align-items: center; gap: 6px; }
-    .cat-primario:disabled { opacity: .45; cursor: default; }
-
-    .cat-barra { position: sticky; bottom: 14px; margin-top: 18px; display: flex; align-items: center; gap: 12px; background: var(--ink); color: var(--bg); border-radius: 11px; padding: 11px 15px; font-size: 12.5px; box-shadow: var(--shadow-3); }
-    .cat-barra .cat-primario { background: var(--surface-1) !important; color: var(--ink) !important; }
-    .cat-limpar { margin-left: auto; background: none; border: none; font-family: inherit; font-size: 11.5px; color: color-mix(in srgb, var(--bg) 70%, transparent); text-decoration: underline; cursor: pointer; }
-
-    .cat-envio { padding: 16px 18px; }
-    .cat-envio label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--ink-2); margin-bottom: 14px; }
-    .cat-envio select { border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 12.5px; padding: 8px 9px; }
-    .cat-envio-lista { border: 1px solid var(--border); border-radius: 10px; max-height: 260px; overflow: auto; }
-    .cat-envio-verba { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); background: var(--panel); padding: 6px 12px; }
-    .cat-envio-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 12px; border-top: 1px solid var(--border); }
-    .cat-envio-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-    .cat-qtd { width: 62px; border: 1px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 12px; padding: 4px 7px; text-align: right; }
-    .cat-envio-un { font-size: 11px; color: var(--ink-3); width: 26px; }
-    .cat-apresentar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
-    .cat-apresentar:hover { border-color: var(--blue); color: var(--ink); }
-    .cat-tipos { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
-    .cat-tipos button { background: none; border: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink-3); padding: 7px 14px; cursor: pointer; }
-    .cat-tipos button + button { border-left: 1px solid var(--border); }
-    .cat-tipos button:hover { color: var(--ink); background: var(--panel); }
-    .cat-tipos button.on { background: var(--ink); color: var(--bg); }
-    .cat-tipos span { opacity: .6; margin-left: 4px; font-weight: 500; }
-    .cat-acab { font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 4px; padding: 2px 7px; }
-    .cat-importar { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
-    .cat-importar:hover { border-color: var(--blue); color: var(--ink); }
-    .cat-imp-placar { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; margin-bottom: 14px; }
-    .cat-imp-placar > div { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; display: flex; flex-direction: column; }
-    .cat-imp-forn { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); background: var(--panel); border-radius: 9px; padding: 10px 12px; margin-bottom: 14px; }
-    .cat-imp-forn input { border: 1px solid var(--border); border-radius: 7px; font-family: inherit; font-size: 12px; padding: 5px 8px; background: var(--surface-1); }
-    .cat-imp-forn small { width: 100%; font-size: 10.5px; color: var(--ink-3); }
-    .cat-imp-placar b { font-size: 19px; color: var(--ink); line-height: 1.1; }
-    .cat-imp-placar span { font-size: 10.5px; color: var(--ink-3); }
-    .cat-nota { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; margin: 12px 0 0; }
-
-    /* Group WS · Design System — componentes do catálogo, com os tokens de
-       estilos/design-system.css. Por último para vencer as regras acima. */
-    .cat-abas > button { padding: 7px 14px; border-radius: 8px; font-size: 13px; color: var(--text-mute); }
-    .cat-abas > button:hover { color: var(--text); }
-    .cat-abas > button.on { background: var(--brand); border-color: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
-    .cat-abas > button.on .cat-cont { background: var(--on-inverse-soft); color: var(--bg); }
-    .cat-cont { font-family: var(--font-mono); }
-    .cat-novo, .cat-primario { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 1px solid var(--brand); border-radius: 8px; background: var(--brand); color: var(--bg); font-family: var(--font-sans); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; }
-    .cat-novo:hover { background: var(--brand-h); border-color: var(--brand-h); }
-    .cat-primario { background: var(--brand) !important; color: var(--bg) !important; border-radius: 8px !important; padding: 0 14px !important; }
-    .cat-primario:hover:not(:disabled) { background: var(--brand-h) !important; }
-    .cat-barra .cat-primario { background: var(--surface-1) !important; color: var(--text) !important; }
-    .cat-chips button { padding: 4px 10px; border-color: var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
-    .cat-chips button:hover { border-color: var(--line-3); color: var(--text); }
-    .cat-chips button.on, .cat-chips-sub button.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
-    .cat-busca, .cat-sel, .cat-campos input, .cat-campos select, .cat-campos textarea, .cat-envio select, .cat-qtd, .cat-imp-forn input { border-color: var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); }
-    .cat-busca:focus-within, .cat-sel:focus, .cat-campos input:focus, .cat-campos select:focus, .cat-campos textarea:focus, .cat-envio select:focus, .cat-qtd:focus, .cat-imp-forn input:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
-    .cat-campos label, .cat-envio label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
-    .cat-campos input, .cat-campos select, .cat-campos textarea { padding: 8px 11px; font-family: var(--font-sans); font-size: 13px; letter-spacing: normal; text-transform: none; }
-    .cat-tipos { gap: 2px; padding: 3px; border-color: var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
-    .cat-tipos button { border-radius: 7px; padding: 5px 11px; }
-    .cat-tipos button + button { border-left: 0; }
-    .cat-tipos button:hover { background: transparent; color: var(--text); }
-    .cat-tipos button.on { background: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
-    .cat-apresentar, .cat-importar, .cat-btn-arq { min-height: 30px; border-color: var(--line-2); border-radius: 8px; background: transparent; color: var(--text); }
-    .cat-apresentar:hover, .cat-importar:hover, .cat-btn-arq:hover { border-color: var(--line-3); background: var(--surface-2); color: var(--text); }
-    .cat-card { border-color: var(--line-2); border-radius: 12px; }
-    .cat-card.on { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
-    .cat-forn, .cat-acab { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 999px; }
-    .cat-preco, .cat-imp-placar b { font-variant-numeric: tabular-nums; }
-    .cat-imp-placar b { font-weight: 300; letter-spacing: -0.02em; font-size: 22px; }
-    .cat-sub-nome, .cat-envio-verba { font-family: var(--font-mono); letter-spacing: 1.2px; }
-    .cat-verba-nome { border-bottom-color: var(--line-2); font-size: 16px; font-weight: 400; letter-spacing: -0.01em; }
-    .cat-pendente, .cat-duplicata { border-color: var(--warning-line); border-radius: 10px; background: var(--warning-soft); color: var(--text); }
-    .cat-erro { border-color: var(--danger-line); border-radius: 10px; background: var(--danger-soft); color: var(--text); }
-    .cat-ok { border-color: var(--success-line); border-radius: 10px; background: var(--success-soft); color: var(--text); }
-    .cat-erro svg { color: var(--danger); }
-    .cat-ok svg { color: var(--success); }
-    .cat-duplicata svg { color: var(--warning); }
-    .cat-modal { background: var(--overlay-strong); backdrop-filter: var(--overlay-blur); -webkit-backdrop-filter: var(--overlay-blur); }
-    .cat-caixa { border: 1px solid var(--line-2); border-radius: 14px; box-shadow: var(--shadow-4); animation: dialog-fade-in 0.2s ease-out; }
-    .cat-caixa-topo { padding: 18px 24px 14px; border-bottom-color: var(--line-1); font-size: 16px; }
-    .cat-caixa-pe { padding: 14px 24px; border-top-color: var(--line-1); }
-    .cat-barra { border-radius: 14px; }
-    .cat-foto-x:hover { background: var(--danger); filter: brightness(1.1); }
-  `}</style>;
 }
