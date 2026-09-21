@@ -155,7 +155,7 @@ conf("o nome não tem reticências", /\.obra-nome \{[^}]*text-overflow/.test(src
 conf("... nem fica numa linha só", /\.obra-nome \{[^}]*nowrap/.test(src), false);
 conf("... e quebra palavra comprida", /\.obra-nome \{[^}]*overflow-wrap: anywhere/.test(src), true);
 /* Alinhado ao topo, pra o código ficar na primeira linha quando o nome desce. */
-conf("a linha alinha pelo topo", /const linhaDaObra = [\s\S]{0,900}items-start justify-start/.test(src), true);
+conf("a linha alinha pelo topo", /const linhaDaObra = [\s\S]{0,1200}flex w-full items-start gap-2/.test(src), true);
 
 /* ============================================================
    5. O QUE VEIO DE BRINDE

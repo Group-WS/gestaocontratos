@@ -10185,11 +10185,12 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
 
   const barraRef = useRef(null);
 
-  /* O menu nasce ABERTO, com os nomes (App Shell do DS), e "Recolher" no pe
-     o reduz aos icones. Nao guarda a escolha no navegador de proposito —
+  /* O menu nasce RECOLHIDO, so' com os icones (nome no Tooltip), a pedido
+     (21/09/2026): sobra largura pro conteudo e pra lista de obras. "Expandir"
+     no pe mostra os nomes. Nao guarda a escolha no navegador de proposito —
      preferencia mora no banco (NAV-02), e isso fica pra quando existir a
      tabela de preferencias. */
-  const [trilhoAberto, setTrilhoAberto] = useState(true);
+  const [trilhoAberto, setTrilhoAberto] = useState(false);
 
   const [search, setSearch] = useState("");
 
@@ -10267,10 +10268,14 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
     const trava = travas?.get?.(String(o.codigo)) || null;
     const ativa = selected === o.id;
     return (
-      <Button variant="ghost" key={o.id}
-        className={cn("h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-md border-l-2 border-transparent px-2 py-1 text-left font-normal",
-          ativa && "border-brand bg-brand-soft", !comSimbolo && "pl-6")}
-        onClick={() => escolherObra(o.id)} title={`#${o.codigo} · ${o.nome}`} aria-current={ativa ? "true" : undefined}>
+      /* Link, como os itens do menu: o Button do DS poe style inline que
+         apagava o fundo da obra aberta — so' o numero mudava de cor. */
+      <a key={o.id} href={`/obra/${o.codigo}`} title={`#${o.codigo} · ${o.nome}`} aria-current={ativa ? "page" : undefined}
+        onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; e.preventDefault(); escolherObra(o.id); }}
+        className={cn("relative flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left no-underline transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+          ativa ? "bg-brand-soft before:absolute before:inset-y-2 before:left-0 before:border-l-2 before:border-brand" : "hover:bg-surface-2",
+          !comSimbolo && "pl-6")}>
         {/* O simbolo do squad so' na lista por numero: no modo squad ele ja'
             esta' no cabecalho do grupo, e dize-lo duas vezes por obra era um
             dos defeitos da barra antiga. */}
@@ -10278,11 +10283,11 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
         {/* O CODIGO PRIMEIRO. E' assim que a equipe fala — ninguem diz "Ed.
             Sixteen, 502", todo mundo diz "a 2597" — e e' o numero que aparece
             em pedido, contrato, Sienge e aditivo. */}
-        <span className={cn("mono shrink-0 text-xs leading-4", ativa ? "text-brand" : "text-text")}>{o.codigo}</span>
-        <span className={cn("min-w-0 break-words text-xs leading-4", ativa ? "text-text" : "text-text-soft")}>{o.nome}</span>
-        {trava && <Lock size={11} className="ml-auto mt-1 shrink-0 text-warning" />}
+        <span className={cn("shrink-0 font-mono text-sm leading-5", ativa ? "font-semibold text-brand" : "text-text")}>{o.codigo}</span>
+        <span className={cn("min-w-0 break-words text-sm leading-5", ativa ? "font-semibold text-text" : "text-text-soft")}>{o.nome}</span>
+        {trava && <Lock size={14} className="ml-auto mt-1 shrink-0 text-warning" aria-label="Em edição por outra pessoa" />}
         {alertas > 0 && <Contador tom="danger" className={cn("mt-1", trava ? "ml-1" : "ml-auto")}>{alertas}</Contador>}
-      </Button>
+      </a>
     );
   };
 
@@ -10323,13 +10328,13 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
           duas linhas de divisao se encontram. */}
       <div className="-mx-3 mb-3 flex h-15 shrink-0 items-center justify-between gap-2 border-b border-line-1 px-3">
         <span className="text-sm font-semibold">Obras <span className="font-mono text-xs font-normal text-text-mute">{obras.length}</span></span>
-        {/* Dois modos, dois botoes. Nao e' um filtro: os dois mostram a
-            lista inteira, muda so' a ordem de leitura. */}
-        <ToggleGroup type="single" size="sm" value={modo} onValueChange={(v) => { if (v) setModo(v); }} aria-label="Ordem da lista">
-          <ToggleGroupItem value="numero" title="Todas as obras em ordem de número">número</ToggleGroupItem>
-          <ToggleGroupItem value="squad" title="As obras agrupadas por squad">squad</ToggleGroupItem>
-        </ToggleGroup>
       </div>
+      {/* Dois modos, em linha propria e de largura inteira: nao e' filtro, os
+          dois mostram a lista inteira, muda so' a ordem de leitura. */}
+      <ToggleGroup type="single" size="sm" value={modo} onValueChange={(v) => { if (v) setModo(v); }} aria-label="Ordem da lista" className="mb-3 grid w-full grid-cols-2">
+        <ToggleGroupItem value="numero" title="Todas as obras em ordem de número">Por número</ToggleGroupItem>
+        <ToggleGroupItem value="squad" title="As obras agrupadas por squad">Por squad</ToggleGroupItem>
+      </ToggleGroup>
 
       {/* AS NOVAS OBRAS NO TOPO, antes da busca.
           Estavam no pe' e ela reparou: "achei muito pequeno no final da
@@ -10350,18 +10355,20 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
         </Button>
       )}
 
-      <div className="mb-2 flex items-center gap-1">
+      <div className="mb-2 flex w-full min-w-0 items-center gap-1">
         {/* Curto de proposito: o painel e' estreito, e "Filtrar por nome,
             código, cliente..." era cortado no meio da palavra. A lupa ja'
             diz que e' filtro; o que falta dizer e' POR QUE se pode filtrar. */}
-        <Input icon={<Search size={14} />} placeholder="Nome, código ou cliente" aria-label="Buscar obra"
-          className="h-8 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} />
-        {search && <BotaoIcone rotulo="Limpar busca" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => setSearch("")}><X size={12} /></BotaoIcone>}
+        <div className="min-w-0 flex-1">
+          <Input icon={<Search size={14} />} placeholder="Nome, código ou cliente" aria-label="Buscar obra"
+            className="w-full text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        {search && <BotaoIcone rotulo="Limpar busca" variant="ghost" className="shrink-0" onClick={() => setSearch("")}><X size={14} /></BotaoIcone>}
       </div>
 
-      <Toggle size="sm" pressed={soMinhas} onPressedChange={setSoMinhas} className="mb-2 gap-1 self-start text-xs"
-        title={usuario ? `Obras em que ${nomeDoEmail(usuario)} é o GC` : "Entre para filtrar pelas suas obras"}>
-        <ShieldCheck size={11} /> Minhas{nMinhas > 0 ? ` ${nMinhas}` : ""}
+      <Toggle size="sm" pressed={soMinhas} onPressedChange={setSoMinhas} className="mb-3 gap-1 self-start"
+        title={usuario ? `Só as obras em que ${nomeDoEmail(usuario)} é GC, Taylor Made ou Executivo` : "Entre para filtrar pelas suas obras"}>
+        <ShieldCheck size={14} aria-hidden="true" /> Só as minhas{nMinhas > 0 ? ` (${nMinhas})` : ""}
       </Toggle>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
