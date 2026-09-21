@@ -202,15 +202,38 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
           </CardContent>
         </Card>
         <Card className="col-span-12 min-w-0 xl:col-span-4" ref={deliveriesRef} tabIndex={-1}>
-          <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-4"><CardTitle className="flex items-center gap-2"><ClipboardList size={18} className="text-brand" />Próximas entregas <Badge tone="neutral">{deliveries.length}</Badge></CardTitle><Button variant="ghost" size="sm" onClick={() => setShowDeliveries(!showDeliveries)}>{showDeliveries ? "Mostrar menos" : "Ver todas as entregas"} <ArrowRight size={14} /></Button></div><CardDescription>Obras com entrega prevista nos próximos 90 dias.</CardDescription></CardHeader>
-          <CardContent><div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {unavailable ? <p role="status">{loading ? "Carregando entregas…" : "Entregas indisponíveis. Tente carregar novamente."}</p> : !deliveries.length && <p role="status">Nenhuma entrega prevista neste período.</p>}
-            {(unavailable ? [] : showDeliveries ? deliveries : deliveries.slice(0, 4)).map((row) => <Button key={row.id} variant="outline" className="h-auto w-full flex-col items-start gap-2 text-left" onClick={() => onOpen(row.id)} aria-label={`Abrir entrega de #${row.code} ${row.name}`}>
-              <span className="flex items-center gap-2"><span className="text-3xl font-bold">{row.days < 0 ? `${-row.days}d atrás` : row.days === 0 ? "Hoje" : `${row.days}d`}</span><Status critical={row.days < 0} attention={row.alerts.length > 0} /></span>
-              <span className="block w-full truncate text-sm" title={`#${row.code} ${row.name}`}><span className="font-normal text-text-mute">#{row.code}</span> {row.name}</span>
-              <span className="flex items-center gap-2 text-xs font-normal text-text-soft"><CalendarDays size={14} />{date(row.delivery)}</span>
-            </Button>)}
-          </div></CardContent>
+          <CardHeader className="flex-col"><div className="flex w-full flex-wrap items-center justify-between gap-4"><CardTitle className="flex items-center gap-2"><ClipboardList size={18} className="text-brand" />Próximas entregas <Badge tone="neutral">{deliveries.length}</Badge></CardTitle><Button variant="ghost" size="sm" onClick={() => setShowDeliveries(!showDeliveries)}>{showDeliveries ? "Mostrar menos" : "Ver todas"} <ArrowRight size={14} /></Button></div><CardDescription>Obras com entrega prevista nos próximos 90 dias.</CardDescription></CardHeader>
+          {/* UMA LISTA, e nao uma grade de caixas: numa coluna estreita a
+              caixa cortava o nome da obra. A data vira um bloco curto de dia e
+              mes, e o prazo vai num selo que diz o que e' ("em 60 dias", "8
+              dias atrasada"), com a cor do estado da obra. */}
+          <CardContent>
+            {unavailable ? <p role="status">{loading ? "Carregando entregas…" : "Entregas indisponíveis. Tente carregar novamente."}</p>
+              : !deliveries.length ? <p role="status" className="text-sm text-text-mute">Nenhuma entrega prevista neste período.</p>
+              : <ul className="divide-y divide-line-1">
+                {(showDeliveries ? deliveries : deliveries.slice(0, 4)).map((row) => {
+                  const d = new Date(`${row.delivery}T12:00:00`);
+                  const critica = row.days < 0 || row.alerts.some((a) => a.critical);
+                  const atencao = !critica && row.alerts.length > 0;
+                  const prazo = row.days < 0 ? `${-row.days} ${-row.days === 1 ? "dia atrasada" : "dias atrasada"}` : row.days === 0 ? "hoje" : `em ${row.days} ${row.days === 1 ? "dia" : "dias"}`;
+                  return <li key={row.id}>
+                    <Button variant="ghost" className="h-auto w-full justify-start gap-3 whitespace-normal px-2 py-3 text-left font-normal"
+                      onClick={() => onOpen(row.id)} aria-label={`Abrir entrega de #${row.code} ${row.name}`}>
+                      <span className="flex w-10 shrink-0 flex-col items-center leading-none">
+                        <span className="text-lg font-semibold text-text-strong">{String(d.getDate()).padStart(2, "0")}</span>
+                        <span className="label-mono mt-1 text-text-mute">{d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</span>
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-text-strong"><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</span>
+                        <span className="mt-1 block text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`} · GC {row.gc}</span>
+                      </span>
+                      <Badge tone={critica ? "danger" : atencao ? "warning" : "success"} className="shrink-0"
+                        title={critica ? "Obra com pendência crítica" : atencao ? "Obra com pendência de atenção" : "Obra no prazo"}>{prazo}</Badge>
+                    </Button>
+                  </li>;
+                })}
+              </ul>}
+          </CardContent>
         </Card>
       </div>
       <Card className="min-w-0" ref={projectsRef} tabIndex={-1}>
