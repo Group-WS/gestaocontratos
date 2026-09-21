@@ -27,7 +27,8 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
   PERFIS, perfilDe, podeVerModulo, obrasPermitidas, podeEditar as perfilEdita, migracaoDePerfilFeita,
   podeGerenciarPessoas, temAcesso, estaPendente, pendentes, ehOUltimoGestor, nivelQueCuida, ehAdministrador,
   podeAbrirObras, registrarAcesso, estaOnline, quandoFoi,
-  urlDaFoto, subirFotoPerfil, definirFotoPerfil } from "./lib/pessoas";
+  urlDaFoto, subirFotoPerfil, definirFotoPerfil,
+  PAPEIS_DA_OBRA, obraDaPessoa, equipeDaObra } from "./lib/pessoas";
 import { listarVersoes, restaurarVersao } from "./lib/versoesObra";
 import { listarComentarios, criarComentario, apagarComentario } from "./lib/comentarios";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
@@ -473,7 +474,7 @@ function nomeNaEquipe(equipe, email) {
   return p?.nome || nomeDoEmail(email);
 }
 
-/* Quem responde por UM papel da obra (GC, Tailor Made, Executivo...).
+/* Quem responde por UM papel da obra (GC, Taylor Made, Executivo...).
    Guarda o e-mail; mostra o nome. Generalizado a partir do que era só
    `GcDaObra` — os três papéis de "Equipe da obra" usam o mesmo
    componente, só trocando rótulo, valor e o que salvar.
@@ -1379,7 +1380,9 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
             <LinhaEquipe obraId={obra.id} rotulo="GC responsável" valor={obra.gc} equipe={equipe} podeEditar={podeEditar}
               prioridade={/gc/i} vazio="sem GC — esta obra aparece para todo mundo"
               onDefinir={(email) => onDefinirGC(obra.codigo, email)} />
-            <LinhaEquipe obraId={obra.id} rotulo="Tailor Made" valor={tailorMade} equipe={equipe} podeEditar={podeEditar}
+            {/* O rotulo sai de PAPEIS_DA_OBRA, que e' onde a grafia mora: a
+                coluna do banco continua `tailor_made`, a tela diz "Taylor Made". */}
+            <LinhaEquipe obraId={obra.id} rotulo={PAPEIS_DA_OBRA.find((x) => x.chave === "tailorMade").rotulo} valor={tailorMade} equipe={equipe} podeEditar={podeEditar}
               vazio="ainda não atribuído" onDefinir={(email) => onDefinirTailorMade(obra.codigo, email)} />
             <LinhaEquipe obraId={obra.id} rotulo="Executivo" valor={responsavelExecutivo} equipe={equipe} podeEditar={podeEditar}
               vazio="ainda não atribuído" onDefinir={(email) => onDefinirExecutivo(obra.codigo, email)} />
@@ -1925,7 +1928,10 @@ const contratoEtapa = (it) => it.statusContrato || "nao_solicitado";
 
 /* A obra e' minha quando o GC dela sou eu. Sem GC ela nao e' de ninguem —
    e aparece pra todo mundo, que e' melhor do que sumir pra todo mundo. */
-const obraDoGC = (o, email) => !!email && String(o.gc || "").toLowerCase() === String(email).toLowerCase();
+/* "Minhas obras" mora em lib/pessoas.js agora, e conta os TRES papeis —
+   GC, Taylor Made e Executivo. Aqui existia um obraDoGC que olhava so' o
+   campo `gc`: uma Taylor Made jamais caia no recorte das proprias obras. */
+const temResponsavel = (o) => PAPEIS_DA_OBRA.some((p) => p.campos.some((c) => o?.[c]));
 
 /* ============================================================
    PAINEL GERAL DE COMPRAS E CONTRATACOES
@@ -10144,7 +10150,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_MODO_OBRAS, modo); } catch { /* modo anonimo */ }
   }, [modo]);
 
-  const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
+  const nMinhas = obras.filter((o) => obraDaPessoa(o, usuario)).length;
 
   /* Quais squads estao dobrados — so' vale no modo squad. Guardado, porque
      quem trabalha num squad so nao quer dobrar os outros a cada F5. */
@@ -10189,7 +10195,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     /* Obra SEM GC passa no filtro de propósito: enquanto os vínculos não
        estiverem todos feitos, esconder o que não tem dono deixaria obra
        viva fora da tela de todo mundo. */
-    const casaGC = !soMinhas || !usuario || !o.gc || obraDoGC(o, usuario);
+    const casaGC = !soMinhas || !usuario || !temResponsavel(o) || obraDaPessoa(o, usuario);
     return casaBusca && casaGC;
   }).sort(porCodigo);
 
@@ -18138,32 +18144,57 @@ function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, n
       const summary = summaries.get(String(o.codigo));
       const journey = esteiraDaObra(o);
       const criticalSteps = passosCriticosAtrasados(o);
+      /* A FILA DIZ O QUE FAZER, e e' ordenada de verdade (design-preview,
+         20/09/2026). Cada item tem `peso` (a faixa) e `ordem` (o desempate).
+         Risco e' dinheiro vezes tempo, e o dinheiro manda: compra vencida
+         ordena por VALOR, nao por dias — R$ 200 mil vencida ontem segura
+         mais a obra que R$ 2 mil vencida ha um mes. A linha diz o verbo, e o
+         botao diz o destino ("Abrir obra"), porque o clique leva ao lugar de
+         resolver, nao resolve. */
       const alerts = (summary?.atrasos || []).map((v) => ({
-        id: `${o.id}-compra-${v.num}`, critical: true,
-        text: `Compra de ${v.nome} venceu há ${-v.dias} dias`, amount: v.matFalta,
-        action: () => onAbrirObra(o.id, "compras"),
+        id: `${o.id}-compra-${v.num}`, critical: true, peso: 0, ordem: -v.matFalta,
+        text: `Liberar a compra de ${v.nome}`, days: v.dias, amount: v.matFalta,
+        button: "Abrir obra", action: () => onAbrirObra(o.id, "compras"),
       }));
-      if (criticalSteps.passos.length) alerts.push({
-        id: `${o.id}-prazo`, critical: true,
-        text: criticalSteps.dias < 0
-          ? `Entrega vencida há ${-criticalSteps.dias} dias e obra ainda não está em execução`
-          : `Entrega em ${criticalSteps.dias} dias e ainda não está em execução`,
-        action: () => onAbrirObra(o.id),
-      });
+      if (criticalSteps.passos.length) {
+        const nomes = criticalSteps.passos.map((p) => p.rotulo).join(", ");
+        alerts.push({
+          id: `${o.id}-prazo`, critical: true, peso: 1, ordem: criticalSteps.dias,
+          text: `Fechar ${criticalSteps.passos.length === 1 ? "o caderno" : "os cadernos"} de ${nomes}`,
+          days: criticalSteps.dias, button: "Abrir obra", action: () => onAbrirObra(o.id),
+        });
+      }
       (o.aditivos || []).filter(pipefyPendente).forEach((a) => alerts.push({
-        id: `${o.id}-aditivo-${a.id}`, critical: false,
-        text: `Aditivo ${a.numero} aprovado, aguardando solicitação no Pipefy`,
-        action: () => onModulo("aditivos"),
+        id: `${o.id}-aditivo-${a.id}`, critical: false, peso: 3, ordem: 0,
+        text: `Abrir a Solicitação de contrato do aditivo ${a.numero}`,
+        button: "Abrir aditivos", action: () => onModulo("aditivos"),
       }));
       if (!o.dataEntrega && (o.categorias || []).some((c) => (c.itens || []).length)) alerts.push({
-        id: `${o.id}-entrega`, critical: false, text: "Definir a data de entrega para calcular os prazos",
-        action: () => onAbrirObra(o.id),
+        id: `${o.id}-entrega`, critical: false, peso: 3, ordem: 1, text: "Definir a data de entrega",
+        button: "Abrir obra", action: () => onAbrirObra(o.id),
       });
-      if (!o.gc) alerts.push({ id: `${o.id}-gc`, critical: false, text: "Definir o GC responsável", action: () => onAbrirObra(o.id) });
+      if (!o.gc) alerts.push({ id: `${o.id}-gc`, critical: false, peso: 4, ordem: 0, text: "Atribuir o GC", button: "Abrir obra", action: () => onAbrirObra(o.id) });
+      /* O QUE ESTA' PARA VENCER entra em voz baixa, no fim da fila: nao e'
+         problema ainda, mas e' o que vira problema na semana que vem. */
+      (summary?.perto || []).forEach((v) => alerts.push({
+        id: `${o.id}-perto-${v.num}`, critical: false, upcoming: true, peso: 5, ordem: v.dias,
+        text: `A compra de ${v.nome} vence em ${v.dias} ${v.dias === 1 ? "dia" : "dias"}`, days: v.dias, amount: v.matFalta,
+        button: "Abrir obra", action: () => onAbrirObra(o.id, "compras"),
+      }));
+      /* Quem responde pela obra: os tres papeis, e a vaga vazia aparece —
+         escrita ao lado das outras, a lacuna se le' de relance. */
+      const team = equipeDaObra(o).map((papel) => ({
+        ...papel,
+        nome: papel.email ? (equipe.find((person) => person.email === papel.email)?.nome || nomeDoEmail(papel.email)) : null,
+      }));
       return {
         id: o.id, code: o.codigo, name: o.nome, squad: o.squad || "Sem squad",
         unit: o.filial || "Não informada",
-        gc: o.gc ? (equipe.find((person) => person.email === o.gc)?.nome || nomeDoEmail(o.gc)) : "Não atribuído",
+        gc: team.find((p) => p.chave === "gc").nome || "Não atribuído",
+        taylor: team.find((p) => p.chave === "tailorMade").nome || "Não atribuída",
+        team,
+        /* TODO passo atrasado, e nao so' o Executivo. */
+        overdueSteps: criticalSteps.passos.map((p) => p.chave),
         delivery: o.dataEntrega, days: o.dataEntrega ? diasAte(new Date(`${o.dataEntrega}T12:00:00`)) : null,
         summary, steps: journey.passos, stage: journey.texto,
         currentStep: journey.passos.find((step) => !step.feito)?.chave,
@@ -18172,8 +18203,10 @@ function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, n
     });
   }, [obras, r, equipe, onAbrirObra, onModulo]);
   const extraAlerts = [];
-  if (nPendentes) extraAlerts.push({ id: "acessos", text: `${nPendentes} pessoas aguardando liberação de acesso`, action: () => onModulo("equipe") });
-  if (novas.length) extraAlerts.push({ id: "novas", text: `${novas.length} obras ainda não iniciadas`, action: () => onModulo("novas") });
+  /* A fila de acesso e' custo de outra pessoa: entra na faixa 2, depois do
+     dinheiro vencido e dos cadernos atrasados. */
+  if (nPendentes) extraAlerts.push({ id: "acessos", peso: 2, ordem: -nPendentes, text: `Liberar acesso para ${nPendentes} ${nPendentes === 1 ? "pessoa" : "pessoas"}`, button: "Abrir equipe", action: () => onModulo("equipe") });
+  if (novas.length) extraAlerts.push({ id: "novas", peso: 4, ordem: 1, text: `Iniciar ${novas.length} ${novas.length === 1 ? "obra que veio" : "obras que vieram"} do Monday`, button: "Abrir novas", action: () => onModulo("novas") });
   // "Início" é o rótulo do menu: o título da página repete o mesmo termo.
   return <DashboardPage title="Início" memory={memory} rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
 }

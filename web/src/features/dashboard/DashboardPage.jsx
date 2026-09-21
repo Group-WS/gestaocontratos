@@ -41,11 +41,30 @@ function Percentage({ value, label }) {
   </div>;
 }
 
+/* Quem responde pela obra: GC, Taylor Made e Executivo. A vaga vazia
+   aparece escrita ("a definir") em vez de sumir — ao lado das outras duas, a
+   lacuna se le' de relance e no lugar certo. */
+function Equipe({ team = [] }) {
+  return <div className="flex flex-wrap gap-x-2 text-xs">
+    {team.map((p) => <span key={p.chave} className={p.nome ? "text-text-soft" : "italic text-text-mute"} title={p.rotulo}>
+      <span className="font-semibold">{p.rotulo}</span> {p.nome || "a definir"}
+    </span>)}
+  </div>;
+}
+
+/* A regua dos 90 dias: mede quanto a entrega ja' INVADIU a janela de 90
+   dias, e nao o que falta. Obra fora da janela nao tem regua. */
+function ReguaDos90({ days }) {
+  if (days == null || days > 90) return null;
+  const dentro = Math.min(90, Math.max(0, 90 - days));
+  return <Progress className="mt-1 h-1 w-24" value={(dentro / 90) * 100} aria-label={`${Math.round((dentro / 90) * 100)}% da janela de 90 dias`} />;
+}
+
 export default function DashboardPage({ title = "Visão geral das obras", rows, loading, error, onRetry, onOpen, extraAlerts = [], memory }) {
   const [filters, setFilters] = useState(() => {
     if (memory?.current.filters) return memory.current.filters;
     const query = new URLSearchParams(window.location.search);
-    return { unit: query.get("dash-unit") || "all", squad: query.get("dash-squad") || "all", gc: "all", search: "", order: query.get("dash-order") || "risk" };
+    return { unit: query.get("dash-unit") || "all", squad: query.get("dash-squad") || "all", gc: "all", taylor: "all", search: "", order: query.get("dash-order") || "risk" };
   });
   const [search, setSearch] = useState(filters.search);
   useEffect(() => { if (memory) memory.current.filters = filters; }, [filters, memory]);
@@ -71,23 +90,27 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
     (filters.unit === "all" || row.unit === filters.unit) &&
     (filters.squad === "all" || row.squad === filters.squad) &&
     (filters.gc === "all" || row.gc === filters.gc) &&
+    (!filters.taylor || filters.taylor === "all" || row.taylor === filters.taylor) &&
     (!search || normalize(`${row.code} ${row.name}`).includes(normalize(search)))
-  ), [rows, filters.unit, filters.squad, filters.gc, search]);
+  ), [rows, filters.unit, filters.squad, filters.gc, filters.taylor, search]);
   const ordered = useMemo(() => [...filtered].sort((a, b) => {
     if (filters.order === "name") return a.name.localeCompare(b.name, "pt-BR");
     if (filters.order === "delivery") return (a.days ?? Infinity) - (b.days ?? Infinity);
     if (filters.order === "purchase") return (b.summary?.mat.falta || 0) - (a.summary?.mat.falta || 0);
     return a.rank - b.rank;
   }), [filtered, filters.order]);
-  const alerts = [...filtered.slice().sort((a, b) => a.rank - b.rank).flatMap((row) => row.alerts.map((alert) => ({ ...alert, row }))), ...extraAlerts];
+  /* Ordenada pela faixa (`peso`) e pelo desempate (`ordem`) que cada item
+     traz — dinheiro vencido primeiro, o que esta' para vencer por ultimo. */
+  const alerts = [...filtered.flatMap((row) => row.alerts.map((alert) => ({ ...alert, row }))), ...extraAlerts]
+    .sort((a, b) => (a.peso ?? 9) - (b.peso ?? 9) || (a.ordem ?? 0) - (b.ordem ?? 0));
   const visibleAlerts = showAlerts ? alerts : alerts.slice(0, 4);
   const critical = alerts.filter((alert) => alert.critical);
   const deliveries = [...filtered].filter((row) => row.days !== null && row.days <= 90).sort((a, b) => a.days - b.days);
   const material = filtered.reduce((total, row) => total + (row.summary?.mat.total || 0), 0);
   const pending = filtered.reduce((total, row) => total + (row.summary?.mat.falta || 0), 0);
   const tableRows = scope === "purchase" ? ordered.filter((row) => row.summary?.mat.falta > 0) : ordered;
-  const active = filters.unit !== "all" || filters.squad !== "all" || filters.gc !== "all" || filters.search || scope !== "all";
-  const clear = () => { setFilters({ unit: "all", squad: "all", gc: "all", search: "", order: "risk" }); setSearch(""); setScope("all"); };
+  const active = filters.unit !== "all" || filters.squad !== "all" || filters.gc !== "all" || (filters.taylor && filters.taylor !== "all") || filters.search || scope !== "all";
+  const clear = () => { setFilters({ unit: "all", squad: "all", gc: "all", taylor: "all", search: "", order: "risk" }); setSearch(""); setScope("all"); };
   const reveal = (ref) => { ref.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); ref.current?.focus({ preventScroll: true }); };
   const unavailable = loading || !!error;
   const kpis = [
@@ -100,6 +123,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
     <Choice label="Unidade" disabled={!rows.some((row) => row.unit !== "Não informada")} value={filters.unit} values={options(rows, "unit")} onChange={(value) => update("unit", value)} />
     <Choice label="Squad" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} />
     <Choice label="GC" allLabel="Todos" value={filters.gc} values={options(rows, "gc")} onChange={(value) => update("gc", value)} />
+    <Choice label="Taylor Made" allLabel="Todas" value={filters.taylor || "all"} values={options(rows, "taylor")} onChange={(value) => update("taylor", value)} />
     <div className="flex w-60 flex-col gap-1"><Label htmlFor="dashboard-search" className="sr-only">Buscar obra</Label><div className="relative"><Search className="absolute left-3 top-3 text-text-mute" size={16} aria-hidden="true" /><Input className="pl-9" id="dashboard-search" placeholder="Buscar obra…" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div></div>
   </div>;
   return <PageShell title={title} description="Acompanhe prazos, compras e pontos críticos da operação." actions={controls} contentClassName="flex flex-col gap-4">
@@ -125,12 +149,12 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
             {unavailable ? <p role="status">{loading ? "Carregando prioridades…" : "Prioridades indisponíveis. Tente carregar novamente."}</p> : !alerts.length ? <p role="status">Nenhuma pendência para as obras selecionadas.</p> : <Table aria-label="Prioridades de hoje">
               <TableHeader className="sr-only"><TableRow>{["Prioridade", "Obra", "Pendência", "Prazo e valor", "GC", "Ação"].map((label) => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
               <TableBody>{visibleAlerts.map((alert, index) => <TableRow key={alert.id || index}>
-                <TableCell><Badge tone={alert.critical ? "danger" : "warning"}>{alert.critical ? "Crítica" : "Atenção"}</Badge></TableCell>
+                <TableCell><Badge tone={alert.critical ? "danger" : alert.upcoming ? "neutral" : "warning"}>{alert.critical ? "Crítica" : alert.upcoming ? "A vencer" : "Atenção"}</Badge></TableCell>
                 <TableCell className="text-xs font-semibold text-text-strong">{alert.row ? `#${alert.row.code} ${alert.row.name}` : "Equipe e operação"}</TableCell>
                 <TableCell className="text-xs">{alert.text}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs"><div className="font-semibold text-danger">{alert.days != null ? `• ${Math.abs(alert.days)} ${Math.abs(alert.days) === 1 ? "dia" : "dias"}` : "—"}</div>{alert.amount != null && <div className="text-text-mute">{money(alert.amount)}</div>}</TableCell>
+                <TableCell className="whitespace-nowrap text-xs"><div className={alert.upcoming ? "font-semibold text-text-soft" : "font-semibold text-danger"}>{alert.days != null ? `• ${Math.abs(alert.days)} ${Math.abs(alert.days) === 1 ? "dia" : "dias"}` : "—"}</div>{alert.amount != null && <div className="text-text-mute">{money(alert.amount)}</div>}</TableCell>
                 <TableCell className="text-xs text-text-mute">{alert.row ? `GC ${alert.row.gc}` : "—"}</TableCell>
-                <TableCell><Button size="sm" variant="secondary" onClick={alert.action}>Resolver <ArrowRight size={14} /></Button></TableCell>
+                <TableCell><Button size="sm" variant="secondary" onClick={alert.action}>{alert.button || "Abrir"} <ArrowRight size={14} /></Button></TableCell>
               </TableRow>)}</TableBody>
             </Table>}
           </CardContent>
@@ -155,9 +179,9 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
           {loading ? <Skeleton className="h-32 w-full" /> : !tableRows.length && error ? <p role="status">Não foi possível carregar as obras. Use “Tentar novamente” para atualizar.</p> : !tableRows.length ? <div role="status"><p>{active ? "Nenhum resultado para os filtros aplicados." : "Nenhuma obra ativa no momento."}</p>{active && <Button variant="outline" onClick={clear}>Limpar filtros</Button>}</div> : <Table aria-label="Obras ativas">
             <TableHeader><TableRow>{["Obra", "Cronograma", "Etapa atual", "Progresso", "Compras", "Próxima pendência", "Ações"].map((label) => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
             <TableBody>{tableRows.map((row) => <TableRow key={row.id}>
-              <TableCell className="min-w-52"><div className="flex flex-wrap items-center gap-1"><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-xs" onClick={() => onOpen(row.id)}>#{row.code} {row.name}</Button><Status critical={row.alerts.some((a) => a.critical)} attention={row.alerts.length > 0} /></div><div className="text-xs text-text-soft">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`} · GC {row.gc}</div></TableCell>
-              <TableCell><span className="flex items-center gap-1 whitespace-nowrap text-xs"><CalendarDays size={12} />{date(row.delivery)}</span>{row.days !== null && <div className="text-xs font-semibold text-danger">• {row.days < 0 ? `${-row.days} dias de atraso` : `${row.days} dias`}</div>}</TableCell>
-              <TableCell><div className="flex items-center gap-0">{row.steps.map((step, index) => <React.Fragment key={step.chave}><Badge className="gap-1 px-1 py-1 font-sans text-xs normal-case tracking-normal" tone={step.feito ? "success" : row.overdueSteps?.includes(step.chave) && step.chave === "projeto" ? "danger" : step.chave === row.currentStep ? "brand" : "neutral"} title={`${step.rotulo}: ${step.feito ? "concluído" : "pendente"}`}>{step.feito ? <CheckCircle2 size={12} /> : <Circle size={12} />}{step.chave === "execucao" ? "Execução" : step.curto}</Badge>{index < row.steps.length - 1 && <ArrowRight size={10} className="shrink-0 text-text-mute" aria-hidden="true" />}</React.Fragment>)}</div></TableCell>
+              <TableCell className="min-w-52"><div className="flex flex-wrap items-center gap-1"><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-xs" onClick={() => onOpen(row.id)}>#{row.code} {row.name}</Button><Status critical={row.alerts.some((a) => a.critical)} attention={row.alerts.length > 0} /></div><div className="text-xs text-text-soft">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div><Equipe team={row.team} /></TableCell>
+              <TableCell><span className="flex items-center gap-1 whitespace-nowrap text-xs"><CalendarDays size={12} />{date(row.delivery)}</span>{row.days !== null && <div className="text-xs font-semibold text-danger">• {row.days < 0 ? `${-row.days} dias de atraso` : `${row.days} dias`}</div>}<ReguaDos90 days={row.days} /></TableCell>
+              <TableCell><div className="flex items-center gap-0"><span className="mr-2 whitespace-nowrap text-xs text-text-mute">{row.steps.filter((step) => step.feito).length} de {row.steps.length}</span>{row.steps.map((step, index) => <React.Fragment key={step.chave}><Badge className="gap-1 px-1 py-1 font-sans text-xs normal-case tracking-normal" tone={step.feito ? "success" : row.overdueSteps?.includes(step.chave) ? "danger" : step.chave === row.currentStep ? "brand" : "neutral"} title={`${step.rotulo}: ${step.feito ? "concluído" : "pendente"}`}>{step.feito ? <CheckCircle2 size={12} /> : <Circle size={12} />}{step.chave === "execucao" ? "Execução" : step.curto}</Badge>{index < row.steps.length - 1 && <ArrowRight size={10} className="shrink-0 text-text-mute" aria-hidden="true" />}</React.Fragment>)}</div></TableCell>
               <TableCell><Percentage value={row.steps.length ? row.steps.filter((step) => step.feito).length / row.steps.length * 100 : 0} label="Etapas concluídas da jornada; não representa avanço físico" /></TableCell>
               <TableCell><Percentage value={row.summary?.mat.pct ?? null} label="Percentual do valor de material comprado" /></TableCell>
               <TableCell className="min-w-44"><span className="text-xs">{row.alerts[0]?.title || row.alerts[0]?.text || row.stage}</span><div className="text-xs font-semibold text-danger">{row.alerts[0]?.days != null ? `• ${Math.abs(row.alerts[0].days)} dias` : row.days != null && row.alerts.length ? `• ${Math.abs(row.days)} dias` : ""}</div>{row.alerts[0]?.amount != null && <div className="text-sm text-danger">{money(row.alerts[0].amount)}</div>}</TableCell>

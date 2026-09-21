@@ -1,4 +1,4 @@
-/* Quem vê o quê — os cinco perfis.
+/* Quem vê o quê — os sete perfis.
  *
  * Roda com: node web/src/__testes__/acessos.test.mjs
  * Ver docs/SPEC-acessos.md
@@ -14,12 +14,13 @@ import { fileURLToPath } from "node:url";
 /* `lib/pessoas.js` importa supabase, que não roda no node. As funções
    puras são recortadas daqui — elas não dependem de nada. */
 const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "lib", "pessoas.js"), "utf8");
-const puras = src.slice(src.indexOf("export const PERFIS")).replace(/export /g, "");
+const puras = src.slice(src.indexOf("export const PAPEIS_DA_OBRA")).replace(/export /g, "");
 const M = eval(`(function () { ${puras}
   return { PERFIS, perfilDe, estaPendente, estaSuspenso, temAcesso, podeEntrar,
            podeVerModulo, podeEditar, podeGerenciarPessoas, obrasPermitidas,
            dominioPermitido, DOMINIOS, podeAbrirObras, estaOnline, quandoFoi,
-           temMaster, ehAdministrador, ehOUltimoGestor, nivelQueCuida }; })()`);
+           temMaster, ehAdministrador, ehOUltimoGestor, nivelQueCuida,
+           PAPEIS_DA_OBRA, papelNaObra, obraDaPessoa, equipeDaObra }; })()`);
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -148,15 +149,62 @@ conf("indefinido não quebra", M.dominioPermitido(undefined), false);
 /* Virou seis em 19/09/2026 com o "Canal de compra": um perfil só, e o CANAL
    vem da ficha da pessoa. Um perfil por canal daria seis de uma vez e um
    sétimo a cada canal novo. */
-conf("existem seis perfis", M.PERFIS.length, 6);
+conf("existem sete perfis", M.PERFIS.length, 7);
 conf("perfil inventado não vale", M.perfilDe({ perfil: "chefe" }), null);
 conf("só um perfil gerencia pessoas", M.PERFIS.filter((x) => x.gerenciaPessoas).length, 1);
 conf("dois perfis administram", M.PERFIS.filter((x) => x.administra).map((x) => x.id).join(), "master,admin");
-/* Os dois perfis de CONSULTA: Mehoo e Canal de compra. Nenhum dos dois edita
-   nem abre obra — entram direto no painel deles e é só isso que veem. */
-conf("dois perfis não editam", M.PERFIS.filter((x) => !x.edita).map((x) => x.id).join(), "mehoo,canal");
-conf("... e são os mesmos que não abrem obra",
+/* TRES perfis de consulta agora, e eles NAO sao mais o mesmo conjunto dos
+   que nao abrem obra. Ate' a Taylor Made, "nao edita" e "nao abre obra"
+   andavam juntos: Mehoo e Canal entram direto no painel deles e nao
+   alcancam obra nenhuma.
+
+   A Taylor Made quebra esse par de proposito — ela abre a obra inteira,
+   le' tudo, e nao altera nada. E' o primeiro perfil que so' acompanha. */
+conf("tres perfis não editam", M.PERFIS.filter((x) => !x.edita).map((x) => x.id).join(), "taylor,mehoo,canal");
+conf("mas só dois não abrem obra",
   M.PERFIS.filter((x) => !x.abreObras).map((x) => x.id).join(), "mehoo,canal");
+conf("a Taylor Made é a que lê tudo sem mexer em nada",
+  M.PERFIS.filter((x) => !x.edita && x.abreObras).map((x) => x.id).join(), "taylor");
+
+/* ---- Os tres papeis da obra ----
+
+   `tailor_made` e `responsavel_executivo` existem no banco desde
+   equipe-da-obra.sql, mas "minhas obras" testava so' o `gc`: uma Taylor
+   Made nunca via as proprias obras. Errar aqui e' invisivel — a tela
+   aparece vazia e parece bug de interface, quando o corte esta' na regra. */
+console.log("\n=== 9. OS TRES PAPEIS ===");
+const marina = "marina@groupws.com.br";
+const obraDela = { codigo: "1", gc: "outro@groupws.com.br", tailorMade: marina };
+const obraDoOutro = { codigo: "2", gc: "outro@groupws.com.br" };
+const obraCrua = { codigo: "3", tailor_made: marina };
+const obraSemNinguem = { codigo: "4" };
+
+conf("acha o papel de Taylor Made", M.papelNaObra(obraDela, marina)?.rotulo, "Taylor Made");
+conf("... tambem na grafia crua do banco", M.papelNaObra(obraCrua, marina)?.rotulo, "Taylor Made");
+conf("acha o papel de GC", M.papelNaObra(obraDoOutro, "outro@groupws.com.br")?.rotulo, "GC");
+conf("quem nao tem papel nenhum, nao tem", M.papelNaObra(obraDoOutro, marina), null);
+conf("maiuscula nao atrapalha", M.papelNaObra(obraDela, "MARINA@groupws.com.br")?.chave, "tailorMade");
+
+const taylor = p("taylor", { email: marina });
+const vistas = M.obrasPermitidas(taylor, [obraDela, obraDoOutro, obraCrua, obraSemNinguem]).map((o) => o.codigo);
+conf("a Taylor ve a obra em que e' a Taylor", vistas.includes("1"), true);
+conf("... e nao a obra que nao e' dela", vistas.includes("2"), false);
+conf("... e a obra sem responsavel nenhum continua visivel", vistas.includes("4"), true);
+conf("a Taylor NAO edita", M.podeEditar(taylor), false);
+conf("... mas abre obra", M.podeAbrirObras(taylor), true);
+
+/* O GC continua GC: generalizar "minhas" nao pode alargar o que ele ve. */
+const gcOutro = p("gc", { email: "outro@groupws.com.br" });
+const doGc = M.obrasPermitidas(gcOutro, [obraDela, obraDoOutro, obraCrua]).map((o) => o.codigo);
+conf("o GC ve a obra em que e' GC", doGc.includes("2"), true);
+conf("... e tambem a que e' dele com outra Taylor", doGc.includes("1"), true);
+/* A #3 tem Taylor e NAO tem GC. O GC continua vendo, porque "obra sem GC
+   todo mundo ve" e' regra antiga e nao pode ser desfeita de bonus: sem
+   isso ninguem poderia trabalhar nela. */
+conf("... e a obra sem GC continua visivel pra ele", doGc.includes("3"), true);
+
+conf("a equipe da obra sai com os tres papeis", M.equipeDaObra(obraDela).length, 3);
+conf("... e a vaga vazia vem como null", M.equipeDaObra(obraDela).find((x) => x.chave === "executivo").email, null);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
