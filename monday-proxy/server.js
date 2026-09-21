@@ -14,7 +14,20 @@
  *   4) npm start
  */
 
-require("dotenv").config();
+const path = require("node:path");
+const fs = require("node:fs");
+const dotenv = require("dotenv");
+dotenv.config({ path: path.join(__dirname, ".env") });
+
+// No ambiente local, compartilha apenas a configuração pública de Auth.
+// Variáveis explícitas do backend têm precedência; nenhuma chave é impressa.
+const webEnv = path.join(__dirname, "../web/.env");
+if (fs.existsSync(webEnv)) {
+  const publicEnv = dotenv.parse(fs.readFileSync(webEnv));
+  for (const key of ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"]) {
+    if (!process.env[key] && publicEnv[key]) process.env[key] = publicEnv[key];
+  }
+}
 const app = require("../web/api/_lib/mondayApp.js");
 
 if (!process.env.MONDAY_API_TOKEN) {

@@ -17,7 +17,7 @@ import {
   ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
-  Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
+  PanelLeftClose, PanelLeftOpen, Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
   MessageSquare, HardHat, Camera, UserRound
 } from "lucide-react";
@@ -55,7 +55,8 @@ import { confirmar } from "./lib/confirmar.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
-import { LogoGroupWS, AlternarTema } from "./marca.jsx";
+import { LogoGroupWS } from "./marca.jsx";
+import { Button, ThemeToggle } from "@group-ws/ws-ui";
 import { padraoDaDescricao, carregarAlocacoesDoBanco, salvarAlocacaoPadrao } from "./lib/alocacaoPadrao";
 import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
@@ -9356,7 +9357,176 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
    TOPO / SIDEBAR
    ============================================================ */
 
-function TopBar({ onInicio }) {
+/* O PERFIL MORA NO TOPO (21/09/2026).
+
+   Ele ficava no pe do trilho. O padrao de App Shell do DS poe o usuario no
+   header, junto do tema e do sino — e' onde se procura "quem esta logado" e
+   "sair". Em 20/09 o avatar do topo tinha SAIDO porque havia dois (o do topo
+   so' mostrava a foto, o do trilho tinha o menu). Agora continua havendo um
+   so': o que funciona, no lugar do padrao. */
+function MenuPerfil({ usuario, equipe, onSair, onTrocarFoto }) {
+  const [menuPerfil, setMenuPerfil] = useState(false);
+  /* Fecha clicando em QUALQUER lugar, e com Esc. Antes so' fechava
+     clicando de novo no proprio perfil — ninguem procura o botao que
+     abriu pra fechar, procura o vazio ao lado. */
+  const menuRef = useRef(null);
+  const perfilRef = useRef(null);
+  useEffect(() => {
+    if (!menuPerfil) return;
+    const fora = (e) => {
+      if (menuRef.current?.contains(e.target) || perfilRef.current?.contains(e.target)) return;
+      setMenuPerfil(false);
+    };
+    const esc = (e) => { if (e.key === "Escape") setMenuPerfil(false); };
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", fora);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [menuPerfil]);
+  const euNaEquipe = (equipe || []).find((p) => p.email === usuario) || null;
+  const meuNome = euNaEquipe?.nome || nomeDoEmail(usuario);
+  const fotoRef = useRef(null);
+  const [subindoFoto, setSubindoFoto] = useState(false);
+  const [erroFoto, setErroFoto] = useState(null);
+  const [verDados, setVerDados] = useState(false);
+
+  /* Escolher ABRE O RECORTADOR; quem sobe e' o confirmar dele.
+
+     Ate' 19/09 escolher o arquivo ja' subia, e o motivo escrito aqui era
+     que "inventar um salvar so' pra foto seria o menu grande que ela nao
+     quis". O recortador inverteu isso, com o aval dela: sem um momento de
+     confirmar nao existe quando aplicar o enquadramento. O passo a mais
+     nao esta no menu — esta numa janela que so' aparece quando ha' uma
+     foto pra ajustar. */
+  const [fotoEscolhida, setFotoEscolhida] = useState(null);
+
+  function aoEscolherFoto(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file || !onTrocarFoto) return;
+    setErroFoto(null);
+    /* O menu sai de cena: o recortador ocupa a tela, e o menuzinho atras
+       dele seria ruido. Some tambem o problema de o "fecha ao clicar
+       fora" do menu contar cada clique DENTRO do recortador como fora. */
+    /* Barra antes de abrir a janela, olhando o CONTEUDO.
+
+       Checar so' o nome nao bastava: o caso real dela chegou como
+       "IMG_0889-Edit.jpg", tipo "image/jpeg", e era HEIC por dentro.
+       Abrir uma janela preta pra depois explicar e' pior do que nao
+       abrir. */
+    formatoReal(file).then((fmt) => {
+      if (fmt === "heic") {
+        setErroFoto(/\.hei[cf]$/i.test(file.name) ? MSG_IMAGEM_ILEGIVEL : MSG_HEIC_DISFARCADO);
+        return;
+      }
+      setMenuPerfil(false);
+      setFotoEscolhida(file);
+    });
+  }
+
+  async function confirmarRecorte(recorte) {
+    const file = fotoEscolhida;
+    setFotoEscolhida(null);
+    setSubindoFoto(true);
+    try {
+      await onTrocarFoto(file, recorte);
+    } catch (err) {
+      setErroFoto(err.message);
+      setMenuPerfil(true);
+    } finally {
+      setSubindoFoto(false);
+    }
+  }
+
+  async function removerFoto() {
+    if (!(await confirmar("Remover a sua foto de perfil?"))) return;
+    setErroFoto(null);
+    setSubindoFoto(true);
+    try {
+      await onTrocarFoto(null);
+    } catch (err) {
+      setErroFoto(err.message);
+    } finally {
+      setSubindoFoto(false);
+    }
+  }
+
+
+  return (
+    <div className="perfil-topo">
+      <Button ref={perfilRef} variant="outline" size="icon" className="rounded-full"
+        onClick={() => setMenuPerfil((v) => !v)} aria-expanded={menuPerfil} aria-haspopup="menu"
+        title={meuNome || usuario || "Não identificado"}>
+        <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
+      </Button>
+
+    {menuPerfil && (
+      <div className="perfil-menu perfil-menu-topo" ref={menuRef}>
+        <div className="perfil-cab">
+          {/* A propria foto e' o botao de trocar. Um terceiro item de
+              menu chamado "Trocar foto" diria o que a foto ali ja diz,
+              e o pedido era um menu pequeno. */}
+          <button className="perfil-foto" disabled={subindoFoto || !onTrocarFoto}
+            onClick={() => fotoRef.current && fotoRef.current.click()}
+            title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
+            <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-md" />
+            <span className="perfil-foto-capa"><Camera size={14} /></span>
+          </button>
+          {/* So' o que o navegador decodifica. Com image/* o seletor do
+              Mac oferecia HEIC, e HEIC vira tela preta. */}
+          <input ref={fotoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
+            onChange={aoEscolherFoto} />
+          <div className="perfil-cab-txt">
+            <div className="perfil-cab-nome">{meuNome || "Não identificado"}</div>
+            <div className="perfil-cab-email">{usuario || "sem sessão"}</div>
+          </div>
+        </div>
+        {subindoFoto && <div className="perfil-aviso">Enviando a foto…</div>}
+        {erroFoto && <div className="perfil-aviso erro">{erroFoto}</div>}
+        <div className="perfil-sep" />
+        <button className="perfil-item" onClick={() => setVerDados((v) => !v)} aria-expanded={verDados}>
+          <UserRound size={14} /> Meus dados
+          <ChevronDown size={13} className={`perfil-seta ${verDados ? "aberta" : ""}`} />
+        </button>
+        {/* Em LEITURA. Quem edita pessoa e' quem cuida da Equipe; a
+            unica coisa que a pessoa muda em si mesma e' a foto. */}
+        {verDados && (
+          <div className="perfil-dados">
+            {/* Sem cargo nem perfil: pedido dela em 19/09/2026. */}
+            <div><span>Nome</span><b>{meuNome || "—"}</b></div>
+            <div><span>E-mail</span><b>{usuario || "—"}</b></div>
+            {euNaEquipe?.foto && (
+              <button className="perfil-tirar-foto" onClick={removerFoto} disabled={subindoFoto}>
+                <Trash2 size={12} /> Remover a foto
+              </button>
+            )}
+            <div className="perfil-dados-nota">
+              O nome é alterado por quem cuida da Equipe.
+            </div>
+          </div>
+        )}
+        <div className="perfil-tema">
+          <span>Tema</span>
+          <ThemeToggle />
+        </div>
+        <button className="perfil-sair" onClick={onSair}>
+          <LogOut size={14} /> Sair
+        </button>
+      </div>
+    )}
+
+    {fotoEscolhida && (
+      <RecortadorFoto file={fotoEscolhida}
+        onCancelar={() => { setFotoEscolhida(null); setMenuPerfil(true); }}
+        onConfirmar={confirmarRecorte} />
+    )}
+    </div>
+  );
+}
+
+function TopBar({ onInicio, usuario, equipe, onSair, onTrocarFoto }) {
   return (
     <header className="topbar">
       {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
@@ -9377,16 +9547,17 @@ function TopBar({ onInicio }) {
       <div className="topbar-right">
         {/* A estrelinha saiu: era um botao sem onClick nenhum. Botao que
             nao faz nada nao e' neutro — a pessoa clica, nada acontece, e
-            passa a duvidar do resto dos botoes da tela. */}
-        <AlternarTema />
-        <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
-        {/* O avatar saiu daqui (pedido dela, 20/09/2026: "esse avatar aqui
-            em cima pode retirar, ja' tem la' em baixo").
+            passa a duvidar do resto dos botoes da tela.
 
-            Este era so' a foto: nao abria nada. O do pe do trilho e' o que
-            tem o menu de perfil. Duas fotos iguais na mesma tela fazem quem
-            olha procurar a diferenca entre elas — e nao havia nenhuma, a
-            nao ser que uma funcionava e a outra nao. */}
+            O tema TAMBEM saiu daqui (21/09/2026): no App Shell de
+            referencia do DS, o topo e' so' acao global (busca, notificacao,
+            quem esta logado) — tema e' preferencia PESSOAL, e mora dentro
+            do menu do usuario, junto de "Meus dados" e "Sair". */}
+        <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
+        <MenuPerfil usuario={usuario} equipe={equipe} onSair={onSair} onTrocarFoto={onTrocarFoto} />
+        {/* UM AVATAR SO', e e' este. Em 20/09 o do topo saiu porque eram dois
+            e so' o do trilho tinha menu; em 21/09 o do trilho veio pra ca',
+            com o menu, que e' onde o App Shell do DS poe o usuario. */}
       </div>
     </header>
   );
@@ -9716,94 +9887,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 
   const nMinhas = obras.filter((o) => obraDoGC(o, usuario)).length;
 
-  const [menuPerfil, setMenuPerfil] = useState(false);
-  /* Fecha clicando em QUALQUER lugar, e com Esc. Antes so' fechava
-     clicando de novo no proprio perfil — ninguem procura o botao que
-     abriu pra fechar, procura o vazio ao lado. */
-  const menuRef = useRef(null);
-  const perfilRef = useRef(null);
-  useEffect(() => {
-    if (!menuPerfil) return;
-    const fora = (e) => {
-      if (menuRef.current?.contains(e.target) || perfilRef.current?.contains(e.target)) return;
-      setMenuPerfil(false);
-    };
-    const esc = (e) => { if (e.key === "Escape") setMenuPerfil(false); };
-    document.addEventListener("mousedown", fora);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("mousedown", fora);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [menuPerfil]);
-  const euNaEquipe = (equipe || []).find((p) => p.email === usuario) || null;
-  const meuNome = euNaEquipe?.nome || nomeDoEmail(usuario);
-  const fotoRef = useRef(null);
-  const [subindoFoto, setSubindoFoto] = useState(false);
-  const [erroFoto, setErroFoto] = useState(null);
-  const [verDados, setVerDados] = useState(false);
-
-  /* Escolher ABRE O RECORTADOR; quem sobe e' o confirmar dele.
-
-     Ate' 19/09 escolher o arquivo ja' subia, e o motivo escrito aqui era
-     que "inventar um salvar so' pra foto seria o menu grande que ela nao
-     quis". O recortador inverteu isso, com o aval dela: sem um momento de
-     confirmar nao existe quando aplicar o enquadramento. O passo a mais
-     nao esta no menu — esta numa janela que so' aparece quando ha' uma
-     foto pra ajustar. */
-  const [fotoEscolhida, setFotoEscolhida] = useState(null);
-
-  function aoEscolherFoto(e) {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!file || !onTrocarFoto) return;
-    setErroFoto(null);
-    /* O menu sai de cena: o recortador ocupa a tela, e o menuzinho atras
-       dele seria ruido. Some tambem o problema de o "fecha ao clicar
-       fora" do menu contar cada clique DENTRO do recortador como fora. */
-    /* Barra antes de abrir a janela, olhando o CONTEUDO.
-
-       Checar so' o nome nao bastava: o caso real dela chegou como
-       "IMG_0889-Edit.jpg", tipo "image/jpeg", e era HEIC por dentro.
-       Abrir uma janela preta pra depois explicar e' pior do que nao
-       abrir. */
-    formatoReal(file).then((fmt) => {
-      if (fmt === "heic") {
-        setErroFoto(/\.hei[cf]$/i.test(file.name) ? MSG_IMAGEM_ILEGIVEL : MSG_HEIC_DISFARCADO);
-        return;
-      }
-      setMenuPerfil(false);
-      setFotoEscolhida(file);
-    });
-  }
-
-  async function confirmarRecorte(recorte) {
-    const file = fotoEscolhida;
-    setFotoEscolhida(null);
-    setSubindoFoto(true);
-    try {
-      await onTrocarFoto(file, recorte);
-    } catch (err) {
-      setErroFoto(err.message);
-      setMenuPerfil(true);
-    } finally {
-      setSubindoFoto(false);
-    }
-  }
-
-  async function removerFoto() {
-    if (!(await confirmar("Remover a sua foto de perfil?"))) return;
-    setErroFoto(null);
-    setSubindoFoto(true);
-    try {
-      await onTrocarFoto(null);
-    } catch (err) {
-      setErroFoto(err.message);
-    } finally {
-      setSubindoFoto(false);
-    }
-  }
-
   /* Quais squads estao dobrados — so' vale no modo squad. Guardado, porque
      quem trabalha num squad so nao quer dobrar os outros a cada F5. */
   const [fechados, setFechados] = useState(() => {
@@ -9826,6 +9909,20 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     try { localStorage.setItem(CHAVE_SIDEBAR, painelEscondido ? "1" : "0"); } catch { /* modo anonimo */ }
   }, [painelEscondido]);
 
+  /* TRILHO ABERTO: os nomes ao lado dos icones.
+
+     O trilho e' so' icone de proposito, com o nome no balao do hover. Mas
+     balao so' mostra um nome por vez, e quem ainda nao decorou os icones
+     precisa passar o mouse em todos pra achar o que procura (pedido de
+     21/09/2026). Aberto, o balao some: o nome ja' esta' na tela.
+
+     Nao guarda a escolha no navegador de proposito — preferencia mora no
+     banco (regra NAV-02 do padrao), e isso fica pra quando existir a tabela
+     de preferencias. */
+  const [trilhoAberto, setTrilhoAberto] = useState(false);
+  const trilhoAbertoRef = useRef(false);
+  trilhoAbertoRef.current = trilhoAberto;
+
   /* O rotulo do hover no trilho.
 
      Um listener so', delegado, em vez de handler em cada botao. Ele le o
@@ -9846,6 +9943,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     let alvo = null;
 
     const entrar = (e) => {
+      if (trilhoAbertoRef.current) return; // aberto, o nome ja' esta' na tela
       /* AINDA DENTRO DO MESMO DESTINO: nada a fazer.
 
          Esta linha parece redundante e nao e'. Ao mostrar a dica eu TIRO o
@@ -9968,6 +10066,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     <button key={m.id} className={`trilho-item ${modulo === m.id ? "ativo" : ""}`}
       onClick={() => onModulo(m.id)} title={m.nome}>
       <m.Icone size={18} />
+      <span className="trilho-rotulo">{m.nome}</span>
       {badgeDoDestino(m)}
     </button>
   );
@@ -9994,7 +10093,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
   };
 
   return (
-    <aside className={`barra ${temPainel ? "" : "sem-painel"}`} ref={barraRef}>
+    <aside className={`barra ${temPainel ? "" : "sem-painel"} ${trilhoAberto ? "trilho-aberto" : ""}`} ref={barraRef}>
       {dica && (
         <div className="dica-lateral" style={{ left: dica.x, top: dica.y, transform: "translateY(-50%)" }}>
           {dica.texto}
@@ -10028,6 +10127,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                       nada. Em portugues, capacete quer dizer obra sem precisar
                       pensar, e nenhuma outra tela usa esse simbolo. */}
                   <HardHat size={18} />
+                  <span className="trilho-rotulo">Obras</span>
                 </button>
               )}
             </React.Fragment>
@@ -10038,6 +10138,12 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           {/* Esconder o painel e' decisao sobre a BARRA, entao mora na barra —
               e e' o unico jeito de esconder, pra clicar num destino nunca
               tirar nada da tela. So' aparece quando ha' painel pra esconder. */}
+          <Button variant="ghost" size="icon" className="trilho-abrir"
+            onClick={() => { setDica(null); setTrilhoAberto((v) => !v); }}
+            aria-expanded={trilhoAberto}
+            title={trilhoAberto ? "Recolher o menu" : "Mostrar os nomes do menu"}>
+            {trilhoAberto ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+          </Button>
           {mostrarObras && naObra && (
             <button className="trilho-item trilho-dobrar" title={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}
               onClick={() => setPainelEscondido((v) => !v)}>
@@ -10045,69 +10151,8 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             </button>
           )}
           {destinosPe.map(botaoDestino)}
-          <button ref={perfilRef} className={`trilho-perfil ${menuPerfil ? "aberto" : ""}`}
-            onClick={() => setMenuPerfil((v) => !v)} title={meuNome || usuario || "Não identificado"}>
-            <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
-          </button>
         </div>
       </nav>
-
-      {menuPerfil && (
-        <div className="perfil-menu perfil-menu-trilho" ref={menuRef}>
-          <div className="perfil-cab">
-            {/* A propria foto e' o botao de trocar. Um terceiro item de
-                menu chamado "Trocar foto" diria o que a foto ali ja diz,
-                e o pedido era um menu pequeno. */}
-            <button className="perfil-foto" disabled={subindoFoto || !onTrocarFoto}
-              onClick={() => fotoRef.current && fotoRef.current.click()}
-              title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
-              <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-md" />
-              <span className="perfil-foto-capa"><Camera size={14} /></span>
-            </button>
-            {/* So' o que o navegador decodifica. Com image/* o seletor do
-                Mac oferecia HEIC, e HEIC vira tela preta. */}
-            <input ref={fotoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
-              onChange={aoEscolherFoto} />
-            <div className="perfil-cab-txt">
-              <div className="perfil-cab-nome">{meuNome || "Não identificado"}</div>
-              <div className="perfil-cab-email">{usuario || "sem sessão"}</div>
-            </div>
-          </div>
-          {subindoFoto && <div className="perfil-aviso">Enviando a foto…</div>}
-          {erroFoto && <div className="perfil-aviso erro">{erroFoto}</div>}
-          <div className="perfil-sep" />
-          <button className="perfil-item" onClick={() => setVerDados((v) => !v)} aria-expanded={verDados}>
-            <UserRound size={14} /> Meus dados
-            <ChevronDown size={13} className={`perfil-seta ${verDados ? "aberta" : ""}`} />
-          </button>
-          {/* Em LEITURA. Quem edita pessoa e' quem cuida da Equipe; a
-              unica coisa que a pessoa muda em si mesma e' a foto. */}
-          {verDados && (
-            <div className="perfil-dados">
-              {/* Sem cargo nem perfil: pedido dela em 19/09/2026. */}
-              <div><span>Nome</span><b>{meuNome || "—"}</b></div>
-              <div><span>E-mail</span><b>{usuario || "—"}</b></div>
-              {euNaEquipe?.foto && (
-                <button className="perfil-tirar-foto" onClick={removerFoto} disabled={subindoFoto}>
-                  <Trash2 size={12} /> Remover a foto
-                </button>
-              )}
-              <div className="perfil-dados-nota">
-                O nome é alterado por quem cuida da Equipe.
-              </div>
-            </div>
-          )}
-          <button className="perfil-sair" onClick={onSair}>
-            <LogOut size={14} /> Sair
-          </button>
-        </div>
-      )}
-
-      {fotoEscolhida && (
-        <RecortadorFoto file={fotoEscolhida}
-          onCancelar={() => { setFotoEscolhida(null); setMenuPerfil(true); }}
-          onConfirmar={confirmarRecorte} />
-      )}
 
       {temPainel && (
         <div className="painel">
@@ -17727,7 +17772,7 @@ function MarcosDaObra({ obra }) {
   );
 }
 
-function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
+function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const rows = useMemo(() => {
     const summaries = new Map(r.linhas.map((line) => [String(line.codigo), line]));
@@ -17741,11 +17786,12 @@ function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendente
       const criticalSteps = passosCriticosAtrasados(o);
       const alerts = (summary?.atrasos || []).map((v) => ({
         id: `${o.id}-compra-${v.num}`, critical: true,
+        title: `Compra de ${v.nome}`, days: v.dias,
         text: `Compra de ${v.nome} venceu há ${-v.dias} dias`, amount: v.matFalta,
         action: () => onAbrirObra(o.id, "compras"),
       }));
       if (criticalSteps.passos.length) alerts.push({
-        id: `${o.id}-prazo`, critical: true,
+        id: `${o.id}-prazo`, critical: true, days: criticalSteps.dias,
         text: criticalSteps.dias < 0
           ? `Entrega vencida há ${-criticalSteps.dias} dias e obra ainda não está em execução`
           : `Entrega em ${criticalSteps.dias} dias e ainda não está em execução`,
@@ -17767,6 +17813,7 @@ function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendente
         gc: o.gc ? (equipe.find((person) => person.email === o.gc)?.nome || nomeDoEmail(o.gc)) : "Não atribuído",
         delivery: o.dataEntrega, days: o.dataEntrega ? diasAte(new Date(`${o.dataEntrega}T12:00:00`)) : null,
         summary, steps: journey.passos, stage: journey.texto,
+        overdueSteps: criticalSteps.passos.map((step) => step.chave),
         currentStep: journey.passos.find((step) => !step.feito)?.chave,
         rank, alerts,
       };
@@ -17775,7 +17822,7 @@ function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendente
   const extraAlerts = [];
   if (nPendentes) extraAlerts.push({ id: "acessos", text: `${nPendentes} pessoas aguardando liberação de acesso`, action: () => onModulo("equipe") });
   if (novas.length) extraAlerts.push({ id: "novas", text: `${novas.length} obras ainda não iniciadas`, action: () => onModulo("novas") });
-  return <DashboardPage rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
+  return <DashboardPage memory={memory} rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
 }
 
 /* ============================================================
@@ -19731,6 +19778,7 @@ export default function App() {
      lista, escolhida por ordem alfabetica — que quase nunca e' a que pede
      atencao hoje, e obrigava a fechar o que abriu antes de comecar. */
   const [modulo, setModulo] = useState("inicio");
+  const dashboardMemory = useRef({});
   // Registro das obras no nosso banco: código -> { situacao, ... }.
   // É isso que decide quem aparece na sidebar (ativa), quem está no
   // Arquivo (concluida) e quem ainda é só sugestão do Monday (ausente).
@@ -21758,7 +21806,13 @@ export default function App() {
         .center { text-align: center; }
         .right { text-align: right; }
 
-        .topbar { height: 64px; display: flex; align-items: center; gap: 24px; padding: 0 24px; background: var(--surface-1); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+        /* A ALTURA DO TOPO MORA NUMA VARIAVEL SO'.
+           O topo encolheu de 64 pra 59px no alinhamento ao DS, e o sidebar
+           continuou preso em top: 64px — grudava 5px abaixo do topo e deixava
+           uma faixa entre os dois (relato de 21/09/2026). Tudo que encosta no
+           topo le daqui — muda o topo, muda junto. */
+        :root { --altura-topo: 59px; }
+        .topbar { height: var(--altura-topo); display: flex; align-items: center; gap: 24px; padding: 0 24px; background: var(--surface-1); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
         .topbar-brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; background: none; border: none; font-family: inherit; padding: 4px 6px; margin-left: -6px; border-radius: 9px; cursor: pointer; }
         .topbar-brand:hover { background: var(--panel); }
         .aviso-monday { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); border-radius: 8px; padding: 9px 13px; font-size: 12px; font-weight: 500; margin-bottom: 16px; }
@@ -21785,7 +21839,7 @@ export default function App() {
            LISTA de obras, porque ela e' texto que se le' — nao moldura.
            Espinho cinza, lista branca, campo cinza.
            ============================================================ */
-        .barra { display: flex; flex-shrink: 0; height: calc(100vh - 64px); position: sticky; top: 64px; }
+        .barra { display: flex; flex-shrink: 0; height: calc(100vh - var(--altura-topo)); position: sticky; top: var(--altura-topo); }
 
         .trilho { width: 56px; flex-shrink: 0; background: var(--surface-3); border-right: 1px solid var(--border-soft);
                   display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
@@ -21797,6 +21851,18 @@ export default function App() {
            fica branco e se funde com a lista; sem painel, veste o campo. Em
            vez de pintar a selecao, ela encosta no que abriu. */
         .trilho-item.ativo { color: var(--brand); border-left-color: var(--brand); background: var(--card); }
+        /* Trilho aberto: o nome ao lado do icone. Fechado, o nome existe no
+           DOM mas nao aparece — e' ele que o leitor de tela anuncia. */
+        .trilho-rotulo { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+        /* O nome QUEBRA em vez de cortar: "Gestao de compras e contratacoes"
+           com reticencias escondia justamente a palavra que distingue. */
+        .barra.trilho-aberto .trilho { width: 216px; align-items: stretch; }
+        .barra.trilho-aberto .trilho-item { justify-content: flex-start; gap: 12px; height: auto; min-height: 40px; padding: 8px 16px; text-align: left; }
+        .barra.trilho-aberto .trilho-item > .lucide { flex-shrink: 0; }
+        .barra.trilho-aberto .trilho-rotulo { position: static; width: auto; height: auto; clip: auto; overflow: visible; white-space: normal;
+                                              font-size: 13px; font-weight: 500; line-height: 1.25; }
+        .trilho-abrir { margin: 2px auto 6px; color: var(--ink-3); }
+        .barra.trilho-aberto .trilho-abrir { margin: 2px 8px 6px auto; }
         .barra.sem-painel .trilho-item.ativo { background: var(--page); }
         .trilho-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
         .trilho-badge { position: absolute; top: 5px; right: 8px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
@@ -21806,21 +21872,21 @@ export default function App() {
         .trilho-badge.neutro { background: var(--surface-4); color: var(--ink-2); }
         .trilho-pe { margin-top: auto; width: 100%; padding-top: 8px; border-top: 1px solid var(--border-soft);
                      display: flex; flex-direction: column; align-items: center; gap: 4px; }
-        .trilho-perfil { width: 100%; display: flex; justify-content: center; padding: 6px 0; background: none; border: none; cursor: pointer; }
-        /* O menu FLUTUA sobre a lista de obras.
+        /* O menu de perfil FLUTUA.
 
-           Sem position, ele entrava como item flex da .barra (que e'
-           display:flex) e virava uma COLUNA de altura inteira, empurrando a
-           lista pro lado — os deslocamentos daqui ficavam inertes. A regra
-           que tinha o position era .sidebar.recolhida .perfil-menu, morta
-           desde que a barra virou .barra. A .barra e' sticky, e por isso
-           serve de referencia pro absolute.
+           Quando morava no trilho, sem position ele virava item flex da
+           .barra e uma COLUNA de altura inteira que empurrava a lista de
+           obras. Desde 21/09 ele mora no topo, ancorado na .perfil-topo —
+           sem position voltaria a empurrar o topo pro lado.
 
            Sem crase neste comentario: o bloco inteiro de estilo e' um
            template literal, e uma crase aqui fecha a string e derruba o
            build com um erro que aponta pra outro lugar. */
-        .perfil-menu-trilho { position: absolute; z-index: 40; width: 230px;
-                              left: 60px; bottom: 12px; top: auto; right: auto; }
+        .perfil-topo { position: relative; display: flex; }
+        /* O menu desce do avatar, alinhado a' direita da tela. A referencia
+           do absolute e' a .perfil-topo, logo acima. */
+        .perfil-menu-topo { position: absolute; z-index: 40; width: 230px;
+                            top: calc(100% + 8px); right: 0; left: auto; bottom: auto; }
 
         .painel { width: 232px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border-soft);
                   display: flex; flex-direction: column; min-height: 0; padding: 12px 12px 0; }
@@ -21890,7 +21956,7 @@ export default function App() {
         .squad-cab-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .squad-cab-conta { font-size: 10px; color: var(--ink-3); }
 
-        .sidebar { width: 288px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
+        .sidebar { width: 288px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); height: calc(100vh - var(--altura-topo)); position: sticky; top: var(--altura-topo); display: flex; flex-direction: column; }
         .sidebar-scroll { flex: 1; padding: 6px 14px 16px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
         .nav-group-label { font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px; margin: 14px 0 8px; }
         .nav-group-label:first-child { margin-top: 0; }
@@ -22042,6 +22108,7 @@ export default function App() {
         .perfil-dados-nota { display: block !important; font-size: 10.5px; color: var(--ink-3); font-style: italic; margin-top: 5px; line-height: 1.35; text-align: left; }
         .perfil-tirar-foto { display: flex !important; align-items: center; gap: 5px; background: none; border: none; padding: 5px 0 0; font-family: inherit; font-size: 11px; color: var(--red); cursor: pointer; }
         .perfil-sair { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; padding: 8px 9px; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+        .perfil-tema { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
         .perfil-sair:hover { background: var(--red-bg); color: var(--red); }
 
         .profile:hover { background: var(--panel); }
@@ -24388,7 +24455,7 @@ export default function App() {
         .dim { color: var(--text-mute); }
 
         /* ---------- Topo (AppTopHeader) ---------- */
-        .topbar { height: 59px; padding: 0 20px; gap: 16px; background: var(--surface-1); border-bottom: 1px solid var(--line-1); }
+        .topbar { height: var(--altura-topo); padding: 0 20px; gap: 16px; background: var(--surface-1); border-bottom: 1px solid var(--line-1); }
         .topbar-brand { gap: 12px; padding: 6px 8px; margin-left: -8px; border-radius: 10px; color: var(--text); }
         .topbar-brand:hover { background: var(--hover); }
         .brand-produto { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--text-mute); padding-left: 12px; border-left: 1px solid var(--line-2); white-space: nowrap; }
@@ -24868,7 +24935,7 @@ export default function App() {
 
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
-      <TopBar
+      <TopBar usuario={usuario} equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
         onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} />
       <div className="body-layout">
         <Sidebar obras={obrasAtivas} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
@@ -24880,7 +24947,17 @@ export default function App() {
 
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
-        <main className={`main ${modulo === "inicio" || ["executivo", "vendido_planilha"].includes(tab) ? "larga" : ""}`}>
+        <main className={modulo === "inicio" ? "flex min-w-0 flex-1 flex-col" : `main ${["executivo", "vendido_planilha"].includes(tab) ? "larga" : ""}`}>
+          {/* OS AVISOS FICAM FORA DO PADDING DA PAGINA, no Inicio.
+
+             O PageShell do ws-ui usa margem negativa pra cancelar o padding
+             do <main> e encostar o cabecalho nas bordas — e isso so' da'
+             certo se ele for o UNICO filho do padding. Com os avisos antes
+             dele, o -my-8 puxava o cabecalho 32px pra cima, por cima do
+             aviso do Monday (relato de 21/09/2026). No Inicio, entao, os
+             avisos tem padding proprio e a pagina tem o dela; nas outras
+             telas `contents` deixa tudo como sempre foi. */}
+          <div className={modulo === "inicio" ? "px-4 pt-4 md:px-8 md:pt-6 empty:hidden" : "contents"}>
           {/* O portao de perfil esta DESLIGADO ate a coluna existir. Dizer
           isso e' o que impede a janela virar um estado permanente que
           ninguem lembra de fechar. */}
@@ -24899,25 +24976,26 @@ export default function App() {
               <button className="aviso-x" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></button>
             </div>
           )}
+          </div>
           {/* Enquanto nao se sabe quem entrou, nenhuma tela: sem isto a
               Mehoo via o Inicio piscar antes de cair no painel dela. */}
           {supabaseConfigurado && pessoasCarregando && !migracaoPendente ? (
             <div className="empty-note">Carregando…</div>
           ) : modulo === "inicio" ? (
-          <>
+          <div className="flex min-h-0 flex-1 flex-col px-4 py-6 md:p-8">
           {/* Sem titulo aqui. "GESTAO DE OBRAS TKWS" ja esta no topo da
               pagina, "Inicio" ja esta marcado no menu, e a linha de baixo
               descrevia o que a propria tela mostra logo abaixo. Tres
               linhas pra dizer onde a pessoa esta quando ela ja sabe —
               elas empurravam pra baixo o unico conteudo que importa. */}
-          <InicioView obras={obrasDoPainel} novas={obrasNovas} carregando={loading || !registroCarregado || painelCarregando}
+          <InicioView memory={dashboardMemory} obras={obrasDoPainel} novas={obrasNovas} carregando={loading || !registroCarregado || painelCarregando}
             erro={painelErro || erroBanco || avisoMonday} onRetry={() => { if (erroBanco || avisoMonday) window.location.reload(); else setPainelRevisao((value) => value + 1); }}
             usuario={usuario} equipe={pessoas} nPendentes={nPendentes}
             dadosLocalizacao={dadosLocalizacao} localizacaoCarregando={siengeCarregando}
             onToggleLocalizacao={alternarStatusLocalizacao}
             onAbrirObra={(id, destino = null) => { setSelectedId(id); setModulo("comparativo"); setGrupo(destino ? grupoDaEtapa(destino) : "dashboard"); setTab(destino); }}
             onModulo={setModulo} />
-          </>
+          </div>
           ) : modulo === "novas" ? (
           <>
           <div className="eyebrow">DO MONDAY · {obrasNovas.length}</div>

@@ -3232,13 +3232,6 @@
     {
       "regra": "DS-07",
       "arquivo": "web/src/App.jsx",
-      "linha": 10047,
-      "trecho": "<button ref={perfilRef} className={`trilho-perfil ${menuPerfil ? \"aberto\" : \"\"}`}",
-      "impressao": "af8874706ae7d95e"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/App.jsx",
       "linha": 10060,
       "trecho": "<button className=\"perfil-foto\" disabled={subindoFoto || !onTrocarFoto}",
       "impressao": "ef2789a516f02b4c"
@@ -6135,20 +6128,6 @@
       "impressao": "94f9a879528b48e9#4"
     },
     {
-      "regra": "DS-07",
-      "arquivo": "web/src/marca.jsx",
-      "linha": 66,
-      "trecho": "<button type=\"button\" className={tema === \"light\" ? \"on\" : \"\"} aria-pressed={tema === \"light\"}",
-      "impressao": "c1a0ea90eb764aa3"
-    },
-    {
-      "regra": "DS-07",
-      "arquivo": "web/src/marca.jsx",
-      "linha": 68,
-      "trecho": "<button type=\"button\" className={tema === \"dark\" ? \"on\" : \"\"} aria-pressed={tema === \"dark\"}",
-      "impressao": "13b0f2b6f7add860"
-    },
-    {
       "regra": "DS-10",
       "arquivo": "web/src/App.jsx",
       "linha": 3980,
@@ -6371,13 +6350,6 @@
       "linha": 68,
       "trecho": "`getSession` só lê o localStorage; quem pergunta ao servidor é",
       "impressao": "6084d7d62c7a87df"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/marca.jsx",
-      "linha": 56,
-      "trecho": "try { localStorage.setItem(CHAVE_TEMA, novo); } catch { /* navegador sem storage */ }",
-      "impressao": "f38365006001ac21"
     },
     {
       "regra": "SQL-02",

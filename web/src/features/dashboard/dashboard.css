@@ -1,0 +1,7 @@
+/* Gera apenas os utilitários usados pelo dashboard; tokens e componentes
+   continuam fornecidos pelo pacote oficial. Sem um segundo reset global. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "@group-ws/ws-ui/styles/theme.css";
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "./DashboardPage.jsx";
+@source "../../App.jsx";

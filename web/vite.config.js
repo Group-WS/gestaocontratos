@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 // Build normal (`npm run build`) gera arquivos separados (JS/CSS com
@@ -10,7 +11,7 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 const standalone = process.env.STANDALONE === "1";
 
 export default defineConfig({
-  plugins: [react(), ...(standalone ? [viteSingleFile()] : [])],
+  plugins: [react(), tailwindcss(), ...(standalone ? [viteSingleFile()] : [])],
   server: {
     port: 5173,
     // Aceita qualquer host (necessário pra acessar via link de túnel,

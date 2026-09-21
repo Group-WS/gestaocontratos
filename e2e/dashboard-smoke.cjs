@@ -1,0 +1,61 @@
+const { chromium } = require('playwright');
+const { build } = require('../web/node_modules/esbuild');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const root = path.resolve(__dirname, '..');
+const output = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-smoke-'));
+const assert = require('node:assert/strict');
+(async()=>{
+await build({ entryPoints: [path.join(__dirname, 'fixtures/dashboard.jsx')], bundle: true,
+  outfile: path.join(output, 'bundle.js'), format: 'iife',
+  nodePaths: [path.join(root, 'web/node_modules')], define: { 'process.env.NODE_ENV': '"development"' } });
+const assets = path.join(root, 'web/dist/assets');
+const css = fs.readdirSync(assets).find((name) => /^index-.*\.css$/.test(name));
+assert.ok(css, 'Execute npm --prefix web run build antes do teste visual.');
+fs.copyFileSync(path.join(assets, css), path.join(output, 'bundle.css'));
+fs.writeFileSync(path.join(output, 'index.html'), '<!doctype html><html lang="pt-BR" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="bundle.css"></head><body><main class="flex min-w-0 flex-1 flex-col px-4 py-6 md:p-8"><div id="root"></div></main><script src="bundle.js"></script></body></html>');
+const browser = await chromium.launch({headless:true});
+try {
+const page = await browser.newPage({viewport:{width:1600,height:1000}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto('file://' + path.join(output, 'index.html'));
+await page.getByRole('heading',{name:'Visão geral das obras'}).waitFor();
+await page.screenshot({path:path.join(output, 'desktop.png'),fullPage:true});
+assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),7);
+assert.deepEqual(await page.getByLabel('Indicadores das obras').getByRole('button').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-label'))), ['Ver obras ativas','Ver entregas em até 90 dias','Ver valor pendente de compra','Ver pendências críticas']);
+assert.equal(await page.getByRole('table',{name:'Prioridades de hoje',exact:true}).locator('tbody tr').count(),4);
+assert.equal(await page.getByRole('table',{name:'Prioridades de hoje',exact:true}).locator('tbody tr').first().locator('td').count(),6);
+assert.equal(await page.getByRole('button',{name:/Abrir entrega de/}).count(),4);
+await page.getByRole('button',{name:/Abrir entrega de/}).first().click();assert.equal(await page.evaluate(()=>window.lastAction),'open-0');
+await page.getByLabel('Buscar obra',{exact:true}).fill('sixteen');
+await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').nth(1).waitFor({state:'detached'});assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),1);
+await page.getByRole('button',{name:'Ver detalhes',exact:true}).click();assert.equal(await page.evaluate(()=>window.lastAction),'open-2');
+await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
+await page.getByRole('combobox',{name:'Squad',exact:true}).click();await page.getByRole('option',{name:'Sun',exact:true}).click();
+assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),3);
+await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
+await page.getByRole('combobox',{name:'Unidade',exact:true}).click();await page.getByRole('option',{name:'São Paulo',exact:true}).click();
+assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),3);
+await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
+await page.getByRole('combobox',{name:'GC',exact:true}).click();await page.getByRole('option',{name:'Ana',exact:true}).click();
+assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),4);
+await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
+await page.getByRole('combobox',{name:'Ordenar por',exact:true}).click();await page.getByRole('option',{name:'Nome da obra',exact:true}).click();
+assert.match(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').first().innerText(),/Casa das Flores/);
+await page.getByRole('combobox',{name:'Ordenar por',exact:true}).click();await page.getByRole('option',{name:'Maior risco',exact:true}).click();
+await page.getByRole('button',{name:'Resolver',exact:true}).first().click();assert.equal(await page.evaluate(()=>window.lastAction),'resolve-0');
+await page.getByRole('button',{name:'Ver valor pendente de compra',exact:true}).click();assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),4);
+await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();
+assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'desktop overflow');
+await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));
+await page.screenshot({path:path.join(output,'dark.png'),fullPage:true});
+await page.evaluate(()=>document.documentElement.setAttribute('data-theme','light'));
+await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(output, 'mobile.png'),fullPage:true});
+assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'mobile overflow');
+await page.evaluate(()=>window.renderDashboard({rows:[]}));await page.getByText('Nenhuma obra ativa no momento.').waitFor();
+await page.evaluate(()=>window.renderDashboard({error:true}));await page.getByRole('table',{name:'Obras ativas',exact:true}).waitFor();await page.getByRole('button',{name:'Tentar novamente'}).click();assert.equal(await page.evaluate(()=>window.lastAction),'retry');
+await page.evaluate(()=>window.renderDashboard({loading:true}));await page.getByText('Carregando as obras…').waitFor();
+assert.deepEqual(errors,[]);console.log('Capturas: ' + output);console.log('Dashboard: filtros, navegação, pendências, vazio, erro, carregamento e mobile aprovados.');
+} finally {await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1});

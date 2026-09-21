@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 
 /* A marca oficial do Group WS — o mesmo desenho do GroupWsLogo do design
    system. Tudo em currentColor: herda a cor do texto e funciona nos dois
@@ -42,31 +42,3 @@ export function LogoGroupWS({ variante = "completa", className, style, titulo = 
   );
 }
 
-/* A mesma chave que o script do index.html lê antes da primeira pintura. */
-export const CHAVE_TEMA = "ws-tema";
-
-function temaDoDocumento() {
-  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
-}
-
-export function useTema() {
-  const [tema, setTemaLocal] = useState(temaDoDocumento);
-  function setTema(novo) {
-    document.documentElement.setAttribute("data-theme", novo);
-    try { localStorage.setItem(CHAVE_TEMA, novo); } catch { /* navegador sem storage */ }
-    setTemaLocal(novo);
-  }
-  return [tema, setTema];
-}
-
-export function AlternarTema({ className = "" }) {
-  const [tema, setTema] = useTema();
-  return (
-    <div className={`tema-toggle ${className}`} role="group" aria-label="Tema">
-      <button type="button" className={tema === "light" ? "on" : ""} aria-pressed={tema === "light"}
-        onClick={() => setTema("light")}>Claro</button>
-      <button type="button" className={tema === "dark" ? "on" : ""} aria-pressed={tema === "dark"}
-        onClick={() => setTema("dark")}>Escuro</button>
-    </div>
-  );
-}

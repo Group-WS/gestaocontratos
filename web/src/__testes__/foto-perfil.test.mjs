@@ -43,11 +43,18 @@ const conf = (nome, obtido, esperado = true) => {
   console.log(`${ok ? "ok  " : "FALHOU"} ${nome.padEnd(56)} ${ok ? "" : `${obtido} (esperava ${esperado})`}`);
 };
 
-console.log("=== 1. O MENU FLUTUA, NÃO OCUPA COLUNA ===");
-conf("a variante do trilho declara position", /\.perfil-menu-trilho \{ position: absolute;/.test(app));
-conf("... com z-index acima do conteúdo", /\.perfil-menu-trilho \{[^}]*z-index: 40/.test(app));
-conf("... e largura própria", /\.perfil-menu-trilho \{[^}]*width: 230px/.test(app));
-conf("a .barra segue sticky, que é a referência", app.includes(".barra { display: flex; flex-shrink: 0; height: calc(100vh - 64px); position: sticky;"));
+console.log("=== 1. O MENU FLUTUA, NÃO OCUPA ESPAÇO ===");
+/* Desde 21/09 o menu mora no TOPO (antes: no pé do trilho). A regra é a
+   mesma nos dois lugares: sem position ele vira item flex do pai e empurra
+   o vizinho — no trilho era a lista de obras, no topo seria o sino. */
+conf("o menu do topo declara position", /\.perfil-menu-topo \{ position: absolute;/.test(app));
+conf("... com z-index acima do conteúdo", /\.perfil-menu-topo \{[^}]*z-index: 40/.test(app));
+conf("... e largura própria", /\.perfil-menu-topo \{[^}]*width: 230px/.test(app));
+conf("... ancorado no avatar", /\.perfil-topo \{ position: relative;/.test(app));
+/* O que importa e' a .barra ser sticky — e' ela a referencia do menu
+   absoluto. A altura dela nao: ja' foi 64px fixos e hoje le a variavel do
+   topo, e cobrar a linha inteira quebrava o teste a cada ajuste de medida. */
+conf("a .barra segue sticky, que é a referência", /\.barra \{[^}]*position: sticky/.test(app));
 // a regra que TINHA position mirava uma classe que nao existe mais
 conf("a regra morta .sidebar.recolhida saiu", app.includes(".sidebar.recolhida .perfil-menu {"), false);
 
@@ -63,13 +70,13 @@ conf("a fórmula de duas letras da Equipe saiu", app.includes('.slice(0, 2).toUp
 conf("o componente existe", app.includes("function Avatar({ pessoa, nome, classe"));
 conf("... e cai nas iniciais quando não há foto", /if \(url\) \{[\s\S]{0,400}return <div className=\{classe\}[^>]*>\{vazio \?\? iniciaisDe\(quem\)\}/.test(app));
 // os pontos que antes calculavam iniciais sozinhos
-conf("trilho usa o componente", app.includes('<Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />'));
-/* O TOPO NÃO TEM MAIS AVATAR. Pedido dela em 20/09/2026, olhando a tela:
-   "esse avatar aqui em cima pode retirar, já tem lá embaixo". Aquele era só a
-   foto — não abria nada; o do pé do trilho é o que tem o menu de perfil. Duas
-   fotos iguais na mesma tela fazem quem olha procurar a diferença entre elas,
-   e a única diferença era que uma funcionava e a outra não. */
-conf("o topo não repete a foto", /<div className="topbar-right">[\s\S]{0,900}<Avatar/.test(app), false);
+conf("o topo usa o componente", bloco("function MenuPerfil(").includes('<Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />'));
+/* UM AVATAR SÓ — e ele mora no TOPO.
+   20/09: o do topo saiu porque eram dois, e só o do trilho tinha menu.
+   21/09: o do trilho foi pro topo, com o menu, que é onde o App Shell do DS
+   põe o usuário. O que não pode voltar é haver dois. */
+conf("o avatar mora no topo", bloco("function TopBar(").includes("<MenuPerfil "));
+conf("... e o trilho não repete", bloco("function Sidebar(").includes("<Avatar"), false);
 conf("equipe da obra usa", app.includes("classe={`equipe-avatar ${valor ? \"\" : \"vazio\"}`}"));
 conf("tela Equipe usa", app.includes("classe={`eq-avatar ${estaOnline(p) ? \"online\" : \"\"}`}"));
 conf("a foto é recortada, nunca esticada", app.includes(".avatar-foto { object-fit: cover;"));
@@ -224,7 +231,14 @@ console.log("\n=== 12. O MENU SAI DE CENA ===");
    DENTRO dele seria "fora" do menu — o menu fecharia e levaria o
    recortador junto se ele morasse lá dentro. */
 conf("escolher a foto fecha o menu", /setMenuPerfil\(false\);\s*\n\s*setFotoEscolhida\(file\);/.test(app));
-conf("o recortador mora na barra, fora do menu", app.includes("{fotoEscolhida && (\n        <RecortadorFoto file={fotoEscolhida}"));
+/* Irmão do menu, não filho: mesma indentação do {menuPerfil && (. Cobrar
+   a coluna exata quebrava a cada mudança de lugar do componente. */
+{
+  const perfil = bloco("function MenuPerfil(");
+  const recuo = (marca) => { const m = perfil.match(new RegExp("\\n( *)" + marca)); return m ? m[1].length : -1; };
+  conf("o recortador é irmão do menu, não filho",
+    recuo("\\{menuPerfil && \\(") > 0 && recuo("\\{menuPerfil && \\(") === recuo("\\{fotoEscolhida && \\("));
+}
 conf("cancelar devolve o menu", app.includes("onCancelar={() => { setFotoEscolhida(null); setMenuPerfil(true); }}"));
 conf("e o erro também, pra ser lido", /setErroFoto\(err\.message\);\s*\n\s*setMenuPerfil\(true\);/.test(app));
 
