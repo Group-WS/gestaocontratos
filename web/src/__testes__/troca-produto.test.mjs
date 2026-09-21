@@ -83,7 +83,7 @@ const linhaCompra = src.slice(src.indexOf("function LinhaCompra("), src.indexOf(
 conf("a linha nova mostra qtd × valor unitário", /\{qtdFmt\} \{it\.un\} × \{fmtBRL\(it\.custoMaterial/.test(linhaCompra), true);
 conf("a riscada mostra como era", linhaCompra.includes("antes: {qtdFmt} {it.un} ×"), true);
 conf("fora da etapa Sienge dá pra marcar solicitado", linhaCompra.includes('!noSienge && it.canalCompra === "sienge"'), true);
-conf("a riscada mostra 'trocado' no lugar dos status", /<td colSpan=\{nCols - 5\}[\s\S]{0,200}troca-pill[\s\S]{0,300}> trocado/.test(linhaCompra), true);
+conf("a riscada mostra 'trocado' no lugar dos status", /<TableCell colSpan=\{nCols - 5\}[\s\S]{0,200}<Badge[\s\S]{0,300}> trocado/.test(linhaCompra), true);
 
 /* ---- A BARRA DO GRUPO NAS COMPRAS (18/09/2026) ----
  *

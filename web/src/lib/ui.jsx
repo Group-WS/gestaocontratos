@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
-import { Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
 
 /* Breakpoint `lg` do Tailwind: acima dele a barra lateral fica fixa na
    tela; abaixo, ela abre num Sheet pelo botão de menu do topo. */
@@ -116,5 +116,24 @@ export function KpiBotao({ ativo, onClick, label, value, hint, tone = "neutral",
       className={`block h-auto w-full rounded-lg p-0 text-left font-normal whitespace-normal ${ativo ? "ring-2 ring-brand" : ""} ${className}`}>
       <KpiMini label={label} value={String(value)} hint={hint} tone={tone} className="w-full" />
     </Button>
+  );
+}
+
+/* Estado de um item (solicitado, comprado) com a acao que o muda logo
+   abaixo: o estado e' um Badge, que nunca e' clicavel; a acao e' um Button
+   pequeno ("solicitar" quando falta, "desfazer" quando ja' esta' feito).
+   Substitui o `.pill-btn`, que era selo e botao ao mesmo tempo. `disabled`
+   trava so' a acao (modo leitura, pre-requisito nao cumprido); o selo
+   continua contando o estado. */
+export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", acao, desfazer = "desfazer", disabled, onClick, title, tone = "success", className = "" }) {
+  return (
+    <div className={`inline-flex flex-col items-center gap-1 ${className}`}>
+      <Badge tone={feito ? tone : "neutral"} title={title}>
+        {feito && <Check size={12} />}{feito ? rotuloFeito : rotuloPendente}
+      </Badge>
+      <Button variant="ghost" size="sm" type="button" disabled={disabled} onClick={onClick} title={title}>
+        {feito ? desfazer : acao}
+      </Button>
+    </div>
   );
 }

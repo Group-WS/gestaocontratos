@@ -225,6 +225,14 @@
   .bg-surface-4 { background: var(--surface-4); }
   .bg-brand-soft { background: var(--brand-soft); }
 
+  /* Linha de tabela pintada pelo estado (tint = 7% sobre a superficie) e a
+     cor da observacao interna — tokens do app que o Tailwind do DS nao
+     conhece; aqui viram classe pra nenhuma tela escrever var() no JSX. */
+  .bg-brand-tint { background: var(--brand-tint); }
+  .bg-success-tint { background: var(--success-tint); }
+  .bg-warning-tint { background: var(--warning-tint); }
+  .text-obs { color: var(--obs); }
+
   .label-mono {
     font-family: var(--font-mono);
     font-size: 11px;

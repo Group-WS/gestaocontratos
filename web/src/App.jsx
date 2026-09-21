@@ -61,7 +61,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor, EstadoAcao } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -14274,6 +14274,7 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
   const [aprovador, setAprovador] = useState(() => (pessoas.some((p) => p.email === executivo) ? executivo : ""));
   const [motivo, setMotivo] = useState("");
   const [erro, setErro] = useState(null);
+  const id = React.useId();
   const qtdDe = (v) => Number(String(v).replace(/\./g, "").replace(",", ".")) || 0;
   const totalDe = (l) => Math.round(qtdDe(l.qtd) * (parseBRL(l.custo) ?? 0) * 100) / 100;
   const dif = linhas.reduce((a, l) => a + totalDe(l), 0) - (material || 0);
@@ -14292,45 +14293,61 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
   }
 
   return (
-    <div className="troca-form">
+    <div className="flex flex-col gap-4 text-sm">
       {linhas.map((l, i) => (
-        <div key={i} className="troca-grade">
-          <input className="form-input" value={l.desc} placeholder="produto novo" aria-label="Descrição do produto novo"
-            onChange={(e) => mudarLinha(i, "desc", e.target.value)} />
-          <input className="form-input" value={l.fornecedor} placeholder="fornecedor" aria-label="Fornecedor"
-            onChange={(e) => mudarLinha(i, "fornecedor", e.target.value)} />
-          <input className="form-input" value={l.qtd} placeholder="qtd." inputMode="decimal" aria-label="Quantidade"
-            onChange={(e) => mudarLinha(i, "qtd", e.target.value)} />
-          <input className="form-input" value={l.un} placeholder="un" aria-label="Unidade"
-            onChange={(e) => mudarLinha(i, "un", e.target.value)} />
-          <input className="form-input" value={l.custo} placeholder="custo unit." inputMode="decimal" aria-label="Custo unitário"
-            onChange={(e) => mudarLinha(i, "custo", e.target.value)} />
-          <span className="troca-total">{fmtBRL(totalDe(l))}</span>
-          {i > 0 ? (
-            <Button variant="ghost" size="icon" type="button" title="Tirar esta linha" aria-label="Tirar esta linha"
-              onClick={async () => { if (await confirmar("Tirar esta linha da troca?")) setLinhas((ls) => ls.filter((_, k) => k !== i)); }}><X size={11} /></Button>
-          ) : <span />}
+        <div key={i} className="grid grid-cols-2 gap-2 md:grid-cols-12">
+          <Field className="col-span-2 md:col-span-4">
+            <Label htmlFor={`${id}-desc-${i}`} required>Produto novo</Label>
+            <Input id={`${id}-desc-${i}`} value={l.desc} placeholder="produto novo" onChange={(e) => mudarLinha(i, "desc", e.target.value)} />
+          </Field>
+          <Field className="col-span-2 md:col-span-3">
+            <Label htmlFor={`${id}-forn-${i}`}>Fornecedor</Label>
+            <Input id={`${id}-forn-${i}`} value={l.fornecedor} placeholder="fornecedor" onChange={(e) => mudarLinha(i, "fornecedor", e.target.value)} />
+          </Field>
+          <Field className="md:col-span-1">
+            <Label htmlFor={`${id}-qtd-${i}`} required>Quantidade</Label>
+            <Input id={`${id}-qtd-${i}`} value={l.qtd} placeholder="qtd." inputMode="decimal" onChange={(e) => mudarLinha(i, "qtd", e.target.value)} />
+          </Field>
+          <Field className="md:col-span-1">
+            <Label htmlFor={`${id}-un-${i}`}>Unidade</Label>
+            <Input id={`${id}-un-${i}`} value={l.un} placeholder="un" onChange={(e) => mudarLinha(i, "un", e.target.value)} />
+          </Field>
+          <Field className="md:col-span-2">
+            <Label htmlFor={`${id}-custo-${i}`} required>Custo unitário</Label>
+            <Input id={`${id}-custo-${i}`} value={l.custo} placeholder="custo unit." inputMode="decimal" onChange={(e) => mudarLinha(i, "custo", e.target.value)} />
+          </Field>
+          <div className="flex flex-col gap-1 md:col-span-1">
+            <span className="label-mono">Total</span>
+            <div className="flex h-10 items-center justify-between gap-2 md:justify-end">
+              <span className="mono num-tabular text-sm text-text-soft">{fmtBRL(totalDe(l))}</span>
+              {i > 0 && (
+                <Button variant="ghost" size="icon" type="button" title="Tirar esta linha" aria-label="Tirar esta linha"
+                  onClick={async () => { if (await confirmar("Tirar esta linha da troca?")) setLinhas((ls) => ls.filter((_, k) => k !== i)); }}><X size={16} /></Button>
+              )}
+            </div>
+          </div>
         </div>
       ))}
-      <div className="troca-rodape">
-        <select className="form-input" value={aprovador} aria-label="Aprovado por"
-          onChange={(e) => { setErro(null); setAprovador(e.target.value); }}>
-          <option value="">aprovado por…</option>
-          {pessoas.map((p) => (
-            <option key={p.email} value={p.email}>{p.nome || p.email}{p.email === executivo ? " (executivo da obra)" : ""}</option>
-          ))}
-        </select>
-        <input className="form-input troca-motivo" value={motivo} placeholder="motivo (opcional)" aria-label="Motivo"
-          onChange={(e) => setMotivo(e.target.value)} />
-        <Button variant="ghost" size="sm" type="button" onClick={() => setLinhas((ls) => [...ls, nova()])}>+ outra linha</Button>
-        <span className="troca-dif">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Choice label="Aprovado por" required value={aprovador} placeholder="aprovado por…"
+          opcoes={pessoas.map((p) => ({ value: p.email, label: `${p.nome || p.email}${p.email === executivo ? " (executivo da obra)" : ""}` }))}
+          onChange={(v) => { setErro(null); setAprovador(v); }} />
+        <Field>
+          <Label htmlFor={`${id}-motivo`}>Motivo</Label>
+          <Input id={`${id}-motivo`} value={motivo} placeholder="motivo (opcional)" onChange={(e) => setMotivo(e.target.value)} />
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="ghost" size="sm" type="button" onClick={() => setLinhas((ls) => [...ls, nova()])}><Plus size={16} /> outra linha</Button>
+        <span className="text-xs text-text-mute">
           {Math.abs(dif) < 0.005 ? "mesmo custo do original" : `${dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(dif))} em relação ao original`}
         </span>
-        <span className="troca-espaco" />
-        <Button variant="outline" type="button" onClick={registrar}>registrar troca</Button>
-        <Button variant="outline" type="button" onClick={onFechar}>cancelar</Button>
       </div>
-      {erro && <div className="troca-erro">{erro}</div>}
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button variant="outline" type="button" onClick={onFechar}>Cancelar</Button>
+        <Button type="button" onClick={registrar}>Registrar troca</Button>
+      </div>
     </div>
   );
 }
@@ -14347,17 +14364,20 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
  * QUALQUER pessoa escreve, inclusive em modo leitura (decisao dela): exigir a
  * trava de edicao pra deixar um recado mataria o uso.
  *
- * Cor propria, nem laranja nem verde nem vermelho: no app essas tres ja'
- * significam estado do item (conferir, concluido, erro). Recado e' recado.
+ * Cor propria (`text-obs`), nem laranja nem verde nem vermelho: no app essas
+ * tres ja' significam estado do item (conferir, concluido, erro). Recado e'
+ * recado.
  *
  * `ondeFica` muda so' o tamanho e o espacamento — na verba a observacao fica
- * embaixo do nome; no item, na propria linha.
+ * embaixo do nome; no item, na propria linha. Enter salva (Shift+Enter quebra
+ * a linha), como o campo de uma linha que havia antes.
  */
 function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = false, ondeFica = "verba", semTabela = false }) {
   const [escrevendo, setEscrevendo] = useState(false);
   const [texto, setTexto] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
+  const idTexto = React.useId();
 
   async function salvar(e) {
     e.preventDefault(); e.stopPropagation();
@@ -14380,42 +14400,48 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
   if (semTabela && !lista.length) return null;
 
   return (
-    <div className={`obs obs-${ondeFica}`} onClick={(e) => e.stopPropagation()}>
+    <div className={cn("flex flex-col gap-1", ondeFica === "verba" ? "px-4 pb-3 pl-10" : "mt-1")} onClick={(e) => e.stopPropagation()}>
       {lista.map((c) => (
-        <div key={c.id} className="obs-linha">
-          <MessageSquare size={10} className="obs-icone" />
-          <span className="obs-texto"><b>{nomeDoEmail(c.autor)}</b> · {c.texto}</span>
-          <span className="obs-quando">{quando(c.criado_em)}</span>
+        <div key={c.id} className="flex items-center gap-1 text-xs text-obs">
+          <MessageSquare size={12} className="shrink-0 opacity-75" />
+          <span className="min-w-0"><b>{nomeDoEmail(c.autor)}</b> · {c.texto}</span>
+          <span className="num-tabular shrink-0 opacity-70">{quando(c.criado_em)}</span>
           {/* Apagar aparece pra quem pode — o banco confere de novo na
               politica de delete, entao a tela nao e' a unica barreira. */}
           {(meu(c) || souAdmin) && onApagar && (
-            <Button variant="ghost" size="icon" className="text-danger" type="button" title="Apagar esta observação interna"
-              onClick={() => onApagar(c.id)} aria-label="Apagar esta observação interna"><X size={9} /></Button>
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-danger" type="button" title="Apagar esta observação interna"
+              onClick={() => onApagar(c.id)} aria-label="Apagar esta observação interna"><X size={12} /></Button>
           )}
         </div>
       ))}
 
       {escrevendo ? (
-        <form className="obs-form" onSubmit={salvar}>
-          <input autoFocus value={texto} onChange={(e) => setTexto(e.target.value)}
-            placeholder={ondeFica === "item" ? "Ex.: conferir o tapetinho das gavetas" : "Ex.: falta comprar o divisor de talher"}
-            maxLength={280} />
-          <Button type="submit" disabled={!texto.trim() || salvando}>
-            {salvando ? "salvando…" : "salvar"}
-          </Button>
-          <Button variant="outline" type="button" onClick={() => { setEscrevendo(false); setTexto(""); setErro(null); }}>
-            cancelar
-          </Button>
+        <form className="flex flex-col gap-2" onSubmit={salvar}>
+          <Field>
+            <Label htmlFor={idTexto}>Observação interna</Label>
+            <Textarea id={idTexto} autoFocus rows={2} value={texto} onChange={(e) => setTexto(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) salvar(e); }}
+              placeholder={ondeFica === "item" ? "Ex.: conferir o tapetinho das gavetas" : "Ex.: falta comprar o divisor de talher"}
+              maxLength={280} />
+          </Field>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" size="sm" type="button" onClick={() => { setEscrevendo(false); setTexto(""); setErro(null); }}>
+              Cancelar
+            </Button>
+            <Button size="sm" type="submit" disabled={!texto.trim() || salvando}>
+              {salvando ? "Salvando…" : "Salvar observação interna"}
+            </Button>
+          </div>
         </form>
       ) : (
         onAdicionar && (
-          <Button variant="ghost" size="sm" type="button" onClick={() => setEscrevendo(true)}
+          <Button variant="ghost" size="sm" type="button" className="self-start" onClick={() => setEscrevendo(true)}
             title={ondeFica === "item" ? "Deixar uma observação interna neste produto" : "Deixar uma observação interna nesta verba"}>
             <Plus size={10} /> observação interna
           </Button>
         )
       )}
-      {erro && <div className="obs-erro">{erro}</div>}
+      {erro && <FieldHint state="error">{erro}</FieldHint>}
     </div>
   );
 }
@@ -14430,66 +14456,70 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
   // Quantidade e valor unitário, pras linhas da troca (pedido de 15/09/2026).
   const qtdLinha = Number(it.qtdExecutivo ?? it.qtdVendida ?? 0) || 0;
   const qtdFmt = qtdLinha.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  const tituloSolicitado = !podeEditar ? `${estaSolicitado(it) ? quando("Solicitado", it.solicitadoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
+    : it.comprado ? "Já comprado: desmarque o comprado antes de mexer na solicitação"
+    : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
+    : "Marcar como solicitado no Sienge";
+  const alternarSolicitado = () => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() });
 
   // O produto que foi trocado: riscado, em cinza, sem ação nenhuma.
   if (it.troca) {
     const t = it.troca;
     return (
-      <tr className="row-trocado">
-        <td />
-        <td className="mono dim">{codigoVisivel(it)}</td>
-        <td>
-          <div className="item-desc">{it.desc}</div>
+      <TableRow className="text-text-mute">
+        <TableCell />
+        <TableCell className="mono">{codigoVisivel(it)}</TableCell>
+        <TableCell>
+          <div className="line-through">{it.desc}</div>
           {troca?.novas?.length > 0 && (
-            <div className="troca-meta troca-por">trocado por {troca.novas.join(" + ")}</div>
+            <div className="mt-1 text-xs text-text-soft">trocado por {troca.novas.join(" + ")}</div>
           )}
           {qtdLinha > 0 && (
-            <div className="troca-meta">antes: {qtdFmt} {it.un} × {fmtBRL((row.materialOriginal || 0) / qtdLinha)}</div>
+            <div className="mt-1 text-xs">antes: {qtdFmt} {it.un} × {fmtBRL((row.materialOriginal || 0) / qtdLinha)}</div>
           )}
-          <div className="troca-meta">
+          <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
             em {new Date(t.em).toLocaleDateString("pt-BR")}
             {t.aprovadoPor?.nome ? ` · aprovado por ${t.aprovadoPor.nome}` : ""}{t.motivo ? ` · ${t.motivo}` : ""}
             {podeEditar && onDesfazerTroca && (
               <Button variant="ghost" size="sm" type="button" onClick={onDesfazerTroca}>desfazer</Button>
             )}
           </div>
-        </td>
-        <td className="mono center"><s>{it.qtdExecutivo ?? it.qtdVendida ?? "—"} {it.un}</s></td>
-        <td className="mono right"><s>{fmtBRL(row.materialOriginal || 0)}</s></td>
+        </TableCell>
+        <TableCell className="mono text-center"><s>{it.qtdExecutivo ?? it.qtdVendida ?? "—"} {it.un}</s></TableCell>
+        <TableCell className="mono text-right"><s>{fmtBRL(row.materialOriginal || 0)}</s></TableCell>
         {/* No lugar dos status, a troca: em branco parecia linha esquecida (15/09/2026). */}
-        <td colSpan={nCols - 5} className="center">
-          <span className="pill troca-pill" title={troca?.novas?.length ? `Trocado por ${troca.novas.join(" + ")}` : "Trocado"}>
+        <TableCell colSpan={nCols - 5} className="text-center">
+          <Badge tone="outline" title={troca?.novas?.length ? `Trocado por ${troca.novas.join(" + ")}` : "Trocado"}>
             <ArrowLeftRight size={10} /> trocado
-          </span>
-        </td>
-      </tr>
+          </Badge>
+        </TableCell>
+      </TableRow>
     );
   }
 
   return (
     <>
-    <tr className={selecionado ? "linha-sel" : it.comprado ? "row-comprado" : "row-falta"}>
-      <td className="center">
-        <Button variant="ghost" size="sm" className="mo-check-tab" onClick={onSelecionar} aria-label="Selecionar produto">
-          {selecionado && <Check size={13} />}
-        </Button>
-      </td>
-      <td className="mono dim">{codigoVisivel(it)}</td>
-      <td>
-        <div className="item-desc">{it.desc}</div>
-        {it.aditivo && (
-          <span className="tag-aditivo" title={it.descCompleta ? `Texto do cliente: ${it.descCompleta}` : undefined}>
-            <FileText size={9} /> aditivo {it.aditivo}
-          </span>
-        )}
-        {it.ambiente && <span className="dim" style={{ fontSize: 10.5 }}>{it.ambiente}</span>}
+    <TableRow className={selecionado ? "bg-brand-tint" : it.comprado ? "bg-success-tint" : "bg-warning-tint"}>
+      <TableCell className="text-center">
+        <Checkbox checked={!!selecionado} onCheckedChange={onSelecionar} aria-label="Selecionar produto" />
+      </TableCell>
+      <TableCell className="mono text-text-mute">{codigoVisivel(it)}</TableCell>
+      <TableCell>
+        <div className="text-text-strong">{it.desc}</div>
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          {it.aditivo && (
+            <Badge tone="purple" title={it.descCompleta ? `Texto do cliente: ${it.descCompleta}` : undefined}>
+              <FileText size={10} /> aditivo {it.aditivo}
+            </Badge>
+          )}
+          {it.ambiente && <span className="text-xs text-text-mute">{it.ambiente}</span>}
           {/* Quem vende. Na planilha do Executivo a coluna se chama
               Fornecedor e vira `marca` no item; importado de PDF ela vem vazia. */}
-          <span className={`cmp-forn ${it.marca ? "" : "vazio"}`} title={it.marca || undefined}>
-            {it.marca ? `Fornecedor: ${nomeDoFornecedor(it)}` : "sem fornecedor"}
-          </span>
+          {it.marca
+            ? <Badge tone="neutral" title={it.marca}>Fornecedor: {nomeDoFornecedor(it)}</Badge>
+            : <span className="text-xs italic text-text-mute">sem fornecedor</span>}
           {troca?.tipo === "nova" && (
-            <span className="troca-tag">
+            <span className="inline-flex items-center gap-1 text-xs text-text-mute">
               troca de {troca.de}{troca.dif != null && Math.abs(troca.dif) >= 0.005
                 ? ` · ${troca.dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(troca.dif))}` : ""}
               {podeEditar && !it.comprado && onDesfazerTroca && (
@@ -14497,100 +14527,87 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               )}
             </span>
           )}
-          {troca?.tipo === "nova" && (
-            <div className="troca-meta">
-              {qtdFmt} {it.un} × {fmtBRL(it.custoMaterial ?? (qtdLinha > 0 ? material / qtdLinha : 0))}
-            </div>
-          )}
           {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
             <Button variant="ghost" size="sm" type="button" onClick={onAbrirTroca} title="Trocar por outro produto (aprovado com o executivo da obra)">
               <ArrowLeftRight size={10} /> trocar
             </Button>
           )}
+        </div>
+        {troca?.tipo === "nova" && (
+          <div className="mt-1 text-xs text-text-mute">
+            {qtdFmt} {it.un} × {fmtBRL(it.custoMaterial ?? (qtdLinha > 0 ? material / qtdLinha : 0))}
+          </div>
+        )}
         {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
             "Cuba de apoio" e todas as cubas de apoio que existem. */}
-        {it.especificacao && <div className="det-espec">{it.especificacao}</div>}
+        {it.especificacao && <div className="mt-1 text-xs text-text-soft">{it.especificacao}</div>}
         {/* A OBSERVACAO DO PRODUTO, na propria linha — e' aqui que quem vai
             comprar esta' olhando. */}
         <Observacoes lista={obs} semTabela={obsSemTabela} usuario={usuario} souAdmin={souAdmin}
           ondeFica="item" onAdicionar={onAdicionarObs} onApagar={onApagarObs} />
-      </td>
-      <td className="mono center">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="unit">{it.un}</span></td>
-      <td className="mono right">{fmtBRL(material)}</td>
+      </TableCell>
+      <TableCell className="mono text-center">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{it.un}</span></TableCell>
+      <TableCell className="mono text-right">{fmtBRL(material)}</TableCell>
       {!noSienge && (
-        <td className="center">
-          {it.canalCompra ? <TagCanal id={it.canalCompra} comNome /> : <span className="pill pill-wait">—</span>}
-        </td>
+        <TableCell className="text-center">
+          {it.canalCompra ? <TagCanal id={it.canalCompra} comNome /> : <span className="text-text-mute">—</span>}
+        </TableCell>
       )}
       {noSienge && (
-        <td className="center">
-          <Button variant="ghost" size="sm" className={`pill pill-btn ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
+        <TableCell className="text-center">
+          <EstadoAcao feito={estaSolicitado(it)} rotuloFeito="solicitado" acao="solicitar"
             disabled={!podeEditar || !podeMudarSolicitado(it)}
-            onClick={() => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() })}
-            title={!podeEditar ? `${estaSolicitado(it) ? quando("Solicitado", it.solicitadoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
-              : it.comprado ? "Já comprado: desmarque o comprado antes de mexer na solicitação"
-              : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
-              : "Marcar como solicitado no Sienge"}>
-            {estaSolicitado(it) ? <><Check size={11} /> solicitado</> : "pendente"}
-          </Button>
-        </td>
+            onClick={alternarSolicitado} title={tituloSolicitado} />
+        </TableCell>
       )}
-      <td className="center">
+      <TableCell className="text-center">
         {/* Sem canal nao ha o que concluir: concluir o que ninguem sabe
             por onde vai comprar seria marcar comprado no escuro. */}
-        {!it.canalCompra ? <span className="dim">—</span> : (
-          <div className="status-par">
+        {!it.canalCompra ? <span className="text-text-mute">—</span> : (
+          <div className="inline-flex flex-col items-center gap-1">
           {/* Fora da etapa Sienge, o item do Sienge também se marca solicitado
               aqui, em cima do comprado: na etapa Tudo ele travava sem saída
               (pedido de 15/09/2026). A regra é a mesma: primeiro solicitado,
               depois comprado. */}
           {!noSienge && it.canalCompra === "sienge" && (
-            <Button variant="ghost" size="sm" className={`pill pill-btn pill-mini ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
+            <EstadoAcao feito={estaSolicitado(it)} rotuloFeito="solicitado" rotuloPendente="não solicitado" acao="solicitar"
               disabled={!podeEditar || !podeMudarSolicitado(it)}
-              onClick={() => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() })}
-              title={!podeEditar ? `${estaSolicitado(it) ? quando("Solicitado", it.solicitadoEm) : "Não solicitado"} — ${MODO_LEITURA_DICA}`
-                : it.comprado ? "Já comprado: desmarque o comprado antes de mexer na solicitação"
-                : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
-                : "Marcar como solicitado no Sienge"}>
-              {estaSolicitado(it) ? <><Check size={10} /> solicitado</> : "solicitar"}
-            </Button>
+              onClick={alternarSolicitado} title={tituloSolicitado} />
           )}
-          <Button variant="ghost" size="sm" className={`pill pill-btn ${it.comprado ? "pill-ok" : "pill-wait"}`}
+          <EstadoAcao feito={!!it.comprado} rotuloFeito="comprado" acao="marcar comprado"
             disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}
             onClick={() => onItemChange({ comprado: !it.comprado, compradoEm: it.comprado ? null : new Date().toISOString() })}
             title={!podeEditar ? `${it.comprado ? quando("Comprado", it.compradoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
               : it.comprado ? `${quando("Comprado", it.compradoEm)} — clique pra desfazer`
               : podeMarcarComprado(it) ? "Marcar como comprado — entra no total do Dashboard"
-                : "Marque como solicitado antes de comprado"}>
-            {it.comprado ? <><Check size={11} /> comprado</> : "pendente"}
-          </Button>
+                : "Marque como solicitado antes de comprado"} />
           </div>
         )}
-      </td>
+      </TableCell>
 
       {/* Lancado no Sienge: a confirmacao de que a compra existe DE FATO.
           So aparece depois que o relatorio e' subido — antes disso a
           coluna prometeria uma resposta que ninguem tem. */}
       {lancado !== undefined && (
-        <td className="center">
+        <TableCell className="text-center">
           {lancado ? (
-            <span className="pill pill-ok" title={lancado.descricao}>
-              <Check size={11} /> {lancado.codigo || "sim"}
-            </span>
+            <Badge tone="success" title={lancado.descricao}>
+              <Check size={12} /> {lancado.codigo || "sim"}
+            </Badge>
           ) : (
-            <span className="pill pill-falta" title="Está no plano e não apareceu no relatório do Sienge">
+            <Badge tone="alert" title="Está no plano e não apareceu no relatório do Sienge">
               não lançado
-            </span>
+            </Badge>
           )}
-        </td>
+        </TableCell>
       )}
 
       {mostrarSienge && (
-        <td>
+        <TableCell>
           {/* A mesma escolha do Gerador de codigos (EscolhaSienge): a mae,
               depois qual descricao vai pro template. Aqui ela fica
               guardada no proprio item da obra. */}
-          {!casamento ? <span className="dim">—</span> : (
+          {!casamento ? <span className="text-text-mute">—</span> : (
             <EscolhaSienge desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
               onMae={(cod) => onItemChange({ maeSienge: cod || null, detalheSienge: null })}
               escolhida={it.detalheSienge || null}
@@ -14606,15 +14623,15 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               onAux={(v) => onItemChange({ codigoAuxSienge: v.trim() ? v.trim() : null })}
               aoSair somenteLeitura={!podeEditar} />
           )}
-        </td>
+        </TableCell>
       )}
-    </tr>
+    </TableRow>
     {trocando && (
-      <tr className="troca-form-linha">
-        <td colSpan={nCols}>
+      <TableRow className="bg-surface-2 hover:bg-surface-2">
+        <TableCell colSpan={nCols} className="p-4">
           <FormTroca row={row} equipe={equipe} executivo={executivo} onRegistrar={onRegistrarTroca} onFechar={onFecharTroca} />
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
     )}
     </>
   );
@@ -22180,9 +22197,6 @@ export default function App() {
         .btn-apres-pdf { display: inline-flex; align-items: center; gap: 5px; background: transparent; color: color-mix(in srgb, var(--green) 75%, var(--ink)); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); border-radius: 999px; font-size: 11.5px; font-weight: 600; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
         .btn-apres-pdf:hover { background: color-mix(in srgb, var(--green) 10%, transparent); }
         .apres-abrindo { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; background: var(--bg); color: var(--ink-3); font-size: 13px; }
-        .cmp-forn { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; line-height: 1.5; color: var(--brand); background: var(--brand-tint); border: 1px solid var(--brand-line); vertical-align: 1px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .item-desc + .cmp-forn { margin-left: 0; }
-        .cmp-forn.vazio { color: var(--ink-3); background: transparent; border-color: var(--line-2); font-weight: 400; font-style: italic; }
         /* Texto colado da internet (link inteiro na especificação, por
            exemplo) não tem onde quebrar e esticava a tabela pra fora da
            tela: aqui ele quebra onde precisar. */
@@ -22272,7 +22286,6 @@ export default function App() {
         /* PDF sai daqui: o navegador imprime so a folha. */
         /* ---- ADITIVOS ---- */
         .row-aditivo { background: var(--purple-tint); }
-        .tag-aditivo { display: inline-flex; align-items: center; gap: 4px; background: var(--purple-soft); color: var(--purple); border-radius: 4px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; margin-top: 3px; }
         /* Coluna propria, e estreita: com o rotulo longo ela encostava na
            tabela de itens logo abaixo e passava a ser lida como cabecalho
            dela — "Destino" cai bem embaixo. */
@@ -22625,10 +22638,6 @@ export default function App() {
           .sol-campos { grid-template-columns: 1fr; }
           .sobreposto-topo, .sobreposto-corpo, .sobreposto-rodape { padding-left: 16px; padding-right: 16px; }
         }
-        /* Teve troca nesta verba: mesma forma dos outros selos, cor do
-           trocado (a mesma da etiqueta da linha riscada). */
-        .pill.pill-btn:disabled { cursor: not-allowed; }
-        .pill.pill-btn.pill-wait:disabled { opacity: .45; }
         .btn-canal:disabled { opacity: .45; cursor: not-allowed; }
         .det-opcao:disabled { cursor: default; }
         .det-opcao:disabled:not(.escolhida):hover { background: transparent; }
@@ -22637,8 +22646,6 @@ export default function App() {
         .btn-sel-tudo { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--ink-2); }
         .btn-sel-tudo:hover { border-color: var(--ink); color: var(--ink); }
         .btn-limpar-sel-claro { background: transparent; border: none; color: var(--ink-3); font-size: 11.5px; cursor: pointer; font-family: inherit; text-decoration: underline; }
-        .mo-check-tab { margin-left: 0; }
-        .linha-sel { background: var(--blue-bg); }
         /* Tres respostas, tres cores: "nao achei" manda cadastrar,
            "achei parecido" manda olhar antes de cadastrar. */
         /* O nome da mae inteiro: era um <select> nativo espremido em 170px,
@@ -22714,8 +22721,6 @@ export default function App() {
         .ger-busca { display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--panel); border-radius: 8px; }
         .ger-busca .form-input { margin-top: 0; font-size: 12px; padding: 5px 8px; }
         /* DASHBOARD MO — a base de orcado de um escopo. */
-        .mo-check { width: 19px; height: 19px; flex-shrink: 0; border-radius: 5px; border: 1.5px solid var(--border); background: var(--surface-1); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--bg); padding: 0; margin-left: 16px; }
-        .mo-check:hover { border-color: var(--blue); }
         /* A soma so aparece quando ha selecao: e o unico numero da tela
            contra o qual a proposta do fornecedor vai ser comparada. */
         .btn-limpar-sel { margin-left: auto; background: var(--on-inverse-soft); color: var(--bg); border: none; border-radius: 7px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
@@ -22846,29 +22851,6 @@ export default function App() {
         .grp-esq > svg { flex-shrink: 0; }
         .grp-num { font-size: 11.5px; color: var(--ink-3); width: 20px; flex-shrink: 0; }
         .grp-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 10ch; }
-        /* OBSERVACOES — o recado pra quem executa depois. Cor propria
-           (indigo): laranja, verde e vermelho ja' significam estado do item
-           no app, e recado nao e' estado. */
-        .obs { display: flex; flex-direction: column; gap: 3px; }
-        .obs-verba { padding: 0 16px 10px 41px; }
-        .obs-item { margin-top: 4px; }
-        .obs-linha { display: flex; align-items: baseline; gap: 5px; font-size: 11px; color: var(--obs); line-height: 1.45; }
-        .obs-icone { flex-shrink: 0; opacity: .75; align-self: center; }
-        .obs-texto { min-width: 0; }
-        .obs-quando { flex-shrink: 0; font-size: 10px; opacity: .7; font-variant-numeric: tabular-nums; }
-        .obs-apagar { background: none; border: none; padding: 0 2px; cursor: pointer; color: inherit; opacity: .45; display: inline-flex; align-items: center; }
-        .obs-apagar:hover { opacity: 1; color: var(--red); }
-        .obs-mais { align-self: flex-start; display: inline-flex; align-items: center; gap: 3px; background: none; border: none; padding: 0;
-                    font-family: inherit; font-size: 10.5px; color: var(--obs); opacity: .6; cursor: pointer; }
-        .obs-mais:hover { opacity: 1; text-decoration: underline; }
-        .obs-form { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
-        .obs-form input { flex: 1; min-width: 190px; font-family: inherit; font-size: 11.5px; padding: 4px 8px;
-                          border: 1px solid var(--obs); border-radius: 6px; background: var(--obs-bg); color: var(--ink); }
-        .obs-salvar, .obs-cancelar { background: none; border: none; padding: 0; font-family: inherit; font-size: 11px; cursor: pointer; }
-        .obs-salvar { color: var(--obs); font-weight: 600; }
-        .obs-salvar:disabled { opacity: .4; cursor: default; }
-        .obs-cancelar { color: var(--ink-3); }
-        .obs-erro { font-size: 10.5px; color: var(--red); }
         .grp-conta { font-size: 10.5px; color: var(--ink-3); background: var(--panel); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         .grp-avulsos { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--purple); background: var(--purple-soft); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
         /* MAT e MO em colunas de largura fixa: com valores alinhados da
@@ -22912,9 +22894,6 @@ export default function App() {
         .grp-itens th:nth-child(2), .grp-itens td:nth-child(2) { min-width: 230px; }
         /* Nas Compras a 2ª coluna é o Cód. (a 1ª é a caixa de seleção): quem
            precisa de largura mínima ali é a Descrição. */
-        /* A situacao virou o controle de incluir/tirar do plano. */
-        .pill-btn { border: none; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
-        .pill-btn:hover { filter: brightness(0.95); box-shadow: inset 0 0 0 1px currentColor; }
         .grp-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
         .grp-itens td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 12.5px; }
         .grp-itens th.center, .grp-itens td.center { text-align: center; }
@@ -23035,7 +23014,6 @@ export default function App() {
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-contratos { background: var(--panel); color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
         .pill-wait { background: var(--panel); color: var(--ink-3); }
-        .pill-falta { background: var(--alert-soft); color: var(--alert); }
 
         /* PLANO DE COMPRAS — seleção do que vai ser comprado.
 
@@ -23544,31 +23522,6 @@ export default function App() {
         .obra-endereco-btn:hover { opacity: 1; background: var(--surface-2); color: var(--ink); }
         .obra-endereco-edita { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 22px; }
         .obra-endereco-edita .form-input { flex: 1 1 380px; margin: 0; }
-        .row-trocado td { color: var(--ink-3); background: transparent; }
-        .row-trocado .item-desc { text-decoration: line-through; color: var(--ink-3); }
-        .troca-meta { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
-        .troca-por { color: var(--ink-2); }
-        .status-par { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
-        .pill.pill-mini { font-size: 10px; padding: 1px 7px; }
-        .pill.troca-pill { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--ink-3); border: 1px dashed var(--line-2); }
-        .troca-tag { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; font-size: 10.5px; color: var(--ink-3); }
-        .troca-link { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0; border: 0; background: none; font: inherit; font-size: 10.5px; color: var(--ink-3); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-        .troca-link:hover { color: var(--ink); }
-        .troca-form-linha td { background: var(--surface-2); padding: 6px 12px 8px; }
-        .troca-form { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--ink-2); }
-        .troca-grade { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1.3fr) 64px 52px 96px 104px 20px; gap: 6px; align-items: center; }
-        .troca-form .form-input { margin: 0; padding: 4px 8px; font-size: 12px; min-height: 0; }
-        .troca-total { text-align: right; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-        .troca-tirar { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: pointer; }
-        .troca-rodape { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-        .troca-rodape select.form-input { width: auto; max-width: 240px; }
-        .troca-motivo { flex: 1 1 180px; }
-        .troca-dif { font-size: 10.5px; color: var(--ink-3); }
-        .troca-espaco { flex: 1; }
-        .troca-btn { padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 6px; background: transparent; font: inherit; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
-        .troca-btn:hover { background: var(--surface-1); }
-        .troca-btn-ok { border-color: var(--brand-line); color: var(--brand); }
-        .troca-erro { font-size: 11px; color: var(--red); }
         .rel-doc .rel-sub { font-size: 10.5pt; font-weight: 600; color: #1c2426; margin-top: 1.5mm; letter-spacing: 0; }
         .rel-doc .rel-extra { font-size: 7.4pt; color: #6b7b7f; margin-top: .6mm; }
         .rel-doc .rel-entrega { font-size: 8pt; font-weight: 400; color: #6b7b7f; text-transform: none; letter-spacing: 0; }
@@ -23771,14 +23724,9 @@ export default function App() {
         .casa-sel { padding-right: 22px; background-position: right 6px center; background-size: 10px; }
 
         /* Caixa de seleção (Checkbox): 18px, raio 5, marcada em brand. */
-        :is(.mo-check, .check) { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--line-3); background: var(--surface-2); color: var(--bg); }
-        :is(.mo-check, .check):hover { border-color: var(--brand); }
+        .check { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--line-3); background: var(--surface-2); color: var(--bg); }
+        .check:hover { border-color: var(--brand); }
         .check.check-on { background: var(--brand); border-color: var(--brand); }
-        /* Marcada, a caixa mostra o certinho em cinza claro, sem pintar o
-           fundo. Antes o ícone tinha a cor do fundo e, na linha das
-           Compras, o check existia mas não aparecia. */
-        .mo-check:has(svg) { background: var(--surface-1); border-color: var(--ink-3); color: var(--ink-3); }
-        .mo-check svg { stroke-width: 3; }
         .fo-check { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--line-3); color: var(--bg); }
         .fo-item.on .fo-check { background: var(--brand); border-color: var(--brand); }
         .det-radio { border-color: var(--line-3); }
@@ -23799,7 +23747,7 @@ export default function App() {
         .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
         /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
-        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-alterado, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
+        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-alterado, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
         :is(.soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
         :is(.nav-count, .grp-conta, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         .ad-obra-n { background: var(--brand); color: var(--bg); }
