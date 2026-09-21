@@ -378,3 +378,48 @@
 .main > * + [class~="-my-6"] {
   margin-top: 0;
 }
+
+/* O respiro entre o cabeçalho da obra e a aba só existe quando a aba NÃO
+   tem cabeçalho próprio (Visão geral, Conf. Executivo). Quando ela abre com
+   o PageShell dela (Vendido, Executivo, Plano, Compras…), os dois cabeçalhos
+   encostam e leem como um bloco só — sem a faixa vazia no meio. */
+.main > .espaco-da-obra:has(+ [class~="-my-6"]) {
+  display: none;
+}
+
+/* A ETAPA É FILHA DA OBRA (pedido de 21/09/2026).
+
+   Cada etapa (Vendido, CMV, Executivo, Conf. Executivo, Plano, Compras,
+   Contratos, Diário) monta o próprio PageShell, e o PageShell é chrome de
+   PÁGINA: faixa branca de borda a borda, eyebrow e título de 24px. Dentro
+   da obra isso competia com o cabeçalho dela — dois títulos do mesmo peso,
+   um embaixo do outro, e o de baixo mais largo que a barra de abas.
+
+   Aqui ele vira cabeçalho de SEÇÃO: sem faixa própria (vive no fundo da
+   área de conteúdo, alinhado à barra de abas), sem o eyebrow que só
+   repetia o título, e com título um degrau abaixo do da obra. O `style`
+   inline do componente pinta o fundo, por isso o `!important`. */
+.main > .espaco-da-obra ~ [class~="-my-6"] > .border-b:first-child {
+  background: var(--bg) !important;
+  border-bottom-color: transparent !important;
+  padding-top: 1rem;
+  padding-bottom: 0.25rem;
+}
+.main > .espaco-da-obra ~ [class~="-my-6"] > .border-b:first-child nav[aria-label="Breadcrumb"] {
+  display: none;
+}
+.main > .espaco-da-obra ~ [class~="-my-6"] > .border-b:first-child h1 {
+  margin-top: 0;
+  font-size: 1.125rem !important;
+  line-height: 1.3 !important;
+}
+.main > .espaco-da-obra ~ [class~="-my-6"] > .border-b:first-child > div {
+  margin-top: 0;
+}
+.main > .espaco-da-obra ~ [class~="-my-6"] > .sticky {
+  background: var(--bg) !important;
+  border-bottom-color: transparent !important;
+}
+.main > .espaco-da-obra ~ [class~="-my-6"] > .sticky > [class~="border-t"] {
+  border-top-color: transparent !important;
+}

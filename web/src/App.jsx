@@ -6908,10 +6908,17 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
     b: item.planilha ? { valor: item.planilha.custo } : null,
   })), [obra]);
 
+  /* Mesmo cabecalho de tela das outras etapas — o titulo diz onde se esta'
+     e some a faixa vazia entre as abas e o conteudo. */
+  const titulo = `CMV — ${obra.codigo}/00`;
+  const descricao = "O custo da Vendido Planilha somado por grupo. Liberar o CMV abre o Executivo e as etapas seguintes.";
+
   if (linhas.length === 0) {
     return (
-      <EmptyState icon={<FileText size={30} />} title="CMV ainda sem base"
-        description="Importe a Vendido Planilha desta obra — o CMV sai dela, somando o custo de cada grupo." />
+      <PageShell title={titulo} description={descricao}>
+        <EmptyState icon={<FileText size={30} />} title="CMV ainda sem base"
+          description="Importe a Vendido Planilha desta obra — o CMV sai dela, somando o custo de cada grupo." />
+      </PageShell>
     );
   }
 
@@ -6922,7 +6929,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
   const podeLiberar = cmvApurado && podeEditar;
 
   return (
-    <div className="space-y-6">
+    <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
       <ResumoCMV linhas={linhas} categorias={obra.categorias} />
 
       {obra.deparaAprovado ? (
@@ -6954,7 +6961,7 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -8122,6 +8129,11 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
           da planilha — o executivo conclui, o administrador libera. A
           assinatura do cliente continua podendo ser anexada em Documentos, e
           os carimbos que ja' existem nos itens continuam gravados. */}
+    {/* Mesmo cabecalho de tela das outras etapas (Vendido, Executivo,
+        Plano, Compras): sem ele esta aba abria sem titulo, com uma faixa
+        vazia entre as abas e o conteudo. */}
+    <PageShell title={`Conferência do executivo — ${obra.codigo}/00`}
+      description="O executivo conclui cada item e o administrador aprova para compra. Clique num cartão para filtrar a lista.">
     <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
       filtroInicial={filtroInicial} onFiltroUsado={onFiltroUsado}
       alertasPorVerba={alertasPorVerba}
@@ -8189,6 +8201,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         ),
       }}
       onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
+    </PageShell>
     </>
   );
 }
@@ -15360,13 +15373,15 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
     { label: "Ainda a contratar", value: fmtBRL(totalMO - contratado), tone: "brand" },
   ];
 
+  /* Mesmo cabecalho de tela das outras etapas da obra: titulo, a acao
+     principal no canto e os indicadores na grade de 4 colunas. */
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3" aria-label="Resumo da mão de obra">
-          {kpis.map((k) => <KpiMini key={k.label} label={k.label} value={k.value} hint={k.hint} tone={k.tone} />)}
-        </div>
-        <NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />
+    <PageShell title={`Contratos de mão de obra — ${obra.codigo}/00`}
+      description="Cada serviço do executivo, da solicitação ao contrato assinado. Clique numa etapa para filtrar."
+      actions={<NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />}
+      contentClassName="flex flex-col gap-6">
+      <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Resumo da mão de obra">
+        {kpis.map((k) => <KpiMini key={k.label} className="h-full" label={k.label} value={k.value} hint={k.hint} tone={k.tone} />)}
       </div>
 
       {/* A esteira de contratação: cada etapa é um filtro; clicar de novo
@@ -15471,7 +15486,7 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -24365,7 +24380,7 @@ export default function App() {
                 toolbar={<TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />}>
                 <></>
               </PageShell>
-              <div className="h-6" aria-hidden="true" />
+              <div className="espaco-da-obra h-6" aria-hidden="true" />
               </>
             );
           })()}
@@ -24418,11 +24433,11 @@ export default function App() {
               rota antiga (/obra/2450/cliente, um link salvo, o historico) cai
               na Conf. Executivo, onde a aprovacao do cliente esta'. */}
           {tab === "diario" && (
-            <div className="compras-empty">
-              <BookOpen size={30} className="dim" />
-              <div className="compras-empty-title">Diário de Obra</div>
-              <div className="compras-empty-sub">Ainda não construímos esta tela — o menu está aqui pra a estrutura ficar de pé. Me diga o que a equipe registra no dia a dia da obra e eu desenho a partir disso.</div>
-            </div>
+            <PageShell title={`Diário de Obra — ${obra.codigo}/00`}
+              description="O registro do dia a dia da obra.">
+              <EmptyState icon={<BookOpen size={30} />} title="Diário de Obra"
+                description="Ainda não construímos esta tela — o menu está aqui pra a estrutura ficar de pé. Me diga o que a equipe registra no dia a dia da obra e eu desenho a partir disso." />
+            </PageShell>
           )}
           {tab === "comparativo" && (
             <ComparativoView obra={obra} onCompraAditivo={atualizarCompraDeAditivo} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
