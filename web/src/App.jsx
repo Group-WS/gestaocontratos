@@ -57,7 +57,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
-  Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell,
+  Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@group-ws/ws-ui";
 import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, tomDaCor } from "./lib/ui.jsx";
@@ -77,8 +77,6 @@ import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, listarTravas, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
 import { apiFetch } from "./lib/api";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
-
-
 
 /* ============================================================
    EAP PADRÃO
@@ -130,7 +128,6 @@ const EAP_CODIGO = [
   { num: "34", nome: "Mobiliário Corporativo" },
 ];
 
-
 /* A EAP que esta valendo agora.
 
    O codigo e a SEMENTE, o banco e a fonte oficial. `definirEapPadrao`
@@ -171,7 +168,6 @@ const fmtCompactBRL = (v) => {
   if (Math.abs(v) >= 1000) return `R$ ${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}mil`;
   return fmtBRL(v);
 };
-
 
 /* ============================================================
    INTEGRAÇÃO MONDAY
@@ -454,8 +450,6 @@ function exportExecutivoCSV(obra) {
    COMPONENTES PEQUENOS
    ============================================================ */
 
-
-
 /* DASHBOARD DA OBRA
 
    Antes era uma grade de sete caixas do mesmo tamanho, todas gritando
@@ -721,7 +715,6 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
     setImg(null);
     setUrl(URL.createObjectURL(file));
   }, [file]);
-
 
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [pegando, setPegando] = useState(null);
@@ -1451,9 +1444,6 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
     </div>
   );
 }
-
-
-
 
 function SiengeMatch({ sienge }) {
   if (!sienge) return null;
@@ -7647,7 +7637,6 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
      somava tambem quem espera o cliente — e dizia "283 produtos esperam a
      conferencia do alerta" numa obra onde a maioria esperava o cliente. */
 
-
   // O que está na tela: o cartão, o filtro do aviso e a busca, nesta ordem.
   /* Os dois filtros que vem de fora: entrou e mudou sao propriedades do
      CRUZAMENTO (vendido x executivo), nao do item sozinho — por isso chegam
@@ -8203,22 +8192,23 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
 // aqui o componente só decide SE mostra o botão, não quando.
 function FaseBloqueada({ onIrParaDepara, onComecarSemDepara }) {
   return (
-    <div className="compras-empty">
-      <Lock size={30} className="dim" />
-      <div className="compras-empty-title">Aguardando a liberação do CMV</div>
-      <div className="compras-empty-sub">Esta etapa abre quando o CMV desta obra for liberado no Depara Contrato × Planilha — é ele que define o teto de custo com que a equipe vai trabalhar daqui pra frente.</div>
-      <Button onClick={onIrParaDepara}>Ir para o Depara</Button>
-      {onComecarSemDepara && (
-        <>
-          <div className="compras-empty-sub" style={{ marginTop: 18 }}>
-            Esta obra ainda não tem Vendido Contrato nem Vendido Planilha — não há com o que montar essa comparação.
-          </div>
-          <Button variant="outline" onClick={onComecarSemDepara}>
-            Começar direto pelo Executivo, sem CMV por enquanto
-          </Button>
-        </>
-      )}
-    </div>
+    <EmptyState icon={<Lock size={30} />} title="Aguardando a liberação do CMV"
+      description="Esta etapa abre quando o CMV desta obra for liberado no Depara Contrato × Planilha — é ele que define o teto de custo com que a equipe vai trabalhar daqui pra frente."
+      action={(
+        <div className="flex flex-col items-center gap-4">
+          <Button onClick={onIrParaDepara}>Ir para o Depara</Button>
+          {onComecarSemDepara && (
+            <>
+              <p className="max-w-md text-sm text-text-soft">
+                Esta obra ainda não tem Vendido Contrato nem Vendido Planilha — não há com o que montar essa comparação.
+              </p>
+              <Button variant="outline" onClick={onComecarSemDepara}>
+                Começar direto pelo Executivo, sem CMV por enquanto
+              </Button>
+            </>
+          )}
+        </div>
+      )} />
   );
 }
 
@@ -8254,40 +8244,58 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
     return () => { vivo = false; clearTimeout(t); };
   }, [termo]);
 
+  const tamanho = termo.trim().length;
+
   return (
-    <div className="busca-insumo">
-      <div className="busca-insumo-topo">
-        <Search size={13} className="dim" />
-        <input
-          autoFocus
-          placeholder="Buscar insumo no banco de preços — ex: spot embutir, fita led, torneira…"
-          value={termo}
-          onChange={(e) => setTermo(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Escape") onCancelar(); }}
-        />
-        <Button variant="ghost" size="icon" onClick={onCancelar} aria-label="Fechar"><X size={13} /></Button>
-      </div>
-
-      {erro && <div className="busca-insumo-vazio">{erro}</div>}
-      {!erro && termo.trim().length > 0 && termo.trim().length < 3 && (
-        <div className="busca-insumo-vazio">Digite ao menos 3 letras.</div>
-      )}
-      {!erro && buscando && <div className="busca-insumo-vazio">Buscando…</div>}
-      {!erro && !buscando && termo.trim().length >= 3 && lista.length === 0 && (
-        <div className="busca-insumo-vazio">
-          Nada encontrado. <Button variant="ghost" size="sm" onClick={() => onEscolher(null)}>Criar item em branco</Button>
+    <Card className="w-full max-w-3xl border-brand">
+      <CardContent className="flex flex-col gap-2 p-3">
+        <div className="flex items-center gap-2">
+          <Input
+            autoFocus
+            className="min-w-0 flex-1"
+            icon={<Search size={16} />}
+            aria-label="Buscar insumo no banco de preços"
+            placeholder="Buscar insumo no banco de preços — ex: spot embutir, fita led, torneira…"
+            value={termo}
+            onChange={(e) => setTermo(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") onCancelar(); }}
+          />
+          <Button variant="ghost" size="icon" onClick={onCancelar} aria-label="Fechar"><X size={16} /></Button>
         </div>
-      )}
 
-      {lista.map((p, i) => (
-        <Button variant="ghost" key={i} className="busca-insumo-linha" onClick={() => onEscolher(p)}>
-          <span className="mono busca-insumo-cod">{p.codigo}</span>
-          <span className="busca-insumo-desc">{p.descricao}</span>
-          <span className="mono busca-insumo-preco">{p.custo_unitario > 0 ? fmtBRL(p.custo_unitario) : "sem preço"}</span>
-          <span className="busca-insumo-un">/{p.unidade || "un"}</span>
-        </Button>
-      ))}
-    </div>
+        {erro && (
+          <Alert tone="danger">
+            <AlertTitle>Não foi possível buscar no banco de preços</AlertTitle>
+            <AlertDescription>{erro}</AlertDescription>
+          </Alert>
+        )}
+        {!erro && tamanho > 0 && tamanho < 3 && <FieldHint>Digite ao menos 3 letras.</FieldHint>}
+        {!erro && buscando && (
+          <div className="flex flex-col gap-2" aria-busy="true" aria-label="Buscando">
+            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
+          </div>
+        )}
+        {!erro && !buscando && tamanho >= 3 && lista.length === 0 && (
+          <EmptyState as="h4" className="py-4" icon={<PackageSearch size={24} />}
+            title="Nada encontrado" description="Nenhum insumo parecido no banco de preços."
+            action={<Button variant="ghost" size="sm" onClick={() => onEscolher(null)}>Criar item em branco</Button>} />
+        )}
+
+        {lista.length > 0 && (
+          <div className="flex flex-col divide-y divide-line-1">
+            {lista.map((p, i) => (
+              <Button variant="ghost" key={i} onClick={() => onEscolher(p)}
+                className="h-auto w-full items-baseline justify-start gap-2 rounded-none px-3 py-2 text-left font-normal whitespace-normal">
+                <span className="mono w-12 shrink-0 text-xs text-text-mute">{p.codigo}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-text-soft">{p.descricao}</span>
+                <span className="mono shrink-0 text-sm font-semibold text-text">{p.custo_unitario > 0 ? fmtBRL(p.custo_unitario) : "sem preço"}</span>
+                <span className="shrink-0 text-xs text-text-mute">/{p.unidade || "un"}</span>
+              </Button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -8315,31 +8323,48 @@ function SugestoesPreco({ descricao, onUsar }) {
   if (!abertas) {
     return (
       <Button variant="ghost" size="sm" onClick={buscar}>
-        <PackageSearch size={11} /> ver preços de referência
+        <PackageSearch size={14} /> ver preços de referência
       </Button>
     );
   }
 
   return (
-    <div className="sugestoes">
-      <div className="sugestoes-titulo">
-        Últimas compras parecidas
-        <Button variant="ghost" size="icon" onClick={() => setAbertas(false)} aria-label="Fechar"><X size={11} /></Button>
-      </div>
-      {erro && <div className="sugestoes-vazio">{erro}</div>}
-      {!erro && lista === null && <div className="sugestoes-vazio">Buscando…</div>}
-      {!erro && lista && lista.length === 0 && (
-        <div className="sugestoes-vazio">Nada parecido no banco de preços.</div>
-      )}
-      {!erro && lista && lista.map((p, i) => (
-        <Button variant="ghost" key={i} className="sugestao-linha" onClick={() => onUsar(p.custo_unitario)}>
-          <span className="mono sugestao-preco">{fmtBRL(p.custo_unitario)}</span>
-          <span className="sugestao-un">/{p.unidade || "un"}</span>
-          <span className="sugestao-desc">{p.descricao}</span>
-          <span className="mono sugestao-data">{p.data_ref ? p.data_ref.split("-").reverse().join("/") : ""}</span>
-        </Button>
-      ))}
-    </div>
+    <Card className="mt-2 w-full max-w-xl text-left">
+      <CardContent className="flex flex-col gap-2 p-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="label-mono text-text-mute">Últimas compras parecidas</span>
+          <Button variant="ghost" size="icon" onClick={() => setAbertas(false)} aria-label="Fechar"><X size={14} /></Button>
+        </div>
+        {erro && (
+          <Alert tone="danger">
+            <AlertTitle>Não foi possível buscar os preços de referência</AlertTitle>
+            <AlertDescription>{erro}</AlertDescription>
+          </Alert>
+        )}
+        {!erro && lista === null && (
+          <div className="flex flex-col gap-2" aria-busy="true" aria-label="Buscando">
+            {[0, 1].map((i) => <Skeleton key={i} className="h-7 w-full" />)}
+          </div>
+        )}
+        {!erro && lista && lista.length === 0 && (
+          <EmptyState as="h4" className="py-2" icon={<PackageSearch size={20} />}
+            title="Nada parecido" description="Nada parecido no banco de preços." />
+        )}
+        {!erro && lista && lista.length > 0 && (
+          <div className="flex flex-col">
+            {lista.map((p, i) => (
+              <Button variant="ghost" key={i} onClick={() => onUsar(p.custo_unitario)}
+                className="h-auto w-full items-baseline justify-start gap-2 px-2 py-1 text-left font-normal whitespace-normal">
+                <span className="mono shrink-0 text-sm font-semibold text-text">{fmtBRL(p.custo_unitario)}</span>
+                <span className="shrink-0 text-xs text-text-mute">/{p.unidade || "un"}</span>
+                <span className="min-w-0 flex-1 truncate text-xs text-text-soft">{p.descricao}</span>
+                <span className="mono shrink-0 text-xs text-text-mute">{p.data_ref ? p.data_ref.split("-").reverse().join("/") : ""}</span>
+              </Button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -8971,14 +8996,88 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     return `“${file.name}” importado — ${itens.length} itens.`;
   }
 
+  /* Tom do movimento da verba (deltaVerba) → tom do Badge do DS. `leve` e
+     `igual` ficam neutros de proposito: a diferenca de arredondamento nao
+     e' alarme. */
+  const tomDoDelta = { sobra: "success", medio: "warning", alto: "danger" };
+
+  /* Cabecalho da tabela editavel: rotulos CURTOS, sem quebra forcada. As
+     colunas de valor ficam na mesma ordem da planilha de origem, que e' a
+     mesma do Vendido Planilha — e' o que deixa comparar os dois sem procurar. */
+  const colunas = [
+    { rotulo: "Item", classe: "sticky left-0 z-10 w-20 bg-surface-2" },
+    { rotulo: "Descrição", classe: "sticky left-20 z-10 w-64 bg-surface-2" },
+    { rotulo: "Código / especif.", classe: "w-28" },
+    { rotulo: "Fornecedor", classe: "w-24" },
+    { rotulo: "Ambiente", classe: "w-20" },
+    { rotulo: "Qtd.", classe: "w-14 text-center" },
+    { rotulo: "Un.", classe: "w-12 text-center" },
+    { rotulo: "Custo material", classe: "w-24 text-right" },
+    { rotulo: "Custo M.O.", classe: "w-24 text-right" },
+    { rotulo: "Total material", classe: "w-24 text-right" },
+    { rotulo: "Total M.O.", classe: "w-24 text-right" },
+    { rotulo: "Custo total", classe: "w-24 text-right" },
+    { rotulo: "Vendido (criativo)", classe: "w-24 border-l-2 border-line-2 text-right" },
+    { rotulo: "Diferença", classe: "w-24 text-right" },
+    { rotulo: "", classe: "w-12" },
+  ];
+
   return (
     <>
-      {temBase && !congelado && (
-        <div className="import-card">
-          <div className="import-bar">
-            <div className="import-info">
-              <Copy size={14} />
-              <span>
+      <DetalheTexto item={verTexto} onFechar={() => setVerTexto(null)} />
+
+      <PageShell title={`Itens da planilha executivo — ${obra.codigo}/00`}
+        description="Descrição, quantidade e valores por item, conforme a planilha. Clique na verba pra expandir."
+        contentClassName="flex flex-col gap-6"
+        actions={(
+          <ImportButton congelado={congelado} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
+            onLimpar={onLimparExecutivo} oQueLimpa="os itens da Planilha Executivo"
+            onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
+            /* O motivo especifico ganha da mensagem generica: quem chega aqui
+               com compra aprovada precisa saber que e' permissao, e nao modo
+               leitura nem etapa congelada. */
+            motivoCongelado={trocaCustaCaro && !souAdmin && podeEditar && !obra.comprasLiberadas
+              ? <>Esta obra já tem <b>{perdas.liberados} {perdas.liberados === 1 ? "item aprovado" : "itens aprovados"} para compra</b>. Trocar a planilha apagaria essas aprovações — só um <b>administrador</b> pode fazer isso.</>
+              : null}
+            /* O aviso com os numeros: so' aparece quando ha' o que perder, e
+               lista apenas o que esta obra tem de verdade. */
+            avisoAntesDeTrocar={temExecutivo && trocaCustaCaro ? () => {
+              const linhas = frasesDoQueSePerde(perdas);
+              return "SUBSTITUIR A PLANILHA EXECUTIVO?\n\n"
+                + "A lista de itens é TROCADA pela do arquivo novo. Isto apaga, nesta obra:\n\n"
+                + linhas.map((l) => `  · ${l}`).join("\n")
+                + "\n\nO que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra"
+                + " e sem a ligação com o Sienge.\n\n"
+                + "O histórico de versões guarda o estado de agora, então dá para voltar atrás.";
+            } : null}
+            dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
+            onFile={aoImportar} />
+        )}
+        toolbar={(
+          <div className="flex flex-wrap items-center gap-2">
+            <ClipboardList size={16} className="text-text-mute" />
+            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos">
+              {FILTROS_VENDA.map((f) => (
+                <ToggleGroupItem key={f.id} value={f.id} size="sm">
+                  {f.label}
+                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
+            {/* Digitar na busca fecha o painel de insercao: nao da' pra estar
+                inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
+                de referencia sumiria por baixo da busca. */}
+            <CampoBusca valor={busca} aoMudar={(v) => { setBusca(v); setBuscandoEm(null); }}
+              contador={`${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens`} />
+          </div>
+        )}>
+
+        {temBase && !congelado && (
+          <Alert tone="info">
+            <AlertTitle>Planilha do criativo</AlertTitle>
+            <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="min-w-0 flex-1">
                 {temExecutivo ? (
                   <>Precisa <b>recomeçar</b>? Puxar o criativo de novo troca o Executivo atual pelos {itensBase} itens da planilha original.</>
                 ) : (
@@ -8986,78 +9085,27 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                   o que vier de lá fica marcado, e cada alteração aparece lado a lado com o valor de origem.</>
                 )}
               </span>
-            </div>
-            <Button onClick={async () => {
-              // Recomeçar joga fora o que já foi lançado aqui. Perguntar
-              // custa um clique; refazer custa a tarde.
-              if (temExecutivo && !(await confirmar(
-                "Puxar a planilha do criativo de novo?\n\n" +
-                "Tudo que já foi lançado ou editado no Executivo desta obra será trocado pelos itens originais do criativo.\n\n" +
-                "Não dá para desfazer."
-              ))) return;
-              onPuxarDoCriativo();
-            }}>
-              <Copy size={13} /> {temExecutivo ? "Recomeçar do criativo" : "Puxar do criativo"}
-            </Button>
-          </div>
-        </div>
-      )}
+              <Button size="sm" className="shrink-0" onClick={async () => {
+                // Recomeçar joga fora o que já foi lançado aqui. Perguntar
+                // custa um clique; refazer custa a tarde.
+                if (temExecutivo && !(await confirmar(
+                  "Puxar a planilha do criativo de novo?\n\n" +
+                  "Tudo que já foi lançado ou editado no Executivo desta obra será trocado pelos itens originais do criativo.\n\n" +
+                  "Não dá para desfazer."
+                ))) return;
+                onPuxarDoCriativo();
+              }}>
+                <Copy size={16} /> {temExecutivo ? "Recomeçar do criativo" : "Puxar do criativo"}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
-      <ImportButton congelado={congelado} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
-        onLimpar={onLimparExecutivo} oQueLimpa="os itens da Planilha Executivo"
-        onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
-        /* O motivo especifico ganha da mensagem generica: quem chega aqui
-           com compra aprovada precisa saber que e' permissao, e nao modo
-           leitura nem etapa congelada. */
-        motivoCongelado={trocaCustaCaro && !souAdmin && podeEditar && !obra.comprasLiberadas
-          ? <>Esta obra já tem <b>{perdas.liberados} {perdas.liberados === 1 ? "item aprovado" : "itens aprovados"} para compra</b>. Trocar a planilha apagaria essas aprovações — só um <b>administrador</b> pode fazer isso.</>
-          : null}
-        /* O aviso com os numeros: so' aparece quando ha' o que perder, e
-           lista apenas o que esta obra tem de verdade. */
-        avisoAntesDeTrocar={temExecutivo && trocaCustaCaro ? () => {
-          const linhas = frasesDoQueSePerde(perdas);
-          return "SUBSTITUIR A PLANILHA EXECUTIVO?\n\n"
-            + "A lista de itens é TROCADA pela do arquivo novo. Isto apaga, nesta obra:\n\n"
-            + linhas.map((l) => `  · ${l}`).join("\n")
-            + "\n\nO que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra"
-            + " e sem a ligação com o Sienge.\n\n"
-            + "O histórico de versões guarda o estado de agora, então dá para voltar atrás.";
-        } : null}
-        dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
-        onFile={aoImportar} />
+        <SaldoExecutivo categorias={obra.categorias} cmvLiberado={cmvValor} recuperado={cmv?.recuperado} />
 
-      <DetalheTexto item={verTexto} onFechar={() => setVerTexto(null)} />
+        <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilhaExecutivo || [])} />
 
-      <SaldoExecutivo categorias={obra.categorias} cmvLiberado={cmvValor} recuperado={cmv?.recuperado} />
-
-      <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilhaExecutivo || [])} />
-
-      <div className="flat-panel">
-        <div className="flat-panel-header">
-          <div>
-            <div className="flat-panel-title">Itens da planilha executivo — {obra.codigo}/00</div>
-            <div className="flat-panel-sub">Descrição, quantidade e valores por item, conforme a planilha. Clique na verba pra expandir.</div>
-          </div>
-        </div>
-
-        <div className="filter-bar venda-bar">
-          <ClipboardList size={13} className="dim" />
-          {FILTROS_VENDA.map((f) => (
-            <Button variant="ghost" key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
-              onClick={() => setFiltroVenda(f.id)}>
-              {f.label}
-              <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
-            </Button>
-          ))}
-          <span className="filter-sep" />
-          {/* Digitar na busca fecha o painel de insercao: nao da' pra estar
-              inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
-              de referencia sumiria por baixo da busca. */}
-          <CampoBusca valor={busca} aoMudar={(v) => { setBusca(v); setBuscandoEm(null); }}
-            contador={`${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens`} />
-        </div>
-
-        <div className="vend-list">
+        <div className="rounded-lg border border-line-1">
           {verbas.map((c) => {
             const itens = c.itensPlanilhaExecutivo || [];
             /* Quantos itens desta verba casam com a busca. A LISTA NAO E'
@@ -9085,354 +9133,386 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                uma economia e transformou em estouro. */
             const baseVerba = (c.itensPlanilha || []).reduce((a, it) => a + (it.custo || 0), 0);
             const delta = temItens && baseVerba > 0 ? deltaVerba(subtotal, baseVerba) : null;
+            const buscaNoFim = buscandoEm?.verba === c.num && buscandoEm?.depois == null;
             return (
-              <div key={c.num} className="vend-grupo">
-                {/* abre mesmo sem itens: é onde se lança item manual */}
-                <Button variant="ghost" className="vend-head" onClick={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}>
-                  {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
-                  <span className="vend-num mono">{c.num}</span>
-                  <span className="vend-nome">{c.nome}</span>
-                  {temItens && <span className="vend-count">{buscando ? `${nNaBusca} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</span>}
+              /* abre mesmo sem itens: é onde se lança item manual */
+              <Colapsavel key={c.num} aberto={aberto} podeAbrir
+                onAbrir={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}
+                cabecalho={<>
+                  <span className="mono w-6 shrink-0 text-xs font-semibold text-text-mute">{c.num}</span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-text">{c.nome}</span>
+                  {temItens && <Badge tone="neutral">{buscando ? `${nNaBusca} de ${itens.length}` : itens.length} {itens.length === 1 && !buscando ? "item" : "itens"}</Badge>}
                   {/* O vendido fica à vista: sem ele, "acima" e "abaixo" são
                       afirmações sem referência na tela. */}
                   {temItens && baseVerba > 0 && (
-                    <span className="vend-base mono" title="Valor vendido deste grupo no criativo — a referência da comparação">
-                      vendido {fmtBRL(baseVerba)}
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="mono shrink-0 cursor-help text-xs text-text-mute">vendido {fmtBRL(baseVerba)}</span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs whitespace-normal">Valor vendido deste grupo no criativo — a referência da comparação</TooltipContent>
+                    </Tooltip>
                   )}
                   {delta && (
-                    <span className={`vend-delta tom-${delta.tom}`}
-                      title="Movimento desta verba em relação ao que foi vendido nela. Uma verba acima não é estouro do CMV — o CMV é o total da obra, e está no resumo acima.">
-                      {delta.texto}
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge tone={tomDoDelta[delta.tom] || "neutral"} className="cursor-help">{delta.texto}</Badge>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs whitespace-normal">Movimento desta verba em relação ao que foi vendido nela. Uma verba acima não é estouro do CMV — o CMV é o total da obra, e está no resumo acima.</TooltipContent>
+                    </Tooltip>
                   )}
-                  <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
-                </Button>
-                {aberto && temItens && (
-                  <div className="exec-scroll">
-                  <table className="vend-itens exec-itens exec-editavel">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 72 }}>Item</th>
-                        {/* LARGURA, e nao min-width: a tabela e' `table-layout: fixed`,
-                            e nesse modo o navegador IGNORA min-width em coluna. Como
-                            esta era a unica sem largura declarada, ela recebia so' a
-                            sobra — cerca de 30px — e a descricao sumia, com o cabecalho
-                            grudado escorrendo por cima do vizinho (visto por ela em
-                            16/09/2026). */}
-                        <th style={{ width: 240 }}>Descrição</th>
-                        <th style={{ width: 112 }}>Código / especif.</th>
-                        <th style={{ width: 86 }}>Fornecedor</th>
-                        <th style={{ width: 76 }}>Ambiente</th>
-                        <th style={{ width: 48 }} className="center">Qtd.</th>
-                        <th style={{ width: 34 }} className="center">Un.</th>
-                        <th style={{ width: 78 }} className="right">Custo<br />Material</th>
-                        <th style={{ width: 78 }} className="right">Custo<br />Mão de Obra</th>
-                        <th style={{ width: 86 }} className="right">Custo Total<br />Material</th>
-                        <th style={{ width: 86 }} className="right">Custo Total<br />Mão de Obra</th>
-                        <th style={{ width: 92 }} className="right">Custo<br />Total</th>
-                        <th style={{ width: 88 }} className="right col-vendido">Vendido<br />(criativo)</th>
-                        <th style={{ width: 78 }} className="right col-diferenca">Diferença</th>
-                        <th style={{ width: 36 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {itens.map((it, i) => {
-                        /* A BUSCA ESCONDE A LINHA; ELA NAO SAI DO ARRAY.
+                  <span className="mono w-32 shrink-0 text-right text-sm text-text">{temItens ? fmtBRL(subtotal) : "—"}</span>
+                </>}>
+                {temItens && (
+                  <div className="overflow-x-auto border-t border-line-1 bg-surface-2">
+                    <Table className="w-full table-fixed">
+                      <TableHeader>
+                        <TableRow>
+                          {colunas.map((col, k) => (
+                            <TableHead key={k} className={col.classe}>{col.rotulo}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {itens.map((it, i) => {
+                          /* A BUSCA ESCONDE A LINHA; ELA NAO SAI DO ARRAY.
 
-                           O `i` logo abaixo e' a POSICAO da linha na planilha
-                           e e' o que grava no banco — `onEditarItem(c.num, i,
-                           ...)` aparece em oito lugares nesta tabela, e o
-                           `buscandoEm` guarda `depois: i`. Trocar este
-                           `return null` por um `.filter()` no array renumera
-                           tudo: editar a segunda linha que aparece gravaria na
-                           segunda linha da planilha, que e' outra. Sem erro na
-                           tela e sem ninguem perceber ate' conferir a
-                           planilha. */
-                        if (buscando && !casaBusca(textoDoItem(it, c), busca)) return null;
-                        const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
-                        // Coordenada da célula na planilha: linha da lista + posição
-                        // visual da coluna. É o que Tab e Enter seguem.
-                        const cel = (col) => `${i}:${col}`;
-                        const nav = irParaCelula;
-                        const linha = (
-                          <tr key={it.codigo || i} className={`${it.ehTitulo ? "linha-titulo" : ""} ${it.excluido ? "linha-excluida" : it.alteradoExecutivo ? "linha-alterada" : ""} ${it.substitui || it.substituiDesc ? "linha-substituta" : ""} ${it.substituidoPorDesc ? "linha-saiu-por-troca" : ""} ${buscandoEm?.verba === c.num && buscandoEm?.substituindo === i ? "linha-saindo" : ""}`}>
-                            {/* O "+" mora aqui, na coluna congelada.
-                                Ele estava na ÚLTIMA das 15 colunas, e a tabela
-                                rola na horizontal — pra achar o botão era
-                                preciso passar por dez colunas. Na primeira, ele
-                                acompanha a rolagem e está sempre à vista. */}
-                            <td className="mono dim col-item">
-                              <span className="col-item-cod">{it.codigo || "—"}</span>
-                              {!congelado && !it.excluido && (
-                                <span className="col-item-acoes">
-                                  <Button variant="ghost" size="icon"
-                                    title={`Inserir item abaixo do ${it.codigo || "item"}`}
-                                    onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
-                                    aria-label={`Inserir item abaixo do ${it.codigo || "item"}`}>
-                                    <Plus size={12} />
-                                  </Button>
-                                  {/* Substituir: exclui este e encaixa o escolhido
-                                      logo abaixo, ligado a ele. */}
-                                  <Button variant="ghost" size="icon"
-                                    title={`Substituir ${it.codigo || "este item"} por outro`}
-                                    onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}
-                                    aria-label={`Substituir ${it.codigo || "este item"} por outro`}>
-                                    <ArrowLeftRight size={12} />
-                                  </Button>
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <CelulaTexto texto={it.desc} congelado={congelado} coord={cel(0)} onNavegar={nav}
-                                onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
-                                onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
-                              {it.excluido && !it.substituidoPorDesc && <span className="tag-excluido">removido</span>}
-                              {/* O par da substituição. Cada lado aponta pro outro,
-                                  então a linha se explica sem precisar procurar. */}
-                              {/* O par se explica pela barra e pelo recuo. As
-                                  etiquetas ficam curtas: repetir a descrição
-                                  inteira do outro lado dobrava o texto da linha
-                                  justamente onde já havia texto demais. */}
-                              {it.substituidoPorDesc && (
-                                <span className="tag-troca" title={`Substituído por: ${it.substituidoPorDesc}`}>
-                                  <ArrowDown size={10} /> trocado
-                                </span>
-                              )}
-                              {it.substituiDesc && (
-                                <span className="tag-troca" title={`Entrou no lugar de: ${it.substituiDesc}`}>
-                                  <CornerDownRight size={10} /> entrou no lugar
-                                </span>
-                              )}
-                              {it.ehTitulo && <span className="tag-na">N/A — título, não entra na conferência</span>}
-                              {/* "alterado no executivo" saiu daqui: a barra amarela
-                                  na lateral da linha já diz isso, e a etiqueta
-                                  aparecia em quase toda linha — repetida assim, ela
-                                  parava de informar e só ocupava espaço. */}
-                              {it.precoNaoRevisado && <span className="tag-preco"><AlertTriangle size={10} /> preço não revisado</span>}
-                              {/* Só no hover: em trinta linhas seguidas, trinta
-                                  links iguais viram textura, não ação. */}
-                              {it.precoNaoRevisado && !obra.comprasLiberadas && (
-                                <span className="so-no-hover">
-                                  <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
-                                </span>
-                              )}
-                            </td>
-                            <td className="dim">
-                              <CelulaTexto texto={it.especificacao} congelado={congelado} coord={cel(1)} onNavegar={nav}
-                                onEditar={(v) => onEditarItem(c.num, i, { especificacao: v })}
-                                onVerTudo={(t) => setVerTexto({ rotulo: "Código / especificação / Obs.", texto: t })} />
-                            </td>
-                            <td className="dim"><CelulaTexto texto={it.marca} congelado={congelado} coord={cel(2)} onNavegar={nav} onEditar={(v) => onEditarItem(c.num, i, { marca: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Fornecedor", texto: t })} /></td>
-                            <td className="dim"><CelulaTexto texto={it.ambiente} congelado={congelado} coord={cel(3)} onNavegar={nav} onEditar={(v) => onEditarItem(c.num, i, { ambiente: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })} /></td>
-                            <td className="center"><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={congelado} onSalvar={editar("qtdVendida")} coord={cel(4)} onNavegar={nav} alinhar="centro" /></td>
-                            <td className="center"><CelulaEditavel valor={it.un} formato="texto" congelado={congelado} onSalvar={editar("un")} coord={cel(5)} onNavegar={nav} alinhar="centro" /></td>
-                            <td className="right"><CelulaEditavel valor={it.custoMaterial} congelado={congelado} onSalvar={editar("custoMaterial")} coord={cel(6)} onNavegar={nav} /></td>
-                            <td className="right"><CelulaEditavel valor={it.custoMO} congelado={congelado} onSalvar={editar("custoMO")} coord={cel(7)} onNavegar={nav} /></td>
-                            <td className="right"><CelulaEditavel valor={it.totalMaterial} congelado={congelado} onSalvar={editar("totalMaterial")} coord={cel(8)} onNavegar={nav} /></td>
-                            <td className="right"><CelulaEditavel valor={it.totalMO} congelado={congelado} onSalvar={editar("totalMO")} coord={cel(9)} onNavegar={nav} /></td>
-                            <td className="right forte"><CelulaEditavel valor={it.custo} congelado={congelado} onSalvar={editar("custo")} coord={cel(10)} onNavegar={nav} /></td>
-                            {/* Referência, não é editável: fundo próprio e tom
-                                apagado, pra não competir com as colunas em que
-                                se digita. */}
-                            <td className="mono right col-vendido">{it.vendido?.custo != null ? fmtBRL(it.vendido.custo) : <span className="dim">—</span>}</td>
-                            {/* A coluna do veredito. É a única aqui que muda de
-                                cor, e é o que se procura ao varrer a lista. */}
-                            <td className="mono right col-diferenca">
-                              {(() => {
-                                const base = it.vendido?.custo;
-                                // Sem referência não há o que comparar — o traço
-                                // diz "não sei", que é diferente de "não mudou".
-                                if (base == null || it.custo == null) return <span className="dim">—</span>;
-                                const d = it.custo - base;
-                                // Zero é resposta, não ausência: mostra 0,00 pra
-                                // se distinguir do traço de sem-referência.
-                                if (Math.abs(d) < 0.01) return <span className="dif-igual">{fmtBRL(0)}</span>;
-                                return <span className={d > 0 ? "dif-acima" : "dif-abaixo"}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
-                              })()}
-                            </td>
-                            <td className="center col-acoes">
-                              {!congelado && (
-                                <div className="linha-acoes">
-                                  <Button variant="ghost" size="icon"
-                                    title={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}
-                                    aria-label={it.excluido ? "Trazer de volta" : "Remover do executivo"}
-                                    onClick={() => (it.excluido
-                                      ? onEditarItem(c.num, i, { excluido: false })
-                                      : setRemovendo(`${c.num}:${i}`))}
-                                  >
-                                    {it.excluido ? <RotateCcw size={13} /> : <X size={13} />}
-                                  </Button>
+                             O `i` logo abaixo e' a POSICAO da linha na planilha
+                             e e' o que grava no banco — `onEditarItem(c.num, i,
+                             ...)` aparece em oito lugares nesta tabela, e o
+                             `buscandoEm` guarda `depois: i`. Trocar este
+                             `return null` por um `.filter()` no array renumera
+                             tudo: editar a segunda linha que aparece gravaria na
+                             segunda linha da planilha, que e' outra. Sem erro na
+                             tela e sem ninguem perceber ate' conferir a
+                             planilha. */
+                          if (buscando && !casaBusca(textoDoItem(it, c), busca)) return null;
+                          const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
+                          // Coordenada da célula na planilha: linha da lista + posição
+                          // visual da coluna. É o que Tab e Enter seguem.
+                          const cel = (col) => `${i}:${col}`;
+                          const nav = irParaCelula;
+                          const saindo = buscandoEm?.verba === c.num && buscandoEm?.substituindo === i;
+                          const trocado = !!(it.substitui || it.substituiDesc || it.substituidoPorDesc);
+                          /* O fundo da linha vai tambem nas duas celulas fixas
+                             (Item e Descricao): elas precisam de fundo opaco
+                             pra cobrir o que rola por baixo, e o mesmo tom
+                             mantem a linha inteira. */
+                          const fundo = saindo ? "bg-danger/10"
+                            : trocado ? "bg-purple/10"
+                            : it.ehTitulo ? "bg-surface-3"
+                            : "bg-surface-2";
+                          const apagado = it.excluido || saindo || it.ehTitulo;
+                          const corte = it.excluido || saindo ? "line-through" : "";
+                          // A barra lateral na coluna Descricao diz o estado da
+                          // linha sem etiqueta: amarela mudou, vermelha saiu,
+                          // roxa e' par de substituicao.
+                          const barra = it.excluido || saindo ? "border-l-2 border-danger"
+                            : trocado ? `border-l-2 border-purple ${it.substitui || it.substituiDesc ? "pl-6" : ""}`
+                            : it.alteradoExecutivo ? "border-l-2 border-warning"
+                            : "";
+                          const linha = (
+                            <TableRow key={it.codigo || i} className={`group ${fundo} ${apagado ? "text-text-mute" : ""}`}>
+                              {/* O "+" mora aqui, na coluna congelada.
+                                  Ele estava na ÚLTIMA das 15 colunas, e a tabela
+                                  rola na horizontal — pra achar o botão era
+                                  preciso passar por dez colunas. Na primeira, ele
+                                  acompanha a rolagem e está sempre à vista. */}
+                              <TableCell className={`sticky left-0 z-10 whitespace-nowrap align-middle ${fundo}`}>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className={`mono text-text-mute ${corte}`}>{it.codigo || "—"}</span>
+                                  {!congelado && !it.excluido && (
+                                    <span className="inline-flex">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="h-7 w-7"
+                                            onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
+                                            aria-label={`Inserir item abaixo do ${it.codigo || "item"}`}>
+                                            <Plus size={14} />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Inserir item abaixo do {it.codigo || "item"}</TooltipContent>
+                                      </Tooltip>
+                                      {/* Substituir: exclui este e encaixa o escolhido
+                                          logo abaixo, ligado a ele. */}
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="h-7 w-7"
+                                            onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}
+                                            aria-label={`Substituir ${it.codigo || "este item"} por outro`}>
+                                            <ArrowLeftRight size={14} />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Substituir {it.codigo || "este item"} por outro</TooltipContent>
+                                      </Tooltip>
+                                    </span>
+                                  )}
                                 </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                        /* A busca abre AQUI, como linha da tabela.
+                              </TableCell>
+                              <TableCell className={`sticky left-20 z-10 wrap-anywhere align-middle ${fundo} ${barra} ${saindo ? "line-through" : ""}`}>
+                                <CelulaTexto texto={it.desc} congelado={congelado} coord={cel(0)} onNavegar={nav}
+                                  onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
+                                  onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
+                                {it.excluido && !it.substituidoPorDesc && <Badge tone="danger" className="ml-2">removido</Badge>}
+                                {/* O par da substituição. Cada lado aponta pro outro,
+                                    então a linha se explica sem precisar procurar.
+                                    As etiquetas ficam curtas: repetir a descrição
+                                    inteira do outro lado dobrava o texto da linha
+                                    justamente onde já havia texto demais. */}
+                                {it.substituidoPorDesc && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge tone="purple" className="ml-2 cursor-help"><ArrowDown size={10} /> trocado</Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs whitespace-normal">Substituído por: {it.substituidoPorDesc}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {it.substituiDesc && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge tone="purple" className="ml-2 cursor-help"><CornerDownRight size={10} /> entrou no lugar</Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs whitespace-normal">Entrou no lugar de: {it.substituiDesc}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {it.ehTitulo && <Badge tone="neutral" className="ml-2">N/A — título, não entra na conferência</Badge>}
+                                {/* "alterado no executivo" saiu daqui: a barra amarela
+                                    na lateral da linha já diz isso, e a etiqueta
+                                    aparecia em quase toda linha — repetida assim, ela
+                                    parava de informar e só ocupava espaço. */}
+                                {it.precoNaoRevisado && <Badge tone="danger" className="ml-2"><AlertTriangle size={10} /> preço não revisado</Badge>}
+                                {/* Só no hover: em trinta linhas seguidas, trinta
+                                    links iguais viram textura, não ação. */}
+                                {it.precoNaoRevisado && !obra.comprasLiberadas && (
+                                  <span className="block opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                                    <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className={`wrap-anywhere align-middle text-text-mute ${corte}`}>
+                                <CelulaTexto texto={it.especificacao} congelado={congelado} coord={cel(1)} onNavegar={nav}
+                                  onEditar={(v) => onEditarItem(c.num, i, { especificacao: v })}
+                                  onVerTudo={(t) => setVerTexto({ rotulo: "Código / especificação / Obs.", texto: t })} />
+                              </TableCell>
+                              <TableCell className={`wrap-anywhere align-middle text-text-mute ${corte}`}><CelulaTexto texto={it.marca} congelado={congelado} coord={cel(2)} onNavegar={nav} onEditar={(v) => onEditarItem(c.num, i, { marca: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Fornecedor", texto: t })} /></TableCell>
+                              <TableCell className={`wrap-anywhere align-middle text-text-mute ${corte}`}><CelulaTexto texto={it.ambiente} congelado={congelado} coord={cel(3)} onNavegar={nav} onEditar={(v) => onEditarItem(c.num, i, { ambiente: v })} onVerTudo={(t) => setVerTexto({ rotulo: "Ambiente", texto: t })} /></TableCell>
+                              <TableCell className={`align-middle text-center ${corte}`}><CelulaEditavel valor={it.qtdVendida} formato="numero" congelado={congelado} onSalvar={editar("qtdVendida")} coord={cel(4)} onNavegar={nav} alinhar="centro" /></TableCell>
+                              <TableCell className={`align-middle text-center ${corte}`}><CelulaEditavel valor={it.un} formato="texto" congelado={congelado} onSalvar={editar("un")} coord={cel(5)} onNavegar={nav} alinhar="centro" /></TableCell>
+                              <TableCell className={`align-middle text-right ${corte}`}><CelulaEditavel valor={it.custoMaterial} congelado={congelado} onSalvar={editar("custoMaterial")} coord={cel(6)} onNavegar={nav} /></TableCell>
+                              <TableCell className={`align-middle text-right ${corte}`}><CelulaEditavel valor={it.custoMO} congelado={congelado} onSalvar={editar("custoMO")} coord={cel(7)} onNavegar={nav} /></TableCell>
+                              <TableCell className={`align-middle text-right ${corte}`}><CelulaEditavel valor={it.totalMaterial} congelado={congelado} onSalvar={editar("totalMaterial")} coord={cel(8)} onNavegar={nav} /></TableCell>
+                              <TableCell className={`align-middle text-right ${corte}`}><CelulaEditavel valor={it.totalMO} congelado={congelado} onSalvar={editar("totalMO")} coord={cel(9)} onNavegar={nav} /></TableCell>
+                              <TableCell className={`align-middle text-right font-semibold ${apagado ? "" : "text-text"} ${corte}`}><CelulaEditavel valor={it.custo} congelado={congelado} onSalvar={editar("custo")} coord={cel(10)} onNavegar={nav} /></TableCell>
+                              {/* Referência, não é editável: borda própria e tom
+                                  apagado, pra não competir com as colunas em que
+                                  se digita. */}
+                              <TableCell className={`mono whitespace-nowrap border-l-2 border-line-2 align-middle text-right text-text-mute ${corte}`}>{it.vendido?.custo != null ? fmtBRL(it.vendido.custo) : "—"}</TableCell>
+                              {/* A coluna do veredito. É a única aqui que muda de
+                                  cor, e é o que se procura ao varrer a lista. */}
+                              <TableCell className={`mono whitespace-nowrap align-middle text-right font-semibold ${corte}`}>
+                                {(() => {
+                                  const base = it.vendido?.custo;
+                                  // Sem referência não há o que comparar — o traço
+                                  // diz "não sei", que é diferente de "não mudou".
+                                  if (base == null || it.custo == null) return <span className="text-text-mute">—</span>;
+                                  const d = it.custo - base;
+                                  // Zero é resposta, não ausência: mostra 0,00 pra
+                                  // se distinguir do traço de sem-referência.
+                                  if (Math.abs(d) < 0.01) return <span className="font-medium text-text-mute">{fmtBRL(0)}</span>;
+                                  return <span className={d > 0 ? "text-danger" : "text-success"}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
+                                })()}
+                              </TableCell>
+                              <TableCell className="overflow-visible align-middle text-center">
+                                {!congelado && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7"
+                                        aria-label={it.excluido ? "Trazer de volta" : "Remover do executivo"}
+                                        onClick={() => (it.excluido
+                                          ? onEditarItem(c.num, i, { excluido: false })
+                                          : setRemovendo(`${c.num}:${i}`))}
+                                      >
+                                        {it.excluido ? <RotateCcw size={14} /> : <X size={14} />}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                          /* A busca abre AQUI, como linha da tabela.
 
-                           Antes ela aparecia no rodapé, depois de trinta
-                           linhas: clicava-se no item de cima e a tela pedia
-                           pra procurar lá embaixo, sem nada indicando de qual
-                           item se tratava. Abrindo no lugar, a linha que sai
-                           fica logo acima, vermelha, e a que entra nasce
-                           exatamente onde vai ficar. */
-                        /* A JUSTIFICATIVA ABRE AQUI, embaixo da linha que vai sair
-                           — e nao num alerta do navegador. Quem escreve precisa
-                           ver o item enquanto escreve. */
-                        if (removendo === `${c.num}:${i}`) {
+                             Antes ela aparecia no rodapé, depois de trinta
+                             linhas: clicava-se no item de cima e a tela pedia
+                             pra procurar lá embaixo, sem nada indicando de qual
+                             item se tratava. Abrindo no lugar, a linha que sai
+                             fica logo acima, vermelha, e a que entra nasce
+                             exatamente onde vai ficar. */
+                          /* A JUSTIFICATIVA ABRE AQUI, embaixo da linha que vai sair
+                             — e nao num alerta do navegador. Quem escreve precisa
+                             ver o item enquanto escreve. */
+                          if (removendo === `${c.num}:${i}`) {
+                            return (
+                              <React.Fragment key={`${it.codigo || i}-remover`}>
+                                {linha}
+                                <TableRow className="bg-danger/10 hover:bg-danger/10">
+                                  <TableCell colSpan={20} className="whitespace-normal p-3">
+                                    <FormRemocao
+                                      item={it.desc}
+                                      onCancelar={() => setRemovendo(null)}
+                                      onConfirmar={(motivo) => {
+                                        onEditarItem(c.num, i, { excluidoMotivo: motivo });
+                                        setRemovendo(null);
+                                      }} />
+                                  </TableCell>
+                                </TableRow>
+                              </React.Fragment>
+                            );
+                          }
+                          const buscaAqui = buscandoEm?.verba === c.num && buscandoEm?.depois === i;
+                          if (!buscaAqui) return linha;
                           return (
-                            <React.Fragment key={`${it.codigo || i}-remover`}>
+                            <React.Fragment key={`${it.codigo || i}-busca`}>
                               {linha}
-                              <tr className="linha-remocao">
-                                <td colSpan={20}>
-                                  <FormRemocao
-                                    item={it.desc}
-                                    onCancelar={() => setRemovendo(null)}
-                                    onConfirmar={(motivo) => {
-                                      onEditarItem(c.num, i, { excluidoMotivo: motivo });
-                                      setRemovendo(null);
-                                    }} />
-                                </td>
-                              </tr>
+                              <TableRow className="bg-purple/10 hover:bg-purple/10">
+                                <TableCell colSpan={15} className="whitespace-normal p-3">
+                                  <div className="flex items-start gap-2 pl-6">
+                                    <CornerDownRight size={16} className="mt-2 shrink-0 text-text-mute" />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="mb-2 text-xs text-purple">
+                                        {buscandoEm.substituindo != null
+                                          ? <>Substituindo <b>{it.desc}</b> — escolha o que entra no lugar</>
+                                          : <>Novo item abaixo de <b>{it.codigo || it.desc}</b></>}
+                                      </div>
+                                      <BuscaInsumo
+                                        onCancelar={() => setBuscandoEm(null)}
+                                        onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, buscandoEm.depois, buscandoEm.substituindo ?? null); setBuscandoEm(null); }}
+                                      />
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
                             </React.Fragment>
                           );
-                        }
-                        const buscaAqui = buscandoEm?.verba === c.num && buscandoEm?.depois === i;
-                        if (!buscaAqui) return linha;
-                        return (
-                          <React.Fragment key={`${it.codigo || i}-busca`}>
-                            {linha}
-                            <tr className="linha-busca">
-                              <td colSpan={15}>
-                                <div className="busca-na-linha">
-                                  <CornerDownRight size={14} className="dim" />
-                                  <div className="busca-na-linha-campo">
-                                    <div className="busca-na-linha-titulo">
-                                      {buscandoEm.substituindo != null
-                                        ? <>Substituindo <b>{it.desc}</b> — escolha o que entra no lugar</>
-                                        : <>Novo item abaixo de <b>{it.codigo || it.desc}</b></>}
-                                    </div>
-                                    <BuscaInsumo
-                                      onCancelar={() => setBuscandoEm(null)}
-                                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, buscandoEm.depois, buscandoEm.substituindo ?? null); setBuscandoEm(null); }}
-                                    />
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
                 {/* Só o "no fim da verba" abre aqui embaixo. Quem clicou no
                     + ou no ⇄ de uma linha vê a busca dentro da tabela, na
                     posição em que o item vai entrar. */}
-                {aberto && !congelado && (
-                  buscandoEm?.verba === c.num && buscandoEm?.depois == null ? (
-                    <BuscaInsumo
-                      onCancelar={() => setBuscandoEm(null)}
-                      onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, null, null); setBuscandoEm(null); }}
-                    />
+                {!congelado && (
+                  buscaNoFim ? (
+                    <div className="border-t border-line-1 p-4">
+                      <BuscaInsumo
+                        onCancelar={() => setBuscandoEm(null)}
+                        onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, null, null); setBuscandoEm(null); }}
+                      />
+                    </div>
                   ) : buscandoEm?.verba === c.num ? null : (
-                    <Button variant="outline" size="sm" onClick={() => setBuscandoEm({ verba: c.num, depois: null })}>
-                      <Plus size={12} /> Adicionar item no fim desta verba
-                    </Button>
+                    <div className="border-t border-line-1 px-4 py-2">
+                      <Button variant="outline" size="sm" onClick={() => setBuscandoEm({ verba: c.num, depois: null })}>
+                        <Plus size={14} /> Adicionar item no fim desta verba
+                      </Button>
+                    </div>
                   )
                 )}
-              </div>
+              </Colapsavel>
             );
           })}
-        </div>
-        <div className="vend-total">
-          <span className="total-label">Total da planilha executivo</span>
-          <span className="exec-total-parcelas mono">
-            material {fmtBRL(totalMaterial)} · mão de obra {fmtBRL(totalMO)}
-          </span>
-          <span className="mono total-value">{fmtBRL(total)}</span>
-        </div>
 
-        {/* Fechamento: de onde partiu, o que mudou, onde chegou — a conta
-            que a pessoa faria na mão ao terminar de editar.
-
-            Aparece SEMPRE. Antes era `obra.cmvLiberado > 0 && (...)`: sem
-            CMV liberado o bloco inteiro sumia da tela, sem uma linha
-            explicando por quê. Quem pediu o fechamento e não o via
-            concluía que ele nunca tinha sido feito — e estava certo em
-            concluir, porque a tela não dava outra informação. Faltando o
-            dado, o lugar dele continua ali e diz o que falta. */}
-        <div className="fechamento">
-          <div className="fechamento-linha">
-            <span className="fechamento-rotulo">CMV liberado</span>
-            <span className="mono fechamento-valor">
-              {cmvValor > 0 ? fmtBRL(cmvValor) : "—"}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t-2 border-text px-4 py-3">
+            <span className="text-sm font-bold">Total da planilha executivo</span>
+            <span className="flex flex-wrap items-baseline gap-4">
+              <span className="mono text-xs text-text-mute">
+                material {fmtBRL(totalMaterial)} · mão de obra {fmtBRL(totalMO)}
+              </span>
+              <span className="mono text-sm font-bold">{fmtBRL(total)}</span>
             </span>
           </div>
-          <div className="fechamento-linha">
-            <span className="fechamento-rotulo">Alterações do executivo</span>
-            <span className="mono fechamento-valor" style={cmvValor > 0 ? { color: total - cmvValor > 0 ? "var(--red)" : "var(--green)" } : undefined}>
-              {cmvValor > 0
-                ? `${total - cmvValor > 0 ? "+" : ""}${fmtBRL(total - cmvValor)}`
-                : "—"}
-            </span>
-          </div>
-          {/* O aditivo entra ANTES do saldo, porque e' ele que muda o teto
-              contra o qual o saldo e' medido. Sem aditivo aprovado a linha
-              nem aparece: linha zerada e' ruido. */}
-          {temAditivo && (
-            <div className="fechamento-linha">
-              <span className="fechamento-rotulo">
-                {adit.aprovados.length === 1 ? "Aditivo aprovado" : `Aditivos aprovados (${adit.aprovados.length})`}
-                <span className="fechamento-detalhe">
-                  {fmtBRL(adit.adicao)} de adição{adit.supressao > 0 ? ` · ${fmtBRL(adit.supressao)} de supressão` : ""}
+
+          {/* Fechamento: de onde partiu, o que mudou, onde chegou — a conta
+              que a pessoa faria na mão ao terminar de editar.
+
+              Aparece SEMPRE. Antes era `obra.cmvLiberado > 0 && (...)`: sem
+              CMV liberado o bloco inteiro sumia da tela, sem uma linha
+              explicando por quê. Quem pediu o fechamento e não o via
+              concluía que ele nunca tinha sido feito — e estava certo em
+              concluir, porque a tela não dava outra informação. Faltando o
+              dado, o lugar dele continua ali e diz o que falta. */}
+          <div className="flex flex-col border-t-2 border-line-2 px-4 pb-4 pt-1">
+            <div className="flex items-baseline justify-between gap-4 py-2 text-sm text-text-soft">
+              <span className="flex-1">CMV liberado</span>
+              <span className="mono text-sm font-semibold text-text">
+                {cmvValor > 0 ? fmtBRL(cmvValor) : "—"}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4 py-2 text-sm text-text-soft">
+              <span className="flex-1">Alterações do executivo</span>
+              <span className={`mono text-sm font-semibold ${cmvValor > 0 ? (total - cmvValor > 0 ? "text-danger" : "text-success") : "text-text"}`}>
+                {cmvValor > 0
+                  ? `${total - cmvValor > 0 ? "+" : ""}${fmtBRL(total - cmvValor)}`
+                  : "—"}
+              </span>
+            </div>
+            {/* O aditivo entra ANTES do saldo, porque e' ele que muda o teto
+                contra o qual o saldo e' medido. Sem aditivo aprovado a linha
+                nem aparece: linha zerada e' ruido. */}
+            {temAditivo && (
+              <div className="flex items-baseline justify-between gap-4 py-2 text-sm text-text-soft">
+                <span className="flex-1">
+                  {adit.aprovados.length === 1 ? "Aditivo aprovado" : `Aditivos aprovados (${adit.aprovados.length})`}
+                  <span className="block text-xs font-normal text-text-mute">
+                    {fmtBRL(adit.adicao)} de adição{adit.supressao > 0 ? ` · ${fmtBRL(adit.supressao)} de supressão` : ""}
+                  </span>
                 </span>
+                <span className={`mono text-sm font-semibold ${adit.saldo < 0 ? "text-danger" : "text-success"}`}>
+                  {adit.saldo >= 0 ? "+" : ""}{fmtBRL(adit.saldo)}
+                </span>
+              </div>
+            )}
+            <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-line-1 py-3 text-sm font-semibold text-text">
+              <span className="flex-1">
+                {cmvValor > 0
+                  ? (total > teto ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe")
+                  : "Saldo final"}
+                {temAditivo && cmvValor > 0 && (
+                  <span className="block text-xs font-normal text-text-mute">teto com o aditivo: {fmtBRL(teto)}</span>
+                )}
               </span>
-              <span className="mono fechamento-valor" style={{ color: adit.saldo < 0 ? "var(--red)" : "var(--green)" }}>
-                {adit.saldo >= 0 ? "+" : ""}{fmtBRL(adit.saldo)}
+              <span className={`mono text-lg font-semibold ${cmvValor > 0 ? (total > teto ? "text-danger" : "text-success") : ""}`}>
+                {cmvValor > 0 ? fmtBRL(teto - total) : "—"}
               </span>
             </div>
-          )}
-          <div className="fechamento-linha final">
-            <span className="fechamento-rotulo">
-              {cmvValor > 0
-                ? (total > teto ? "Saldo final — acima do CMV" : "Saldo final — ainda cabe")
-                : "Saldo final"}
-              {temAditivo && cmvValor > 0 && (
-                <span className="fechamento-detalhe">teto com o aditivo: {fmtBRL(teto)}</span>
-              )}
-            </span>
-            <span className="mono fechamento-valor" style={cmvValor > 0 ? { color: total > teto ? "var(--red)" : "var(--green)" } : undefined}>
-              {cmvValor > 0 ? fmtBRL(teto - total) : "—"}
-            </span>
+            {!(cmvValor > 0) && (
+              <Alert tone="warning" className="mt-3">
+                <AlertTitle>O CMV desta obra ainda não foi liberado</AlertTitle>
+                <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="min-w-0 flex-1">
+                    Sem ele não existe teto pra comparar, e o saldo não tem como ser calculado.
+                    A liberação acontece no Depara Contrato × Planilha.
+                  </span>
+                  {onIrParaDepara && (
+                    <Button variant="outline" size="sm" type="button" className="shrink-0" onClick={onIrParaDepara}>Ir para o Depara</Button>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+            {/* Diz de onde veio o número em vez de fingir que sempre esteve
+                gravado. Some sozinho na próxima gravação da obra, quando o
+                valor recuperado finalmente vai pro banco. */}
+            {cmv?.recuperado && (
+              <Alert tone="info" className="mt-3">
+                <AlertTitle>CMV recalculado a partir do depara aprovado</AlertTitle>
+                <AlertDescription>
+                  A obra foi liberada por uma versão anterior do app, que ainda não gravava esse valor. A conta é a mesma da liberação.
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
-          {!(cmvValor > 0) && (
-            <div className="fechamento-aviso">
-              <AlertTriangle size={13} />
-              <span>
-                O <b>CMV desta obra ainda não foi liberado</b> — sem ele não existe teto pra comparar,
-                e o saldo não tem como ser calculado. A liberação acontece no Depara Contrato × Planilha.
-              </span>
-              {onIrParaDepara && (
-                <Button variant="outline" type="button" onClick={onIrParaDepara}>Ir para o Depara</Button>
-              )}
-            </div>
-          )}
-          {/* Diz de onde veio o número em vez de fingir que sempre esteve
-              gravado. Some sozinho na próxima gravação da obra, quando o
-              valor recuperado finalmente vai pro banco. */}
-          {cmv?.recuperado && (
-            <div className="fechamento-aviso recuperado">
-              <RotateCcw size={13} />
-              <span>
-                Este CMV foi <b>recalculado a partir do depara aprovado</b> — a obra foi liberada por uma
-                versão anterior do app, que ainda não gravava esse valor. A conta é a mesma da liberação.
-              </span>
-            </div>
-          )}
         </div>
-      </div>
+      </PageShell>
     </>
   );
 }
@@ -10268,8 +10348,6 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     </>
   );
 }
-
-
 
 /* APROVAÇÃO DO CLIENTE — o portão entre conferir e comprar.
 
@@ -15028,7 +15106,6 @@ function baixarEscopoWord(escopo, obra) {
   const nome = `escopo-${(escopo.nome || "").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").toLowerCase()}-${obra.codigo}.doc`;
   downloadFile(nome, html, "application/msword");
 }
-
 
 /* DASHBOARD MO — a base de orcado de um escopo.
 
@@ -21260,7 +21337,6 @@ export default function App() {
      item por item as 60 luminárias de uma obra — é o que faz alguém
      desistir da tela e voltar pro Excel. */
 
-
   function reabrirCompras() {
     enfileirarMarcas({ comprasLiberadas: false });
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, comprasLiberadas: false } : o)));
@@ -21839,16 +21915,12 @@ export default function App() {
            a unica medida que o Tailwind nao expressa sem valor arbitrario. */
         .barra { height: calc(100vh - 64px); }
 
-
         /* O NOME DA OBRA NUNCA CORTA — pedido dela em 19/09/2026: "nunca corte
            o nome da obra, sempre mostre tudo". Mesma regra do alerta da Conf.
            Executivo: quem cede e' a ALTURA, nao o texto. Por isso o alinhamento
            vai pro topo: o codigo fica na primeira linha e o nome desce. */
         /* O codigo e' a voz da linha: e' por ele que a obra e' chamada. */
         .obra-nome { min-width: 0; font-size: 11.5px; line-height: 1.38; color: var(--ink-2); overflow-wrap: anywhere; }
-
-
-
 
         .sidebar { width: 288px; flex-shrink: 0; background: var(--surface-1); border-right: 1px solid var(--border); height: calc(100vh - 64px); position: sticky; top: 64px; display: flex; flex-direction: column; }
         .sidebar-scroll { flex: 1; padding: 6px 14px 16px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
@@ -22474,7 +22546,6 @@ export default function App() {
         .eap-raiz { font-weight: 600; margin-bottom: 2px; }
         .eap-grupo { margin-left: 14px; }
 
-
         /* ---------- Solicitação de compra no Sienge ---------- */
         /* Modal de verdade (o .rel-overlay ao lado é de impressão: ele
            esconde o #root). Aqui a tela continua atrás, porque a pessoa
@@ -22879,7 +22950,6 @@ export default function App() {
         .etapa-concluida svg { color: var(--green); flex-shrink: 0; }
         .etapa-concluida span { flex: 1; }
 
-
         .assinatura-ok { display: flex; align-items: flex-start; gap: 16px; padding: 20px; background: var(--green-bg); border: 1px solid var(--green); border-radius: 12px; }
         .assinatura-selo { color: var(--green); flex-shrink: 0; }
         .assinatura-corpo { flex: 1; }
@@ -22900,18 +22970,12 @@ export default function App() {
         .assinatura-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 20px 18px; }
         .assinatura-aviso { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--alert); }
 
-
-        .filter-bar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
         .filter-chip { background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .filter-chip:hover { border-color: var(--blue); }
         .filter-chip.active { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
         /* Fila de cima: o que o item É. Fica acima e mais encorpada que a
            de situação, porque decide qual das duas rotinas — compra no
            Sienge ou contrato — você está tocando. */
-        .tipo-chip { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
-        .tipo-chip-conta { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: var(--panel); color: var(--ink-3); }
-        .tipo-chip.active .tipo-chip-conta { background: var(--on-inverse-hover); color: var(--bg); }
-        .venda-bar { margin-bottom: 10px; }
 
         /* PLANO DE COMPRAS — grupo da EAP em forma de lista.
            A linha fechada carrega o que se pergunta primeiro (quanto de
@@ -23057,7 +23121,6 @@ export default function App() {
         .btn-avulsa { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 12px; }
         .btn-avulsa:hover { background: var(--purple); }
         .form-avulsa-nota { font-size: 11.5px; color: var(--ink-2); background: var(--panel); border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; line-height: 1.45; }
-        .filter-sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; }
 
         .cat-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
         .cat-header { width: 100%; background: transparent; border: none; display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; }
@@ -23144,7 +23207,6 @@ export default function App() {
         .check { width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--border); background: var(--surface-1); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--bg); }
         .check-on { background: var(--green); border-color: var(--green); }
 
-
         .flat-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
         .flat-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
         .flat-panel-title { font-size: 14px; font-weight: 700; color: var(--ink); }
@@ -23154,14 +23216,8 @@ export default function App() {
         .import-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); }
         .import-erro { display: flex; align-items: center; gap: 8px; background: var(--red-bg); color: var(--red); border: 1px solid var(--red); border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px; }
         .vend-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-        .vend-grupo { border-bottom: 1px solid var(--border-soft); }
-        .vend-grupo:last-child { border-bottom: none; }
-        .vend-head { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; text-align: left; padding: 12px 14px; }
-        .vend-head:hover { background: var(--panel); }
         .vend-num { font-size: 11.5px; color: var(--ink-3); font-weight: 600; width: 22px; flex-shrink: 0; }
         .vend-nome { font-size: 13px; color: var(--ink); font-weight: 600; flex: 1; min-width: 0; }
-        .vend-count { font-size: 11px; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
-        .vend-val { font-size: 13px; color: var(--ink); width: 130px; text-align: right; flex-shrink: 0; }
         .aviso-pobre { display: flex; align-items: flex-start; gap: 10px; background: var(--amber-bg); border: 1px solid var(--amber); color: var(--amber); border-radius: 10px; padding: 11px 14px; font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
         .aviso-pobre-sub { color: var(--ink-2); font-size: 11.5px; margin-top: 4px; }
 
@@ -23175,14 +23231,10 @@ export default function App() {
            autoriza partir "1.10" em "1.1" e "0" — código de item não é
            texto corrido, é identificador: quebrado, deixa de identificar. */
         .vend-itens td:first-child, .vend-itens th:first-child,
-        .exec-itens td:first-child, .exec-itens th:first-child { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
         .vend-itens th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
         .vend-itens td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--ink); vertical-align: top; }
         .vend-itens tr:last-child td { border-bottom: none; }
-        .vend-total { display: flex; justify-content: space-between; align-items: center; padding: 13px 14px; margin-top: 2px; border-top: 2px solid var(--ink); }
         .flat-table tfoot td { padding: 11px 12px; border-top: 2px solid var(--ink); }
-        .total-label { font-weight: 700; }
-        .total-value { font-weight: 700; font-size: 13.5px; }
         .exec-group { margin-bottom: 22px; }
         .exec-group-title { font-size: 12.5px; font-weight: 700; margin-bottom: 8px; display: flex; gap: 8px; align-items: baseline; }
         .empty-note { font-size: 12.5px; color: var(--ink-3); padding: 20px 0; text-align: center; }
@@ -23316,151 +23368,22 @@ export default function App() {
         .saldo-mov { display: flex; flex-direction: column; gap: 3px; margin-left: auto; }
         .saldo-mov-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-2); }
 
-        /* Item excluído: some do custo, não some da vista */
-        /* Fundo cheio só fora do Executivo (Plano de Compras), onde a
-           exclusão é rara. No Executivo quem marca é a barra lateral. */
-        .linha-excluida { background: var(--red-bg); }
-        .exec-itens tr.linha-excluida { background: transparent; }
-        .linha-excluida td { color: var(--ink-3); text-decoration: line-through; }
-        .linha-excluida td:nth-child(2) { text-decoration: none; }
-        .tag-excluido { margin-left: 8px; font-size: 9.5px; font-weight: 600; color: var(--red); text-transform: uppercase; letter-spacing: .04em; }
         .btn-linha-excluir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
-        .linha-acoes { display: inline-flex; gap: 2px; align-items: center; }
-        .exec-itens td.col-item { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 44px; }
-        .col-item-cod { flex-shrink: 0; }
-        /* ESTADO DA LINHA — uma barra na lateral, não a linha inteira pintada.
 
-           Antes cada estado pintava a linha toda: amarelo pra alterado,
-           vermelho pra excluído. Como quase toda linha do executivo é
-           alterada, metade da tabela ficava amarela — e cor que cobre
-           metade da tela deixa de ser aviso, vira papel de parede. Junto
-           com as etiquetas repetindo a mesma coisa, sobrava ruído e faltava
-           hierarquia.
-
-           Agora a barra diz o estado e o fundo fica limpo. Sobra contraste
-           pro que realmente pede ação. */
-        .exec-itens tr.linha-alterada > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--warning); }
-        .exec-itens tr.linha-excluida > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--red); }
-        .exec-itens tr.linha-excluida > td { color: var(--ink-3); }
-        .exec-itens tr.linha-excluida td:nth-child(2) { text-decoration: none; }
-        .exec-itens tr.linha-excluida .celula-corte { text-decoration: line-through; }
-
-        /* O PAR DA SUBSTITUIÇÃO lê como um bloco só.
-
-           As duas linhas dividem a mesma barra indigo — a de cima abre o
-           par, a de baixo fecha e vem recuada. É a "variação dentro" que a
-           Priscila pediu: o olho junta as duas antes de ler qualquer texto. */
-        .exec-itens tr.linha-saiu-por-troca > td { background: var(--indigo-tint); }
-        .exec-itens tr.linha-saiu-por-troca > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--indigo); }
-        .exec-itens tr.linha-substituta > td { background: var(--indigo-tint); }
-        .exec-itens tr.linha-substituta > td:nth-child(2) { box-shadow: inset 3px 0 0 var(--indigo); padding-left: 22px; }
-
-        /* Só uma etiqueta continua colorida: a que pede ação. */
-        .so-no-hover { opacity: 0; transition: opacity .12s; }
-        .exec-itens tr:hover .so-no-hover, .so-no-hover:focus-within { opacity: 1; }
-        .col-item-acoes { display: inline-flex; gap: 1px; }
-
-        /* Linha que esta saindo: fica vermelha JA, enquanto a busca esta
-           aberta. Antes so mudava depois de escolher o substituto, entao
-           durante a escolha nada na tela dizia qual item ia sair. */
-        .exec-itens tr.linha-saindo > td { background: var(--red-bg); }
-        .exec-itens tr.linha-saindo td:nth-child(2) { text-decoration: line-through; color: var(--ink-3); }
-
-        /* A busca aberta dentro da tabela, no lugar em que o item vai nascer. */
-        .exec-itens tr.linha-busca > td { background: var(--indigo-soft); padding: 10px 12px 12px; white-space: normal; position: static; overflow: visible; }
-        /* A regra sticky das duas primeiras colunas nao vale nesta linha:
-           ela tem uma celula so, que atravessa a tabela inteira. */
-        .exec-itens tr.linha-busca > td:nth-child(1) { position: static; left: auto; z-index: auto; }
-        .busca-na-linha { display: flex; align-items: flex-start; gap: 8px; padding-left: 22px; }
-        .busca-na-linha-campo { flex: 1; min-width: 0; max-width: 640px; }
-        .busca-na-linha-titulo { font-size: 11.5px; color: var(--indigo); margin-bottom: 6px; }
-        .busca-na-linha-titulo b { font-weight: 700; }
         .btn-linha-substituir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
         .btn-linha-substituir:hover { color: var(--alert); border-color: var(--alert); background: var(--alert-soft); }
 
-        /* O par da substituição: o que saiu aponta pra baixo, o que entrou
-           aponta pra ele. Mesma cor nos dois lados, pra o olho juntar as
-           duas linhas sem precisar ler. */
-        .tag-troca { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 7px; white-space: nowrap; background: var(--indigo-soft); color: var(--indigo); }
-        /* A linha que entrou fica levemente recuada: lê-se como filha da
-           que saiu, que é a "variação dentro" que a Priscila descreveu. */
-        /* Discreto até o mouse passar: 32 linhas com um + aceso viram ruído. */
-        .exec-itens td.col-item .btn-linha-inserir { opacity: 0; transition: opacity .12s; }
-        .exec-itens tr:hover td.col-item .btn-linha-inserir,
-        .exec-itens td.col-item .btn-linha-inserir:focus { opacity: 1; }
-        .btn-linha-inserir { background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
-        .btn-linha-inserir:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-bg); }
-        .exec-itens td.col-acoes { overflow: visible; }
         .btn-linha-excluir:hover { color: var(--red); border-color: var(--red); }
-        /* A justificativa da remocao: abre embaixo da linha que vai sair. */
-        .linha-remocao > td { background: var(--danger-tint); padding: 10px 14px !important; }
         .btn-linha-excluir-confirma { background: var(--danger); color: #fff; border: none; border-radius: 7px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
         .btn-linha-excluir-confirma:disabled { opacity: 0.45; cursor: not-allowed; }
         .btn-linha-excluir.desfazer:hover { color: var(--green); border-color: var(--green); }
         .btn-reabrir-etapa { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px; font-size: 11px; color: var(--ink-2); cursor: pointer; font-family: inherit; flex-shrink: 0; }
         .btn-reabrir-etapa:hover { border-color: var(--ink-2); color: var(--ink); }
 
-        /* Linha que só nomeia um conjunto (qtd e valor zerados) — some do
-           depara, mas continua visível na listagem, marcada. */
-        .linha-titulo { background: var(--panel); }
-        .linha-titulo td { color: var(--ink-3); }
-        .tag-na { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--ink-3); background: var(--surface-1); border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
-        /* O Executivo tem 9 colunas — aperta a fonte e deixa rolar na
-           horizontal em tela estreita, sem espremer a descrição. */
-        /* O Executivo tem 11 colunas e nao cabe na tela. Rola na
-           horizontal dentro do proprio grupo, com Item e Descricao
-           ancorados na esquerda — sem isso a pessoa rola e perde de vista
-           de qual item e o numero que esta olhando. */
-        /* max-height é o que faz o cabeçalho grudar.
-           O thead já tinha position: sticky; top: 0, mas se ancorava num
-           contêiner que nunca rolava verticalmente — na prática não colava
-           em nada. Com altura máxima a tabela passa a rolar dentro da caixa
-           e o cabeçalho fica à vista, que é o que resolve o "não sei qual
-           coluna estou lendo" numa verba com trinta itens. */
-        .exec-scroll { overflow: auto; max-height: 70vh; border-top: 1px solid var(--border-soft); }
-        /* Zebra e realce da linha sob o cursor: ler a linha inteira sem
-           perder a coluna é metade do trabalho numa tabela de 15 colunas. */
-        .exec-itens tbody tr:nth-child(even) > td { background: var(--row-alt); }
-        .exec-itens tbody tr:hover > td { background: var(--row-hover); }
-        .exec-itens tbody tr:focus-within > td { background: var(--row-focus); }
-        /* table-layout: fixed é o que mantém as colunas alinhadas entre
-           os grupos. Sem ele o navegador dimensiona cada tabela pelo
-           conteúdo dela, e como cada verba é uma tabela separada, cada
-           uma saía com larguras próprias. Bastava um grupo ter conteúdo
-           incomum — em Climatização, uma URL de 200 caracteres sem
-           espaço — pra desalinhar tudo naquele grupo. */
-        /* 1050px das colunas de largura fixa + 240px da Descricao. Com menos
-           que isso o navegador espreme a Descricao em vez de deixar a tabela
-           rolar, que e' o que .exec-scroll existe pra fazer. */
-        .exec-itens { font-size: 11px; width: 100%; min-width: 1290px; border-top: none; table-layout: fixed; }
-        .exec-itens th, .exec-itens td { padding: 6px 7px; }
-        /* texto sem espaço (URL, código longo) quebra em vez de esticar */
-        /* Número não quebra. A regra antiga valia pra TODA célula, e numa
-           coluna de 78px partia "R$ 1.234,56" em duas linhas. tabular-nums
-           dá largura fixa a cada dígito, então as colunas de valor alinham
-           verticalmente como no Excel. */
-        /* overflow: hidden é o que impede a sobreposição.
-           Com table-layout: fixed e nowrap, um valor maior que a coluna não
-           empurra nada — ele TRANSBORDA e pinta por cima da célula vizinha,
-           e os números aparecem embaralhados uns sobre os outros. Cortando
-           com reticências o número fica legível ou visivelmente truncado,
-           nunca misturado com o do lado. */
-        .exec-itens td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; font-variant-numeric: tabular-nums; }
-        /* A célula em edição precisa vazar por cima das vizinhas, senão o
-           campo fica menor que o número que se está digitando. */
-        .exec-itens td:has(.celula-input) { overflow: visible; position: relative; z-index: 5; }
-        /* Só a descrição e a especificação quebram — é onde há texto longo. */
-        .exec-itens td:nth-child(2), .exec-itens td:nth-child(3),
-        .exec-itens td:nth-child(4), .exec-itens td:nth-child(5) { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
-
-        /* Altura de linha constante: o texto corta em N linhas e o resto
-           vai pro painel do "i". Sem isso uma especificação longa fazia
-           a linha crescer e a tabela perder o ritmo. */
         /* Toda linha com a MESMA altura: duas linhas de texto cabem, o
            resto vai pro painel do "i". Antes um item de descrição longa
            ocupava cinco linhas e o seguinte uma — a tabela ficava sem
            ritmo e difícil de percorrer com o olho. */
-        .exec-itens tbody td { height: 44px; }
         .celula-texto { display: flex; align-items: flex-start; gap: 5px; }
         .celula-corte { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; flex: 1; min-width: 0; }
         .btn-info { flex-shrink: 0; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-3); font-size: 9.5px; font-weight: 700; font-family: var(--font-sans); font-style: italic; cursor: pointer; line-height: 1; padding: 0; }
@@ -23471,19 +23394,6 @@ export default function App() {
         .detalhe-topo { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
         .detalhe-texto { width: 100%; min-height: 140px; border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; font-size: 12.5px; line-height: 1.55; color: var(--ink); font-family: inherit; resize: vertical; outline: none; }
         .detalhe-acoes { display: flex; justify-content: flex-end; margin-top: 10px; }
-        .exec-itens th:nth-child(1), .exec-itens td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: var(--surface-2); }
-        /* O deslocamento da 2a coluna congelada TEM que ser a largura exata
-           da 1a — e as duas tabelas que usam este CSS tem larguras
-           diferentes: 46px na Vendido Planilha, 72px no Executivo (que
-           carrega o botao de inserir). Com um valor fixo de 56px, uma sobrava
-           10px e deixava o texto passar por baixo, a outra cobria 16px do
-           conteudo: era o que cortava as letras de "CODIGO / ESPECIF.". */
-        .exec-itens th:nth-child(2), .exec-itens td:nth-child(2) { position: sticky; left: 46px; z-index: 2; background: var(--surface-2); box-shadow: 1px 0 0 var(--border-soft); }
-        .exec-editavel th:nth-child(2), .exec-editavel td:nth-child(2) { left: 72px; }
-        .exec-itens thead th:nth-child(1), .exec-itens thead th:nth-child(2) { z-index: 4; background: var(--surface-2); }
-        /* O cabecalho acompanha a rolagem: editando uma linha la
-           embaixo, sem isso nao da pra saber que coluna e qual. */
-        .exec-itens thead th { position: sticky; top: 0; z-index: 3; background: var(--surface-2); }
         .celula-corte.editavel { cursor: text; border-radius: 4px; padding: 1px 3px; margin: -1px -3px; }
         .celula-corte.editavel:hover { background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--border); }
         .celula-input.texto { text-align: left; font-family: inherit; }
@@ -23492,20 +23402,6 @@ export default function App() {
            tabela e parecia um retângulo vazio atravessando a linha. */
         .vend-itens .celula-input.texto { padding: 4px 7px; line-height: 1.4; box-shadow: var(--shadow-1); }
         .celula-input.multi { resize: vertical; line-height: 1.35; }
-        .fechamento { border-top: 2px solid var(--border); padding: 4px 18px 14px; }
-        .fechamento-linha { display: flex; align-items: baseline; justify-content: space-between; padding: 7px 0; font-size: 12.5px; color: var(--ink-2); }
-        .fechamento-linha.final { border-top: 1px solid var(--border-soft); margin-top: 3px; padding-top: 11px; font-weight: 600; color: var(--ink); }
-        .fechamento-rotulo { flex: 1; }
-        .fechamento-valor { font-size: 14px; font-weight: 600; }
-        .fechamento-linha.final .fechamento-valor { font-size: 17px; }
-        /* Explica o traço no lugar do número. Bloco que some sem dizer
-           nada faz a pessoa achar que a funcionalidade nunca existiu. */
-        .fechamento-aviso { display: flex; align-items: center; gap: 9px; margin-top: 11px; padding: 10px 12px; background: var(--alert-soft); border-radius: 9px; font-size: 12px; line-height: 1.5; color: var(--text); }
-        .fechamento-aviso svg { color: var(--alert); flex-shrink: 0; }
-        .fechamento-aviso span { flex: 1; }
-        .fechamento-aviso b { color: var(--alert); }
-        .fechamento-aviso.recuperado { background: var(--panel); color: var(--ink-2); }
-        .fechamento-aviso.recuperado svg, .fechamento-aviso.recuperado b { color: var(--ink-2); }
         .saldo-exec.sem-cmv { border-style: dashed; }
         .saldo-exec.sem-cmv .saldo-valor.dim { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 
@@ -23514,41 +23410,6 @@ export default function App() {
         .conf-row.com-alerta { background: var(--alert-soft); box-shadow: inset 3px 0 0 var(--alert); }
         .alerta-conf b { color: var(--danger); text-transform: uppercase; font-weight: 700; letter-spacing: 0.01em; }
         .conf-badge.nao-vendido { color: var(--danger); background: var(--danger-soft); }
-
-        .exec-itens tr.linha-titulo td:nth-child(1), .exec-itens tr.linha-titulo td:nth-child(2) { background: var(--panel); }
-        /* Cabecalho de duas linhas ("Codigo / especif. / Obs.") precisa de
-           altura pra segunda linha caber inteira, senao ela sai cortada. */
-        .exec-itens th { line-height: 1.25; white-space: normal; vertical-align: bottom; padding-top: 8px; padding-bottom: 6px; }
-        .exec-itens td.forte { color: var(--ink); font-weight: 600; }
-        .exec-total-parcelas { font-size: 11.5px; color: var(--ink-3); margin-right: 14px; }
-        /* Colunas de origem: o que veio do criativo e o quanto mudou */
-        /* As duas ultimas colunas fazem coisas diferentes e viravam a mesma
-           parede de numeros. Agora se distinguem pelo papel:
-
-             Vendido (criativo) — REFERENCIA. Nao se edita, veio do criativo.
-               Fundo proprio, texto apagado, separada do bloco editavel por
-               uma linha. Esta ali pra ser consultada, nao varrida.
-
-             Diferenca — VEREDITO. E a unica coluna da tabela que muda de
-               cor, e por isso e o que o olho acha primeiro ao procurar o
-               que precisa de atencao. */
-        .exec-itens .col-vendido { background: var(--surface-2); color: var(--ink-3); border-left: 2px solid var(--border); }
-        .exec-itens .col-diferenca { background: var(--surface-2); font-weight: 600; }
-        .dif-acima  { color: var(--red); }
-        .dif-abaixo { color: var(--green); }
-        /* Zero e resposta, nao ausencia: fica visivel mas neutro, pra nao
-           disputar atencao com quem realmente mudou. */
-        .dif-igual  { color: var(--ink-3); font-weight: 500; }
-        .vend-delta { font-size: 11px; font-weight: 600; flex-shrink: 0; margin-right: 4px; cursor: help; }
-        .vend-base { font-size: 11px; color: var(--ink-3); flex-shrink: 0; margin-right: 8px; cursor: help; font-variant-numeric: tabular-nums; }
-        /* Vermelho é do CMV, e o CMV é o total — está no resumo do topo.
-           Aqui a cor mede peso: ruído fica apagado, movimento relevante
-           chama, e só o desvio grande da verba usa vermelho. */
-        .vend-delta.tom-igual { color: var(--ink-3); font-weight: 500; }
-        .vend-delta.tom-leve  { color: var(--ink-3); font-weight: 500; }
-        .vend-delta.tom-sobra { color: var(--green); }
-        .vend-delta.tom-medio { color: var(--alert); }
-        .vend-delta.tom-alto  { color: var(--red); }
 
         /* CMV liberado — o teto que sai do depara */
         .cmv-painel { background: var(--panel); border-radius: 14px; padding: 16px 18px; margin-bottom: 18px; }
@@ -23569,7 +23430,6 @@ export default function App() {
         .cmv-linha-barra span { display: block; height: 100%; background: var(--blue); border-radius: 20px; }
         .cmv-linha-valor { width: 110px; text-align: right; color: var(--ink); flex-shrink: 0; }
 
-
         /* Célula que vira campo ao clicar */
         .celula-valor { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 2px 5px; font-size: 11.5px; color: var(--ink); cursor: text; width: 100%; text-align: right; font-family: var(--font-mono); }
         .celula-valor:hover { border-color: var(--border); background: var(--surface-1); }
@@ -23584,36 +23444,11 @@ export default function App() {
         .btn-add-item { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0 10px 34px; background: transparent; border: 1px dashed var(--border); border-radius: 7px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-3); cursor: pointer; font-family: inherit; }
         .btn-add-item:hover { color: var(--blue); border-color: var(--blue); }
 
-        /* Escolher o insumo no banco em vez de digitar do zero */
-        .busca-insumo { margin: 6px 0 12px 34px; max-width: 720px; background: var(--surface-1); border: 1px solid var(--blue); border-radius: 10px; overflow: hidden; }
-        .busca-insumo-topo { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border-soft); }
-        .busca-insumo-topo input { flex: 1; border: none; outline: none; background: transparent; font-size: 12px; color: var(--ink); font-family: inherit; }
-        .busca-insumo-vazio { font-size: 11.5px; color: var(--ink-3); padding: 10px 12px; }
-        .busca-insumo-linha { display: flex; align-items: baseline; gap: 9px; width: 100%; background: none; border: none; border-bottom: 1px solid var(--border-soft); padding: 7px 12px; text-align: left; cursor: pointer; font-family: inherit; }
-        .busca-insumo-linha:last-child { border-bottom: none; }
-        .busca-insumo-linha:hover { background: var(--panel); }
-        .busca-insumo-cod { font-size: 10.5px; color: var(--ink-3); width: 46px; flex-shrink: 0; }
-        .busca-insumo-desc { flex: 1; min-width: 0; font-size: 11.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .busca-insumo-preco { font-size: 12px; font-weight: 600; color: var(--ink); flex-shrink: 0; }
-        .busca-insumo-un { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
-
         /* Mesmo amarelo que a planilha usa na mão pra marcar o que o
            executivo mexeu — só que agora o sistema marca sozinho. */
         .tag-alterado { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--warning); background: var(--surface-1); border: 1px solid var(--warning-line); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
-        .tag-preco { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 10px; font-weight: 600; color: var(--red); background: var(--surface-1); border: 1px solid var(--red); border-radius: 20px; padding: 1px 7px; white-space: nowrap; }
 
-        /* Preços de referência do Sienge — evidência pra decidir, não
-           preenchimento automático. */
         .btn-sugestao { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; background: none; border: none; padding: 0; font-size: 10.5px; color: var(--blue); cursor: pointer; text-decoration: underline; font-family: inherit; }
-        .sugestoes { margin-top: 8px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-width: 560px; }
-        .sugestoes-titulo { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
-        .sugestoes-vazio { font-size: 11px; color: var(--ink-3); padding: 4px 2px; }
-        .sugestao-linha { display: flex; align-items: baseline; gap: 8px; width: 100%; background: none; border: none; border-radius: 6px; padding: 5px 6px; text-align: left; cursor: pointer; font-family: inherit; }
-        .sugestao-linha:hover { background: var(--panel); }
-        .sugestao-preco { font-size: 12px; font-weight: 600; color: var(--ink); flex-shrink: 0; }
-        .sugestao-un { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
-        .sugestao-desc { flex: 1; min-width: 0; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sugestao-data { font-size: 10px; color: var(--ink-3); flex-shrink: 0; }
 
         /* Trava de edição — uma obra por vez, uma pessoa por vez */
 
@@ -23919,7 +23754,6 @@ export default function App() {
         .gc-cel-barra { display: flex; align-items: center; gap: 8px; }
         .gc-cel-txt { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
         .gc-cel-est { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
-        .fechamento-detalhe { display: block; font-size: 10.5px; font-weight: 400; color: var(--ink-3); margin-top: 2px; }
         .gc-selo { display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 20px; padding: 3px 9px; font-size: 10.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
         .gc-selo.atraso { background: var(--red-bg); color: var(--red); }
         .gc-selo.perto { background: var(--amber-bg); color: var(--amber); }
@@ -24080,7 +23914,7 @@ export default function App() {
         :is(.ad-addbtn, .btn-add-item, .btn-separar) { border: 1px dashed var(--line-3); border-radius: 8px; background: transparent; color: var(--text-soft); font-family: var(--font-sans); transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease; }
         :is(.ad-addbtn, .btn-add-item, .btn-separar):hover { border-color: var(--brand); border-style: dashed; background: var(--brand-soft); color: var(--brand); }
 
-        :is(.btn-linha-excluir, .btn-linha-inserir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn, .gc-busca-limpar, .cf-doc-x) { border-radius: 6px; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+        :is(.btn-linha-excluir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn, .gc-busca-limpar, .cf-doc-x) { border-radius: 6px; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
 
         /* ---------- Campos (Input · Select · Textarea) ----------
            Padrão obrigatório do DS: fundo --field, borda --line-2, foco em
@@ -24119,23 +23953,21 @@ export default function App() {
         .squad-chip.active.alerta { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
         .alert-toggle { border-radius: 999px; border-color: var(--line-2); font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-soft); }
         .alert-toggle.active { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
-        .tipo-chip-conta { background: color-mix(in srgb, var(--text) 8%, transparent); color: inherit; font-family: var(--font-mono); }
-        .tipo-chip.active .tipo-chip-conta { background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand); }
         .ad-tag.rascunho.on { background: var(--surface-3); border-color: var(--line-3); color: var(--text); }
         .ad-tag.aguardando.on { background: color-mix(in srgb, var(--warning) 14%, transparent); border-color: var(--warning); color: var(--warning); }
         .ad-tag.aprovado.on { background: var(--success-soft); border-color: var(--success); color: var(--success); }
         .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
         /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
-        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
+        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-alterado, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
         :is(.soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
-        :is(.nav-count, .grp-conta, .vend-count, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        :is(.nav-count, .grp-conta, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         .ad-obra-n { background: var(--brand); color: var(--bg); }
 
         /* ---------- Cartões e números (Card · KPI) ---------- */
         :is(.big-card, .gc-total, .flat-panel) { border-radius: 14px; }
         :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
-        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .campo-rotulo, .conf-col-label, .ad-prev-h, .sugestoes-titulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .campo-rotulo, .conf-col-label, .ad-prev-h, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .ad-cab label, .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .funil-n, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
@@ -24153,11 +23985,10 @@ export default function App() {
         .mo-escopo-barra { border-radius: 14px; }
 
         /* ---------- Tabelas (Table) ---------- */
-        .grp-itens th, .cat-items th, .flat-table th, .vend-itens th, .exec-itens th { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute); background: var(--surface-2); border-bottom: 1px solid var(--line-1); }
+        .grp-itens th, .cat-items th, .flat-table th, .vend-itens th { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mute); background: var(--surface-2); border-bottom: 1px solid var(--line-1); }
         .grp-itens td, .cat-items td, .flat-table td, .vend-itens td { font-variant-numeric: tabular-nums; border-bottom-color: var(--line-1); }
         .grp-itens tbody tr:hover > td, .cat-items tbody tr:hover > td, .flat-table tbody tr:hover > td, .vend-itens tbody tr:hover > td { background-color: var(--row-hover); }
         .grp-itens tfoot td, .flat-table tfoot td { border-top: 1px solid var(--line-2); background: var(--surface-2); font-weight: 600; }
-        .vend-total { border-top: 1px solid var(--line-2); }
 
         /* ---------- Avisos (Alert · Banner) ----------
            O texto fica em --text: o tom mora no fundo, na borda e no ícone.
@@ -24199,9 +24030,9 @@ export default function App() {
 
         /* ---------- Sobreposições (Dialog · Popover · Tooltip) ---------- */
         .fo-menu { padding: 6px; border-color: var(--line-2); border-radius: 10px; background: var(--surface-1); box-shadow: var(--shadow-3); }
-        .ad-busca, .busca-insumo, .sugestoes { border-radius: 10px; }
-        :is(.fo-item, .sugestao-linha, .det-opcao) { border-radius: 6px; }
-        :is(.fo-item, .sugestao-linha, .busca-insumo-linha, .ad-busca-item):hover { background: var(--brand-soft); }
+        .ad-busca { border-radius: 10px; }
+        :is(.fo-item, .det-opcao) { border-radius: 6px; }
+        :is(.fo-item, .ad-busca-item):hover { background: var(--brand-soft); }
         .fo-item.on { background: var(--brand-soft); color: var(--brand); }
         .detalhe-fundo { background: var(--overlay-strong); backdrop-filter: var(--overlay-blur); -webkit-backdrop-filter: var(--overlay-blur); }
         .detalhe-caixa { padding: 20px 24px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--surface-1); box-shadow: var(--shadow-4); animation: dialog-fade-in 0.2s ease-out; }
@@ -24288,7 +24119,7 @@ export default function App() {
           .barra-etapa { flex-wrap: wrap; gap: 8px 12px; }
           .be-dir { flex-wrap: wrap; flex-shrink: 1; min-width: 0; }
           .title-row { flex-wrap: wrap; gap: 8px; }
-          .sel-barra-topo, .filter-bar { flex-wrap: wrap; }
+          .sel-barra-topo { flex-wrap: wrap; }
 
           /* Os grupos da obra rolam dentro da propria faixa, como as abas ja'
              faziam. Quebrar em duas linhas partiria a pastilha no meio. */
@@ -24568,7 +24399,6 @@ export default function App() {
             onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao}
             etapaId={ETAPAS_COM_CONCLUSAO.has(tab) ? tab : null} obra={obra}
             onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
-
 
           <TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />
 
