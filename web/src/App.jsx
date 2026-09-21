@@ -61,7 +61,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   TkwsHeader, Avatar as AvatarDS, AvatarFallback, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
-  Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard,
+  Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard, RadioGroupItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
@@ -2974,7 +2974,7 @@ function historicoDaTela(eventos, tela) {
 function CampoBusca({ valor, aoMudar, dica, contador }) {
   return (
     <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-      <Input className="w-full sm:w-72" icon={<Search size={16} />} aria-label="Buscar"
+      <Input className="w-full sm:w-72" icon={<Search size={16} aria-hidden="true" />} aria-label="Buscar"
         placeholder={dica || "Buscar insumo, codigo ou fornecedor…"} value={valor || ""}
         onChange={(e) => aoMudar(e.target.value)} />
       {!!valor && !!contador && <span className="text-xs text-text-mute" role="status">{contador}</span>}
@@ -11515,7 +11515,7 @@ function GeradorSiengeView() {
   const uploadBotao = (
     <Button asChild variant="outline">
       <label>
-        <Upload size={16} /> {linhas ? "Trocar arquivo" : "Subir lista de produtos"}
+        <Upload size={16} aria-hidden="true" /> {linhas ? "Trocar arquivo" : "Subir lista de produtos"}
         <SeletorDeArquivo accept=".xlsx,.xlsm,.xls,.csv,.pdf"
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
       </label>
@@ -11529,11 +11529,11 @@ function GeradorSiengeView() {
       actions={(
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           {uploadBotao}
-          {linhas && <Button variant="outline" onClick={baixarResultado}><Download size={16} /> Conferência (Excel)</Button>}
+          {linhas && <Button variant="outline" onClick={baixarResultado}><Download size={16} aria-hidden="true" /> Conferência (Excel)</Button>}
           {linhas && paraCadastrar.length > 0 && (
             <Button onClick={baixarTemplate}
               title="Template de importação de detalhes do Sienge, em CSV — sobe direto lá">
-              <Download size={16} /> Template Sienge para cadastro de detalhe ({paraCadastrar.length})
+              <Download size={16} aria-hidden="true" /> Template Sienge para cadastro de detalhe ({paraCadastrar.length})
             </Button>
           )}
         </div>
@@ -11551,14 +11551,14 @@ function GeradorSiengeView() {
                 </ToggleGroupItem>
               </ToggleGroup>
               {modoForn === "mesmo" ? (
-                <Input type="text" value={fornecedor} className="w-48"
+                <Input type="text" value={fornecedor} className="w-full sm:w-72"
                   onChange={(e) => setFornecedor(e.target.value)}
                   placeholder="ex: Macrosul" aria-label="Fornecedor"
                   title="Abre o descritivo de todas as linhas" />
               ) : (
-                <span className="flex flex-wrap items-center gap-2 text-sm text-text-soft">
+                <span className="flex flex-wrap items-center gap-2 text-xs text-text-mute">
                   {fornsDaPlanilha.length
-                    ? <>{fornsDaPlanilha.length} da planilha: <b className="font-semibold text-text">{fornsDaPlanilha.slice(0, 3).join(", ")}</b>
+                    ? <>{fornsDaPlanilha.length} da planilha: <span className="text-text">{fornsDaPlanilha.slice(0, 3).join(", ")}</span>
                         {fornsDaPlanilha.length > 3 && `, +${fornsDaPlanilha.length - 3}`}</>
                     : "nenhum fornecedor lido"}
                   <Button variant="ghost" size="sm" onClick={() => setTrocado((v) => !v)}
@@ -11569,7 +11569,7 @@ function GeradorSiengeView() {
               )}
             </>
           )}
-          <span className="min-w-0 flex-1 text-sm text-text-soft">
+          <span className="min-w-0 flex-1 text-xs text-text-mute sm:text-right">
             {carregando ? "Carregando a base do Sienge…"
               : baseSienge ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge`
               : "Base do Sienge indisponível"}
@@ -11581,9 +11581,9 @@ function GeradorSiengeView() {
           e' curto e a tela e' larga. Vinha do cabecalho de fora da tela. */}
       <Card>
         <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
-          <p className="text-sm"><b>Associa</b> cada produto a um insumo que já existe no Sienge.</p>
-          <p className="text-sm"><b>Compara</b> com os detalhes já cadastrados, pra não duplicar.</p>
-          <p className="text-sm"><b>Sugere</b> código e descrição quando não acha nenhum compatível.</p>
+          <p className="text-sm text-text"><span className="label-mono">Associa</span> cada produto a um insumo que já existe no Sienge.</p>
+          <p className="text-sm text-text"><span className="label-mono">Compara</span> com os detalhes já cadastrados, pra não duplicar.</p>
+          <p className="text-sm text-text"><span className="label-mono">Sugere</span> código e descrição quando não acha nenhum compatível.</p>
           <p className="text-xs text-text-mute md:col-span-3">
             Não cria insumos novos. A importação/cadastro no Sienge continua restrita a quem tem permissão lá dentro:
             esta ferramenta padroniza e gera os detalhes, não concede nem substitui esse acesso.
@@ -11600,18 +11600,18 @@ function GeradorSiengeView() {
           <CardContent>
             <dl className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
               <div>
-                <dt className="font-semibold">Excel ou CSV</dt>
-                <dd className="text-text-soft">uma coluna de descrição basta. Marca, modelo, cor e código entram na descrição
+                <dt className="label-mono">Excel ou CSV</dt>
+                <dd className="text-sm text-text">uma coluna de descrição basta. Marca, modelo, cor e código entram na descrição
                   gerada, se existirem.</dd>
               </div>
               <div>
-                <dt className="font-semibold">Sem cabeçalho serve</dt>
-                <dd className="text-text-soft">acho sozinho a coluna das descrições e, junto dela, modelo, quantidade e unidade.
+                <dt className="label-mono">Sem cabeçalho serve</dt>
+                <dd className="text-sm text-text">acho sozinho a coluna das descrições e, junto dela, modelo, quantidade e unidade.
                   Título de grupo não vira produto.</dd>
               </div>
               <div>
-                <dt className="font-semibold">PDF</dt>
-                <dd className="text-text-soft">o relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
+                <dt className="label-mono">PDF</dt>
+                <dd className="text-sm text-text">o relatório “Insumos Orçados” do Sienge, ou cotação de fornecedor.</dd>
               </div>
             </dl>
           </CardContent>
@@ -11645,9 +11645,8 @@ function GeradorSiengeView() {
           )}
 
           <Card>
-            {/* `grp-itens` fica so' pelo estilo das celulas da LinhaGerador,
-                que ainda nao migrou; o wrapper rola na horizontal no celular. */}
-            <div className="grp-itens overflow-x-auto">
+            {/* O wrapper rola na horizontal no celular. */}
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -11703,18 +11702,18 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
     || candidatas[0] || null;
 
   return (
-    <tr className={mae ? (escolhida ? "row-comprado" : "") : "row-falta"}>
-      <td className="mono dim">{linha.i + 1}</td>
-      <td>
-        <div className="item-desc">{linha.desc}</div>
+    <TableRow>
+      <TableCell className="w-10 align-top mono text-xs text-text-mute">{linha.i + 1}</TableCell>
+      <TableCell className="align-top">
+        <div className="text-sm font-semibold text-text">{linha.desc}</div>
         {/* Tudo que a planilha trouxe sobre o item, logo abaixo do nome:
             fornecedor e ambiente na frente, porque sao o que situa a
             linha, e a especificacao depois, que e' o texto longo. */}
         {(linha.fornecedor || linha.ambiente || linha.marca || linha.codigo
           || linha.qtd != null || linha.especificacao) && (
-          <div className="det-espec">
-            {linha.fornecedor && <span className="det-forn">{linha.fornecedor}</span>}
-            {linha.ambiente && <span className="det-amb">{linha.ambiente}</span>}
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-mute">
+            {linha.fornecedor && <Badge tone="neutral">{linha.fornecedor}</Badge>}
+            {linha.ambiente && <Badge tone="neutral">{linha.ambiente}</Badge>}
             <span>
               {[linha.qtd != null ? `${linha.qtd} ${linha.un || ""}`.trim() : null,
                 linha.marca, linha.modelo, linha.cor, linha.codigo,
@@ -11722,15 +11721,15 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
             </span>
           </div>
         )}
-      </td>
-      <td>
+      </TableCell>
+      <TableCell className="w-80 align-top">
         <EscolhaSienge desc={linha.desc} mae={mae} candidatas={candidatas} grupos={grupos} onMae={onMae}
           escolhida={escolhida} onEscolher={onEscolher}
           descrito={descrito} editado={editado} onDescrito={onDescrito}
           aux={aux} codDet={codDet} onAux={onAux} onCodDet={onCodDet}
           auxMarca={auxSorteado ? "sorteado" : null} />
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -11758,6 +11757,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
   descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false, somenteLeitura = false }) {
   const [buscando, setBuscando] = useState(false);
   const [termo, setTermo] = useState("");
+  const idBase = React.useId();
 
   /* A busca varre a base inteira, nao so as candidatas: quando o
      casamento automatico nao acha nada, e' aqui que a pessoa resolve. */
@@ -11770,55 +11770,57 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
   }, [termo, grupos]);
 
   return (
-    <div className="detalhe-cel">
+    <div className="flex flex-col gap-2">
       {/* A MAE, sempre da base. */}
       {mae ? (
-        <div className={`mae-cel casa-${escolhida ? "exato" : "aproximado"}`}>
-          <span className="casa-bola" />
-          <div className="mae-txt">
-            <span className="mae-cod mono">{mae.codigo}</span>
-            <span className="mae-nome">{mae.nome}</span>
+        <div className="flex flex-col gap-2 text-sm">
+          <div className="flex items-start gap-2">
+            <span className="mono text-xs text-text-mute">{mae.codigo}</span>
+            <span className="min-w-0 flex-1 text-text">{mae.nome}</span>
           </div>
           {candidatas.length > 1 && !buscando && !somenteLeitura && (
-            <>
-              <ChevronDown size={12} className="mae-seta" />
-              <select className="mae-sel" value={mae.codigo}
-                onChange={(e) => onMae(e.target.value)}
-                aria-label="Insumo mãe no Sienge">
+            <Select value={mae.codigo} onValueChange={onMae}>
+              <SelectTrigger aria-label="Insumo mãe no Sienge"><SelectValue /></SelectTrigger>
+              <SelectContent>
                 {candidatas.map((g) => (
-                  <option key={g.codigo} value={g.codigo}>{g.codigo} · {g.nome}</option>
+                  <SelectItem key={g.codigo} value={g.codigo}>{g.codigo} · {g.nome}</SelectItem>
                 ))}
-              </select>
-            </>
+              </SelectContent>
+            </Select>
           )}
         </div>
       ) : (
-        <div className="casa casa-sem"><span className="casa-bola" /> sem insumo mãe — escolha um</div>
+        <div><Badge tone="warning">sem insumo mãe — escolha um</Badge></div>
       )}
 
       {/* Procurar outra: e' o caminho quando o casamento automatico
           erra ou nao acha, e ele nao pode faltar — sem ele a pessoa
           fica presa com a sugestao errada. */}
       {somenteLeitura ? null : !buscando ? (
-        <Button variant="ghost" size="sm" onClick={() => setBuscando(true)}>
-          <Search size={10} /> {mae ? "trocar o insumo mãe" : "procurar o insumo mãe"}
-        </Button>
+        <div>
+          <Button variant="ghost" size="sm" onClick={() => setBuscando(true)}>
+            <Search size={14} aria-hidden="true" /> {mae ? "trocar o insumo mãe" : "procurar o insumo mãe"}
+          </Button>
+        </div>
       ) : (
-        <div className="ger-busca">
-          <input className="form-input" autoFocus value={termo} placeholder="nome ou código do insumo…"
+        <div className="flex flex-col gap-1">
+          <Input autoFocus icon={<Search size={16} aria-hidden="true" />} aria-label="Buscar insumo mãe"
+            value={termo} placeholder="nome ou código do insumo…"
             onChange={(e) => setTermo(e.target.value)} />
           {achadas.map((g) => (
-            <Button variant="ghost" key={g.codigo} className="det-opcao"
+            <Button variant="ghost" size="sm" key={g.codigo} className="w-full justify-start gap-2"
               onClick={() => { onMae(g.codigo); setBuscando(false); setTermo(""); }}>
-              <span className="mono det-falta">{g.codigo}</span>
-              <span className="det-opcao-txt">{g.nome}</span>
-              <span className="det-bate">{g.variantes.length}</span>
+              <span className="mono w-20 shrink-0 text-left text-xs text-text-mute">{g.codigo}</span>
+              <span className="min-w-0 flex-1 truncate text-left">{g.nome}</span>
+              <Contador tom="neutral" className="ml-auto">{g.variantes.length}</Contador>
             </Button>
           ))}
           {termo.length >= 2 && achadas.length === 0 && (
-            <span className="dim" style={{ fontSize: 11 }}>Nenhum insumo com esse nome na base do Sienge.</span>
+            <span className="text-xs text-text-mute">Nenhum insumo com esse nome na base do Sienge.</span>
           )}
-          <Button variant="ghost" size="sm" onClick={() => { setBuscando(false); setTermo(""); }}>cancelar</Button>
+          <div>
+            <Button variant="ghost" size="sm" onClick={() => { setBuscando(false); setTermo(""); }}>cancelar</Button>
+          </div>
         </div>
       )}
 
@@ -11827,46 +11829,42 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
           marcava nada mandava a linha pra planilha tambem sem nada
           dizer. Agora as opcoes sao um radio so — as que ja existem no
           Sienge e a nova — e a marcada e' a que vale. */}
-      <div className="det-escolha">
-        <div className="det-escolha-rot">
-          qual descrição vai pra planilha
-          <span className={escolhida ? "det-selo-fora" : "det-selo-vai"}>
-            {escolhida ? "já cadastrada — fica de fora" : "a nova, abaixo"}
-          </span>
-        </div>
+      <div className="flex flex-col gap-2">
+        <SecaoRotulo conta={escolhida ? "já cadastrada — fica de fora" : "a nova, abaixo"}>qual descrição vai pra planilha</SecaoRotulo>
 
-        {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
-          <Button variant="ghost" key={d.insumo.descricao + k}
-            className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
-            disabled={somenteLeitura} onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
-            <span className="det-radio" />
-            <span className="det-opcao-txt">{d.insumo.detalhe}</span>
-            {d.faltaram.length > 0
-              ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
-              : <span className="det-bate">bate tudo</span>}
-          </Button>
-        ))}
+        <RadioGroup value={escolhida ?? "__nova__"} disabled={somenteLeitura} aria-label="Descrição que vai pra planilha"
+          onValueChange={(v) => onEscolher(v === "__nova__" ? null : v)} className="flex flex-col gap-2">
+          {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
+            <div key={d.insumo.descricao + k} className="flex items-start gap-2 text-sm" title={d.insumo.descricao}>
+              <RadioGroupItem id={`${idBase}-v${k}`} value={d.insumo.descricao} />
+              <Label htmlFor={`${idBase}-v${k}`} className="min-w-0 flex-1 font-normal text-text">{d.insumo.detalhe}</Label>
+              <span className="w-32 shrink-0 text-right">
+                {d.faltaram.length > 0
+                  ? <Badge tone="warning">falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
+                  : <Badge tone="success">bate tudo</Badge>}
+              </span>
+            </div>
+          ))}
+          <div className="flex items-start gap-2 text-sm" title="Usar a descrição gerada — é ela que preenche o template do Sienge">
+            <RadioGroupItem id={`${idBase}-nova`} value="__nova__" />
+            <Label htmlFor={`${idBase}-nova`} className="min-w-0 flex-1 font-normal text-text">cadastrar como detalhe novo</Label>
+            <span className="w-32 shrink-0 text-right">{editado && <Badge tone="neutral">editada à mão</Badge>}</span>
+          </div>
+        </RadioGroup>
 
-        <div className={`det-nova ${escolhida ? "fora" : "escolhida"}`}>
-          <Button variant="ghost" className={`det-opcao ${escolhida ? "" : "escolhida"}`}
-            disabled={somenteLeitura} onClick={() => onEscolher(null)}
-            title="Usar a descrição gerada — é ela que preenche o template do Sienge">
-            <span className="det-radio" />
-            <span className="det-opcao-txt">cadastrar como detalhe novo</span>
-            {editado && <span className="det-falta">editada à mão</span>}
-          </Button>
-          <div className="padrao-cel">
+        <div className={`flex flex-col gap-2 ${escolhida ? "opacity-60" : ""}`}>
+          <div className="flex items-start gap-2">
             {/* Textarea, e nao um <code> com botao de editar: quem confere
                 cinquenta linhas nao quer dois cliques por linha. */}
-            <CampoRascunho as="textarea" className="padrao-txt padrao-edit" valor={descrito} rows={2}
+            <CampoRascunho as={Textarea} className="mono min-w-0 flex-1 text-xs" valor={descrito} rows={2}
               spellCheck={false} aria-label="Descrição do detalhe no Sienge" readOnly={somenteLeitura}
               onSalvar={onDescrito} aoSair={aoSair} />
-            <div className="padrao-acoes">
-              <BotaoIcone rotulo="Copiar pra colar no cadastro do Sienge" variant="ghost" 
- onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></BotaoIcone>
+            <div className="flex shrink-0 flex-col gap-1">
+              <BotaoIcone rotulo="Copiar pra colar no cadastro do Sienge" variant="ghost" size="sm"
+                onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={14} aria-hidden="true" /></BotaoIcone>
               {editado && !somenteLeitura && (
-                <BotaoIcone rotulo="Voltar ao descritivo gerado" variant="ghost" 
- onClick={() => onDescrito(null)}><RotateCcw size={11} /></BotaoIcone>
+                <BotaoIcone rotulo="Voltar ao descritivo gerado" variant="ghost" size="sm"
+                  onClick={() => onDescrito(null)}><RotateCcw size={14} aria-hidden="true" /></BotaoIcone>
               )}
             </div>
           </div>
@@ -11874,18 +11872,20 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
               nao carrega. Ficam aqui embaixo, e nao numa coluna
               propria, porque so valem pra linha que vai ser
               cadastrada — quem escolheu variante nao preenche nada. */}
-          <div className="det-codigos">
-            <label>
-              cód. do detalhe
-              <CampoRascunho className="form-input" valor={codDet} placeholder="o Sienge numera" readOnly={somenteLeitura}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field>
+              <Label htmlFor={`${idBase}-det`}>cód. do detalhe</Label>
+              <CampoRascunho as={Input} id={`${idBase}-det`} valor={codDet} placeholder="o Sienge numera" readOnly={somenteLeitura}
                 onSalvar={onCodDet} aoSair={aoSair} />
-            </label>
-            <label>
-              cód. auxiliar {auxMarca && <span className="det-sorteado">{auxMarca}</span>}
-              <CampoRascunho className={`form-input ${aux ? "" : "vazio"} ${auxMarca ? "sorteado" : ""}`}
+            </Field>
+            <Field>
+              <Label htmlFor={`${idBase}-aux`} className="flex items-center gap-2">
+                cód. auxiliar {auxMarca && <Badge tone="warning">{auxMarca}</Badge>}
+              </Label>
+              <CampoRascunho as={Input} id={`${idBase}-aux`}
                 valor={aux} placeholder="referência do fornecedor" readOnly={somenteLeitura}
                 onSalvar={onAux} aoSair={aoSair} />
-            </label>
+            </Field>
           </div>
         </div>
       </div>
@@ -15832,57 +15832,42 @@ function GcLinhaObra({ L, onAbrir }) {
  *
  * Agrupa por squad porque e' assim que ela procura obra: primeiro a
  * equipe, depois o nome. */
-function EscolherObra({ obras, numeroDe, onEscolher, onFechar }) {
-  const [busca, setBusca] = useState("");
-  const caixa = useRef(null);
-
-  useEffect(() => {
-    const fora = (e) => { if (caixa.current && !caixa.current.contains(e.target)) onFechar(); };
-    const esc = (e) => { if (e.key === "Escape") onFechar(); };
-    document.addEventListener("mousedown", fora);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("mousedown", fora);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [onFechar]);
-
+function EscolherObra({ obras, numeroDe, onEscolher, aberto, onAbrir, children }) {
+  /* O Command filtra por trecho, sem acento, no codigo, no nome e no
+     squad — o mesmo criterio da busca de antes. */
   const grupos = useMemo(() => {
-    const t = busca.trim().toLowerCase();
-    const achadas = t
-      ? obras.filter((o) => `${o.codigo} ${o.nome} ${o.squad || ""}`.toLowerCase().includes(t))
-      : obras;
     const por = {};
-    achadas.forEach((o) => { (por[o.squad || "Outras obras"] ||= []).push(o); });
+    obras.forEach((o) => { (por[o.squad || "Outras obras"] ||= []).push(o); });
     Object.values(por).forEach((l) => l.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")));
     return Object.keys(por).sort((a, b) => a.localeCompare(b, "pt-BR")).map((k) => [k, por[k]]);
-  }, [obras, busca]);
-
-  const quantas = grupos.reduce((n, [, l]) => n + l.length, 0);
+  }, [obras]);
+  const semAcento = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
   return (
-    <div className="fo-menu fo-menu-dir" ref={caixa}>
-      <input className="form-input fo-busca" autoFocus value={busca}
-        placeholder="nome, código ou squad…" onChange={(e) => setBusca(e.target.value)} />
-
-      <div className="fo-lista eo-lista">
-        {quantas === 0 && <div className="empty-note">Nenhuma obra com esse nome ou código.</div>}
-        {grupos.map(([squad, lista]) => (
-          <div key={squad}>
-            <div className="eo-squad"><IconeSquad nome={squad} size={11} /> {squad}</div>
-            {lista.map((o) => (
-              <Button variant="ghost" key={o.codigo} className="fo-item eo-item" onClick={() => onEscolher(o)}>
-                <span className="mono dim">#{o.codigo}</span>
-                <span className="fo-nome">{o.nome}</span>
-                {/* O numero e' confirmacao, nao criterio de escolha:
-                    fica na coluna da direita, apagado. */}
-                <span className="eo-num mono">{numeroDe(o)}</span>
-              </Button>
+    <Popover open={aberto} onOpenChange={onAbrir}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-0">
+        <Command filter={(texto, busca) => (semAcento(texto).includes(semAcento(busca)) ? 1 : 0)}>
+          <CommandInput placeholder="nome, código ou squad…" />
+          <CommandList className="max-h-80 overflow-y-auto">
+            <CommandEmpty>Nenhuma obra com esse nome ou código.</CommandEmpty>
+            {grupos.map(([squad, lista]) => (
+              <CommandGroup key={squad} heading={squad}>
+                {lista.map((o) => (
+                  <CommandItem key={o.codigo} value={`${o.codigo} ${o.nome} ${o.squad || ""}`} onSelect={() => onEscolher(o)}>
+                    <span className="mono w-16 shrink-0 text-xs text-text-mute">#{o.codigo}</span>
+                    <span className="min-w-0 flex-1 truncate">{o.nome}</span>
+                    {/* O numero e' confirmacao, nao criterio de escolha:
+                        fica na coluna da direita, apagado. */}
+                    <span className="ml-auto mono text-xs text-text-mute">{numeroDe(o)}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
             ))}
-          </div>
-        ))}
-      </div>
-    </div>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -15914,10 +15899,10 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
           listeners no document. */}
       <Popover open={aberto} onOpenChange={setAberto}>
         <PopoverTrigger asChild>
-          <Button variant={escolhidas.size ? "secondary" : "outline"} size="sm" aria-label={`Filtrar obras: ${rotulo}`}>
-            <Building2 size={14} />
+          <Button variant={escolhidas.size ? "secondary" : "outline"} aria-label={`Filtrar obras: ${rotulo}`}>
+            <Building2 size={16} aria-hidden="true" />
             <span className="max-w-60 truncate">{rotulo}</span>
-            <ChevronDown size={14} />
+            <ChevronDown size={16} aria-hidden="true" />
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80 p-3">
@@ -15960,7 +15945,7 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
         <FilterChip key={o.codigo} label="Obra" value={<span className="mono">#{o.codigo}</span>} onClear={() => alternar(o.codigo)} />
       ))}
       {escolhidas.size > 6 && (
-        <Button variant="ghost" size="sm" onClick={() => onMudar(new Set())}>Limpar filtro</Button>
+        <Button variant="ghost" onClick={() => onMudar(new Set())}>Limpar filtro</Button>
       )}
     </div>
   );
@@ -16571,7 +16556,7 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Users size={16} /> Mão de obra própria</CardTitle>
+        <CardTitle className="flex items-center gap-2"><Users size={16} aria-hidden="true" /> Mão de obra própria</CardTitle>
         <CardDescription>
           A equipe interna: especialidade, função e diária. A calculadora da mão de obra a contratar usa estes valores.
         </CardDescription>
@@ -16585,36 +16570,35 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
         )}
         {prestadores.erro && <Alert tone="danger"><AlertDescription>{prestadores.erro}</AlertDescription></Alert>}
         {erro && <Alert tone="danger"><AlertTitle>Não consegui salvar</AlertTitle><AlertDescription>{erro}</AlertDescription></Alert>}
-        {!podeEditar && !semTabela && <p className="text-sm text-text-soft">Só administrador cadastra e muda a equipe interna.</p>}
+        {!podeEditar && !semTabela && <p className="text-xs text-text-mute">Só administrador cadastra e muda a equipe interna.</p>}
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-40">Especialidade</TableHead>
                 <TableHead>Função</TableHead>
-                <TableHead className="w-40 text-right">Diária (R$)</TableHead>
-                <TableHead className="w-12"><span className="sr-only">Ações</span></TableHead>
+                <TableHead className="w-40 text-center">Diária (R$)</TableHead>
+                <TableHead className="w-12 text-right"><span className="sr-only">Ações</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {especialidades.filter((esp) => mostrar.some((p) => p.especialidade === esp)).map((esp) => (
                 mostrar.filter((p) => p.especialidade === esp).map((p, k) => (
                   <TableRow key={p.id || p.chave}>
-                    <TableCell className={k ? "" : "font-semibold text-purple"}>{k ? "" : esp}</TableCell>
+                    <TableCell className={k ? "" : "label-mono"}>{k ? "" : esp}</TableCell>
                     <TableCell>
                       <CampoRascunho as={Input} valor={p.funcao} aoSair readOnly={trava || !p.id} aria-label={`Função (${esp})`}
                         onSalvar={(v) => { if (v.trim() && v.trim() !== p.funcao) gravar(p, { funcao: v.trim() }); }} />
                     </TableCell>
                     <TableCell>
-                      <CampoRascunho as={Input} className="mono text-right" valor={numBR(Number(p.diaria) || 0)} aoSair readOnly={trava || !p.id}
+                      <CampoRascunho as={Input} className="mono text-right tabular-nums" valor={numBR(Number(p.diaria) || 0)} aoSair readOnly={trava || !p.id}
                         aria-label={`Diária de ${p.nome || p.funcao}`}
                         onSalvar={(v) => { const n = parseBRL(v); if (n != null && n !== p.diaria) gravar(p, { diaria: n }); }} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-right">
                       {!trava && p.id && (
-                        <BotaoIcone rotulo={`Tirar ${p.nome || p.funcao} da equipe interna`} variant="danger" disabled={salvando === p.id} onClick={() => tirar(p)}
- >
-                          <Trash2 size={14} />
+                        <BotaoIcone rotulo={`Tirar ${p.nome || p.funcao} da equipe interna`} variant="ghost" className="text-danger" disabled={salvando === p.id} onClick={() => tirar(p)}>
+                          <Trash2 size={14} aria-hidden="true" />
                         </BotaoIcone>
                       )}
                     </TableCell>
@@ -16629,7 +16613,7 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
         </div>
         {!trava && (
           <div className="space-y-4 border-t border-line-1 pt-4">
-            <h3 className="text-sm font-semibold">Adicionar à equipe</h3>
+            <SecaoRotulo>Adicionar à equipe</SecaoRotulo>
             <div className="grid gap-4 md:grid-cols-3">
               <Field>
                 <Label htmlFor={idEsp}>Especialidade</Label>
@@ -16655,8 +16639,8 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
                   {especialidades.map((esp) => <ToggleGroupItem key={esp} value={esp} size="sm">{esp}</ToggleGroupItem>)}
                 </ToggleGroup>
               </div>
-              <Button disabled={salvando === "novo"} onClick={adicionar} className="shrink-0">
-                <Plus size={16} /> {salvando === "novo" ? "Salvando…" : "Adicionar"}
+              <Button size="sm" disabled={salvando === "novo"} onClick={adicionar} className="shrink-0">
+                <Plus size={14} aria-hidden="true" /> {salvando === "novo" ? "Salvando…" : "Adicionar"}
               </Button>
             </div>
           </div>
@@ -17241,48 +17225,60 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
     onMudar({ ...g, itens: [...g.itens.slice(0, k + 1), copia, ...g.itens.slice(k + 1)] });
   };
 
+  const idG = React.useId();
   return (
-    <div className="ad-grupo">
-      <div className="ad-gh">
-        <input className="ad-num" value={g.num} onChange={(e) => setG("num", e.target.value)} title="Nº do grupo" />
-        <input className="ad-gnome" placeholder="NOME DO GRUPO (ex.: MÓVEIS SOB MEDIDA)"
-          value={g.nome} onChange={(e) => setG("nome", e.target.value)} />
+    <Card className="p-0">
+      <div className="flex flex-wrap items-end gap-2 border-b border-line-1 px-4 py-3">
+        <Field className="w-16">
+          <Label htmlFor={`${idG}-num`}>Nº</Label>
+          <Input id={`${idG}-num`} className="mono" value={g.num} onChange={(e) => setG("num", e.target.value)} title="Nº do grupo" />
+        </Field>
+        <Field className="min-w-0 flex-1 basis-64">
+          <Label htmlFor={`${idG}-nome`}>Nome do grupo</Label>
+          <Input id={`${idG}-nome`} placeholder="NOME DO GRUPO (ex.: MÓVEIS SOB MEDIDA)"
+            value={g.nome} onChange={(e) => setG("nome", e.target.value)} />
+        </Field>
         {/* A verba e' o que faz este grupo virar dinheiro no orcamento da
             obra. Adivinhada pelo nome — e escrita aqui justamente pra
             poder ser corrigida antes de aparecer em tres telas. */}
-        <select className="ad-verba" value={g.verba || ""} onChange={(e) => setG("verba", e.target.value || null)}
-          title="Verba da EAP onde este grupo entra">
-          <option value="">{palpiteVerba ? `auto: ${palpiteVerba.num} ${palpiteVerba.nome}` : "sem verba — não entra no orçamento"}</option>
-          {eapPadrao().map((c) => <option key={c.num} value={c.num}>{c.num} · {c.nome}</option>)}
-        </select>
-        <span className="ad-sub mono">{fmtBRL(totalGrupo(g))}</span>
-        {/* A margem do grupo, so' na adicao e so' depois que alguem disse
-            algum custo: "margem 100%" num grupo sem custo nenhum seria uma
-            mentira bonita bem no lugar onde se decide preco. */}
-        {sec === "adicao" && custoGrupo(g) > 0 && (
-          <span className="ad-margem-g mono" title={`Custo ${fmtBRL(custoGrupo(g))}`}>
-            margem {fmtBRL(totalGrupo(g) - custoGrupo(g))}
-          </span>
-        )}
-        <BotaoIcone rotulo="Mover para cima" variant="ghost" onClick={() => onMover(-1)}>↑</BotaoIcone>
-        <BotaoIcone rotulo="Mover para baixo" variant="ghost" onClick={() => onMover(1)}>↓</BotaoIcone>
-        <BotaoIcone rotulo="Excluir grupo" variant="ghost" className="text-danger" onClick={onRemover}><Trash2 size={12} /></BotaoIcone>
+        <Choice label="Verba da EAP" className="w-full sm:w-72" value={g.verba || "__auto__"}
+          onChange={(v) => setG("verba", v === "__auto__" ? null : v)}
+          opcoes={[
+            { value: "__auto__", label: palpiteVerba ? `auto: ${palpiteVerba.num} ${palpiteVerba.nome}` : "sem verba — não entra no orçamento" },
+            ...eapPadrao().map((c) => ({ value: c.num, label: `${c.num} · ${c.nome}` })),
+          ]} />
+        <div className="flex flex-col items-end">
+          <span className="mono tabular-nums text-right text-sm font-semibold text-text">{fmtBRL(totalGrupo(g))}</span>
+          {/* A margem do grupo, so' na adicao e so' depois que alguem disse
+              algum custo: "margem 100%" num grupo sem custo nenhum seria uma
+              mentira bonita bem no lugar onde se decide preco. */}
+          {sec === "adicao" && custoGrupo(g) > 0 && (
+            <span className="mono tabular-nums text-xs text-text-mute" title={`Custo ${fmtBRL(custoGrupo(g))}`}>
+              margem {fmtBRL(totalGrupo(g) - custoGrupo(g))}
+            </span>
+          )}
+        </div>
+        <div className="ml-auto flex items-center">
+          <BotaoIcone rotulo="Mover para cima" variant="ghost" onClick={() => onMover(-1)}>↑</BotaoIcone>
+          <BotaoIcone rotulo="Mover para baixo" variant="ghost" onClick={() => onMover(1)}>↓</BotaoIcone>
+          <BotaoIcone rotulo="Excluir grupo" variant="ghost" className="text-danger" onClick={onRemover}><Trash2 size={14} aria-hidden="true" /></BotaoIcone>
+        </div>
       </div>
 
-      <div className="ad-itens">
+      <div className="flex flex-col">
         {g.itens.map((it) => (
-          <div key={it.id} className="ad-item">
-            <div className="ad-item-topo">
-              <span className="ad-item-cod mono">{g.num}.{g.itens.indexOf(it) + 1}</span>
-              <span className="ad-item-tot mono">{fmtBRL(totalItem(it))}</span>
+          <div key={it.id} className="flex flex-col gap-2 border-b border-line-1 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="mono text-xs text-text-mute">{g.num}.{g.itens.indexOf(it) + 1}</span>
+              <span className="ml-auto mono tabular-nums text-right text-sm font-semibold text-text">{fmtBRL(totalItem(it))}</span>
               {/* Copiar pra outra seção é o gesto do dia: quase todo aditivo
                   suprime uma versão do móvel e adiciona outra, quase igual. */}
-              <BotaoIcone rotulo={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`} variant="ghost" 
- onClick={() => onOutraSecao(it)}><Copy size={11} /></BotaoIcone>
-              <BotaoIcone rotulo="Duplicar item" variant="ghost" onClick={() => dupI(it.id)}><Plus size={11} /></BotaoIcone>
-              <BotaoIcone rotulo="Excluir item" variant="ghost" className="text-danger" onClick={() => delI(it.id)}><X size={11} /></BotaoIcone>
+              <BotaoIcone rotulo={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`} variant="ghost"
+                onClick={() => onOutraSecao(it)}><Copy size={14} aria-hidden="true" /></BotaoIcone>
+              <BotaoIcone rotulo="Duplicar item" variant="ghost" onClick={() => dupI(it.id)}><Plus size={14} aria-hidden="true" /></BotaoIcone>
+              <BotaoIcone rotulo="Excluir item" variant="ghost" className="text-danger" onClick={() => delI(it.id)}><X size={14} aria-hidden="true" /></BotaoIcone>
             </div>
-            <textarea className="form-input ad-desc-in" rows={2}
+            <Textarea rows={2} aria-label="Descrição do item"
               placeholder={doExecutivo?.length ? "Descrição — ou digite pra buscar no executivo" : "Descrição do item"}
               value={it.descricao} onChange={(e) => setI(it.id, "descricao", e.target.value)} />
             {/* So na supressao, e so enquanto a linha nao foi resolvida.
@@ -17292,53 +17288,67 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
                 ela tira) e errar o valor unitario. */}
             <BuscaExecutivo itens={doExecutivo} termo={it.descricao} ativo={!it.doExecutivo}
               onEscolher={(x) => escolherDoExecutivo(it.id, x)} />
-            <div className={`ad-item-campos ${sec === "adicao" ? "com-custo" : ""}`}>
-              <label>Ambiente<input className="form-input" value={it.ambiente}
-                onChange={(e) => setI(it.id, "ambiente", e.target.value)} /></label>
-              <label>Qtd<input className="form-input" inputMode="decimal" value={it.qtd}
-                onChange={(e) => setI(it.id, "qtd", e.target.value)} /></label>
-              <label>Un.<input className="form-input" list="ad-unidades" value={it.unidade}
-                onChange={(e) => setI(it.id, "unidade", e.target.value)} /></label>
-              <label>Valor unitário<input className="form-input" inputMode="decimal" placeholder="0,00"
-                value={it.valor} onChange={(e) => setI(it.id, "valor", e.target.value)} /></label>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+              <Field className="col-span-2 md:col-span-1">
+                <Label htmlFor={`${idG}-${it.id}-amb`}>Ambiente</Label>
+                <Input id={`${idG}-${it.id}-amb`} value={it.ambiente}
+                  onChange={(e) => setI(it.id, "ambiente", e.target.value)} />
+              </Field>
+              <Field>
+                <Label htmlFor={`${idG}-${it.id}-qtd`}>Qtd</Label>
+                <Input id={`${idG}-${it.id}-qtd`} className="mono text-right tabular-nums" inputMode="decimal" value={it.qtd}
+                  onChange={(e) => setI(it.id, "qtd", e.target.value)} />
+              </Field>
+              <Field>
+                <Label htmlFor={`${idG}-${it.id}-un`}>Un.</Label>
+                <Input id={`${idG}-${it.id}-un`} list="ad-unidades" value={it.unidade}
+                  onChange={(e) => setI(it.id, "unidade", e.target.value)} />
+              </Field>
+              <Field>
+                <Label htmlFor={`${idG}-${it.id}-val`}>Valor unitário</Label>
+                <Input id={`${idG}-${it.id}-val`} className="mono text-right tabular-nums" inputMode="decimal" placeholder="0,00"
+                  value={it.valor} onChange={(e) => setI(it.id, "valor", e.target.value)} />
+              </Field>
               {/* O CUSTO e' interno e so' existe na adicao: e' ela que vira
                   linha de compra. O valor ao lado e' o do cliente; este e' o
                   que a obra gasta, e e' ele que sobe pro Plano de Compras.
                   Vazio, a linha la aparece como "a orcar". */}
               {sec === "adicao" && (
-                <label>Custo unit. <span className="ad-interno">interno</span>
-                  <input className="form-input" inputMode="decimal" placeholder="a orçar"
-                    value={it.custo || ""} onChange={(e) => setI(it.id, "custo", e.target.value)} /></label>
+                <Field>
+                  <Label htmlFor={`${idG}-${it.id}-custo`}>Custo unit. (interno)</Label>
+                  <Input id={`${idG}-${it.id}-custo`} className="mono text-right tabular-nums" inputMode="decimal" placeholder="a orçar"
+                    value={it.custo || ""} onChange={(e) => setI(it.id, "custo", e.target.value)} />
+                </Field>
               )}
               {/* MAT ou MO decide de que lado do orcamento este item cai
                   quando o aditivo for aprovado — Plano de Compras ou
                   Contratos. Sem escolha, tudo caia em mao de obra. */}
-              <label>Alocação
-                <select className="form-input" value={it.alocacao || "MAT"}
-                  onChange={(e) => setI(it.id, "alocacao", e.target.value)}>
-                  <option value="MAT">MATERIAL (MAT)</option>
-                  <option value="MO">MÃO DE OBRA (MO)</option>
-                  <option value="AMBOS">MAT+MO</option>
-                </select>
-              </label>
+              <Choice label="Alocação" value={it.alocacao || "MAT"} onChange={(v) => setI(it.id, "alocacao", v)}
+                opcoes={[
+                  { value: "MAT", label: "MATERIAL (MAT)" },
+                  { value: "MO", label: "MÃO DE OBRA (MO)" },
+                  { value: "AMBOS", label: "MAT+MO" },
+                ]} />
             </div>
             {/* A especificacao de COMPRA. Ela nao sai no PDF do cliente: vai
                 pro campo que a planilha ja usa, e com isso aparece sozinha
                 na linha das Compras, no descritivo do cadastro do Sienge e
                 no PDF por insumo. */}
             {sec === "adicao" && (
-              <label className="ad-espec">
-                Especificação de compra <span className="ad-interno">interna — não sai no PDF</span>
-                <textarea className="form-input ad-espec-in" rows={2}
+              <Field>
+                <Label htmlFor={`${idG}-${it.id}-espec`}>Especificação de compra (interna — não sai no PDF)</Label>
+                <Textarea id={`${idG}-${it.id}-espec`} rows={2}
                   placeholder="marca, modelo, medida, acabamento, código do fornecedor…"
                   value={it.espec || ""} onChange={(e) => setI(it.id, "espec", e.target.value)} />
-              </label>
+              </Field>
             )}
           </div>
         ))}
-        <Button variant="outline" size="sm" onClick={addItem}><Plus size={12} /> Adicionar item</Button>
+        <div className="px-4 py-3">
+          <Button variant="outline" size="sm" onClick={addItem}><Plus size={14} aria-hidden="true" /> Adicionar item</Button>
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -17357,13 +17367,13 @@ function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara, doExec
   };
 
   return (
-    <div className={`ad-card ${sec === "supressao" ? "sup" : ""}`}>
-      <div className="ad-card-h">
-        <span>{titulo}</span>
-        <span className="ad-card-tot mono">{fmtBRL(total)}</span>
-      </div>
-      <div className="ad-card-b">
-        {grupos.length === 0 && <div className="empty-note">Nenhum grupo — esta seção não aparece no documento.</div>}
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <CardTitle>{titulo}</CardTitle>
+        <span className="mono tabular-nums font-semibold">{fmtBRL(total)}</span>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {grupos.length === 0 && <p className="text-sm text-text-mute">Nenhum grupo — esta seção não aparece no documento.</p>}
         {grupos.map((g, gi) => (
           <GrupoAditivo key={g.id} sec={sec} g={g} gi={gi} doExecutivo={doExecutivo}
             onMudar={(novo) => trocar(g.id, novo)}
@@ -17371,11 +17381,13 @@ function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara, doExec
             onMover={(d) => mover(g.id, d)}
             onOutraSecao={(it) => onCopiarPara(g, it)} />
         ))}
-        <Button variant="outline" size="sm" onClick={() => onMudar([...grupos, novoGrupo(grupos.length + 1)])}>
-          <Plus size={12} /> Adicionar grupo de {titulo.toLowerCase()}
-        </Button>
-      </div>
-    </div>
+        <div>
+          <Button variant="outline" size="sm" onClick={() => onMudar([...grupos, novoGrupo(grupos.length + 1)])}>
+            <Plus size={14} aria-hidden="true" /> Adicionar grupo de {titulo.toLowerCase()}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -17679,8 +17691,8 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
 
   if (feito) {
     return (
-      <div className={`flex flex-wrap items-center gap-2 text-xs font-semibold text-success ${compacto ? "mt-1" : ""}`}>
-        <CheckCircle2 size={12} />
+      <div className={`flex flex-wrap items-center gap-2 text-xs text-success ${compacto ? "mt-1" : ""}`}>
+        <CheckCircle2 size={12} aria-hidden="true" />
         <span>Pipefy enviado{a.doc.pipefy.por ? ` por ${a.doc.pipefy.por}` : ""} em {new Date(feito).toLocaleDateString("pt-BR")}</span>
         <Button variant="ghost" size="sm" onClick={() => onMarcar(null)}>desfazer</Button>
       </div>
@@ -17696,13 +17708,13 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
           <div className="flex items-start gap-2">
             <pre className="mono min-w-0 flex-1 whitespace-pre-wrap rounded-lg bg-surface-1 p-2 text-xs">{resumo}</pre>
             <BotaoIcone rotulo="Copiar pra colar no formulário" variant="ghost" 
- onClick={() => navigator.clipboard?.writeText(resumo)}><Copy size={16} /></BotaoIcone>
+ onClick={() => navigator.clipboard?.writeText(resumo)}><Copy size={16} aria-hidden="true" /></BotaoIcone>
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="secondary" size="sm">
+          <Button asChild variant="outline" size="sm">
             <a href={linkPipefy(saldo)} target="_blank" rel="noopener noreferrer">
-              <ArrowUpRight size={16} /> Abrir o formulário
+              <ArrowUpRight size={14} aria-hidden="true" /> Abrir o formulário
             </a>
           </Button>
           <Button size="sm" onClick={() => onMarcar({ em: new Date().toISOString(), por: usuario || null })}>
@@ -17710,8 +17722,8 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
           </Button>
         </div>
         {!compacto && (
-          <p className="text-xs text-text-soft">
-            O link já vai com <b>Aditivo</b> marcado e o valor preenchido. O resto — obra, closer, hunter,
+          <p className="text-xs text-text-mute">
+            O link já vai com Aditivo marcado e o valor preenchido. O resto — obra, closer, hunter,
             indicador, Neolix, parcelamento, data de pagamento e os dois anexos — o app não tem como saber,
             e chutar criaria um card errado no comercial.
           </p>
@@ -17750,10 +17762,10 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
 
   return (
     <TableRow>
-      <TableCell className="mono font-semibold">{a.numero}</TableCell>
+      <TableCell className="mono text-sm text-text">{a.numero}</TableCell>
       {mostrarObra && (
         <TableCell className="hidden md:table-cell">
-          <div className="max-w-48 truncate text-xs text-text-soft">{obraNome || <span className="mono dim">#{a.obraCodigo}</span>}</div>
+          <div className="max-w-48 truncate text-xs text-text-mute">{obraNome || <span className="mono">#{a.obraCodigo}</span>}</div>
         </TableCell>
       )}
       <TableCell className="min-w-64">
@@ -17775,10 +17787,10 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
             onMarcar={(v) => gravar({ doc: { ...a.doc, observacao: obs, pipefy: v } })} />
         )}
       </TableCell>
-      <TableCell className="mono hidden text-right md:table-cell">{fmtBRL(a.totalSupressao)}</TableCell>
-      <TableCell className="mono hidden text-right md:table-cell">{fmtBRL(a.totalAdicao)}</TableCell>
-      <TableCell className={`mono text-right ${saldo < 0 ? "text-success" : ""}`}>
-        <b>{fmtBRL(saldo)}</b>
+      <TableCell className="mono tabular-nums hidden text-right md:table-cell">{fmtBRL(a.totalSupressao)}</TableCell>
+      <TableCell className="mono tabular-nums hidden text-right md:table-cell">{fmtBRL(a.totalAdicao)}</TableCell>
+      <TableCell className={`mono tabular-nums text-right ${saldo < 0 ? "text-success" : ""}`}>
+        <span className="font-semibold">{fmtBRL(saldo)}</span>
         <div className="text-xs font-normal text-text-mute">{rotuloSaldo(saldo)}</div>
       </TableCell>
       <TableCell>
@@ -17789,13 +17801,13 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
           aviso={a.status === "aprovado" && pipefyPendente(a)
             ? <Badge tone="warning" title="Falta a Solicitação de contrato no Pipefy">Pipefy pendente</Badge> : null} />
       </TableCell>
-      <TableCell className="whitespace-nowrap text-center">
-        <BotaoIcone rotulo="Abrir" variant="ghost" onClick={onAbrir}><Search size={16} /></BotaoIcone>
+      <TableCell className="whitespace-nowrap text-right">
+        <BotaoIcone rotulo="Abrir" variant="ghost" onClick={onAbrir}><Search size={14} aria-hidden="true" /></BotaoIcone>
         {/* O botao fica a' vista e desabilitado, com o motivo na dica:
             esconder faria a pessoa procurar onde nao esta'. */}
         <BotaoIcone rotulo="Excluir" variant="ghost" className="text-danger" disabled={!podeApagar} onClick={podeApagar ? onExcluir : undefined}
- >
-          <Trash2 size={16} />
+>
+          <Trash2 size={14} aria-hidden="true" />
         </BotaoIcone>
       </TableCell>
     </TableRow>
@@ -17906,24 +17918,26 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
            filtro escondeu a funcao inteira. Agora o proprio botao
            pergunta, e pergunta do jeito que o resto do app pergunta.
            `relative` ancora o menu de escolha da obra. */
-        <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Button onClick={() => (obra ? novo(obra) : setEscolhendo((v) => !v))}>
-            <Plus size={16} /> Novo aditivo
-          </Button>
-          {escolhendo && !obra && (
-            <EscolherObra obras={obras}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {obra ? (
+            <Button onClick={() => novo(obra)}>
+              <Plus size={16} aria-hidden="true" /> Novo aditivo
+            </Button>
+          ) : (
+            <EscolherObra obras={obras} aberto={escolhendo} onAbrir={setEscolhendo}
               numeroDe={(o) => numeroAditivo(o.codigo, proximaSeq(lista.filter((a) => String(a.obraCodigo) === String(o.codigo))))}
-              onEscolher={novo} onFechar={() => setEscolhendo(false)} />
+              onEscolher={novo}>
+              <Button>
+                <Plus size={16} aria-hidden="true" /> Novo aditivo
+              </Button>
+            </EscolherObra>
           )}
         </div>
       )}
       toolbar={(
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="label-mono">Obras</span>
-            <FiltroObras obras={obras.map((o) => ({ codigo: String(o.codigo), nome: o.nome }))}
-              escolhidas={escolhidas} onMudar={setEscolhidas} />
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FiltroObras obras={obras.map((o) => ({ codigo: String(o.codigo), nome: o.nome }))}
+            escolhidas={escolhidas} onMudar={setEscolhidas} />
         </div>
       )}>
       {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
@@ -17931,11 +17945,11 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
       {obra ? (
         <div>
           <h2 className="text-base font-semibold">{obra.nome}</h2>
-          <p className="text-xs text-text-mute">centro de custo <b className="mono">{obra.codigo}</b> · próximo será <b className="mono">{numeroAditivo(obra.codigo, proximaSeq(daObra))}</b></p>
+          <p className="text-xs text-text-mute">centro de custo <span className="mono">{obra.codigo}</span> · próximo será <span className="mono">{numeroAditivo(obra.codigo, proximaSeq(daObra))}</span></p>
         </div>
       ) : (
         <div>
-          <h2 className="text-base font-semibold">{visiveis.length} {visiveis.length === 1 ? "aditivo" : "aditivos"}</h2>
+          <h2 className="text-base text-text">{visiveis.length} {visiveis.length === 1 ? "aditivo" : "aditivos"}</h2>
           <p className="text-xs text-text-mute">em {new Set(visiveis.map((a) => String(a.obraCodigo))).size} obra(s)</p>
         </div>
       )}
@@ -17948,7 +17962,8 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
         <EmptyState icon={<FileText size={24} />}
           title={escolhidas.size ? "Nenhum aditivo nesta seleção." : "Nenhum aditivo ainda em obra nenhuma."} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-line-1 bg-surface-2">
+        <Card className="p-0">
+          <div className="overflow-x-auto">
           <Table className="min-w-3xl">
             <TableHeader>
               <TableRow>
@@ -17957,11 +17972,11 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
                     com uma so, ela ja esta escrita no cabecalho. */}
                 {!obra && <TableHead className="hidden w-48 md:table-cell">Obra</TableHead>}
                 <TableHead>Do que se trata</TableHead>
-                <TableHead className="hidden w-32 text-right md:table-cell">Supressão</TableHead>
-                <TableHead className="hidden w-32 text-right md:table-cell">Adição</TableHead>
-                <TableHead className="w-36 text-right">Saldo</TableHead>
+                <TableHead className="hidden w-32 text-center md:table-cell">Supressão</TableHead>
+                <TableHead className="hidden w-32 text-center md:table-cell">Adição</TableHead>
+                <TableHead className="w-36 text-center">Saldo</TableHead>
                 <TableHead className="w-48">Status</TableHead>
-                <TableHead className="w-24"><span className="sr-only">Ações</span></TableHead>
+                <TableHead className="w-24 text-right"><span className="sr-only">Ações</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -17975,7 +17990,8 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
               ))}
             </TableBody>
           </Table>
-        </div>
+          </div>
+        </Card>
       )}
     </PageShell>
   );
@@ -18359,106 +18375,94 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
   }
 
   return (
-    <div className="ac-painel">
-      <div className="ac-bloco-t">Acesso de {p.nome}</div>
+    <Card className="my-2">
+      <CardHeader><CardTitle>Acesso de {p.nome}</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <RadioGroup value={perfil || "__sem__"} onValueChange={(v) => setPerfil(v === "__sem__" ? "" : v)}
+          aria-label={`Perfil de ${p.nome}`} className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <RadioCard value="__sem__" title="Sem acesso"
+            description="Entra e vê só a sala de espera. É o estado de quem acabou de chegar pelo link." />
+          {PERFIS.map((x) => (
+            <RadioCard key={x.id} value={x.id} title={x.nome} description={x.resumo} />
+          ))}
+        </RadioGroup>
 
-      <div className="ac-regras">
-        <label className={`ac-regra ${!perfil ? "on" : ""}`}>
-          <input type="radio" name={`perfil-${p.email}`} checked={!perfil} onChange={() => setPerfil("")} />
-          <div>
-            <b>Sem acesso</b>
-            <div className="ac-nota">Entra e vê só a sala de espera. É o estado de quem acabou de chegar pelo link.</div>
+        {/* QUAL canal, quando o perfil é o de canal. O perfil diz que a pessoa
+            só vê o painel; isto diz de qual. Sem escolher, ela cai no primeiro
+            da lista — melhor uma tela útil que uma tela vazia. */}
+        {perfil === "canal" && (
+          <div className="flex flex-col gap-2">
+            <SecaoRotulo>Canal que {p.nome.split(" ")[0]} acompanha</SecaoRotulo>
+            <ToggleGroup type="single" value={canal} onValueChange={(v) => { if (v) setCanal(v); }}
+              aria-label="Canal de compra" className="flex flex-wrap">
+              {CANAIS_COMPRA.map((c) => (
+                <ToggleGroupItem key={c.id} size="sm" value={c.id}>
+                  <span className="mono">{c.sigla}</span> {c.nome}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <p className="text-xs text-text-mute">
+              Entra direto neste painel e não vê mais nada — nem a lista de obras, nem os outros canais.
+            </p>
           </div>
-        </label>
-        {PERFIS.map((x) => (
-          <label key={x.id} className={`ac-regra ${perfil === x.id ? "on" : ""}`}>
-            <input type="radio" name={`perfil-${p.email}`} checked={perfil === x.id}
-              onChange={() => setPerfil(x.id)} />
-            <div>
-              <b>{x.nome}</b>
-              <div className="ac-nota">{x.resumo}</div>
+        )}
+
+        {/* Só o GC precisa da lista: os outros perfis não têm obra a
+            escolher, e mostrá-la neles sugeriria que têm. */}
+        {perfil === "gc" && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <SecaoRotulo>Obras em que {p.nome.split(" ")[0]} é o GC</SecaoRotulo>
+              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setMinhas(new Set())}>limpar</Button>
             </div>
-          </label>
-        ))}
-      </div>
-
-      {/* QUAL canal, quando o perfil é o de canal. O perfil diz que a pessoa
-          só vê o painel; isto diz de qual. Sem escolher, ela cai no primeiro
-          da lista — melhor uma tela útil que uma tela vazia. */}
-      {perfil === "canal" && (
-        <>
-          <div className="ac-sub">Canal que {p.nome.split(" ")[0]} acompanha</div>
-          <div className="canal-chips">
-            {CANAIS_COMPRA.map((c) => (
-              <Button variant="ghost" key={c.id} type="button"
-                className={`canal-chip ${canal === c.id ? "ativo" : ""}`}
-                onClick={() => setCanal(c.id)}
-                style={canal === c.id ? { color: c.cor, borderColor: c.cor, background: c.bg } : undefined}>
-                <b>{c.sigla}</b> {c.nome}
-              </Button>
-            ))}
-          </div>
-          <div className="ac-nota">
-            Entra direto neste painel e não vê mais nada — nem a lista de obras, nem os outros canais.
-          </div>
-        </>
-      )}
-
-      {/* Só o GC precisa da lista: os outros perfis não têm obra a
-          escolher, e mostrá-la neles sugeriria que têm. */}
-      {perfil === "gc" && (
-        <>
-          <div className="ac-sub">
-            Obras em que {p.nome.split(" ")[0]} é o GC
-            <Button variant="ghost" size="sm" onClick={() => setMinhas(new Set())}>limpar</Button>
-          </div>
-          <div className="ac-nota ac-nota-forte">
-            Isto grava o <b>GC responsável</b> de cada obra — o mesmo campo do Dashboard.
-            Marcar aqui tira a obra de quem era o responsável antes.
-          </div>
-          <div className="ac-lista">
-            <div className="ac-lista-topo">
-              <input className="form-input" value={busca} placeholder="filtrar obra…"
-                onChange={(e) => setBusca(e.target.value)} />
-            </div>
-            <div className="ac-lista-itens">
-              {achadas.map((o) => {
+            <Alert tone="warning">
+              <AlertDescription>
+                Isto grava o GC responsável de cada obra — o mesmo campo do Dashboard.
+                Marcar aqui tira a obra de quem era o responsável antes.
+              </AlertDescription>
+            </Alert>
+            <Input icon={<Search size={16} aria-hidden="true" />} className="w-full sm:w-72" aria-label="Filtrar obra"
+              value={busca} placeholder="filtrar obra…" onChange={(e) => setBusca(e.target.value)} />
+            <Card className="max-h-80 overflow-y-auto p-0">
+              {achadas.map((o, i) => {
                 const outro = o.gc && String(o.gc).toLowerCase() !== p.email ? o.gc : null;
                 return (
-                  <label key={o.codigo} className={`ac-obra ${minhas.has(String(o.codigo)) ? "on" : ""}`}>
-                    <input type="checkbox" checked={minhas.has(String(o.codigo))}
-                      onChange={(e) => setMinhas((g) => {
+                  <label key={o.codigo} className={`flex items-center gap-3 px-4 py-3 text-sm ${i > 0 ? "border-t border-line-1" : ""}`}>
+                    <Checkbox checked={minhas.has(String(o.codigo))} aria-label={o.nome}
+                      onCheckedChange={(v) => setMinhas((g) => {
                         const n = new Set(g);
-                        e.target.checked ? n.add(String(o.codigo)) : n.delete(String(o.codigo));
+                        v === true ? n.add(String(o.codigo)) : n.delete(String(o.codigo));
                         return n;
                       })} />
-                    <span className="mono dim">#{o.codigo}</span>
-                    <span className="ac-obra-nome">{o.nome}</span>
-                    {outro && <span className="ac-obra-squad">hoje é de {nomeDoEmail(outro)}</span>}
+                    <span className="mono w-16 shrink-0 text-xs text-text-mute">#{o.codigo}</span>
+                    <span className="min-w-0 flex-1 truncate text-text">{o.nome}</span>
+                    {outro && <span className="text-xs text-text-mute">hoje é de {nomeDoEmail(outro)}</span>}
                   </label>
                 );
               })}
-              {achadas.length === 0 && <div className="empty-note">Nenhuma obra com esse nome.</div>}
-            </div>
-            <div className="ac-nota">{minhas.size} de {obras.length} marcadas</div>
+              {achadas.length === 0 && <p className="px-4 py-3 text-sm text-text-mute">Nenhuma obra com esse nome.</p>}
+            </Card>
+            <p className="text-xs text-text-mute">{minhas.size} de {obras.length} marcadas</p>
           </div>
-        </>
-      )}
+        )}
 
-      {tirandoOUltimoAdmin && (
-        <div className="ac-nota ac-nota-forte">
-          <b>{p.nome} é {nivel === "master" ? "o único admin master" : "o último administrador"}.</b> Dê esse perfil a outra pessoa antes de tirar este —
-          sem {nivel === "master" ? "admin master" : "administrador"}, ninguém mais cuida da Equipe e dos acessos.
+        {tirandoOUltimoAdmin && (
+          <Alert tone="warning">
+            <AlertDescription>
+              {p.nome} é {nivel === "master" ? "o único admin master" : "o último administrador"}. Dê esse perfil a outra pessoa antes de tirar este —
+              sem {nivel === "master" ? "admin master" : "administrador"}, ninguém mais cuida da Equipe e dos acessos.
+            </AlertDescription>
+          </Alert>
+        )}
+        {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" disabled={salvando || tirandoOUltimoAdmin} onClick={salvar}>
+            {salvando ? "Salvando…" : "Salvar acesso"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={onFechar}>cancelar</Button>
         </div>
-      )}
-      {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
-      <div className="cad-acoes">
-        <Button disabled={salvando || tirandoOUltimoAdmin} onClick={salvar}>
-          {salvando ? "Salvando…" : "Salvar acesso"}
-        </Button>
-        <Button onClick={onFechar}>cancelar</Button>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -18550,136 +18554,133 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
 
   return (
     <>
-      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
-      {aviso && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{aviso}</span></div>}
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
+      {aviso && <Alert tone="danger"><AlertDescription>{aviso}</AlertDescription></Alert>}
 
       {/* A tela nao pode so' esconder o botao de acesso: sem dizer por
           que, some uma funcao e parece defeito. */}
       {migracaoPendente && (
-        <div className="eq-migracao">
-          <ShieldCheck size={15} />
-          <div>
-            <b>A parte de perfis ainda não está ligada.</b>
-            <div>
-              Falta rodar <code>supabase/perfis.sql</code> no Supabase (SQL Editor). Enquanto isso,
-              dá pra cadastrar, editar e desativar pessoas normalmente — só não dá pra atribuir
-              perfil, porque as colunas não existem no banco ainda.
-            </div>
-          </div>
-        </div>
+        <Alert tone="warning">
+          <AlertTitle>A parte de perfis ainda não está ligada.</AlertTitle>
+          <AlertDescription>
+            Falta rodar <code>supabase/perfis.sql</code> no Supabase (SQL Editor). Enquanto isso,
+            dá pra cadastrar, editar e desativar pessoas normalmente — só não dá pra atribuir
+            perfil, porque as colunas não existem no banco ainda.
+          </AlertDescription>
+        </Alert>
       )}
 
       {!migracaoPendente && !carregando && pessoas.length > 0 && !acessoLigado && (
-        <div className="eq-migracao">
-          <Clock size={15} />
-          <div>
-            <b>Último acesso e “online agora” ainda não estão ligados.</b>
-            <div>
-              Falta rodar <code>supabase/ultimo-acesso.sql</code> no Supabase (SQL Editor). Depois disso,
-              cada pessoa aparece com a data do último acesso, e quem estiver com o app aberto aparece como online.
-            </div>
-          </div>
-        </div>
+        <Alert tone="warning">
+          <AlertTitle>Último acesso e “online agora” ainda não estão ligados.</AlertTitle>
+          <AlertDescription>
+            Falta rodar <code>supabase/ultimo-acesso.sql</code> no Supabase (SQL Editor). Depois disso,
+            cada pessoa aparece com a data do último acesso, e quem estiver com o app aberto aparece como online.
+          </AlertDescription>
+        </Alert>
       )}
 
-      <div className="cad-box eq-form">
-        <div className="cad-h"><span>{editando ? `Editando ${editando}` : "Adicionar pessoa"}</span></div>
-        <div className="cad-campos eq-campos">
+      <Card>
+        <CardHeader><CardTitle>{editando ? `Editando ${editando}` : "Adicionar pessoa"}</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
           {/* E-mail e' a CHAVE: e' com ele que o login se identifica, e e'
               o que liga a pessoa as obras dela. Por isso ele nao muda em
               edicao — mudar criaria uma segunda pessoa e a primeira
               ficaria com as obras. */}
-          <label className="cad-largo">E-mail
-            <input className="form-input" type="email" value={email} placeholder="nome.sobrenome@groupws.com.br"
+          <Field className="md:col-span-2">
+            <Label htmlFor="eq-email">E-mail</Label>
+            <Input id="eq-email" type="email" value={email} placeholder="nome.sobrenome@groupws.com.br"
               disabled={!!editando}
-              onChange={(e) => setEmail(e.target.value)} /></label>
-          <label>Nome
-            <input className="form-input" value={nome} placeholder={email ? nomeDoEmail(email) : "como aparece na tela"}
-              onChange={(e) => setNome(e.target.value)} /></label>
+              onChange={(e) => setEmail(e.target.value)} />
+          </Field>
+          <Field>
+            <Label htmlFor="eq-nome">Nome</Label>
+            <Input id="eq-nome" value={nome} placeholder={email ? nomeDoEmail(email) : "como aparece na tela"}
+              onChange={(e) => setNome(e.target.value)} />
+          </Field>
           {/* As sugestoes eram um `datalist`, que o navegador desenha
               como caixa de texto comum: sete opcoes existiam e nenhuma
               aparecia. Agora sao botoes -- e o campo continua aceitando
               qualquer texto, porque cargo de empresa muda e ninguem quer
               abrir codigo pra criar um. */}
-          <label className="cad-largo">Cargo
-            <input className="form-input" value={cargo} placeholder="clique numa sugestão ou escreva o seu"
+          <Field className="md:col-span-2">
+            <Label htmlFor="eq-cargo">Cargo</Label>
+            <Input id="eq-cargo" value={cargo} placeholder="clique numa sugestão ou escreva o seu"
               onChange={(e) => setCargo(e.target.value)} />
-            <div className="cargo-chips">
+            <ToggleGroup type="single" value={cargosConhecidos.includes(cargo) ? cargo : ""} aria-label="Sugestões de cargo"
+              className="flex flex-wrap" onValueChange={(v) => setCargo(v || "")}>
               {cargosConhecidos.map((c) => (
-                <Button variant="ghost" key={c} type="button"
-                  className={`cargo-chip ${cargo === c ? "on" : ""}`}
-                  onClick={() => setCargo(cargo === c ? "" : c)}>{c}</Button>
+                <ToggleGroupItem key={c} size="sm" value={c}>{c}</ToggleGroupItem>
               ))}
-            </div>
-          </label>
-        </div>
-        <div className="cad-acoes">
-          <Button disabled={!pode} onClick={salvar}>
-            {salvando ? "Salvando…" : editando ? "Salvar" : "Adicionar"}
-          </Button>
-          {editando && (
-            <Button onClick={() => { setEditando(null); setEmail(""); setNome(""); setCargo("GC"); }}>
-              cancelar
+            </ToggleGroup>
+          </Field>
+          <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+            <Button size="sm" disabled={!pode} onClick={salvar}>
+              {salvando ? "Salvando…" : editando ? "Salvar" : "Adicionar"}
             </Button>
-          )}
-          <span className="cad-nota">
-            Sem nome, o e-mail vira o nome: <b>{nomeDoEmail(email) || "priscila.wayhs@… → Priscila Wayhs"}</b>
-          </span>
-        </div>
-      </div>
-
-      {carregando ? <div className="empty-note">Carregando…</div>
-        : pessoas.length === 0 ? (
-          <div className="compras-empty">
-            <ShieldCheck size={30} className="dim" />
-            <div className="compras-empty-title">Ninguém cadastrado ainda</div>
-            {/* O painel de acesso vive DENTRO da linha de cada pessoa, e
-                sem ninguem cadastrado ele nao existe em lugar nenhum da
-                tela. Dizer o caminho aqui e' o que evita procurar uma
-                tela de permissoes que nunca vai aparecer sozinha. */}
-            <div className="compras-empty-sub">
-              Comece por você: cadastre seu e-mail acima, depois clique em <b>acesso</b> na sua
-              linha e marque <b>Admin master</b>. É lá, na linha de cada pessoa, que se define
-              quais <b>módulos</b> ela abre e quais <b>obras</b> ela enxerga.
-              <br /><br />
-              Enquanto ninguém estiver cadastrado, <b>todo mundo vê tudo</b> — é o que impede
-              alguém de ficar trancado do lado de fora antes de existir um administrador.
-            </div>
-          </div>
-        ) : ordem.map((c) => (
-          <div key={c} className={`arq-bloco ${c === "Aguardando liberação" ? "eq-fila" : ""}`}>
-            <div className="arq-bloco-h">
-              <Button variant="ghost" type="button" className="eq-bloco-toggle" onClick={() => alternarGrupo(c)}
-                aria-expanded={!fechados.has(c)} title={fechados.has(c) ? "Abrir o grupo" : "Fechar o grupo"}>
-                <ChevronDown size={15} className={`eq-seta ${fechados.has(c) ? "fechada" : ""}`} />
-                <span className="arq-bloco-tit">{c}</span>
-                <span className="arq-bloco-n">{porCargo[c].length}</span>
+            {editando && (
+              <Button variant="outline" size="sm" onClick={() => { setEditando(null); setEmail(""); setNome(""); setCargo("GC"); }}>
+                cancelar
               </Button>
-            </div>
-            {!fechados.has(c) && porCargo[c].map((p) => {
-              const n = obrasDe(p.email);
-              return (
-                <div key={p.email} className={`arq-linha ${p.ativo ? "" : "eq-inativo"}`}>
+            )}
+            <span className="text-xs text-text-mute">
+              Sem nome, o e-mail vira o nome: {nomeDoEmail(email) || "priscila.wayhs@… → Priscila Wayhs"}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {carregando ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      ) : pessoas.length === 0 ? (
+          /* O painel de acesso vive DENTRO da linha de cada pessoa, e
+             sem ninguem cadastrado ele nao existe em lugar nenhum da
+             tela. Dizer o caminho aqui e' o que evita procurar uma
+             tela de permissoes que nunca vai aparecer sozinha. */
+          <EmptyState icon={<ShieldCheck size={24} aria-hidden="true" />} title="Ninguém cadastrado ainda"
+            description={<>
+              Comece por você: cadastre seu e-mail acima, depois clique em acesso na sua
+              linha e marque Admin master. É lá, na linha de cada pessoa, que se define
+              quais módulos ela abre e quais obras ela enxerga.
+              <br /><br />
+              Enquanto ninguém estiver cadastrado, todo mundo vê tudo — é o que impede
+              alguém de ficar trancado do lado de fora antes de existir um administrador.
+            </>} />
+        ) : ordem.map((c) => (
+          <Card key={c} className="p-0">
+            <Colapsavel aberto={!fechados.has(c)} onAbrir={() => alternarGrupo(c)}
+              cabecalho={<>
+                <SecaoRotulo>{c}</SecaoRotulo>
+                <Contador tom={c === "Aguardando liberação" ? "warning" : "neutral"} className="ml-1">{porCargo[c].length}</Contador>
+              </>}>
+            {porCargo[c].map((p) => (
+                <div key={p.email} className={`flex flex-wrap items-center gap-3 border-t border-line-1 px-4 py-3 ${p.ativo ? "" : "opacity-60"}`}>
                   <Avatar pessoa={p} classe={`eq-avatar ${estaOnline(p) ? "online" : ""}`}
                     titulo={estaOnline(p) ? "online agora" : undefined} />
-                  <div className="arq-id">
-                    <div className="arq-titulo">{p.nome}{!p.ativo && <span className="eq-tag-inativo">inativo</span>}</div>
-                    <div className="arq-sub mono">{p.email}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-text">
+                      {p.nome}{!p.ativo && <Badge tone="neutral">inativo</Badge>}
+                    </div>
+                    <div className="mono text-xs text-text-mute">{p.email}</div>
                     {acessoLigado && (
-                      <div className={`eq-acesso ${estaOnline(p) ? "online" : ""}`}>
+                      <div className={`text-xs ${estaOnline(p) ? "text-success" : "text-text-mute"}`}>
                         {estaOnline(p) ? "● online agora"
                           : p.ultimoAcesso ? `último acesso ${quandoFoi(p.ultimoAcesso)}` : "ainda não acessou"}
                       </div>
                     )}
                   </div>
-                  <span className="eq-obras">{resumoAcesso(p, obras)}</span>
-                  <div className="arq-acoes">
+                  <span className="w-full text-xs text-text-mute sm:w-48 sm:shrink-0">{resumoAcesso(p, obras)}</span>
+                  <div className="flex flex-wrap items-center justify-end gap-2 sm:ml-auto">
                     {/* Sem as colunas no banco esse botao so' sabe
                         falhar. Oferecer e' pior do que nao ter: ela
                         clicou e levou um erro do Postgres na cara. */}
                     {!migracaoPendente && (
                       <Button variant="outline" size="sm" onClick={() => setAcessoDe(acessoDe === p.email ? null : p.email)}>
-                        <ShieldCheck size={12} /> acesso
+                        <ShieldCheck size={14} aria-hidden="true" /> acesso
                       </Button>
                     )}
                     <Button variant="outline" size="sm" onClick={() => {
@@ -18691,16 +18692,18 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
                     <Button variant="outline" size="sm" onClick={() => alternarAtivo(p)}>
                       {p.ativo ? "desativar" : "reativar"}
                     </Button>
-                    <BotaoIcone rotulo="Excluir" variant="ghost" className="text-danger" onClick={() => remover(p)}><Trash2 size={13} /></BotaoIcone>
+                    <BotaoIcone rotulo="Excluir" variant="ghost" className="text-danger" onClick={() => remover(p)}><Trash2 size={14} aria-hidden="true" /></BotaoIcone>
                   </div>
                 </div>
-              );
-            })}
-            {!fechados.has(c) && porCargo[c].some((p) => p.email === acessoDe) && (
-              <AcessoDaPessoa p={porCargo[c].find((p) => p.email === acessoDe)} obras={obras}
-                pessoas={pessoas} onSalvar={onSalvarAcesso} onFechar={() => setAcessoDe(null)} />
+            ))}
+            {porCargo[c].some((p) => p.email === acessoDe) && (
+              <div className="px-4 pb-3">
+                <AcessoDaPessoa p={porCargo[c].find((p) => p.email === acessoDe)} obras={obras}
+                  pessoas={pessoas} onSalvar={onSalvarAcesso} onFechar={() => setAcessoDe(null)} />
+              </div>
             )}
-          </div>
+            </Colapsavel>
+          </Card>
         ))}
     </>
   );
@@ -18978,23 +18981,25 @@ function CadernoBaixar({ titulo, arquivo }) {
 
   const perdido = arquivo && !anexoRecuperavel(arquivo);
   return (
-    <div className="mh-caderno">
-      <BookOpen size={13} className={arquivo ? "" : "dim"} />
-      <span className="mh-caderno-tit">{titulo}</span>
-      {!arquivo ? <span className="mh-caderno-vazio">sem arquivo</span>
-        : perdido ? <span className="mh-caderno-vazio">arquivo não guardado — a equipe precisa anexar de novo</span>
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <BookOpen size={14} aria-hidden="true" className={arquivo ? "text-text" : "text-text-mute"} />
+      <span className="min-w-0 flex-1 text-text">{titulo}</span>
+      {!arquivo ? <span className="text-xs text-text-mute">sem arquivo</span>
+        : perdido ? <span className="text-xs text-text-mute">arquivo não guardado — a equipe precisa anexar de novo</span>
         : (
           <>
-            <span className="mh-caderno-arq">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
-            <Button variant="outline" size="sm" onClick={() => abrir(false)} disabled={!!ocupado}>
-              <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => abrir(true)} disabled={!!ocupado}>
-              <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
-            </Button>
+            <span className="text-xs text-text-mute">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
+            <div className="ml-auto flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => abrir(false)} disabled={!!ocupado}>
+                <Search size={14} aria-hidden="true" /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => abrir(true)} disabled={!!ocupado}>
+                <Download size={14} aria-hidden="true" /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
+              </Button>
+            </div>
           </>
         )}
-      {erro && <span className="mh-caderno-vazio">{erro}</span>}
+      {erro && <span className="text-xs text-danger">{erro}</span>}
     </div>
   );
 }
@@ -19005,94 +19010,96 @@ function ObraDoCanal({ L, canal }) {
   const pct = L.total > 0 ? (L.comprado / L.total) * 100 : 0;
 
   return (
-    <div className="mh-obra">
-      <Button variant="ghost" className="mh-obra-head" onClick={() => setAberto((v) => !v)}>
-        {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
-        <div className="mh-obra-id">
-          <div className="mh-obra-nome"><span className="mono dim">#{o.codigo}</span> {o.nome}</div>
-          {/* Squad na mesma linha do endereco: quem atende a Mehoo precisa
-              saber com qual equipe falar, e isso nao custa uma linha nova. */}
-          <div className="mh-obra-sub">
-            <span className="mh-squad">
-              <IconeSquad nome={o.squad} size={11} />
-              {o.squad || "sem squad"}
-            </span>
-            {/* O GC RESPONSAVEL, em todos os canais (pedido dela, 19/09/2026).
-                Quem atende um canal precisa saber COM QUEM falar sobre aquela
-                obra, e o squad sozinho nao responde isso. */}
-            {o.gc && <span className="mh-obra-gc">· GC {nomeDoEmail(o.gc)}</span>}
-            {o.endereco && o.endereco !== "—" && <span className="mh-obra-end">· {o.endereco}</span>}
-          </div>
-        </div>
-
-        {/* A data de entrega e' a primeira pergunta de quem fornece. */}
-        <div className="mh-entrega">
-          <div className="mh-rot">Entrega da obra</div>
-          {L.entrega ? (
-            <div className={`mh-entrega-val mono ${L.faltamEntrega < 0 ? "venceu" : ""}`}>
-              {new Date(`${L.entrega}T12:00:00`).toLocaleDateString("pt-BR")}
-              <span className="mh-dias">{L.faltamEntrega < 0
-                ? `${-L.faltamEntrega} d atrás` : `em ${L.faltamEntrega} d`}</span>
+    <Card className="p-0">
+      <Colapsavel aberto={aberto} onAbrir={() => setAberto((v) => !v)}
+        cabecalho={
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">
+            <div className="min-w-0 flex-1 basis-64">
+              <div className="text-sm font-semibold text-text"><span className="mono text-xs font-normal text-text-mute">#{o.codigo}</span> {o.nome}</div>
+              {/* Squad na mesma linha do endereco: quem atende a Mehoo precisa
+                  saber com qual equipe falar, e isso nao custa uma linha nova. */}
+              <div className="flex flex-wrap items-center gap-1 text-xs text-text-mute">
+                <span className="inline-flex items-center gap-1">
+                  <IconeSquad nome={o.squad} size={12} />
+                  {o.squad || "sem squad"}
+                </span>
+                {/* O GC RESPONSAVEL, em todos os canais (pedido dela, 19/09/2026).
+                    Quem atende um canal precisa saber COM QUEM falar sobre aquela
+                    obra, e o squad sozinho nao responde isso. */}
+                {o.gc && <span className="mh-obra-gc">· GC {nomeDoEmail(o.gc)}</span>}
+                {o.endereco && o.endereco !== "—" && <span>· {o.endereco}</span>}
+              </div>
             </div>
-          ) : <div className="mh-sem">sem data</div>}
-        </div>
 
-        <div className="mh-num">
-          <div className="mh-rot">Itens</div>
-          <div className="mh-num-val mono">{L.itens.length}</div>
-        </div>
-        <div className="mh-num mh-num-larga">
-          <div className="mh-rot">Falta comprar</div>
-          <div className="mh-num-val mono">{fmtBRL(L.falta)}</div>
-          <div className="gc-track"><div className="gc-fill" style={{ width: `${pct}%`, background: canal.cor }} /></div>
-        </div>
-        {L.atrasados > 0 && (
-          <span className="gc-selo atraso"><AlertTriangle size={11} /> {L.atrasados} fora do prazo</span>
-        )}
-      </Button>
+            {/* A data de entrega e' a primeira pergunta de quem fornece. */}
+            <div className="flex w-32 shrink-0 flex-col items-center text-center">
+              <span className="label-mono">Entrega da obra</span>
+              {L.entrega ? (
+                <>
+                  <span className={`mono text-sm tabular-nums ${L.faltamEntrega < 0 ? "text-danger" : "text-text"}`}>
+                    {new Date(`${L.entrega}T12:00:00`).toLocaleDateString("pt-BR")}
+                  </span>
+                  <span className={`text-xs ${L.faltamEntrega < 0 ? "text-danger" : "text-text-mute"}`}>{L.faltamEntrega < 0
+                    ? `${-L.faltamEntrega} d atrás` : `em ${L.faltamEntrega} d`}</span>
+                </>
+              ) : <span className="text-xs text-text-mute">sem data</span>}
+            </div>
 
-      {aberto && (
-        <div className="mh-corpo">
-          <div className="mh-cadernos">
-            <div className="mh-sub">Cadernos do Executivo</div>
-            {CADERNOS_EXECUTIVO.map((c) => (
-              <CadernoBaixar key={c.chave} titulo={c.titulo} arquivo={(o.cadernos || {})[c.chave]} />
-            ))}
+            <div className="flex w-20 shrink-0 flex-col items-center text-center">
+              <span className="label-mono">Itens</span>
+              <span className="mono text-sm tabular-nums text-text">{L.itens.length}</span>
+            </div>
+            <div className="flex w-40 shrink-0 flex-col gap-1">
+              <span className="label-mono text-center">Falta comprar</span>
+              <span className="mono text-right text-sm font-semibold tabular-nums text-text">{fmtBRL(L.falta)}</span>
+              <Progress value={pct} aria-label={`Comprado em ${o.nome}`} />
+            </div>
+            <span className="w-36 shrink-0">
+              {L.atrasados > 0 && (
+                <Badge tone="danger"><AlertTriangle size={12} aria-hidden="true" /> {L.atrasados} fora do prazo</Badge>
+              )}
+            </span>
           </div>
-
-          <div className="grp-itens mh-tabela">
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ width: 46 }}>Verba</th>
-                  <th>Item</th>
-                  <th style={{ width: 78 }} className="center">Qtd.</th>
-                  <th style={{ width: 110 }} className="right">Material</th>
-                  {/* "Comprar até" e "Situação" saíram (pedido de 14/09/2026):
-                      o painel da Mehoo fica só com o que ela precisa ler. O
-                      tom da linha continua dizendo o que já foi comprado. */}
-                </tr>
-              </thead>
-              <tbody>
-                {L.itens.map((r) => (
-                  <tr key={r.catNum + r.it.codigo} className={r.it.comprado ? "row-comprado" : "row-falta"}>
-                    <td className="mono dim">{r.catNum}</td>
-                    <td>
-                      <div className="item-desc">{r.it.desc}</div>
-                      <div className="mh-item-sub">
-                        {[r.catNome, r.it.ambiente, r.it.marca, r.it.codigoFornecedor].filter(Boolean).join(" · ")}
-                      </div>
-                    </td>
-                    <td className="center mono">{r.it.qtdExecutivo ?? r.it.qtdVendida ?? "—"} {r.it.un || ""}</td>
-                    <td className="right mono">{fmtBRL(r.material)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        }>
+        <div className="flex flex-col gap-2 border-t border-line-1 px-4 py-3">
+          <SecaoRotulo>Cadernos do Executivo</SecaoRotulo>
+          {CADERNOS_EXECUTIVO.map((c) => (
+            <CadernoBaixar key={c.chave} titulo={c.titulo} arquivo={(o.cadernos || {})[c.chave]} />
+          ))}
         </div>
-      )}
-    </div>
+
+        <div className="overflow-x-auto border-t border-line-1">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16">Verba</TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead className="w-24 text-center">Qtd.</TableHead>
+                <TableHead className="w-32 text-center">Material</TableHead>
+                {/* "Comprar até" e "Situação" saíram (pedido de 14/09/2026):
+                    o painel da Mehoo fica só com o que ela precisa ler. O
+                    tom da linha continua dizendo o que já foi comprado. */}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {L.itens.map((r) => (
+                <TableRow key={r.catNum + r.it.codigo} className={r.it.comprado ? "text-text-mute" : ""}>
+                  <TableCell className="mono text-xs text-text-mute">{r.catNum}</TableCell>
+                  <TableCell>
+                    <div className={`text-sm font-semibold ${r.it.comprado ? "text-text-mute" : "text-text"}`}>{r.it.desc}</div>
+                    <div className="text-xs text-text-mute">
+                      {[r.catNome, r.it.ambiente, r.it.marca, r.it.codigoFornecedor].filter(Boolean).join(" · ")}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center mono tabular-nums">{r.it.qtdExecutivo ?? r.it.qtdVendida ?? "—"} {r.it.un || ""}</TableCell>
+                  <TableCell className="text-right mono tabular-nums">{fmtBRL(r.material)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Colapsavel>
+    </Card>
   );
 }
 
@@ -19124,41 +19131,41 @@ function PainelCanalView({ obras, carregando, erro, canalId }) {
     [obras, escolhidas]);
   const p = useMemo(() => painelDoCanal(visiveis, canalId), [visiveis, canalId]);
 
-  if (carregando) return <div className="empty-note">Carregando as obras…</div>;
+  if (carregando) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-28 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
 
   return (
     <>
-      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
       {comItens.length > 1 && (
-        <div className="gc-obras-filtro mh-filtro">
-          <span className="gc-horizonte-rot">Obras</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="sr-only">Obras</span>
           <FiltroObras obras={comItens} escolhidas={escolhidas} onMudar={setEscolhidas} />
         </div>
       )}
 
-      <div className="gc-totais">
-        <GcTotal rot={`MATERIAL — ${canal.nome.toUpperCase()}`} cor={canal.cor} legenda="ainda não comprado"
-          feito={p.comprado} total={p.total} />
-        <div className="gc-total">
-          <div className="gc-total-rot" style={{ color: canal.cor }}>OBRAS COM ITENS — {canal.nome.toUpperCase()}</div>
-          <div className="gc-total-val mono">{p.linhas.length}</div>
-          <div className="gc-total-sub">{p.nItens} {p.nItens === 1 ? "item" : "itens"} no total</div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <KpiProgresso label={`Material — ${canal.nome}`} value={fmtBRL(p.total - p.comprado)} hint="ainda não comprado"
+          pct={p.total ? (p.comprado / p.total) * 100 : 0} />
+        <div className="flex flex-col gap-2">
+          <KpiMini label={`Obras com itens — ${canal.nome}`} value={String(p.linhas.length)}
+            hint={`${p.nItens} ${p.nItens === 1 ? "item" : "itens"} no total`} tone={p.atrasados ? "warning" : "neutral"} />
           {p.atrasados > 0 && (
-            <div className="gc-total-pe"><b className="gc-topo-alerta">{p.atrasados} {p.atrasados === 1 ? "item fora do prazo" : "itens fora do prazo"}</b></div>
+            <div><Badge tone="danger">{p.atrasados} {p.atrasados === 1 ? "item fora do prazo" : "itens fora do prazo"}</Badge></div>
           )}
         </div>
       </div>
 
       {p.linhas.length === 0 ? (
-        <div className="compras-empty">
-          <ShoppingCart size={30} className="dim" />
-          <div className="compras-empty-title">Nenhum item de {canal.nome} ainda</div>
-          <div className="compras-empty-sub">
-            Os itens aparecem aqui quando alguém escolhe <b>{canal.nome}</b> como canal em
-            <b> Compras de Produtos</b>, dentro da obra.
-          </div>
-        </div>
+        <EmptyState icon={<ShoppingCart size={24} aria-hidden="true" />} title={`Nenhum item de ${canal.nome} ainda`}
+          description={`Os itens aparecem aqui quando alguém escolhe ${canal.nome} como canal em Compras de Produtos, dentro da obra.`} />
       ) : p.linhas.map((L) => <ObraDoCanal key={L.obra.codigo} L={L} canal={canal} />)}
     </>
   );
@@ -19489,169 +19496,191 @@ function EapSiengeView({ usuario }) {
 
   return (
     <>
-      <div className="import-card">
-        <div className="import-bar">
-          <div className="import-info">
-            <Upload size={14} />
-            <span>Suba o <b>Relatório de Orçamento</b> da obra modelo (Excel, exportado do Sienge). Dele saem os códigos de apropriação e a unidade construtiva que toda solicitação de compra exige. Importar <b>não apaga</b> a versão anterior: cria outra, e o mapa das verbas é herdado.</span>
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <CardTitle>Relatório de orçamento</CardTitle>
+            <CardDescription>
+              Suba o Relatório de Orçamento da obra modelo (Excel, exportado do Sienge). Dele saem os códigos de apropriação e a unidade construtiva que toda solicitação de compra exige. Importar não apaga a versão anterior: cria outra, e o mapa das verbas é herdado.
+            </CardDescription>
           </div>
           <Button disabled={salvando} onClick={() => inputRef.current && inputRef.current.click()}>
-            <Upload size={13} /> Importar orçamento
+            <Upload size={16} aria-hidden="true" /> Importar orçamento
           </Button>
           <SeletorDeArquivo ref={inputRef} accept=".xlsx,.xlsm,.xlsb,.xls" onChange={aoEscolher} />
-        </div>
-        {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
-        {aviso && <div className="import-erro" style={{ background: "var(--blue-bg)", color: "var(--blue)" }}>
-          <CheckCircle2 size={14} /> {aviso} <BotaoIcone rotulo="Fechar" variant="ghost" onClick={() => setAviso(null)}><X size={12} /></BotaoIcone>
-        </div>}
-      </div>
+        </CardHeader>
+      </Card>
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
+      {aviso && (
+        <Alert tone="success">
+          <div className="flex items-start gap-2">
+            <AlertDescription className="min-w-0 flex-1">{aviso}</AlertDescription>
+            <BotaoIcone rotulo="Fechar" variant="ghost" size="sm" onClick={() => setAviso(null)}><X size={14} aria-hidden="true" /></BotaoIcone>
+          </div>
+        </Alert>
+      )}
 
       {previa && (
-        <div className="flat-panel">
-          <div className="flat-panel-header">
-            <div>
-              <div className="flat-panel-title">Confira antes de gravar — {previa.arquivo}</div>
-              <div className="flat-panel-sub">Nada foi gravado ainda.</div>
+        <Card>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <CardTitle>Confira antes de gravar — {previa.arquivo}</CardTitle>
+              <CardDescription>Nada foi gravado ainda.</CardDescription>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Button variant="outline" onClick={() => setPrevia(null)}>Cancelar</Button>
-              <Button disabled={salvando || !previa.versao.unidadeId || !previa.itens.some((i) => i.folha)}
+            <div className="flex shrink-0 gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPrevia(null)}>Cancelar</Button>
+              <Button size="sm" disabled={salvando || !previa.versao.unidadeId || !previa.itens.some((i) => i.folha)}
                 onClick={confirmarImportacao}>
                 {salvando ? "Gravando…" : "Gravar como versão nova"}
               </Button>
             </div>
-          </div>
-          <div style={{ padding: "0 16px 14px", display: "grid", gap: 6 }}>
-            <div><b>Unidade construtiva:</b> {previa.versao.unidadeId ? `${previa.versao.unidadeId} — ${previa.versao.nome}` : <span className="dim">não encontrada</span>}</div>
-            <div><b>Versão do orçamento:</b> {previa.versao.versaoOrcamento || "—"} · <b>Obra:</b> {previa.versao.obraModelo || "—"}</div>
-            <div><b>Itens:</b> {previa.itens.length} · <b>apropriáveis:</b> {previa.itens.filter((i) => i.folha).length}</div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <dl className="grid gap-2 sm:grid-cols-3">
+              <div>
+                <dt className="label-mono">Unidade construtiva</dt>
+                <dd className="text-sm text-text">{previa.versao.unidadeId ? `${previa.versao.unidadeId} — ${previa.versao.nome}` : <span className="text-text-mute">não encontrada</span>}</dd>
+              </div>
+              <div>
+                <dt className="label-mono">Versão do orçamento · obra</dt>
+                <dd className="text-sm text-text">{previa.versao.versaoOrcamento || "—"} · {previa.versao.obraModelo || "—"}</dd>
+              </div>
+              <div>
+                <dt className="label-mono">Itens · apropriáveis</dt>
+                <dd className="text-sm text-text">{previa.itens.length} · {previa.itens.filter((i) => i.folha).length}</dd>
+              </div>
+            </dl>
             {previa.avisos.map((a, i) => (
-              <div key={i} className="import-erro"><AlertTriangle size={13} /> {a}</div>
+              <Alert key={i} tone="warning"><AlertDescription>{a}</AlertDescription></Alert>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="flat-panel">
-        <div className="flat-panel-header">
-          <div>
-            <div className="flat-panel-title">
+      <Card className="p-0">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="flex flex-wrap items-center gap-2">
               Verbas da casa → item do orçamento do Sienge
-              {semFolha.length > 0 && <span className="dim"> · {semFolha.length} sem ligação</span>}
-            </div>
-            <div className="flat-panel-sub">
+              {semFolha.length > 0 && <Badge tone="warning">{semFolha.length} sem ligação</Badge>}
+            </CardTitle>
+            <CardDescription>
               É daqui que sai o código de apropriação de cada produto solicitado. Verba sem ligação
-              <b> bloqueia o envio</b> dos itens dela — de propósito: apropriar na conta errada é pior que parar.
-            </div>
+              bloqueia o envio dos itens dela — de propósito: apropriar na conta errada é pior que parar.
+            </CardDescription>
           </div>
           {versoes.length > 0 && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <select value={versaoId ?? ""} onChange={(e) => setVersaoId(Number(e.target.value))}>
-                {versoes.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.nome} · un. {v.unidade_id}{v.padrao ? " · padrão" : ""}
-                  </option>
-                ))}
-              </select>
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <Choice label="Versão da EAP" rotuloVisivel={false} value={versaoId == null ? undefined : String(versaoId)}
+                opcoes={versoes.map((v) => ({ value: String(v.id), label: `${v.nome} · un. ${v.unidade_id}${v.padrao ? " · padrão" : ""}` }))}
+                onChange={(v) => setVersaoId(Number(v))} className="w-full sm:w-72" />
               {versao && !versao.padrao && (
-                <Button variant="outline" onClick={tornarPadrao}>Tornar padrão</Button>
+                <Button variant="outline" size="sm" onClick={tornarPadrao}>Tornar padrão</Button>
               )}
             </div>
           )}
-        </div>
+        </CardHeader>
 
         {carregando ? (
-          <div className="empty-note">Carregando…</div>
+          <div className="flex flex-col gap-2 px-4 pb-4">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
         ) : !versao ? (
-          <div className="empty-note">Nenhuma EAP cadastrada ainda — importe o relatório de orçamento acima.</div>
+          <p className="px-4 pb-4 text-sm text-text-mute">Nenhuma EAP cadastrada ainda — importe o relatório de orçamento acima.</p>
         ) : (
-          <table className="vend-itens">
-            <thead>
-              <tr>
-                <th style={{ width: 44 }}>Verba</th>
-                <th style={{ width: 260 }}>Nome na casa</th>
-                <th>Item do orçamento no Sienge</th>
-              </tr>
-            </thead>
-            <tbody>
-              {verbas.map((v) => {
-                const atual = mapa[v.num] || "";
-                const sugestao = !atual ? sugerirFolha(v.nome, itens) : null;
-                return (
-                  <tr key={v.num} className={atual ? "" : "row-falta"}>
-                    <td className="mono">{v.num}</td>
-                    <td>{v.nome}</td>
-                    <td>
-                      <select className="form-select" value={atual} onChange={(e) => ligar(v.num, e.target.value || null)}>
-                        <option value="">— sem ligação (bloqueia o envio) —</option>
-                        {folhas.map((f) => (
-                          <option key={f.codigo} value={f.codigo}>{f.codigo} · {f.descricao}</option>
-                        ))}
-                      </select>
-                      {sugestao && (
-                        <Button variant="outline" className="mt-1"
-                          onClick={() => ligar(v.num, sugestao.folha.codigo)}
-                          title="Sugestão por semelhança de nome — confira antes de aceitar">
-                          <Check size={12} /> usar {sugestao.folha.codigo} · {sugestao.folha.descricao}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {versao && (
-        <div className="flat-panel">
-          <div className="flat-panel-header">
-            <div>
-              <div className="flat-panel-title">A EAP como o Sienge mostra — {folhas.length} itens apropriáveis</div>
-              <div className="flat-panel-sub">
-                Unidade construtiva <b>{versao.unidade_id}</b> · orçamento {versao.versao_orcamento || "—"} ·
-                importada {versao.importado_em ? new Date(versao.importado_em).toLocaleDateString("pt-BR") : "—"}
-                {versao.importado_por ? ` por ${versao.importado_por}` : ""}
-              </div>
-            </div>
-          </div>
-          <div style={{ padding: "0 16px 12px" }}>
-            <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
-              <Search size={13} className="dim" />
-              <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-              {busca && <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => setBusca("")}><X size={12} /></BotaoIcone>}
-            </div>
-          </div>
-          <div style={{ padding: "0 16px 16px" }}>
-            {arvore.map((raiz) => (
-              <div key={raiz.codigo} style={{ marginBottom: 10 }}>
-                <div className="mono eap-raiz">{raiz.codigo} · {raiz.descricao}</div>
-                {raiz.filhos.map((g) => {
-                  const dentro = g.filhos.filter(casa);
-                  if (termo && !dentro.length && !casa(g)) return null;
-                  const aberto = abertos.has(g.codigo) || !!termo;
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-16">Verba</TableHead>
+                  <TableHead className="w-64">Nome na casa</TableHead>
+                  <TableHead>Item do orçamento no Sienge</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {verbas.map((v) => {
+                  const atual = mapa[v.num] || "";
+                  const sugestao = !atual ? sugerirFolha(v.nome, itens) : null;
                   return (
-                    <div key={g.codigo} className="eap-grupo">
-                      <Button variant="ghost" size="sm"
-                        onClick={() => setAbertos((p) => { const n = new Set(p); n.has(g.codigo) ? n.delete(g.codigo) : n.add(g.codigo); return n; })}>
-                        {aberto ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                        <span className="mono">{g.codigo}</span> {g.descricao}
-                        <span className="dim"> · {g.filhos.length}</span>
-                      </Button>
-                      {aberto && (termo ? dentro : g.filhos).map((f) => (
-                        <div key={f.codigo} className="eap-folha">
-                          <span className="mono">{f.codigo}</span> {f.descricao}
-                          {!ehMaterial(f.descricao) && <span className="dim"> · mão de obra</span>}
+                    <TableRow key={v.num}>
+                      <TableCell className="mono text-xs text-text-mute">{v.num}</TableCell>
+                      <TableCell className="text-sm text-text">
+                        <div className="flex flex-col items-start gap-1">
+                          {v.nome}
+                          {!atual && <Badge tone="warning">sem ligação</Badge>}
                         </div>
-                      ))}
-                    </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col items-start gap-2">
+                          <SelectBusca valor={atual} onChange={(x) => ligar(v.num, x || null)}
+                            vazio="— sem ligação (bloqueia o envio) —" aria={`Item do orçamento para ${v.nome}`}
+                            className="w-full"
+                            opcoes={folhas.map((f) => ({ valor: f.codigo, rotulo: `${f.codigo} · ${f.descricao}` }))} />
+                          {sugestao && (
+                            <Button variant="outline" size="sm"
+                              onClick={() => ligar(v.num, sugestao.folha.codigo)}
+                              title="Sugestão por semelhança de nome — confira antes de aceitar">
+                              <Check size={14} aria-hidden="true" /> usar {sugestao.folha.codigo} · {sugestao.folha.descricao}
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </Card>
+
+      {versao && (
+        <Card className="p-0">
+          <CardHeader>
+            <CardTitle>A EAP como o Sienge mostra — {folhas.length} itens apropriáveis</CardTitle>
+            <CardDescription>
+              Unidade construtiva {versao.unidade_id} · orçamento {versao.versao_orcamento || "—"} ·
+              importada {versao.importado_em ? new Date(versao.importado_em).toLocaleDateString("pt-BR") : "—"}
+              {versao.importado_por ? ` por ${versao.importado_por}` : ""}
+            </CardDescription>
+          </CardHeader>
+          <div className="px-4 pb-3">
+            <CampoBusca valor={busca} aoMudar={setBusca} dica="Buscar por código ou descrição…" />
+          </div>
+          <div className="flex flex-col gap-4 px-4 pb-4">
+            {arvore.map((raiz) => (
+              <div key={raiz.codigo} className="flex flex-col gap-2">
+                <SecaoRotulo className="mb-2">{raiz.codigo} · {raiz.descricao}</SecaoRotulo>
+                <Card className="p-0">
+                  {raiz.filhos.map((g) => {
+                    const dentro = g.filhos.filter(casa);
+                    if (termo && !dentro.length && !casa(g)) return null;
+                    const aberto = abertos.has(g.codigo) || !!termo;
+                    return (
+                      <Colapsavel key={g.codigo} aberto={aberto}
+                        onAbrir={() => setAbertos((p) => { const n = new Set(p); n.has(g.codigo) ? n.delete(g.codigo) : n.add(g.codigo); return n; })}
+                        cabecalho={<>
+                          <span className="mono w-24 shrink-0 text-xs text-text-mute">{g.codigo}</span>
+                          <span className="min-w-0 flex-1 text-sm text-text">{g.descricao}</span>
+                          <Contador tom="neutral" className="ml-1">{g.filhos.length}</Contador>
+                        </>}>
+                        {(termo ? dentro : g.filhos).map((f) => (
+                          <div key={f.codigo} className="flex flex-wrap items-center gap-3 border-t border-line-1 px-4 py-3 text-sm">
+                            <span className="mono w-24 shrink-0 text-xs text-text-mute">{f.codigo}</span>
+                            <span className="min-w-0 flex-1 text-text">{f.descricao}</span>
+                            {!ehMaterial(f.descricao) && <Badge tone="neutral">mão de obra</Badge>}
+                          </div>
+                        ))}
+                      </Colapsavel>
+                    );
+                  })}
+                </Card>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
     </>
   );
@@ -19772,71 +19801,75 @@ function BancoPrecosView({ usuario }) {
 
   return (
     <>
-      <div className="import-card">
-        <div className="import-bar">
-          <div className="import-info">
-            <Upload size={14} />
-            <span>Suba o <b>Relação de Pedidos de Compra</b> do Sienge (PDF ou Excel). É o preço realmente pago; linhas em <b>vb</b> são ignoradas, porque valor fechado não serve de referência unitária. O <b>cadastro de Insumos</b> do Sienge (Excel) também entra: ele acrescenta os preços que faltam sem mexer nos que já estão aqui e, principalmente, <b>é ele que diz quais insumos estão ativos e como o Sienge chama cada um hoje</b> — a associação usa essa lista.</span>
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <CardTitle>Importar do Sienge</CardTitle>
+            <CardDescription>
+              Suba o Relação de Pedidos de Compra do Sienge (PDF ou Excel). É o preço realmente pago; linhas em vb são ignoradas, porque valor fechado não serve de referência unitária. O cadastro de Insumos do Sienge (Excel) também entra: ele acrescenta os preços que faltam sem mexer nos que já estão aqui e, principalmente, é ele que diz quais insumos estão ativos e como o Sienge chama cada um hoje — a associação usa essa lista.
+            </CardDescription>
           </div>
           <Button disabled={!!importando} onClick={() => inputRef.current && inputRef.current.click()}>
-            <Upload size={13} /> {importando || "Importar do Sienge"}
+            <Upload size={16} aria-hidden="true" /> {importando || "Importar do Sienge"}
           </Button>
           <SeletorDeArquivo ref={inputRef} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv" onChange={aoEscolher} />
-        </div>
-        {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
-      </div>
+        </CardHeader>
+      </Card>
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
-      <div className="flat-panel">
-        <div className="flat-panel-header">
-          <div>
-            <div className="flat-panel-title">Preços por insumo{total > 0 && ` — ${total.toLocaleString("pt-BR")} cadastrados`}</div>
-            <div className="flat-panel-sub">Última compra de cada insumo. Reimportar atualiza os preços sem duplicar.</div>
-          </div>
-        </div>
+      <Card className="p-0">
+        <CardHeader>
+          <CardTitle>Preços por insumo</CardTitle>
+          <CardDescription>
+            Última compra de cada insumo. Reimportar atualiza os preços sem duplicar.{total > 0 && ` · ${total.toLocaleString("pt-BR")} cadastrados`}
+          </CardDescription>
+        </CardHeader>
 
-        <div style={{ padding: "0 16px 12px" }}>
-          <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
-            <Search size={13} className="dim" />
-            <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-            {busca && <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => setBusca("")}><X size={12} /></BotaoIcone>}
-          </div>
+        <div className="px-4 pb-3">
+          <CampoBusca valor={busca} aoMudar={setBusca} dica="Buscar por código ou descrição…" />
         </div>
 
         {carregando ? (
-          <div className="empty-note">Carregando…</div>
-        ) : precos.length === 0 ? (
-          <div className="empty-note">
-            {total === 0
-              ? "Nenhum preço cadastrado ainda — importe o relatório do Sienge acima."
-              : "Nenhum insumo encontrado com esse termo."}
+          <div className="flex flex-col gap-2 px-4 pb-4">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
           </div>
+        ) : precos.length === 0 ? (
+          <EmptyState icon={<Search size={24} aria-hidden="true" />}
+            title={total === 0 ? "Nenhum preço cadastrado ainda" : "Nenhum insumo encontrado"}
+            description={total === 0
+              ? "Nenhum preço cadastrado ainda — importe o relatório do Sienge acima."
+              : "Nenhum insumo encontrado com esse termo."} />
         ) : (
-          <table className="vend-itens">
-            <thead>
-              <tr>
-                <th style={{ width: 70 }}>Código</th>
-                <th>Descrição</th>
-                <th style={{ width: 52 }} className="center">Un.</th>
-                <th style={{ width: 110 }} className="right">Custo unit.</th>
-                <th style={{ width: 92 }} className="center">Data ref.</th>
-                <th style={{ width: 170 }}>Fornecedor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {precos.map((p, i) => (
-                <tr key={`${p.codigo}-${i}`}>
-                  <td className="mono dim">{p.codigo}</td>
-                  <td>{p.descricao}</td>
-                  <td className="mono center dim">{p.unidade || "—"}</td>
-                  <td className="mono right forte">{p.custo_unitario > 0 ? fmtBRL(p.custo_unitario) : <span className="dim">sem preço</span>}</td>
-                  <td className="mono center dim">{p.data_ref ? p.data_ref.split("-").reverse().join("/") : "—"}</td>
-                  <td className="dim">{p.fornecedor || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24">Código</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead className="w-16 text-center">Un.</TableHead>
+                  <TableHead className="w-32 text-center">Custo unit.</TableHead>
+                  <TableHead className="w-28 text-center">Data ref.</TableHead>
+                  <TableHead className="w-48">Fornecedor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {precos.map((p, i) => (
+                  <TableRow key={`${p.codigo}-${i}`}>
+                    <TableCell className="mono text-xs text-text-mute">{p.codigo}</TableCell>
+                    <TableCell className="text-sm font-semibold text-text">{p.descricao}</TableCell>
+                    <TableCell className="text-center mono text-xs text-text-mute">{p.unidade || "—"}</TableCell>
+                    <TableCell className="text-right mono tabular-nums font-semibold">{p.custo_unitario > 0 ? fmtBRL(p.custo_unitario) : <span className="text-xs font-normal text-text-mute">sem preço</span>}</TableCell>
+                    <TableCell className="text-center mono tabular-nums text-xs text-text-mute">{p.data_ref ? p.data_ref.split("-").reverse().join("/") : "—"}</TableCell>
+                    <TableCell className="text-xs text-text-mute">{p.fornecedor || "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
-      </div>
+      </Card>
     </>
   );
 }
@@ -19862,7 +19895,7 @@ function ObraCard({ o, acao, children }) {
       </div>
       {/* O endereço (o da obra ou o do cadastro do Sienge): sem nenhum dos
           dois, fica em branco em vez de um traço. */}
-      <div className="min-w-0 flex-1 text-xs text-text-soft">{endereco}</div>
+      <div className="min-w-0 flex-1 text-xs text-text-mute">{endereco}</div>
       {acao && <div className="flex flex-wrap gap-2">{acao}</div>}
     </Card>
   );
@@ -19946,8 +19979,8 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
 
    Nome, centro de custo, squad, GC e endereço (pedido de 15/09/2026); o
    resto (cliente, valor vendido) a obra ganha quando os documentos subirem. */
-function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario }) {
-  const [aberto, setAberto] = useState(false);
+function CadastroManualObra({ aberto, onFechar, onCriar, salvando, jaExistem, equipe = [], usuario }) {
+  const setAberto = (v) => { if (!v) onFechar(); };
   const [nome, setNome] = useState("");
   const [codigo, setCodigo] = useState("");
   const [squad, setSquad] = useState(SQUADS[0].nome);
@@ -19973,63 +20006,58 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
     }
   }
 
-  if (!aberto) {
-    return (
-      <Button className="cad-abrir" onClick={() => setAberto(true)}>
-        <Plus size={13} /> Cadastrar obra manualmente
-      </Button>
-    );
-  }
+  if (!aberto) return null;
 
   return (
-    <div className="cad-box">
-      <div className="cad-h">
-        <span>Cadastrar obra manualmente</span>
-        <BotaoIcone rotulo="Fechar" variant="ghost" onClick={() => setAberto(false)}><X size={13} /></BotaoIcone>
-      </div>
-      <div className="cad-campos">
-        <label className="cad-largo">Nome da obra
-          <input className="form-input" value={nome} placeholder="ex: Ed. Meraki, 602"
-            onChange={(e) => setNome(e.target.value)} /></label>
-        <label className="cad-largo">Endereço
-          <input className="form-input" value={endereco} placeholder="ex: Rua 3310, 31 - Centro - Balneário Camboriú - SC"
-            onChange={(e) => setEndereco(e.target.value)} /></label>
-        <label>Centro de custo
-          <input className="form-input mono" value={codigo} placeholder="2510" inputMode="numeric" maxLength={4}
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <CardTitle>Cadastrar obra manualmente</CardTitle>
+        <BotaoIcone rotulo="Fechar" variant="ghost" onClick={() => setAberto(false)}><X size={16} aria-hidden="true" /></BotaoIcone>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-2">
+        <Field className="md:col-span-2">
+          <Label htmlFor="cad-obra-nome">Nome da obra</Label>
+          <Input id="cad-obra-nome" value={nome} placeholder="ex: Ed. Meraki, 602"
+            onChange={(e) => setNome(e.target.value)} />
+        </Field>
+        <Field className="md:col-span-2">
+          <Label htmlFor="cad-obra-end">Endereço</Label>
+          <Input id="cad-obra-end" value={endereco} placeholder="ex: Rua 3310, 31 - Centro - Balneário Camboriú - SC"
+            onChange={(e) => setEndereco(e.target.value)} />
+        </Field>
+        <Field>
+          <Label htmlFor="cad-obra-cod">Centro de custo</Label>
+          <Input id="cad-obra-cod" className="mono" value={codigo} placeholder="2510" inputMode="numeric" maxLength={4}
             onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 4))} />
-          {cod && !codigoOk && <span className="cad-erro">são 4 dígitos</span>}
-          {repetido && <span className="cad-erro">já existe uma obra {cod}</span>}
-        </label>
-        <label>Squad
-          <select className="form-input" value={squad} onChange={(e) => setSquad(e.target.value)}>
-            {SQUADS.map((s) => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
-          </select></label>
+          {cod && !codigoOk && <span className="text-xs text-danger">são 4 dígitos</span>}
+          {repetido && <span className="text-xs text-danger">já existe uma obra {cod}</span>}
+        </Field>
+        <Choice label="Squad" value={squad} onChange={setSquad}
+          opcoes={SQUADS.map((x) => ({ value: x.nome, label: x.nome }))} />
         {/* E-mail, e nao nome: e' a identidade que o login da', e e' o
             unico jeito de "minhas obras" saber quais sao as minhas. */}
-        <label className="cad-largo">GC responsável
-          <select className="form-input" value={gc} onChange={(e) => setGc(e.target.value)}>
-            <option value="">— definir depois —</option>
-            {(equipe || []).filter((p) => p.ativo).map((p) => (
-              <option key={p.email} value={p.email}>{p.nome}{p.cargo ? ` · ${p.cargo}` : ""}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
-      <div className="cad-acoes">
-        <Button disabled={!pode} onClick={criar}>
-          {salvando ? "Criando…" : "Criar e abrir"}
-        </Button>
-        <span className="cad-nota">
-          Ela nasce ativa e vazia — cliente e valor vendido entram quando os documentos subirem.
-        </span>
-      </div>
-    </div>
+        <Field className="md:col-span-2">
+          <Label htmlFor="cad-obra-gc">GC responsável</Label>
+          <EscolhaPessoa id="cad-obra-gc" valor={gc} onChange={setGc} vazio="— definir depois —" rotulo="GC responsável"
+            pessoas={(equipe || []).filter((p) => p.ativo)} />
+        </Field>
+        {erro && <Alert tone="danger" className="md:col-span-2"><AlertDescription>{erro}</AlertDescription></Alert>}
+        <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+          <Button size="sm" disabled={!pode} onClick={criar}>
+            {salvando ? "Criando…" : "Criar e abrir"}
+          </Button>
+          <span className="text-xs text-text-mute">
+            Ela nasce ativa e vazia — cliente e valor vendido entram quando os documentos subirem.
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, codigosUsados, equipe, usuario }) {
   const [search, setSearch] = useState("");
+  const [cadAberto, setCadAberto] = useState(false);
   const q = search.trim().toLowerCase();
   const filtradas = obras.filter((o) => !q || `${o.nome} ${o.codigo} ${o.squad}`.toLowerCase().includes(q));
 
@@ -20041,14 +20069,15 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
     <PageShell crumb="Do Monday" title="Novas obras"
       description={`Obras que ainda não foram iniciadas aqui · ${obras.length}`}
       contentClassName="flex flex-col gap-6"
+      actions={!cadAberto ? (
+        <Button variant="outline" onClick={() => setCadAberto(true)}>
+          <Plus size={16} aria-hidden="true" /> Cadastrar obra manualmente
+        </Button>
+      ) : undefined}
       toolbar={obras.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Input className="w-full max-w-sm" icon={<Search size={16} />} placeholder="Filtrar por nome, código, squad..."
-            aria-label="Buscar obra" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <Button variant="ghost" size="sm" onClick={() => setSearch("")}><X size={16} /> Limpar busca</Button>}
-        </div>
+        <CampoBusca valor={search} aoMudar={setSearch} dica="Filtrar por nome, código, squad…" />
       ) : undefined}>
-      <p className="max-w-3xl text-sm text-text-soft">
+      <p className="max-w-3xl text-sm text-text-mute">
         Estas obras existem no Monday mas ainda não foram iniciadas aqui. Ao dar start,
         a obra passa a ser gravada no banco — a partir daí, o que você fizer dentro dela
         (PDFs, conferências, aprovações) fica salvo e não se perde ao recarregar.
@@ -20060,7 +20089,7 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
         </Alert>
       )}
 
-      <CadastroManualObra onCriar={onCriarManual} salvando={salvando === "manual"} jaExistem={codigosUsados}
+      <CadastroManualObra aberto={cadAberto} onFechar={() => setCadAberto(false)} onCriar={onCriarManual} salvando={salvando === "manual"} jaExistem={codigosUsados}
         equipe={equipe} usuario={usuario} />
 
       {obras.length === 0 && (
@@ -20076,15 +20105,15 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
 
       {nomes.map((squad) => (
         <section key={squad} className="space-y-2" aria-label={squad}>
-          <h2 className="label-mono">{squad} · {grupos[squad].length}</h2>
+          <SecaoRotulo conta={`${grupos[squad].length}`}>{squad}</SecaoRotulo>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {grupos[squad].map((o) => (
               <ObraCard
                 key={o.id}
                 o={o}
                 acao={
-                  <Button disabled={salvando === o.id || semBanco} onClick={() => onStart(o)}>
-                    {salvando === o.id ? "Iniciando…" : <><Play size={16} /> Dar start</>}
+                  <Button size="sm" variant="outline" disabled={salvando === o.id || semBanco} onClick={() => onStart(o)}>
+                    {salvando === o.id ? "Iniciando…" : <><Play size={14} aria-hidden="true" /> Dar start</>}
                   </Button>
                 }
               />
@@ -20101,7 +20130,7 @@ function ArquivoView({ obras, onReabrir, salvando }) {
     <PageShell crumb="Concluídas" title="Finalizadas"
       description={`Obras encerradas, mantidas para consulta · ${obras.length}`}
       contentClassName="flex flex-col gap-6">
-      <p className="max-w-3xl text-sm text-text-soft">Obras concluídas. Ficam guardadas para consulta e saem da lista do dia a dia.</p>
+      <p className="max-w-3xl text-sm text-text-mute">Obras concluídas. Ficam guardadas para consulta e saem da lista do dia a dia.</p>
 
       {obras.length === 0 && (
         <EmptyState icon={<Archive size={24} />} title="Arquivo vazio" description="Nenhuma obra foi concluída ainda." />
@@ -20114,8 +20143,8 @@ function ArquivoView({ obras, onReabrir, salvando }) {
               key={o.id}
               o={o}
               acao={
-                <Button disabled={salvando === o.id} onClick={() => onReabrir(o)}>
-                  {salvando === o.id ? "Reabrindo…" : <><RotateCcw size={16} /> Reabrir</>}
+                <Button size="sm" variant="outline" disabled={salvando === o.id} onClick={() => onReabrir(o)}>
+                  {salvando === o.id ? "Reabrindo…" : <><RotateCcw size={14} aria-hidden="true" /> Reabrir</>}
                 </Button>
               }
             />
@@ -24228,7 +24257,7 @@ export default function App() {
             toolbar={!canalPreso && (
               <ToggleGroup type="single" value={canalDoPainel} onValueChange={(v) => { if (v) setCanalDoPainel(v); }} aria-label="Canal de compra" className="flex-wrap">
                 {CANAIS_COMPRA.map((c) => (
-                  <ToggleGroupItem key={c.id} value={c.id} className="gap-1"><b>{c.sigla}</b> {c.nome}</ToggleGroupItem>
+                  <ToggleGroupItem key={c.id} value={c.id} className="gap-1"><span className="mono">{c.sigla}</span> {c.nome}</ToggleGroupItem>
                 ))}
               </ToggleGroup>
             )}

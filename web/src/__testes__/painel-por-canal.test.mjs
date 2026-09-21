@@ -38,8 +38,8 @@ const tela = src.slice(src.indexOf("function PainelCanalView("), src.indexOf("fu
   ? src.indexOf("function ObraDoCanal(") : src.length);
 conf("nenhum canal fixo sobrou dentro da tela", /"mehoo"/.test(tela.slice(0, tela.indexOf("\n}\n"))), false);
 /* Os rótulos falam o nome do canal que está na tela. */
-conf("o total diz o nome do canal", src.includes("rot={`MATERIAL — ${canal.nome.toUpperCase()}`}"), true);
-conf("o vazio também", src.includes("Nenhum item de {canal.nome} ainda"), true);
+conf("o total diz o nome do canal", /label=\{`Material — \$\{canal\.nome\}`\}/.test(tela), true);
+conf("o vazio também", /Nenhum item de \$\{canal\.nome\} ainda/.test(tela), true);
 
 /* ---- 2. A Mehoo passa a usar a MESMA tela ---- */
 /* Ela tem perfil próprio e gente usando, então o módulo continua existindo —

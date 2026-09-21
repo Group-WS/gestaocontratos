@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useId } from "react";
 import { confirmar, avisar } from "./lib/confirmar.jsx";
-import { SeletorDeArquivo, BotaoIcone } from "./lib/ui.jsx";
+import { SeletorDeArquivo, BotaoIcone, Contador, SecaoRotulo } from "./lib/ui.jsx";
 import {
   Alert, AlertTitle, AlertDescription, Badge, BulkActionBar, Button,
   Card, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -155,10 +155,10 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
         <Tabs value={aba} onValueChange={setAba}>
           <TabsList variant="underline" aria-label="Seções do catálogo">
             <TabsTrigger underline value="produtos">
-              Produtos <Badge tone="neutral">{produtos.length}</Badge>
+              Produtos <Contador tom="neutral" className="ml-1">{produtos.length}</Contador>
             </TabsTrigger>
             <TabsTrigger underline value="fornecedores">
-              Fornecedores <Badge tone="neutral">{fornecedores.length}</Badge>
+              Fornecedores <Contador tom="neutral" className="ml-1">{fornecedores.length}</Contador>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -167,14 +167,14 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
           {/* A apresentação vive aqui porque é daqui que ela se alimenta:
               é o catálogo que tem foto e descrição de cada peça. */}
           <Button variant="outline" onClick={() => setApresentando(true)}>
-            <Presentation size={16} /> Apresentação de especificações
+            <Presentation size={16} aria-hidden="true" /> Apresentação de especificações
           </Button>
 
           {podeEditar && aba === "produtos" && (
             <>
               <Button asChild variant="outline">
                 <label>
-                  <Upload size={16} /> Importar planilha
+                  <Upload size={16} aria-hidden="true" /> Importar planilha
                   <SeletorDeArquivo accept=".xlsx,.xlsm,.pptx"
                     onChange={(e) => {
                       const f = e.target.files?.[0]; e.target.value = "";
@@ -183,7 +183,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
                 </label>
               </Button>
               <Button onClick={() => setEditando({ verba: verba || "05", unidade: "un" })}>
-                <Plus size={16} /> Novo produto
+                <Plus size={16} aria-hidden="true" /> Novo produto
               </Button>
             </>
           )}
@@ -200,24 +200,24 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
           <div className="flex flex-wrap items-center gap-2">
             {/* Produto e acabamento no MESMO lugar viram palheiro: 216
                 amostras de MDF e tecido enterram as 74 pecas. */}
-            <ToggleGroup type="single" value={tipoItem} aria-label="Tipo de item"
-              onValueChange={(v) => { if (v) { setTipoItem(v); setVerba(""); setSubgrupo(""); } }}>
-              {TIPOS.map((t) => (
-                <ToggleGroupItem key={t.id} value={t.id} size="sm" title={t.sub}>
-                  {t.nome} <span className="text-xs opacity-70">{quantos[t.id]}</span>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-
-            <div className="flex w-full items-center gap-2 sm:w-auto sm:min-w-64">
-              <Input icon={<Search size={16} />} value={termo} onChange={(e) => setTermo(e.target.value)}
-                placeholder="nome, código, fornecedor…" aria-label="Buscar no catálogo" />
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <Input icon={<Search size={16} aria-hidden="true" />} value={termo} onChange={(e) => setTermo(e.target.value)}
+                className="w-full sm:w-72" placeholder="nome, código, fornecedor…" aria-label="Buscar no catálogo" />
               {termo && (
                 <BotaoIcone rotulo="Limpar busca" variant="ghost" onClick={() => setTermo("")}>
-                  <X size={16} />
+                  <X size={16} aria-hidden="true" />
                 </BotaoIcone>
               )}
             </div>
+
+            <ToggleGroup type="single" value={tipoItem} aria-label="Tipo de item"
+              onValueChange={(v) => { if (v) { setTipoItem(v); setVerba(""); setSubgrupo(""); } }}>
+              {TIPOS.map((t) => (
+                <ToggleGroupItem key={t.id} value={t.id} title={t.sub}>
+                  {t.nome} <Contador tom="neutral" className="ml-1">{quantos[t.id]}</Contador>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
 
             {fornecedores.length > 0 && (
               <Select value={forn || TODOS} onValueChange={(v) => setForn(v === TODOS ? "" : v)}>
@@ -232,15 +232,15 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
 
           <ToggleGroup type="single" value={verba || TODOS} aria-label="Grupo" className="flex flex-wrap"
             onValueChange={(v) => { if (v) { setVerba(v === TODOS ? "" : v); setSubgrupo(""); } }}>
-            <ToggleGroupItem value={TODOS} size="sm">Todos</ToggleGroupItem>
-            {verbas.map((v) => <ToggleGroupItem key={v.num} value={v.num} size="sm">{v.nome}</ToggleGroupItem>)}
+            <ToggleGroupItem value={TODOS}>Todos</ToggleGroupItem>
+            {verbas.map((v) => <ToggleGroupItem key={v.num} value={v.num}>{v.nome}</ToggleGroupItem>)}
           </ToggleGroup>
 
           {subgrupos.length > 0 && (
             <ToggleGroup type="single" value={subgrupo || TODOS} aria-label="Subgrupo" className="flex flex-wrap"
               onValueChange={(v) => { if (v) setSubgrupo(v === TODOS ? "" : v); }}>
-              <ToggleGroupItem value={TODOS} size="sm">todos</ToggleGroupItem>
-              {subgrupos.map((s) => <ToggleGroupItem key={s} value={s} size="sm">{s}</ToggleGroupItem>)}
+              <ToggleGroupItem value={TODOS}>todos</ToggleGroupItem>
+              {subgrupos.map((s) => <ToggleGroupItem key={s} value={s}>{s}</ToggleGroupItem>)}
             </ToggleGroup>
           )}
 
@@ -275,10 +275,7 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
                 <h2 className="border-b border-line-2 pb-2 text-base font-semibold">{nomeVerba(pr.verba)}</h2>
                 {pr.subgrupos.map((sg) => (
                   <div key={sg.nome || "_"} className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-mute">
-                      {sg.nome || <span className="normal-case italic tracking-normal">sem subgrupo</span>}
-                      <Badge tone="neutral">{sg.itens.length}</Badge>
-                    </div>
+                    <SecaoRotulo conta={`${sg.itens.length}`}>{sg.nome || "sem subgrupo"}</SecaoRotulo>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                       {sg.itens.map((p) => (
                         <Cartao key={p.id} p={p}
@@ -375,10 +372,10 @@ function Cartao({ p, escolhido, onEscolher, podeEditar, onEditar, onExcluir }) {
       <Button variant="ghost" onClick={onEscolher} title="Escolher" aria-pressed={escolhido}
         className="relative block aspect-square h-auto w-full rounded-none bg-surface-2 p-0">
         {url ? <img src={url} alt="" loading="lazy" className="h-full w-full object-contain" />
-          : <span className="flex h-full w-full items-center justify-center text-line-3"><ImageIcon size={22} /></span>}
+          : <span className="flex h-full w-full items-center justify-center text-line-3"><ImageIcon size={22} aria-hidden="true" /></span>}
         {escolhido && (
           <span className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-md bg-brand text-bg">
-            <Check size={12} />
+            <Check size={12} aria-hidden="true" />
           </span>
         )}
       </Button>
@@ -393,12 +390,12 @@ function Cartao({ p, escolhido, onEscolher, podeEditar, onEditar, onExcluir }) {
         <div className="mt-auto flex items-center gap-2 pt-2">
           {ehAcabamento(p) ? <Badge tone="neutral">acabamento</Badge>
             : p.precoRef != null
-            ? <span className="flex flex-col text-sm font-semibold tabular-nums leading-tight">
+            ? <span className="flex flex-col mono text-sm font-semibold tabular-nums leading-tight">
                 {fmt(p.precoRef)}
                 {/* Preço a mão envelhece. Dizer de quando ele é custa uma
                     linha e evita orçar com número de dois anos atrás. */}
                 {p.precoEm && (
-                  <span className={`text-xs font-medium ${velho ? "text-alert" : "text-text-mute"}`}>
+                  <span className={`text-xs ${velho ? "text-alert" : "text-text-mute"}`}>
                     {velho ? `de ${mesesDesde(p.precoEm)} meses atrás` : "atualizado"}
                   </span>
                 )}
@@ -406,8 +403,8 @@ function Cartao({ p, escolhido, onEscolher, podeEditar, onEditar, onExcluir }) {
             : <span className="text-xs text-text-mute">sem preço</span>}
           {podeEditar && (
             <span className="ml-auto flex">
-              <BotaoIcone rotulo="Editar" variant="ghost" onClick={onEditar}><Pencil size={14} /></BotaoIcone>
-              <BotaoIcone rotulo="Tirar do catálogo" variant="ghost" onClick={onExcluir} className="text-danger"><Trash2 size={14} /></BotaoIcone>
+              <BotaoIcone rotulo="Editar" variant="ghost" onClick={onEditar}><Pencil size={14} aria-hidden="true" /></BotaoIcone>
+              <BotaoIcone rotulo="Tirar do catálogo" variant="ghost" onClick={onExcluir} className="text-danger"><Trash2 size={14} aria-hidden="true" /></BotaoIcone>
             </span>
           )}
         </div>
@@ -657,7 +654,7 @@ function Fornecedores({ lista, setLista, usuario, podeEditar, onErro, usoDe }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Fornecedor</TableHead>
-                  <TableHead className="hidden md:table-cell">No catálogo</TableHead>
+                  <TableHead className="hidden w-32 text-center md:table-cell">No catálogo</TableHead>
                   {podeEditar && <TableHead className="w-24 text-right">Ações</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -676,7 +673,7 @@ function Fornecedores({ lista, setLista, usuario, podeEditar, onErro, usoDe }) {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden text-sm text-text-soft md:table-cell">{usoDe(f.nome)} no catálogo</TableCell>
+                    <TableCell className="hidden w-32 text-center text-xs text-text-mute md:table-cell">{usoDe(f.nome)} no catálogo</TableCell>
                     {podeEditar && (
                       <TableCell className="text-right">
                         <span className="inline-flex">
@@ -828,9 +825,9 @@ function EnviarParaObra({ produtos, obras, usuario, nomeVerba, onFechar, onPront
           <div className="max-h-64 overflow-auto rounded-lg border border-line-2">
             {porVerba.map(([verba, ps]) => (
               <div key={verba}>
-                <div className="bg-surface-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-mute">{nomeVerba(verba)}</div>
+                <div className="bg-surface-2 px-4 py-3 label-mono">{nomeVerba(verba)}</div>
                 {ps.map((p) => (
-                  <div key={p.id} className="flex items-center gap-3 border-t border-line-1 px-3 py-2 text-sm">
+                  <div key={p.id} className="flex items-center gap-3 border-t border-line-1 px-4 py-3 text-sm">
                     <span className="min-w-0 flex-1 truncate">{p.descricao}</span>
                     <Input type="number" min="1" step="1" className="w-20 text-right" aria-label={`Quantidade de ${p.descricao}`}
                       value={qtds.get(p.id) || 1}
@@ -1105,9 +1102,9 @@ function ImportarPlanilha({ arquivo, usuario, nomeVerba, produtos, onFechar, onP
 
               <div className="max-h-64 overflow-auto rounded-lg border border-line-2">
                 {r.porGrupo.map(([g, n], i) => (
-                  <div key={g} className={`flex items-center gap-3 px-3 py-2 text-sm ${i > 0 ? "border-t border-line-1" : ""}`}>
+                  <div key={g} className={`flex items-center gap-3 px-4 py-3 text-sm ${i > 0 ? "border-t border-line-1" : ""}`}>
                     <span className="min-w-0 flex-1 truncate">{g}</span>
-                    <span className="text-xs text-text-mute">{n}</span>
+                    <span className="w-12 shrink-0 text-right mono text-xs tabular-nums text-text-mute">{n}</span>
                   </div>
                 ))}
               </div>
