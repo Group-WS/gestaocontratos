@@ -1,0 +1,27 @@
+/* ============================================================================
+   @group-ws/ws-ui · entrada do design system (caminho B: Tailwind v4)
+   ============================================================================
+   Por que não `@import '@group-ws/ws-ui/styles.css'` (caminho A)? O CSS pronto
+   traz o base.css do DS, que zera margin/padding em `*`. Enquanto o app ainda
+   tem telas legadas escritas sobre as margens do navegador, entra o Tailwind
+   SEM o preflight (só theme + utilities) e a base continua a do
+   design-system.css local. Quando a última tela legada sair, este arquivo
+   pode voltar a importar `styles.css` inteiro.
+
+   Ordem das camadas, declarada aqui porque este é o primeiro CSS carregado:
+   a base local (`ds-base`) e os utilitários locais (`ds-utilitarios`) ficam
+   ABAIXO de `utilities`, senão `:where(h1…){font-family}` da base venceria
+   `.font-mono` de um componente do pacote. Camada declarada depois vence.
+
+   preset.css = tokens dos dois temas + ponte @theme + @source do bundle.
+   ============================================================================ */
+
+@layer theme, ds-base, base, components, ds-utilitarios, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@import '@group-ws/ws-ui/styles/preset.css';
+@import '@group-ws/ws-ui/styles/utilities.css';
+@import '@group-ws/ws-ui/styles/animations.css';
+@import '@group-ws/ws-ui/styles/calendar.css';

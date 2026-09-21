@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { viteSingleFile } from "vite-plugin-singlefile";
+import tailwindcss from "@tailwindcss/vite";
 
 // Build normal (`npm run build`) gera arquivos separados (JS/CSS com
 // cache) — é o que a Vercel/qualquer host de verdade deve usar. O modo
@@ -10,7 +11,10 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 const standalone = process.env.STANDALONE === "1";
 
 export default defineConfig({
-  plugins: [react(), ...(standalone ? [viteSingleFile()] : [])],
+  // tailwindcss(): gera as classes dos componentes do @group-ws/ws-ui (o
+  // preset.css do pacote aponta o bundle) e as classes utilitárias das telas.
+  // O CSS de entrada é src/estilos/ws-ui.css.
+  plugins: [react(), tailwindcss(), ...(standalone ? [viteSingleFile()] : [])],
   server: {
     port: 5173,
     // Aceita qualquer host (necessário pra acessar via link de túnel,

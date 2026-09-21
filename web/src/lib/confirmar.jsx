@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { ConfirmDialog } from "@group-ws/ws-ui";
+import { ConfirmDialog, MessageDialog } from "@group-ws/ws-ui";
+import { toast } from "sonner";
 
 /* API compartilhada pelas ações de remoção. O host apresenta uma confirmação
    por vez; fechar ou desmontar cancela a ação pendente. */
@@ -56,3 +57,50 @@ export function ConfirmarHost() {
     />
   );
 }
+
+/* ---------------------------------------------------------------------------
+   Aviso modal (substitui window.alert): para o que o usuário precisa LER antes
+   de seguir — validação de negócio que bloqueia a ação em curso.
+   Retorno de ação concluída ou falha fora de formulário é toast (`avisar`).
+   --------------------------------------------------------------------------- */
+let abrirMensagem = null;
+
+export function mensagem(opcoes) {
+  const pedido = typeof opcoes === "string" ? { mensagem: opcoes } : (opcoes || {});
+  if (!abrirMensagem) return Promise.resolve();
+  return new Promise((resolve) => abrirMensagem({ ...pedido, resolve }));
+}
+
+export function MensagemHost() {
+  const [pedidos, setPedidos] = useState([]);
+  useEffect(() => {
+    const receber = (pedido) => setPedidos((fila) => [...fila, pedido]);
+    abrirMensagem = receber;
+    return () => { if (abrirMensagem === receber) abrirMensagem = null; };
+  }, []);
+  const pedido = pedidos[0];
+  if (!pedido) return null;
+  return (
+    <MessageDialog
+      open
+      onOpenChange={(open) => {
+        if (open) return;
+        pedido.resolve();
+        setPedidos((fila) => fila.filter((item) => item !== pedido));
+      }}
+      title={pedido.titulo || "Atenção"}
+      message={pedido.mensagem}
+      description={pedido.detalhe}
+      tone={pedido.tom || "warning"}
+      dismissLabel={pedido.fechar || "Entendi"}
+    />
+  );
+}
+
+/* Toast padronizado (TELA-50/51): sucesso "<Entidade> <particípio>.",
+   erro "Não foi possível <verbo>…". */
+export const avisar = {
+  ok: (texto, descricao) => toast.success(texto, descricao ? { description: descricao } : undefined),
+  erro: (texto, descricao) => toast.error(texto, descricao ? { description: descricao } : undefined),
+  info: (texto, descricao) => toast(texto, descricao ? { description: descricao } : undefined),
+};
