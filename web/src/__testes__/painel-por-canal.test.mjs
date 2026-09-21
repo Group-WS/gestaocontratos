@@ -30,7 +30,7 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
 
 /* ---- 1. Uma tela só, recebendo o canal ---- */
 conf("a tela recebe o canal em vez de fixá-lo",
-  src.includes("function PainelCanalView({ obras, carregando, erro, canalId }) {"), true);
+  /function PainelCanalView\(\{ obras, carregando, erro, canalId[,\s}]/.test(src), true);
 conf("... e monta o painel com ele", src.includes("painelDoCanal(visiveis, canalId)"), true);
 /* Nenhum "mehoo" escrito à mão sobrou DENTRO da tela: era isso que a
    prendia a um canal. */
@@ -38,14 +38,14 @@ const tela = src.slice(src.indexOf("function PainelCanalView("), src.indexOf("fu
   ? src.indexOf("function ObraDoCanal(") : src.length);
 conf("nenhum canal fixo sobrou dentro da tela", /"mehoo"/.test(tela.slice(0, tela.indexOf("\n}\n"))), false);
 /* Os rótulos falam o nome do canal que está na tela. */
-conf("o total diz o nome do canal", /label=\{`Material — \$\{canal\.nome\}`\}/.test(tela), true);
+conf("o total diz o nome do canal", /label=\{`Material[^`]*— \$\{canal\.nome\}`\}/.test(tela), true);
 conf("o vazio também", /Nenhum item de \$\{canal\.nome\} ainda/.test(tela), true);
 
 /* ---- 2. A Mehoo passa a usar a MESMA tela ---- */
 /* Ela tem perfil próprio e gente usando, então o módulo continua existindo —
    mas sem código separado, senão volta a haver duas telas divergindo. */
 conf("o módulo Mehoo usa a tela genérica",
-  src.includes('<PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId="mehoo" />'), true);
+  /<PainelCanalView obras=\{obrasDoPainel\} carregando=\{painelCarregando\} erro=\{painelErro\} canalId="mehoo"[\s/]/.test(src), true);
 conf("não existe mais uma MehooView separada", /function MehooView\(/.test(src), false);
 
 /* ---- 3. A escolha do canal ---- */
@@ -58,7 +58,7 @@ conf("o canal começa no primeiro da lista",
   src.includes("useState(CANAIS_COMPRA[0].id)"), true);
 
 /* ---- 4. O GC em todos (pedido dela) ---- */
-conf("a linha da obra mostra o GC", src.includes('<span className="mh-obra-gc">· GC {nomeDoEmail(o.gc)}</span>'), true);
+conf("a linha da obra mostra o GC", src.includes("<span>· GC {nomeDoEmail(o.gc)}</span>"), true);
 
 /* ---- 5. O CONSERTO QUE VEIO JUNTO ----
    `o.gc` só existia na obra ABERTA: a lista vinha do Monday, e os

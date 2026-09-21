@@ -16258,9 +16258,9 @@ function fornecedoresDasObras(obras) {
 
 function GcTelas({ tela, onTela }) {
   return (
-    <Tabs value={tela} onValueChange={onTela} activationMode="manual">
+    <Tabs value={tela} onValueChange={onTela} activationMode="manual" className="w-full">
       <div className="overflow-x-auto">
-        <TabsList variant="underline" className="w-max" aria-label="Telas da gestão de compras">
+        <TabsList variant="underline" className="w-max min-w-full" aria-label="Telas da gestão de compras">
           <TabsTrigger underline value="painel">Painel</TabsTrigger>
           <TabsTrigger underline value="compradores">Compradores</TabsTrigger>
           <TabsTrigger underline value="mao_propria">Mão de obra própria</TabsTrigger>
@@ -16314,13 +16314,14 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2"><Users size={16} /> Compradores por grupo de compra</CardTitle>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <CardTitle className="flex items-center gap-2"><Users size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Compradores por grupo de compra</CardTitle>
             {!podeEditar && <CardDescription>Só administrador troca o comprador de um grupo.</CardDescription>}
           </div>
+          {/* O valor ja' diz o campo ("Todos os compradores"): rotulo so' pro leitor de tela. */}
           <Field className="w-full sm:w-64">
-            <Label htmlFor={idFiltro}>Comprador</Label>
+            <Label htmlFor={idFiltro} className="sr-only">Comprador</Label>
             <Select value={filtro || TODOS} onValueChange={(v) => setFiltro(v === TODOS ? "" : v)}>
               <SelectTrigger id={idFiltro} aria-label="Filtrar por comprador"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -16558,7 +16559,7 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Users size={16} aria-hidden="true" /> Mão de obra própria</CardTitle>
+        <CardTitle className="flex items-center gap-2"><Users size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Mão de obra própria</CardTitle>
         <CardDescription>
           A equipe interna: especialidade, função e diária. A calculadora da mão de obra a contratar usa estes valores.
         </CardDescription>
@@ -16827,36 +16828,47 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
   const pctMat = t.matTotal > 0 ? (t.matFeito / t.matTotal) * 100 : 0;
   const pctMo = t.moTotal > 0 ? (t.moFeito / t.moTotal) * 100 : 0;
 
+  /* A barra segue a da obra: as abas sublinhadas ocupam a largura toda (o
+     recuo e' o do titulo) e os filtros vem embaixo, na mesma altura (h-10),
+     alinhados pela base. So' os dois grupos de alternancia levam rotulo
+     visivel: "Pendente/Comprado" e "4 semanas" nao dizem sozinhos o que
+     recortam; Obras, Fornecedor e Comprador ja' dizem no proprio valor. */
   const toolbar = (
-    <div className="flex flex-col gap-4">
-    {abasTelas}
-    <div className="flex flex-wrap items-center gap-4">
-      {comDados.length > 1 && (
-        <FiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
-      )}
-      <ToggleGroup type="single" value={status} onValueChange={(v) => { if (v) setStatus(v); }} aria-label="Mostrar: o que o painel mostra">
-        {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
-          <ToggleGroupItem key={id} value={id}>{rot}</ToggleGroupItem>
-        ))}
-      </ToggleGroup>
-      {status === "pendente" ? (
-        <ToggleGroup type="single" value={horizonte == null ? "tudo" : String(horizonte)} aria-label="Preciso resolver nas: horizonte de prazo"
-          onValueChange={(v) => { if (!v) return; setHorizonte(v === "tudo" ? null : Number(v)); }}>
-          {HORIZONTES.map((h) => (
-            <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)}>{h.rot}</ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      ) : (
-        <p className="text-xs text-text-mute">O prazo vale pro que falta; aqui aparece {status === "comprado" ? "o que já foi comprado" : "o comprado e o pendente"}.</p>
-      )}
-      <Choice label="Fornecedor" rotuloVisivel={false} className="w-full sm:w-64" value={fornecedor || TODOS} onChange={(v) => setFornecedor(v === TODOS ? "" : v)}
-        opcoes={[{ value: TODOS, label: "Todos os fornecedores" },
-          ...fornecedoresDoPainel.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` }))]} />
-      <Choice label="Comprador" rotuloVisivel={false} className="w-full sm:w-64" value={comprador || TODOS} onChange={(v) => setComprador(v === TODOS ? "" : v)}
-        opcoes={[{ value: TODOS, label: "Todos os compradores" },
-          ...listaCompradores.map((c) => ({ value: c.email, label: c.nome })),
-          { value: SEM_COMPRADOR, label: "Sem comprador" }]} />
-    </div>
+    <div className="flex w-full flex-col gap-3">
+      {abasTelas}
+      <div className="flex w-full flex-wrap items-end gap-3">
+        {comDados.length > 1 && (
+          <FiltroObras obras={comDados} escolhidas={escolhidas} onMudar={setEscolhidas} />
+        )}
+        <div className="flex flex-col gap-1">
+          <Label id="gc-rotulo-mostrar">Mostrar</Label>
+          <ToggleGroup type="single" value={status} onValueChange={(v) => { if (v) setStatus(v); }} aria-labelledby="gc-rotulo-mostrar">
+            {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
+              <ToggleGroupItem key={id} value={id}>{rot}</ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+        {status === "pendente" ? (
+          <div className="flex flex-col gap-1">
+            <Label id="gc-rotulo-horizonte">Preciso resolver nas</Label>
+            <ToggleGroup type="single" value={horizonte == null ? "tudo" : String(horizonte)} aria-labelledby="gc-rotulo-horizonte"
+              onValueChange={(v) => { if (!v) return; setHorizonte(v === "tudo" ? null : Number(v)); }}>
+              {HORIZONTES.map((h) => (
+                <ToggleGroupItem key={h.rot} value={h.dias == null ? "tudo" : String(h.dias)}>{h.rot}</ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+        ) : (
+          <p className="max-w-xs self-center text-xs text-text-mute">O prazo vale pro que falta; aqui aparece {status === "comprado" ? "o que já foi comprado" : "o comprado e o pendente"}.</p>
+        )}
+        <Choice label="Fornecedor" rotuloVisivel={false} className="w-full sm:w-64" value={fornecedor || TODOS} onChange={(v) => setFornecedor(v === TODOS ? "" : v)}
+          opcoes={[{ value: TODOS, label: "Todos os fornecedores" },
+            ...fornecedoresDoPainel.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` }))]} />
+        <Choice label="Comprador" rotuloVisivel={false} className="w-full sm:w-64" value={comprador || TODOS} onChange={(v) => setComprador(v === TODOS ? "" : v)}
+          opcoes={[{ value: TODOS, label: "Todos os compradores" },
+            ...listaCompradores.map((c) => ({ value: c.email, label: c.nome })),
+            { value: SEM_COMPRADOR, label: "Sem comprador" }]} />
+      </div>
     </div>
   );
 
@@ -16872,6 +16884,13 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
       {fornecedor && <FilterChip label="Fornecedor" value={nomeFornecedor} onClear={() => setFornecedor("")} />}
       {comprador && <FilterChip label="Comprador" value={nomeComprador} onClear={() => setComprador("")} />}
       {soAtrasadas && <FilterChip label="Obras" value="só com compra atrasada" onClear={() => setSoAtrasadas(false)} />}
+      {/* O atalho pras atrasadas mora junto da contagem de obras: e' um
+          recorte da mesma lista, e clicar leva ate' a tabela. */}
+      {t.obrasAtrasadas > 0 && !soAtrasadas && (
+        <Button variant="danger" size="sm" onClick={verAtrasadas} title="Ver na tabela só as obras com compra atrasada">
+          <AlertTriangle size={14} aria-hidden="true" /> {t.obrasAtrasadas} com compra atrasada
+        </Button>
+      )}
     </ActiveFilters>
   );
 
@@ -16884,20 +16903,6 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
           prestadores={prestadores.lista.some((p) => p.ativo) ? prestadores.lista.filter((p) => p.ativo) : PRESTADORES_PADRAO}
           padrao={!prestadores.lista.some((p) => p.ativo)} />
       )}
-
-      <p className="flex flex-wrap items-center gap-2 text-sm text-text">
-        <span>
-          {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"}
-          {escolhidas.size > 0 ? " no filtro" : " com planilha"}
-          {nAtivas != null && !escolhidas.size ? ` de ${nAtivas} ativas` : ""}
-        </span>
-        {t.obrasAtrasadas > 0 && (
-          <Button variant="danger" size="sm" className="gap-1" onClick={verAtrasadas}
-            title="Ver na tabela só as obras com compra atrasada">
-            <AlertTriangle size={14} aria-hidden="true" /> {t.obrasAtrasadas} com compra atrasada
-          </Button>
-        )}
-      </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <KpiProgresso label="A comprar — material" tone="brand" value={fmtBRL(t.matTotal - t.matFeito)} pct={pctMat}
@@ -16951,7 +16956,12 @@ function GestaoComprasView({ obras, nAtivas, carregando, erro, onAbrir, equipe =
         <CardHeader>
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2"><Building2 size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Obra por obra</CardTitle>
-            <CardDescription>Entrega, o que falta comprar e contratar e os prazos de cada obra.</CardDescription>
+            <CardDescription>
+              {r.linhas.length} {r.linhas.length === 1 ? "obra" : "obras"}
+              {escolhidas.size > 0 ? " no filtro" : " com planilha"}
+              {nAtivas != null && !escolhidas.size ? ` de ${nAtivas} ativas` : ""}
+              {" · "}entrega, o que falta comprar e contratar e os prazos de cada obra.
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
@@ -17929,24 +17939,28 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
         </div>
       )}
       toolbar={(
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-3">
           <FiltroObras obras={obras.map((o) => ({ codigo: String(o.codigo), nome: o.nome }))}
             escolhidas={escolhidas} onMudar={setEscolhidas} />
         </div>
       )}>
       {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
+      {/* Titulo de secao + texto de apoio, no mesmo corpo das outras telas. */}
       {obra ? (
-        <div>
-          <h2 className="text-base font-semibold">{obra.nome}</h2>
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-text">{obra.nome}</h2>
           <p className="text-xs text-text-mute">centro de custo <span className="mono">{obra.codigo}</span> · próximo será <span className="mono">{numeroAditivo(obra.codigo, proximaSeq(daObra))}</span></p>
         </div>
-      ) : (
-        <div>
-          <h2 className="text-base text-text">{visiveis.length} {visiveis.length === 1 ? "aditivo" : "aditivos"}</h2>
-          <p className="text-xs text-text-mute">em {new Set(visiveis.map((a) => String(a.obraCodigo))).size} obra(s)</p>
-        </div>
-      )}
+      ) : (() => {
+        const nObras = new Set(visiveis.map((a) => String(a.obraCodigo))).size;
+        return (
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-text">{visiveis.length} {visiveis.length === 1 ? "aditivo" : "aditivos"}</h2>
+            <p className="text-xs text-text-mute">em {nObras} {nObras === 1 ? "obra" : "obras"}</p>
+          </div>
+        );
+      })()}
 
       {carregando ? (
         <div role="status" aria-label="Carregando os aditivos" className="flex flex-col gap-2">
@@ -19003,13 +19017,20 @@ function ObraDoCanal({ L, canal }) {
   const o = L.obra;
   const pct = L.total > 0 ? (L.comprado / L.total) * 100 : 0;
 
+  /* Uma linha da lista: o Card e a divisoria sao de quem lista (PainelCanalView). */
   return (
-    <Card className="p-0">
+    <div>
       <Colapsavel aberto={aberto} onAbrir={() => setAberto((v) => !v)}
         cabecalho={
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">
-            <div className="min-w-0 flex-1 basis-64">
-              <div className="text-sm font-semibold text-text"><span className="mono text-xs font-normal text-text-mute">#{o.codigo}</span> {o.nome}</div>
+          /* Padrao C: obra a esquerda; entrega (data) e itens centralizados;
+             falta comprar com rotulo centralizado e valor a direita; o selo
+             em coluna fixa. As colunas tem largura da escala e nao quebram
+             texto (whitespace-nowrap) — o "Entrega da obra" e o "em N d"
+             cortavam na coluna de w-32. No celular a obra ocupa a fila de
+             cima e as colunas quebram embaixo. */
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-6 gap-y-3 font-normal lg:flex-nowrap">
+            <div className="min-w-0 basis-full lg:flex-1 lg:basis-auto">
+              <div className="truncate text-sm font-semibold text-text" title={o.nome}><span className="mono text-xs font-normal text-text-mute">#{o.codigo}</span> {o.nome}</div>
               {/* Squad na mesma linha do endereco: quem atende a Mehoo precisa
                   saber com qual equipe falar, e isso nao custa uma linha nova. */}
               <div className="flex flex-wrap items-center gap-1 text-xs text-text-mute">
@@ -19020,37 +19041,37 @@ function ObraDoCanal({ L, canal }) {
                 {/* O GC RESPONSAVEL, em todos os canais (pedido dela, 19/09/2026).
                     Quem atende um canal precisa saber COM QUEM falar sobre aquela
                     obra, e o squad sozinho nao responde isso. */}
-                {o.gc && <span className="mh-obra-gc">· GC {nomeDoEmail(o.gc)}</span>}
+                {o.gc && <span>· GC {nomeDoEmail(o.gc)}</span>}
                 {o.endereco && o.endereco !== "—" && <span>· {o.endereco}</span>}
               </div>
             </div>
 
             {/* A data de entrega e' a primeira pergunta de quem fornece. */}
-            <div className="flex w-32 shrink-0 flex-col items-center text-center">
-              <span className="label-mono">Entrega da obra</span>
+            <div className="flex w-40 shrink-0 flex-col items-center text-center">
+              <span className="label-mono whitespace-nowrap">Entrega da obra</span>
               {L.entrega ? (
                 <>
-                  <span className={`mono text-sm tabular-nums ${L.faltamEntrega < 0 ? "text-danger" : "text-text"}`}>
+                  <span className={`mono whitespace-nowrap text-sm tabular-nums ${L.faltamEntrega < 0 ? "text-danger" : "text-text"}`}>
                     {new Date(`${L.entrega}T12:00:00`).toLocaleDateString("pt-BR")}
                   </span>
-                  <span className={`text-xs ${L.faltamEntrega < 0 ? "text-danger" : "text-text-mute"}`}>{L.faltamEntrega < 0
+                  <span className={`whitespace-nowrap text-xs ${L.faltamEntrega < 0 ? "text-danger" : "text-text-mute"}`}>{L.faltamEntrega < 0
                     ? `${-L.faltamEntrega} d atrás` : `em ${L.faltamEntrega} d`}</span>
                 </>
               ) : <span className="text-xs text-text-mute">sem data</span>}
             </div>
 
             <div className="flex w-20 shrink-0 flex-col items-center text-center">
-              <span className="label-mono">Itens</span>
+              <span className="label-mono whitespace-nowrap">Itens</span>
               <span className="mono text-sm tabular-nums text-text">{L.itens.length}</span>
             </div>
             <div className="flex w-40 shrink-0 flex-col gap-1">
-              <span className="label-mono text-center">Falta comprar</span>
-              <span className="mono text-right text-sm font-semibold tabular-nums text-text">{fmtBRL(L.falta)}</span>
+              <span className="label-mono whitespace-nowrap text-center">Falta comprar</span>
+              <span className="mono whitespace-nowrap text-right text-sm font-semibold tabular-nums text-text">{fmtBRL(L.falta)}</span>
               <Progress value={pct} aria-label={`Comprado em ${o.nome}`} />
             </div>
-            <span className="w-36 shrink-0">
+            <span className="flex w-36 shrink-0 justify-start lg:justify-end">
               {L.atrasados > 0 && (
-                <Badge tone="danger"><AlertTriangle size={12} aria-hidden="true" /> {L.atrasados} fora do prazo</Badge>
+                <Badge tone="danger" className="whitespace-nowrap"><AlertTriangle size={12} aria-hidden="true" /> {L.atrasados} fora do prazo</Badge>
               )}
             </span>
           </div>
@@ -19093,7 +19114,7 @@ function ObraDoCanal({ L, canal }) {
           </Table>
         </div>
       </Colapsavel>
-    </Card>
+    </div>
   );
 }
 
@@ -19108,7 +19129,11 @@ function ObraDoCanal({ L, canal }) {
  * criado seis telas pra manter e uma setima no dia em que nascesse outro
  * canal; assim, canal novo aparece sozinho.
  */
-function PainelCanalView({ obras, carregando, erro, canalId }) {
+/* A tela monta o proprio PageShell: o filtro de obras mora na barra do
+   cabecalho (junto da escolha do canal, quando ela existe), e o estado dele
+   vive aqui. `seletorCanal` e' o alternador de canal que o Painel por canal
+   passa; a Mehoo, presa a um canal, nao passa nada. */
+function PainelCanalView({ obras, carregando, erro, canalId, crumb, title, description, seletorCanal }) {
   const canal = canalPorId(canalId);
   // Vazio quer dizer TODAS, igual aos outros dois paineis.
   const [escolhidas, setEscolhidas] = useState(() => new Set());
@@ -19118,50 +19143,62 @@ function PainelCanalView({ obras, carregando, erro, canalId }) {
      caminho de volta pras outras. */
   const comItens = useMemo(
     () => painelDoCanal(obras, canalId).linhas.map((L) => ({ codigo: String(L.obra.codigo), nome: L.obra.nome })),
-    [obras]);
+    [obras, canalId]);
 
   const visiveis = useMemo(
     () => (escolhidas.size ? obras.filter((o) => escolhidas.has(String(o.codigo))) : obras),
     [obras, escolhidas]);
   const p = useMemo(() => painelDoCanal(visiveis, canalId), [visiveis, canalId]);
+  const pctComprado = p.total ? (p.comprado / p.total) * 100 : 0;
 
-  if (carregando) {
-    return (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-28 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
+  const filtroObras = !carregando && comItens.length > 1
+    ? <FiltroObras obras={comItens} escolhidas={escolhidas} onMudar={setEscolhidas} />
+    : null;
+  const toolbar = (seletorCanal || filtroObras) ? (
+    <div className="flex w-full flex-wrap items-center gap-3">
+      {seletorCanal}
+      {filtroObras}
+    </div>
+  ) : undefined;
 
   return (
-    <>
-      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
+    <PageShell crumb={crumb} title={title} description={description} toolbar={toolbar} contentClassName="flex flex-col gap-6">
+      {carregando ? (
+        <>
+          <p className="sr-only" role="status">Carregando as obras…</p>
+          <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4">
+            <Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" />
+          </div>
+          <Skeleton className="h-64 w-full" />
+        </>
+      ) : (
+        <>
+          {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
-      {comItens.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="sr-only">Obras</span>
-          <FiltroObras obras={comItens} escolhidas={escolhidas} onMudar={setEscolhidas} />
-        </div>
-      )}
+          <div className="grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4" aria-label={`Resumo — ${canal.nome}`}>
+            <KpiMini label={`Material a comprar — ${canal.nome}`} value={fmtBRL(p.total - p.comprado)} tone="brand"
+              hint="ainda não comprado" className="h-full" />
+            <KpiMini label="Já comprado" value={fmtBRL(p.comprado)} tone="success"
+              hint={`de ${fmtBRL(p.total)} · ${Math.round(pctComprado)}%`} className="h-full" />
+            <KpiMini label="Obras com itens" value={String(p.linhas.length)}
+              hint={`${p.nItens} ${p.nItens === 1 ? "item" : "itens"} no total`} className="h-full" />
+            <KpiMini label="Fora do prazo" value={String(p.atrasados)} tone={p.atrasados ? "danger" : "neutral"}
+              hint={p.atrasados === 1 ? "item passou da data de compra" : "itens que passaram da data de compra"} className="h-full" />
+          </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <KpiProgresso label={`Material — ${canal.nome}`} value={fmtBRL(p.total - p.comprado)} hint="ainda não comprado"
-          pct={p.total ? (p.comprado / p.total) * 100 : 0} />
-        <div className="flex flex-col gap-2">
-          <KpiMini label={`Obras com itens — ${canal.nome}`} value={String(p.linhas.length)}
-            hint={`${p.nItens} ${p.nItens === 1 ? "item" : "itens"} no total`} tone={p.atrasados ? "warning" : "neutral"} />
-          {p.atrasados > 0 && (
-            <div><Badge tone="danger">{p.atrasados} {p.atrasados === 1 ? "item fora do prazo" : "itens fora do prazo"}</Badge></div>
+          {p.linhas.length === 0 ? (
+            <EmptyState icon={<ShoppingCart size={24} aria-hidden="true" />} title={`Nenhum item de ${canal.nome} ainda`}
+              description={`Os itens aparecem aqui quando alguém escolhe ${canal.nome} como canal em Compras de Produtos, dentro da obra.`} />
+          ) : (
+            <Card className="p-0">
+              <div className="divide-y divide-line-1">
+                {p.linhas.map((L) => <ObraDoCanal key={L.obra.codigo} L={L} canal={canal} />)}
+              </div>
+            </Card>
           )}
-        </div>
-      </div>
-
-      {p.linhas.length === 0 ? (
-        <EmptyState icon={<ShoppingCart size={24} aria-hidden="true" />} title={`Nenhum item de ${canal.nome} ainda`}
-          description={`Os itens aparecem aqui quando alguém escolhe ${canal.nome} como canal em Compras de Produtos, dentro da obra.`} />
-      ) : p.linhas.map((L) => <ObraDoCanal key={L.obra.codigo} L={L} canal={canal} />)}
-    </>
+        </>
+      )}
+    </PageShell>
   );
 }
 
@@ -23571,15 +23608,6 @@ export default function App() {
         .arq-acoes { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
         .arq-perdido { font-size: 11px; color: var(--ink-3); font-style: italic; flex-shrink: 0; }
         /* ---- Painel da Mehoo ---- */
-        .mh-filtro { margin: 18px 0 14px; }
-        .mh-obra { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); margin-bottom: 12px; overflow: hidden; }
-        .mh-obra-head { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; background: none; border: none; font-family: inherit; padding: 13px 16px; cursor: pointer; }
-        .mh-obra-head:hover { background: var(--surface-2); }
-        .mh-obra-id { flex: 1; min-width: 0; }
-        .mh-obra-nome { font-size: 13.5px; font-weight: 600; color: var(--ink); }
-        .mh-obra-sub { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11px; color: var(--ink-3); margin-top: 3px; }
-        .mh-squad { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--ink-2); }
-        .mh-obra-gc { color: var(--ink-2); }
         /* Os canais do Painel por canal. Chip apagado ate' ser o escolhido —
            a cor e' do canal, e ela so' aparece em quem esta' na tela. */
         .canal-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; }
@@ -23589,26 +23617,6 @@ export default function App() {
         .canal-chip:hover { border-color: var(--ink-3); }
         .canal-chip b { font-size: 10.5px; letter-spacing: .04em; }
         .canal-chip.ativo { font-weight: 600; }
-        .mh-obra-end { font-size: 11px; color: var(--ink-3); }
-        .mh-rot { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
-        .mh-entrega, .mh-num { flex-shrink: 0; text-align: right; }
-        .mh-num-larga { width: 130px; }
-        .mh-entrega-val, .mh-num-val { font-size: 13px; font-weight: 700; color: var(--ink); margin-top: 2px; }
-        .mh-entrega-val.venceu { color: var(--red); }
-        .mh-dias { display: block; font-size: 10px; font-weight: 400; color: var(--ink-3); }
-        .mh-sem { font-size: 11px; color: var(--ink-3); font-style: italic; margin-top: 3px; }
-        .mh-num .gc-track { margin-top: 4px; }
-        .mh-corpo { border-top: 1px solid var(--border-soft); padding: 14px 16px; background: var(--panel); }
-        .mh-sub { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
-        .mh-cadernos { margin-bottom: 14px; }
-        .mh-caderno { display: flex; align-items: center; gap: 9px; padding: 6px 10px; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 8px; margin-bottom: 5px; font-size: 12px; }
-        .mh-caderno-tit { font-weight: 600; color: var(--ink); width: 210px; flex-shrink: 0; }
-        .mh-caderno-arq { flex: 1; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .mh-caderno-vazio { flex: 1; font-size: 11px; color: var(--ink-3); font-style: italic; }
-        .mh-tabela { background: var(--surface-1); border-radius: 8px; border: 1px solid var(--border-soft); }
-        .mh-item-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
-        .mh-perto { color: var(--amber); font-weight: 600; }
-        @media (max-width: 900px) { .mh-obra-head { flex-wrap: wrap; gap: 10px; } }
         /* ---- Tela de inicio ---- */
         /* ---- Cabecalho do Inicio: a regua ----
            Os numeros nao sao cartao. Cartao aqui em cima competia com os
@@ -23651,11 +23659,9 @@ export default function App() {
         /* A frase diz o que falta AGORA — a esteira mostra o caminho
            inteiro, a frase poupa de reler os chips pra saber o motivo. */
         /* ---- Painel geral de compras e contratacoes ---- */
-        .gc-horizonte-rot { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-right: 4px; }
         .gc-chip { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 20px; padding: 5px 13px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
         .gc-chip:hover { border-color: var(--ink-3); }
         .gc-chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-        .gc-topo-alerta { color: var(--red); }
 
         .fo-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 330px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-3); padding: 10px; }
         .fo-busca { margin-top: 0; width: 100%; font-size: 12.5px; }
@@ -23664,14 +23670,7 @@ export default function App() {
         .fo-item:hover { background: var(--panel); }
         .fo-item.on { background: var(--blue-bg); }
         .fo-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .gc-obras-filtro { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 20px; }
-        .gc-obras-filtro .gc-chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .gc-obras-filtro .gc-chip .mono { opacity: .6; margin-right: 3px; }
-        .gc-selo-seta { margin-left: 3px; transition: transform .15s ease; }
-        .gc-selo-seta.aberta { transform: rotate(180deg); }
-        .gc-detalhe-tit { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 2px 0 6px; }
         .gc-nota { font-size: 12px; color: var(--ink-3); margin: 6px 2px 10px; }
-        .gc-totais { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
         .gc-total { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; background: var(--surface-1); }
         .gc-total-rot { font-size: 10px; font-weight: 800; letter-spacing: .07em; }
         .gc-total-val { font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.2; margin-top: 6px; }
@@ -23684,28 +23683,8 @@ export default function App() {
         .gc-bloco { margin-bottom: 24px; }
         .gc-bloco-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
         .gc-bloco-titulo { font-size: 14px; font-weight: 700; color: var(--ink); }
-        .gc-abas { display: flex; gap: 3px; background: var(--panel); border-radius: 8px; padding: 2px; }
-        .gc-aba { border: none; background: none; font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-3); padding: 4px 10px; border-radius: 6px; cursor: pointer; }
-        .gc-aba.on { background: var(--surface-1); color: var(--ink); box-shadow: var(--shadow-1); }
-        .gc-bloco-total { margin-left: auto; font-size: 15px; font-weight: 700; }
-        .gc-verba { border-bottom: 1px solid var(--border-soft); }
-        .gc-verba:last-child { border-bottom: none; }
-        .gc-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px; width: 100%; }
-        .gc-row-clic { background: none; border: none; font: inherit; text-align: left; cursor: pointer; }
-        .gc-row-clic:hover { background: var(--panel); }
         .gc-chevron { color: var(--ink-3); flex-shrink: 0; transition: transform .12s ease; }
         .gc-chevron.aberto { transform: rotate(90deg); }
-        .gc-num { font-size: 11px; color: var(--ink-3); font-weight: 600; width: 22px; flex-shrink: 0; }
-        .gc-nome { font-size: 13px; color: var(--ink); font-weight: 600; width: 230px; flex-shrink: 0; }
-        .gc-obras { font-size: 11px; color: var(--ink-3); width: 68px; flex-shrink: 0; }
-        .gc-row .gc-track { flex: 1; }
-        .gc-qtd { font-size: 11.5px; width: 92px; text-align: right; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .gc-val { font-size: 13px; color: var(--ink); width: 106px; text-align: right; flex-shrink: 0; }
-        .gc-verba-obras { display: flex; flex-direction: column; gap: 2px; padding: 0 4px 10px 29px; }
-        .gc-row-linha { display: flex; align-items: center; gap: 4px; }
-        .gc-row-linha .gc-row { flex: 1; min-width: 0; }
-        .gc-imprimir { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ink-3); cursor: pointer; }
-        .gc-imprimir:hover { color: var(--brand); border-color: var(--line); background: var(--panel); }
         .rel-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(20, 24, 26, 0.55); overflow: auto; padding: 16px 16px 40px; }
         .rel-barra { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; max-width: 210mm; margin: 0 auto 12px; padding: 10px 14px; border-radius: 10px; background: var(--surface-1); color: var(--text); font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
         .rel-barra .btn-voltar { margin-left: auto; }
@@ -23713,9 +23692,6 @@ export default function App() {
         .pdf-visor { display: block; width: 100%; max-width: 1100px; height: calc(100vh - 120px); margin: 0 auto; border: 0; border-radius: 10px; background: #fff; }
         .pdf-gerando { max-width: 210mm; margin: 40px auto; padding: 28px; text-align: center; color: var(--ink-2); background: var(--surface-1); border-radius: 10px; }
         .rel-barra a.btn-doc { text-decoration: none; }
-        .gc-prazo-solic { font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line-2); }
-        .gc-prazo-solic.parte { color: var(--brand); background: var(--brand-tint); border-color: var(--brand-line); }
-        .gc-prazo-solic.tudo { color: color-mix(in srgb, var(--green) 75%, var(--ink)); background: color-mix(in srgb, var(--green) 10%, transparent); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
         .eyebrow.obra-endereco { margin: 0 0 22px; line-height: 1.6; }
         .obra-endereco-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 6px; vertical-align: -5px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer; opacity: 0.6; }
         .obra-endereco-btn:hover { opacity: 1; background: var(--surface-2); color: var(--ink); }
@@ -23730,38 +23706,6 @@ export default function App() {
           .rel-overlay { position: static !important; background: #fff !important; padding: 0 !important; overflow: visible !important; }
           .rel-folha { display: block !important; }
         }
-        .gc-verba-obra { display: flex; align-items: center; gap: 8px; background: none; border: none; font: inherit; font-size: 12px; color: var(--ink-2); text-align: left; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
-        .gc-verba-obra:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
-        .gc-verba-obra:disabled { cursor: default; }
-        .gc-verba-obra-nome { flex: 1; }
-        .gc-verba-obra-qtd { font-size: 11px; width: 92px; text-align: right; flex-shrink: 0; }
-        .gc-busca { display: flex; align-items: center; gap: 7px; margin: 8px 2px 12px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
-        .gc-busca input { flex: 1; border: none; background: none; font: inherit; font-size: 13px; color: var(--ink); outline: none; }
-        .gc-busca-limpar { display: flex; padding: 2px; background: none; border: none; color: var(--ink-3); cursor: pointer; }
-        .gc-busca-limpar:hover { color: var(--ink); }
-
-        .gc-tabela table { table-layout: fixed; }
-        .gc-tabela td { vertical-align: middle; }
-        .gc-obra-nome { background: none; border: none; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; padding: 0; }
-        .gc-obra-nome:hover { color: var(--blue); text-decoration: underline; }
-        .gc-obra.atrasada { background: var(--red-bg); }
-        .gc-dias { display: block; font-size: 10px; color: var(--ink-3); }
-        .gc-venceu { color: var(--red); font-weight: 600; }
-        .gc-sem-data { font-size: 11px; color: var(--ink-3); font-style: italic; }
-        .gc-cel-barra { display: flex; align-items: center; gap: 8px; }
-        .gc-cel-txt { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
-        .gc-cel-est { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
-        .gc-selo { display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 20px; padding: 3px 9px; font-size: 10.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
-        .gc-selo.atraso { background: var(--red-bg); color: var(--red); }
-        .gc-selo.perto { background: var(--amber-bg); color: var(--amber); }
-        .gc-detalhe td { background: var(--panel); padding: 8px 12px; }
-        .gc-prazo { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 11.5px; }
-        .gc-prazo-nome { font-weight: 600; color: var(--ink); width: 190px; }
-        .gc-prazo-quando { flex: 1; color: var(--ink-2); }
-        .gc-prazo.atraso .gc-prazo-quando { color: var(--red); }
-        .gc-prazo-val { color: var(--ink); font-weight: 600; }
-
-        @media (max-width: 900px) { .gc-totais { grid-template-columns: 1fr; } }
 
         /* =====================================================================
            GROUP WS · DESIGN SYSTEM — COMPONENTES
@@ -23868,10 +23812,6 @@ export default function App() {
         .gc-bloco-head, .arq-bloco-h { padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
 
         /* ---------- Abas (Tabs · pill no nível 1, underline no nível 2) ---------- */
-        .gc-abas { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface-2); overflow: visible; }
-        .gc-aba { padding: 5px 11px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease; }
-        .gc-aba:hover { background: transparent; color: var(--text); }
-        .gc-aba.on { background: var(--brand); color: var(--bg); box-shadow: 0 1px 4px var(--brand-soft); }
 
         /* ---------- Botões (Button) ----------
            primário = default do DS (brand) · contorno = outline ·
@@ -23906,7 +23846,7 @@ export default function App() {
         :is(.ad-addbtn, .btn-add-item, .btn-separar) { border: 1px dashed var(--line-3); border-radius: 8px; background: transparent; color: var(--text-soft); font-family: var(--font-sans); transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease; }
         :is(.ad-addbtn, .btn-add-item, .btn-separar):hover { border-color: var(--brand); border-style: dashed; background: var(--brand-soft); color: var(--brand); }
 
-        :is(.btn-linha-excluir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn, .gc-busca-limpar) { border-radius: 6px; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+        :is(.btn-linha-excluir, .btn-linha-substituir, .ad-icon, .aviso-x, .clear-btn) { border-radius: 6px; color: var(--text-mute); transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
 
         /* ---------- Campos (Input · Select · Textarea) ----------
            Padrão obrigatório do DS: fundo --field, borda --line-2, foco em
@@ -23938,7 +23878,7 @@ export default function App() {
         .alert-toggle.active { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
         /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
-        :is(.pill, .sg-badge, .gc-selo, .chip, .aloc, .tipo-tag, .chip-aditivo, .cmv-tag-adit, .tag-mo, .tag-alterado, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
+        :is(.pill, .sg-badge, .chip, .aloc, .tipo-tag, .chip-aditivo, .cmv-tag-adit, .tag-mo, .tag-alterado, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
         :is(.soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
         :is(.nav-count, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         .ad-obra-n { background: var(--brand); color: var(--bg); }
@@ -23946,7 +23886,7 @@ export default function App() {
         /* ---------- Cartões e números (Card · KPI) ---------- */
         :is(.big-card, .gc-total, .flat-panel) { border-radius: 14px; }
         :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
-        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .gc-total-rot, .equipe-rotulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .gc-total-val, .arq-topo-n, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
@@ -24102,15 +24042,6 @@ export default function App() {
             grid-template-columns: minmax(0, 1fr);
           }
 
-          /* Painel Mehoo: era uma fileira horizontal de blocos espremida em
-             241px — o nome da obra saia uma palavra por linha e o endereco
-             virava uma fita vertical. Empilhado, cada numero fica numa linha
-             legivel. */
-          .mh-obra-head { flex-wrap: wrap; gap: 10px; }
-          .mh-obra-id { flex: 1 1 100%; }
-          .mh-entrega, .mh-num { flex: 0 0 auto; text-align: left; }
-          .mh-num-larga { width: auto; min-width: 120px; }
-
           /* Tabela larga rola dentro do bloco dela; a pagina fica parada. */
           .grp-itens, .exec-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
@@ -24120,12 +24051,12 @@ export default function App() {
 
           /* Linha de caderno: titulo em cima, arquivo e botoes embaixo.
 
-             O .mh-caderno-tit tem largura FIXA de 210px e flex-shrink zero.
+             O titulo do caderno tinha largura FIXA de 210px e flex-shrink zero.
              Numa caixa de 245px sobravam 35px pro nome do arquivo e pros dois
              botoes juntos — "Ver" e "Baixar" eram cortados pela borda do
              cartao. Soltando a largura e deixando o titulo ocupar a propria
              linha, a de baixo fica so' com arquivo e acoes. */
-          .mh-caderno, .caderno-slot { flex-wrap: wrap; }
+          .caderno-slot { flex-wrap: wrap; }
           /* Tres linhas, nesta ordem: [icone + nome do caderno] / [arquivo] /
              [Ver Baixar]. O titulo fica ao lado do icone (flex auto, nao
              100%), senao o livrinho ganha uma linha so' pra ele. */
@@ -24133,16 +24064,14 @@ export default function App() {
              largura do proprio texto e, nao cabendo, pula pra linha de baixo
              deixando o livrinho sozinho em cima. Com base zero ele divide a
              linha com o icone e quebra o texto dentro dele mesmo. */
-          .mh-caderno-tit, .caderno-slot-titulo { width: auto; flex: 1 1 0; min-width: 0; white-space: normal; }
-          .mh-caderno-arq, .mh-caderno-vazio, .caderno-slot-arquivo { flex: 1 1 100%; }
-          .mh-caderno .caderno-acao:first-of-type, .caderno-slot .caderno-acao:first-of-type { margin-left: -8px; }
+          .caderno-slot-titulo { width: auto; flex: 1 1 0; min-width: 0; white-space: normal; }
+          .caderno-slot-arquivo { flex: 1 1 100%; }
+          .caderno-slot .caderno-acao:first-of-type { margin-left: -8px; }
 
           /* Alvo de toque: 11px de fonte num link de 2px de padding e' pequeno
              demais pro polegar. */
           .caderno-acao { min-height: 32px; padding: 2px 8px; }
 
-          /* A tabela de itens do Mehoo rola dentro do bloco, como as outras. */
-          .mh-tabela { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         }
       `}</style>
 
@@ -24246,24 +24175,22 @@ export default function App() {
               barra lateral. Quem esta' AMARRADO a um canal nao ve' a escolha:
               mostrar os outros cinco pra quem nao pode abri-los so' criaria a
               pergunta "por que nao funciona". */}
-          <PageShell crumb="Canais de compra" title="Painel por canal"
+          <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId={canalNaTela}
+            crumb="Canais de compra" title="Painel por canal"
             description="Cada obra com item do canal escolhido: quando ela entrega, quem é o GC, os cadernos pra baixar e o que já foi comprado."
-            toolbar={!canalPreso && (
+            seletorCanal={!canalPreso && (
               <ToggleGroup type="single" value={canalDoPainel} onValueChange={(v) => { if (v) setCanalDoPainel(v); }} aria-label="Canal de compra" className="flex-wrap">
                 {CANAIS_COMPRA.map((c) => (
                   <ToggleGroupItem key={c.id} value={c.id} className="gap-1"><span className="mono">{c.sigla}</span> {c.nome}</ToggleGroupItem>
                 ))}
               </ToggleGroup>
-            )}
-            contentClassName="flex flex-col gap-6">
-            <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId={canalNaTela} />
-          </PageShell>
+            )} />
           </>
           ) : modulo === "mehoo" ? (
           <>
-          <PageShell crumb="Canal de compra" title="Mehoo" description="Cada obra com item da Mehoo: quando ela entrega, os cadernos do executivo pra baixar, e o que foi mandado pra eles." contentClassName="flex flex-col gap-6">
-            <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId="mehoo" />
-          </PageShell>
+          <PainelCanalView obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro} canalId="mehoo"
+            crumb="Canal de compra" title="Mehoo"
+            description="Cada obra com item da Mehoo: quando ela entrega, os cadernos do executivo pra baixar, e o que foi mandado pra eles." />
           </>
           ) : modulo === "aditivos" ? (
           <>
