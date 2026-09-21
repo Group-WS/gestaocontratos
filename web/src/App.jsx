@@ -62,7 +62,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -17272,34 +17272,47 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
     }
   }
 
+  const idCampo = React.useId();
+  const opcoesStatus = opcoesStatusAditivo();
+  const interno = <span className="text-xs font-normal normal-case italic tracking-normal text-text-mute">não sai no PDF</span>;
+
   return (
-    <>
-      <div className="ad-topo naoimprime">
-        <Button onClick={onVoltar}><ChevronLeft size={13} /> Aditivos da obra</Button>
-        <span className="ad-numero mono">{aditivo.numero}</span>
-        <input className="form-input ad-titulo" value={descricao} placeholder="Do que se trata este aditivo"
-          onChange={(e) => { setDescricao(e.target.value); setSujo(true); }} />
-        <div className="ad-status-sel">
-          {STATUS_ADITIVO.map((s) => (
-            <Button variant="ghost" key={s.id} className={`ad-tag ${s.id} ${status === s.id ? "on" : ""}`}
-              onClick={() => mudarStatus(s.id)} disabled={salvando}>{s.nome}</Button>
-          ))}
+    /* `ad-editor` e' so' um gancho de impressao: o @media print esconde o
+       cabecalho e a toolbar do PageShell e deixa o documento sozinho no
+       papel (ver o bloco do aditivo no <style>). */
+    <PageShell title="Aditivo" crumb="Aditivos" className="ad-editor" contentClassName="flex flex-col gap-6"
+      description={`${aditivo.numero}${obra?.nome ? ` · ${obra.nome}` : ""}`}
+      actions={(
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <Button variant="outline" onClick={onVoltar}><ChevronLeft size={16} /> Aditivos da obra</Button>
+          <Button variant="outline" onClick={imprimir} title="Abre a impressão do navegador — escolha Salvar como PDF">
+            <Download size={16} /> PDF
+          </Button>
+          {/* O Excel e' o avesso do PDF: o PDF e' o que o cliente le, este e'
+              o que a casa precisa — custo, margem e especificacao de compra. */}
+          <Button variant="outline" onClick={baixarExcel}
+            title="Planilha interna: custo, margem e especificação de compra — o que não sai no PDF do cliente">
+            <FileDown size={16} /> Excel
+          </Button>
+          <Button onClick={() => salvar()} disabled={salvando || !sujo}>
+            {salvando ? "Salvando…" : sujo ? "Salvar" : "Salvo"}
+          </Button>
         </div>
-        <Button onClick={() => salvar()} disabled={salvando || !sujo}>
-          {salvando ? "Salvando…" : sujo ? "Salvar" : "Salvo"}
-        </Button>
-        <Button onClick={imprimir} title="Abre a impressão do navegador — escolha Salvar como PDF">
-          <Download size={13} /> PDF
-        </Button>
-        {/* O Excel e' o avesso do PDF: o PDF e' o que o cliente le, este e'
-            o que a casa precisa — custo, margem e especificacao de compra. */}
-        <Button onClick={baixarExcel}
-          title="Planilha interna: custo, margem e especificação de compra — o que não sai no PDF do cliente">
-          <FileDown size={13} /> Excel
-        </Button>
+      )}>
+      <div className="naoimprime flex flex-col gap-4 md:flex-row md:items-end">
+        <Field className="flex-1">
+          <Label htmlFor={`${idCampo}-descricao`}>Do que se trata este aditivo</Label>
+          <Input id={`${idCampo}-descricao`} value={descricao} placeholder="Do que se trata este aditivo"
+            onChange={(e) => { setDescricao(e.target.value); setSujo(true); }} />
+        </Field>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor={`${idCampo}-status`}>Status</Label>
+          <EscolhaEstado id={`${idCampo}-status`} valor={status} opcoes={opcoesStatus} onChange={mudarStatus}
+            disabled={salvando} rotulo="Status do aditivo" />
+        </div>
       </div>
 
-      {erro && <div className="aviso-migracao naoimprime"><AlertTriangle size={14} /> <span>{erro}</span></div>}
+      {erro && <Alert tone="danger" className="naoimprime"><AlertDescription>{erro}</AlertDescription></Alert>}
 
       {status === "aprovado" && (
         <div className="naoimprime">
@@ -17308,19 +17321,27 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
         </div>
       )}
 
-      <div className="ad-wrap">
-        <div className="ad-form naoimprime">
-          <div className="ad-card">
-            <div className="ad-card-h"><span>Cabeçalho</span></div>
-            <div className="ad-card-b ad-cab">
-              <label className="ad-largo">Cliente / Obra
-                <input className="form-input" value={doc.cliente} onChange={(e) => campo("cliente", e.target.value)} /></label>
-              <label>Nº da proposta
-                <input className="form-input" value={doc.proposta} onChange={(e) => campo("proposta", e.target.value)} /></label>
-              <label>Data
-                <input className="form-input" type="date" value={doc.data || ""} onChange={(e) => campo("data", e.target.value)} /></label>
-            </div>
-          </div>
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+        <div className="naoimprime flex flex-col gap-4">
+          <Card>
+            <CardHeader><CardTitle>Cabeçalho</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field className="md:col-span-2">
+                  <Label htmlFor={`${idCampo}-cliente`}>Cliente / Obra</Label>
+                  <Input id={`${idCampo}-cliente`} value={doc.cliente} onChange={(e) => campo("cliente", e.target.value)} />
+                </Field>
+                <Field>
+                  <Label htmlFor={`${idCampo}-proposta`}>Nº da proposta</Label>
+                  <Input id={`${idCampo}-proposta`} value={doc.proposta} onChange={(e) => campo("proposta", e.target.value)} />
+                </Field>
+                <Field>
+                  <Label htmlFor={`${idCampo}-data`}>Data</Label>
+                  <Input id={`${idCampo}-data`} type="date" value={doc.data || ""} onChange={(e) => campo("data", e.target.value)} />
+                </Field>
+              </div>
+            </CardContent>
+          </Card>
 
           <SecaoEditor sec="supressao" titulo="Supressão" grupos={doc.supressao || []} total={t.supressao}
             doExecutivo={doExecutivo}
@@ -17330,14 +17351,16 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
             onMudar={(g) => mexer({ ...doc, adicao: g })}
             onCopiarPara={(g, it) => copiarPara("adicao", g, it)} />
 
-          <div className="ad-card">
-            <div className="ad-card-h"><span>Fechamento</span></div>
-            <div className="ad-card-b">
-              <div className="ad-resumo"><span>Total supressão</span><b className="mono">{fmtBRL(t.supressao)}</b></div>
-              <div className="ad-resumo"><span>Total adição</span><b className="mono">{fmtBRL(t.adicao)}</b></div>
-              <div className="ad-resumo forte">
-                <span>{rotuloSaldo(t.saldo)}</span>
-                <b className={`mono ${t.saldo < 0 ? "ad-credito" : ""}`}>{fmtBRL(t.saldo)}</b>
+          <Card>
+            <CardHeader><CardTitle>Fechamento</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div>
+                <div className="flex justify-between border-b border-line-1 py-1 text-sm text-text-soft"><span>Total supressão</span><b className="mono">{fmtBRL(t.supressao)}</b></div>
+                <div className="flex justify-between border-b border-line-1 py-1 text-sm text-text-soft"><span>Total adição</span><b className="mono">{fmtBRL(t.adicao)}</b></div>
+                <div className="flex justify-between pt-2 text-base font-semibold text-text">
+                  <span>{rotuloSaldo(t.saldo)}</span>
+                  <b className={`mono ${t.saldo < 0 ? "text-success" : ""}`}>{fmtBRL(t.saldo)}</b>
+                </div>
               </div>
               {/* O lado INTERNO do aditivo: quanto custa comprar o que foi
                   adicionado, e o que sobra disso. Nada daqui entra no
@@ -17346,53 +17369,58 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
                   So' a adicao: o custo do que foi suprimido mora na planilha
                   do executivo, e traze-lo pra ca faria a conta fechar com
                   dois lugares diferentes ao mesmo tempo. */}
-              <div className="ad-margem">
-                <div className="ad-margem-h">
-                  Interno <span className="ad-interno">não sai no PDF</span>
+              <div className="border-t border-line-1 pt-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="label-mono">Interno</span> {interno}
                 </div>
-                <div className="ad-resumo"><span>Custo da adição</span>
+                <div className="flex justify-between border-b border-line-1 py-1 text-sm text-text-soft"><span>Custo da adição</span>
                   <b className="mono">{fmtBRL(mg.custo)}</b></div>
                 {/* Margem SO' depois que alguem disse algum custo. Sem custo
                     nenhum a conta daria "margem 100%", que e' uma mentira
                     bonita bem no lugar onde se decide preco. Com parte das
                     linhas orcada ela sai, mas dita como parcial. */}
-                <div className="ad-resumo">
+                <div className="flex justify-between border-b border-line-1 py-1 text-sm text-text-soft">
                   <span>Margem da adição{mg.custo > 0 && mg.semCusto > 0 ? " (parcial)" : ""}</span>
                   {mg.custo > 0 ? (
-                    <b className={`mono ${mg.margem < 0 ? "ad-credito" : ""}`}>
+                    <b className={`mono ${mg.margem < 0 ? "text-success" : ""}`}>
                       {fmtBRL(mg.margem)}{mg.pct != null ? ` · ${mg.pct.toFixed(1).replace(".", ",")}%` : ""}
                     </b>
                   ) : <b className="mono dim">—</b>}
                 </div>
                 {mg.semCusto > 0 && (
-                  <div className="ad-orcar">
+                  <p className="mt-2 flex items-center gap-1 text-xs text-warning">
                     <AlertTriangle size={12} />
                     <span>{mg.semCusto === 1
                       ? "1 linha da adição entra no Plano de Compras como “a orçar”"
                       : `${mg.semCusto} linhas da adição entram no Plano de Compras como “a orçar”`} — falta o custo.</span>
-                  </div>
+                  </p>
                 )}
               </div>
-              <label className="ad-largo" style={{ marginTop: 10, display: "block" }}>Condições de pagamento
-                <textarea className="form-input" rows={3} value={doc.cond || ""}
-                  onChange={(e) => campo("cond", e.target.value)} /></label>
+              <Field>
+                <Label htmlFor={`${idCampo}-cond`}>Condições de pagamento</Label>
+                <Textarea id={`${idCampo}-cond`} rows={3} value={doc.cond || ""}
+                  onChange={(e) => campo("cond", e.target.value)} />
+              </Field>
               {/* A observacao e' INTERNA: ela nao sai no documento. E' onde
                   fica o porque da reprovacao, o que ainda falta combinar,
                   o nome de quem pediu — coisa que ajuda o time e nao vai
                   pro cliente. */}
-              <label className="ad-largo" style={{ marginTop: 10, display: "block" }}>
-                Observação <span className="ad-interno">interna — não sai no PDF</span>
-                <textarea className="form-input" rows={3} value={doc.observacao || ""}
+              <Field>
+                <Label htmlFor={`${idCampo}-obs`}>Observação <span className="text-xs font-normal normal-case italic tracking-normal text-text-mute">interna — não sai no PDF</span></Label>
+                <Textarea id={`${idCampo}-obs`} rows={3} value={doc.observacao || ""}
                   placeholder="por que foi reprovado, o que falta combinar, quem pediu…"
-                  onChange={(e) => campo("observacao", e.target.value)} /></label>
-            </div>
-          </div>
+                  onChange={(e) => campo("observacao", e.target.value)} />
+              </Field>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* O documento, do lado, atualizando a cada tecla. */}
-        <div className="ad-prev">
-          <div className="ad-prev-h naoimprime">Pré-visualização</div>
-          <div className="ad-prev-box">
+        {/* O documento, do lado, atualizando a cada tecla. `ad-prev` e
+            `ad-prev-box` sao ganchos do @media print (soltam a caixa e
+            tiram fundo e rolagem na impressao). */}
+        <div className="ad-prev xl:sticky xl:top-3">
+          <div className="label-mono naoimprime mb-2">Pré-visualização</div>
+          <div className="ad-prev-box overflow-auto rounded-lg bg-surface-2 p-4 xl:max-h-screen">
             <FolhaAjustada><DocumentoAditivo doc={doc} numero={aditivo.numero} /></FolhaAjustada>
           </div>
         </div>
@@ -17401,8 +17429,23 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
       <datalist id="ad-unidades">
         {["un", "m²", "m", "ml", "vb", "pç", "cj", "kg", "h"].map((u) => <option key={u} value={u} />)}
       </datalist>
-    </>
+    </PageShell>
   );
+}
+
+/* Tom semantico de cada status do aditivo, pro selo do DS. */
+const TOM_STATUS_ADITIVO = { rascunho: "neutral", aguardando: "warning", aprovado: "success", reprovado: "danger" };
+
+/* As opcoes do seletor de status, com a dica que explica o que cada
+   estado faz com o orcamento. */
+function opcoesStatusAditivo() {
+  return STATUS_ADITIVO.map((st) => ({
+    value: st.id, label: st.nome, tone: TOM_STATUS_ADITIVO[st.id] || "neutral",
+    title: st.id === "rascunho" ? "Volta para rascunho — sai do orçamento"
+      : st.id === "aguardando" ? "Enviado ao cliente, esperando resposta — ainda não entra no orçamento"
+      : st.id === "aprovado" ? "Aprovar — passa a contar no Dashboard, no CMV e no Plano de Compras"
+      : "Reprovar — não entra no orçamento",
+  }));
 }
 
 /* A cobranca do Pipefy.
@@ -17428,7 +17471,7 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
 
   if (feito) {
     return (
-      <div className={`pf-ok ${compacto ? "compacto" : ""}`}>
+      <div className={`flex flex-wrap items-center gap-2 text-xs font-semibold text-success ${compacto ? "mt-1" : ""}`}>
         <CheckCircle2 size={12} />
         <span>Pipefy enviado{a.doc.pipefy.por ? ` por ${a.doc.pipefy.por}` : ""} em {new Date(feito).toLocaleDateString("pt-BR")}</span>
         <Button variant="ghost" size="sm" onClick={() => onMarcar(null)}>desfazer</Button>
@@ -17437,34 +17480,36 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
   }
 
   return (
-    <div className={`pf-box ${compacto ? "compacto" : ""}`}>
-      <div className="pf-topo">
-        <AlertTriangle size={13} />
-        <span><b>Falta a Solicitação de contrato no Pipefy.</b> Aditivo aprovado obriga abrir o card.</span>
-      </div>
-      {!compacto && (
-        <div className="pf-dados">
-          <pre>{resumo}</pre>
-          <Button variant="ghost" size="icon" title="Copiar pra colar no formulário"
-            onClick={() => navigator.clipboard?.writeText(resumo)} aria-label="Copiar pra colar no formulário"><Copy size={11} /></Button>
+    <Alert tone="warning" className={compacto ? "mt-2" : ""}>
+      <AlertTitle>Falta a Solicitação de contrato no Pipefy.</AlertTitle>
+      <AlertDescription className="flex flex-col gap-2">
+        <span>Aditivo aprovado obriga abrir o card.</span>
+        {!compacto && (
+          <div className="flex items-start gap-2">
+            <pre className="mono min-w-0 flex-1 whitespace-pre-wrap rounded-lg bg-surface-1 p-2 text-xs">{resumo}</pre>
+            <Button variant="ghost" size="icon" title="Copiar pra colar no formulário"
+              onClick={() => navigator.clipboard?.writeText(resumo)} aria-label="Copiar pra colar no formulário"><Copy size={16} /></Button>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="secondary" size="sm">
+            <a href={linkPipefy(saldo)} target="_blank" rel="noopener noreferrer">
+              <ArrowUpRight size={16} /> Abrir o formulário
+            </a>
+          </Button>
+          <Button size="sm" onClick={() => onMarcar({ em: new Date().toISOString(), por: usuario || null })}>
+            Já enviei
+          </Button>
         </div>
-      )}
-      <div className="pf-acoes">
-        <a className="btn-doc btn-template" href={linkPipefy(saldo)} target="_blank" rel="noopener noreferrer">
-          <ArrowUpRight size={13} /> Abrir o formulário
-        </a>
-        <Button onClick={() => onMarcar({ em: new Date().toISOString(), por: usuario || null })}>
-          Já enviei
-        </Button>
-      </div>
-      {!compacto && (
-        <div className="pf-nota">
-          O link já vai com <b>Aditivo</b> marcado e o valor preenchido. O resto — obra, closer, hunter,
-          indicador, Neolix, parcelamento, data de pagamento e os dois anexos — o app não tem como saber,
-          e chutar criaria um card errado no comercial.
-        </div>
-      )}
-    </div>
+        {!compacto && (
+          <p className="text-xs text-text-soft">
+            O link já vai com <b>Aditivo</b> marcado e o valor preenchido. O resto — obra, closer, hunter,
+            indicador, Neolix, parcelamento, data de pagamento e os dois anexos — o app não tem como saber,
+            e chutar criaria um card errado no comercial.
+          </p>
+        )}
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -17496,61 +17541,57 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
   }
 
   return (
-    <tr>
-      <td className="mono"><b>{a.numero}</b></td>
+    <TableRow>
+      <TableCell className="mono font-semibold">{a.numero}</TableCell>
       {mostrarObra && (
-        <td><div className="ad-linha-obra">{obraNome || <span className="mono dim">#{a.obraCodigo}</span>}</div></td>
+        <TableCell className="hidden md:table-cell">
+          <div className="max-w-48 truncate text-xs text-text-soft">{obraNome || <span className="mono dim">#{a.obraCodigo}</span>}</div>
+        </TableCell>
       )}
-      <td>
-        <Button variant="ghost" className="ad-linha-desc" onClick={onAbrir}>
+      <TableCell className="min-w-64">
+        <Button variant="ghost" size="sm" className="h-auto whitespace-normal px-0 text-left font-semibold" onClick={onAbrir}>
           {a.descricao || <span className="dim">sem descrição — clique para abrir</span>}
         </Button>
-        <div className="ad-linha-data">
+        <div className="text-xs text-text-mute">
           {dataBR(a.doc?.data)}
           {a.atualizadoPor ? ` · por ${a.atualizadoPor}` : ""}
         </div>
         {/* Salva ao sair do campo, e nao a cada tecla: gravar por tecla
             manda uma requisicao por letra digitada. */}
-        <textarea className="ad-obs" rows={1} value={obs} placeholder="observação…"
+        <Textarea rows={1} value={obs} placeholder="observação…" aria-label="Observação interna"
+          className="mt-1 min-h-0 py-1 text-xs"
           onChange={(e) => setObs(e.target.value)}
           onBlur={() => { if (obs !== (a.doc?.observacao || "")) gravar({ doc: { ...a.doc, observacao: obs } }); }} />
         {a.status === "aprovado" && (
           <PipefyAditivo a={a} obraNome={obraNome} usuario={usuario} compacto
             onMarcar={(v) => gravar({ doc: { ...a.doc, observacao: obs, pipefy: v } })} />
         )}
-      </td>
-      <td className="right mono">{fmtBRL(a.totalSupressao)}</td>
-      <td className="right mono">{fmtBRL(a.totalAdicao)}</td>
-      <td className={`right mono ${saldo < 0 ? "ad-credito" : ""}`}>
+      </TableCell>
+      <TableCell className="mono hidden text-right md:table-cell">{fmtBRL(a.totalSupressao)}</TableCell>
+      <TableCell className="mono hidden text-right md:table-cell">{fmtBRL(a.totalAdicao)}</TableCell>
+      <TableCell className={`mono text-right ${saldo < 0 ? "text-success" : ""}`}>
         <b>{fmtBRL(saldo)}</b>
-        <div className="ad-linha-data">{rotuloSaldo(saldo)}</div>
-      </td>
-      <td className="center">
-        <div className="ad-status-sel ad-status-lista">
-          {STATUS_ADITIVO.map((st) => (
-            <Button variant="ghost" key={st.id}
-              className={`ad-tag ${st.id} ${a.status === st.id ? "on" : ""} ${st.id === "aprovado" && pipefyPendente(a) ? "cobra" : ""}`}
-              disabled={salvando} onClick={() => gravar({ status: st.id })}
-              title={st.id === "rascunho" ? "Volta para rascunho — sai do orçamento"
-                : st.id === "aguardando" ? "Enviado ao cliente, esperando resposta — ainda não entra no orçamento"
-                : st.id === "aprovado" ? "Aprovar — passa a contar no Dashboard, no CMV e no Plano de Compras"
-                : "Reprovar — não entra no orçamento"}>
-              {st.nome}
-            </Button>
-          ))}
-        </div>
-      </td>
-      <td className="center">
-        <Button variant="ghost" size="icon" title="Abrir" onClick={onAbrir} aria-label="Abrir"><Search size={12} /></Button>
+        <div className="text-xs font-normal text-text-mute">{rotuloSaldo(saldo)}</div>
+      </TableCell>
+      <TableCell>
+        {/* O selo do Pipefy pendente fica ao lado do status: e' o que a
+            fileira de selos antiga dizia com a borda tracejada. */}
+        <EscolhaEstado valor={a.status} opcoes={opcoesStatusAditivo()} disabled={salvando} rotulo="Status do aditivo"
+          onChange={(v) => gravar({ status: v })}
+          aviso={a.status === "aprovado" && pipefyPendente(a)
+            ? <Badge tone="warning" title="Falta a Solicitação de contrato no Pipefy">Pipefy pendente</Badge> : null} />
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-center">
+        <Button variant="ghost" size="icon" title="Abrir" onClick={onAbrir} aria-label="Abrir"><Search size={16} /></Button>
         {/* O botao fica a' vista e desabilitado, com o motivo na dica:
             esconder faria a pessoa procurar onde nao esta'. */}
         <Button variant="ghost" size="icon" className="text-danger" aria-label="Excluir" disabled={!podeApagar} onClick={podeApagar ? onExcluir : undefined}
           title={podeApagar ? "Excluir"
             : `Só quem criou o aditivo${a.criadoPor ? ` (${nomeDoEmail(a.criadoPor)})` : ""} ou um administrador pode excluir`}>
-          <Trash2 size={12} />
+          <Trash2 size={16} />
         </Button>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -17651,35 +17692,16 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
   }
 
   return (
-    <>
-      {erro && <div className="aviso-migracao"><AlertTriangle size={14} /> <span>{erro}</span></div>}
-
-      <div className="gc-obras-filtro">
-        <span className="gc-horizonte-rot">Obras</span>
-        <FiltroObras obras={obras.map((o) => ({ codigo: String(o.codigo), nome: o.nome }))}
-          escolhidas={escolhidas} onMudar={setEscolhidas} />
-      </div>
-
-      <div className="ad-cab-obra">
-            {obra ? (
-              <div>
-                <div className="ad-cab-nome">{obra.nome}</div>
-                <div className="ad-cab-sub">centro de custo <b className="mono">{obra.codigo}</b> · próximo será <b className="mono">{numeroAditivo(obra.codigo, proximaSeq(daObra))}</b></div>
-              </div>
-            ) : (
-              <div>
-                <div className="ad-cab-nome">{visiveis.length} {visiveis.length === 1 ? "aditivo" : "aditivos"}</div>
-                <div className="ad-cab-sub">em {new Set(visiveis.map((a) => String(a.obraCodigo))).size} obra(s)</div>
-              </div>
-            )}
-        {/* O botao existe SEMPRE. Criar exige uma obra — o numero sai do
-            centro de custo dela — mas exigir que ela adivinhasse isso no
-            filtro escondeu a funcao inteira. Agora o proprio botao
-            pergunta, e pergunta do jeito que o resto do app pergunta. */}
-        <div className="fo-caixa">
-          <Button
-            onClick={() => (obra ? novo(obra) : setEscolhendo((v) => !v))}>
-            <Plus size={13} /> Novo aditivo
+    <PageShell title="Aditivos" description="Supressão e adição por obra." contentClassName="flex flex-col gap-6"
+      actions={(
+        /* O botao existe SEMPRE. Criar exige uma obra — o numero sai do
+           centro de custo dela — mas exigir que ela adivinhasse isso no
+           filtro escondeu a funcao inteira. Agora o proprio botao
+           pergunta, e pergunta do jeito que o resto do app pergunta.
+           `relative` ancora o menu de escolha da obra. */
+        <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button onClick={() => (obra ? novo(obra) : setEscolhendo((v) => !v))}>
+            <Plus size={16} /> Novo aditivo
           </Button>
           {escolhendo && !obra && (
             <EscolherObra obras={obras}
@@ -17687,46 +17709,68 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
               onEscolher={novo} onFechar={() => setEscolhendo(false)} />
           )}
         </div>
-      </div>
+      )}
+      toolbar={(
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="label-mono">Obras</span>
+            <FiltroObras obras={obras.map((o) => ({ codigo: String(o.codigo), nome: o.nome }))}
+              escolhidas={escolhidas} onMudar={setEscolhidas} />
+          </div>
+        </div>
+      )}>
+      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
-          {carregando ? <div className="empty-note">Carregando…</div>
-            : visiveis.length === 0 ? (
-              <div className="empty-note">
-                {escolhidas.size ? "Nenhum aditivo nesta seleção." : "Nenhum aditivo ainda em obra nenhuma."}
-              </div>
-            ) : (
-            <div className="grp-block">
-              <div className="grp-itens">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ width: 90 }}>Nº</th>
-                      {/* A obra so aparece quando ha mais de uma na tela:
-                          com uma so, ela ja esta escrita no cabecalho. */}
-                      {!obra && <th style={{ width: 190 }}>Obra</th>}
-                      <th>Do que se trata</th>
-                      <th style={{ width: 120 }} className="right">Supressão</th>
-                      <th style={{ width: 120 }} className="right">Adição</th>
-                      <th style={{ width: 140 }} className="right">Saldo</th>
-                      <th style={{ width: 210 }} className="center">Status</th>
-                      <th style={{ width: 90 }} className="center"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visiveis.map((a) => (
-                      <LinhaAditivo key={a.id} a={a} usuario={usuario} souAdmin={souAdmin}
-                        obraNome={nomeDaObra(a.obraCodigo)} mostrarObra={!obra}
-                        onAbrir={() => setAbertoId(a.id)}
-                        onExcluir={() => excluir(a)}
-                        onSalvo={trocar}
-                        onErro={setErro} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-    </>
+      {obra ? (
+        <div>
+          <h2 className="text-base font-semibold">{obra.nome}</h2>
+          <p className="text-xs text-text-mute">centro de custo <b className="mono">{obra.codigo}</b> · próximo será <b className="mono">{numeroAditivo(obra.codigo, proximaSeq(daObra))}</b></p>
+        </div>
+      ) : (
+        <div>
+          <h2 className="text-base font-semibold">{visiveis.length} {visiveis.length === 1 ? "aditivo" : "aditivos"}</h2>
+          <p className="text-xs text-text-mute">em {new Set(visiveis.map((a) => String(a.obraCodigo))).size} obra(s)</p>
+        </div>
+      )}
+
+      {carregando ? (
+        <div role="status" aria-label="Carregando os aditivos" className="flex flex-col gap-2">
+          <Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" />
+        </div>
+      ) : visiveis.length === 0 ? (
+        <EmptyState icon={<FileText size={24} />}
+          title={escolhidas.size ? "Nenhum aditivo nesta seleção." : "Nenhum aditivo ainda em obra nenhuma."} />
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-line-1 bg-surface-2">
+          <Table className="min-w-3xl">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-24">Nº</TableHead>
+                {/* A obra so aparece quando ha mais de uma na tela:
+                    com uma so, ela ja esta escrita no cabecalho. */}
+                {!obra && <TableHead className="hidden w-48 md:table-cell">Obra</TableHead>}
+                <TableHead>Do que se trata</TableHead>
+                <TableHead className="hidden w-32 text-right md:table-cell">Supressão</TableHead>
+                <TableHead className="hidden w-32 text-right md:table-cell">Adição</TableHead>
+                <TableHead className="w-36 text-right">Saldo</TableHead>
+                <TableHead className="w-48">Status</TableHead>
+                <TableHead className="w-24"><span className="sr-only">Ações</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visiveis.map((a) => (
+                <LinhaAditivo key={a.id} a={a} usuario={usuario} souAdmin={souAdmin}
+                  obraNome={nomeDaObra(a.obraCodigo)} mostrarObra={!obra}
+                  onAbrir={() => setAbertoId(a.id)}
+                  onExcluir={() => excluir(a)}
+                  onSalvo={trocar}
+                  onErro={setErro} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </PageShell>
   );
 }
 
@@ -19962,11 +20006,11 @@ function BotaoApresentacao({ onAbrir, arquivo }) {
           aqui só avisa que ele existe e abre com um clique. */}
       {(arquivo?.caminho || arquivo?.url) && (
         <Button variant="outline" onClick={verPdf} title={`${arquivo.nome || "PDF"}: abrir`}>
-          <Check size={12} /> PDF anexado
+          <Check size={16} /> PDF anexado
         </Button>
       )}
-      <Button onClick={onAbrir}>
-        <Presentation size={13} /> Apresentação de especificações
+      <Button variant="secondary" onClick={onAbrir}>
+        <Presentation size={16} /> Apresentação de especificações
       </Button>
     </>
   );
@@ -22391,14 +22435,6 @@ export default function App() {
         .dash-gc-email { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .dash-gc-vazio { font-size: 12px; color: var(--ink-3); font-style: italic; }
         .dash-gc-acoes { display: flex; gap: 7px; margin-top: 9px; }
-        .ad-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 16px 0 14px; }
-        .ad-numero { font-size: 15px; font-weight: 700; color: var(--ink); }
-        .ad-titulo { margin-top: 0; flex: 1; min-width: 200px; font-size: 13px; }
-        .ad-status-sel { display: flex; gap: 4px; }
-        .ad-tag { border: 1px solid var(--border); background: var(--surface-1); border-radius: 20px; padding: 4px 11px; font-size: 11px; font-weight: 700; font-family: inherit; color: var(--ink-3); cursor: pointer; }
-        .ad-tag:hover { border-color: var(--ink-3); }
-        .ad-tag.rascunho.on { background: var(--panel); border-color: var(--ink-3); color: var(--ink-2); }
-        .ad-tag.aguardando.on { background: var(--alert-soft); border-color: var(--alert); color: var(--alert); }
 
         .lib-travados { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--alert); }
         .row-estimativa td { opacity: .55; }
@@ -22430,24 +22466,8 @@ export default function App() {
            e' a linha esperando a aprovacao, e ela conta no dinheiro. */
         .pill-bloqueado { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); color: var(--text-soft); border: 1px solid var(--line-2); }
         @media (max-width: 760px) { table.grp-itens { table-layout: auto; } }
-        .ad-tag.aprovado.on { background: var(--green-bg); border-color: var(--green); color: var(--green); }
-        .ad-tag.reprovado.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 
         .ad-interno { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-3); font-size: 10px; font-style: italic; }
-        .pf-box { border: 1px solid var(--warning-line); background: var(--amber-bg); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
-        .pf-box.compacto { margin: 6px 0 0; padding: 7px 9px; border-radius: 8px; }
-        .pf-topo { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text); line-height: 1.45; }
-        .pf-box.compacto .pf-topo { font-size: 11px; }
-        .pf-dados { display: flex; align-items: flex-start; gap: 6px; margin: 9px 0; }
-        .pf-dados pre { flex: 1; margin: 0; background: var(--surface-1); border-radius: 6px; padding: 8px 10px; font-family: var(--font-mono); font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; color: var(--ink-2); }
-        .pf-acoes { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
-        .pf-box.compacto .pf-acoes { margin-top: 6px; }
-        .pf-box.compacto .btn-doc { padding: 4px 9px; font-size: 10.5px; }
-        .pf-nota { font-size: 10.5px; color: var(--text); margin-top: 8px; line-height: 1.5; opacity: .85; }
-        .pf-ok { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--green); font-weight: 600; margin-top: 6px; }
-        .pf-ok.compacto { font-size: 10.5px; }
-        .pf-desfazer { background: none; border: none; color: var(--ink-3); font-family: inherit; font-size: 10px; text-decoration: underline; cursor: pointer; }
-        .ad-tag.aprovado.on.cobra { border-style: dashed; }
         .ad-busca { border: 1px solid var(--border); border-radius: 8px; margin-top: 5px; overflow: hidden; background: var(--surface-1); }
         .ad-busca-rot { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); padding: 5px 8px 3px; }
         .ad-busca-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--border-soft); padding: 5px 8px; font-family: inherit; font-size: 11.5px; color: var(--ink); cursor: pointer; }
@@ -22457,44 +22477,27 @@ export default function App() {
         .ad-busca-amb { font-size: 10px; color: var(--ink-3); white-space: nowrap; }
         .ad-busca-qtd { color: var(--ink-3); white-space: nowrap; }
         .ad-busca-val { color: var(--ink-2); font-weight: 700; white-space: nowrap; }
-        .ad-obs { display: block; width: 100%; margin-top: 5px; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); background: var(--panel); resize: vertical; min-height: 24px; }
-        .ad-obs:hover { border-color: var(--border); }
-        .ad-obs:focus { outline: none; border-color: var(--blue); background: var(--surface-1); }
-        .ad-obs::placeholder { color: var(--ink-3); font-style: italic; }
-        .ad-status-lista .ad-tag { padding: 3px 8px; font-size: 10px; }
-        .ad-status-lista { justify-content: center; }
         .ad-obras { display: flex; gap: 7px; flex-wrap: wrap; margin: 16px 0 18px; }
         .ad-obra { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--surface-1); border-radius: 10px; padding: 8px 13px; font-size: 12.5px; font-family: inherit; color: var(--ink-2); cursor: pointer; }
         .ad-obra:hover { border-color: var(--ink-3); }
         .ad-obra.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); font-weight: 600; }
         .ad-obra-nome { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ad-obra-n { background: var(--blue); color: var(--bg); border-radius: 20px; font-size: 10px; font-weight: 700; padding: 1px 7px; }
-        .ad-cab-obra { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
-        .ad-cab-nome { font-size: 16px; font-weight: 700; color: var(--ink); }
-        .ad-cab-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
         .fo-menu-dir { left: auto; right: 0; width: 360px; }
         .eo-lista { max-height: 320px; }
         .eo-squad { display: flex; align-items: center; gap: 5px; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 9px 6px 4px; }
         .eo-item { gap: 8px; padding: 7px 6px; }
         .eo-num { margin-left: auto; flex-shrink: 0; font-size: 10.5px; color: var(--ink-3); }
         .eo-item:hover .eo-num { color: var(--ink-2); }
-        .ad-linha-obra { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .ad-linha-desc { background: none; border: none; padding: 0; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
-        .ad-linha-desc:hover { color: var(--blue); text-decoration: underline; }
-        .ad-linha-data { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
-        .ad-credito { color: var(--green); }
 
-        .ad-wrap { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(420px, 1fr); gap: 18px; align-items: start; }
-        .ad-form { display: flex; flex-direction: column; gap: 14px; }
         .ad-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); overflow: hidden; }
         .ad-card-h { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--panel); font-size: 12.5px; font-weight: 700; color: var(--ink); border-bottom: 1px solid var(--border); }
         .ad-card.sup .ad-card-h { background: var(--danger-soft); color: var(--danger); }
         .ad-card-tot { font-size: 13px; }
         .ad-card-b { padding: 12px 14px; }
-        .ad-cab { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .ad-cab label, .ad-item-campos label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+        .ad-item-campos label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
         .ad-largo { grid-column: 1 / -1; }
-        .ad-cab .form-input, .ad-item-campos .form-input { margin-top: 3px; width: 100%; font-size: 12.5px; }
+        .ad-item-campos .form-input { margin-top: 3px; width: 100%; font-size: 12.5px; }
 
         .ad-grupo { border: 1px solid var(--border-soft); border-radius: 9px; margin-bottom: 10px; }
         .ad-gh { display: flex; align-items: center; gap: 6px; padding: 7px 9px; background: var(--panel); border-bottom: 1px solid var(--border-soft); border-radius: 9px 9px 0 0; }
@@ -22514,20 +22517,12 @@ export default function App() {
         .ad-item-campos { display: grid; grid-template-columns: 1.4fr .7fr .6fr 1.1fr 1.2fr; gap: 7px; margin-top: 6px; }
         .ad-addbtn { display: inline-flex; align-items: center; gap: 5px; background: none; border: 1px dashed var(--border); border-radius: 8px; padding: 7px 12px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); font-family: inherit; cursor: pointer; width: 100%; justify-content: center; }
         .ad-addbtn:hover { border-color: var(--ink-3); color: var(--ink); }
-        .ad-resumo { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12.5px; color: var(--ink-2); border-bottom: 1px solid var(--border-soft); }
-        .ad-resumo.forte { font-size: 14px; font-weight: 700; color: var(--ink); border-bottom: none; padding-top: 9px; }
         .ad-item-campos.com-custo { grid-template-columns: 1.3fr .6fr .5fr 1fr 1fr 1.1fr; }
         .ad-espec { display: block; margin-top: 7px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
         .ad-espec-in { margin-top: 3px; width: 100%; font-size: 12px; resize: vertical; }
         .ad-margem-g { font-size: 10.5px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
-        .ad-margem { margin-top: 12px; border-top: 1px solid var(--border-soft); padding-top: 9px; }
-        .ad-margem-h { display: flex; align-items: baseline; gap: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); margin-bottom: 4px; }
-        .ad-orcar { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: 11px; line-height: 1.35; color: var(--alert); }
         .adit-orcar { color: var(--alert); font-weight: 600; }
 
-        .ad-prev { position: sticky; top: 12px; }
-        .ad-prev-h { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 7px; }
-        .ad-prev-box { background: var(--panel); border-radius: 10px; padding: 14px; max-height: 78vh; overflow: auto; }
 
         /* ---- O DOCUMENTO ----
            Medidas em mm porque ele existe pra virar papel: o que se ve na
@@ -22583,7 +22578,6 @@ export default function App() {
         #doc-aditivo .ad-fecho > :first-child { margin-top: 0; }
         #doc-aditivo .ad-fecho .ad-pagefoot { padding: 8mm 0 0; }
 
-        @media (max-width: 1200px) { .ad-wrap { grid-template-columns: 1fr; } .ad-prev { position: static; } }
 
         @media print {
           .naoimprime, .sidebar, .barra-etapa, .eyebrow, .title-row, .obra-meta { display: none !important; }
@@ -22594,8 +22588,9 @@ export default function App() {
           /* O aditivo: some com o formulario e com a moldura, e deixa a
              pagina do documento ocupar o papel inteiro. A sombra da
              pre-visualizacao viraria uma mancha cinza na impressao. */
-          .ad-form, .ad-prev-h, .ad-topo { display: none !important; }
-          .ad-wrap { display: block !important; }
+          /* O PageShell do editor (.ad-editor): cabecalho e toolbar somem, so' o conteudo vai pro papel. */
+          .ad-editor > :not(:last-child) { display: none !important; }
+          .ad-editor > :last-child { padding: 0 !important; }
           .ad-prev, .ad-prev-box { position: static !important; max-height: none !important; overflow: visible !important; padding: 0 !important; background: #fff !important; }
           .ad-page { width: auto !important; box-shadow: none !important; padding: 0 !important; display: block !important; }
           .ad-page .ad-inner { padding: 6mm 12mm 0; }
@@ -22714,8 +22709,6 @@ export default function App() {
         /* Conferencia com o Sienge: o que a planilha diz que tem pra
            comprar chegou mesmo la? */
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
-        .btn-template { background: var(--green); }
-        .btn-template:hover { background: var(--success); }
         .det-sorteado { color: var(--amber); font-weight: 700; }
         .det-codigos .form-input.sorteado { border-style: dashed; border-color: var(--amber); }
         .det-codigos { display: flex; gap: 8px; margin-top: 5px; }
@@ -23458,7 +23451,6 @@ export default function App() {
         .gc-chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
         .gc-topo-alerta { color: var(--red); }
 
-        .fo-caixa { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .fo-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 330px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-3); padding: 10px; }
         .fo-busca { margin-top: 0; width: 100%; font-size: 12.5px; }
         .fo-lista { max-height: 260px; overflow-y: auto; margin: 0 -4px; }
@@ -23663,9 +23655,9 @@ export default function App() {
         .title-row { font-size: 30px; line-height: 1.1; margin-bottom: 6px; }
         .title-plain, .title-accent { font-family: var(--font-sans); font-style: normal; font-weight: 400; letter-spacing: -0.02em; color: var(--text); }
         .obra-meta { font-size: 13px; color: var(--text-soft); margin-bottom: 22px; }
-        .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .escopo-nome, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
+        .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .escopo-nome, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
         .gc-bloco-titulo { font-size: 18px; }
-        .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome { font-size: 16px; }
+        .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit { font-size: 16px; }
         .escopo-nome { font-size: 22px; }
         .gc-bloco-head, .arq-bloco-h { padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
 
@@ -23679,15 +23671,14 @@ export default function App() {
            primário = default do DS (brand) · contorno = outline ·
            tracejado = adicionar · fantasma = só ícone. O tamanho sm (30px)
            é o padrão aqui; o default (38px) fica para a ação principal. */
-        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template) {
+        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha) {
           display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 8px;
           font-family: var(--font-sans); font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap;
           background: var(--brand); color: var(--bg); border: 1px solid var(--brand); cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
         }
-        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
-        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha, .btn-template):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
+        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha):hover:not(:disabled) { background: var(--brand-h); border-color: var(--brand-h); color: var(--bg); filter: none; }
+        :is(.btn-lancar, .be-avancar, .btn-avancar, .btn-nova-solicitacao, .btn-criar, .btn-aprovar, .btn-doc, .btn-avulsa, .btn-salvar-data, .btn-approve, .sug-copy, .btn-atalho, .btn-separar-grupo, .btn-aprovar-linha):disabled { background: var(--brand); border-color: var(--brand); color: var(--bg); opacity: 0.5; cursor: not-allowed; }
         :is(.btn-aprovar, .btn-nova-solicitacao, .btn-avulsa, .btn-criar) { min-height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13px; }
-        .pf-box.compacto .btn-doc { min-height: 24px; }
 
         :is(.btn-voltar, .btn-cancelar, .btn-sel-tudo, .btn-editar-linha, .btn-reabrir-etapa, .btn-copiar, .btn-lupa, .btn-apagar-escopo, .btn-cadastrar, .btn-compra, .btn-abrir-escopo, .btn-associar-sel) {
           display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 8px;
@@ -23717,8 +23708,8 @@ export default function App() {
            mantêm o tamanho e herdam só a linguagem. */
         :is(.form-input, .form-select, .detalhe-texto) { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
         :is(.ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit) { border-color: var(--line-2); border-radius: 8px; background-color: var(--field); color: var(--text); transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
-        :is(.form-input, .form-select, .detalhe-texto, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit, .ad-obs):focus,
-        :is(.form-input, .form-select, .detalhe-texto, .ad-obs)::placeholder { color: var(--text-mute); }
+        :is(.form-input, .form-select, .detalhe-texto, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit):focus,
+        :is(.form-input, .form-select, .detalhe-texto)::placeholder { color: var(--text-mute); }
         :is(.form-input, .form-select):disabled { opacity: 0.5; cursor: not-allowed; }
         select.form-input, .form-select, .casa-sel { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px; }
         .casa-sel { padding-right: 22px; background-position: right 6px center; background-size: 10px; }
@@ -23732,17 +23723,13 @@ export default function App() {
         .det-opcao.escolhida .det-radio { border-color: var(--brand); background: var(--brand); box-shadow: inset 0 0 0 2px var(--surface-1); }
 
         /* ---------- Filtros em chip (SavedViewChips) ---------- */
-        :is(.squad-chip, .gc-chip, .cargo-chip, .ac-chip, .ad-tag) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+        :is(.squad-chip, .gc-chip, .cargo-chip, .ac-chip) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0; line-height: 1.4; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
         .squad-chip.neutro { background: var(--surface-2); color: var(--text-soft); }
-        :is(.squad-chip, .gc-chip, .cargo-chip, .ac-chip, .ad-tag):hover { border-color: var(--line-3); color: var(--text); }
+        :is(.squad-chip, .gc-chip, .cargo-chip, .ac-chip):hover { border-color: var(--line-3); color: var(--text); }
         :is(.squad-chip.active, .squad-chip.neutro.on, .gc-chip.on, .cargo-chip.on, .ac-chip.on) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); box-shadow: none; }
         .squad-chip.active.alerta { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
         .alert-toggle { border-radius: 999px; border-color: var(--line-2); font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-soft); }
         .alert-toggle.active { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
-        .ad-tag.rascunho.on { background: var(--surface-3); border-color: var(--line-3); color: var(--text); }
-        .ad-tag.aguardando.on { background: color-mix(in srgb, var(--warning) 14%, transparent); border-color: var(--warning); color: var(--warning); }
-        .ad-tag.aprovado.on { background: var(--success-soft); border-color: var(--success); color: var(--success); }
-        .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
         /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
         :is(.pill, .sg-badge, .conf-badge, .gc-selo, .chip, .aloc, .tipo-tag, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-mo, .tag-alterado, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
@@ -23753,8 +23740,8 @@ export default function App() {
         /* ---------- Cartões e números (Card · KPI) ---------- */
         :is(.big-card, .gc-total, .flat-panel) { border-radius: 14px; }
         :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
-        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .conf-col-label, .ad-prev-h, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
-        .ad-cab label, .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .conf-col-label, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
            largura da tela em vez de estourar a caixa com reticencias. */
@@ -23775,11 +23762,10 @@ export default function App() {
         /* ---------- Avisos (Alert · Banner) ----------
            O texto fica em --text: o tom mora no fundo, na borda e no ícone.
            Amarelo sobre amarelo claro não passa no contraste. */
-        :is(.aviso-monday, .aviso-pobre, .aviso-migracao, .eq-migracao, .pf-box) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
-        :is(.aviso-pobre, .aviso-migracao, .eq-migracao, .pf-topo) svg { color: var(--warning); }
+        :is(.aviso-monday, .aviso-pobre, .aviso-migracao, .eq-migracao) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
+        :is(.aviso-pobre, .aviso-migracao, .eq-migracao) svg { color: var(--warning); }
         .import-erro { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
         .import-erro svg { color: var(--danger); }
-        .pf-topo, .pf-nota, .aviso-pobre-sub { color: var(--text); }
         .etapa-concluida, .barra-etapa.feita { border-color: var(--success-line); }
         .bucket-falta { border-color: var(--warning-line); }
         .ac-painel { border-color: var(--brand-line); }
@@ -23901,7 +23887,7 @@ export default function App() {
 
           /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
              sao duas colunas: sao duas fitas de uma palavra por linha. */
-          .dash, .ad-wrap, .ad-cab, .conf-cols, .escopo-conta, .escopo-campos, .form-row-3, .cad-campos, .ad-item-campos, .ad-item-campos.com-custo {
+          .dash, .conf-cols, .escopo-conta, .escopo-campos, .form-row-3, .cad-campos, .ad-item-campos, .ad-item-campos.com-custo {
             /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
                min-width auto, e com isso se RECUSA a encolher abaixo do
                proprio conteudo. Na Inicio, as duas colunas viravam uma so'

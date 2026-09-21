@@ -162,3 +162,27 @@ export function KpiProgresso({ label, value, hint, tone = "neutral", pct = 0, ro
     </div>
   );
 }
+
+/* Estado de um registro (rascunho, aprovado…) num Select cujas opcoes sao
+   Badges: o que aparece no gatilho e' o selo do estado atual, com a cor
+   semantica, e trocar de estado e' escolher outro selo. Substitui o
+   `.ad-tag` (fileira de selos que eram botoes ao mesmo tempo). `opcoes`:
+   [{ value, label, tone, title }]. `aviso` e' um segundo Badge, fora do
+   controle, que acompanha o estado ("Pipefy pendente"). */
+export function EscolhaEstado({ id, valor, opcoes, onChange, disabled, rotulo = "Estado", aviso, className = "" }) {
+  return (
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+      <Select value={valor} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger id={id} aria-label={rotulo} className="h-8 w-40"><SelectValue placeholder={rotulo} /></SelectTrigger>
+        <SelectContent>
+          {opcoes.map((o) => (
+            <SelectItem key={o.value} value={o.value} title={o.title}>
+              <Badge tone={o.tone || "neutral"}>{o.label}</Badge>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {aviso}
+    </div>
+  );
+}
