@@ -66,10 +66,10 @@ conf("... e não usa mais a categoria crua", /\(o\.categorias \|\| \[\]\)\.forEa
 
 console.log("\n=== 4 e 5. O ORÇAMENTO É O DE HOJE, E O CUSTO APARECE ===");
 conf("o vigente soma o aditivo aprovado", app.includes("const vigente = vendido + adit.saldo;"));
-conf("a manchete mostra o vigente", app.includes(`<InicioNum rot="ORÇAMENTO VIGENTE" valor={fmtCompactBRL(vigente)}`));
+conf("a manchete mostra o vigente", app.includes(`label: "Orçamento vigente", value: fmtCompactBRL(vigente),`));
 conf("o contrato original fica no subtítulo", app.includes("contrato {fmtBRL(vendido)}"));
-conf("o custo executivo ganhou célula", app.includes(`<InicioNum rot="CUSTO EXECUTIVO"`));
-conf("vermelho só quando passa do vigente", app.includes(`cor={acimaDoVendido ? "var(--red)" : undefined}`));
+conf("o custo executivo ganhou célula", app.includes(`label: "Custo executivo", value: exec ? fmtCompactBRL(exec) : "—",`));
+conf("vermelho só quando passa do vigente", app.includes(`tone: acimaDoVendido ? "danger" : "brand",`));
 /* O custo sai do rollup da verba, e em obra vinda do banco ele chega
    vazio: a #2498 mostrava orçamento e custo zerados ao lado de R$ 2,18 mi
    de material e mão de obra na mesma régua. */

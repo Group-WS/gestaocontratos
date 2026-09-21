@@ -32,9 +32,13 @@ const definidos = new Set([
   // `const Icon = g.icon` dentro de uma função é componente válido —
   // por isso não ancora no começo da linha.
   ...[...src.matchAll(/\b(?:const|let|var)\s+([A-Z]\w*)\s*=/g)].map((m) => m[1]),
-  // Componente que chega como prop: function AContratarBloco({ Icone })
+  // Componente que chega como prop: function AContratarBloco({ Icone }) —
+  // e o renomeado na chegada: function CampoRascunho({ as: Tag = "input" }).
   ...[...src.matchAll(/function\s+\w+\s*\(\s*\{([^)]*)\}/g)]
-    .flatMap((m) => m[1].split(",").map((x) => x.trim().split(/[:=\s]/)[0]))
+    .flatMap((m) => m[1].split(",").flatMap((x) => {
+      const [nome, alias = ""] = x.trim().split(/\s*[:=]\s*/);
+      return [nome, alias.split(/[=\s]/)[0]];
+    }))
     .filter((n) => /^[A-Z]\w*$/.test(n)),
   ...deFora,
 ]);

@@ -55,7 +55,9 @@ import { confirmar, mensagem, perguntar, avisar } from "./lib/confirmar.jsx";
 import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
   Sheet, SheetContent, SheetTitle, Popover, PopoverTrigger, PopoverContent,
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
-  Collapsible, CollapsibleTrigger, CollapsibleContent, Separator } from "@group-ws/ws-ui";
+  Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
+  Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
+  Alert, AlertDescription, EmptyState, Progress, Checkbox } from "@group-ws/ws-ui";
 import { useMediaQuery, LARGO, Contador } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
@@ -607,10 +609,10 @@ function JornadaStepper({ passos, atualIndex }) {
 function BarraFrente({ nome, pct }) {
   const p = Math.max(0, Math.min(100, pct));
   return (
-    <div className="frente-linha">
-      <div className="frente-nome">{nome}</div>
-      <div className="frente-barra"><div className="frente-fill" style={{ width: `${p}%` }} /></div>
-      <div className="frente-pct mono">{Math.round(p)}%</div>
+    <div className="flex items-center gap-3">
+      <span className="w-24 shrink-0 text-sm text-text-soft">{nome}</span>
+      <Progress value={p} aria-label={`${nome}: ${Math.round(p)}% concluído`} className="flex-1" />
+      <span className="mono w-10 shrink-0 text-right text-sm tabular-nums">{Math.round(p)}%</span>
     </div>
   );
 }
@@ -1132,7 +1134,7 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   if (acimaDoVendido) pendencias.push({
     tom: "ruim",
     txt: adit.saldo
-      ? <>O executivo passou do orçamento vigente em {fmtBRL(exec - vigente)} <span className="dim">(contrato {fmtBRL(vendido)} + {fmtBRL(adit.saldo)} de aditivo)</span></>
+      ? <>O executivo passou do orçamento vigente em {fmtBRL(exec - vigente)} <span className="text-text-mute">(contrato {fmtBRL(vendido)} + {fmtBRL(adit.saldo)} de aditivo)</span></>
       : <>O executivo já passou do valor vendido em contrato em {fmtBRL(exec - vendido)}</>,
   });
   if (totals.criticos > 0) pendencias.push({
@@ -1151,226 +1153,298 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   }));
   if (!obra.gc) pendencias.push({ tom: "aviso", txt: "esta obra está sem GC responsável" });
 
+  const entregaId = React.useId();
+  const kpis = [
+    { label: "Avanço geral", value: `${avancoGeral}%`, hint: "da obra concluída", tone: "brand" },
+    {
+      label: "Prazo previsto",
+      value: faltamEntrega == null ? "—" : faltamEntrega < 0 ? `${-faltamEntrega} dias atrás` : `${faltamEntrega} dias`,
+      hint: obra.dataEntrega ? `entrega em ${fmtData(new Date(`${obra.dataEntrega}T12:00:00`))}` : "sem data de entrega",
+      tone: "brand",
+    },
+    {
+      label: "Pendências", value: String(pendencias.length),
+      hint: pendencias.length ? "pedindo atenção" : "nada pedindo atenção",
+      tone: pendencias.length ? "danger" : "brand",
+    },
+    /* ORÇAMENTO VIGENTE, não o original.
+
+       O card de Aditivos logo abaixo já mostrava "+R$ X aprovado"
+       enquanto esta manchete continuava no valor de contrato — dois
+       números na mesma tela contando histórias diferentes, e o de
+       cima é o que a pessoa lê de relance. Aditivo aprovado MUDA o
+       tamanho da obra; rascunho e "aguardando cliente" não entram,
+       que é a mesma regra do resto do app. */
+    {
+      label: "Orçamento vigente", value: fmtCompactBRL(vigente),
+      hint: adit.saldo
+        ? `contrato ${fmtBRL(vendido)} · ${adit.saldo > 0 ? "+" : ""}${fmtBRL(adit.saldo)} de aditivo aprovado`
+        /* Zero aqui nao e' "a obra vale zero": e' valor de contrato
+           que nunca foi lancado. Dizer "conforme contrato" sobre um
+           R$ 0,00 e' o painel afirmando o que nao sabe. */
+        : vigente > 0 ? "conforme contrato" : "sem valor de contrato lançado",
+      tone: "brand",
+    },
+    /* O CUSTO ao lado do orçamento.
+
+       Ele já era calculado aqui e só servia pra disparar o alerta de
+       "passou do vendido": a tela dizia quanto a obra valia e nunca
+       quanto ela estava custando. Vermelho só quando passa — o resto
+       do tempo é número de acompanhamento, não de susto. */
+    {
+      label: "Custo executivo", value: exec ? fmtCompactBRL(exec) : "—",
+      hint: !exec ? "executivo ainda não carregado"
+        /* Sem contrato lançado não há régua pra comparar — mostrar
+           "R$ X acima" contra um zero acusaria estouro em toda obra
+           que ainda não teve o contrato registrado. */
+        : vigente <= 0 ? "custo do executivo — sem contrato pra comparar"
+        : exec > vigente ? `${fmtBRL(exec - vigente)} acima do vigente`
+        : `${fmtBRL(vigente - exec)} abaixo do vigente`,
+      tone: acimaDoVendido ? "danger" : "brand",
+    },
+    /* Os mesmos números das barras de Suprimentos e Execução, agora
+       com o dinheiro: quanto já foi e quanto falta. */
+    {
+      label: "Material comprado", value: `${Math.round(totals.pct || 0)}%`,
+      hint: `${fmtBRL(totals.totalComprado || 0)} de ${fmtBRL(totals.totalProdutos || 0)} · falta ${fmtBRL(totals.falta || 0)}`,
+      tone: "brand",
+    },
+    {
+      label: "Mão de obra contratada", value: `${Math.round(contratos.pct || 0)}%`,
+      hint: `${fmtBRL(contratos.totalContratado || 0)} de ${fmtBRL(contratos.totalServicos || 0)} · falta ${fmtBRL(contratos.falta || 0)}`,
+      tone: "brand",
+    },
+  ];
+  const tomDoAlerta = (tom) => (tom === "ruim" ? "danger" : "warning");
+
   return (
-    <div className="dobra">
-      <div className="dobra-regua">
-        <InicioNum rot="AVANÇO GERAL" cor="var(--blue)" valor={`${avancoGeral}%`} sub="da obra concluída" />
-        <InicioNum rot="PRAZO PREVISTO"
-          valor={faltamEntrega == null ? "—" : faltamEntrega < 0 ? `${-faltamEntrega} dias atrás` : `${faltamEntrega} dias`}
-          sub={obra.dataEntrega ? `entrega em ${fmtData(new Date(`${obra.dataEntrega}T12:00:00`))}` : "sem data de entrega"} />
-        <InicioNum rot="PENDÊNCIAS" cor={pendencias.length ? "var(--red)" : undefined} valor={pendencias.length}
-          sub={pendencias.length ? "pedindo atenção" : "nada pedindo atenção"} />
-        {/* ORÇAMENTO VIGENTE, não o original.
-
-            O card de Aditivos logo abaixo já mostrava "+R$ X aprovado"
-            enquanto esta manchete continuava no valor de contrato — dois
-            números na mesma tela contando histórias diferentes, e o de
-            cima é o que a pessoa lê de relance. Aditivo aprovado MUDA o
-            tamanho da obra; rascunho e "aguardando cliente" não entram,
-            que é a mesma regra do resto do app. */}
-        <InicioNum rot="ORÇAMENTO VIGENTE" valor={fmtCompactBRL(vigente)}
-          sub={adit.saldo
-            ? <>contrato {fmtBRL(vendido)}<br />{adit.saldo > 0 ? "+" : ""}{fmtBRL(adit.saldo)} de aditivo aprovado</>
-            /* Zero aqui nao e' "a obra vale zero": e' valor de contrato
-               que nunca foi lancado. Dizer "conforme contrato" sobre um
-               R$ 0,00 e' o painel afirmando o que nao sabe. */
-            : vigente > 0 ? "conforme contrato" : "sem valor de contrato lançado"} />
-        {/* O CUSTO ao lado do orçamento.
-
-            Ele já era calculado aqui e só servia pra disparar o alerta de
-            "passou do vendido": a tela dizia quanto a obra valia e nunca
-            quanto ela estava custando. Vermelho só quando passa — o resto
-            do tempo é número de acompanhamento, não de susto. */}
-        <InicioNum rot="CUSTO EXECUTIVO" cor={acimaDoVendido ? "var(--red)" : undefined}
-          valor={exec ? fmtCompactBRL(exec) : "—"}
-          sub={!exec ? "executivo ainda não carregado"
-            /* Sem contrato lançado não há régua pra comparar — mostrar
-               "R$ X acima" contra um zero acusaria estouro em toda obra
-               que ainda não teve o contrato registrado. */
-            : vigente <= 0 ? "custo do executivo — sem contrato pra comparar"
-            : exec > vigente ? `${fmtBRL(exec - vigente)} acima do vigente`
-            : `${fmtBRL(vigente - exec)} abaixo do vigente`} />
-        {/* Os mesmos números das barras de Suprimentos e Execução, agora
-            com o dinheiro: quanto já foi e quanto falta. */}
-        <InicioNum rot="MATERIAL COMPRADO" valor={`${Math.round(totals.pct || 0)}%`}
-          sub={<>{fmtBRL(totals.totalComprado || 0)} de {fmtBRL(totals.totalProdutos || 0)}<br />falta {fmtBRL(totals.falta || 0)}</>} />
-        <InicioNum rot="MÃO DE OBRA CONTRATADA" valor={`${Math.round(contratos.pct || 0)}%`}
-          sub={<>{fmtBRL(contratos.totalContratado || 0)} de {fmtBRL(contratos.totalServicos || 0)}<br />falta {fmtBRL(contratos.falta || 0)}</>} />
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Indicadores da obra">
+        {kpis.map((k) => <KpiMini key={k.label} label={k.label} value={k.value} hint={k.hint} tone={k.tone} />)}
       </div>
 
       {/* Data de entrega — editável aqui, é dela que sai todo prazo de
           compra da obra. Compacta de propósito: é ajuste raro, não é o
           motivo de alguém abrir esta tela. */}
-      <div className="dobra-entrega">
-        <Clock size={13} className="dim" />
-        <span className="dobra-entrega-rot">Entrega prevista</span>
-        <input className="entrega-input" type="date" value={rascunho} disabled={!podeEditar}
-          onChange={(e) => setRascunho(e.target.value)} />
-        {podeEditar && sujo && (
-          <Button onClick={() => onDataEntrega(rascunho || null)}>Salvar</Button>
-        )}
-      </div>
-
-      <div className="dobra-card">
-        <div className="ini-titulo ini-titulo-linha">
-          <span className="ini-titulo-esq"><LayoutGrid size={14} className="ini-titulo-icone" /> Jornada da obra</span>
-          <Button variant="ghost" type="button" className={"jornada-expandir" + (jornadaAberta ? " aberta" : "")}
-            onClick={() => setJornadaAberta((v) => !v)} aria-expanded={jornadaAberta}>
-            {jornadaAberta ? "Recolher" : "Expandir"} <ChevronDown size={13} />
-          </Button>
-        </div>
-        <div className="dobra-sub">
-          {jornadaAberta
-            ? "Os arquivos de cada fase da obra — guardados também em Documentos."
-            : "Acompanhe as principais fases e o status atual da obra."}
-        </div>
-        <JornadaStepper passos={jornada.passos} atualIndex={jornada.atualIndex} />
-        {jornadaAberta && (
-          <AnexosDaJornada obra={obra} usuario={usuario} podeEditar={podeEditar} souAdmin={souAdmin}
-            onImportCaderno={onImportCaderno} onArquivos={onArquivos} />
-        )}
-      </div>
-
-      <div className="dobra-colunas">
-        <div className="dobra-card">
-          <div className="ini-titulo"><ArrowUpRight size={14} className="ini-titulo-icone" /> Progresso por frente</div>
-          <div className="dobra-sub">Avanço por frente de trabalho.</div>
-          <BarraFrente nome="Projetos" pct={pctProjetos} />
-          <BarraFrente nome="Suprimentos" pct={totals.pct || 0} />
-          <BarraFrente nome="Execução" pct={contratos.pct || 0} />
-        </div>
-
-        <div className="dobra-card">
-          <div className="ini-titulo"><AlertTriangle size={14} className="ini-titulo-icone" /> Pendências e alertas
-            {pendencias.length > 0 && <span className="ini-conta">{pendencias.length}</span>}
-          </div>
-          {/* FALTA APROVAR PRA COMPRA — pedido dela em 19/09/2026: "tem que
-              trazer ali no resuminho que faltam, por exemplo, 7 itens para ser
-              liberados para compra... quando a pessoa clica, vai direto lá
-              para a conferência do Executivo... já aparece filtrado".
-
-              Fica ACIMA dos outros alertas porque e' o unico aqui que a pessoa
-              resolve clicando: os demais contam o que aconteceu, este abre a
-              tela onde se age. O numero sai da mesma regua do chip da Conf.
-              Executivo (`faltaAprovarNosGrupos`) — numero que discorda da
-              lista e' pior que numero nenhum. */}
-          {faltaAprovar > 0 && onIrParaLiberacao && (
-            <Button variant="ghost" type="button" className="ini-alerta aviso dash-falta-aprovar" onClick={onIrParaLiberacao}
-              title="Abre a Conf. Executivo já filtrada em 'Falta aprovar p/ compra'">
-              <ShoppingCart size={13} />
-              <span>
-                <b>{faltaAprovar}</b> {faltaAprovar === 1 ? "item espera" : "itens esperam"} aprovação para compra
-              </span>
-              <ArrowUpRight size={13} className="ini-seta" />
-            </Button>
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-2">
+          <Clock size={14} className="text-text-mute" aria-hidden="true" />
+          <Label htmlFor={entregaId}>Entrega prevista</Label>
+          <Input id={entregaId} type="date" className="w-auto" value={rascunho} disabled={!podeEditar}
+            onChange={(e) => setRascunho(e.target.value)} />
+          {podeEditar && sujo && (
+            <Button size="sm" onClick={() => onDataEntrega(rascunho || null)}>Salvar data</Button>
           )}
-          {pendencias.length === 0 && faltaAprovar === 0 ? (
-            <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção nesta obra.</div>
-          ) : pendencias.map((a, i) => (a.detalhe?.length ? (
-            /* O alerta que abre: mostra quais são, sem sair do Dashboard. */
-            <React.Fragment key={a.chave || i}>
-              <Button variant="ghost" type="button" className={`ini-alerta ${a.tom}`} aria-expanded={alertasAbertos.has(a.chave)}
-                onClick={() => alternarAlerta(a.chave)} title={alertasAbertos.has(a.chave) ? "Esconder a lista" : "Ver quais são"}>
-                <AlertTriangle size={13} />
-                <span>{a.txt}</span>
-                <ChevronDown size={13} className={`ini-seta ${alertasAbertos.has(a.chave) ? "aberta" : ""}`} />
-              </Button>
-              {alertasAbertos.has(a.chave) && (
-                <div className="ini-detalhe">
-                  {a.detalhe.map((c) => (
-                    <div key={`${c.num}-${c.nome}`} className="ini-detalhe-linha">
-                      <span className="mono dim">{c.num}</span>
-                      <span className="ini-detalhe-nome">{c.nome}</span>
-                      <span className="ini-detalhe-val">
-                        executivo {fmtBRL(c.executivo)}{c.vendido > 0 ? ` · vendido ${fmtBRL(c.vendido)}` : ""}
-                      </span>
-                      <span className="ini-detalhe-pct">{c.motivo}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </React.Fragment>
-          ) : (
-            <div key={i} className={`ini-alerta ${a.tom}`}>
-              <AlertTriangle size={13} />
-              <span>{a.txt}</span>
-            </div>
-          )))}
-          {/* Pedir compra avulsa é no Pipefy: o botão abre o formulário e leva
-              ao Plano de Compras. Com avulsas já lançadas, o botão vira "ver
-              a lista" e o Pipefy ganha um botão próprio, pra não abrir à toa. */}
-          <div className="dash-atalhos">
-            <Button className="dash-atalho" onClick={() => { if (!avulsas.length) abrirPipefy(); onIrParaCompras(); }}>
-              <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
-            </Button>
-            {avulsas.length > 0 && (
-              <Button className="dash-atalho" onClick={abrirPipefy}>
-                <ExternalLink size={12} /> Solicitar no Pipefy
-              </Button>
-            )}
-          </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="dobra-card">
-          <div className="ini-titulo"><ShieldCheck size={14} className="ini-titulo-icone" /> Equipe da obra</div>
-          <div className="dobra-sub">Principais responsáveis.</div>
-          <LinhaEquipe obraId={obra.id} rotulo="GC responsável" valor={obra.gc} equipe={equipe} podeEditar={podeEditar}
-            prioridade={/gc/i} vazio="sem GC — esta obra aparece para todo mundo"
-            onDefinir={(email) => onDefinirGC(obra.codigo, email)} />
-          <LinhaEquipe obraId={obra.id} rotulo="Tailor Made" valor={tailorMade} equipe={equipe} podeEditar={podeEditar}
-            vazio="ainda não atribuído" onDefinir={(email) => onDefinirTailorMade(obra.codigo, email)} />
-          <LinhaEquipe obraId={obra.id} rotulo="Executivo" valor={responsavelExecutivo} equipe={equipe} podeEditar={podeEditar}
-            vazio="ainda não atribuído" onDefinir={(email) => onDefinirExecutivo(obra.codigo, email)} />
-        </div>
+      <Card>
+        <Collapsible open={jornadaAberta} onOpenChange={setJornadaAberta}>
+          <CardHeader>
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2">
+                <LayoutGrid size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Jornada da obra
+              </CardTitle>
+              <CardDescription>
+                {jornadaAberta
+                  ? "Os arquivos de cada fase da obra — guardados também em Documentos."
+                  : "Acompanhe as principais fases e o status atual da obra."}
+              </CardDescription>
+            </div>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" type="button">
+                {jornadaAberta ? "Recolher" : "Expandir"}
+                <ChevronDown size={14} className={cn("transition-transform", jornadaAberta && "rotate-180")} aria-hidden="true" />
+              </Button>
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <JornadaStepper passos={jornada.passos} atualIndex={jornada.atualIndex} />
+            <CollapsibleContent>
+              <AnexosDaJornada obra={obra} usuario={usuario} podeEditar={podeEditar} souAdmin={souAdmin}
+                onImportCaderno={onImportCaderno} onArquivos={onArquivos} />
+            </CollapsibleContent>
+          </CardContent>
+        </Collapsible>
+      </Card>
+
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2">
+                <ArrowUpRight size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Progresso por frente
+              </CardTitle>
+              <CardDescription>Avanço por frente de trabalho.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <BarraFrente nome="Projetos" pct={pctProjetos} />
+            <BarraFrente nome="Suprimentos" pct={totals.pct || 0} />
+            <BarraFrente nome="Execução" pct={contratos.pct || 0} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Pendências e alertas
+              {pendencias.length > 0 && <Badge tone="neutral">{pendencias.length}</Badge>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {/* FALTA APROVAR PRA COMPRA — pedido dela em 19/09/2026: "tem que
+                trazer ali no resuminho que faltam, por exemplo, 7 itens para ser
+                liberados para compra... quando a pessoa clica, vai direto lá
+                para a conferência do Executivo... já aparece filtrado".
+
+                Fica ACIMA dos outros alertas porque e' o unico aqui que a pessoa
+                resolve clicando: os demais contam o que aconteceu, este abre a
+                tela onde se age. O numero sai da mesma regua do chip da Conf.
+                Executivo (`faltaAprovarNosGrupos`) — numero que discorda da
+                lista e' pior que numero nenhum. */}
+            {faltaAprovar > 0 && onIrParaLiberacao && (
+              <Alert tone="warning">
+                <AlertDescription className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1">
+                    <b className="tabular-nums">{faltaAprovar}</b> {faltaAprovar === 1 ? "item espera" : "itens esperam"} aprovação para compra
+                  </span>
+                  <Button variant="outline" size="sm" type="button" onClick={onIrParaLiberacao}
+                    title="Abre a Conf. Executivo já filtrada em 'Falta aprovar p/ compra'">
+                    <ShoppingCart size={14} aria-hidden="true" /> Aprovar para compra <ArrowUpRight size={14} aria-hidden="true" />
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            {pendencias.length === 0 && faltaAprovar === 0 ? (
+              <Alert tone="success"><AlertDescription>Nada pedindo atenção nesta obra.</AlertDescription></Alert>
+            ) : pendencias.map((a, i) => (a.detalhe?.length ? (
+              /* O alerta que abre: mostra quais são, sem sair do Dashboard. */
+              <Collapsible key={a.chave || i} open={alertasAbertos.has(a.chave)} onOpenChange={() => alternarAlerta(a.chave)}>
+                <Alert tone={tomDoAlerta(a.tom)}>
+                  <AlertDescription>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 flex-1">{a.txt}</span>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm" type="button">
+                          {alertasAbertos.has(a.chave) ? "Esconder a lista" : "Ver quais são"}
+                          <ChevronDown size={14} className={cn("transition-transform", alertasAbertos.has(a.chave) && "rotate-180")} aria-hidden="true" />
+                        </Button>
+                      </CollapsibleTrigger>
+                    </div>
+                    <CollapsibleContent>
+                      <ul className="mt-2 divide-y divide-line-1 border-t border-line-1">
+                        {a.detalhe.map((c) => (
+                          <li key={`${c.num}-${c.nome}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 py-1 text-xs">
+                            <span className="mono text-text-mute">{c.num}</span>
+                            <span className="min-w-0 flex-1 font-semibold">{c.nome}</span>
+                            <span className="tabular-nums text-text-mute">
+                              executivo {fmtBRL(c.executivo)}{c.vendido > 0 ? ` · vendido ${fmtBRL(c.vendido)}` : ""}
+                            </span>
+                            <span className="whitespace-nowrap font-bold text-danger">{c.motivo}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CollapsibleContent>
+                  </AlertDescription>
+                </Alert>
+              </Collapsible>
+            ) : (
+              <Alert key={i} tone={tomDoAlerta(a.tom)}><AlertDescription>{a.txt}</AlertDescription></Alert>
+            )))}
+            {/* Pedir compra avulsa é no Pipefy: o botão abre o formulário e leva
+                ao Plano de Compras. Com avulsas já lançadas, o botão vira "ver
+                a lista" e o Pipefy ganha um botão próprio, pra não abrir à toa. */}
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => { if (!avulsas.length) abrirPipefy(); onIrParaCompras(); }}>
+                <Plus size={14} aria-hidden="true" /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
+              </Button>
+              {avulsas.length > 0 && (
+                <Button variant="outline" size="sm" onClick={abrirPipefy}>
+                  <ExternalLink size={14} aria-hidden="true" /> Solicitar no Pipefy
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Equipe da obra
+              </CardTitle>
+              <CardDescription>Principais responsáveis.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <LinhaEquipe obraId={obra.id} rotulo="GC responsável" valor={obra.gc} equipe={equipe} podeEditar={podeEditar}
+              prioridade={/gc/i} vazio="sem GC — esta obra aparece para todo mundo"
+              onDefinir={(email) => onDefinirGC(obra.codigo, email)} />
+            <LinhaEquipe obraId={obra.id} rotulo="Tailor Made" valor={tailorMade} equipe={equipe} podeEditar={podeEditar}
+              vazio="ainda não atribuído" onDefinir={(email) => onDefinirTailorMade(obra.codigo, email)} />
+            <LinhaEquipe obraId={obra.id} rotulo="Executivo" valor={responsavelExecutivo} equipe={equipe} podeEditar={podeEditar}
+              vazio="ainda não atribuído" onDefinir={(email) => onDefinirExecutivo(obra.codigo, email)} />
+          </CardContent>
+        </Card>
       </div>
 
       {(adit.aprovados.length > 0 || adit.pendentes.length > 0) && (
-        <div className="dobra-card dash-aditivos">
-          <div className="ini-titulo"><FileText size={14} className="ini-titulo-icone" /> Aditivos</div>
-          {adit.aprovados.length > 0 ? (
-            <>
-              <div className={`dash-adit-saldo mono ${adit.saldo < 0 ? "credito" : ""}`}>
-                {adit.saldo >= 0 ? "+" : ""}{fmtBRL(adit.saldo)}
-              </div>
-              <div className="dash-adit-sub">
-                {adit.aprovados.length} {adit.aprovados.length === 1 ? "aditivo aprovado" : "aditivos aprovados"} ·
-                {" "}{fmtBRL(adit.adicao)} de adição e {fmtBRL(adit.supressao)} de supressão
-              </div>
-              <div className="dash-adit-lista">
-                {adit.aprovados.map((a) => (
-                  <div key={a.id} className="dash-adit-linha">
-                    <span className="mono">{a.numero}</span>
-                    <span className="dash-adit-desc">{a.descricao || "sem descrição"}</span>
-                    <span className={`mono ${a.totalAdicao - a.totalSupressao < 0 ? "credito" : ""}`}>
-                      {fmtBRL(a.totalAdicao - a.totalSupressao)}
-                    </span>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Aditivos
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {adit.aprovados.length > 0 ? (
+              <>
+                <div>
+                  <div className={cn("mono text-2xl font-light tabular-nums", adit.saldo < 0 && "text-success")}>
+                    {adit.saldo >= 0 ? "+" : ""}{fmtBRL(adit.saldo)}
                   </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="dash-adit-sub">
-              {adit.pendentes.length} {adit.pendentes.length === 1 ? "aditivo em aberto" : "aditivos em aberto"} —
-              em rascunho ou aguardando o cliente. Nenhum dos dois entra no orçamento: só o aprovado conta.
-            </div>
-          )}
+                  <div className="text-sm text-text-soft">
+                    {adit.aprovados.length} {adit.aprovados.length === 1 ? "aditivo aprovado" : "aditivos aprovados"} ·
+                    {" "}{fmtBRL(adit.adicao)} de adição e {fmtBRL(adit.supressao)} de supressão
+                  </div>
+                </div>
+                <ul className="divide-y divide-line-1 border-t border-line-1">
+                  {adit.aprovados.map((a) => (
+                    <li key={a.id} className="flex items-center gap-2 py-2 text-sm">
+                      <span className="mono text-xs font-bold">{a.numero}</span>
+                      <span className="min-w-0 flex-1 truncate text-text-soft">{a.descricao || "sem descrição"}</span>
+                      <span className={cn("mono tabular-nums", a.totalAdicao - a.totalSupressao < 0 && "text-success")}>
+                        {fmtBRL(a.totalAdicao - a.totalSupressao)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="text-sm text-text-soft">
+                {adit.pendentes.length} {adit.pendentes.length === 1 ? "aditivo em aberto" : "aditivos em aberto"} —
+                em rascunho ou aguardando o cliente. Nenhum dos dois entra no orçamento: só o aprovado conta.
+              </p>
+            )}
 
-          {/* Grupo aprovado sem verba tem dinheiro dentro e ficaria
-              invisivel no CMV e no Plano de Compras. */}
-          {adit.soltos.length > 0 && (
-            <div className="dash-alerta aviso">
-              <AlertTriangle size={13} />
-              <span>
-                <b>{adit.soltos.length}</b> {adit.soltos.length === 1 ? "grupo aprovado está" : "grupos aprovados estão"} sem
-                verba da EAP — {fmtBRL(adit.soltos.reduce((a, x) => a + x.valor, 0))} que não entra no CMV nem no Plano de Compras.
-              </span>
-            </div>
-          )}
+            {/* Grupo aprovado sem verba tem dinheiro dentro e ficaria
+                invisivel no CMV e no Plano de Compras. */}
+            {adit.soltos.length > 0 && (
+              <Alert tone="warning">
+                <AlertDescription>
+                  <b>{adit.soltos.length}</b> {adit.soltos.length === 1 ? "grupo aprovado está" : "grupos aprovados estão"} sem
+                  verba da EAP — {fmtBRL(adit.soltos.reduce((a, x) => a + x.valor, 0))} que não entra no CMV nem no Plano de Compras.
+                </AlertDescription>
+              </Alert>
+            )}
 
-          <Button className="dash-atalho" onClick={onIrParaAditivos}>
-            <FileText size={12} /> Ver os aditivos
-          </Button>
-        </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={onIrParaAditivos}>
+                <FileText size={14} aria-hidden="true" /> Ver os aditivos
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
@@ -14466,6 +14540,13 @@ const CONTRATO_PIPELINE = [
   { id: "previsao_medicao", curto: "Prev. medição", color: "var(--blue)" },
   { id: "medicao_liberada", curto: "Medição / NF", color: "var(--green)" },
 ];
+/* Cor de cada etapa como classe de token — a esteira do DashboardMO nao
+   escreve style inline; `color` de CONTRATO_PIPELINE continua servindo
+   ao restante do app. */
+const COR_ETAPA_MO = {
+  nao_solicitado: "text-text-mute", solicitacao: "text-text-mute", aprovacao: "text-warning",
+  contrato_gerado: "text-brand", previsao_medicao: "text-brand", medicao_liberada: "text-success",
+};
 const PROXIMA_ETAPA = { nao_solicitado: "solicitacao", solicitacao: "aprovacao", aprovacao: "contrato_gerado", contrato_gerado: "previsao_medicao", previsao_medicao: "medicao_liberada" };
 
 const contratoBloqueado = (it) => it.foraDeEscopo && it.statusEscopo !== "aprovado";
@@ -15005,12 +15086,10 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
 
   if (rows.length === 0) {
     return (
-      <div className="compras-empty">
-        <FileText size={30} className="dim" />
-        <div className="compras-empty-title">Esta obra ainda não tem mão de obra no executivo</div>
-        <div className="compras-empty-sub">Quando o executivo for carregado, todos os serviços aparecem aqui com o valor de MO — que é a base de orçado de cada escopo. Ou crie uma solicitação avulsa abaixo.</div>
-        <NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />
-      </div>
+      <EmptyState icon={<FileText size={30} aria-hidden="true" />}
+        title="Esta obra ainda não tem mão de obra no executivo"
+        description="Quando o executivo for carregado, todos os serviços aparecem aqui com o valor de MO — que é a base de orçado de cada escopo. Ou crie uma solicitação avulsa abaixo."
+        action={<NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />} />
     );
   }
 
@@ -15021,7 +15100,7 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
       onMudar={(patch) => onMudarEscopo(e.id, patch)}
       onVoltar={() => setEscopoAberto(null)}
       onApagar={async () => {
-        if (await confirmar(`Apagar o escopo "${e.nome}"?\n\nOs serviços continuam na obra — some só o documento.`)) {
+        if (await confirmar({ titulo: `Apagar o escopo "${e.nome}"?`, mensagem: "Os serviços continuam na obra — some só o documento.", confirmar: "Apagar escopo" })) {
           onApagarEscopo(e.id);
           setEscopoAberto(null);
         }
@@ -15039,123 +15118,124 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
       }} />;
   }
 
+  const kpis = [
+    { label: "Mão de obra no executivo", value: fmtBRL(totalMO), hint: `${naoBloq.length} serviços`, tone: "brand" },
+    { label: "Já em processo de contratação", value: fmtBRL(contratado), tone: "neutral" },
+    { label: "Ainda a contratar", value: fmtBRL(totalMO - contratado), tone: "brand" },
+  ];
+
   return (
-    <>
-      <div className="mo-topo">
-        <div className="mo-num">
-          <div className="mo-num-val mono">{fmtBRL(totalMO)}</div>
-          <div className="mo-num-rot">de mão de obra no executivo · {naoBloq.length} serviços</div>
-        </div>
-        <div className="mo-num">
-          <div className="mo-num-val mono dim">{fmtBRL(contratado)}</div>
-          <div className="mo-num-rot">já em processo de contratação</div>
-        </div>
-        <div className="mo-num">
-          <div className="mo-num-val mono">{fmtBRL(totalMO - contratado)}</div>
-          <div className="mo-num-rot">ainda a contratar</div>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3" aria-label="Resumo da mão de obra">
+          {kpis.map((k) => <KpiMini key={k.label} label={k.label} value={k.value} hint={k.hint} tone={k.tone} />)}
         </div>
         <NovaSolicitacaoForm obra={obra} onCriar={onCriarSolicitacao} />
       </div>
 
-      <div className="pipeline">
+      {/* A esteira de contratação: cada etapa é um filtro; clicar de novo
+          na etapa ativa volta a mostrar tudo. */}
+      <ToggleGroup type="single" value={filtro === "todos" ? "" : filtro} onValueChange={(v) => setFiltro(v || "todos")}
+        aria-label="Filtrar por etapa do contrato" className="flex flex-wrap items-stretch gap-2">
         {CONTRATO_PIPELINE.map((st, i) => (
           <React.Fragment key={st.id}>
-            <Button variant="ghost" className={`pipe-node ${filtro === st.id ? "active" : ""}`}
-              style={filtro === st.id ? { borderColor: st.color } : undefined}
-              onClick={() => setFiltro(filtro === st.id ? "todos" : st.id)}>
-              <div className="pipe-count" style={{ color: st.color }}>{cntEtapa(st.id)}</div>
-              <div className="pipe-label">{st.curto}</div>
-              <div className="pipe-val mono">{fmtCompactBRL(somaEtapa(st.id))}</div>
-            </Button>
-            {i < CONTRATO_PIPELINE.length - 1 && <ChevronRight size={14} className="pipe-arrow dim" />}
+            <ToggleGroupItem value={st.id} className="h-auto min-w-24 flex-1 flex-col gap-1 px-2 py-2 text-center">
+              <span className={cn("text-lg font-semibold leading-none tabular-nums", COR_ETAPA_MO[st.id])}>{cntEtapa(st.id)}</span>
+              <span className="text-xs font-semibold">{st.curto}</span>
+              <span className="mono text-xs text-text-mute">{fmtCompactBRL(somaEtapa(st.id))}</span>
+            </ToggleGroupItem>
+            {i < CONTRATO_PIPELINE.length - 1 && <ChevronRight size={14} className="hidden self-center text-text-mute md:block" aria-hidden="true" />}
           </React.Fragment>
         ))}
-      </div>
+      </ToggleGroup>
 
       {bloqueados.length > 0 && (
-        <div className="compras-alerta">
-          <AlertTriangle size={16} />
-          <span><b>{bloqueados.length} {bloqueados.length === 1 ? "serviço bloqueado" : "serviços bloqueados"}</b> — aguardando aprovação de escopo antes de solicitar contrato</span>
-        </div>
+        <Alert tone="danger">
+          <AlertDescription>
+            <b>{bloqueados.length} {bloqueados.length === 1 ? "serviço bloqueado" : "serviços bloqueados"}</b> — aguardando aprovação de escopo antes de solicitar contrato
+          </AlertDescription>
+        </Alert>
       )}
 
-      {porVerba.length === 0 && <div className="empty-note">Nada nesta etapa.</div>}
-      {porVerba.map((g) => {
-        const aberto = abertos.has(g.num);
-        const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
-        return (
-          <div className="grp-block" key={g.num}>
-            <div className="grp-head">
-              <Button variant="ghost" size="sm" onClick={() => alternarGrupo(g)}
-                title={nSel === g.itens.length ? "Tirar o grupo da seleção" : "Selecionar o grupo inteiro"}
-                aria-label="Selecionar grupo">
-                {nSel === g.itens.length ? <Check size={13} /> : nSel > 0 ? <Minus size={13} /> : null}
-              </Button>
-              <Button variant="ghost" className="grp-toggle" onClick={() => abrir(g.num)}>
-                <div className="grp-esq">
-                  {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
-                  <span className="grp-num mono">{g.num}</span>
-                  <span className="grp-nome">{g.nome}</span>
-                  <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "serviço" : "serviços"}</span>
-                  {nSel > 0 && <span className="grp-avulsos">{nSel} no escopo</span>}
+      {porVerba.length === 0 && <EmptyState title="Nada nesta etapa." />}
+      <div className="space-y-2">
+        {porVerba.map((g) => {
+          const aberto = abertos.has(g.num);
+          const nSel = g.itens.filter((r) => sel.has(r.chave)).length;
+          return (
+            <Collapsible key={g.num} open={aberto} onOpenChange={() => abrir(g.num)}>
+              <Card className="p-0">
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2">
+                  <Checkbox checked={nSel === g.itens.length ? true : nSel > 0 ? "indeterminate" : false}
+                    onCheckedChange={() => alternarGrupo(g)} aria-label="Selecionar grupo"
+                    title={nSel === g.itens.length ? "Tirar o grupo da seleção" : "Selecionar o grupo inteiro"} />
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="h-auto min-w-0 flex-1 flex-wrap justify-start gap-2 px-2 py-2 text-left whitespace-normal">
+                      {aberto ? <ChevronDown size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" aria-hidden="true" />}
+                      <span className="mono text-xs text-text-mute">{g.num}</span>
+                      <span className="text-sm font-semibold">{g.nome}</span>
+                      <Badge tone="neutral">{g.itens.length} {g.itens.length === 1 ? "serviço" : "serviços"}</Badge>
+                      {nSel > 0 && <Badge tone="purple">{nSel} no escopo</Badge>}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <div className="ml-auto text-right">
+                    <div className="label-mono">Mão de obra</div>
+                    <div className="mono text-sm font-semibold tabular-nums">{fmtBRL(g.total)}</div>
+                  </div>
                 </div>
-              </Button>
-              <div className="grp-dir">
-                <div className="grp-tot">
-                  <div className="grp-tot-rot">MÃO DE OBRA</div>
-                  <div className="grp-tot-val mono">{fmtBRL(g.total)}</div>
-                </div>
-              </div>
-            </div>
-            {aberto && (
-              <div className="grp-itens">
-                <div className="compras-list">
-                  {g.itens.map((r) => {
-                    const esc = escopoDoServico.get(`${r.catNum}|${r.it.codigo}`);
-                    return (
-                      <div className={`mo-linha ${sel.has(r.chave) ? "sel" : ""} ${esc ? "com-escopo" : ""}`} key={r.chave}>
-                        <Button variant="ghost" size="sm" onClick={() => alternar(r.chave)} aria-label="Selecionar serviço">
-                          {sel.has(r.chave) && <Check size={13} />}
-                        </Button>
-                        <ContratosRow row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
-                        <div className="mo-valor mono">{fmtBRL(r.mo)}</div>
-                        {esc ? (
-                          <Button variant="ghost" size="icon" aria-label="Ver o escopo" onClick={() => setEscopoAberto(esc.id)}
-                            title={`Ver o escopo "${esc.nome}"${esc.fornecedor ? ` — ${esc.fornecedor}` : ""}`}>
-                            <Search size={14} />
-                          </Button>
-                        ) : <span className="btn-lupa-vazio" />}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
+                <CollapsibleContent>
+                  <ul className="divide-y divide-line-1 border-t border-line-1 bg-surface-2">
+                    {g.itens.map((r) => {
+                      const esc = escopoDoServico.get(`${r.catNum}|${r.it.codigo}`);
+                      return (
+                        <li key={r.chave} className={cn("flex items-center gap-2 pr-4", sel.has(r.chave) && "bg-brand-soft", esc && "border-l-2 border-success")}>
+                          <Checkbox className="ml-4" checked={sel.has(r.chave)} onCheckedChange={() => alternar(r.chave)} aria-label="Selecionar serviço" />
+                          <div className="min-w-0 flex-1">
+                            <ContratosRow row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
+                          </div>
+                          <div className="mono w-28 shrink-0 text-right text-sm font-semibold tabular-nums">{fmtBRL(r.mo)}</div>
+                          {esc ? (
+                            <Button variant="ghost" size="icon" aria-label="Ver o escopo" onClick={() => setEscopoAberto(esc.id)}
+                              title={`Ver o escopo "${esc.nome}"${esc.fornecedor ? ` — ${esc.fornecedor}` : ""}`}>
+                              <Search size={14} />
+                            </Button>
+                          ) : <span className="w-8 shrink-0" aria-hidden="true" />}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          );
+        })}
+      </div>
 
       {/* A barra de escopo so existe quando ha selecao. Ela e o unico
           lugar da tela onde o numero que importa aparece somado: e contra
           ele que a proposta do fornecedor vai ser comparada. */}
       {selecionados.length > 0 && (
-        <div className="mo-escopo-barra">
-          <div>
-            <div className="mo-escopo-val mono">{fmtBRL(orcado)}</div>
-            <div className="mo-escopo-rot">
-              orçado em {selecionados.length} {selecionados.length === 1 ? "serviço" : "serviços"}
-              {verbasNaSelecao > 1 ? ` de ${verbasNaSelecao} verbas` : ""}
+        <Card accent="brand" className="sticky bottom-4 shadow-lg">
+          <CardContent className="flex flex-wrap items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="mono text-2xl font-light tabular-nums">{fmtBRL(orcado)}</div>
+              <div className="text-sm text-text-soft">
+                orçado em {selecionados.length} {selecionados.length === 1 ? "serviço" : "serviços"}
+                {verbasNaSelecao > 1 ? ` de ${verbasNaSelecao} verbas` : ""}
+              </div>
             </div>
-          </div>
-          {podeEditar && (
-            <Button variant="outline" onClick={() => setAbrindoEscopo(true)}>
-              <FileText size={13} /> Abrir escopo
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => setSel(new Set())}>Limpar seleção</Button>
-        </div>
+            <div className="flex flex-wrap gap-2">
+              {podeEditar && (
+                <Button onClick={() => setAbrindoEscopo(true)}>
+                  <FileText size={14} aria-hidden="true" /> Abrir escopo
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setSel(new Set())}>Limpar seleção</Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
-    </>
+    </div>
   );
 }
 
@@ -17696,45 +17776,6 @@ function passosCriticosAtrasados(o) {
   return { dias, passos };
 }
 
-/* Sem ícone, sem badge colorido — a cor mora só no rótulo, pequeno e
-   discreto. Número grande em grafite, sempre; é a mesma hierarquia que
-   um extrato bancário usa, e é o que sustenta "técnico e sóbrio" sem
-   precisar de nenhum enfeite. */
-function InicioNum({ rot, valor, sub, cor, onClick }) {
-  const Tag = onClick ? "button" : "div";
-  return (
-    <Tag className={`ini-cel ${onClick ? "clicavel" : ""}`} onClick={onClick}>
-      <div className="ini-cel-rot" style={cor ? { color: cor } : undefined}>{rot}</div>
-      <div className="ini-cel-val">{valor}</div>
-      <div className="ini-cel-sub">{sub}</div>
-    </Tag>
-  );
-}
-
-/* A fila da obra: o que esta' parado e esperando quem.
-
-   Le da esquerda pra direita na ordem do fluxo, entao o primeiro numero e' o
-   gargalo. Nada aparece quando nao ha' nada parado — obra em dia nao precisa
-   anunciar que esta' em dia, e a linha some. */
-function MarcosDaObra({ obra }) {
-  const p = pendenciasDaObra(obra);
-  const marcos = [
-    { chave: "cliente", n: p.cliente, texto: "esperando o cliente", dica: "Itens que o cliente ainda não aprovou" },
-    { chave: "liberar", n: p.liberar, texto: "a liberar", dica: "Aprovados pelo cliente, esperando o executivo liberar para compra" },
-    { chave: "solicitar", n: p.solicitar, texto: "a solicitar no Sienge", dica: "Liberados e com canal Sienge, ainda sem solicitação de compra" },
-  ].filter((m) => m.n > 0);
-  if (marcos.length === 0) return null;
-  return (
-    <div className="ini-marcos">
-      {marcos.map((m) => (
-        <span key={m.chave} className={`ini-marco ${m.chave}`} title={m.dica}>
-          <b>{m.n}</b> {m.texto}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const rows = useMemo(() => {
@@ -17783,7 +17824,8 @@ function InicioView({ obras, novas, carregando, erro, onRetry, equipe, nPendente
   const extraAlerts = [];
   if (nPendentes) extraAlerts.push({ id: "acessos", text: `${nPendentes} pessoas aguardando liberação de acesso`, action: () => onModulo("equipe") });
   if (novas.length) extraAlerts.push({ id: "novas", text: `${novas.length} obras ainda não iniciadas`, action: () => onModulo("novas") });
-  return <DashboardPage rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
+  // "Início" é o rótulo do menu: o título da página repete o mesmo termo.
+  return <DashboardPage title="Início" rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
 }
 
 /* ============================================================
@@ -22113,8 +22155,6 @@ export default function App() {
         .form-dica { font-size: 10.5px; color: var(--green); margin-top: 5px; }
         .btn-lupa { flex-shrink: 0; background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 5px 7px; color: var(--ink-3); cursor: pointer; display: inline-flex; }
         .btn-lupa:hover { border-color: var(--ink); color: var(--ink); background: var(--surface-1); }
-        .btn-lupa-vazio { flex-shrink: 0; width: 30px; }
-        .mo-linha.com-escopo { box-shadow: inset 2px 0 0 var(--green); }
 
         .escopo-topo { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
         .btn-voltar { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 12px; cursor: pointer; font-family: inherit; color: var(--ink-2); flex-shrink: 0; }
@@ -22195,14 +22235,6 @@ export default function App() {
         .dash-gc-email { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
         .dash-gc-vazio { font-size: 12px; color: var(--ink-3); font-style: italic; }
         .dash-gc-acoes { display: flex; gap: 7px; margin-top: 9px; }
-        .dash-aditivos .dash-adit-saldo { font-family: var(--font-sans); font-size: 27px; font-weight: 700; color: var(--ink); line-height: 1.15; }
-        .dash-aditivos .dash-adit-saldo.credito { color: var(--green); }
-        .dash-adit-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; }
-        .dash-adit-lista { margin-top: 11px; border-top: 1px solid var(--border-soft); }
-        .dash-adit-linha { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
-        .dash-adit-linha .mono { font-size: 11.5px; font-weight: 700; }
-        .dash-adit-desc { flex: 1; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .dash-adit-linha .credito { color: var(--green); }
         .ad-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 16px 0 14px; }
         .ad-numero { font-size: 15px; font-weight: 700; color: var(--ink); }
         .ad-titulo { margin-top: 0; flex: 1; min-width: 200px; font-size: 13px; }
@@ -22504,7 +22536,6 @@ export default function App() {
         .pipefy-aviso { align-items: flex-start; background: var(--brand-tint); border: 1px solid var(--brand-line); color: var(--ink-2); line-height: 1.55; }
         .pipefy-aviso-txt { display: grid; gap: 8px; flex: 1; min-width: 0; }
         .pipefy-aviso a { color: var(--brand); font-weight: 600; }
-        .dash-atalhos { display: flex; flex-wrap: wrap; gap: 8px; }
         .pipefy-texto { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface-1); color: var(--ink); resize: vertical; }
         .btn-associar-sel { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-1); color: var(--ink); border: none; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit; margin-right: 6px; }
         .btn-associar-sel:hover { background: var(--blue-bg); color: var(--blue); }
@@ -22815,10 +22846,6 @@ export default function App() {
         .mo-topo .btn-nova-solicitacao { margin-left: auto; }
         .mo-check { width: 19px; height: 19px; flex-shrink: 0; border-radius: 5px; border: 1.5px solid var(--border); background: var(--surface-1); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--bg); padding: 0; margin-left: 16px; }
         .mo-check:hover { border-color: var(--blue); }
-        .mo-linha { display: flex; align-items: center; gap: 10px; padding-right: 14px; }
-        .mo-linha.sel { background: var(--blue-bg); }
-        .mo-linha .compras-row { flex: 1; min-width: 0; }
-        .mo-valor { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 104px; text-align: right; }
         /* A soma so aparece quando ha selecao: e o unico numero da tela
            contra o qual a proposta do fornecedor vai ser comparada. */
         .mo-escopo-barra { position: sticky; bottom: 14px; display: flex; align-items: center; gap: 18px; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 13px 20px; margin-top: 14px; box-shadow: var(--shadow-3); }
@@ -22828,59 +22855,12 @@ export default function App() {
         .btn-limpar-sel:hover { background: var(--on-inverse-hover); }
 
         .dash { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 28px; }
-        .dash-hero, .dash-atencao { grid-column: 1 / -1; }
-        .dash-hero, .dash-card, .dash-atencao { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; }
         .dash-rot { font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
-        .dash-hero-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
-        .dash-hero-nums { display: flex; align-items: center; gap: 18px; }
-        .dash-num-val { font-family: var(--font-sans); font-size: 27px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-        .dash-num-rot { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
-        .dash-seta { font-size: 19px; color: var(--ink-3); padding-bottom: 16px; }
-        .dash-delta { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 9px 14px; }
-        .dash-delta.ok { background: var(--green-bg); color: var(--green); }
-        .dash-delta.ruim { background: var(--red-bg); color: var(--red); }
-        .dash-delta-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
-        .dash-delta-rot { font-size: 10.5px; opacity: 0.85; }
         /* A barra inteira e o vendido; o preenchido, o executivo. */
-        .dash-barra { position: relative; display: flex; height: 8px; background: var(--panel); border-radius: 20px; overflow: hidden; margin-top: 16px; }
-        .dash-barra-fill.ok { background: var(--green); }
-        .dash-barra-fill.ruim { background: var(--red); }
-        .dash-barra-over { background: repeating-linear-gradient(45deg, var(--red) 0 4px, var(--danger-line) 4px 8px); }
-        .dash-barra-rot { font-size: 10.5px; color: var(--ink-3); margin-top: 6px; }
-        .dash-anel-linha { display: flex; align-items: center; gap: 18px; }
-        .dash-anel-txt { font-family: var(--font-sans); font-size: 19px; font-weight: 700; fill: var(--ink); }
-        .dash-mini { font-size: 11px; color: var(--ink-2); margin-top: 4px; }
-        .dash-data-linha { display: flex; align-items: center; gap: 8px; }
-        .dash-data-linha .entrega-input { width: auto; flex: 1; margin-top: 0; }
         .btn-salvar-data { background: var(--ink); color: var(--bg); border: none; border-radius: 7px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
         .btn-salvar-data:hover { background: var(--blue); }
-        .dash-sujo { color: var(--amber); font-weight: 600; }
-        .dash-proximo { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border-soft); color: var(--ink-2); }
-        .dash-proximo-tit { font-size: 9.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
-        .dash-proximo-val { font-size: 12.5px; margin-top: 2px; }
-        .dash-proximo-conta { color: var(--ink-3); }
-        .dash-proximo.perto, .dash-proximo.perto .dash-proximo-conta { color: var(--amber); }
-        .dash-proximo.vencido, .dash-proximo.vencido .dash-proximo-conta { color: var(--red); font-weight: 600; }
-        .dash-atencao { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 13px 20px; }
-        .dash-atencao.tudo-ok { background: var(--green-bg); border-color: var(--success-line); }
-        .dash-alerta { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
-        .dash-alerta.ok { color: var(--green); }
-        .dash-alerta.red { color: var(--red); }
-        .dash-alerta.amber { color: var(--amber); }
         .dash-atalho { margin-left: auto; margin-top: 0; }
         @media (max-width: 900px) { .dash { grid-template-columns: 1fr; } }
-
-        /* NOVO PAINEL DA OBRA — cartões no mesmo estilo do painel geral
-           (classes .ini-cel / .ini-titulo), só que na escala de UMA obra. */
-        .dobra-regua { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
-        .dobra-entrega { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 10px 14px; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 10px; font-size: 12.5px; color: var(--ink-2); }
-        .dobra-entrega-rot { font-weight: 600; color: var(--ink); margin-right: 4px; }
-        .dobra-entrega .entrega-input { width: auto; margin-top: 0; }
-        .dobra-card { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; box-shadow: none; }
-        .dobra-sub { font-size: 11.5px; color: var(--ink-3); margin: -4px 0 14px; }
-        .dobra-colunas { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; align-items: start; }
-        .dobra-colunas .dobra-card { margin-bottom: 0; }
-        @media (max-width: 1100px) { .dobra-regua { grid-template-columns: repeat(2,1fr); } .dobra-colunas { grid-template-columns: 1fr; } }
 
         /* Jornada da obra: passos conectados, feito / atual / aguardando. */
         .jornada { display: flex; align-items: flex-start; }
@@ -22896,12 +22876,6 @@ export default function App() {
         @media (max-width: 900px) { .jornada { flex-wrap: wrap; } .jornada-linha { display: none; } .jornada-passo { width: auto; margin: 0 10px 10px 0; } }
 
         /* Progresso por frente: nome, barra, percentual — nada mais. */
-        .frente-linha { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-        .frente-linha:last-child { margin-bottom: 0; }
-        .frente-nome { font-size: 12px; color: var(--ink-2); width: 84px; flex-shrink: 0; }
-        .frente-barra { flex: 1; height: 7px; background: var(--panel); border-radius: 20px; overflow: hidden; }
-        .frente-fill { height: 100%; background: var(--blue); border-radius: 20px; }
-        .frente-pct { font-size: 12px; color: var(--ink); width: 34px; text-align: right; flex-shrink: 0; }
 
         /* Equipe da obra: avatar + papel + PapelDaObra (nome ou seletor). */
         .equipe-linha { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-soft); }
@@ -23092,9 +23066,6 @@ export default function App() {
         .aviso-x:hover { opacity: 1; }
         .be-parcial { color: var(--amber); font-weight: 600; }
         .entrega-bloco { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 14px; }
-        .entrega-input { width: 100%; margin-top: 3px; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; font-size: 13px; font-family: var(--font-mono); color: var(--ink); background: var(--surface-1); }
-        .entrega-input:focus { border-color: var(--ink); outline: none; }
-        .entrega-input:disabled { background: var(--panel); color: var(--ink-3); }
         .entrega-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.35; }
         .btn-atalho { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; background: var(--ink); color: var(--bg); border: none; border-radius: 7px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
         .btn-atalho:hover { background: var(--purple); }
@@ -23379,7 +23350,6 @@ export default function App() {
         .bucket-falta .bucket-num span { color: var(--amber); }
         .bucket-sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
         .bucket-falta .bucket-sub { color: var(--amber); }
-        .compras-alerta { display: flex; align-items: center; gap: 9px; background: var(--red-bg); color: var(--red); border: 1px solid var(--red); border-radius: 12px; padding: 11px 15px; font-size: 12.5px; margin-bottom: 16px; }
         .compras-filtros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
         .cfiltro { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 5px 11px; font-size: 12px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
         .cfiltro:hover { border-color: var(--blue); }
@@ -23429,13 +23399,6 @@ export default function App() {
         .btn-avancar { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
         .btn-avancar:hover { background: var(--blue); }
         .contrato-etapa-cell { width: 210px; flex-shrink: 0; }
-        .pipeline { display: flex; align-items: stretch; gap: 3px; margin: 18px 0 12px; overflow-x: auto; padding-bottom: 4px; }
-        .pipe-node { flex: 1; min-width: 92px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 6px; cursor: pointer; text-align: center; }
-        .pipe-node:hover { border-color: var(--ink-3); }
-        .pipe-node.active { border-width: 2px; padding: 9px 5px; }
-        .pipe-count { font-family: var(--font-sans); font-size: 22px; font-weight: 700; line-height: 1; }
-        .pipe-label { font-size: 10.5px; color: var(--ink-2); margin-top: 4px; font-weight: 600; }
-        .pipe-val { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
         .pipe-arrow { align-self: center; flex-shrink: 0; }
         .contratos-toolbar { margin: 4px 0 4px; }
         .btn-nova-solicitacao { display: inline-flex; align-items: center; gap: 6px; background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
@@ -23982,71 +23945,14 @@ export default function App() {
            alinham a direita dela — o recado recua junto, em vez de ficar
            colado na margem com o nome recuado. Borda esquerda do texto
            reta, que e' o que se ve antes de ler qualquer coisa. */
-        .ini-topo { margin: 6px 0 18px; display: flex; align-items: center; gap: 14px; }
-        .ini-topo-txt { min-width: 0; }
-        .ini-foto { width: 54px; height: 54px; border-radius: 50%; flex-shrink: 0; }
-        .ini-nome-linha { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-        .ini-nome { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.2; }
-        .ini-data { font-size: 11px; color: var(--ink-3); }
-        .ini-recado { font-size: 16px; color: var(--ink-2); line-height: 1.45; max-width: 720px; margin-top: 5px; }
         /* ENTREGAS PRÓXIMAS — fila horizontal, não mais uma coluna.
            É leitura de calendário: o olho corre da esquerda (o que vence
            antes) pra direita, e o que já venceu fica em vermelho. */
-        .ini-entregas { margin-bottom: 16px; }
-        .ini-entregas-lista { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-        .ini-entrega { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; flex: 0 0 auto; min-width: 168px; max-width: 230px; text-align: left; background: var(--card); border: 1px solid var(--linha); border-radius: 8px; padding: 9px 12px; cursor: pointer; font-family: inherit; }
-        .ini-entrega:hover { border-color: var(--blue); }
-        .ini-entrega-quando { font-size: 15px; font-weight: 700; }
-        .ini-entrega.perto .ini-entrega-quando { color: #B54708; }
-        .ini-entrega.vencida .ini-entrega-quando { color: var(--red); }
-        .ini-entrega-nome { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-        .ini-entrega-data { font-size: 11px; color: var(--ink-3); }
-        .ini-regua { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
-        .ini-cel { display: block; padding: 14px 16px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-1); text-align: left; font-family: inherit; box-shadow: none; transition: border-color .12s ease; min-width: 0; }
-        .ini-cel.clicavel { cursor: pointer; }
-        .ini-cel.clicavel:hover { border-color: var(--ink-3); }
-        .ini-cel.clicavel:hover .ini-cel-val { color: var(--blue); }
-        .ini-cel-rot { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--ink-3); }
-        .ini-cel-val { font-family: var(--font-sans); font-size: 19px; font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .ini-cel-sub { font-size: 10px; color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        @media (max-width: 900px) { .ini-regua { grid-template-columns: repeat(2, 1fr); } }
-        .ini-colunas { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
-        .ini-titulo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--ink); padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
-        .ini-titulo-icone { color: var(--ink-3); flex-shrink: 0; }
-        .ini-conta { background: var(--panel); color: var(--ink-2); border-radius: 20px; padding: 1px 8px; font-size: 10.5px; }
-        .ini-alerta { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; font-family: inherit; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface-1); padding: 8px 12px; margin-bottom: 6px; font-size: 12px; color: var(--ink-2); line-height: 1.4; cursor: pointer; transition: border-color .12s ease; }
-        .ini-alerta:hover { border-color: var(--ink-3); }
-        .ini-alerta span { flex: 1; }
-        .ini-alerta.ruim { background: var(--red-bg); border-color: var(--danger-line); color: var(--text); }
-        .ini-alerta.aviso { background: var(--amber-bg); border-color: var(--warning-line); color: var(--text); }
         /* "N itens esperam aprovacao" e' o unico alerta daqui que ABRE outra
            tela; os demais so' expandem no lugar. Por isso a seta aponta pra
            fora, e nao pra baixo. */
-        .dash-falta-aprovar .ini-seta { margin-left: auto; flex-shrink: 0; opacity: .7; }
-        .dash-falta-aprovar b { font-variant-numeric: tabular-nums; }
-        .ini-seta { flex-shrink: 0; opacity: .5; margin-top: 2px; }
-        .ini-seta.aberta { transform: rotate(180deg); }
-        .ini-detalhe { margin: -4px 0 8px; padding: 6px 12px 8px; border: 1px solid var(--danger-line); border-top: 0; border-radius: 0 0 8px 8px; background: var(--surface-1); }
-        .ini-detalhe-linha { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 11.5px; padding: 4px 0; border-bottom: 1px solid var(--line); }
-        .ini-detalhe-linha:last-child { border-bottom: 0; }
-        .ini-detalhe-nome { flex: 1 1 120px; min-width: 0; font-weight: 600; color: var(--ink); }
-        .ini-detalhe-val { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-        .ini-detalhe-pct { font-weight: 700; color: var(--red); white-space: nowrap; }
-        .ini-obra { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-family: inherit; background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; transition: border-color .12s ease; }
-        .ini-obra:hover { border-color: var(--ink-3); }
-        .ini-obra-id { flex: 1; min-width: 0; }
-        .ini-obra-nome { font-size: 12.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .ini-obra-sub { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
-        .ini-obra-resumo { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; text-align: right; }
-        .ini-obra-gc { font-size: 9.5px; color: var(--ink-3); }
-        .ini-obra-pct { font-size: 11.5px; font-weight: 600; color: var(--ink); }
-        .ini-obra-vazia { font-size: 10.5px; color: var(--ink-3); flex-shrink: 0; }
         /* A esteira: um chip por passo, com o NOME escrito — bolinha
            sozinha nao distinguia "feito" de "faltando" com clareza. */
-        .ini-esteira { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-        .ini-passo-chip { display: inline-flex; align-items: center; gap: 1px; font-size: 9.5px; font-weight: 600; color: var(--ink-3); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 2px 7px; }
-        .ini-passo-chip.on { color: var(--success); background: var(--success-soft); border-color: var(--success-line); }
-        .ini-passo-chip.atrasado { color: var(--red); background: var(--red-bg); border-color: var(--danger-line); }
         .loc-bloco { margin-top: 24px; }
         .loc-legenda { margin-left: auto; display: flex; gap: 12px; }
         .loc-legenda-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-3); font-weight: 500; }
@@ -24069,13 +23975,6 @@ export default function App() {
         .loc-obra-chip.finalizada { color: var(--ink-2); background: var(--panel); }
         /* A frase diz o que falta AGORA — a esteira mostra o caminho
            inteiro, a frase poupa de reler os chips pra saber o motivo. */
-        .ini-fase-pilula { display: inline-block; margin-top: 5px; font-size: 10.5px; font-weight: 600; color: var(--ink-2); background: var(--panel); border-radius: 6px; padding: 2px 8px; }
-        .ini-fase-pilula.azul { color: var(--brand); background: var(--blue-bg); }
-        .ini-titulo-linha { justify-content: space-between; }
-        .ini-titulo-esq { display: inline-flex; align-items: center; gap: 8px; }
-        .ini-link-finalizadas { display: inline-flex; align-items: center; gap: 2px; background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-3); cursor: pointer; padding: 2px 0; }
-        .ini-link-finalizadas:hover { color: var(--ink); }
-        @media (max-width: 1100px) { .ini-numeros { grid-template-columns: repeat(2, 1fr); } .ini-colunas { grid-template-columns: 1fr; } }
         /* ---- Painel geral de compras e contratacoes ---- */
         .gc-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 18px 0 16px; }
         .gc-horizonte { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -24313,12 +24212,6 @@ export default function App() {
         .hist-erro { color: var(--red); }
         /* A fila da obra. Fica abaixo da pilula de fase, mais discreta que a
            esteira: a esteira e' o caminho, isto e' o que esta' parado agora. */
-        .ini-marcos { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; }
-        .ini-marco { font-size: 11px; color: var(--text-soft); white-space: nowrap; }
-        .ini-marco b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); }
-        .ini-marco.cliente b { color: var(--warning); }
-        .ini-marco.liberar b { color: var(--brand); }
-        .ini-marco.solicitar b { color: var(--purple); }
         .selecao-escondidos { color: var(--warning); font-weight: 600; }
         .nav-badge { background: var(--danger); color: var(--bg); font-family: var(--font-mono); font-size: 10px; font-weight: 700; border-radius: 999px; }
         .nav-badge-novo { background: var(--brand); }
@@ -24346,12 +24239,8 @@ export default function App() {
         .title-row { font-size: 30px; line-height: 1.1; margin-bottom: 6px; }
         .title-plain, .title-accent { font-family: var(--font-sans); font-style: normal; font-weight: 400; letter-spacing: -0.02em; color: var(--text); }
         .obra-meta { font-size: 13px; color: var(--text-soft); margin-bottom: 22px; }
-        .ini-nome { font-size: 30px; font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; }
-        .ini-data { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--text-mute); }
-        .ini-recado { font-size: 15px; color: var(--text-soft); }
-        .ini-titulo, .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .escopo-nome, .assinatura-titulo, .vazio-titulo, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
-        .ini-titulo, .gc-bloco-titulo { font-size: 18px; }
-        .ini-titulo { padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line-1); }
+        .gc-bloco-titulo, .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .escopo-nome, .assinatura-titulo, .vazio-titulo, .compras-empty-title { font-family: var(--font-sans); font-weight: 400; letter-spacing: -0.01em; color: var(--text); }
+        .gc-bloco-titulo { font-size: 18px; }
         .flat-panel-title, .form-solicitacao-title, .cad-h, .ac-bloco-t, .arq-bloco-tit, .ad-cab-nome, .assinatura-titulo { font-size: 16px; }
         .escopo-nome { font-size: 22px; }
         .gc-bloco-head, .arq-bloco-h { padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
@@ -24407,11 +24296,11 @@ export default function App() {
            mantêm o tamanho e herdam só a linguagem. */
         :is(.form-input, .form-select, .detalhe-texto) { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
         .estouro-campos textarea, .estouro-campos input, .campo input { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
-        :is(.entrega-input, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit) { border-color: var(--line-2); border-radius: 8px; background-color: var(--field); color: var(--text); transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
-        :is(.form-input, .form-select, .detalhe-texto, .entrega-input, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit, .ad-obs):focus,
+        :is(.ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit) { border-color: var(--line-2); border-radius: 8px; background-color: var(--field); color: var(--text); transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
+        :is(.form-input, .form-select, .detalhe-texto, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit, .ad-obs):focus,
         .estouro-campos textarea:focus, .estouro-campos input:focus, .campo input:focus { outline: none; border-color: var(--brand); background-color: var(--surface-1); box-shadow: 0 0 0 3px var(--ring); }
         :is(.form-input, .form-select, .detalhe-texto, .ad-obs)::placeholder { color: var(--text-mute); }
-        :is(.form-input, .form-select, .entrega-input):disabled { opacity: 0.5; cursor: not-allowed; }
+        :is(.form-input, .form-select):disabled { opacity: 0.5; cursor: not-allowed; }
         select.form-input, .form-select, .casa-sel { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px; }
         .casa-sel { padding-right: 22px; background-position: right 6px center; background-size: 10px; }
 
@@ -24446,31 +24335,24 @@ export default function App() {
         .ad-tag.reprovado.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
         /* ---------- Selos (Badge): mono, caixa alta, tom suave ---------- */
-        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .contrato-pill, .contrato-blocked, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-avulso, .tag-separado, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .vend-nao-vendido, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .ini-passo-chip, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
+        :is(.pill, .sg-badge, .conf-badge, .gc-selo, .contrato-pill, .contrato-blocked, .chip, .aloc, .tipo-tag, .tag-aditivo, .chip-aditivo, .grp-aditivo, .cmv-tag-adit, .tag-avulso, .tag-separado, .tag-mo, .tag-troca, .tag-alterado, .tag-preco, .tag-excluido, .tag-na, .cmv-tag-na, .cmv-tag-fora, .cmv-provisorio, .arq-fase, .eq-tag-inativo, .vend-nao-vendido, .det-selo-vai, .det-selo-fora, .soon, .obra-fictitious, .grp-avulsos, .estouro-tag) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.5; border-radius: 999px; }
         :is(.vend-nao-vendido, .soon, .obra-fictitious, .eq-tag-inativo) { background: var(--surface-2); border: 1px solid var(--line-1); color: var(--text-soft); }
-        :is(.nav-count, .grp-conta, .vend-count, .ini-conta, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        :is(.nav-count, .grp-conta, .vend-count, .arq-bloco-n, .ad-obra-n, .loc-conta) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         .ad-obra-n { background: var(--brand); color: var(--bg); }
-        .ini-fase-pilula { padding: 2px 9px; border: 1px solid var(--line-1); border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-size: 11px; font-weight: 600; }
-        .ini-fase-pilula.azul { border-color: transparent; background: var(--brand-soft); color: var(--brand); }
 
         /* ---------- Cartões e números (Card · KPI) ---------- */
-        :is(.ini-cel, .dobra-card, .dash-hero, .dash-card, .dash-atencao, .big-card, .gc-total, .flat-panel) { border-radius: 14px; }
-        :is(.ini-cel, .dobra-card, .dash-hero, .dash-card, .big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
-        .ini-cel { padding: 16px 18px; }
-        :is(.ini-cel-rot, .ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .campo-rotulo, .conf-col-label, .dash-proximo-tit, .ad-prev-h, .sugestoes-titulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
+        :is(.big-card, .gc-total, .flat-panel) { border-radius: 14px; }
+        :is(.big-card, .gc-total) { border-color: var(--line-1); background: var(--surface-1); }
+        :is(.ec-rot, .dash-rot, .big-card-label, .mini-stat-label, .saldo-rotulo, .cmv-rotulo, .cmv-grupos-titulo, .grp-tot-rot, .mh-rot, .mh-sub, .gc-total-rot, .equipe-rotulo, .campo-rotulo, .conf-col-label, .ad-prev-h, .sugestoes-titulo, .detalhe-topo, .resumo-label, .ad-busca-rot, .det-escolha-rot, .cf-tit, .ac-sub) { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .ad-cab label, .ad-item-campos label, .cad-campos label, .det-codigos label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
-        :is(.ini-cel-val, .ec-val, .dash-num-val, .big-card-value, .mini-stat-value, .bucket-num, .conf-stat-num, .funil-n, .pipe-count, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor, .plano-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-        .dash-aditivos .dash-adit-saldo { font-weight: 300; letter-spacing: -0.02em; }
-        .dash-anel-txt { font-family: var(--font-sans); font-weight: 300; }
+        :is(.ec-val, .big-card-value, .mini-stat-value, .bucket-num, .conf-stat-num, .funil-n, .cf-n, .mo-num-val, .mo-escopo-val, .gc-total-val, .arq-topo-n, .cmv-valor, .saldo-valor, .plano-valor) { font-family: var(--font-sans); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
         /* Valor em dinheiro nunca pode sair cortado: o tamanho acompanha a
            largura da tela em vez de estourar a caixa com reticencias. */
-        .ini-cel-val { font-size: clamp(18px, 1.55vw, 26px); line-height: 1.1; margin-top: 6px; }
-        .ini-passo-chip { padding: 1px 7px; font-size: 9.5px; letter-spacing: 0.02em; }
         .ec-val, .big-card-value, .cmv-valor { font-size: 26px; }
-        .dash-num-val, .gc-total-val { font-size: 32px; }
+        .gc-total-val { font-size: 32px; }
         .mini-stat-value, .saldo-valor, .plano-valor { font-size: 20px; }
         .saldo-bloco.destaque .saldo-valor { font-size: 24px; }
-        .bucket-num, .conf-stat-num, .pipe-count, .cf-n { font-size: 30px; }
+        .bucket-num, .conf-stat-num, .cf-n { font-size: 30px; }
         .funil-n, .mo-num-val { font-size: 22px; }
         .mo-escopo-val { font-size: 24px; }
         .arq-topo-n { font-size: 36px; }
@@ -24490,8 +24372,8 @@ export default function App() {
            Amarelo sobre amarelo claro não passa no contraste. */
         :is(.aviso-monday, .aviso-banco, .aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-box) { background: var(--warning-soft); border: 1px solid var(--warning-line); border-radius: 10px; color: var(--text); }
         :is(.aviso-pobre, .aviso-migracao, .gc-nota-semdata, .eq-migracao, .pf-topo) svg { color: var(--warning); }
-        :is(.compras-alerta, .import-erro, .estouro-aviso) { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
-        :is(.compras-alerta, .import-erro, .estouro-aviso) svg { color: var(--danger); }
+        :is(.import-erro, .estouro-aviso) { background: var(--danger-soft); border: 1px solid var(--danger-line); border-radius: 10px; color: var(--text); }
+        :is(.import-erro, .estouro-aviso) svg { color: var(--danger); }
         :is(.import-ok, .assoc-resultado.ok) { background: var(--success-soft); border: 1px solid var(--success-line); border-radius: 10px; color: var(--text); }
         :is(.import-ok, .assoc-resultado.ok) svg { color: var(--success); }
         .pf-topo, .pf-nota, .aviso-pobre-sub { color: var(--text); }
@@ -24508,9 +24390,8 @@ export default function App() {
         .escolha-aba, .empty-note { color: var(--text-mute); }
 
         /* ---------- Progresso (Progress) ---------- */
-        .progress-track, .frente-barra, .gc-track, .cmv-linha-barra, .cbar-track, .dash-barra { height: 6px; border-radius: 999px; background: var(--surface-3); }
+        .progress-track, .gc-track, .cmv-linha-barra, .cbar-track { height: 6px; border-radius: 999px; background: var(--surface-3); }
         .progress-fill { height: 100%; border-radius: 999px; background: var(--brand); }
-        .frente-fill { background: var(--brand); }
         .cbar-vendido, .cbar-exec { height: 6px; border-radius: 999px; }
 
         /* ---------- Etapas (WizardSteps) ---------- */
@@ -24533,10 +24414,6 @@ export default function App() {
         .detalhe-fundo { background: var(--overlay-strong); backdrop-filter: var(--overlay-blur); -webkit-backdrop-filter: var(--overlay-blur); }
         .detalhe-caixa { padding: 20px 24px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--surface-1); box-shadow: var(--shadow-4); animation: dialog-fade-in 0.2s ease-out; }
         /* ---------- Jornada da obra: arquivos de cada fase ---------- */
-        .jornada-expandir { display: inline-flex; align-items: center; gap: 4px; margin-right: -8px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; font-family: var(--font-sans); font-size: 12.5px; font-weight: 600; letter-spacing: 0; color: var(--brand); cursor: pointer; transition: background 0.15s ease; }
-        .jornada-expandir:hover { background: var(--brand-soft); }
-        .jornada-expandir svg { transition: transform 0.15s ease; }
-        .jornada-expandir.aberta svg { transform: rotate(180deg); }
         .jornada-anexos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line-1); }
         .jornada-grupo-rot { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-mute); }
         .jornada-grupo-nota { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-sans); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
@@ -24629,18 +24506,17 @@ export default function App() {
           .barra-etapa { flex-wrap: wrap; gap: 8px 12px; }
           .be-dir { flex-wrap: wrap; flex-shrink: 1; min-width: 0; }
           .title-row { flex-wrap: wrap; gap: 8px; }
-          .sel-barra-topo, .dash-atalhos, .filter-bar { flex-wrap: wrap; }
+          .sel-barra-topo, .filter-bar { flex-wrap: wrap; }
 
           /* Os grupos da obra rolam dentro da propria faixa, como as abas ja'
              faziam. Quebrar em duas linhas partiria a pastilha no meio. */
 
           /* Grade de varias colunas vira uma so'. Em 375px, duas colunas nao
              sao duas colunas: sao duas fitas de uma palavra por linha. */
-          .dobra-colunas, .dobra-regua, .dash, .ad-wrap, .ad-cab, .conf-cols,
+          .dash, .ad-wrap, .ad-cab, .conf-cols,
           .escopo-conta, .escopo-campos, .confronto-placar, .ger-placar,
           .sol-campos, .assinatura-campos, .form-row-3, .cad-campos,
-          .ad-item-campos, .ad-item-campos.com-custo, .import-row,
-          .ini-colunas, .ini-regua {
+          .ad-item-campos, .ad-item-campos.com-custo, .import-row {
             /* minmax(0, 1fr) e nao 1fr: item de grid nasce com
                min-width auto, e com isso se RECUSA a encolher abaixo do
                proprio conteudo. Na Inicio, as duas colunas viravam uma so'

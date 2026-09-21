@@ -40,7 +40,7 @@ function Percentage({ value, label }) {
   </div>;
 }
 
-export default function DashboardPage({ rows, loading, error, onRetry, onOpen, extraAlerts = [] }) {
+export default function DashboardPage({ title = "Visão geral das obras", rows, loading, error, onRetry, onOpen, extraAlerts = [] }) {
   const [filters, setFilters] = useState(() => {
     const query = new URLSearchParams(window.location.search);
     return { unit: query.get("dash-unit") || "all", squad: query.get("dash-squad") || "all", gc: "all", search: "", order: query.get("dash-order") || "risk" };
@@ -92,7 +92,7 @@ export default function DashboardPage({ rows, loading, error, onRetry, onOpen, e
     { label: "Valor pendente de compra", value: money(pending), hint: `de ${money(material)} em material`, icon: CircleDollarSign, tone: "brand", action: () => { setScope("purchase"); reveal(projectsRef); } },
     { label: "Pendências críticas", value: String(critical.length), hint: "requerem atenção imediata", icon: TriangleAlert, tone: "danger", action: () => { setShowAlerts(true); reveal(alertsRef); } },
   ];
-  return <PageShell title="Visão geral das obras" description="Acompanhe prazos, compras e pontos críticos da operação." contentClassName="flex flex-col gap-6">
+  return <PageShell title={title} description="Acompanhe prazos, compras e pontos críticos da operação." contentClassName="flex flex-col gap-6">
     <div className="grid grid-cols-1 gap-4 md:grid-cols-4" aria-label="Filtros do dashboard">
       <Choice label="Unidade" value={filters.unit} values={options(rows, "unit")} onChange={(value) => update("unit", value)} />
       <Choice label="Squad" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} />
