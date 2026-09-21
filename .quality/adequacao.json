@@ -862,34 +862,6 @@
       "linha": 104,
       "trecho": ".from(\"obra_dados\")",
       "impressao": "6031e2fef247d69b"
-    },
-    {
-      "regra": "VH-06",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 641,
-      "trecho": "app.post(\"/api/vendido/parse\", express.raw({ type: \"*/*\", limit: \"30mb\" }), async (req, res) => {",
-      "impressao": "419ac603cff39f4f"
-    },
-    {
-      "regra": "VH-06",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 696,
-      "trecho": "app.post(\"/api/sienge/texto\",",
-      "impressao": "00555ec07169e82d"
-    },
-    {
-      "regra": "VH-06",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 792,
-      "trecho": "app.post(\"/api/executivo/parse\", express.raw({ type: \"*/*\", limit: \"30mb\" }), async (req, res) => {",
-      "impressao": "df1a75b7f41f4aa0"
-    },
-    {
-      "regra": "VH-06",
-      "arquivo": "web/api/_lib/mondayApp.js",
-      "linha": 899,
-      "trecho": "app.post(\"/api/sienge/solicitacao\", exigirObra((req) => req.body?.buildingId), async (req, res) => {",
-      "impressao": "5fe4a1f3a21f4f5e"
     }
   ],
   "atualizadaEm": "2026-09-21"

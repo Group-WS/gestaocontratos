@@ -30,17 +30,20 @@ const BASE_URL = process.env.SIENGE_BASE_URL || "https://api.sienge.com.br";
 const SUBDOMAIN = process.env.SIENGE_SUBDOMAIN || "ws";
 const TIMEOUT_PADRAO_MS = 30_000;
 
+/* O que a tela diz quando falta a credencial. Sem nome de variavel nem
+   caminho de arquivo: isso e' detalhe de quem publica (ver web/.env.example),
+   e nao serve pra quem esta comprando (SEG-33). */
+const SEM_CONFIGURACAO = {
+  mensagem: "A integração com o Sienge não está configurada neste ambiente.",
+  comoResolver: "Isto é configuração do sistema, não algo que dê pra resolver na tela. " +
+    "Avise quem cuida do sistema. Nada foi enviado ao Sienge.",
+};
+
 function autorizacao() {
   const usuario = process.env.SIENGE_USERNAME;
   const senha = process.env.SIENGE_PASSWORD;
   if (!usuario || !senha) {
-    throw erroSienge(
-      "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
-      "SIENGE_NOT_CONFIGURED", 503,
-      "Isto é configuração do sistema, não algo que dê pra resolver na tela. " +
-      "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD " +
-      "(em desenvolvimento, no monday-proxy/.env; em produção, nas variáveis da Vercel). " +
-      "Nada foi enviado ao Sienge.");
+    throw erroSienge(SEM_CONFIGURACAO.mensagem, "SIENGE_NOT_CONFIGURED", 503, SEM_CONFIGURACAO.comoResolver);
   }
   return "Basic " + Buffer.from(`${usuario}:${senha}`).toString("base64");
 }
@@ -74,17 +77,18 @@ function erroSienge(mensagem, code, statusCode, comoResolver) {
    corpo do erro em vez de parar em "HTTP 422" como o original.
    `developerMessage` fica de fora: é chave de i18n do Sienge
    ("adc.message.solicitacao.insumo.ja.existe"), não serve pra quem está
-   comprando. */
+   comprando. Pelo mesmo motivo ficam de fora o `message` genérico e o
+   corpo cru (página de erro, stack): só sobe o que o Sienge escreveu PARA
+   a pessoa (SEG-33). */
 function mensagemDoSienge(corpo, status) {
   if (corpo && typeof corpo === "object") {
-    if (corpo.clientMessage) return corpo.clientMessage;
-    if (Array.isArray(corpo.errors) && corpo.errors.length) {
-      return corpo.errors.map((e) => e.clientMessage || e.message || String(e)).join(" · ");
+    if (corpo.clientMessage) return String(corpo.clientMessage).slice(0, 1000);
+    if (Array.isArray(corpo.errors)) {
+      const paraPessoa = corpo.errors.map((e) => e && e.clientMessage).filter(Boolean);
+      if (paraPessoa.length) return paraPessoa.join(" · ").slice(0, 1000);
     }
-    if (corpo.message) return corpo.message;
   }
-  if (typeof corpo === "string" && corpo.trim()) return corpo.trim().slice(0, 500);
-  return `O Sienge respondeu ${status} sem explicar o motivo.`;
+  return `O Sienge recusou a operação (código ${status}) sem explicar o motivo.`;
 }
 
 /**
@@ -126,9 +130,11 @@ async function chamarSienge(metodo, caminho, corpo, opcoes = {}, tentativa = 0) 
         "MAS confira antes, em Suprimentos > Solicitações de Compra, se a solicitação chegou a ser criada: " +
         "o pedido pode ter entrado mesmo sem a resposta voltar. Se repetir, avise quem cuida da integração.");
     }
-    // Rede: o Sienge não respondeu. Nada foi decidido do lado de lá.
+    // Rede: o Sienge não respondeu. Nada foi decidido do lado de lá. A
+    // mensagem crua (DNS, TLS, endereço) vai só pro log, sem o endereço.
+    console.error(JSON.stringify({ level: "error", event: "sienge_rede", erro: err?.code || err?.name || "Error" }));
     throw erroSienge(
-      `Não foi possível falar com o Sienge: ${err.message}`,
+      "Não foi possível falar com o Sienge.",
       "SIENGE_REDE", 502,
       "O servidor não conseguiu alcançar o Sienge — pode ser a internet daqui ou o Sienge fora do ar. " +
       "Tente de novo em alguns minutos; se continuar, avise quem cuida da integração. " +
@@ -183,4 +189,4 @@ function idCriado(resposta) {
   return m ? Number(m[1]) : null;
 }
 
-module.exports = { chamarSienge, siengeConfigurado, idCriado, mensagemDoSienge };
+module.exports = { chamarSienge, siengeConfigurado, idCriado, mensagemDoSienge, SEM_CONFIGURACAO };

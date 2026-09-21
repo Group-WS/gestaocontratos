@@ -13,7 +13,7 @@ process.env.MONDAY_API_TOKEN = "synthetic-test-value";
 
 (async () => {
   try {
-    for (const path of ["/api/monday/boards", "/api/monday/columns", "/api/vendido/parse", "/api/executivo/parse", "/api/sienge/texto"]) {
+    for (const path of ["/api/monday/obras-execucao", "/api/vendido/parse", "/api/executivo/parse", "/api/sienge/texto"]) {
       const route = app._router.stack.find((layer) => layer.route?.path === path).route;
       const handler = route.stack.at(-1).handle;
       let status;
@@ -22,7 +22,14 @@ process.env.MONDAY_API_TOKEN = "synthetic-test-value";
         status(value) { status = value; return this; },
         json(value) { payload = value; return this; },
       };
-      await handler({ query: { boardId: "1" }, body: Buffer.from("invalid PDF") }, res);
+      // O handler final recebe o que os middlewares ja' validaram: o
+      // workspace (zValidator) e o PDF (validarPdf). Aqui chega um "PDF"
+      // que o leitor recusa, pra exercitar a resposta de erro.
+      await handler({
+        valido: { query: { workspaceId: "13339794" } },
+        pdf: Buffer.from("%PDF-1.4 invalid PDF"),
+        body: Buffer.from("%PDF-1.4 invalid PDF"),
+      }, res);
       assert.ok(status >= 400, path);
       assert.equal(typeof payload.error, "string", path);
       assert.match(payload.correlationId, /^[0-9a-f-]{36}$/, path);

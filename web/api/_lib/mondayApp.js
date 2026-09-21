@@ -16,7 +16,10 @@
 const express = require("express");
 const cors = require("cors");
 const { publicError } = require("./publicError.js");
-const { exigirLogin, exigirObra } = require("./auth.js");
+const {
+  exigirLogin, exigirMembro, exigirPerfilDeEdicao, exigirObra, exigirEdicaoDeObra, podeAcessarObra,
+} = require("./auth.js");
+const { zValidator, validarPdf, esquemas, z, LIMITE_PDF_BYTES, LIMITE_PDF_BASE64, PAGINAS_MAX } = require("./validacao.js");
 
 // Importa o miolo do pdf-parse em vez do index.js. O index tem um
 // bloco "modo debug" que dispara quando `module.parent` é vazio: ele
@@ -27,6 +30,8 @@ const { exigirLogin, exigirObra } = require("./auth.js");
 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 const app = express();
+// O cabecalho "X-Powered-By: Express" so' ajuda quem procura falha conhecida.
+app.disable("x-powered-by");
 
 /* Quem pode chamar este backend, de qual endereco.
    `cors()` puro liberava QUALQUER site do mundo a chamar estas rotas com
@@ -55,11 +60,18 @@ app.use(
   })
 );
 
-/* Daqui pra baixo, tudo exige usuario logado. Vem ANTES das rotas de
-   proposito: rota nova nasce protegida, sem ninguem precisar lembrar. */
+/* Daqui pra baixo, tudo exige usuario logado E do time (perfil ativo).
+   Vem ANTES das rotas de proposito: rota nova nasce protegida, sem
+   ninguem precisar lembrar. */
 app.use(exigirLogin);
+app.use(exigirMembro);
 
-app.use(express.json());
+/* JSON em todas as rotas, com limite — menos na leitura de PDF do Sienge,
+   que tem o proprio leitor com o limite do arquivo em base64. Antes o
+   leitor global (100 KB) rodava primeiro e recusava o base64 de qualquer
+   PDF acima de ~75 KB, antes de a rota ter a chance de ler. */
+const jsonPadrao = express.json({ limit: "1mb" });
+app.use((req, res, next) => (req.path === "/api/sienge/texto" ? next() : jsonPadrao(req, res, next)));
 
 const MONDAY_API_URL = "https://api.monday.com/v2";
 
@@ -102,168 +114,35 @@ async function mondayQuery(query, variables = {}) {
   return json.data;
 }
 
-/**
- * GET /api/monday/boards
- * GET /api/monday/boards?workspaceId=13339794
- * Lista os boards da conta (ou de um workspace específico) — use
- * isso pra descobrir o ID do board de obras / squad.
- */
-app.get("/api/monday/boards", async (req, res) => {
-  const { workspaceId } = req.query;
-  try {
-    const data = await mondayQuery(
-      workspaceId
-        ? `query ($workspaceId: [ID!]) {
-            boards(workspace_ids: $workspaceId, limit: 50) { id name items_count }
-          }`
-        : `query { boards(limit: 50) { id name items_count } }`,
-      workspaceId ? { workspaceId: [workspaceId] } : {}
-    );
-    res.json(data.boards);
-  } catch (err) {
-    publicError(res, err);
-  }
-});
-
-/**
- * GET /api/monday/columns?boardId=XXXX
- * Lista as colunas de um board — use isso pra descobrir o ID da
- * coluna de Status e da coluna de GC responsável (People ou texto).
- */
-app.get("/api/monday/columns", async (req, res) => {
-  const { boardId } = req.query;
-  if (!boardId) return res.status(400).json({ error: "boardId é obrigatório" });
-  try {
-    const data = await mondayQuery(
-      `query ($boardId: [ID!]) {
-        boards(ids: $boardId) {
-          columns { id title type }
-        }
-      }`,
-      { boardId: [boardId] }
-    );
-    res.json(data.boards[0]?.columns || []);
-  } catch (err) {
-    publicError(res, err);
-  }
-});
-
-/**
- * GET /api/monday/obras?boardId=XXXX&statusColumnId=status&gcColumnId=people&statusValue=Em execução&groupId=XXXX
+/* As obras do Monday, squad por squad.
  *
- * Retorna a listagem de obras do board, já no formato que o Confere
- * consome: [{ id, nome, status, gc }]
- *
- * statusColumnId / gcColumnId / statusValue são opcionais: sem eles,
- * a rota devolve TODOS os itens com TODAS as colunas, pra você
- * conseguir identificar visualmente o que é o quê antes de fixar
- * os IDs certos no .env ou na chamada do Confere.
- *
- * groupId é opcional: use se "squad" for um GRUPO (swimlane) dentro
- * do mesmo board de obras, em vez de um board separado.
- */
-app.get("/api/monday/obras", async (req, res) => {
-  const { boardId, statusColumnId, gcColumnId, statusValue, groupId } = req.query;
-  if (!boardId) return res.status(400).json({ error: "boardId é obrigatório" });
+ * Esta e' a UNICA rota do Monday que o app usa (a lista de obras de cada
+ * squad, na barra lateral). As rotas de "descoberta" que existiam aqui —
+ * /boards, /columns, /obras, /workspaces e o modo ?full=1&debug=1 desta
+ * mesma rota — serviram pra achar os IDs quando a integracao nasceu, e
+ * depois ficaram abertas a qualquer pessoa logada: com elas dava pra ler
+ * a conta INTEIRA do Monday (todo board, toda coluna) com o token do
+ * servidor, e o ?full=1 montava regex com texto vindo da URL. Saem todas.
+ * Precisando descobrir ID de novo, a propria interface do Monday mostra. */
 
-  try {
-    let items = [];
-    let cursor = null;
+/* Os workspaces de cada squad — os mesmos de SQUADS em web/src/App.jsx
+   (o teste api-autorizacao confere que as duas listas batem). Fora destes,
+   a rota recusa: nao e' porta pra listar qualquer workspace da conta. */
+const WORKSPACES_DOS_SQUADS = new Set(["13339794", "14451479", "13339790"]);
 
-    do {
-      const data = await mondayQuery(
-        cursor
-          ? `query ($cursor: String!) {
-              next_items_page(cursor: $cursor, limit: 100) {
-                cursor
-                items { id name group { id title } column_values { id type text } }
-              }
-            }`
-          : groupId
-          ? `query ($boardId: [ID!], $groupId: [String!]) {
-              boards(ids: $boardId) {
-                groups(ids: $groupId) {
-                  title
-                  items_page(limit: 100) {
-                    cursor
-                    items { id name group { id title } column_values { id type text } }
-                  }
-                }
-              }
-            }`
-          : `query ($boardId: [ID!]) {
-              boards(ids: $boardId) {
-                items_page(limit: 100) {
-                  cursor
-                  items { id name group { id title } column_values { id type text } }
-                }
-              }
-            }`,
-        cursor ? { cursor } : groupId ? { boardId: [boardId], groupId: [groupId] } : { boardId: [boardId] }
-      );
-
-      const page = cursor
-        ? data.next_items_page
-        : groupId
-        ? data.boards[0]?.groups[0]?.items_page
-        : data.boards[0]?.items_page;
-      items = items.concat(page.items);
-      cursor = page.cursor;
-    } while (cursor);
-
-    const obras = items.map((it) => {
-      const colMap = {};
-      it.column_values.forEach((c) => { colMap[c.id] = c.text; });
-      return {
-        id: it.id,
-        nome: it.name,
-        grupo: it.group?.title,
-        status: statusColumnId ? colMap[statusColumnId] : undefined,
-        gc: gcColumnId ? colMap[gcColumnId] : undefined,
-        colunas: statusColumnId && gcColumnId ? undefined : colMap, // debug: mostra tudo se ainda não sabemos os IDs
-      };
-    });
-
-    const filtradas = statusValue
-      ? obras.filter((o) => (o.status || "").toLowerCase() === statusValue.toLowerCase())
-      : obras;
-
-    res.json(filtradas);
-  } catch (err) {
-    publicError(res, err);
-  }
-});
+const queryObrasExecucao = z.object({
+  workspaceId: z.string().refine((id) => WORKSPACES_DOS_SQUADS.has(id)),
+}).strict();
 
 /**
  * GET /api/monday/obras-execucao?workspaceId=13339790
  *
- * Cada board dentro do workspace é uma obra (ex: "2281 - TKWS").
- * Dentro do board, procura o grupo "Planejamento de obra" e lê a
- * coluna "GC responsável" do item que está lá.
- *
- * Parâmetros opcionais:
- *   grupoNome    — trecho (regex, case-insensitive) do título do grupo. Padrão: "planejamento"
- *   gcColunaNome — trecho (regex, case-insensitive) do título da coluna. Padrão: "gc respons"
- *
- * Devolve também `colunas` com TODAS as colunas do item encontrado —
- * use isso pra identificar o nome exato da coluna de status da obra
- * (ex: "Em execução"), que ainda não foi confirmado.
+ * Cada board dentro do workspace é uma obra (ex: "2281 - TKWS"). Devolve
+ * a listagem ENXUTA (id + código + nome dos boards): é o que a sidebar
+ * precisa e tem complexidade mínima na API do Monday (rápido).
  */
-app.get("/api/monday/obras-execucao", async (req, res) => {
-  const {
-    workspaceId,
-    grupoNome = "planejamento",
-    gcColunaNome = "g\\.?c.*respons", // casa "G.C Responsável" (com o ponto)
-    debug, // ?debug=1 devolve também o objeto `colunas` cru pra inspeção
-  } = req.query;
-  if (!workspaceId) return res.status(400).json({ error: "workspaceId é obrigatório" });
-
-  // Por padrão a listagem é ENXUTA (só id + nome dos boards): é o que a
-  // sidebar precisa e tem complexidade mínima na API do Monday (rápido).
-  // Com ?full=1 traz também colunas macro (GC, status, CMV) do item do
-  // grupo "Planejamento" — mais pesado, use só quando precisar do detalhe.
-  const full = req.query.full === "1" || req.query.full === "true";
-
+app.get("/api/monday/obras-execucao", zValidator("query", queryObrasExecucao), async (req, res) => {
+  const { workspaceId } = req.valido.query;
   try {
     // Boards "Subelementos de ..." são metadados internos do Monday (subitens),
     // não são obras — ficam de fora da listagem.
@@ -274,100 +153,16 @@ app.get("/api/monday/obras-execucao", async (req, res) => {
       return { codigo: m ? m[1] : null, nome: m ? m[2].trim() : fullName };
     };
 
-    if (!full) {
-      const data = await mondayQuery(
-        `query ($workspaceIds: [ID]) {
-          boards(workspace_ids: $workspaceIds, limit: 200) { id name }
-        }`,
-        { workspaceIds: [workspaceId] }
-      );
-      const obras = data.boards
-        .filter((b) => !isSubelementos(b.name))
-        .map((b) => ({ boardId: b.id, ...parseNome(b.name), obra: b.name }));
-      return res.json(obras);
-    }
-
-    // caminho completo (?full=1): colunas macro do item de "Planejamento"
     const data = await mondayQuery(
       `query ($workspaceIds: [ID]) {
-        boards(workspace_ids: $workspaceIds, limit: 200) {
-          id
-          name
-          columns { id title }
-          groups {
-            id
-            title
-            items_page(limit: 1) {
-              items { id name column_values { id text } }
-            }
-          }
-        }
+        boards(workspace_ids: $workspaceIds, limit: 200) { id name }
       }`,
       { workspaceIds: [workspaceId] }
     );
-
-    const grupoRegex = new RegExp(grupoNome, "i");
-    const gcRegex = new RegExp(gcColunaNome, "i");
-    const pick = (colunas, re) => {
-      const key = Object.keys(colunas).find((k) => re.test(k));
-      return key ? colunas[key] : null;
-    };
-
     const obras = data.boards
-      .filter((board) => !isSubelementos(board.name))
-      .map((board) => {
-        const colTitleById = {};
-        board.columns.forEach((c) => { colTitleById[c.id] = c.title; });
-
-        const grupo = board.groups.find((g) => grupoRegex.test(g.title));
-        const item = grupo?.items_page?.items?.[0];
-
-        const colunas = {};
-        if (item) {
-          item.column_values.forEach((cv) => {
-            const title = colTitleById[cv.id] || cv.id;
-            colunas[title] = cv.text;
-          });
-        }
-
-        const { codigo, nome } = parseNome(board.name);
-        const obra = {
-          boardId: board.id,
-          codigo,
-          nome,
-          obra: board.name,
-          grupoEncontrado: grupo ? grupo.title : null,
-          gcResponsavel: pick(colunas, gcRegex),
-          statusObra: pick(colunas, /status\s*obra/i),
-          statusAquisicao: pick(colunas, /status\s*aquisi/i),
-          comercialResp: pick(colunas, /comercial\s*resp/i),
-          localizacao: pick(colunas, /local/i),
-          cmvOrcado: pick(colunas, /cmv\s*or[çc]ado/i),
-          cmvLiberado: pick(colunas, /cmv\s*liberado/i),
-          realizado: pick(colunas, /^realizado$/i),
-          avanco: pick(colunas, /%\s*geral\s*de\s*avan/i),
-        };
-        if (debug) obra.colunas = colunas;
-        return obra;
-      });
-
+      .filter((b) => !isSubelementos(b.name))
+      .map((b) => ({ boardId: b.id, ...parseNome(b.name), obra: b.name }));
     res.json(obras);
-  } catch (err) {
-    publicError(res, err);
-  }
-});
-
-/**
- * GET /api/monday/workspaces
- * Lista os workspaces da conta — use pra descobrir o ID do workspace
- * de cada squad (Sun / Moon / Comet).
- */
-app.get("/api/monday/workspaces", async (req, res) => {
-  try {
-    const data = await mondayQuery(
-      `query { workspaces(limit: 100) { id name kind } }`
-    );
-    res.json(data.workspaces);
   } catch (err) {
     publicError(res, err);
   }
@@ -388,8 +183,16 @@ function parseBRLnum(s) {
 
 // remove resíduo de valores/coluna que vazou pro fim da descrição (ex:
 // item sem custo real, onde a linha de "-R$ -R$ -R$" acaba grudando).
+//
+// Só a CAUDA passa pela regex: ancorada no fim, ela recomeça a busca em
+// cada posição do texto, e numa linha de 1 MB (PDF montado pra isso) o
+// custo virava minutos de CPU. O resíduo mora nos últimos caracteres.
+const CAUDA_DA_DESCRICAO = 400;
 function limparDescResidual(desc) {
-  return String(desc || "").replace(/\s*[\d.,\-]*\s*R\$[\sR$\d.,\-]*$/i, "").trim();
+  const s = String(desc || "");
+  const corte = Math.max(0, s.length - CAUDA_DA_DESCRICAO);
+  const cauda = s.slice(corte).replace(/\s*[\d.,\-]*\s*R\$[\sR$\d.,\-]*$/i, "");
+  return (s.slice(0, corte) + cauda).trim();
 }
 
 function parseVendidoTexto(texto) {
@@ -639,10 +442,16 @@ function parseVendidoTexto(texto) {
  * Corpo = o arquivo PDF do Vendido (application/pdf). Devolve
  * { verbas: [{num, nome, valor}], itens: [{verba, codigo, desc, qtd, un, ambiente}] }.
  */
-app.post("/api/vendido/parse", express.raw({ type: "*/*", limit: "30mb" }), async (req, res) => {
+/* Os leitores de PDF servem a quem importa planilha — quem edita obra.
+   O corpo e' o arquivo cru: o que se confere e' tipo, tamanho e a
+   assinatura %PDF- (validarPdf), e o leitor para em PAGINAS_MAX. */
+const pdfCru = express.raw({ type: "*/*", limit: LIMITE_PDF_BYTES });
+const lerPdf = (buf) => pdfParse(buf, { max: PAGINAS_MAX });
+
+// gate-allow VH-06: o corpo é o PDF binário, conferido por validarPdf (tipo, tamanho e assinatura %PDF-)
+app.post("/api/vendido/parse", exigirPerfilDeEdicao, pdfCru, validarPdf, async (req, res) => {
   try {
-    if (!req.body || !req.body.length) return res.status(400).json({ error: "Envie o PDF no corpo da requisição." });
-    const data = await pdfParse(req.body);
+    const data = await lerPdf(req.pdf);
     const resultado = parseVendidoTexto(data.text);
     res.json({ paginas: data.numpages, ...resultado });
   } catch (err) {
@@ -687,21 +496,31 @@ function erroDePDF(error) {
  * Base64 atravessa qualquer coisa que trate o corpo como texto, ao custo
  * de 33% a mais de bytes. Por isso ele e' a SEGUNDA tentativa, e nao a
  * primeira: arquivo grande continua indo cru. */
-function corpoDoPDF(req) {
-  if (req.body && Buffer.isBuffer(req.body) && req.body.length) return req.body;
-  const b64 = req.body && (req.body.pdfBase64 || req.body.pdf);
-  if (typeof b64 === "string" && b64.length) return Buffer.from(b64, "base64");
-  return null;
+function pdfDoCorpo(req, res, next) {
+  if (Buffer.isBuffer(req.body)) {
+    req.pdf = req.body;
+    // Veio cru: se nao passar na conferencia, o front ainda tenta em base64.
+    req.extraDoErroPdf = { podeBase64: true };
+    return next();
+  }
+  // O JSON so' pode ser { pdfBase64 } — schema do contrato, e nada alem.
+  return zValidator("json", esquemas.pdfEmBase64)(req, res, () => {
+    req.pdf = Buffer.from(req.valido.json.pdfBase64, "base64");
+    next();
+  });
 }
 
+// gate-allow VH-06: o corpo é o PDF (binário ou base64); o JSON passa pelo zValidator em pdfDoCorpo e o arquivo por validarPdf
 app.post("/api/sienge/texto",
-  express.json({ limit: "40mb" }),
-  express.raw({ type: "*/*", limit: "30mb" }),
+  exigirPerfilDeEdicao,
+  // O base64 do maior PDF aceito, com folga para o envelope JSON.
+  express.json({ limit: LIMITE_PDF_BASE64 + 1024 }),
+  pdfCru,
+  pdfDoCorpo,
+  validarPdf,
   async (req, res) => {
     try {
-      const buf = corpoDoPDF(req);
-      if (!buf) return res.status(400).json({ error: "Envie o PDF no corpo da requisição." });
-      const data = await pdfParse(buf);
+      const data = await lerPdf(req.pdf);
       res.json({ paginas: data.numpages, texto: data.text });
     } catch (err) {
       publicError(res, err, { status: 422, message: erroDePDF(err), extra: { podeBase64: true } });
@@ -790,10 +609,10 @@ function parseExecutivoTexto(texto) {
  * Corpo = o PDF do Executivo ("Composição de Custo"). Devolve
  * { verbas: [{num, nome, valor}], itens: [{verba, codigo, desc, qtd, un, custoMaterial, custoMO, custoTotal}] }.
  */
-app.post("/api/executivo/parse", express.raw({ type: "*/*", limit: "30mb" }), async (req, res) => {
+// gate-allow VH-06: o corpo é o PDF binário, conferido por validarPdf (tipo, tamanho e assinatura %PDF-)
+app.post("/api/executivo/parse", exigirPerfilDeEdicao, pdfCru, validarPdf, async (req, res) => {
   try {
-    if (!req.body || !req.body.length) return res.status(400).json({ error: "Envie o PDF no corpo da requisição." });
-    const data = await pdfParse(req.body);
+    const data = await lerPdf(req.pdf);
     const resultado = parseExecutivoTexto(data.text);
     res.json({ paginas: data.numpages, ...resultado });
   } catch (err) {
@@ -813,7 +632,27 @@ app.post("/api/executivo/parse", express.raw({ type: "*/*", limit: "30mb" }), as
  * motivo só: a credencial do ERP não pode viver no navegador.
  * ============================================================ */
 
-const { chamarSienge, siengeConfigurado, idCriado } = require("./sienge.js");
+const { chamarSienge, siengeConfigurado, idCriado, SEM_CONFIGURACAO } = require("./sienge.js");
+
+/* Sem credencial do Sienge neste ambiente: a mesma resposta em toda rota,
+   sem nome de variavel nem caminho de arquivo (SEG-33). */
+const semSienge = (res) => res.status(503).json({
+  error: SEM_CONFIGURACAO.mensagem,
+  comoResolver: SEM_CONFIGURACAO.comoResolver,
+});
+
+/* Erro que nao e' sobre um item. Os do cliente do Sienge (code SIENGE_*)
+   foram escritos pra pessoa — mensagem e o que fazer — e sobem como estao.
+   Qualquer outro e' inesperado: vai pro log com um codigo, e a tela recebe
+   a mensagem padrao (SEG-33). */
+function responderErroSienge(res, err) {
+  if (err && typeof err.code === "string" && err.code.startsWith("SIENGE_")) {
+    return res.status(err.statusCode || 502).json({
+      error: err.message, comoResolver: err.comoResolver || null, code: err.code,
+    });
+  }
+  return publicError(res, err, { status: 502, extra: { comoResolver: null, code: null } });
+}
 
 // Quem assina as solicitações criadas por aqui. Decisão do negócio
 // (ver docs/ADR-003), não um detalhe de implementação: no Sienge, é este
@@ -897,17 +736,16 @@ async function referenciasDoOrcamento(buildingId, unidadeId) {
   return refs;
 }
 
-app.post("/api/sienge/solicitacao", exigirObra((req) => req.body?.buildingId), async (req, res) => {
-  if (!siengeConfigurado()) {
-    return res.status(503).json({
-      error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
-      comoResolver: "Isto é configuração do sistema, não algo que dê pra resolver na tela. " +
-        "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD " +
-        "(em desenvolvimento, no monday-proxy/.env; em produção, nas variáveis da Vercel). " +
-        "Nada foi enviado ao Sienge.",
-    });
-  }
-  const problema = problemaNoPedido(req.body);
+/* Criar solicitacao e' ESCREVER no Sienge em nome da obra: so' quem edita
+   aquela obra (a Mehoo ve todas e nao edita nenhuma). O corpo passa pelo
+   schema do contrato antes de qualquer consulta. */
+app.post("/api/sienge/solicitacao",
+  zValidator("json", esquemas.solicitacaoDeCompra),
+  exigirEdicaoDeObra((req) => req.valido.json.buildingId),
+  async (req, res) => {
+  if (!siengeConfigurado()) return semSienge(res);
+  const pedido = req.valido.json;
+  const problema = problemaNoPedido(pedido);
   if (problema) {
     return res.status(400).json({
       error: `O pedido não passou na conferência antes de sair: ${problema}`,
@@ -918,16 +756,40 @@ app.post("/api/sienge/solicitacao", exigirObra((req) => req.body?.buildingId), a
     });
   }
 
-  const { buildingId, notes, itens } = req.body;
+  const { buildingId, notes, itens } = pedido;
   const data = hojeISO();
 
   /* Reenvio: quando o cliente manda `solicitacaoId`, a solicitação JÁ
      existe no Sienge e só faltam itens nela. Criar outro cabeçalho aqui
      seria a duplicata que todo o resto do desenho existe pra evitar —
      item recusado volta pra MESMA solicitação. */
-  const reenvio = Number.isInteger(req.body.solicitacaoId) ? req.body.solicitacaoId : null;
+  const reenvio = pedido.solicitacaoId ?? null;
 
   try {
+    /* O número do reenvio vem do navegador — e pode ser de OUTRA obra. Sem
+       esta conferência, quem edita a obra A mandava itens para dentro da
+       solicitação da obra B: a checagem de acesso olhava só a obra A, e a
+       API do Sienge não tem DELETE para desfazer. A solicitação tem que
+       existir e ser desta obra; se não for, "não encontrada" (SEG-14). */
+    if (reenvio) {
+      const existente = await chamarSienge("GET", `/purchase-requests/${reenvio}`);
+      if (existente.ok ? Number(existente.body?.buildingId) !== buildingId : existente.status === 404) {
+        return res.status(404).json({
+          error: `A solicitação ${reenvio} não foi encontrada nesta obra.`,
+          comoResolver: "NADA foi enviado. Confira o número da solicitação no Sienge " +
+            "(Suprimentos > Solicitações de Compra) e tente de novo.",
+          etapa: "validacao",
+        });
+      }
+      if (!existente.ok) {
+        return res.status(502).json({
+          error: `Não deu pra conferir a solicitação ${reenvio} no Sienge: ${existente.erro}`,
+          comoResolver: "NADA foi enviado. Tente de novo em alguns minutos.",
+          etapa: "validacao",
+        });
+      }
+    }
+
     /* Confere a apropriação ANTES de criar o cabeçalho — é o que impede a
        solicitação vazia, que não tem como ser apagada depois. */
     const invalidos = [];
@@ -1011,11 +873,7 @@ app.post("/api/sienge/solicitacao", exigirObra((req) => req.body?.buildingId), a
   } catch (err) {
     // Aqui só chega o que não é sobre um item: credencial, timeout, rede.
     // O `comoResolver` vem montado do cliente, que sabe qual foi a causa.
-    res.status(err.statusCode || 502).json({
-      error: err.message,
-      comoResolver: err.comoResolver || null,
-      code: err.code || null,
-    });
+    responderErroSienge(res, err);
   }
 });
 
@@ -1053,6 +911,7 @@ async function carregarInsumosDaObra(buildingId) {
       // Cache do que já veio seria pior que não ter: o modal mostraria
       // meia lista de detalhes como se fosse a lista inteira.
       const e = new Error(`Não deu pra ler os insumos da obra ${buildingId} no Sienge: ${r.erro}`);
+      e.code = "SIENGE_INSUMOS";
       e.statusCode = 502;
       e.comoResolver = "Sem isso dá pra enviar a solicitação assim mesmo, só sem especificar o " +
         "detalhe do produto. Tente de novo em alguns minutos; se persistir, avise quem cuida da integração.";
@@ -1081,17 +940,14 @@ async function carregarInsumosDaObra(buildingId) {
   return porId;
 }
 
-app.get("/api/sienge/insumos/:buildingId", exigirObra((req) => req.params.buildingId), async (req, res) => {
-  if (!siengeConfigurado()) {
-    return res.status(503).json({
-      error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
-      comoResolver: "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD.",
-    });
-  }
-  const buildingId = Number(req.params.buildingId);
-  if (!Number.isInteger(buildingId)) return res.status(400).json({ error: "Obra inválida." });
-
-  const ids = String(req.query.ids || "").split(",").map((n) => Number(n.trim())).filter(Number.isInteger);
+app.get("/api/sienge/insumos/:buildingId",
+  zValidator("param", esquemas.paramObra),
+  zValidator("query", esquemas.queryInsumos),
+  exigirObra((req) => req.valido.param.buildingId),
+  async (req, res) => {
+  if (!siengeConfigurado()) return semSienge(res);
+  const { buildingId } = req.valido.param;
+  const ids = String(req.valido.query.ids || "").split(",").filter(Boolean).map(Number);
   try {
     const porId = await carregarInsumosDaObra(buildingId);
     // Só os insumos pedidos: a obra tem milhares, e o modal precisa de
@@ -1101,11 +957,7 @@ app.get("/api/sienge/insumos/:buildingId", exigirObra((req) => req.params.buildi
       .filter(Boolean);
     res.json({ buildingId, insumos, naoEncontrados: ids.filter((id) => !porId.has(id)) });
   } catch (err) {
-    res.status(err.statusCode || 502).json({
-      error: err.message,
-      comoResolver: err.comoResolver || null,
-      code: err.code || null,
-    });
+    responderErroSienge(res, err);
   }
 });
 
@@ -1127,15 +979,12 @@ app.get("/api/sienge/insumos/:buildingId", exigirObra((req) => req.params.buildi
  * Por isso a unidade passou a vir DAQUI, da obra de destino, e não do
  * cadastro.
  */
-app.get("/api/sienge/obra/:buildingId/unidades", exigirObra((req) => req.params.buildingId), async (req, res) => {
-  if (!siengeConfigurado()) {
-    return res.status(503).json({
-      error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
-      comoResolver: "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD.",
-    });
-  }
-  const buildingId = Number(req.params.buildingId);
-  if (!Number.isInteger(buildingId)) return res.status(400).json({ error: "Obra inválida." });
+app.get("/api/sienge/obra/:buildingId/unidades",
+  zValidator("param", esquemas.paramObra),
+  exigirObra((req) => req.valido.param.buildingId),
+  async (req, res) => {
+  if (!siengeConfigurado()) return semSienge(res);
+  const { buildingId } = req.valido.param;
 
   try {
     const r = await chamarSienge("GET", `/building-cost-estimations/${buildingId}/sheets?limit=50`);
@@ -1153,9 +1002,7 @@ app.get("/api/sienge/obra/:buildingId/unidades", exigirObra((req) => req.params.
     }));
     res.json({ buildingId, unidades });
   } catch (err) {
-    res.status(err.statusCode || 502).json({
-      error: err.message, comoResolver: err.comoResolver || null, code: err.code || null,
-    });
+    responderErroSienge(res, err);
   }
 });
 
@@ -1169,18 +1016,9 @@ app.get("/api/sienge/obra/:buildingId/unidades", exigirObra((req) => req.params.
  *
  * Aqui a pergunta é feita a quem sabe. O Sienge é a fonte da verdade
  * sobre as solicitações dele — o registro local é só o nosso rastro. */
-app.get("/api/sienge/solicitacao/:id", async (req, res) => {
-  if (!siengeConfigurado()) {
-    return res.status(503).json({
-      error: "As credenciais de acesso ao Sienge não estão configuradas neste ambiente.",
-      comoResolver: "Peça a quem cuida do ambiente pra definir SIENGE_USERNAME e SIENGE_PASSWORD " +
-        "(em desenvolvimento, no monday-proxy/.env; em produção, nas variáveis da Vercel).",
-    });
-  }
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    return res.status(400).json({ error: "Número de solicitação inválido." });
-  }
+app.get("/api/sienge/solicitacao/:id", zValidator("param", esquemas.paramSolicitacao), async (req, res) => {
+  if (!siengeConfigurado()) return semSienge(res);
+  const { id } = req.valido.param;
 
   try {
     const solicitacao = await chamarSienge("GET", `/purchase-requests/${id}`);
@@ -1204,6 +1042,14 @@ app.get("/api/sienge/solicitacao/:id", async (req, res) => {
        este app está no nosso próprio registro (sienge_solicitacao), que é
        quem a tela usa pra mostrar o conteúdo. */
     const c = solicitacao.body || {};
+    /* O número vem da URL: qualquer um de quem está logado. Sem esta
+       conferência, um laço sobre os números lia obra, observações e autor
+       de todas as solicitações da empresa. A solicitação é da obra dela:
+       quem não vê a obra recebe "não encontrada" — e não `existe: false`,
+       que liberaria o reenvio (SEG-11, SEG-14). */
+    if (!(await podeAcessarObra(req, c.buildingId))) {
+      return res.status(404).json({ error: "Solicitação não encontrada." });
+    }
     res.json({
       existe: true,
       solicitacaoId: id,
@@ -1223,12 +1069,24 @@ app.get("/api/sienge/solicitacao/:id", async (req, res) => {
       itensDisponiveis: false,
     });
   } catch (err) {
-    res.status(err.statusCode || 502).json({
-      error: err.message,
-      comoResolver: err.comoResolver || null,
-      code: err.code || null,
-    });
+    responderErroSienge(res, err);
   }
+});
+
+/* O que escapou de toda rota — corpo grande demais, JSON quebrado, erro
+   inesperado — cai aqui, e nao na pagina de erro do Express (que mostra
+   stack em desenvolvimento). A pessoa recebe a mensagem padrao; o detalhe
+   fica no log, com o codigo (SEG-33, ARQ-06). */
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({ error: "O conteúdo enviado passa do limite permitido." });
+  }
+  if (err?.type === "entity.parse.failed" || err?.type === "encoding.unsupported") {
+    return res.status(400).json({ error: "Os dados enviados não estão no formato esperado." });
+  }
+  return publicError(res, err, { status: 500 });
 });
 
 module.exports = app;
