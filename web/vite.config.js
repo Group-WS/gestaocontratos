@@ -17,9 +17,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), ...(standalone ? [viteSingleFile()] : [])],
   server: {
     port: 5173,
-    // Aceita qualquer host (necessário pra acessar via link de túnel,
-    // ex: *.loca.lt / *.trycloudflare.com — senão o Vite bloqueia).
-    allowedHosts: true,
+    // Só os túneis que o time usa (*.loca.lt / *.trycloudflare.com), e não
+    // qualquer host: `true` deixava qualquer domínio apontado pra esta
+    // máquina (DNS rebinding) falar com o servidor de desenvolvimento — e
+    // com o proxy /api, que usa as credenciais reais do .env local.
+    allowedHosts: [".loca.lt", ".trycloudflare.com"],
     // Durante o desenvolvimento, chamadas para /api/monday/* são
     // encaminhadas para o proxy do Monday (rodando em outra porta),
     // assim o frontend nunca precisa saber a URL completa do backend.

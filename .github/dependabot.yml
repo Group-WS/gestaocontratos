@@ -1,0 +1,29 @@
+# Atualizações de segurança das dependências (SEG-40).
+#
+# O Dependabot abre PR quando sai correção para um pacote com vulnerabilidade
+# conhecida. Semanal e agrupado, para não virar ruído; o CI (ci.yml e
+# quality-gate.yml) confere cada PR como qualquer outro.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      producao:
+        dependency-type: production
+      desenvolvimento:
+        dependency-type: development
+
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2

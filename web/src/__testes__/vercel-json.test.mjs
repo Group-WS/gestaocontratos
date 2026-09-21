@@ -22,12 +22,23 @@
  *      servido direto: a Vercel olha o sistema de arquivos antes das regras.
  *
  * O `$schema` no arquivo faz o editor sublinhar chave inválida na hora.
+ *
+ *   3. `headers` põe os cabeçalhos de segurança (SEG-35, VH-12) em toda
+ *      resposta: HSTS, nosniff, Referrer-Policy, X-Frame-Options e
+ *      Permissions-Policy. A CSP começou em `Content-Security-Policy-Report-Only`
+ *      (21/09/2026): registra no console do navegador o que ela bloquearia,
+ *      sem bloquear. Conferido o console da produção, a chave vira
+ *      `Content-Security-Policy`.
+ *   4. O script de tema do index.html é inline, e a CSP só o aceita pelo
+ *      hash. Mexeu no script, o hash muda — este teste avisa.
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const arquivo = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "vercel.json");
+const indexHtml = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "index.html");
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -53,6 +64,22 @@ conf("a regra do /api existe", iApi >= 0, true);
 conf("a regra dos endereços de tela existe", iTudo >= 0, true);
 conf("o /api vem ANTES da regra geral", iApi >= 0 && iTudo >= 0 && iApi < iTudo, true);
 conf("toda regra tem source e destination", regras.every((r) => r.source && r.destination), true);
+
+/* Cabeçalhos de segurança em toda resposta (SEG-35). */
+const cabecalhos = new Map(((v?.headers || []).find((h) => h.source === "/(.*)")?.headers || []).map((h) => [h.key, h.value]));
+for (const nome of ["Strict-Transport-Security", "X-Content-Type-Options", "Referrer-Policy", "X-Frame-Options", "Permissions-Policy"]) {
+  conf(`cabeçalho ${nome}`, cabecalhos.has(nome), true);
+}
+conf("nosniff", cabecalhos.get("X-Content-Type-Options"), "nosniff");
+conf("sem moldura de outro site", cabecalhos.get("X-Frame-Options"), "DENY");
+const csp = cabecalhos.get("Content-Security-Policy") || cabecalhos.get("Content-Security-Policy-Report-Only") || "";
+conf("há CSP (bloqueante ou só registrando)", csp.length > 0, true);
+conf("a CSP proíbe moldura (frame-ancestors 'none')", csp.includes("frame-ancestors 'none'"), true);
+conf("a CSP não libera script inline em geral", /script-src[^;]*'unsafe-inline'/.test(csp), false);
+const html = fs.readFileSync(indexHtml, "utf8");
+const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+const hashes = inline.map((s) => `'sha256-${crypto.createHash("sha256").update(s, "utf8").digest("base64")}'`);
+conf("todo script inline do index.html tem o hash na CSP", hashes.every((h) => csp.includes(h)), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

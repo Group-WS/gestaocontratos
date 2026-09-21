@@ -51,6 +51,10 @@ jobs:
       - run: npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+      # Dependência de produção com vulnerabilidade alta ou crítica não
+      # entra (SEG-40). O que roda só no build/dev fica de fora do corte.
+      - name: Vulnerabilidades (produção)
+        run: npm audit --omit=dev --audit-level=high
       - run: npm test
       - run: npm run build
 
