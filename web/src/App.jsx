@@ -16459,9 +16459,10 @@ function GcTelas({ tela, onTela }) {
     <Tabs value={tela} onValueChange={onTela} activationMode="manual" className="w-full">
       <div className="rolagem-discreta overflow-x-auto">
         <TabsList variant="underline" className="w-max min-w-full" aria-label="Telas da gestão de compras">
-          <TabsTrigger underline value="painel">Painel</TabsTrigger>
-          <TabsTrigger underline value="compradores">Compradores</TabsTrigger>
-          <TabsTrigger underline value="mao_propria">Mão de obra própria</TabsTrigger>
+          {/* Ícone de 15px, como as abas da obra. */}
+          <TabsTrigger underline value="painel" className="gap-2 whitespace-nowrap"><LayoutGrid size={15} aria-hidden="true" /> Painel</TabsTrigger>
+          <TabsTrigger underline value="compradores" className="gap-2 whitespace-nowrap"><Users size={15} aria-hidden="true" /> Compradores</TabsTrigger>
+          <TabsTrigger underline value="mao_propria" className="gap-2 whitespace-nowrap"><HardHat size={15} aria-hidden="true" /> Mão de obra própria</TabsTrigger>
         </TabsList>
       </div>
     </Tabs>
