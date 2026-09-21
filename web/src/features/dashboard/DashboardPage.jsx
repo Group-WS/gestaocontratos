@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Input, Label, PageShell, Progress, Skeleton,
+  Input, Label, PageShell, Progress, Skeleton, ActiveFilters, FilterChip,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@group-ws/ws-ui";
@@ -15,7 +15,7 @@ const options = (rows, key) => [...new Set(rows.map((row) => row[key]))].sort((a
 
 function Choice({ label, value, values, onChange, disabled = false, allLabel = "Todas" }) {
   const id = React.useId();
-  return <div className="flex w-32 flex-col gap-1 min-w-0">
+  return <div className="flex w-full min-w-0 flex-col gap-1 sm:w-40">
     <Label htmlFor={id}>{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={label}><SelectValue /></SelectTrigger>
@@ -119,15 +119,24 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
     { label: "Valor pendente de compra", value: compactMoney(pending), hint: `de ${money(material)} em material`, icon: CircleDollarSign, tone: "brand", action: () => { setScope("purchase"); reveal(projectsRef); } },
     { label: "Pendências críticas", value: String(critical.length), hint: "requerem atenção imediata", icon: TriangleAlert, tone: "danger", action: () => { setShowAlerts(true); reveal(alertsRef); } },
   ];
-  const controls = <div className="flex w-72 flex-wrap items-end gap-3 md:w-auto" aria-label="Filtros do dashboard">
+  /* Filtro mora na TOOLBAR do PageShell, abaixo do titulo — o lado direito
+     do titulo e' das acoes (App Shell do DS, nivel 6). */
+  const controls = <div className="flex flex-wrap items-end gap-3" role="group" aria-label="Filtros do dashboard">
     <Choice label="Unidade" disabled={!rows.some((row) => row.unit !== "Não informada")} value={filters.unit} values={options(rows, "unit")} onChange={(value) => update("unit", value)} />
     <Choice label="Squad" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} />
     <Choice label="GC" allLabel="Todos" value={filters.gc} values={options(rows, "gc")} onChange={(value) => update("gc", value)} />
     <Choice label="Taylor Made" allLabel="Todas" value={filters.taylor || "all"} values={options(rows, "taylor")} onChange={(value) => update("taylor", value)} />
-    <div className="flex w-60 flex-col gap-1"><Label htmlFor="dashboard-search" className="sr-only">Buscar obra</Label><div className="relative"><Search className="absolute left-3 top-3 text-text-mute" size={16} aria-hidden="true" /><Input className="pl-9" id="dashboard-search" placeholder="Buscar obra…" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div></div>
+    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-64"><Label htmlFor="dashboard-search">Buscar obra</Label><Input icon={<Search size={16} />} id="dashboard-search" placeholder="Código ou nome" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div>
   </div>;
-  return <PageShell title={title} description="Acompanhe prazos, compras e pontos críticos da operação." actions={controls} contentClassName="flex flex-col gap-4">
-    {active && <div className="flex items-center gap-4"><span role="status">{filtered.length} obras encontradas{scope === "purchase" ? " · com compra pendente na tabela" : ""}</span><Button variant="ghost" size="sm" onClick={clear}>Limpar filtros</Button></div>}
+  const filtrosAtivos = active ? <ActiveFilters count={filtered.length} noun="obra" hasFilters onClearAll={clear}>
+    {filters.unit !== "all" && <FilterChip label="Unidade" value={filters.unit} onClear={() => update("unit", "all")} />}
+    {filters.squad !== "all" && <FilterChip label="Squad" value={filters.squad} onClear={() => update("squad", "all")} />}
+    {filters.gc !== "all" && <FilterChip label="GC" value={filters.gc} onClear={() => update("gc", "all")} />}
+    {filters.taylor && filters.taylor !== "all" && <FilterChip label="Taylor Made" value={filters.taylor} onClear={() => update("taylor", "all")} />}
+    {filters.search && <FilterChip label="Busca" value={filters.search} onClear={() => update("search", "")} />}
+    {scope === "purchase" && <FilterChip label="Tabela" value="com compra pendente" onClear={() => setScope("all")} />}
+  </ActiveFilters> : null;
+  return <PageShell title={title} description="Acompanhe prazos, compras e pontos críticos da operação." toolbar={controls} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-4">
     {error && <Card accent="danger"><CardContent><p role="alert">Não conseguimos carregar todos os dados das obras. Atualize para consultar os indicadores.</p><Button onClick={onRetry}>Tentar novamente</Button></CardContent></Card>}
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4" aria-label="Indicadores das obras" aria-busy={loading}>
       {kpis.map(({ icon: Icon, ...kpi }) => <Card key={kpi.label}>

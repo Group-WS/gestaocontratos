@@ -114,6 +114,22 @@
     border-color: var(--line-1);
   }
 
+  /* O zeramento que os componentes do DS pressupõem, só onde há classe.
+     Sem ele o breadcrumb do PageShell herdava o recuo de 40px e os números
+     de lista do navegador, e o título e a descrição ganhavam 16px e 13px de
+     margem — o cabeçalho de toda tela ficava desalinhado e alto demais.
+     Componente do DS sempre tem classe; o texto corrido legado (parágrafo
+     ou lista sem classe) mantém as margens do navegador. Em :where(), com
+     especificidade zero e dentro da camada: qualquer margem declarada pelo
+     componente ou pelo CSS do app vence. */
+  :where(h1, h2, h3, h4, h5, h6, p, ol, ul, dl, dd, figure, blockquote)[class] {
+    margin: 0;
+  }
+  :where(ol, ul)[class] {
+    padding: 0;
+    list-style: none;
+  }
+
   ::selection {
     background: var(--brand);
     color: var(--bg);
