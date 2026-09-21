@@ -34,7 +34,7 @@ conf("o campo abre embaixo da linha que vai sair", src.includes(`<tr className="
 
 /* ---- 2. Sem texto não remove ---- */
 conf("o motivo é obrigatório", src.includes("const vale = motivo.trim().length >= 10;"), true);
-conf("e o botão fica travado sem ele", src.includes('<button type="button" className="btn-linha-excluir-confirma" disabled={!vale}'), true);
+conf("e o botão fica travado sem ele", src.includes('<Button variant="danger" type="button" disabled={!vale}'), true);
 conf("a tela diz o que falta", src.includes("Escreva o motivo para remover."), true);
 
 /* ---- 3. QUEM GRAVA CARIMBA O AUTOR ----

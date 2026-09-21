@@ -35,7 +35,7 @@ conf("o botão aparece sempre que há o que remover",
 conf("... e não some mais quando a etapa está congelada",
   src.includes("{onLimpar && temConteudo && !congelado && ("), false);
 conf("é o congelamento que DESABILITA, não que esconde",
-  src.includes('className="btn-limpar-import" disabled={carregando || congelado}'), true);
+  src.includes('<Button variant="danger" disabled={carregando || congelado}'), true);
 
 /* ---- 2. E diz POR QUE não dá ---- */
 /* Sem o motivo, o botão desabilitado é só uma frustração mais visível. */

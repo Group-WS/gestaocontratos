@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { ConfirmDialog, MessageDialog } from "@group-ws/ws-ui";
+import { ConfirmDialog, MessageDialog, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogBody, DialogFooter, Button, Field, Label, Input } from "@group-ws/ws-ui";
 import { toast } from "sonner";
 
 /* API compartilhada pelas ações de remoção. O host apresenta uma confirmação
@@ -94,6 +95,64 @@ export function MensagemHost() {
       tone={pedido.tom || "warning"}
       dismissLabel={pedido.fechar || "Entendi"}
     />
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Pergunta com resposta em texto (substitui window.prompt). Resolve com a
+   string digitada ou null quando a pessoa cancela ou fecha o diálogo.
+   --------------------------------------------------------------------------- */
+let abrirPergunta = null;
+
+export function perguntar(opcoes) {
+  const pedido = typeof opcoes === "string" ? { mensagem: opcoes } : (opcoes || {});
+  if (!abrirPergunta) return Promise.resolve(null);
+  return new Promise((resolve) => abrirPergunta({ ...pedido, resolve }));
+}
+
+function PerguntaDialog({ pedido, onResponder }) {
+  const [valor, setValor] = useState(pedido.inicial || "");
+  const id = React.useId();
+  const enviar = (e) => { e.preventDefault(); onResponder(valor); };
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onResponder(null); }}>
+      <DialogContent size="sm">
+        <form onSubmit={enviar}>
+          <DialogHeader>
+            <DialogTitle>{pedido.titulo || "Informe um valor"}</DialogTitle>
+            {pedido.mensagem && <DialogDescription>{pedido.mensagem}</DialogDescription>}
+          </DialogHeader>
+          <DialogBody>
+            <Field>
+              <Label htmlFor={id}>{pedido.rotulo || "Valor"}</Label>
+              <Input id={id} autoFocus value={valor} inputMode={pedido.inputMode}
+                placeholder={pedido.placeholder} onChange={(e) => setValor(e.target.value)} />
+            </Field>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onResponder(null)}>{pedido.cancelar || "Cancelar"}</Button>
+            <Button type="submit">{pedido.confirmar || "Confirmar"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function PerguntarHost() {
+  const [pedidos, setPedidos] = useState([]);
+  useEffect(() => {
+    const receber = (pedido) => setPedidos((fila) => [...fila, pedido]);
+    abrirPergunta = receber;
+    return () => { if (abrirPergunta === receber) abrirPergunta = null; };
+  }, []);
+  const pedido = pedidos[0];
+  if (!pedido) return null;
+  return (
+    <PerguntaDialog key={pedidos.length} pedido={pedido} onResponder={(resposta) => {
+      pedido.resolve(resposta);
+      setPedidos((fila) => fila.filter((item) => item !== pedido));
+    }} />
   );
 }
 

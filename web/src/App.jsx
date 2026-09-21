@@ -51,7 +51,8 @@ import { montarSolicitacaoSienge, corpoDoEnvio, casarDetalhes } from "./lib/sien
 import { abrirEnvio, fecharEnvio, enviosPendentes, envioComMesmoConteudo, reconciliarEnvio,
   listarEnviosSienge, assinaturaDoEnvio, novaChaveIdempotencia } from "./lib/siengeSolicitacoes.js";
 import Catalogo from "./Catalogo";
-import { confirmar } from "./lib/confirmar.jsx";
+import { confirmar, mensagem, perguntar, avisar } from "./lib/confirmar.jsx";
+import { Button } from "@group-ws/ws-ui";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -507,9 +508,9 @@ function PapelDaObra({ obraId, valor: valorAtual, rotulo, vazio, equipe, podeEdi
           <div className="dash-gc-vazio">{vazio}</div>
         )}
         {podeEditar && (
-          <button className="btn-atalho dash-atalho" onClick={() => setEditando(true)}>
+          <Button className="dash-atalho" onClick={() => setEditando(true)}>
             {valorAtual ? `Trocar` : `Definir`}
-          </button>
+          </Button>
         )}
       </>
     );
@@ -545,8 +546,8 @@ function PapelDaObra({ obraId, valor: valorAtual, rotulo, vazio, equipe, podeEdi
       )}
       {erro && <div className="dash-gc-vazio" style={{ color: "var(--red)" }}>{erro}</div>}
       <div className="dash-gc-acoes">
-        <button className="btn-atalho" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button>
-        <button className="btn-atalho" onClick={() => { setValor(valorAtual || ""); setEditando(false); }}>cancelar</button>
+        <Button disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</Button>
+        <Button variant="outline" onClick={() => { setValor(valorAtual || ""); setEditando(false); }}>cancelar</Button>
       </div>
     </>
   );
@@ -804,7 +805,7 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
             <div className="recorte-titulo">Ajustar a foto</div>
             <div className="recorte-sub">Arraste para enquadrar o rosto</div>
           </div>
-          <button className="clear-btn" onClick={onCancelar} aria-label="Fechar"><X size={16} /></button>
+          <Button variant="ghost" size="icon" onClick={onCancelar} aria-label="Fechar"><X size={16} /></Button>
         </div>
 
         <div className="recorte-palco" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}>
@@ -832,15 +833,15 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
         </div>
 
         <div className="recorte-controles">
-          <button className="recorte-zoom" onClick={() => setPasso((p) => Math.max(0, p - 1))}
-            disabled={passo === 0} aria-label="Menos zoom"><Minus size={14} /></button>
+          <Button variant="ghost" size="icon" onClick={() => setPasso((p) => Math.max(0, p - 1))}
+            disabled={passo === 0} aria-label="Menos zoom"><Minus size={14} /></Button>
           <span className="recorte-pct mono">{Math.round(zoom * 100)}%</span>
-          <button className="recorte-zoom" onClick={() => setPasso((p) => Math.min(ZOOM_FOTO.length - 1, p + 1))}
-            disabled={passo === ZOOM_FOTO.length - 1} aria-label="Mais zoom"><Plus size={14} /></button>
+          <Button variant="ghost" size="icon" onClick={() => setPasso((p) => Math.min(ZOOM_FOTO.length - 1, p + 1))}
+            disabled={passo === ZOOM_FOTO.length - 1} aria-label="Mais zoom"><Plus size={14} /></Button>
           {/* O desfazer de quem arrastou demais. */}
-          <button className="recorte-centralizar" onClick={() => { setPasso(0); setPos({ x: 0, y: 0 }); }}>
+          <Button variant="ghost" size="sm" onClick={() => { setPasso(0); setPos({ x: 0, y: 0 }); }}>
             Centralizar
-          </button>
+          </Button>
         </div>
 
         {/* A previa no tamanho real responde "vai ficar bom?" antes de
@@ -859,9 +860,9 @@ function RecortadorFoto({ file, onConfirmar, onCancelar }) {
         </div>
 
         <div className="sobreposto-rodape">
-          <button className="btn-secundario" onClick={onCancelar}>Cancelar</button>
-          <button className="btn-liberar" disabled={!img || !!erro}
-            onClick={() => onConfirmar(recorteAtual())}>Usar esta foto</button>
+          <Button variant="outline" onClick={onCancelar}>Cancelar</Button>
+          <Button disabled={!img || !!erro}
+            onClick={() => onConfirmar(recorteAtual())}>Usar esta foto</Button>
         </div>
       </div>
     </div>,
@@ -1020,10 +1021,10 @@ function AnexarAvulso({ obra, usuario, fase, onArquivos, rotulo = "Anexar arquiv
       <input className="form-input jornada-anexar-desc" value={titulo} maxLength={80}
         placeholder="Descrição do arquivo (ex: Memorial descritivo)"
         onChange={(e) => setTitulo(e.target.value)} />
-      <button type="button" className="btn-add-item" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
+      <Button variant="outline" size="sm" type="button" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
         <Upload size={12} /> {enviando ? "Enviando…" : rotulo}
-      </button>
-      <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} style={{ display: "none" }} onChange={aoEscolher} />
+      </Button>
+      <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} className="sr-only" onChange={aoEscolher} />
       {erro && <span className="caderno-erro">{erro}</span>}
     </div>
   );
@@ -1202,17 +1203,17 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
         <input className="entrega-input" type="date" value={rascunho} disabled={!podeEditar}
           onChange={(e) => setRascunho(e.target.value)} />
         {podeEditar && sujo && (
-          <button className="btn-salvar-data" onClick={() => onDataEntrega(rascunho || null)}>Salvar</button>
+          <Button onClick={() => onDataEntrega(rascunho || null)}>Salvar</Button>
         )}
       </div>
 
       <div className="dobra-card">
         <div className="ini-titulo ini-titulo-linha">
           <span className="ini-titulo-esq"><LayoutGrid size={14} className="ini-titulo-icone" /> Jornada da obra</span>
-          <button type="button" className={"jornada-expandir" + (jornadaAberta ? " aberta" : "")}
+          <Button variant="ghost" type="button" className={"jornada-expandir" + (jornadaAberta ? " aberta" : "")}
             onClick={() => setJornadaAberta((v) => !v)} aria-expanded={jornadaAberta}>
             {jornadaAberta ? "Recolher" : "Expandir"} <ChevronDown size={13} />
-          </button>
+          </Button>
         </div>
         <div className="dobra-sub">
           {jornadaAberta
@@ -1250,26 +1251,26 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
               Executivo (`faltaAprovarNosGrupos`) — numero que discorda da
               lista e' pior que numero nenhum. */}
           {faltaAprovar > 0 && onIrParaLiberacao && (
-            <button type="button" className="ini-alerta aviso dash-falta-aprovar" onClick={onIrParaLiberacao}
+            <Button variant="ghost" type="button" className="ini-alerta aviso dash-falta-aprovar" onClick={onIrParaLiberacao}
               title="Abre a Conf. Executivo já filtrada em 'Falta aprovar p/ compra'">
               <ShoppingCart size={13} />
               <span>
                 <b>{faltaAprovar}</b> {faltaAprovar === 1 ? "item espera" : "itens esperam"} aprovação para compra
               </span>
               <ArrowUpRight size={13} className="ini-seta" />
-            </button>
+            </Button>
           )}
           {pendencias.length === 0 && faltaAprovar === 0 ? (
             <div className="dash-alerta ok"><CheckCircle2 size={14} /> Nada pedindo atenção nesta obra.</div>
           ) : pendencias.map((a, i) => (a.detalhe?.length ? (
             /* O alerta que abre: mostra quais são, sem sair do Dashboard. */
             <React.Fragment key={a.chave || i}>
-              <button type="button" className={`ini-alerta ${a.tom}`} aria-expanded={alertasAbertos.has(a.chave)}
+              <Button variant="ghost" type="button" className={`ini-alerta ${a.tom}`} aria-expanded={alertasAbertos.has(a.chave)}
                 onClick={() => alternarAlerta(a.chave)} title={alertasAbertos.has(a.chave) ? "Esconder a lista" : "Ver quais são"}>
                 <AlertTriangle size={13} />
                 <span>{a.txt}</span>
                 <ChevronDown size={13} className={`ini-seta ${alertasAbertos.has(a.chave) ? "aberta" : ""}`} />
-              </button>
+              </Button>
               {alertasAbertos.has(a.chave) && (
                 <div className="ini-detalhe">
                   {a.detalhe.map((c) => (
@@ -1295,13 +1296,13 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
               ao Plano de Compras. Com avulsas já lançadas, o botão vira "ver
               a lista" e o Pipefy ganha um botão próprio, pra não abrir à toa. */}
           <div className="dash-atalhos">
-            <button className="btn-atalho dash-atalho" onClick={() => { if (!avulsas.length) abrirPipefy(); onIrParaCompras(); }}>
+            <Button className="dash-atalho" onClick={() => { if (!avulsas.length) abrirPipefy(); onIrParaCompras(); }}>
               <Plus size={12} /> {avulsas.length ? `Compras avulsas (${avulsas.length})` : "Solicitar compra avulsa"}
-            </button>
+            </Button>
             {avulsas.length > 0 && (
-              <button className="btn-atalho dash-atalho" onClick={abrirPipefy}>
+              <Button className="dash-atalho" onClick={abrirPipefy}>
                 <ExternalLink size={12} /> Solicitar no Pipefy
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -1362,9 +1363,9 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
             </div>
           )}
 
-          <button className="btn-atalho dash-atalho" onClick={onIrParaAditivos}>
+          <Button className="dash-atalho" onClick={onIrParaAditivos}>
             <FileText size={12} /> Ver os aditivos
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -2892,7 +2893,7 @@ function CampoBusca({ valor, aoMudar, dica, contador }) {
              onChange={(e) => aoMudar(e.target.value)} />
       {!!valor && !!contador && <span className="busca-conta">{contador}</span>}
       {!!valor && (
-        <button className="clear-btn" title="Limpar a busca" onClick={() => aoMudar("")}><X size={12} /></button>
+        <Button variant="ghost" size="icon" title="Limpar a busca" onClick={() => aoMudar("")} aria-label="Limpar a busca"><X size={12} /></Button>
       )}
     </div>
   );
@@ -2988,9 +2989,9 @@ function VersoesDaObra({ obra, podeRestaurar, usuario }) {
 
   return (
     <div className="hist-versoes">
-      <button type="button" className="hist-link" onClick={() => setAberto((v) => !v)}>
+      <Button variant="ghost" size="sm" type="button" onClick={() => setAberto((v) => !v)}>
         {aberto ? "esconder as versões" : "versões guardadas desta obra"}
-      </button>
+      </Button>
 
       {aberto && estado === "carregando" && <div className="hist-nota">Buscando…</div>}
 
@@ -3030,13 +3031,13 @@ function VersoesDaObra({ obra, podeRestaurar, usuario }) {
                 {podeRestaurar && (confirmando === v.id ? (
                   <span className="hist-confirma">
                     troca os {agora} de agora por estes {v.n_itens}?
-                    <button type="button" className="hist-link hist-sim" disabled={restaurando}
-                      onClick={() => restaurar(v)}>{restaurando ? "restaurando…" : "sim, restaurar"}</button>
-                    <button type="button" className="hist-link" disabled={restaurando}
-                      onClick={() => setConfirmando(null)}>não</button>
+                    <Button variant="ghost" size="sm" type="button" disabled={restaurando}
+                      onClick={() => restaurar(v)}>{restaurando ? "restaurando…" : "sim, restaurar"}</Button>
+                    <Button variant="ghost" size="sm" type="button" disabled={restaurando}
+                      onClick={() => setConfirmando(null)}>não</Button>
                   </span>
                 ) : (
-                  <button type="button" className="hist-link" onClick={() => setConfirmando(v.id)}>restaurar</button>
+                  <Button variant="ghost" size="sm" type="button" onClick={() => setConfirmando(v.id)}>restaurar</Button>
                 ))}
               </div>
             ))}
@@ -3081,17 +3082,17 @@ function HistoricoDaObra({ obra, tela, podeRestaurar = false, usuario }) {
 
   return (
     <div className="hist">
-      <button type="button" className="hist-abrir" onClick={() => setAberto((v) => !v)}
+      <Button variant="ghost" size="sm" type="button" onClick={() => setAberto((v) => !v)}
         title="Quem fez o que nesta obra, e quando">
         {aberto ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
         Histórico{daTela.length ? ` · ${daTela.length}` : ""}
-      </button>
+      </Button>
       {aberto && (
         <>
           <div className="hist-barra">
-            <button type="button" className="hist-link" onClick={() => setTudo((v) => !v)}>
+            <Button variant="ghost" size="sm" type="button" onClick={() => setTudo((v) => !v)}>
               {tudo ? "só esta tela" : "ver tudo da obra"}
-            </button>
+            </Button>
           </div>
           {lista.length === 0 && (
             <div className="hist-nota">Nada registrado {tudo ? "nesta obra" : "nesta tela"} ainda.</div>
@@ -3113,9 +3114,9 @@ function HistoricoDaObra({ obra, tela, podeRestaurar = false, usuario }) {
             ))}
           </div>
           {daTela.length > LIMITE && !maisLinhas && (
-            <button type="button" className="hist-link" onClick={() => setMaisLinhas(true)}>
+            <Button variant="ghost" size="sm" type="button" onClick={() => setMaisLinhas(true)}>
               ver os outros {daTela.length - LIMITE}
-            </button>
+            </Button>
           )}
           {mostrarNota && (
             <div className="hist-nota">
@@ -3320,7 +3321,7 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
             {/* A linha separada esta logo abaixo, na mesma verba — nao ha
                 mais pra onde mandar a pessoa. */}
             <CornerDownRight size={10} /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo
-            {onJuntarMO && podeEditar && <button className="btn-juntar" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</button>}
+            {onJuntarMO && podeEditar && <Button variant="ghost" size="sm" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</Button>}
           </span>
         )}
         {item.separadoDe && (
@@ -3343,10 +3344,10 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
             vez. Item que ja mora na propria verba de mao de obra nao tem
             pra onde ir. */}
         {podeSepararMO(item, cat) && onSepararMO && podeEditar && (
-          <button className="btn-separar" onClick={onSepararMO}
+          <Button variant="ghost" size="sm" onClick={onSepararMO}
             title="Tira a mão de obra deste item e cria uma linha só dela logo abaixo, com a mesma descrição e quantidade. O total não muda.">
             <GitCompare size={9} /> separar MO
-          </button>
+          </Button>
         )}
       </td>
       <td className="mono right">
@@ -3372,8 +3373,8 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
       </td>
       <td className="center">
         {bloqueado
-          ? <button className="btn-approve" onClick={onAprovar} disabled={!podeEditar}
-              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={12} /> Aprovar p/ compra</button>
+          ? <Button onClick={onAprovar} disabled={!podeEditar}
+              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={12} /> Aprovar p/ compra</Button>
           : <DestinoCompra item={item} aloc={aloc} />}
       </td>
     </tr>
@@ -3522,12 +3523,12 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
 
   return (
     <div className="grp-block" data-grp={cat.num}>
-      {/* Era um <button> so. Virou div com o botao SO na parte esquerda:
+      {/* Era um botao so. Virou div com o botao SO na parte esquerda:
           o campo de dias e o "x" de limpar sao controles, e controle
           dentro de botao nao e HTML valido — o clique de um come o do
           outro. A area de abrir continua sendo a maior parte da linha. */}
       <div className="grp-head">
-        <button className="grp-toggle" onClick={onToggle}>
+        <Button variant="ghost" className="grp-toggle" onClick={onToggle}>
           <div className="grp-esq">
           {expanded ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
           <span className="grp-num mono">{cat.num}</span>
@@ -3551,7 +3552,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
             </span>
           )}
           </div>
-        </button>
+        </Button>
         <div className="grp-dir">
           <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega} />
           <div className="grp-tot">
@@ -3567,7 +3568,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
 
       {expanded && (
         <div className="grp-itens">
-          {/* Fora do cabecalho de proposito: ele e um <button>, e botao
+          {/* Fora do cabecalho de proposito: ele e um botao, e botao
               dentro de botao nao e HTML valido — o clique de um comeria o
               do outro. Aqui tambem fica melhor: separa depois de olhar. */}
           {aSeparar > 0 && onSepararGrupo && (
@@ -3577,7 +3578,7 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
                 <b>{aSeparar}</b> {aSeparar === 1 ? "item tem" : "itens têm"} MAT e MO na mesma linha.
                 {" "}Separar cria a linha de mão de obra logo abaixo, aqui mesmo, com a mesma descrição e quantidade.
               </span>
-              <button className="btn-separar-grupo" onClick={onSepararGrupo}>Separar MO do grupo</button>
+              <Button variant="outline" size="sm" onClick={onSepararGrupo}>Separar MO do grupo</Button>
             </div>
           )}
           <table>
@@ -3661,9 +3662,9 @@ function FormAvulsa({ obra, onCriar }) {
 
   if (!aberto) {
     return (
-      <button className="btn-avulsa" onClick={() => setAberto(true)}>
+      <Button onClick={() => setAberto(true)}>
         <Plus size={14} /> Compra avulsa
-      </button>
+      </Button>
     );
   }
 
@@ -3706,12 +3707,12 @@ function FormAvulsa({ obra, onCriar }) {
             { id: ALOC_MO, rot: "MO", sub: "só MÃO DE OBRA" },
             { id: ALOC_AMBOS, rot: "MAT+MO", sub: "os dois" },
           ].map((o) => (
-            <button key={o.id} type="button"
+            <Button variant="ghost" key={o.id} type="button"
               className={`aloc-op ${aloc === o.id ? "ativo" : ""}`}
               onClick={() => setAloc(o.id)}>
               <span className={`aloc aloc-${String(o.id).toLowerCase()}`}>{o.rot}</span>
               <span className="aloc-op-sub">{o.sub}</span>
-            </button>
+            </Button>
           ))}
         </div>
         {aloc === ALOC_MO && (
@@ -3721,8 +3722,8 @@ function FormAvulsa({ obra, onCriar }) {
         )}
       </div>
       <div className="form-actions">
-        <button type="button" className="btn-cancelar" onClick={() => setAberto(false)}>Cancelar</button>
-        <button type="submit" className="btn-criar">Registrar pedido</button>
+        <Button variant="outline" type="button" onClick={() => setAberto(false)}>Cancelar</Button>
+        <Button type="submit">Registrar pedido</Button>
       </div>
     </form>
   );
@@ -3822,14 +3823,14 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
           : "Ao liberar, este vira o plano oficial de compra: Vendido, Depara e Executivo ficam congelados."}
       </div>
 
-      <button className="btn-aprovar" disabled={bloqueado} onClick={() => {
+      <Button disabled={bloqueado} onClick={() => {
         onLiberar(precisaExcecao
           ? { estouro: acimaDoTeto ? estouro : 0, semAssinatura,
               justificativa: justificativa.trim(), aprovador: aprovador.trim() }
           : null);
       }}>
         <ShieldCheck size={14} /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar plano de compras"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -3977,16 +3978,17 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
               congela a obra inteira e só se resolve mexendo no banco —
               o que ninguém do time consegue fazer. */}
           {podeEditar && (
-            <button className="btn-reabrir-etapa" onClick={() => {
-              if (window.confirm(
-                "Reabrir as etapas anteriores?\n\n" +
-                "Vendido, Depara e Executivo voltam a aceitar alteração. " +
-                "Use quando algo precisar ser corrigido depois da liberação.\n\n" +
-                "Compras e contratações já feitas não são desfeitas."
-              )) onReabrir();
+            <Button variant="outline" onClick={async () => {
+              if (await confirmar({
+                titulo: "Reabrir as etapas anteriores?",
+                mensagem: "Vendido, Depara e Executivo voltam a aceitar alteração. " +
+                  "Use quando algo precisar ser corrigido depois da liberação. " +
+                  "Compras e contratações já feitas não são desfeitas.",
+                confirmar: "Reabrir etapas", perigo: false,
+              })) onReabrir();
             }}>
               <RotateCcw size={12} /> Reabrir etapas
-            </button>
+            </Button>
           )}
         </div>
       ) : (
@@ -4018,7 +4020,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
               sem ela não dá pra dizer até quando comprar.
             </span>
           </div>
-          <button className="btn-atalho" onClick={onIrParaDashboard}>Definir no Dashboard</button>
+          <Button onClick={onIrParaDashboard}>Definir no Dashboard</Button>
         </div>
       )}
 
@@ -4049,11 +4051,11 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       <div className="filter-bar tipo-bar">
         <Package size={13} className="dim" />
         {FILTROS_ALOC.map((t) => (
-          <button key={t.id} className={`filter-chip tipo-chip ${tipoFilter === t.id ? "active" : ""}`}
+          <Button variant="ghost" key={t.id} className={`filter-chip tipo-chip ${tipoFilter === t.id ? "active" : ""}`}
             onClick={() => setTipoFilter(t.id)} title={t.destino ? `Estes ${t.destino}` : undefined}>
             {t.label}
             <span className="tipo-chip-conta">{contaPorAloc[t.id]}</span>
-          </button>
+          </Button>
         ))}
         {tipoFilter !== "todos" && (
           <span className="tipo-bar-destino">
@@ -4064,17 +4066,17 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       <div className="filter-bar">
         <SlidersHorizontal size={13} className="dim" />
         {FILTERS.map((f) => (
-          <button key={f.id} className={`filter-chip ${itemFilter === f.id ? "active" : ""}`} onClick={() => setItemFilter(f.id)}>
+          <Button variant="ghost" key={f.id} className={`filter-chip ${itemFilter === f.id ? "active" : ""}`} onClick={() => setItemFilter(f.id)}>
             {f.label}
-          </button>
+          </Button>
         ))}
         <span className="filter-sep" />
-        <button className={`filter-chip ${soVendido ? "active" : ""}`}
+        <Button variant="ghost" className={`filter-chip ${soVendido ? "active" : ""}`}
           onClick={() => setSoVendido((v) => !v)}
           title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
           {soVendido ? "Só o vendido" : "Vendido e não vendido"}
           {soVendido && ocultosNaoVendidos > 0 && <span className="tipo-chip-conta">{ocultosNaoVendidos} ocultos</span>}
-        </button>
+        </Button>
         <span className="filter-sep" />
         <CampoBusca valor={busca} aoMudar={setBusca}
           contador={`${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens`} />
@@ -4783,7 +4785,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
      * e silencioso. Por isso a permissao e o aviso andam juntos — pedido
      * dela em 19/09/2026. */
     const aviso = avisoAntesDeTrocar ? avisoAntesDeTrocar() : null;
-    if (aviso && !window.confirm(aviso)) return;
+    if (aviso && !(await confirmar({ titulo: "Trocar o documento?", mensagem: aviso, confirmar: "Trocar mesmo assim" }))) return;
 
     setErro(null); setOk(null); setCarregando(true);
     try {
@@ -4814,24 +4816,25 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
                 : "Modo leitura — habilite a edição desta obra para importar ou remover."))
             : dica}</span>
         </div>
-        <button className="btn-import" onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
+        <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
           <Upload size={13} /> {carregando ? "Lendo…" : label}
-        </button>
-        <input ref={inputRef} type="file" accept={accept} style={{ display: "none" }} onChange={aoEscolher} />
+        </Button>
+        <input ref={inputRef} type="file" accept={accept} className="sr-only" onChange={aoEscolher} />
         {/* Subir o arquivo errado tem que ter volta. Sem isto, o unico
             jeito de desfazer era subir outro por cima — e se o certo
             ainda nao existisse, a obra ficava com dado errado. */}
         {congelado && compraLiberada && onReabrir && (
-          <button className="btn-reabrir-etapa" onClick={() => {
-            if (window.confirm(
-              "Reabrir as etapas anteriores?\n\n" +
-              "Vendido, Depara e Executivo voltam a aceitar alteração. " +
-              "Use quando algo precisar ser corrigido depois da liberação.\n\n" +
-              "Compras e contratações já feitas não são desfeitas."
-            )) onReabrir();
+          <Button variant="outline" onClick={async () => {
+            if (await confirmar({
+              titulo: "Reabrir as etapas anteriores?",
+              mensagem: "Vendido, Depara e Executivo voltam a aceitar alteração. " +
+                "Use quando algo precisar ser corrigido depois da liberação. " +
+                "Compras e contratações já feitas não são desfeitas.",
+              confirmar: "Reabrir etapas", perigo: false,
+            })) onReabrir();
           }}>
             <RotateCcw size={12} /> Reabrir etapas
-          </button>
+          </Button>
         )}
         {/* O REMOVER APARECE SEMPRE QUE HA' O QUE REMOVER — desabilitado
             quando nao da', com o motivo na dica, em vez de sumir.
@@ -4841,7 +4844,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             leitura e na etapa congelada — e botao que some nao se procura,
             se conclui que nao existe. */}
         {onLimpar && temConteudo && (
-          <button className="btn-limpar-import" disabled={carregando || congelado}
+          <Button variant="danger" disabled={carregando || congelado}
             title={congelado
               ? (compraLiberada
                   ? "O Plano de Compras já foi liberado e congelou esta etapa. Use \"Reabrir etapas\" antes de remover."
@@ -4855,7 +4858,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             )) { setOk(null); setErro(null); onLimpar(); }
           }}>
             <Trash2 size={13} /> Remover
-          </button>
+          </Button>
         )}
       </div>
       {ok && <div className="import-ok"><CheckCircle2 size={14} /> {ok}</div>}
@@ -5151,7 +5154,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
             <div className="flat-panel-title">Verbas conforme contrato / proposta {obra.codigo}/00</div>
             <div className="flat-panel-sub">Descrição e quantidade por item, dentro de cada grupo — sem valores. Clique na verba pra expandir.</div>
           </div>
-          <button className="btn-download" onClick={() => exportVendidoCSV(obra)}><Download size={13} /> Baixar tabela (.csv)</button>
+          <Button onClick={() => exportVendidoCSV(obra)}><Download size={13} /> Baixar tabela (.csv)</Button>
         </div>
 
         {/* O filtro esconde grupos, nunca reorganiza: a ordem da EAP é a
@@ -5159,11 +5162,11 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
         <div className="filter-bar venda-bar">
           <ClipboardList size={13} className="dim" />
           {FILTROS_VENDA.map((f) => (
-            <button key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
+            <Button variant="ghost" key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
               onClick={() => setFiltroVenda(f.id)}>
               {f.label}
               <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -5174,7 +5177,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
             const aberto = abertos.has(c.num);
             return (
               <div key={c.num} className="vend-grupo">
-                <button className="vend-head" onClick={() => temItens && toggle(c.num)} style={{ cursor: temItens ? "pointer" : "default" }}>
+                <Button variant="ghost" className="vend-head" onClick={() => temItens && toggle(c.num)}>
                   {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
@@ -5187,7 +5190,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                       {itens.filter((it) => !itemFoiVendido(it)).length} sem venda
                     </span>
                   )}
-                </button>
+                </Button>
                 {aberto && temItens && (
                   <table className="vend-itens">
                     <thead>
@@ -5352,11 +5355,11 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
         <div className="filter-bar venda-bar">
           <ClipboardList size={13} className="dim" />
           {FILTROS_VENDA.map((f) => (
-            <button key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
+            <Button variant="ghost" key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
               onClick={() => setFiltroVenda(f.id)}>
               {f.label}
               <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
-            </button>
+            </Button>
           ))}
           <span className="filter-sep" />
           <CampoBusca valor={busca} aoMudar={setBusca}
@@ -5377,7 +5380,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             const subtotal = itens.reduce((a, it) => a + (it.custo || 0), 0);
             return (
               <div key={c.num} className="vend-grupo">
-                <button className="vend-head" onClick={() => temItens && abreNaBusca.alternar(c.num, () => toggle(c.num))} style={{ cursor: temItens ? "pointer" : "default" }}>
+                <Button variant="ghost" className="vend-head" onClick={() => temItens && abreNaBusca.alternar(c.num, () => toggle(c.num))}>
                   {temItens ? (aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />) : <span style={{ width: 14, display: "inline-block", flexShrink: 0 }} />}
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
@@ -5389,7 +5392,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
                     </span>
                   )}
                   <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
-                </button>
+                </Button>
                 {aberto && temItens && (
                   /* Mesmas colunas do Executivo, na mesma ordem da
                      planilha de origem — os dois documentos usam o mesmo
@@ -6334,8 +6337,8 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
                 <input className="form-input" style={{ width: 90 }} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Valor" />
               </div>
               <div className="conf-edit-actions">
-                <button type="button" className="btn-cancelar" onClick={() => setEditando(false)}>Cancelar</button>
-                <button type="button" className="btn-criar" onClick={salvar}>Salvar</button>
+                <Button variant="outline" type="button" onClick={() => setEditando(false)}>Cancelar</Button>
+                <Button type="button" onClick={salvar}>Salvar</Button>
               </div>
             </div>
           ) : l.b ? (
@@ -6356,8 +6359,8 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
       {l.motivo && <div className="conf-motivo">{l.motivo}</div>}
       {l.status !== "ok" && !editando && (
         <div className="conf-acoes">
-          <button type="button" className="btn-editar-linha" onClick={() => setEditando(true)}><SlidersHorizontal size={12} /> Editar planilha</button>
-          {!aprovado && <button type="button" className="btn-aprovar-linha" onClick={onAprovar}><CheckCircle2 size={12} /> Aprovar</button>}
+          <Button variant="outline" type="button" onClick={() => setEditando(true)}><SlidersHorizontal size={12} /> Editar planilha</Button>
+          {!aprovado && <Button size="sm" type="button" onClick={onAprovar}><CheckCircle2 size={12} /> Aprovar</Button>}
         </div>
       )}
     </div>
@@ -6453,13 +6456,13 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             na ordem do fluxo. O "Entrou, saiu ou mudou" fecha a barra — ele
             responde a comparacao com o vendido, que e' outra pergunta. */}
         {(telaExtra?.cartoes || []).map((c) => (
-          <button key={c.id} className={`conf-stat ${filtro === c.id ? "active" : ""}`}
+          <Button variant="ghost" key={c.id} className={`conf-stat ${filtro === c.id ? "active" : ""}`}
             style={{ borderColor: filtro === c.id ? c.color : undefined }}
             onClick={() => setFiltro(filtro === c.id ? telaExtra.id : c.id)}>
             <div className="conf-stat-num" style={{ color: c.color }}>{c.contador}</div>
             <div className="conf-stat-label">{c.label}</div>
             <div className="conf-stat-sub">{c.sub}</div>
-          </button>
+          </Button>
         ))}
         {/* A BARRA DIZ O TRABALHO, nao o que ja' passou (pedido dela,
             18/09/2026): "aquele total conferido pode retirar, n faz sentido".
@@ -6468,7 +6471,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             no depara —, so' nao vira cartao: um numero grande de "ja' conferido"
             ocupava um quarto da barra sem levar a lugar nenhum. */}
         {Object.entries(meta).filter(([st, m]) => st !== "ok" && !m.semCartao).map(([st, m]) => (
-          <button key={st} className={`conf-stat ${filtro === st ? "active" : ""}`} style={{ borderColor: filtro === st ? m.color : undefined }} onClick={() => setFiltro(filtro === st ? "todos" : st)}>
+          <Button variant="ghost" key={st} className={`conf-stat ${filtro === st ? "active" : ""}`} style={{ borderColor: filtro === st ? m.color : undefined }} onClick={() => setFiltro(filtro === st ? "todos" : st)}>
             {st === "somente_um" && resumoEntrouSaiu ? (
               /* CADA NUMERO FILTRA (pedido dela, 18/09/2026): "habilitar esse
                  entrou mudou e saiu para quando clicar neles filtrar na tela".
@@ -6503,14 +6506,14 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             )}
             <div className="conf-stat-label">{m.label}</div>
             <div className="conf-stat-sub">{m.sub}</div>
-          </button>
+          </Button>
         ))}
 
       </div>
 
       <div className="compras-filtros">
-        <button className={`cfiltro ${filtro === "todos" || filtro === telaExtra?.id ? "active" : ""}`}
-          onClick={() => setFiltro(telaExtra?.id || "todos")}>Todos <span className="cbadge">{linhas.length}</span></button>
+        <Button variant="ghost" className={`cfiltro ${filtro === "todos" || filtro === telaExtra?.id ? "active" : ""}`}
+          onClick={() => setFiltro(telaExtra?.id || "todos")}>Todos <span className="cbadge">{linhas.length}</span></Button>
         {/* OS DOIS FILTROS DO QUE FALTA (pedido dela, 18/09/2026): "criar um
             bloco de filtro mostrando oque falta concluir executivo e um bloco
             de filtro mostrando oque falta aprovar pra compra".
@@ -6519,10 +6522,10 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             SOBROU pra fazer, que e' o numero com que se trabalha. Sao o mesmo
             filtro dos cartoes — clicar num ou noutro leva ao mesmo lugar. */}
         {(telaExtra?.filtros || []).map((ff) => (
-          <button key={ff.id} className={`cfiltro ${filtro === ff.id ? "active" : ""}`}
+          <Button variant="ghost" key={ff.id} className={`cfiltro ${filtro === ff.id ? "active" : ""}`}
             onClick={() => setFiltro(filtro === ff.id ? telaExtra.id : ff.id)}>
             {ff.label} <span className="cbadge">{ff.contador}</span>
-          </button>
+          </Button>
         ))}
         <CampoBusca valor={busca} aoMudar={setBusca}
           contador={`${visiveis.length} de ${porStatus.length} linhas`} />
@@ -6540,7 +6543,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
           {onAprovarLinha && pendentesVisiveis.length > 0 && (
             <div className="selecao-massa">
               {selecionados.size === 0 ? (
-                <button type="button" className="btn-editar-linha" onClick={selecionarTodasPendentes}>Selecionar todas as pendências {buscando ? "desta busca" : "visíveis"} ({pendentesVisiveis.length})</button>
+                <Button variant="outline" type="button" onClick={selecionarTodasPendentes}>Selecionar todas as pendências {buscando ? "desta busca" : "visíveis"} ({pendentesVisiveis.length})</Button>
               ) : (
                 <>
                   <span className="selecao-massa-texto">
@@ -6551,8 +6554,8 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
                       </b>
                     )}
                   </span>
-                  <button type="button" className="btn-cancelar" onClick={limparSelecao}>Limpar</button>
-                  <button type="button" className="btn-aprovar-linha" onClick={aprovarSelecionados}><CheckCircle2 size={12} /> Aprovar selecionadas</button>
+                  <Button variant="outline" type="button" onClick={limparSelecao}>Limpar</Button>
+                  <Button size="sm" type="button" onClick={aprovarSelecionados}><CheckCircle2 size={12} /> Aprovar selecionadas</Button>
                 </>
               )}
             </div>
@@ -6575,7 +6578,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
               const alertaGrupo = alertasPorVerba ? alertasPorVerba.get(num) : null;
               return (
                 <div key={num} className="vend-grupo">
-                  <button className="vend-head" onClick={() => abreNaBusca.alternar(g, () => toggle(g))}>
+                  <Button variant="ghost" className="vend-head" onClick={() => abreNaBusca.alternar(g, () => toggle(g))}>
                     {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
                     <span className="vend-num mono">{num}</span>
                     <span className="vend-nome">{nome}</span>
@@ -6587,7 +6590,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
                     <span className={`vend-pend ${pend === 0 ? "ok" : ""}`}>
                       {pend === 0 ? "tudo conferido" : `${pend} pendente${pend > 1 ? "s" : ""}`}
                     </span>
-                  </button>
+                  </Button>
                   {aberto && alertaGrupo && (
                     <div className="grupo-alerta">
                       <AlertTriangle size={14} />
@@ -6861,14 +6864,15 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
               </span></>
             )}
           </div>
-          <button className="btn-aprovar" disabled={!podeLiberar} onClick={() => {
-            if (window.confirm(
-              `Liberar o CMV de ${fmtBRL(cmvTotal)}?\n\n` +
-              "Este vira o teto de custo da obra, e o Executivo e as etapas seguintes abrem para a equipe."
-            )) onAprovar(cmvTotal);
+          <Button disabled={!podeLiberar} onClick={async () => {
+            if (await confirmar({
+              titulo: `Liberar o CMV de ${fmtBRL(cmvTotal)}?`,
+              mensagem: "Este vira o teto de custo da obra, e o Executivo e as etapas seguintes abrem para a equipe.",
+              confirmar: "Liberar CMV", perigo: false,
+            })) onAprovar(cmvTotal);
           }}>
             <ShieldCheck size={14} /> Liberar CMV
-          </button>
+          </Button>
         </div>
       )}
     </>
@@ -7201,11 +7205,11 @@ function FormExcecaoCliente({ onConfirmar, onCancelar }) {
       <input className="form-input" value={quem} placeholder="Quem autorizou"
         onChange={(e) => setQuem(e.target.value)} />
       <div className="cli-excecao-acoes">
-        <button type="button" className="btn-cancelar" onClick={onCancelar}>Cancelar</button>
-        <button type="button" className="btn-aprovar-linha" disabled={!vale}
+        <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
+        <Button size="sm" type="button" disabled={!vale}
           onClick={() => onConfirmar({ motivo: motivo.trim(), quem: quem.trim() })}>
           <Check size={12} /> Liberar com justificativa
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -7233,9 +7237,9 @@ function FormRemocao({ item, onCancelar, onConfirmar }) {
         onChange={(e) => setMotivo(e.target.value)} />
       <div className="form-remocao-acoes">
         <span className="dim">{vale ? "A justificativa aparece na Conf. Executivo." : "Escreva o motivo para remover."}</span>
-        <button type="button" className="btn-cancelar" onClick={onCancelar}>Cancelar</button>
-        <button type="button" className="btn-linha-excluir-confirma" disabled={!vale}
-          onClick={() => onConfirmar(motivo.trim())}>Remover</button>
+        <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
+        <Button variant="danger" type="button" disabled={!vale}
+          onClick={() => onConfirmar(motivo.trim())}>Remover</Button>
       </div>
     </div>
   );
@@ -7290,25 +7294,25 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
   return (
     <div className="cli-bloco">
       <div className="conf-stats">
-        <button className={`conf-stat ${filtro === "falta" ? "active" : ""}`}
+        <Button variant="ghost" className={`conf-stat ${filtro === "falta" ? "active" : ""}`}
           style={{ borderColor: filtro === "falta" ? "var(--alert)" : undefined }}
           onClick={() => setFiltro("falta")}>
           <div className="conf-stat-num" style={{ color: "var(--alert)" }}>{falta}</div>
           <div className="conf-stat-label">Falta aprovar com o cliente</div>
           <div className="conf-stat-sub">nenhum destes pode ser liberado para compra</div>
-        </button>
-        <button className={`conf-stat ${filtro === "aprovados" ? "active" : ""}`}
+        </Button>
+        <Button variant="ghost" className={`conf-stat ${filtro === "aprovados" ? "active" : ""}`}
           style={{ borderColor: filtro === "aprovados" ? "var(--green)" : undefined }}
           onClick={() => setFiltro("aprovados")}>
           <div className="conf-stat-num" style={{ color: "var(--green)" }}>{nAprovados}</div>
           <div className="conf-stat-label">Aprovados pelo cliente</div>
           <div className="conf-stat-sub">liberados para o executivo decidir a compra</div>
-        </button>
-        <button className={`conf-stat ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>
+        </Button>
+        <Button variant="ghost" className={`conf-stat ${filtro === "todos" ? "active" : ""}`} onClick={() => setFiltro("todos")}>
           <div className="conf-stat-num">{nItens}</div>
           <div className="conf-stat-label">Todos os produtos</div>
           <div className="conf-stat-sub">a planilha executivo inteira</div>
-        </button>
+        </Button>
       </div>
 
       <div className="vend-list">
@@ -7323,23 +7327,23 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
-                <button className="grp-toggle" onClick={() => alternar(g.num)}>
+                <Button variant="ghost" className="grp-toggle" onClick={() => alternar(g.num)}>
                   <div className="grp-esq">
                     {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                     <span className="grp-num mono">{g.num}</span>
                     <span className="grp-nome">{g.nome}</span>
                     <span className="grp-conta">{g.nProdutos ?? g.itens.length} {(g.nProdutos ?? g.itens.length) === 1 ? "produto" : "produtos"}</span>
                   </div>
-                </button>
+                </Button>
                 <div className="grp-dir">
                   {podeEditar && pendentes.length > 0 && (
-                    <button className="btn-aprovar-linha"
+                    <Button size="sm"
                       onClick={() => onAprovar(pendentes.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
                       <CheckCircle2 size={12} /> Aprovar {pendentes.length}
-                    </button>
+                    </Button>
                   )}
                   {podeEditar && aprovados.length > 0 && (
-                    <button className="btn-desaprovar"
+                    <Button variant="danger"
                       title="Tira a aprovação do cliente destes produtos — eles voltam a esperar"
                       onClick={async () => {
                         if (!(await confirmar(
@@ -7349,7 +7353,7 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                         onAprovar(aprovados.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), false);
                       }}>
                       <X size={12} /> Desfazer {aprovados.length}
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
@@ -7410,16 +7414,16 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                                 <Check size={10} /> aprovado
                               </span>
                               {podeEditar && x.it.aprovadoCliente && !x.liberado && (
-                                <button type="button" className="troca-link"
-                                  onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</button>
+                                <Button variant="ghost" size="sm" type="button"
+                                  onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
                               )}
                             </div>
                           ) : (
-                            <button className="pill pill-btn pill-wait" disabled={!podeEditar}
+                            <Button variant="ghost" size="sm" className="pill pill-btn pill-wait" disabled={!podeEditar}
                               title={podeEditar ? "Marcar que o cliente aprovou este produto" : MODO_LEITURA_DICA}
                               onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                               o cliente segurou · aprovar
-                            </button>
+                            </Button>
                           )}
                         </td>
                       </tr>
@@ -7606,16 +7610,16 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           })()}
           <div className="selecao-acoes">
             {podeEditar && onConcluir && (
-              <button className="btn-aprovar-linha" onClick={() => {
+              <Button size="sm" onClick={() => {
                 const alvos = todosOsGrupos.flatMap((g) => g.itens)
                   .filter((x) => sel.has(x.chave) && !x.titulo)
                   .map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
                 if (!alvos.length) return;
                 onConcluir(alvos, true);
                 setSel(new Set());
-              }}><Check size={12} /> Concluir {sel.size}</button>
+              }}><Check size={12} /> Concluir {sel.size}</Button>
             )}
-            <button className="btn-cancelar" onClick={() => setSel(new Set())}>Limpar</button>
+            <Button variant="outline" onClick={() => setSel(new Set())}>Limpar</Button>
           </div>
         </div>
       )}
@@ -7653,7 +7657,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           return (
             <div key={g.num} className="grp-block">
               <div className="grp-head">
-                <button className="grp-toggle" onClick={() => abreNaBusca.alternar(g.num, () => alternar(g.num))}>
+                <Button variant="ghost" className="grp-toggle" onClick={() => abreNaBusca.alternar(g.num, () => alternar(g.num))}>
                   <div className="grp-esq">
                     {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                     <span className="grp-num mono">{g.num}</span>
@@ -7686,25 +7690,25 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                       </span>
                     )}
                   </div>
-                </button>
+                </Button>
                 <div className="grp-dir">
                   <span className="mono dim lib-grp-valor">{fmtBRL(g.liberado)} de {fmtBRL(g.total)}</span>
                   {podeEditar && onConcluir && aConcluir.length > 0 && (
-                    <button className="btn-desaprovar"
+                    <Button variant="danger"
                       title="Marca a verba inteira como concluída pelo executivo"
                       onClick={() => onConcluir(aConcluir.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
                       <Check size={12} /> Concluir executivo {aConcluir.length}
-                    </button>
+                    </Button>
                   )}
                   {/* SO' ADMINISTRADOR LIBERA (decisao dela, ADR-005) — e o botao
                       some pra quem nao e', em vez de aparecer e recusar no clique. */}
                   {podeEditar && souAdmin && faltam.length > 0 && (
-                    <button className="btn-aprovar-linha" onClick={() => onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
+                    <Button size="sm" onClick={() => onLiberar(faltam.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx })), true)}>
                       <Check size={12} /> Liberar para compra {faltam.length}
-                    </button>
+                    </Button>
                   )}
                   {podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && (
-                    <button className="btn-aprovar-linha btn-conferir-liberar"
+                    <Button size="sm"
                       title={`Marca o alerta como conferido no seu nome nos ${travadosAqui.length} produtos e libera os ${travadosAqui.length} para compra`}
                       onClick={() => {
                         const alvos = travadosAqui.map((x) => ({ catIdx: x.catIdx, itemIdx: x.itemIdx }));
@@ -7712,7 +7716,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                         onLiberar(alvos, true);
                       }}>
                       <AlertTriangle size={12} /> Conferi os alertas · liberar {travadosAqui.length}
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
@@ -7816,10 +7820,10 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                               <AlertTriangle size={11} />
                               <span>{x.pendencia.texto}</span>
                               {podeEditar && !x.liberado && (
-                                <button type="button" className="troca-link"
+                                <Button variant="ghost" size="sm" type="button"
                                   onClick={() => onConferir(x.catIdx, x.itemIdx, !x.it.alertaConferido)}>
                                   {x.it.alertaConferido ? "desmarcar" : "conferi"}
-                                </button>
+                                </Button>
                               )}
                               {x.it.alertaConferido && (
                                 <span className="lib-conferido-por">
@@ -7847,16 +7851,16 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 <Check size={10} /> concluído
                               </span>
                               {podeEditar && onConcluir && x.it.concluidoExecutivo && (
-                                <button type="button" className="troca-link"
-                                  onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</button>
+                                <Button variant="ghost" size="sm" type="button"
+                                  onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
                               )}
                             </div>
                           ) : (
-                            <button className="pill pill-btn pill-wait" disabled={!podeEditar || !onConcluir}
+                            <Button variant="ghost" size="sm" className="pill pill-btn pill-wait" disabled={!podeEditar || !onConcluir}
                               title={podeEditar ? "Marcar esta linha como concluída pelo executivo" : MODO_LEITURA_DICA}
                               onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                               concluir
-                            </button>
+                            </Button>
                           )}
                         </td>
 
@@ -7893,8 +7897,8 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 <Check size={10} /> liberado
                               </span>
                               {podeEditar && souAdmin && x.it.liberadoCompra && !x.it.comprado && (
-                                <button type="button" className="troca-link"
-                                  onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</button>
+                                <Button variant="ghost" size="sm" type="button"
+                                  onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
                               )}
                             </div>
                           ) : (
@@ -7902,7 +7906,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                               {/* A ordem continua (o executivo vem antes), mas o
                                   clique nao pede os dois: aprovar pra compra
                                   conclui o executivo junto, quando falta. */}
-                              <button className="pill pill-btn pill-wait"
+                              <Button variant="ghost" size="sm" className="pill pill-btn pill-wait"
                                 disabled={!podeEditar || !souAdmin || !x.pode}
                                 title={!podeEditar ? MODO_LEITURA_DICA
                                   : !souAdmin ? "Só um administrador libera a compra"
@@ -7911,7 +7915,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                   : "Liberar para compra — marca o executivo como concluído junto"}
                                 onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                 estimativa · liberar
-                              </button>
+                              </Button>
                               {/* A excecao, no mesmo padrao do portao da assinatura que
                                   ja existe no Plano de Compras: bloqueia por padrao, mas
                                   quem tem autoridade libera dizendo por que — e fica
@@ -7920,7 +7924,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 excecao === x.chave
                                   ? <FormExcecaoCliente onCancelar={() => setExcecao(null)}
                                       onConfirmar={(dados) => { onLiberarSemCliente(x.catIdx, x.itemIdx, dados); setExcecao(null); }} />
-                                  : <button type="button" className="troca-link" onClick={() => setExcecao(x.chave)}>liberar mesmo assim</button>
+                                  : <Button variant="ghost" size="sm" type="button" onClick={() => setExcecao(x.chave)}>liberar mesmo assim</Button>
                               )}
                             </>
                           )}
@@ -8120,15 +8124,15 @@ function FaseBloqueada({ onIrParaDepara, onComecarSemDepara }) {
       <Lock size={30} className="dim" />
       <div className="compras-empty-title">Aguardando a liberação do CMV</div>
       <div className="compras-empty-sub">Esta etapa abre quando o CMV desta obra for liberado no Depara Contrato × Planilha — é ele que define o teto de custo com que a equipe vai trabalhar daqui pra frente.</div>
-      <button className="btn-nova-solicitacao" onClick={onIrParaDepara}>Ir para o Depara</button>
+      <Button onClick={onIrParaDepara}>Ir para o Depara</Button>
       {onComecarSemDepara && (
         <>
           <div className="compras-empty-sub" style={{ marginTop: 18 }}>
             Esta obra ainda não tem Vendido Contrato nem Vendido Planilha — não há com o que montar essa comparação.
           </div>
-          <button className="btn-cancelar" onClick={onComecarSemDepara}>
+          <Button variant="outline" onClick={onComecarSemDepara}>
             Começar direto pelo Executivo, sem CMV por enquanto
-          </button>
+          </Button>
         </>
       )}
     </div>
@@ -8178,7 +8182,7 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
           onChange={(e) => setTermo(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Escape") onCancelar(); }}
         />
-        <button className="clear-btn" onClick={onCancelar}><X size={13} /></button>
+        <Button variant="ghost" size="icon" onClick={onCancelar} aria-label="Fechar"><X size={13} /></Button>
       </div>
 
       {erro && <div className="busca-insumo-vazio">{erro}</div>}
@@ -8188,17 +8192,17 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
       {!erro && buscando && <div className="busca-insumo-vazio">Buscando…</div>}
       {!erro && !buscando && termo.trim().length >= 3 && lista.length === 0 && (
         <div className="busca-insumo-vazio">
-          Nada encontrado. <button className="link-inline" onClick={() => onEscolher(null)}>Criar item em branco</button>
+          Nada encontrado. <Button variant="ghost" size="sm" onClick={() => onEscolher(null)}>Criar item em branco</Button>
         </div>
       )}
 
       {lista.map((p, i) => (
-        <button key={i} className="busca-insumo-linha" onClick={() => onEscolher(p)}>
+        <Button variant="ghost" key={i} className="busca-insumo-linha" onClick={() => onEscolher(p)}>
           <span className="mono busca-insumo-cod">{p.codigo}</span>
           <span className="busca-insumo-desc">{p.descricao}</span>
           <span className="mono busca-insumo-preco">{p.custo_unitario > 0 ? fmtBRL(p.custo_unitario) : "sem preço"}</span>
           <span className="busca-insumo-un">/{p.unidade || "un"}</span>
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -8227,9 +8231,9 @@ function SugestoesPreco({ descricao, onUsar }) {
 
   if (!abertas) {
     return (
-      <button className="btn-sugestao" onClick={buscar}>
+      <Button variant="ghost" size="sm" onClick={buscar}>
         <PackageSearch size={11} /> ver preços de referência
-      </button>
+      </Button>
     );
   }
 
@@ -8237,7 +8241,7 @@ function SugestoesPreco({ descricao, onUsar }) {
     <div className="sugestoes">
       <div className="sugestoes-titulo">
         Últimas compras parecidas
-        <button className="clear-btn" onClick={() => setAbertas(false)}><X size={11} /></button>
+        <Button variant="ghost" size="icon" onClick={() => setAbertas(false)} aria-label="Fechar"><X size={11} /></Button>
       </div>
       {erro && <div className="sugestoes-vazio">{erro}</div>}
       {!erro && lista === null && <div className="sugestoes-vazio">Buscando…</div>}
@@ -8245,12 +8249,12 @@ function SugestoesPreco({ descricao, onUsar }) {
         <div className="sugestoes-vazio">Nada parecido no banco de preços.</div>
       )}
       {!erro && lista && lista.map((p, i) => (
-        <button key={i} className="sugestao-linha" onClick={() => onUsar(p.custo_unitario)}>
+        <Button variant="ghost" key={i} className="sugestao-linha" onClick={() => onUsar(p.custo_unitario)}>
           <span className="mono sugestao-preco">{fmtBRL(p.custo_unitario)}</span>
           <span className="sugestao-un">/{p.unidade || "un"}</span>
           <span className="sugestao-desc">{p.descricao}</span>
           <span className="mono sugestao-data">{p.data_ref ? p.data_ref.split("-").reverse().join("/") : ""}</span>
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -8394,14 +8398,14 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado, coord, 
     : formato === "moeda" ? fmtBRL(valor) : String(valor);
 
   return (
-    <button
+    <Button variant="ghost"
       data-cel={coord || undefined}
       className={`celula-valor ${ehTexto ? "texto" : "mono"} ${alinhar || ""} ${congelado ? "travada" : ""}`}
       onClick={abrir}
       title={congelado ? "Congelado pela liberação de compra" : (onNavegar ? "Clique para editar · Tab e Enter andam pelas células" : "Clique para editar")}
     >
       {mostrar}
-    </button>
+    </Button>
   );
 }
 
@@ -8458,7 +8462,7 @@ function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado, coord,
         {texto || (editavel ? <span className="dim">clique para preencher</span> : "\u2014")}
       </span>
       {cortado && onVerTudo && (
-        <button className="btn-info" title="Ver texto completo" onClick={() => onVerTudo(texto)}>i</button>
+        <Button variant="ghost" size="sm" title="Ver texto completo" onClick={() => onVerTudo(texto)}>i</Button>
       )}
     </div>
   );
@@ -8509,13 +8513,13 @@ function DetalheTexto({ item, onFechar }) {
       <div className="detalhe-caixa" onClick={(e) => e.stopPropagation()}>
         <div className="detalhe-topo">
           <span>{item.rotulo}</span>
-          <button className="clear-btn" onClick={onFechar}><X size={14} /></button>
+          <Button variant="ghost" size="icon" onClick={onFechar} aria-label="Fechar"><X size={14} /></Button>
         </div>
         <textarea className="detalhe-texto" readOnly value={item.texto} onFocus={(e) => e.target.select()} />
         <div className="detalhe-acoes">
-          <button className="btn-editar-linha" onClick={copiar}>
+          <Button variant="outline" onClick={copiar}>
             <Copy size={12} /> {copiado ? "Copiado" : "Copiar"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -8714,12 +8718,12 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
             <span className="caderno-slot-vazio">arquivo não guardado — anexe de novo</span>
           ) : (
             <>
-              <button className="caderno-acao" onClick={() => abrir(false)} disabled={!!ocupado}>
+              <Button variant="outline" size="sm" onClick={() => abrir(false)} disabled={!!ocupado}>
                 <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
-              </button>
-              <button className="caderno-acao" onClick={() => abrir(true)} disabled={!!ocupado}>
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => abrir(true)} disabled={!!ocupado}>
                 <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
-              </button>
+              </Button>
             </>
           )}
         </>
@@ -8738,16 +8742,16 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
           VAZIO nao tem prova nenhuma pra apagar — e recusar o anexo ali so'
           garante que o documento nunca entra no sistema. */}
       {podeEditar && (!congelado || !arquivo) && (
-        <button className="caderno-acao" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
+        <Button variant="outline" size="sm" disabled={enviando} onClick={() => inputRef.current && inputRef.current.click()}>
           <Upload size={12} /> {enviando ? "Enviando…" : arquivo ? "Trocar" : "Anexar"}
-        </button>
+        </Button>
       )}
       {podeEditar && congelado && arquivo && !perdido && (
         <span className="caderno-slot-vazio" title="As compras já foram liberadas: este arquivo é a prova do que foi mandado para o fornecedor e não pode ser trocado.">
           <Lock size={10} /> compras liberadas
         </span>
       )}
-      <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} style={{ display: "none" }} onChange={aoEscolher} />
+      <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} className="sr-only" onChange={aoEscolher} />
       {erro && <span className="caderno-erro">{erro}</span>}
     </div>
   );
@@ -8900,7 +8904,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                 )}
               </span>
             </div>
-            <button className="btn-import" onClick={async () => {
+            <Button onClick={async () => {
               // Recomeçar joga fora o que já foi lançado aqui. Perguntar
               // custa um clique; refazer custa a tarde.
               if (temExecutivo && !(await confirmar(
@@ -8911,7 +8915,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
               onPuxarDoCriativo();
             }}>
               <Copy size={13} /> {temExecutivo ? "Recomeçar do criativo" : "Puxar do criativo"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -8956,11 +8960,11 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
         <div className="filter-bar venda-bar">
           <ClipboardList size={13} className="dim" />
           {FILTROS_VENDA.map((f) => (
-            <button key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
+            <Button variant="ghost" key={f.id} className={`filter-chip tipo-chip ${filtroVenda === f.id ? "active" : ""}`}
               onClick={() => setFiltroVenda(f.id)}>
               {f.label}
               <span className="tipo-chip-conta">{contaVenda[f.id]}</span>
-            </button>
+            </Button>
           ))}
           <span className="filter-sep" />
           {/* Digitar na busca fecha o painel de insercao: nao da' pra estar
@@ -9001,7 +9005,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             return (
               <div key={c.num} className="vend-grupo">
                 {/* abre mesmo sem itens: é onde se lança item manual */}
-                <button className="vend-head" onClick={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}>
+                <Button variant="ghost" className="vend-head" onClick={() => abreNaBusca.alternar(c.num, () => toggle(c.num))}>
                   {aberto ? <ChevronDown size={14} className="dim" /> : <ChevronRight size={14} className="dim" />}
                   <span className="vend-num mono">{c.num}</span>
                   <span className="vend-nome">{c.nome}</span>
@@ -9020,7 +9024,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                     </span>
                   )}
                   <span className="vend-val mono">{temItens ? fmtBRL(subtotal) : "—"}</span>
-                </button>
+                </Button>
                 {aberto && temItens && (
                   <div className="exec-scroll">
                   <table className="vend-itens exec-itens exec-editavel">
@@ -9079,22 +9083,20 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                               <span className="col-item-cod">{it.codigo || "—"}</span>
                               {!congelado && !it.excluido && (
                                 <span className="col-item-acoes">
-                                  <button
-                                    className="btn-linha-inserir"
+                                  <Button variant="ghost" size="icon"
                                     title={`Inserir item abaixo do ${it.codigo || "item"}`}
                                     onClick={() => setBuscandoEm({ verba: c.num, depois: i })}
-                                  >
+                                    aria-label={`Inserir item abaixo do ${it.codigo || "item"}`}>
                                     <Plus size={12} />
-                                  </button>
+                                  </Button>
                                   {/* Substituir: exclui este e encaixa o escolhido
                                       logo abaixo, ligado a ele. */}
-                                  <button
-                                    className="btn-linha-substituir"
+                                  <Button variant="ghost" size="icon"
                                     title={`Substituir ${it.codigo || "este item"} por outro`}
                                     onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}
-                                  >
+                                    aria-label={`Substituir ${it.codigo || "este item"} por outro`}>
                                     <ArrowLeftRight size={12} />
-                                  </button>
+                                  </Button>
                                 </span>
                               )}
                             </td>
@@ -9169,15 +9171,15 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                             <td className="center col-acoes">
                               {!congelado && (
                                 <div className="linha-acoes">
-                                  <button
-                                    className={`btn-linha-excluir ${it.excluido ? "desfazer" : ""}`}
+                                  <Button variant="ghost" size="icon"
                                     title={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}
+                                    aria-label={it.excluido ? "Trazer de volta" : "Remover do executivo"}
                                     onClick={() => (it.excluido
                                       ? onEditarItem(c.num, i, { excluido: false })
                                       : setRemovendo(`${c.num}:${i}`))}
                                   >
                                     {it.excluido ? <RotateCcw size={13} /> : <X size={13} />}
-                                  </button>
+                                  </Button>
                                 </div>
                               )}
                             </td>
@@ -9252,9 +9254,9 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                       onEscolher={(insumo) => { onAdicionarItem(c.num, insumo, null, null); setBuscandoEm(null); }}
                     />
                   ) : buscandoEm?.verba === c.num ? null : (
-                    <button className="btn-add-item" onClick={() => setBuscandoEm({ verba: c.num, depois: null })}>
+                    <Button variant="outline" size="sm" onClick={() => setBuscandoEm({ verba: c.num, depois: null })}>
                       <Plus size={12} /> Adicionar item no fim desta verba
-                    </button>
+                    </Button>
                   )
                 )}
               </div>
@@ -9330,7 +9332,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                 e o saldo não tem como ser calculado. A liberação acontece no Depara Contrato × Planilha.
               </span>
               {onIrParaDepara && (
-                <button type="button" className="btn-reabrir-etapa" onClick={onIrParaDepara}>Ir para o Depara</button>
+                <Button variant="outline" type="button" onClick={onIrParaDepara}>Ir para o Depara</Button>
               )}
             </div>
           )}
@@ -9362,10 +9364,10 @@ function TopBar({ onInicio }) {
       {/* A marca leva pro Inicio. E' o que todo site faz, e por isso e' o
           primeiro lugar onde a pessoa clica quando se perde — deixa-la
           inerte gasta um clique de descoberta que ninguem tem. */}
-      <button className="topbar-brand" onClick={onInicio} title="Ir para o Início">
+      <Button variant="ghost" className="topbar-brand" onClick={onInicio} title="Ir para o Início">
         <LogoGroupWS style={{ fontSize: 14 }} />
         <span className="brand-produto">Gestão de Obras TKWS</span>
-      </button>
+      </Button>
       {/* A busca do topo saiu.
 
           Ela nunca teve handler: digitar ali nao fazia nada, e o "⌘K" ao
@@ -9379,7 +9381,7 @@ function TopBar({ onInicio }) {
             nao faz nada nao e' neutro — a pessoa clica, nada acontece, e
             passa a duvidar do resto dos botoes da tela. */}
         <AlternarTema />
-        <button className="icon-btn bell"><Bell size={16} /><span className="notif-dot">1</span></button>
+        <Button variant="ghost" size="sm" className="bell"><Bell size={16} /><span className="notif-dot">1</span></Button>
         {/* O avatar saiu daqui (pedido dela, 20/09/2026: "esse avatar aqui
             em cima pode retirar, ja' tem la' em baixo").
 
@@ -9965,18 +9967,18 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
     : null);
 
   const botaoDestino = (m) => (
-    <button key={m.id} className={`trilho-item ${modulo === m.id ? "ativo" : ""}`}
+    <Button variant="ghost" key={m.id} className={`trilho-item ${modulo === m.id ? "ativo" : ""}`}
       onClick={() => onModulo(m.id)} title={m.nome}>
       <m.Icone size={18} />
       {badgeDoDestino(m)}
-    </button>
+    </Button>
   );
 
   const linhaDaObra = (o, comSimbolo) => {
     const alertas = obraAlertCount(o);
     const trava = travas?.get?.(String(o.codigo)) || null;
     return (
-      <button key={o.id} className={`obra-linha ${selected === o.id ? "ativa" : ""} ${comSimbolo ? "" : "sem-simbolo"}`}
+      <Button variant="ghost" key={o.id} className={`obra-linha ${selected === o.id ? "ativa" : ""} ${comSimbolo ? "" : "sem-simbolo"}`}
         onClick={() => onSelect(o.id)} title={`#${o.codigo} · ${o.nome}`}>
         {/* O simbolo do squad so' na lista por numero: no modo squad ele ja'
             esta' no cabecalho do grupo, e dize-lo duas vezes por obra era um
@@ -9989,7 +9991,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
         <span className="obra-nome">{o.nome}</span>
         {trava && <Lock size={11} className="obra-trava" />}
         {alertas > 0 && <span className="obra-badge">{alertas}</span>}
-      </button>
+      </Button>
     );
   };
 
@@ -10017,7 +10019,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                    Eu tinha repetido a armadilha aqui, com o padrao de
                    "clicar no ativo alterna". Esconder tem botao proprio, no
                    pe do trilho. */
-                <button className={`trilho-item ${naObra ? "ativo" : ""}`} title="Obras"
+                <Button variant="ghost" className={`trilho-item ${naObra ? "ativo" : ""}`} title="Obras"
                   onClick={() => {
                     setPainelEscondido(false);
                     if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id);
@@ -10028,7 +10030,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                       nada. Em portugues, capacete quer dizer obra sem precisar
                       pensar, e nenhuma outra tela usa esse simbolo. */}
                   <HardHat size={18} />
-                </button>
+                </Button>
               )}
             </React.Fragment>
           ) : botaoDestino(m)
@@ -10039,16 +10041,16 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
               e e' o unico jeito de esconder, pra clicar num destino nunca
               tirar nada da tela. So' aparece quando ha' painel pra esconder. */}
           {mostrarObras && naObra && (
-            <button className="trilho-item trilho-dobrar" title={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}
+            <Button variant="ghost" className="trilho-item trilho-dobrar" title={painelEscondido ? "Mostrar a lista de obras" : "Esconder a lista de obras"}
               onClick={() => setPainelEscondido((v) => !v)}>
               {painelEscondido ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-            </button>
+            </Button>
           )}
           {destinosPe.map(botaoDestino)}
-          <button ref={perfilRef} className={`trilho-perfil ${menuPerfil ? "aberto" : ""}`}
-            onClick={() => setMenuPerfil((v) => !v)} title={meuNome || usuario || "Não identificado"}>
+          <Button variant="ghost" ref={perfilRef} className={`trilho-perfil ${menuPerfil ? "aberto" : ""}`}
+            onClick={() => setMenuPerfil((v) => !v)} title={meuNome || usuario || "Não identificado"} aria-label={meuNome || usuario || "Não identificado"}>
             <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-sm" />
-          </button>
+          </Button>
         </div>
       </nav>
 
@@ -10058,15 +10060,15 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             {/* A propria foto e' o botao de trocar. Um terceiro item de
                 menu chamado "Trocar foto" diria o que a foto ali ja diz,
                 e o pedido era um menu pequeno. */}
-            <button className="perfil-foto" disabled={subindoFoto || !onTrocarFoto}
+            <Button variant="ghost" className="perfil-foto" disabled={subindoFoto || !onTrocarFoto}
               onClick={() => fotoRef.current && fotoRef.current.click()}
-              title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
+              title={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"} aria-label={euNaEquipe?.foto ? "Trocar a foto" : "Escolher uma foto"}>
               <Avatar pessoa={euNaEquipe} nome={meuNome} classe="avatar avatar-md" />
               <span className="perfil-foto-capa"><Camera size={14} /></span>
-            </button>
+            </Button>
             {/* So' o que o navegador decodifica. Com image/* o seletor do
                 Mac oferecia HEIC, e HEIC vira tela preta. */}
-            <input ref={fotoRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
+            <input ref={fotoRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only"
               onChange={aoEscolherFoto} />
             <div className="perfil-cab-txt">
               <div className="perfil-cab-nome">{meuNome || "Não identificado"}</div>
@@ -10076,10 +10078,10 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           {subindoFoto && <div className="perfil-aviso">Enviando a foto…</div>}
           {erroFoto && <div className="perfil-aviso erro">{erroFoto}</div>}
           <div className="perfil-sep" />
-          <button className="perfil-item" onClick={() => setVerDados((v) => !v)} aria-expanded={verDados}>
+          <Button variant="ghost" className="perfil-item" onClick={() => setVerDados((v) => !v)} aria-expanded={verDados}>
             <UserRound size={14} /> Meus dados
             <ChevronDown size={13} className={`perfil-seta ${verDados ? "aberta" : ""}`} />
-          </button>
+          </Button>
           {/* Em LEITURA. Quem edita pessoa e' quem cuida da Equipe; a
               unica coisa que a pessoa muda em si mesma e' a foto. */}
           {verDados && (
@@ -10088,18 +10090,18 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
               <div><span>Nome</span><b>{meuNome || "—"}</b></div>
               <div><span>E-mail</span><b>{usuario || "—"}</b></div>
               {euNaEquipe?.foto && (
-                <button className="perfil-tirar-foto" onClick={removerFoto} disabled={subindoFoto}>
+                <Button variant="ghost" className="perfil-tirar-foto" onClick={removerFoto} disabled={subindoFoto}>
                   <Trash2 size={12} /> Remover a foto
-                </button>
+                </Button>
               )}
               <div className="perfil-dados-nota">
                 O nome é alterado por quem cuida da Equipe.
               </div>
             </div>
           )}
-          <button className="perfil-sair" onClick={onSair}>
+          <Button variant="ghost" className="perfil-sair" onClick={onSair}>
             <LogOut size={14} /> Sair
-          </button>
+          </Button>
         </div>
       )}
 
@@ -10116,11 +10118,11 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
             {/* Dois modos, dois links. Nao e' um filtro: os dois mostram a
                 lista inteira, muda so' a ordem de leitura. */}
             <span className="painel-modos">
-              <button className={modo === "numero" ? "on" : ""} onClick={() => setModo("numero")}
-                title="Todas as obras em ordem de número">número</button>
+              <Button variant="ghost" className={modo === "numero" ? "on" : ""} onClick={() => setModo("numero")}
+                title="Todas as obras em ordem de número">número</Button>
               <span className="painel-modos-sep">|</span>
-              <button className={modo === "squad" ? "on" : ""} onClick={() => setModo("squad")}
-                title="As obras agrupadas por squad">squad</button>
+              <Button variant="ghost" className={modo === "squad" ? "on" : ""} onClick={() => setModo("squad")}
+                title="As obras agrupadas por squad">squad</Button>
             </span>
           </div>
 
@@ -10138,12 +10140,12 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
               Com isto o painel le' na ordem da vida de uma obra: as que vao
               comecar, as que estao em andamento, as que terminaram. */}
           {novasNoPainel && novasCount > 0 && (
-            <button className={`painel-novas ${modulo === "novas" ? "ativo" : ""}`}
+            <Button variant="ghost" className={`painel-novas ${modulo === "novas" ? "ativo" : ""}`}
               onClick={() => onModulo("novas")} title={novasNoPainel.sub}>
               <novasNoPainel.Icone size={13} />
               <span className="painel-novas-n mono">{novasCount}</span>
               <span>{novasCount === 1 ? "nova obra" : "novas obras"}</span>
-            </button>
+            </Button>
           )}
 
           <div className="obra-search painel-busca">
@@ -10153,19 +10155,19 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                 A lupa ao lado ja' diz que e' filtro; o que falta dizer e' POR
                 QUE se pode filtrar. */}
             <input placeholder="Nome, código ou cliente" value={search} onChange={(e) => setSearch(e.target.value)} />
-            {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
+            {search && <Button variant="ghost" size="icon" onClick={() => setSearch("")} aria-label="Limpar busca"><X size={12} /></Button>}
           </div>
 
-          <button className={`painel-minhas ${soMinhas ? "on" : ""}`} onClick={() => setSoMinhas((v) => !v)}
+          <Button variant="ghost" className={`painel-minhas ${soMinhas ? "on" : ""}`} onClick={() => setSoMinhas((v) => !v)}
             title={usuario ? `Obras em que ${nomeDoEmail(usuario)} é o GC` : "Entre para filtrar pelas suas obras"}>
             <ShieldCheck size={11} /> Minhas{nMinhas > 0 ? ` ${nMinhas}` : ""}
-          </button>
+          </Button>
 
           <div className="painel-lista">
             {obras.length === 0 && (
               <div className="no-results">
                 Nenhuma obra iniciada ainda.
-                {novasCount > 0 && <> Veja <button className="link-inline" onClick={() => onModulo("novas")}>Novas obras</button>.</>}
+                {novasCount > 0 && <> Veja <Button variant="ghost" size="sm" onClick={() => onModulo("novas")}>Novas obras</Button>.</>}
               </div>
             )}
             {obras.length > 0 && filtradas.length === 0 && <div className="no-results">Nenhuma obra encontrada.</div>}
@@ -10174,7 +10176,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
               ? filtradas.map((o) => linhaDaObra(o, true))
               : squadsNaTela.map((nome) => (
                 <div key={nome} className="squad-bloco">
-                  <button className="squad-cab" onClick={() => alternarSquad(nome)}
+                  <Button variant="ghost" className="squad-cab" onClick={() => alternarSquad(nome)}
                     title={fechados.has(nome) ? `Abrir ${nome}` : `Recolher ${nome}`}>
                     <IconeSquad nome={nome} size={13} />
                     <span className="squad-cab-nome">{nome.replace(/^Squad\s+/i, "")}</span>
@@ -10183,7 +10185,7 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
                     {fechados.has(nome) && porSquad[nome].some((o) => o.id === selected) && (
                       <span className="squad-tem-aberta" title="A obra aberta está neste squad" />
                     )}
-                  </button>
+                  </Button>
                   {!fechados.has(nome) && porSquad[nome].map((o) => linhaDaObra(o, false))}
                 </div>
               ))}
@@ -10195,12 +10197,12 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
           {finalizadasNoPainel && (
             <div className="painel-pe">
               {finalizadasNoPainel && (
-                <button className={`painel-pe-item ${modulo === "arquivo" ? "ativo" : ""}`}
+                <Button variant="ghost" className={`painel-pe-item ${modulo === "arquivo" ? "ativo" : ""}`}
                   onClick={() => onModulo("arquivo")} title={finalizadasNoPainel.sub}>
                   <finalizadasNoPainel.Icone size={14} />
                   <span>{finalizadasNoPainel.nome}</span>
                   {arquivoCount > 0 && <span className="painel-pe-conta neutro">{arquivoCount}</span>}
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -10234,12 +10236,12 @@ function Sidebar({ obras, selected, onSelect, modulo, onModulo, novasCount, arqu
 function SecaoAprovacao({ titulo, sub, selo, aberta, onAlternar, children }) {
   return (
     <div className="aprov-secao">
-      <button type="button" className="aprov-secao-cab" onClick={onAlternar} aria-expanded={aberta}>
+      <Button variant="ghost" type="button" className="aprov-secao-cab" onClick={onAlternar} aria-expanded={aberta}>
         {aberta ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
         <span className="aprov-secao-tit">{titulo}</span>
         <span className="aprov-secao-sub">{sub}</span>
         {selo}
-      </button>
+      </Button>
       {aberta && <div className="aprov-secao-corpo">{children}</div>}
     </div>
   );
@@ -10262,11 +10264,12 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
      pessoa vê o motivo, em vez de ficar com uma aprovação registrada
      apontando pra um documento que nunca foi guardado. */
   async function registrar() {
-    if (!window.confirm(
-      `Registrar a aprovação do cliente em ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")}?\n\n` +
-      "Isto libera o Plano de Compras para ser aprovado.\n\n" +
-      (arquivo ? `Documento: ${arquivo.name}` : "ATENÇÃO: sem documento anexado.")
-    )) return;
+    if (!(await confirmar({
+      titulo: `Registrar a aprovação do cliente em ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")}?`,
+      mensagem: "Isto libera o Plano de Compras para ser aprovado. " +
+        (arquivo ? `Documento: ${arquivo.name}` : "ATENÇÃO: sem documento anexado."),
+      confirmar: "Registrar aprovação", perigo: false,
+    }))) return;
 
     setErroArq(null);
     if (!arquivo) { onRegistrar({ data, obs, arq: null }); return; }
@@ -10314,9 +10317,9 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
               {arq.tamanhoKB ? <span className="dim"> · {arq.tamanhoKB} KB</span>
                 : arq.tamanho ? <span className="dim"> · {(arq.tamanho / 1024).toFixed(0)} KB</span> : null}
               {anexoRecuperavel(arq)
-                ? <button className="caderno-acao" onClick={() => baixarDocumento(arq)} disabled={baixando}>
+                ? <Button variant="outline" size="sm" onClick={() => baixarDocumento(arq)} disabled={baixando}>
                     <Download size={12} /> {baixando ? "Abrindo…" : "Baixar"}
-                  </button>
+                  </Button>
                 /* Registro de antes de o app guardar o arquivo: ficou o
                    nome, não a prova. Some quando um novo for anexado. */
                 : <span className="assinatura-sem-arq"><AlertTriangle size={13} /> só o nome ficou guardado</span>}
@@ -10326,12 +10329,12 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
           {erroArq && <div className="assinatura-sem-arq"><AlertTriangle size={13} /> {erroArq}</div>}
         </div>
         {!congelado && (
-          <button className="btn-limpar-import" onClick={async () => {
+          <Button variant="danger" onClick={async () => {
             if (await confirmar(
               "Remover o registro de aprovação do cliente?\n\n" +
               "O Plano de Compras volta a ficar bloqueado até um novo registro."
             )) onRemover();
-          }}><Trash2 size={13} /> Remover</button>
+          }}><Trash2 size={13} /> Remover</Button>
         )}
       </div>
     );
@@ -10371,10 +10374,10 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
           <div className="campo campo-largo">
             <span className="campo-rotulo">Documento assinado</span>
             <div className="assinatura-upload">
-              <button className="btn-import" disabled={congelado} onClick={() => inputRef.current?.click()}>
+              <Button disabled={congelado} onClick={() => inputRef.current?.click()}>
                 <Upload size={13} /> {arquivo ? "Trocar arquivo" : "Anexar documento"}
-              </button>
-              <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: "none" }}
+              </Button>
+              <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="sr-only"
                 onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setArquivo(f); }} />
               {arquivo
                 ? <span className="assinatura-arq"><FileText size={13} /> {arquivo.name} <span className="dim">· {(arquivo.size / 1024).toFixed(0)} KB</span></span>
@@ -10390,9 +10393,9 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
             </span>
           )}
           {erroArq && <span className="assinatura-aviso"><AlertTriangle size={13} /> {erroArq}</span>}
-          <button className="btn-liberar" disabled={congelado || !data || enviando} onClick={registrar}>
+          <Button disabled={congelado || !data || enviando} onClick={registrar}>
             <ShieldCheck size={14} /> {enviando ? "Guardando documento…" : "Registrar aprovação"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -10531,10 +10534,10 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
           const lista = ETAPAS_POR_GRUPO[g.id];
           const feitas = lista ? lista.filter((e) => etapaConcluida(e.id, obra)).length : 0;
           return (
-            <button key={g.id} className={`nav-grupo ${grupo === g.id ? "active" : ""}`} onClick={() => onGrupo(g.id)}>
+            <Button variant="ghost" key={g.id} className={`nav-grupo ${grupo === g.id ? "active" : ""}`} onClick={() => onGrupo(g.id)}>
               <Icon size={15} /> {g.label}
               {lista && <span className="nav-grupo-progresso">{feitas}/{lista.length}</span>}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -10554,14 +10557,14 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
               // Com item aprovado pra compra, as telas da compra abrem.
               && !(ETAPAS_QUE_ABREM_COM_COMPRA.has(t.id) && temCompraAprovada(obra));
             return (
-              <button key={t.id}
+              <Button variant="ghost" key={t.id}
                 className={`tab ${tab === t.id ? "active" : ""} ${feita ? "feita" : ""} ${travada ? "travada" : ""}`}
                 onClick={() => onChange(t.id)}
                 title={travada ? `Conclua "${anterior.label}" primeiro` : undefined}>
                 {feita ? <CheckCircle2 size={14} className="tab-check" /> : <Icon size={14} />}
                 {t.label}
                 {travada && <Lock size={11} className="dim" />}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -11229,21 +11232,21 @@ function GeradorSiengeView() {
       <div className="ger-topo">
         <label className="btn-doc">
           <Upload size={13} /> {linhas ? "Trocar arquivo" : "Subir lista de produtos"}
-          <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" style={{ display: "none" }}
+          <input type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" className="sr-only"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; lerArquivo(f); }} />
         </label>
         {linhas && (
           <div className="ger-forn">
             <div className="ger-modo">
-              <button className={modoForn === "mesmo" ? "on" : ""}
-                onClick={() => setModoForn("mesmo")}>Mesmo fornecedor</button>
-              <button className={modoForn === "planilha" ? "on" : ""}
+              <Button variant="ghost" className={modoForn === "mesmo" ? "on" : ""}
+                onClick={() => setModoForn("mesmo")}>Mesmo fornecedor</Button>
+              <Button variant="ghost" className={modoForn === "planilha" ? "on" : ""}
                 onClick={() => setModoForn("planilha")}
                 disabled={!temLaterais}
                 title={temLaterais ? "Cada linha usa o fornecedor da própria coluna"
                   : "Esta planilha não trouxe uma coluna de fornecedor"}>
                 Vários fornecedores
-              </button>
+              </Button>
             </div>
             {modoForn === "mesmo" ? (
               <input className="form-input" type="text" value={fornecedor}
@@ -11256,10 +11259,10 @@ function GeradorSiengeView() {
                   ? <>{fornsDaPlanilha.length} da planilha: <b>{fornsDaPlanilha.slice(0, 3).join(", ")}</b>
                       {fornsDaPlanilha.length > 3 && `, +${fornsDaPlanilha.length - 3}`}</>
                   : "nenhum fornecedor lido"}
-                <button className="ger-trocar-col" onClick={() => setTrocado((v) => !v)}
+                <Button variant="ghost" size="sm" onClick={() => setTrocado((v) => !v)}
                   title="Fornecedor e ambiente têm o mesmo formato — se vieram trocados, isto desfaz">
                   trocar com ambiente
-                </button>
+                </Button>
               </span>
             )}
           </div>
@@ -11270,12 +11273,12 @@ function GeradorSiengeView() {
             : "Base do Sienge indisponível"}
           {arquivo && ` · ${arquivo}`}
         </span>
-        {linhas && <button className="btn-doc" onClick={baixarResultado}><Download size={13} /> Conferência (Excel)</button>}
+        {linhas && <Button onClick={baixarResultado}><Download size={13} /> Conferência (Excel)</Button>}
         {linhas && paraCadastrar.length > 0 && (
-          <button className="btn-doc btn-template" onClick={baixarTemplate}
+          <Button onClick={baixarTemplate}
             title="Template de importação de detalhes do Sienge, em CSV — sobe direto lá">
             <Download size={13} /> Template Sienge para cadastro de detalhe ({paraCadastrar.length})
-          </button>
+          </Button>
         )}
       </div>
 
@@ -11482,25 +11485,25 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
           erra ou nao acha, e ele nao pode faltar — sem ele a pessoa
           fica presa com a sugestao errada. */}
       {somenteLeitura ? null : !buscando ? (
-        <button className="ger-trocar" onClick={() => setBuscando(true)}>
+        <Button variant="ghost" size="sm" onClick={() => setBuscando(true)}>
           <Search size={10} /> {mae ? "trocar o insumo mãe" : "procurar o insumo mãe"}
-        </button>
+        </Button>
       ) : (
         <div className="ger-busca">
           <input className="form-input" autoFocus value={termo} placeholder="nome ou código do insumo…"
             onChange={(e) => setTermo(e.target.value)} />
           {achadas.map((g) => (
-            <button key={g.codigo} className="det-opcao"
+            <Button variant="ghost" key={g.codigo} className="det-opcao"
               onClick={() => { onMae(g.codigo); setBuscando(false); setTermo(""); }}>
               <span className="mono det-falta">{g.codigo}</span>
               <span className="det-opcao-txt">{g.nome}</span>
               <span className="det-bate">{g.variantes.length}</span>
-            </button>
+            </Button>
           ))}
           {termo.length >= 2 && achadas.length === 0 && (
             <span className="dim" style={{ fontSize: 11 }}>Nenhum insumo com esse nome na base do Sienge.</span>
           )}
-          <button className="ger-trocar" onClick={() => { setBuscando(false); setTermo(""); }}>cancelar</button>
+          <Button variant="ghost" size="sm" onClick={() => { setBuscando(false); setTermo(""); }}>cancelar</Button>
         </div>
       )}
 
@@ -11518,7 +11521,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
         </div>
 
         {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
-          <button key={d.insumo.descricao + k}
+          <Button variant="ghost" key={d.insumo.descricao + k}
             className={`det-opcao ${escolhida === d.insumo.descricao ? "escolhida" : ""}`}
             disabled={somenteLeitura} onClick={() => onEscolher(d.insumo.descricao)} title={d.insumo.descricao}>
             <span className="det-radio" />
@@ -11526,17 +11529,17 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
             {d.faltaram.length > 0
               ? <span className="det-falta">falta {d.faltaram.slice(0, 3).join(", ")}</span>
               : <span className="det-bate">bate tudo</span>}
-          </button>
+          </Button>
         ))}
 
         <div className={`det-nova ${escolhida ? "fora" : "escolhida"}`}>
-          <button className={`det-opcao ${escolhida ? "" : "escolhida"}`}
+          <Button variant="ghost" className={`det-opcao ${escolhida ? "" : "escolhida"}`}
             disabled={somenteLeitura} onClick={() => onEscolher(null)}
             title="Usar a descrição gerada — é ela que preenche o template do Sienge">
             <span className="det-radio" />
             <span className="det-opcao-txt">cadastrar como detalhe novo</span>
             {editado && <span className="det-falta">editada à mão</span>}
-          </button>
+          </Button>
           <div className="padrao-cel">
             {/* Textarea, e nao um <code> com botao de editar: quem confere
                 cinquenta linhas nao quer dois cliques por linha. */}
@@ -11544,11 +11547,11 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
               spellCheck={false} aria-label="Descrição do detalhe no Sienge" readOnly={somenteLeitura}
               onSalvar={onDescrito} aoSair={aoSair} />
             <div className="padrao-acoes">
-              <button className="btn-copiar" title="Copiar pra colar no cadastro do Sienge"
-                onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={11} /></button>
+              <Button variant="ghost" size="icon" title="Copiar pra colar no cadastro do Sienge"
+                onClick={() => navigator.clipboard?.writeText(descrito)} aria-label="Copiar pra colar no cadastro do Sienge"><Copy size={11} /></Button>
               {editado && !somenteLeitura && (
-                <button className="btn-copiar" title="Voltar ao descritivo gerado"
-                  onClick={() => onDescrito(null)}><RotateCcw size={11} /></button>
+                <Button variant="ghost" size="icon" title="Voltar ao descritivo gerado"
+                  onClick={() => onDescrito(null)} aria-label="Voltar ao descritivo gerado"><RotateCcw size={11} /></Button>
               )}
             </div>
           </div>
@@ -11921,17 +11924,23 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         /* Sem número, não houve confirmação de criação. Pode ter criado
            assim mesmo (a resposta é que se perdeu), então isto NÃO se
            resolve sozinho: a pessoa confere no Sienge e diz o que achou. */
-        const achou = window.confirm(
-          "Este envio não chegou a receber um número de solicitação.\n\n" +
-          "Abra o Sienge em Suprimentos > Solicitações de Compra e veja se existe uma solicitação " +
-          `da obra ${obra.codigo} criada em ${new Date(p.enviado_em).toLocaleString("pt-BR")}.\n\n` +
-          "Clique OK se ENCONTROU (vou pedir o número) ou Cancelar se NÃO existe nenhuma.");
+        const achou = await confirmar({
+          titulo: "Este envio não chegou a receber um número de solicitação",
+          mensagem: "Abra o Sienge em Suprimentos > Solicitações de Compra e veja se existe uma solicitação " +
+            `da obra ${obra.codigo} criada em ${new Date(p.enviado_em).toLocaleString("pt-BR")}. ` +
+            "Confirme se ENCONTROU (vou pedir o número) ou cancele se NÃO existe nenhuma.",
+          confirmar: "Encontrei a solicitação", cancelar: "Não existe nenhuma", perigo: false,
+        });
         if (!achou) {
           await reconciliarEnvio(p.id, { solicitacaoId: null, resposta: { reconciliacao: "não foi criada" }, status: "abandonado", ok: false, por: usuario });
           await recarregarPendentes();
           return;
         }
-        const num = window.prompt("Número da solicitação encontrada no Sienge:");
+        const num = await perguntar({
+          titulo: "Número da solicitação",
+          mensagem: "Informe o número da solicitação encontrada no Sienge.",
+          rotulo: "Número da solicitação", inputMode: "numeric", confirmar: "Usar este número",
+        });
         if (!num || !/^\d+$/.test(num.trim())) return;
         p = { ...p, solicitacao_id: Number(num.trim()) };
       }
@@ -11941,8 +11950,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
       let dados = null;
       if (texto) { try { dados = JSON.parse(texto); } catch { /* não é JSON */ } }
       if (!res.ok || !dados) {
-        window.alert((dados?.error || "Não deu pra consultar o Sienge agora.") +
-          (dados?.comoResolver ? `\n\n${dados.comoResolver}` : ""));
+        await mensagem({
+          titulo: "Não deu pra consultar o Sienge",
+          mensagem: dados?.error || "Não deu pra consultar o Sienge agora.",
+          detalhe: dados?.comoResolver || undefined,
+        });
         return;
       }
 
@@ -11950,21 +11962,26 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         await reconciliarEnvio(p.id, {
           solicitacaoId: null, resposta: dados, status: "abandonado", ok: false, por: usuario,
         });
-        window.alert(`A solicitação ${p.solicitacao_id} não existe no Sienge — nada foi criado. ` +
-          "Pode selecionar os itens e enviar de novo com segurança.");
+        await mensagem({
+          titulo: `A solicitação ${p.solicitacao_id} não existe no Sienge`,
+          mensagem: "Nada foi criado. Pode selecionar os itens e enviar de novo com segurança.",
+          tom: "info",
+        });
       } else {
         const n = dados.itens.length;
         await reconciliarEnvio(p.id, {
           solicitacaoId: dados.solicitacaoId, resposta: dados,
           status: n > 0 ? "concluido" : "parcial", ok: n > 0, por: usuario,
         });
-        window.alert(`A solicitação ${dados.solicitacaoId} EXISTE no Sienge, com ${n} ` +
-          `${n === 1 ? "item" : "itens"}.\n\nNÃO reenvie o que já está lá. ` +
-          "Confira os itens no Sienge e, se faltar algum, selecione só ele nas Compras.");
+        await mensagem({
+          titulo: `A solicitação ${dados.solicitacaoId} EXISTE no Sienge, com ${n} ${n === 1 ? "item" : "itens"}`,
+          mensagem: "NÃO reenvie o que já está lá. " +
+            "Confira os itens no Sienge e, se faltar algum, selecione só ele nas Compras.",
+        });
       }
       await recarregarPendentes();
     } catch (e) {
-      window.alert(`Não deu pra conferir: ${e.message}`);
+      avisar.erro("Não foi possível conferir no Sienge.", e.message);
     } finally {
       setConferindo(null);
     }
@@ -12214,7 +12231,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
       <div className="funil">
         {etapas.map((e, i) => (
           <React.Fragment key={e.id}>
-            <button className={`funil-no ${etapa === e.id ? "ativo" : ""}`} onClick={() => setEtapa(e.id)}>
+            <Button variant="ghost" className={`funil-no ${etapa === e.id ? "ativo" : ""}`} onClick={() => setEtapa(e.id)}>
               {e.canal && <TagCanal id={e.canal} />}
               <div className="funil-n">{e.n}</div>
               <div className="funil-rot">{e.rot}</div>
@@ -12224,7 +12241,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   {e.feitos === e.n ? <><Check size={9} /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
                 </div>
               )}
-            </button>
+            </Button>
             {i === 1 && <ChevronRight size={14} className="pipe-arrow dim" />}
           </React.Fragment>
         ))}
@@ -12243,7 +12260,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 : "Modo leitura: o seu perfil consulta as Compras, sem marcar."}
           </span>
           {onHabilitar && !editandoPor && (
-            <button className="btn-doc" onClick={onHabilitar}>Habilitar edição</button>
+            <Button onClick={onHabilitar}>Habilitar edição</Button>
           )}
         </div>
       )}
@@ -12258,9 +12275,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 : "Os produtos já estão aqui. A busca do insumo no Sienge roda por grupo, no botão “Associar insumos” da barra de cada um."}
           </span>
           {baseSienge && (
-            <button className="btn-doc" onClick={recarregarBase} disabled={carregando}>
+            <Button onClick={recarregarBase} disabled={carregando}>
               <PackageSearch size={13} /> {carregando ? "Recarregando…" : "Recarregar base"}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -12280,17 +12297,17 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   {d.nome} <b>{d.n}</b>{d.numero ? ` · nº ${d.numero}` : ""}
                   {/* Tirar um arquivo sem recomecar: as vezes so um deles
                       estava errado, e refazer a selecao inteira e caro. */}
-                  <button className="cf-doc-x" title="Tirar este arquivo da conferência"
+                  <Button variant="ghost" size="icon" className="text-danger" title="Tirar este arquivo da conferência"
                     onClick={async () => !(await confirmar(`Tirar "${d.nome}" da conferência?`)) ? null : setDoSienge((a2) => {
                       const docs = a2.docs.filter((x) => x.nome !== d.nome);
                       return docs.length
                         ? { docs, itens: a2.itens.filter((i) => i.arquivo !== d.nome) }
                         : null;
-                    })}><X size={10} /></button>
+                    })} aria-label="Tirar este arquivo da conferência"><X size={10} /></Button>
                 </span>
               ))}
             </span>
-            <button className="btn-voltar" onClick={() => setDoSienge(null)}><X size={13} /> Limpar</button>
+            <Button variant="outline" onClick={() => setDoSienge(null)}><X size={13} /> Limpar</Button>
           </div>
           <div className="confronto-placar">
             <div className="cf-bloco ok">
@@ -12344,25 +12361,25 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             <b>{resultado.certos}</b> {resultado.certos === 1 ? "associado" : "associados"} automaticamente
             {resultado.revisar > 0 && <> · <b>{resultado.revisar}</b> {resultado.revisar === 1 ? "ficou" : "ficaram"} pra escolher à mão, porque faltou casar alguma palavra</>}
           </span>
-          <button className="aviso-x" onClick={() => setResultado(null)} aria-label="Fechar"><X size={13} /></button>
+          <Button variant="ghost" size="icon" onClick={() => setResultado(null)} aria-label="Fechar"><X size={13} /></Button>
         </div>
       )}
 
       <div className="sel-barra-topo">
-        <button className="btn-sel-tudo" onClick={selecionarTudo}>
+        <Button variant="outline" onClick={selecionarTudo}>
           <Check size={12} /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
-        </button>
-        {sel.size > 0 && <button className="btn-limpar-sel-claro" onClick={() => setSel(new Set())}>Limpar seleção</button>}
+        </Button>
+        {sel.size > 0 && <Button variant="ghost" size="sm" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
         <CampoBusca valor={busca} aoMudar={setBusca}
           contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
         {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
             obra: filtro que nunca filtra nada é ruído na barra. */}
         {obs.length > 0 && (
-          <button type="button" className={`filter-chip ${soComObs ? "active" : ""} chip-obs`}
+          <Button variant="ghost" type="button" className={`filter-chip ${soComObs ? "active" : ""} chip-obs`}
             onClick={() => setSoComObs((v) => !v)}
             title="Mostrar só as verbas e produtos com observação interna">
             <MessageSquare size={11} /> com observação interna ({obs.length})
-          </button>
+          </Button>
         )}
         <div className="cmp-filtro-forn">
           <select className="cmp-forn-sel" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
@@ -12382,14 +12399,14 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
               tela mostrando tres linhas enquanto o pedido leva sessenta e' a
               pagina afirmando duas coisas. */}
-          <button className="btn-doc" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+          <Button onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
             title={buscando
               ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
               : !fornecedor || fornecedor === SEM_FORNECEDOR
               ? "Escolha um fornecedor pra gerar o pedido"
               : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
             <Printer size={13} /> Pedido de orçamento
-          </button>
+          </Button>
         </div>
       </div>
       {orcamento && (
@@ -12451,12 +12468,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         return (
           <div className="grp-block" key={g.num}>
             <div className="grp-head">
-              <button className="mo-check" onClick={() => alternarGrupo({ ...g, itens: naTela })}
+              <Button variant="ghost" size="sm" onClick={() => alternarGrupo({ ...g, itens: naTela })}
                 title={nSelNaTela === nNaTela ? "Tirar da seleção" : buscando ? "Selecionar o que a busca mostra" : "Selecionar a verba inteira"}
                 aria-label="Selecionar verba">
                 {nSelNaTela === nNaTela ? <Check size={13} /> : nSelNaTela > 0 ? <Minus size={13} /> : null}
-              </button>
-              <button className="grp-toggle" onClick={() => abreNaBusca.alternar(g.num, () => abrir(g.num))}>
+              </Button>
+              <Button variant="ghost" className="grp-toggle" onClick={() => abreNaBusca.alternar(g.num, () => abrir(g.num))}>
                 <div className="grp-esq">
                   {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                   <span className="grp-num mono">{g.num}</span>
@@ -12486,7 +12503,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   )}
                   {nSel > 0 && <span className="grp-avulsos">{nSel} selecionados</span>}
                 </div>
-              </button>
+              </Button>
               <div className="grp-dir">
                 {/* A busca do insumo é por grupo e só quando pedida: casar a
                     obra inteira de uma vez congelava a tela. */}
@@ -12496,17 +12513,17 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                     {/* O mesmo CSV do Gerador de códigos, só com o que
                         precisa de cadastro neste grupo. */}
                     {template.length > 0 && (
-                      <button type="button" className="grp-associar" onClick={() => baixarTemplateDoGrupo(g, template)}
+                      <Button variant="outline" size="sm" type="button" onClick={() => baixarTemplateDoGrupo(g, template)}
                         title={`CSV no padrão do Sienge (cadastro de detalhe), igual ao do Gerador de códigos.${semInsumo ? ` ${semInsumo} sem insumo mãe: o código do insumo sai em branco.` : ""} O código do detalhe sai em branco — preencha antes de subir.`}>
                         <Download size={13} /> Template Sienge ({template.length})
-                      </button>
+                      </Button>
                     )}
                   </>
                 ) : (
-                  <button type="button" className="grp-associar" disabled={associando != null}
+                  <Button variant="outline" size="sm" type="button" disabled={associando != null}
                     onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
                     <PackageSearch size={13} /> {associando === g.num ? "Associando…" : "Associar insumos"}
-                  </button>
+                  </Button>
                 ))}
                 <div className="grp-tot">
                   <div className="grp-tot-rot">MATERIAL</div>
@@ -12598,7 +12615,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               <textarea className="pipefy-texto" readOnly value={pipefy.texto} rows={6} onFocus={(e) => e.target.select()} />
             )}
           </div>
-          <button className="aviso-x" onClick={() => setPipefy(null)} aria-label="Fechar"><X size={13} /></button>
+          <Button variant="ghost" size="icon" onClick={() => setPipefy(null)} aria-label="Fechar"><X size={13} /></Button>
         </div>
       )}
 
@@ -12628,10 +12645,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   {p.enviado_por ? ` · ${nomeDoEmail(p.enviado_por)}` : ""}
                   {" · "}{(p.payload?.itens || []).length} {(p.payload?.itens || []).length === 1 ? "item" : "itens"}
                 </span>
-                <button className="btn-associar-sel" disabled={conferindo === p.id}
+                <Button variant="outline" disabled={conferindo === p.id}
                   onClick={() => conferirNoSienge(p)}>
                   {conferindo === p.id ? "conferindo…" : "conferir no Sienge"}
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -12644,7 +12661,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
           criar a terceira solicitação do mesmo produto. */}
       {etapa === "sienge" && historico.length > 0 && (
         <div className="hist-sienge">
-          <button className="hist-sienge-topo" onClick={() => setVerHistorico((v) => !v)}>
+          <Button variant="ghost" size="sm" onClick={() => setVerHistorico((v) => !v)}>
             {verHistorico ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             <span className="hist-sienge-titulo">
               <b>{historico.length}</b>
@@ -12653,7 +12670,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             <span className="dim hist-sienge-quando">
               última {dataCurta(historico[0].enviado_em)}
             </span>
-          </button>
+          </Button>
           {verHistorico && (
             <div className="sol-rolagem">
               <table className="vend-itens sol-tabela hist-sienge-tabela">
@@ -12686,12 +12703,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                               sozinho não dizia o que foi pedido, e era a
                               única coisa que a tabela mostrava dele. */}
                           <td>
-                            <button className="hist-sienge-num"
+                            <Button variant="ghost" size="sm"
                               onClick={() => setEnvioAberto(aberta ? null : h.id)}
                               title={aberta ? "Fechar" : "Ver o que foi pedido"}>
                               {aberta ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                               <span className="mono">{h.solicitacao_id || "—"}</span>
-                            </button>
+                            </Button>
                           </td>
                           <td className="dim">{dataCurta(h.enviado_em)}</td>
                           {/* O e-mail inteiro é a mesma informação com o
@@ -12823,27 +12840,27 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             {/* O pedido sai de qualquer canal — inclusive de quem ainda
                 nao tem um: as vezes a lista e pra pedir cotacao antes de
                 decidir por onde comprar. */}
-            <button className="btn-associar-sel" onClick={() => {
+            <Button variant="outline" onClick={() => {
               setPedido({ itens: selecionados });
               setTimeout(() => window.print(), 300);
             }} title="Abre a impressão do navegador — escolha Salvar como PDF">
               <FileText size={13} /> PDF
-            </button>
-            <button className="btn-associar-sel" onClick={() => baixarPedidoExcel(
+            </Button>
+            <Button variant="outline" onClick={() => baixarPedidoExcel(
               obra,
               etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
               selecionados, usuario)
             } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
               <Download size={13} /> Excel
-            </button>
-            <button className="btn-associar-sel" onClick={solicitarNoPipefy}
+            </Button>
+            <Button variant="outline" onClick={solicitarNoPipefy}
               title="Copia a lista dos selecionados e abre a solicitação de compra no Pipefy">
               <ExternalLink size={13} /> Solicitar no Pipefy
-            </button>
+            </Button>
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
             {selecionados.some((r) => r.it.canalCompra) && (
-              <button className="btn-associar-sel" disabled={!podeEditar} onClick={() => {
+              <Button variant="outline" disabled={!podeEditar} onClick={async () => {
                 const comCanal = selecionados.filter((r) => r.it.canalCompra);
                 const desmarcar = comCanal.every((r) => r.it.comprado);
                 // Marcar só mexe em quem ainda não foi comprado (a data de quem já
@@ -12855,15 +12872,18 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   compradoEm: desmarcar ? null : new Date().toISOString(),
                 }));
                 const faltam = desmarcar ? 0 : aMarcar.length - vao.length;
-                if (faltam > 0) window.alert(`${faltam} ${faltam === 1 ? "item do Sienge ainda não foi solicitado" : "itens do Sienge ainda não foram solicitados"}: marque como solicitado (etapa Sienge) antes de comprado.`);
+                if (faltam > 0) await mensagem({
+                  titulo: "Nem tudo foi marcado como comprado",
+                  mensagem: `${faltam} ${faltam === 1 ? "item do Sienge ainda não foi solicitado" : "itens do Sienge ainda não foram solicitados"}: marque como solicitado (etapa Sienge) antes de comprado.`,
+                });
                 setSel(new Set());
               }} title={podeEditar ? "Marca os selecionados que já têm canal — entra no total do Dashboard. No Sienge, só o que já foi solicitado." : `Em ${MODO_LEITURA_DICA}`}>
                 <Check size={13} /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
                   ? "Desmarcar comprado" : "Marcar comprado"}
-              </button>
+              </Button>
             )}
             {etapa === "sienge" && (
-              <button className="btn-associar-sel" disabled={!podeEditar} onClick={() => {
+              <Button variant="outline" disabled={!podeEditar} onClick={async () => {
                 const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
                 // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
                 const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
@@ -12871,16 +12891,19 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   solicitado: !desmarcar, solicitadoEm: desmarcar ? null : new Date().toISOString(),
                 }));
                 const presos = desmarcar ? selecionados.length - vao.length : 0;
-                if (presos > 0) window.alert(`${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`);
+                if (presos > 0) await mensagem({
+                  titulo: "Nem tudo foi desmarcado",
+                  mensagem: `${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`,
+                });
               }} title={podeEditar ? "Marca os selecionados como já solicitados no Sienge" : `Em ${MODO_LEITURA_DICA}`}>
                 <Check size={13} /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
-              </button>
+              </Button>
             )}
             {etapa === "sienge" && baseSienge && (
-              <button className="btn-associar-sel" onClick={associarSelecionados} disabled={!podeEditar}
+              <Button variant="outline" onClick={associarSelecionados} disabled={!podeEditar}
                 title={podeEditar ? "Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão" : `Em ${MODO_LEITURA_DICA}`}>
                 <PackageSearch size={13} /> Associar {selecionados.length}
-              </button>
+              </Button>
             )}
             {/* Solicitar no Sienge: o único botão daqui que ESCREVE em
                 outro sistema. Só na etapa Sienge — é o canal que passa por
@@ -12891,7 +12914,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 funcionalidade depende de um cadastro procura um botão que
                 não está em lugar nenhum, e conclui que não foi entregue. */}
             {etapa === "sienge" && (
-              <button className="btn-associar-sel"
+              <Button variant="outline"
                 disabled={!podeEditar || !eapSienge?.versao}
                 onClick={() => setSolicitacao(selecionados.map((r) => {
                   // A situação do insumo é resolvida aqui, com a base na
@@ -12924,24 +12947,24 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                       : "falta a EAP"
                   }</span>
                 )}
-              </button>
+              </Button>
             )}
             {etapa === "sienge" && (
-              <button className="btn-associar-sel"
+              <Button variant="outline"
                 onClick={() => baixarResumoCadastroSienge(obra,
                   resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}
                 title="Excel pra quem lança o pedido no Sienge: insumo, detalhe, códigos e quantidade — iguais somam numa linha">
                 <Download size={13} /> Resumo p/ cadastro
-              </button>
+              </Button>
             )}
             {CANAIS_COMPRA.map((c) => (
-              <button key={c.id} className="btn-canal" onClick={() => definirCanal(c.id)} disabled={!podeEditar}
+              <Button variant="outline" size="sm" key={c.id} onClick={() => definirCanal(c.id)} disabled={!podeEditar}
                 title={podeEditar ? `Marcar os selecionados como compra por ${c.nome}` : `Em ${MODO_LEITURA_DICA}`}>
                 <TagCanal id={c.id} comNome />
-              </button>
+              </Button>
             ))}
-            <button className="btn-canal btn-canal-limpar" onClick={() => definirCanal(null)} disabled={!podeEditar}
-              title={podeEditar ? "Tirar o canal dos selecionados" : `Em ${MODO_LEITURA_DICA}`}>tirar canal</button>
+            <Button variant="outline" size="sm" onClick={() => definirCanal(null)} disabled={!podeEditar}
+              title={podeEditar ? "Tirar o canal dos selecionados" : `Em ${MODO_LEITURA_DICA}`}>tirar canal</Button>
           </div>
         </div>
       )}
@@ -13081,11 +13104,11 @@ function SelectBusca({ valor, onChange, opcoes, placeholder = "selecione…", va
 
   return (
     <div className={`sel-busca ${className}`} ref={caixa}>
-      <button type="button" ref={gatilho} className="form-select sel-busca-gatilho" disabled={disabled}
+      <Button variant="ghost" type="button" ref={gatilho} className="form-select sel-busca-gatilho" disabled={disabled}
         aria-label={aria} aria-expanded={aberto} onClick={() => setAberto((v) => !v)}>
         <span className={escolhida ? "" : "dim"}>{escolhida ? escolhida.rotulo : (vazio || placeholder)}</span>
         <ChevronDown size={13} className="dim" />
-      </button>
+      </Button>
       {aberto && pos && createPortal(
         <div className="sel-busca-painel" style={{
           left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width,
@@ -13097,16 +13120,16 @@ function SelectBusca({ valor, onChange, opcoes, placeholder = "selecione…", va
           </div>
           <div className="sel-busca-lista" role="listbox">
             {vazio && (
-              <button type="button" className={`sel-busca-item ${!valor ? "sel-busca-ativo" : ""}`}
-                onClick={() => escolher(null)}>{vazio}</button>
+              <Button variant="ghost" type="button" className={`sel-busca-item ${!valor ? "sel-busca-ativo" : ""}`}
+                onClick={() => escolher(null)}>{vazio}</Button>
             )}
             {filtradas.map((o, i) => (
-              <button type="button" key={o.valor} role="option"
+              <Button variant="ghost" type="button" key={o.valor} role="option"
                 aria-selected={String(o.valor) === String(valor)}
                 className={`sel-busca-item ${i === ativo ? "sel-busca-ativo" : ""} ${String(o.valor) === String(valor) ? "sel-busca-escolhida" : ""}`}
                 onMouseEnter={() => setAtivo(i)} onClick={() => escolher(o)}>
                 {o.rotulo}
-              </button>
+              </Button>
             ))}
             {!filtradas.length && <div className="sel-busca-nada">nada encontrado para “{busca}”</div>}
           </div>
@@ -13535,7 +13558,7 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
               Obra <b>#{obra.codigo}</b> · solicitante <b>VALENTINA</b>
             </div>
           </div>
-          <button className="clear-btn" onClick={onFechar} disabled={enviando}><X size={14} /></button>
+          <Button variant="ghost" size="icon" onClick={onFechar} disabled={enviando} aria-label="Fechar"><X size={14} /></Button>
         </div>
 
         <div className="sobreposto-corpo">
@@ -13553,10 +13576,10 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                 </b></div>
                 <div className="erro-acao">Enviar de novo cria uma segunda solicitação com o mesmo conteúdo.</div>
                 {jaEnviado.solicitacao_id && !anterior && (
-                  <button className="btn-associar-sel sol-acao-aviso" disabled={vendoAnterior}
+                  <Button variant="outline" className="sol-acao-aviso" disabled={vendoAnterior}
                     onClick={() => verAnterior(jaEnviado.solicitacao_id)}>
                     {vendoAnterior ? "consultando…" : "conferir no Sienge"}
-                  </button>
+                  </Button>
                 )}
                 {anterior?.erro && <div className="erro-acao">{anterior.erro}</div>}
                 {/* A API não devolve os itens de uma solicitação (o GET
@@ -13594,10 +13617,10 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
               <div className="sol-numero">
                 <CheckCircle2 size={16} />
                 <span>Solicitação <b className="mono">{resultado.solicitacaoId}</b> no Sienge</span>
-                <button className="btn-associar-sel" title="Copiar o número"
+                <Button variant="outline" title="Copiar o número"
                   onClick={() => navigator.clipboard?.writeText(String(resultado.solicitacaoId))}>
                   <Copy size={12} /> copiar
-                </button>
+                </Button>
               </div>
 
               <div className="sol-placar">
@@ -13675,15 +13698,15 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                                 aria-label="Quantidade" />
                             </td>
                             <td className="sol-acoes">
-                              <button className="btn-associar-sel" disabled={enviando}
+                              <Button variant="outline" disabled={enviando}
                                 onClick={() => reenviar([r])} title="Reenviar só este item">
                                 reenviar
-                              </button>
-                              <button className="btn-associar-sel" disabled={enviando}
+                              </Button>
+                              <Button variant="outline" size="icon" disabled={enviando}
                                 onClick={() => descartar(id)}
-                                title="Tirar do envio — continua pendente nas Compras">
+                                title="Tirar do envio — continua pendente nas Compras" aria-label="Tirar do envio — continua pendente nas Compras">
                                 <X size={12} />
-                              </button>
+                              </Button>
                             </td>
                           </tr>
                         );
@@ -13691,28 +13714,28 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                     </tbody>
                   </table></div>
                   <div className="sol-acao-bloco">
-                    <button className="btn-import" disabled={enviando} onClick={() => reenviar(recusados)}>
+                    <Button disabled={enviando} onClick={() => reenviar(recusados)}>
                       {enviando ? "Reenviando…" : `Reenviar ${recusados.length} ${recusados.length === 1 ? "item" : "itens"}`}
-                    </button>
+                    </Button>
                   </div>
                 </>
               )}
 
               {ultimoEnvio && (
                 <div className="sol-tecnico">
-                  <button className="btn-arvore-eap" onClick={() => setVerEnvio((v) => !v)}>
+                  <Button variant="ghost" size="sm" onClick={() => setVerEnvio((v) => !v)}>
                     {verEnvio ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     Detalhes técnicos do envio
-                  </button>
+                  </Button>
                   {verEnvio && (
                     <>
                       <div className="flat-panel-sub sol-tecnico-nota">
                         O corpo exato da chamada e a resposta do Sienge — para entender recusa que a
                         mensagem não explica.
-                        <button className="btn-associar-sel sol-acao-aviso"
+                        <Button variant="outline" className="sol-acao-aviso"
                           onClick={() => navigator.clipboard?.writeText(JSON.stringify(ultimoEnvio, null, 2))}>
                           <Copy size={12} /> copiar
-                        </button>
+                        </Button>
                       </div>
                       <div className="sol-json-rotulo">Enviado</div>
                       <pre className="sol-json">{JSON.stringify(ultimoEnvio.enviado, null, 2)}</pre>
@@ -13910,7 +13933,7 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                   {recusados.length} {recusados.length === 1 ? "item continua" : "itens continuam"} pendente{recusados.length === 1 ? "" : "s"} nas Compras.
                 </span>
               )}
-              <button className="btn-import" onClick={onFechar}>Fechar</button>
+              <Button onClick={onFechar}>Fechar</Button>
             </>
           ) : (
             <>
@@ -13919,13 +13942,13 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                   ? `${insumosInvalidos.length} ${insumosInvalidos.length === 1 ? "item está" : "itens estão"} sem código de insumo`
                   : `${itens.length} ${itens.length === 1 ? "item" : "itens"} · ${fmtBRL(total)}`}
               </span>
-              <button className="btn-associar-sel" onClick={onFechar} disabled={enviando}>Cancelar</button>
-              <button className="btn-import"
+              <Button variant="outline" onClick={onFechar} disabled={enviando}>Cancelar</Button>
+              <Button
                 disabled={enviando || !itens.length || !unidadeValida || insumosInvalidos.length > 0}
                 title={insumosInvalidos.length ? "Há item sem código de insumo" : undefined}
                 onClick={() => enviar()}>
                 {enviando ? "Enviando…" : `Enviar ao Sienge`}
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -14128,8 +14151,8 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
             onChange={(e) => mudarLinha(i, "custo", e.target.value)} />
           <span className="troca-total">{fmtBRL(totalDe(l))}</span>
           {i > 0 ? (
-            <button type="button" className="troca-tirar" title="Tirar esta linha" aria-label="Tirar esta linha"
-              onClick={async () => { if (await confirmar("Tirar esta linha da troca?")) setLinhas((ls) => ls.filter((_, k) => k !== i)); }}><X size={11} /></button>
+            <Button variant="ghost" size="icon" type="button" title="Tirar esta linha" aria-label="Tirar esta linha"
+              onClick={async () => { if (await confirmar("Tirar esta linha da troca?")) setLinhas((ls) => ls.filter((_, k) => k !== i)); }}><X size={11} /></Button>
           ) : <span />}
         </div>
       ))}
@@ -14143,13 +14166,13 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
         </select>
         <input className="form-input troca-motivo" value={motivo} placeholder="motivo (opcional)" aria-label="Motivo"
           onChange={(e) => setMotivo(e.target.value)} />
-        <button type="button" className="troca-link" onClick={() => setLinhas((ls) => [...ls, nova()])}>+ outra linha</button>
+        <Button variant="ghost" size="sm" type="button" onClick={() => setLinhas((ls) => [...ls, nova()])}>+ outra linha</Button>
         <span className="troca-dif">
           {Math.abs(dif) < 0.005 ? "mesmo custo do original" : `${dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(dif))} em relação ao original`}
         </span>
         <span className="troca-espaco" />
-        <button type="button" className="troca-btn troca-btn-ok" onClick={registrar}>registrar troca</button>
-        <button type="button" className="troca-btn" onClick={onFechar}>cancelar</button>
+        <Button variant="outline" type="button" onClick={registrar}>registrar troca</Button>
+        <Button variant="outline" type="button" onClick={onFechar}>cancelar</Button>
       </div>
       {erro && <div className="troca-erro">{erro}</div>}
     </div>
@@ -14210,8 +14233,8 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
           {/* Apagar aparece pra quem pode — o banco confere de novo na
               politica de delete, entao a tela nao e' a unica barreira. */}
           {(meu(c) || souAdmin) && onApagar && (
-            <button type="button" className="obs-apagar" title="Apagar esta observação interna"
-              onClick={() => onApagar(c.id)}><X size={9} /></button>
+            <Button variant="ghost" size="icon" className="text-danger" type="button" title="Apagar esta observação interna"
+              onClick={() => onApagar(c.id)} aria-label="Apagar esta observação interna"><X size={9} /></Button>
           )}
         </div>
       ))}
@@ -14221,19 +14244,19 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
           <input autoFocus value={texto} onChange={(e) => setTexto(e.target.value)}
             placeholder={ondeFica === "item" ? "Ex.: conferir o tapetinho das gavetas" : "Ex.: falta comprar o divisor de talher"}
             maxLength={280} />
-          <button type="submit" className="obs-salvar" disabled={!texto.trim() || salvando}>
+          <Button type="submit" disabled={!texto.trim() || salvando}>
             {salvando ? "salvando…" : "salvar"}
-          </button>
-          <button type="button" className="obs-cancelar" onClick={() => { setEscrevendo(false); setTexto(""); setErro(null); }}>
+          </Button>
+          <Button variant="outline" type="button" onClick={() => { setEscrevendo(false); setTexto(""); setErro(null); }}>
             cancelar
-          </button>
+          </Button>
         </form>
       ) : (
         onAdicionar && (
-          <button type="button" className="obs-mais" onClick={() => setEscrevendo(true)}
+          <Button variant="ghost" size="sm" type="button" onClick={() => setEscrevendo(true)}
             title={ondeFica === "item" ? "Deixar uma observação interna neste produto" : "Deixar uma observação interna nesta verba"}>
             <Plus size={10} /> observação interna
-          </button>
+          </Button>
         )
       )}
       {erro && <div className="obs-erro">{erro}</div>}
@@ -14271,7 +14294,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
             em {new Date(t.em).toLocaleDateString("pt-BR")}
             {t.aprovadoPor?.nome ? ` · aprovado por ${t.aprovadoPor.nome}` : ""}{t.motivo ? ` · ${t.motivo}` : ""}
             {podeEditar && onDesfazerTroca && (
-              <button type="button" className="troca-link" onClick={onDesfazerTroca}>desfazer</button>
+              <Button variant="ghost" size="sm" type="button" onClick={onDesfazerTroca}>desfazer</Button>
             )}
           </div>
         </td>
@@ -14291,9 +14314,9 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
     <>
     <tr className={selecionado ? "linha-sel" : it.comprado ? "row-comprado" : "row-falta"}>
       <td className="center">
-        <button className="mo-check mo-check-tab" onClick={onSelecionar} aria-label="Selecionar produto">
+        <Button variant="ghost" size="sm" className="mo-check-tab" onClick={onSelecionar} aria-label="Selecionar produto">
           {selecionado && <Check size={13} />}
-        </button>
+        </Button>
       </td>
       <td className="mono dim">{codigoVisivel(it)}</td>
       <td>
@@ -14314,7 +14337,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               troca de {troca.de}{troca.dif != null && Math.abs(troca.dif) >= 0.005
                 ? ` · ${troca.dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(troca.dif))}` : ""}
               {podeEditar && !it.comprado && onDesfazerTroca && (
-                <button type="button" className="troca-link" onClick={onDesfazerTroca}>desfazer</button>
+                <Button variant="ghost" size="sm" type="button" onClick={onDesfazerTroca}>desfazer</Button>
               )}
             </span>
           )}
@@ -14324,9 +14347,9 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
             </div>
           )}
           {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
-            <button type="button" className="troca-link" onClick={onAbrirTroca} title="Trocar por outro produto (aprovado com o executivo da obra)">
+            <Button variant="ghost" size="sm" type="button" onClick={onAbrirTroca} title="Trocar por outro produto (aprovado com o executivo da obra)">
               <ArrowLeftRight size={10} /> trocar
-            </button>
+            </Button>
           )}
         {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
             "Cuba de apoio" e todas as cubas de apoio que existem. */}
@@ -14345,7 +14368,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       )}
       {noSienge && (
         <td className="center">
-          <button className={`pill pill-btn ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
+          <Button variant="ghost" size="sm" className={`pill pill-btn ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
             disabled={!podeEditar || !podeMudarSolicitado(it)}
             onClick={() => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() })}
             title={!podeEditar ? `${estaSolicitado(it) ? quando("Solicitado", it.solicitadoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
@@ -14353,7 +14376,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
               : "Marcar como solicitado no Sienge"}>
             {estaSolicitado(it) ? <><Check size={11} /> solicitado</> : "pendente"}
-          </button>
+          </Button>
         </td>
       )}
       <td className="center">
@@ -14366,7 +14389,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               (pedido de 15/09/2026). A regra é a mesma: primeiro solicitado,
               depois comprado. */}
           {!noSienge && it.canalCompra === "sienge" && (
-            <button className={`pill pill-btn pill-mini ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
+            <Button variant="ghost" size="sm" className={`pill pill-btn pill-mini ${estaSolicitado(it) ? "pill-ok" : "pill-wait"}`}
               disabled={!podeEditar || !podeMudarSolicitado(it)}
               onClick={() => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() })}
               title={!podeEditar ? `${estaSolicitado(it) ? quando("Solicitado", it.solicitadoEm) : "Não solicitado"} — ${MODO_LEITURA_DICA}`
@@ -14374,9 +14397,9 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
                 : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
                 : "Marcar como solicitado no Sienge"}>
               {estaSolicitado(it) ? <><Check size={10} /> solicitado</> : "solicitar"}
-            </button>
+            </Button>
           )}
-          <button className={`pill pill-btn ${it.comprado ? "pill-ok" : "pill-wait"}`}
+          <Button variant="ghost" size="sm" className={`pill pill-btn ${it.comprado ? "pill-ok" : "pill-wait"}`}
             disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}
             onClick={() => onItemChange({ comprado: !it.comprado, compradoEm: it.comprado ? null : new Date().toISOString() })}
             title={!podeEditar ? `${it.comprado ? quando("Comprado", it.compradoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
@@ -14384,7 +14407,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               : podeMarcarComprado(it) ? "Marcar como comprado — entra no total do Dashboard"
                 : "Marque como solicitado antes de comprado"}>
             {it.comprado ? <><Check size={11} /> comprado</> : "pendente"}
-          </button>
+          </Button>
           </div>
         )}
       </td>
@@ -14476,7 +14499,7 @@ function ContratosRow({ row, onItemChange }) {
         {bloqueado ? (
           <span className="dim" style={{ fontSize: 11 }}>bloqueado</span>
         ) : prox ? (
-          <button className="btn-avancar" onClick={() => onItemChange({ statusContrato: prox })}><ArrowUpRight size={13} /> Avançar etapa</button>
+          <Button onClick={() => onItemChange({ statusContrato: prox })}><ArrowUpRight size={13} /> Avançar etapa</Button>
         ) : (
           <span className="pill pill-ok"><Check size={12} /> Concluído</span>
         )}
@@ -14514,9 +14537,9 @@ function NovaSolicitacaoForm({ obra, onCriar }) {
 
   if (!aberto) {
     return (
-      <button className="btn-nova-solicitacao" onClick={() => setAberto(true)}>
+      <Button onClick={() => setAberto(true)}>
         <Plus size={14} /> Nova solicitação de contrato
-      </button>
+      </Button>
     );
   }
 
@@ -14541,8 +14564,8 @@ function NovaSolicitacaoForm({ obra, onCriar }) {
         <label className="form-label">Custo estimado (R$)<input className="form-input" type="text" value={custo} onChange={(e) => setCusto(e.target.value)} placeholder="0,00" /></label>
       </div>
       <div className="form-actions">
-        <button type="button" className="btn-cancelar" onClick={() => setAberto(false)}>Cancelar</button>
-        <button type="submit" className="btn-criar">Criar solicitação</button>
+        <Button variant="outline" type="button" onClick={() => setAberto(false)}>Cancelar</Button>
+        <Button type="submit">Criar solicitação</Button>
       </div>
     </form>
   );
@@ -14651,8 +14674,8 @@ function FormNovoEscopo({ obra, servicos, onCriar, onCancelar }) {
         <span />
       </div>
       <div className="form-actions">
-        <button type="button" className="btn-cancelar" onClick={onCancelar}>Cancelar</button>
-        <button type="submit" className="btn-criar">Abrir escopo</button>
+        <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
+        <Button type="submit">Abrir escopo</Button>
       </div>
     </form>
   );
@@ -14672,21 +14695,21 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
   return (
     <>
       <div className="escopo-topo naoimprime">
-        <button className="btn-voltar" onClick={onVoltar}><ChevronLeft size={14} /> Voltar</button>
+        <Button variant="outline" onClick={onVoltar}><ChevronLeft size={14} /> Voltar</Button>
         <div className="escopo-titulo">
           <div className="escopo-nome">{escopo.nome}</div>
           <div className="escopo-banda">{escopo.fornecedor || "sem fornecedor"} · {escopo.servicos.length} {escopo.servicos.length === 1 ? "serviço" : "serviços"}</div>
         </div>
-        <button className="btn-doc" onClick={() => baixarEscopoWord(escopo, obra)} title="Baixa um .doc que o Word abre editável">
+        <Button onClick={() => baixarEscopoWord(escopo, obra)} title="Baixa um .doc que o Word abre editável">
           <Download size={13} /> Word
-        </button>
-        <button className="btn-doc" onClick={() => window.print()} title="Abre a impressão do navegador — escolha Salvar como PDF">
+        </Button>
+        <Button onClick={() => window.print()} title="Abre a impressão do navegador — escolha Salvar como PDF">
           <FileText size={13} /> PDF
-        </button>
+        </Button>
         {podeEditar && (
-          <button className="btn-apagar-escopo" onClick={onApagar} title="Apagar este escopo">
+          <Button variant="danger" size="icon" onClick={onApagar} title="Apagar este escopo" aria-label="Apagar este escopo">
             <Trash2 size={13} />
-          </button>
+          </Button>
         )}
       </div>
 
@@ -14773,11 +14796,11 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
             {/* Vencimento cai sempre na sexta: a casa paga fornecedor
                 nesse dia, e data no meio da semana volta pro financeiro
                 pra ser remarcada. */}
-            <button className="btn-doc" disabled={!escopo.venc1}
+            <Button disabled={!escopo.venc1}
               onClick={() => onMudar({ parcelas: sugerirDatas(escopo.parcelas, escopo.venc1, escopo.intervalo) })}
               title={escopo.venc1 ? "Preenche os vencimentos de tantos em tantos dias, sempre numa sexta" : "Informe o 1º vencimento primeiro"}>
               <Clock size={13} /> Sugerir datas
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -15050,13 +15073,13 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
       <div className="pipeline">
         {CONTRATO_PIPELINE.map((st, i) => (
           <React.Fragment key={st.id}>
-            <button className={`pipe-node ${filtro === st.id ? "active" : ""}`}
+            <Button variant="ghost" className={`pipe-node ${filtro === st.id ? "active" : ""}`}
               style={filtro === st.id ? { borderColor: st.color } : undefined}
               onClick={() => setFiltro(filtro === st.id ? "todos" : st.id)}>
               <div className="pipe-count" style={{ color: st.color }}>{cntEtapa(st.id)}</div>
               <div className="pipe-label">{st.curto}</div>
               <div className="pipe-val mono">{fmtCompactBRL(somaEtapa(st.id))}</div>
-            </button>
+            </Button>
             {i < CONTRATO_PIPELINE.length - 1 && <ChevronRight size={14} className="pipe-arrow dim" />}
           </React.Fragment>
         ))}
@@ -15076,12 +15099,12 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
         return (
           <div className="grp-block" key={g.num}>
             <div className="grp-head">
-              <button className="mo-check" onClick={() => alternarGrupo(g)}
+              <Button variant="ghost" size="sm" onClick={() => alternarGrupo(g)}
                 title={nSel === g.itens.length ? "Tirar o grupo da seleção" : "Selecionar o grupo inteiro"}
                 aria-label="Selecionar grupo">
                 {nSel === g.itens.length ? <Check size={13} /> : nSel > 0 ? <Minus size={13} /> : null}
-              </button>
-              <button className="grp-toggle" onClick={() => abrir(g.num)}>
+              </Button>
+              <Button variant="ghost" className="grp-toggle" onClick={() => abrir(g.num)}>
                 <div className="grp-esq">
                   {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
                   <span className="grp-num mono">{g.num}</span>
@@ -15089,7 +15112,7 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
                   <span className="grp-conta">{g.itens.length} {g.itens.length === 1 ? "serviço" : "serviços"}</span>
                   {nSel > 0 && <span className="grp-avulsos">{nSel} no escopo</span>}
                 </div>
-              </button>
+              </Button>
               <div className="grp-dir">
                 <div className="grp-tot">
                   <div className="grp-tot-rot">MÃO DE OBRA</div>
@@ -15104,16 +15127,16 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
                     const esc = escopoDoServico.get(`${r.catNum}|${r.it.codigo}`);
                     return (
                       <div className={`mo-linha ${sel.has(r.chave) ? "sel" : ""} ${esc ? "com-escopo" : ""}`} key={r.chave}>
-                        <button className="mo-check" onClick={() => alternar(r.chave)} aria-label="Selecionar serviço">
+                        <Button variant="ghost" size="sm" onClick={() => alternar(r.chave)} aria-label="Selecionar serviço">
                           {sel.has(r.chave) && <Check size={13} />}
-                        </button>
+                        </Button>
                         <ContratosRow row={r} onItemChange={(patch) => onItemChange(r.catIdx, r.itemIdx, patch)} />
                         <div className="mo-valor mono">{fmtBRL(r.mo)}</div>
                         {esc ? (
-                          <button className="btn-lupa" onClick={() => setEscopoAberto(esc.id)}
+                          <Button variant="ghost" size="icon" aria-label="Ver o escopo" onClick={() => setEscopoAberto(esc.id)}
                             title={`Ver o escopo "${esc.nome}"${esc.fornecedor ? ` — ${esc.fornecedor}` : ""}`}>
                             <Search size={14} />
-                          </button>
+                          </Button>
                         ) : <span className="btn-lupa-vazio" />}
                       </div>
                     );
@@ -15138,11 +15161,11 @@ function DashboardMO({ obra, onItemChange, onCriarSolicitacao, onCriarEscopo, on
             </div>
           </div>
           {podeEditar && (
-            <button className="btn-abrir-escopo" onClick={() => setAbrindoEscopo(true)}>
+            <Button variant="outline" onClick={() => setAbrindoEscopo(true)}>
               <FileText size={13} /> Abrir escopo
-            </button>
+            </Button>
           )}
-          <button className="btn-limpar-sel" onClick={() => setSel(new Set())}>Limpar seleção</button>
+          <Button variant="outline" onClick={() => setSel(new Set())}>Limpar seleção</Button>
         </div>
       )}
     </>
@@ -15210,8 +15233,8 @@ function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPl
         {abas && (
           <div className="gc-abas">
             {abas.opcoes.map((op) => (
-              <button key={op.id} type="button" className={`gc-aba ${abas.valor === op.id ? "on" : ""}`}
-                onClick={() => abas.onMudar(op.id)}>{op.label}</button>
+              <Button variant="ghost" key={op.id} type="button" className={`gc-aba ${abas.valor === op.id ? "on" : ""}`}
+                onClick={() => abas.onMudar(op.id)}>{op.label}</Button>
             ))}
           </div>
         )}
@@ -15223,9 +15246,9 @@ function GcPorVerba({ titulo, Icone, grupos, cor, vazio, busca, onBusca, buscaPl
           <input value={busca} onChange={(e) => onBusca(e.target.value)}
             placeholder={buscaPlaceholder || "Buscar…"} />
           {busca && (
-            <button type="button" className="gc-busca-limpar" onClick={() => onBusca("")} aria-label="Limpar busca">
+            <Button variant="ghost" size="icon" type="button" onClick={() => onBusca("")} aria-label="Limpar busca">
               <X size={13} />
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -15264,7 +15287,7 @@ function GcLinhaVerba({ g, cor, max, onAbrir, onImprimir, onSimular }) {
   return (
     <div className="gc-verba">
       <div className="gc-row-linha">
-      <button type="button" className="gc-row gc-row-clic" onClick={() => setAberto((x) => !x)}>
+      <Button variant="ghost" type="button" className="gc-row gc-row-clic" onClick={() => setAberto((x) => !x)}>
         <ChevronRight size={13} className={`gc-chevron ${aberto ? "aberto" : ""}`} />
         {g.num != null && <span className="gc-num mono">{g.num}</span>}
         <span className="gc-nome">{g.nome}</span>
@@ -15272,32 +15295,32 @@ function GcLinhaVerba({ g, cor, max, onAbrir, onImprimir, onSimular }) {
         <GcBarra pct={(g.total / max) * 100} cor={cor} />
         {g.qtds && <span className="gc-qtd mono dim">{qtdTxt}</span>}
         <span className="gc-val mono">{fmtBRL(g.total)}</span>
-      </button>
+      </Button>
       {/* A calculadora: quanto custaria esta verba com a equipe interna. */}
       {onSimular && (
-        <button type="button" className="gc-imprimir" onClick={() => onSimular(g)} aria-label="Simular com a mão de obra própria"
+        <Button variant="ghost" size="icon" type="button" onClick={() => onSimular(g)} aria-label="Simular com a mão de obra própria"
           title="Simular com a mão de obra própria: escolha a equipe e os dias, e compare com o valor a contratar">
           <Calculator size={14} />
-        </button>
+        </Button>
       )}
       {/* O PDF desta linha: item a item, por obra e total. Abre na tela e já baixa. */}
       {onImprimir && (
-        <button type="button" className="gc-imprimir" onClick={() => onImprimir(g)} aria-label="Gerar PDF"
+        <Button variant="ghost" size="icon" type="button" onClick={() => onImprimir(g)} aria-label="Gerar PDF"
           title={`PDF ${g.num != null ? "desta verba" : "deste insumo"} — item a item, por obra e total. Abre na tela e já baixa o arquivo.`}>
           <FileDown size={14} />
-        </button>
+        </Button>
       )}
       </div>
       {aberto && (
         <div className="gc-verba-obras">
           {porObra.map((o) => (
-            <button key={o.codigo} type="button" className="gc-verba-obra"
+            <Button variant="ghost" key={o.codigo} type="button" className="gc-verba-obra"
               onClick={() => onAbrir && onAbrir(o.id)} disabled={!onAbrir}>
               <span className="mono dim">#{o.codigo}</span>
               <span className="gc-verba-obra-nome">{o.nome}</span>
               {o.qtds && <span className="mono dim gc-verba-obra-qtd">{fmtQtds(o.qtds)}</span>}
               <span className="mono">{fmtBRL(o.valor)}</span>
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -15316,9 +15339,9 @@ function GcLinhaObra({ L, onAbrir }) {
     <>
       <tr className={atrasada ? "gc-obra atrasada" : "gc-obra"}>
         <td>
-          <button className="gc-obra-nome" onClick={() => onAbrir(L.id)} title="Abrir esta obra">
+          <Button variant="ghost" className="gc-obra-nome" onClick={() => onAbrir(L.id)} title="Abrir esta obra">
             <span className="mono dim">#{L.codigo}</span> {L.nome}
-          </button>
+          </Button>
         </td>
         <td className="center">
           {entrega ? (
@@ -15354,17 +15377,17 @@ function GcLinhaObra({ L, onAbrir }) {
         </td>
         <td className="center">
           {atrasada ? (
-            <button className="gc-selo atraso" onClick={(e) => { e.stopPropagation(); setAberto((x) => !x); }}
+            <Button variant="ghost" className="gc-selo atraso" onClick={(e) => { e.stopPropagation(); setAberto((x) => !x); }}
               title={aberto ? "Esconder o que está atrasado" : "Ver o que está atrasado nesta obra"} aria-expanded={aberto}>
               <AlertTriangle size={11} /> {L.atrasos.length} atrasada{L.atrasos.length > 1 ? "s" : ""}
               <ChevronDown size={11} className={`gc-selo-seta ${aberto ? "aberta" : ""}`} />
-            </button>
+            </Button>
           ) : L.perto.length > 0 ? (
-            <button className="gc-selo perto" onClick={(e) => { e.stopPropagation(); setAberto((x) => !x); }}
+            <Button variant="ghost" className="gc-selo perto" onClick={(e) => { e.stopPropagation(); setAberto((x) => !x); }}
               title={aberto ? "Esconder" : "Ver o que está perto do prazo"} aria-expanded={aberto}>
               <Clock size={11} /> {L.perto.length} perto do prazo
               <ChevronDown size={11} className={`gc-selo-seta ${aberto ? "aberta" : ""}`} />
-            </button>
+            </Button>
           ) : <span className="dim">—</span>}
         </td>
       </tr>
@@ -15466,13 +15489,13 @@ function EscolherObra({ obras, numeroDe, onEscolher, onFechar }) {
           <div key={squad}>
             <div className="eo-squad"><IconeSquad nome={squad} size={11} /> {squad}</div>
             {lista.map((o) => (
-              <button key={o.codigo} className="fo-item eo-item" onClick={() => onEscolher(o)}>
+              <Button variant="ghost" key={o.codigo} className="fo-item eo-item" onClick={() => onEscolher(o)}>
                 <span className="mono dim">#{o.codigo}</span>
                 <span className="fo-nome">{o.nome}</span>
                 {/* O numero e' confirmacao, nao criterio de escolha:
                     fica na coluna da direita, apagado. */}
                 <span className="eo-num mono">{numeroDe(o)}</span>
-              </button>
+              </Button>
             ))}
           </div>
         ))}
@@ -15518,11 +15541,11 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
 
   return (
     <div className="fo-caixa" ref={caixa}>
-      <button className={`fo-btn ${escolhidas.size ? "on" : ""}`} onClick={() => setAberto((x) => !x)}>
+      <Button variant="ghost" className={`fo-btn ${escolhidas.size ? "on" : ""}`} onClick={() => setAberto((x) => !x)}>
         <Building2 size={13} />
         <span className="fo-rot">{rotulo}</span>
         <ChevronDown size={13} />
-      </button>
+      </Button>
 
       {aberto && (
         <div className="fo-menu">
@@ -15530,25 +15553,25 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
             placeholder="nome ou código da obra…" onChange={(e) => setBusca(e.target.value)} />
 
           <div className="fo-acoes">
-            <button onClick={() => onMudar(new Set())} disabled={escolhidas.size === 0}>Todas</button>
+            <Button variant="ghost" size="sm" onClick={() => onMudar(new Set())} disabled={escolhidas.size === 0}>Todas</Button>
             {/* "Marcar as encontradas" e' o que torna a busca util: filtrar
                 por "Salt" e marcar as tres de uma vez, em vez de tres
                 cliques mirados numa lista de quarenta. */}
-            <button onClick={() => onMudar(new Set([...escolhidas, ...achadas.map((o) => o.codigo)]))}
+            <Button variant="ghost" size="sm" onClick={() => onMudar(new Set([...escolhidas, ...achadas.map((o) => o.codigo)]))}
               disabled={!busca.trim() || achadas.length === 0}>
               Marcar as {achadas.length} encontradas
-            </button>
+            </Button>
           </div>
 
           <div className="fo-lista">
             {achadas.length === 0 && <div className="empty-note">Nenhuma obra com esse nome ou código.</div>}
             {achadas.map((o) => (
-              <button key={o.codigo} className={`fo-item ${escolhidas.has(o.codigo) ? "on" : ""}`}
+              <Button variant="ghost" key={o.codigo} className={`fo-item ${escolhidas.has(o.codigo) ? "on" : ""}`}
                 onClick={() => alternar(o.codigo)} title={o.nome}>
                 <span className="fo-check">{escolhidas.has(o.codigo) && <Check size={11} />}</span>
                 <span className="mono dim">#{o.codigo}</span>
                 <span className="fo-nome">{o.nome}</span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -15559,15 +15582,15 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
       {escolhidas.size > 0 && escolhidas.size <= 6 && (
         <div className="fo-marcadas">
           {obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
-            <button key={o.codigo} className="fo-tag" onClick={() => alternar(o.codigo)}
+            <Button variant="ghost" key={o.codigo} className="fo-tag" onClick={() => alternar(o.codigo)}
               title="Tirar do filtro">
               <span className="mono">#{o.codigo}</span> <X size={10} />
-            </button>
+            </Button>
           ))}
         </div>
       )}
       {escolhidas.size > 6 && (
-        <button className="fo-limpar" onClick={() => onMudar(new Set())}>limpar filtro</button>
+        <Button variant="ghost" className="fo-limpar" onClick={() => onMudar(new Set())}>limpar filtro</Button>
       )}
     </div>
   );
@@ -15758,7 +15781,7 @@ function PdfSobreposto({ pdf, onFechar }) {
         {pdf.url && (
           <a className="btn-doc" href={pdf.url} download={pdf.nome}><Download size={13} /> Baixar de novo</a>
         )}
-        <button className="btn-voltar" onClick={onFechar}><X size={13} /> Fechar</button>
+        <Button variant="outline" onClick={onFechar}><X size={13} /> Fechar</Button>
       </div>
       {pdf.url ? <iframe className="pdf-visor" src={pdf.url} title={pdf.nome} />
         : !pdf.erro && <div className="pdf-gerando">Montando o PDF…</div>}
@@ -15854,8 +15877,8 @@ function RelatorioSobreposto({ children, onFechar, pronto = "Relatório pronto" 
     <div className="rel-overlay">
       <div className="rel-barra naoimprime">
         <span>{pronto} — a impressão já abriu. Escolha <b>Salvar como PDF</b>.</span>
-        <button className="btn-doc" onClick={() => window.print()}><Printer size={13} /> Imprimir de novo</button>
-        <button className="btn-voltar" onClick={onFechar}><X size={13} /> Fechar</button>
+        <Button onClick={() => window.print()}><Printer size={13} /> Imprimir de novo</Button>
+        <Button variant="outline" onClick={onFechar}><X size={13} /> Fechar</Button>
       </div>
       <div className="rel-folha">{children}</div>
     </div>,
@@ -15879,9 +15902,9 @@ function fornecedoresDasObras(obras) {
 function GcTelas({ tela, onTela }) {
   return (
     <div className="gc-telas">
-      <button className={`gc-chip ${tela === "painel" ? "on" : ""}`} onClick={() => onTela("painel")}>Painel</button>
-      <button className={`gc-chip ${tela === "compradores" ? "on" : ""}`} onClick={() => onTela("compradores")}>Compradores</button>
-      <button className={`gc-chip ${tela === "mao_propria" ? "on" : ""}`} onClick={() => onTela("mao_propria")}>Mão de obra própria</button>
+      <Button variant="ghost" className={`gc-chip ${tela === "painel" ? "on" : ""}`} onClick={() => onTela("painel")}>Painel</Button>
+      <Button variant="ghost" className={`gc-chip ${tela === "compradores" ? "on" : ""}`} onClick={() => onTela("compradores")}>Compradores</Button>
+      <Button variant="ghost" className={`gc-chip ${tela === "mao_propria" ? "on" : ""}`} onClick={() => onTela("mao_propria")}>Mão de obra própria</Button>
     </div>
   );
 }
@@ -16018,7 +16041,7 @@ function SimuladorEquipe({ g, prestadores, padrao = false, onFechar }) {
             <div className="sim-tit">Simular com a mão de obra própria</div>
             <div className="sim-sub">{g.num} · {g.nome}</div>
           </div>
-          <button className="btn-voltar" onClick={onFechar}><X size={13} /> Fechar</button>
+          <Button variant="outline" onClick={onFechar}><X size={13} /> Fechar</Button>
         </div>
         <label className="sim-obra">Comparar com
           <select className="cmp-forn-sel" value={obra} onChange={(e) => setObra(e.target.value)}>
@@ -16190,9 +16213,9 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
                   </td>
                   <td>
                     {!trava && p.id && (
-                      <button className="ad-icon del" title="Tirar da equipe interna" disabled={salvando === p.id} onClick={() => tirar(p)}>
+                      <Button variant="ghost" size="icon" className="text-danger" title="Tirar da equipe interna" disabled={salvando === p.id} onClick={() => tirar(p)} aria-label="Tirar da equipe interna">
                         <Trash2 size={13} />
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>
@@ -16213,13 +16236,13 @@ function MaoDeObraPropriaView({ prestadores, podeEditar, usuario, onMudou }) {
             onChange={(e) => setNovo((n) => ({ ...n, funcao: e.target.value }))} />
           <input className="form-input mono mop-valor" value={novo.diaria} placeholder="Diária: 450,00" inputMode="decimal"
             onChange={(e) => setNovo((n) => ({ ...n, diaria: e.target.value }))} />
-          <button className="btn-doc btn-template" disabled={salvando === "novo"} onClick={adicionar}>
+          <Button disabled={salvando === "novo"} onClick={adicionar}>
             {salvando === "novo" ? "Salvando…" : "Adicionar"}
-          </button>
+          </Button>
           <div className="cargo-chips">
             {especialidades.map((esp) => (
-              <button key={esp} type="button" className={`cargo-chip ${novo.especialidade === esp ? "on" : ""}`}
-                onClick={() => setNovo((n) => ({ ...n, especialidade: esp }))}>{esp}</button>
+              <Button variant="ghost" key={esp} type="button" className={`cargo-chip ${novo.especialidade === esp ? "on" : ""}`}
+                onClick={() => setNovo((n) => ({ ...n, especialidade: esp }))}>{esp}</Button>
             ))}
           </div>
         </div>
@@ -16385,8 +16408,8 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
           <div className="gc-horizonte">
             <span className="gc-horizonte-rot">Preciso resolver nas</span>
             {HORIZONTES.map((h) => (
-              <button key={h.rot} className={`gc-chip ${horizonte === h.dias ? "on" : ""}`}
-                onClick={() => setHorizonte(h.dias)}>{h.rot}</button>
+              <Button variant="ghost" key={h.rot} className={`gc-chip ${horizonte === h.dias ? "on" : ""}`}
+                onClick={() => setHorizonte(h.dias)}>{h.rot}</Button>
             ))}
           </div>
         ) : (
@@ -16410,7 +16433,7 @@ function GestaoComprasView({ obras, carregando, erro, onAbrir, equipe = [], pode
         <div className="gc-horizonte">
           <span className="gc-horizonte-rot">Mostrar</span>
           {[["pendente", "Pendente"], ["comprado", "Comprado"], ["todos", "Todos"]].map(([id, rot]) => (
-            <button key={id} className={`gc-chip ${status === id ? "on" : ""}`} onClick={() => setStatus(id)}>{rot}</button>
+            <Button variant="ghost" key={id} className={`gc-chip ${status === id ? "on" : ""}`} onClick={() => setStatus(id)}>{rot}</Button>
           ))}
         </div>
         <select className="cmp-forn-sel" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} aria-label="Filtrar por fornecedor">
@@ -16688,13 +16711,13 @@ function BuscaExecutivo({ itens, termo, ativo, onEscolher }) {
     <div className="ad-busca">
       <div className="ad-busca-rot">no executivo da obra</div>
       {achados.map((x) => (
-        <button key={x.chave} className="ad-busca-item" onClick={() => onEscolher(x)} title={x.desc}>
+        <Button variant="ghost" key={x.chave} className="ad-busca-item" onClick={() => onEscolher(x)} title={x.desc}>
           <span className="mono dim">{x.catNum}</span>
           <span className="ad-busca-desc">{x.desc}</span>
           {x.ambiente && <span className="ad-busca-amb">{x.ambiente}</span>}
           <span className="mono ad-busca-qtd">{x.qtd} {x.un}</span>
           <span className="mono ad-busca-val">{fmtBRL(x.valorUnit)}</span>
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -16763,9 +16786,9 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
             margem {fmtBRL(totalGrupo(g) - custoGrupo(g))}
           </span>
         )}
-        <button className="ad-icon" title="Mover para cima" onClick={() => onMover(-1)}>↑</button>
-        <button className="ad-icon" title="Mover para baixo" onClick={() => onMover(1)}>↓</button>
-        <button className="ad-icon del" title="Excluir grupo" onClick={onRemover}><Trash2 size={12} /></button>
+        <Button variant="ghost" size="icon" title="Mover para cima" onClick={() => onMover(-1)} aria-label="Mover para cima">↑</Button>
+        <Button variant="ghost" size="icon" title="Mover para baixo" onClick={() => onMover(1)} aria-label="Mover para baixo">↓</Button>
+        <Button variant="ghost" size="icon" className="text-danger" title="Excluir grupo" onClick={onRemover} aria-label="Excluir grupo"><Trash2 size={12} /></Button>
       </div>
 
       <div className="ad-itens">
@@ -16776,10 +16799,10 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
               <span className="ad-item-tot mono">{fmtBRL(totalItem(it))}</span>
               {/* Copiar pra outra seção é o gesto do dia: quase todo aditivo
                   suprime uma versão do móvel e adiciona outra, quase igual. */}
-              <button className="ad-icon" title={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`}
-                onClick={() => onOutraSecao(it)}><Copy size={11} /></button>
-              <button className="ad-icon" title="Duplicar item" onClick={() => dupI(it.id)}><Plus size={11} /></button>
-              <button className="ad-icon del" title="Excluir item" onClick={() => delI(it.id)}><X size={11} /></button>
+              <Button variant="ghost" size="icon" title={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`}
+                onClick={() => onOutraSecao(it)} aria-label={`Copiar para ${sec === "supressao" ? "adição" : "supressão"}`}><Copy size={11} /></Button>
+              <Button variant="ghost" size="icon" title="Duplicar item" onClick={() => dupI(it.id)} aria-label="Duplicar item"><Plus size={11} /></Button>
+              <Button variant="ghost" size="icon" className="text-danger" title="Excluir item" onClick={() => delI(it.id)} aria-label="Excluir item"><X size={11} /></Button>
             </div>
             <textarea className="form-input ad-desc-in" rows={2}
               placeholder={doExecutivo?.length ? "Descrição — ou digite pra buscar no executivo" : "Descrição do item"}
@@ -16835,7 +16858,7 @@ function GrupoAditivo({ sec, g, gi, onMudar, onRemover, onMover, onOutraSecao, d
             )}
           </div>
         ))}
-        <button className="ad-addbtn" onClick={addItem}><Plus size={12} /> Adicionar item</button>
+        <Button variant="outline" size="sm" onClick={addItem}><Plus size={12} /> Adicionar item</Button>
       </div>
     </div>
   );
@@ -16870,9 +16893,9 @@ function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara, doExec
             onMover={(d) => mover(g.id, d)}
             onOutraSecao={(it) => onCopiarPara(g, it)} />
         ))}
-        <button className="ad-addbtn" onClick={() => onMudar([...grupos, novoGrupo(grupos.length + 1)])}>
+        <Button variant="outline" size="sm" onClick={() => onMudar([...grupos, novoGrupo(grupos.length + 1)])}>
           <Plus size={12} /> Adicionar grupo de {titulo.toLowerCase()}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -16982,28 +17005,28 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
   return (
     <>
       <div className="ad-topo naoimprime">
-        <button className="btn-doc" onClick={onVoltar}><ChevronLeft size={13} /> Aditivos da obra</button>
+        <Button onClick={onVoltar}><ChevronLeft size={13} /> Aditivos da obra</Button>
         <span className="ad-numero mono">{aditivo.numero}</span>
         <input className="form-input ad-titulo" value={descricao} placeholder="Do que se trata este aditivo"
           onChange={(e) => { setDescricao(e.target.value); setSujo(true); }} />
         <div className="ad-status-sel">
           {STATUS_ADITIVO.map((s) => (
-            <button key={s.id} className={`ad-tag ${s.id} ${status === s.id ? "on" : ""}`}
-              onClick={() => mudarStatus(s.id)} disabled={salvando}>{s.nome}</button>
+            <Button variant="ghost" key={s.id} className={`ad-tag ${s.id} ${status === s.id ? "on" : ""}`}
+              onClick={() => mudarStatus(s.id)} disabled={salvando}>{s.nome}</Button>
           ))}
         </div>
-        <button className={`btn-doc ${sujo ? "btn-template" : ""}`} onClick={() => salvar()} disabled={salvando || !sujo}>
+        <Button onClick={() => salvar()} disabled={salvando || !sujo}>
           {salvando ? "Salvando…" : sujo ? "Salvar" : "Salvo"}
-        </button>
-        <button className="btn-doc" onClick={imprimir} title="Abre a impressão do navegador — escolha Salvar como PDF">
+        </Button>
+        <Button onClick={imprimir} title="Abre a impressão do navegador — escolha Salvar como PDF">
           <Download size={13} /> PDF
-        </button>
+        </Button>
         {/* O Excel e' o avesso do PDF: o PDF e' o que o cliente le, este e'
             o que a casa precisa — custo, margem e especificacao de compra. */}
-        <button className="btn-doc" onClick={baixarExcel}
+        <Button onClick={baixarExcel}
           title="Planilha interna: custo, margem e especificação de compra — o que não sai no PDF do cliente">
           <FileDown size={13} /> Excel
-        </button>
+        </Button>
       </div>
 
       {erro && <div className="aviso-migracao naoimprime"><AlertTriangle size={14} /> <span>{erro}</span></div>}
@@ -17138,7 +17161,7 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
       <div className={`pf-ok ${compacto ? "compacto" : ""}`}>
         <CheckCircle2 size={12} />
         <span>Pipefy enviado{a.doc.pipefy.por ? ` por ${a.doc.pipefy.por}` : ""} em {new Date(feito).toLocaleDateString("pt-BR")}</span>
-        <button className="pf-desfazer" onClick={() => onMarcar(null)}>desfazer</button>
+        <Button variant="ghost" size="sm" onClick={() => onMarcar(null)}>desfazer</Button>
       </div>
     );
   }
@@ -17152,17 +17175,17 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
       {!compacto && (
         <div className="pf-dados">
           <pre>{resumo}</pre>
-          <button className="btn-copiar" title="Copiar pra colar no formulário"
-            onClick={() => navigator.clipboard?.writeText(resumo)}><Copy size={11} /></button>
+          <Button variant="ghost" size="icon" title="Copiar pra colar no formulário"
+            onClick={() => navigator.clipboard?.writeText(resumo)} aria-label="Copiar pra colar no formulário"><Copy size={11} /></Button>
         </div>
       )}
       <div className="pf-acoes">
         <a className="btn-doc btn-template" href={linkPipefy(saldo)} target="_blank" rel="noopener noreferrer">
           <ArrowUpRight size={13} /> Abrir o formulário
         </a>
-        <button className="btn-doc" onClick={() => onMarcar({ em: new Date().toISOString(), por: usuario || null })}>
+        <Button onClick={() => onMarcar({ em: new Date().toISOString(), por: usuario || null })}>
           Já enviei
-        </button>
+        </Button>
       </div>
       {!compacto && (
         <div className="pf-nota">
@@ -17209,9 +17232,9 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
         <td><div className="ad-linha-obra">{obraNome || <span className="mono dim">#{a.obraCodigo}</span>}</div></td>
       )}
       <td>
-        <button className="ad-linha-desc" onClick={onAbrir}>
+        <Button variant="ghost" className="ad-linha-desc" onClick={onAbrir}>
           {a.descricao || <span className="dim">sem descrição — clique para abrir</span>}
-        </button>
+        </Button>
         <div className="ad-linha-data">
           {dataBR(a.doc?.data)}
           {a.atualizadoPor ? ` · por ${a.atualizadoPor}` : ""}
@@ -17235,7 +17258,7 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
       <td className="center">
         <div className="ad-status-sel ad-status-lista">
           {STATUS_ADITIVO.map((st) => (
-            <button key={st.id}
+            <Button variant="ghost" key={st.id}
               className={`ad-tag ${st.id} ${a.status === st.id ? "on" : ""} ${st.id === "aprovado" && pipefyPendente(a) ? "cobra" : ""}`}
               disabled={salvando} onClick={() => gravar({ status: st.id })}
               title={st.id === "rascunho" ? "Volta para rascunho — sai do orçamento"
@@ -17243,19 +17266,19 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
                 : st.id === "aprovado" ? "Aprovar — passa a contar no Dashboard, no CMV e no Plano de Compras"
                 : "Reprovar — não entra no orçamento"}>
               {st.nome}
-            </button>
+            </Button>
           ))}
         </div>
       </td>
       <td className="center">
-        <button className="ad-icon" title="Abrir" onClick={onAbrir}><Search size={12} /></button>
+        <Button variant="ghost" size="icon" title="Abrir" onClick={onAbrir} aria-label="Abrir"><Search size={12} /></Button>
         {/* O botao fica a' vista e desabilitado, com o motivo na dica:
             esconder faria a pessoa procurar onde nao esta'. */}
-        <button className="ad-icon del" disabled={!podeApagar} onClick={podeApagar ? onExcluir : undefined}
+        <Button variant="ghost" size="icon" className="text-danger" aria-label="Excluir" disabled={!podeApagar} onClick={podeApagar ? onExcluir : undefined}
           title={podeApagar ? "Excluir"
             : `Só quem criou o aditivo${a.criadoPor ? ` (${nomeDoEmail(a.criadoPor)})` : ""} ou um administrador pode excluir`}>
           <Trash2 size={12} />
-        </button>
+        </Button>
       </td>
     </tr>
   );
@@ -17384,10 +17407,10 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
             filtro escondeu a funcao inteira. Agora o proprio botao
             pergunta, e pergunta do jeito que o resto do app pergunta. */}
         <div className="fo-caixa">
-          <button className="btn-doc btn-template"
+          <Button
             onClick={() => (obra ? novo(obra) : setEscolhendo((v) => !v))}>
             <Plus size={13} /> Novo aditivo
-          </button>
+          </Button>
           {escolhendo && !obra && (
             <EscolherObra obras={obras}
               numeroDe={(o) => numeroAditivo(o.codigo, proximaSeq(lista.filter((a) => String(a.obraCodigo) === String(o.codigo))))}
@@ -17453,11 +17476,6 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
     width: "100%", maxWidth: 400, background: "var(--surface-1)", border: "1px solid var(--line-2)",
     borderRadius: 14, padding: "32px 28px", boxSizing: "border-box", textAlign: "center",
   };
-  const botao = {
-    display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 38, padding: "0 16px",
-    border: "1px solid var(--line-2)", background: "transparent", borderRadius: 10,
-    fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", color: "var(--text)",
-  };
   const suspenso = pessoa?.ativo === false;
 
   return (
@@ -17482,10 +17500,9 @@ function SalaDeEspera({ usuario, pessoa, onSair, onRecarregar }) {
 
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 24 }}>
           {!suspenso && (
-            <button style={{ ...botao, background: "var(--brand)", color: "var(--bg)", borderColor: "var(--brand)" }}
-              onClick={onRecarregar}>Já liberaram, recarregar</button>
+            <Button onClick={onRecarregar}>Já liberaram, recarregar</Button>
           )}
-          <button style={botao} onClick={onSair}>Sair</button>
+          <Button variant="outline" onClick={onSair}>Sair</Button>
         </div>
       </div>
     </div>
@@ -17607,10 +17624,10 @@ function PainelLocalizacao({ dados, carregando, onToggleStatus }) {
       </div>
       <div className="loc-estados">
         {dados.map((g) => (
-          <button key={g.estado} type="button" className={`gc-chip ${estado === g.estado ? "on" : ""}`}
+          <Button variant="ghost" key={g.estado} type="button" className={`gc-chip ${estado === g.estado ? "on" : ""}`}
             onClick={() => setEstado(g.estado)}>
             {g.estado} <span className="dim">· {g.total}</span>
-          </button>
+          </Button>
         ))}
       </div>
       {grupo && (
@@ -17619,22 +17636,22 @@ function PainelLocalizacao({ dados, carregando, onToggleStatus }) {
             const aberta = cidadesAbertas.has(c.cidade);
             return (
               <div key={c.cidade} className="loc-cidade">
-                <button type="button" className="loc-cidade-head" onClick={() => alternarCidade(c.cidade)}>
+                <Button variant="ghost" type="button" className="loc-cidade-head" onClick={() => alternarCidade(c.cidade)}>
                   <ChevronRight size={12} className={`gc-chevron ${aberta ? "aberto" : ""}`} />
                   <span className="loc-cidade-nome">{c.cidade}</span>
                   <span className="loc-cidade-conta">
                     {c.ativas > 0 && <span className="loc-conta ativa">{c.ativas}</span>}
                     {c.finalizadas > 0 && <span className="loc-conta finalizada">{c.finalizadas}</span>}
                   </span>
-                </button>
+                </Button>
                 {aberta && (
                   <div className="loc-obras">
                     {c.obras.map((o) => (
-                      <button key={o.codigo} type="button" className={`loc-obra-chip ${o.status}`}
+                      <Button variant="ghost" key={o.codigo} type="button" className={`loc-obra-chip ${o.status}`}
                         onClick={() => onToggleStatus(o.codigo, o.status)}
                         title={`#${o.codigo} — clique pra marcar como ${o.status === "finalizada" ? "ativa" : "finalizada"}`}>
                         {o.status === "finalizada" && <Check size={9} />} {o.nome}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 )}
@@ -17863,12 +17880,12 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
           <div className="ac-sub">Canal que {p.nome.split(" ")[0]} acompanha</div>
           <div className="canal-chips">
             {CANAIS_COMPRA.map((c) => (
-              <button key={c.id} type="button"
+              <Button variant="ghost" key={c.id} type="button"
                 className={`canal-chip ${canal === c.id ? "ativo" : ""}`}
                 onClick={() => setCanal(c.id)}
                 style={canal === c.id ? { color: c.cor, borderColor: c.cor, background: c.bg } : undefined}>
                 <b>{c.sigla}</b> {c.nome}
-              </button>
+              </Button>
             ))}
           </div>
           <div className="ac-nota">
@@ -17883,7 +17900,7 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
         <>
           <div className="ac-sub">
             Obras em que {p.nome.split(" ")[0]} é o GC
-            <button className="ac-link" onClick={() => setMinhas(new Set())}>limpar</button>
+            <Button variant="ghost" size="sm" onClick={() => setMinhas(new Set())}>limpar</Button>
           </div>
           <div className="ac-nota ac-nota-forte">
             Isto grava o <b>GC responsável</b> de cada obra — o mesmo campo do Dashboard.
@@ -17926,10 +17943,10 @@ function AcessoDaPessoa({ p, obras, pessoas, onSalvar, onFechar }) {
       )}
       {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
       <div className="cad-acoes">
-        <button className="btn-doc btn-template" disabled={salvando || tirandoOUltimoAdmin} onClick={salvar}>
+        <Button disabled={salvando || tirandoOUltimoAdmin} onClick={salvar}>
           {salvando ? "Salvando…" : "Salvar acesso"}
-        </button>
-        <button className="btn-doc" onClick={onFechar}>cancelar</button>
+        </Button>
+        <Button onClick={onFechar}>cancelar</Button>
       </div>
     </div>
   );
@@ -18079,21 +18096,21 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
               onChange={(e) => setCargo(e.target.value)} />
             <div className="cargo-chips">
               {cargosConhecidos.map((c) => (
-                <button key={c} type="button"
+                <Button variant="ghost" key={c} type="button"
                   className={`cargo-chip ${cargo === c ? "on" : ""}`}
-                  onClick={() => setCargo(cargo === c ? "" : c)}>{c}</button>
+                  onClick={() => setCargo(cargo === c ? "" : c)}>{c}</Button>
               ))}
             </div>
           </label>
         </div>
         <div className="cad-acoes">
-          <button className="btn-doc btn-template" disabled={!pode} onClick={salvar}>
+          <Button disabled={!pode} onClick={salvar}>
             {salvando ? "Salvando…" : editando ? "Salvar" : "Adicionar"}
-          </button>
+          </Button>
           {editando && (
-            <button className="btn-doc" onClick={() => { setEditando(null); setEmail(""); setNome(""); setCargo("GC"); }}>
+            <Button onClick={() => { setEditando(null); setEmail(""); setNome(""); setCargo("GC"); }}>
               cancelar
-            </button>
+            </Button>
           )}
           <span className="cad-nota">
             Sem nome, o e-mail vira o nome: <b>{nomeDoEmail(email) || "priscila.wayhs@… → Priscila Wayhs"}</b>
@@ -18122,12 +18139,12 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
         ) : ordem.map((c) => (
           <div key={c} className={`arq-bloco ${c === "Aguardando liberação" ? "eq-fila" : ""}`}>
             <div className="arq-bloco-h">
-              <button type="button" className="eq-bloco-toggle" onClick={() => alternarGrupo(c)}
+              <Button variant="ghost" type="button" className="eq-bloco-toggle" onClick={() => alternarGrupo(c)}
                 aria-expanded={!fechados.has(c)} title={fechados.has(c) ? "Abrir o grupo" : "Fechar o grupo"}>
                 <ChevronDown size={15} className={`eq-seta ${fechados.has(c) ? "fechada" : ""}`} />
                 <span className="arq-bloco-tit">{c}</span>
                 <span className="arq-bloco-n">{porCargo[c].length}</span>
-              </button>
+              </Button>
             </div>
             {!fechados.has(c) && porCargo[c].map((p) => {
               const n = obrasDe(p.email);
@@ -18151,20 +18168,20 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
                         falhar. Oferecer e' pior do que nao ter: ela
                         clicou e levou um erro do Postgres na cara. */}
                     {!migracaoPendente && (
-                      <button className="caderno-acao" onClick={() => setAcessoDe(acessoDe === p.email ? null : p.email)}>
+                      <Button variant="outline" size="sm" onClick={() => setAcessoDe(acessoDe === p.email ? null : p.email)}>
                         <ShieldCheck size={12} /> acesso
-                      </button>
+                      </Button>
                     )}
-                    <button className="caderno-acao" onClick={() => {
+                    <Button variant="outline" size="sm" onClick={() => {
                       setEditando(p.email); setEmail(p.email); setNome(p.nome); setCargo(p.cargo || "");
                       window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}>editar</button>
+                    }}>editar</Button>
                     {/* Quem sai da empresa vira INATIVO, nao sumido: as
                         obras que ele tocou continuam apontando pra ele. */}
-                    <button className="caderno-acao" onClick={() => alternarAtivo(p)}>
+                    <Button variant="outline" size="sm" onClick={() => alternarAtivo(p)}>
                       {p.ativo ? "desativar" : "reativar"}
-                    </button>
-                    <button className="ad-icon del" title="Excluir" onClick={() => remover(p)}><Trash2 size={13} /></button>
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-danger" title="Excluir" onClick={() => remover(p)} aria-label="Excluir"><Trash2 size={13} /></Button>
                   </div>
                 </div>
               );
@@ -18316,17 +18333,17 @@ function ArquivoLinha({ a, podeEditar, onExcluir, semFase = false }) {
         <span className="arq-perdido">arquivo não guardado — anexe de novo</span>
       ) : (
         <div className="arq-acoes">
-          <button className="caderno-acao" onClick={() => abrir(false)} disabled={!!ocupado}>
+          <Button variant="outline" size="sm" onClick={() => abrir(false)} disabled={!!ocupado}>
             <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
-          </button>
-          <button className="caderno-acao" onClick={() => abrir(true)} disabled={!!ocupado}>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => abrir(true)} disabled={!!ocupado}>
             <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
-          </button>
+          </Button>
           {/* Só o avulso se apaga aqui. Caderno e assinatura têm dono na
               esteira, e sumir com eles por esta tela deixaria a etapa de
               lá dizendo que tem anexo quando não tem mais. */}
           {podeEditar && !a.fixo && (
-            <button className="ad-icon del" title="Excluir arquivo" onClick={() => onExcluir(a)}><Trash2 size={13} /></button>
+            <Button variant="ghost" size="icon" className="text-danger" title="Excluir arquivo" onClick={() => onExcluir(a)} aria-label="Excluir arquivo"><Trash2 size={13} /></Button>
           )}
         </div>
       )}
@@ -18393,11 +18410,11 @@ function ArquivosObraView({ obra, usuario, podeEditar, souAdmin, onArquivos }) {
               title="Em que fase este arquivo entra">
               {fasesDeAvulso.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
             </select>
-            <button className="btn-doc btn-template" disabled={enviando}
+            <Button disabled={enviando}
               onClick={() => inputRef.current && inputRef.current.click()}>
               <Upload size={13} /> {enviando ? "Enviando…" : "Anexar arquivo"}
-            </button>
-            <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} style={{ display: "none" }} onChange={subir} />
+            </Button>
+            <input ref={inputRef} type="file" accept={EXTENSOES_ACEITAS} className="sr-only" onChange={subir} />
           </div>
         )}
       </div>
@@ -18464,12 +18481,12 @@ function CadernoBaixar({ titulo, arquivo }) {
         : (
           <>
             <span className="mh-caderno-arq">{arquivo.nome} · {arquivo.tamanhoKB} KB</span>
-            <button className="caderno-acao" onClick={() => abrir(false)} disabled={!!ocupado}>
+            <Button variant="outline" size="sm" onClick={() => abrir(false)} disabled={!!ocupado}>
               <Search size={12} /> {ocupado === "ver" ? "Abrindo…" : "Ver"}
-            </button>
-            <button className="caderno-acao" onClick={() => abrir(true)} disabled={!!ocupado}>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => abrir(true)} disabled={!!ocupado}>
               <Download size={12} /> {ocupado === "baixar" ? "Baixando…" : "Baixar"}
-            </button>
+            </Button>
           </>
         )}
       {erro && <span className="mh-caderno-vazio">{erro}</span>}
@@ -18484,7 +18501,7 @@ function ObraDoCanal({ L, canal }) {
 
   return (
     <div className="mh-obra">
-      <button className="mh-obra-head" onClick={() => setAberto((v) => !v)}>
+      <Button variant="ghost" className="mh-obra-head" onClick={() => setAberto((v) => !v)}>
         {aberto ? <ChevronDown size={15} className="dim" /> : <ChevronRight size={15} className="dim" />}
         <div className="mh-obra-id">
           <div className="mh-obra-nome"><span className="mono dim">#{o.codigo}</span> {o.nome}</div>
@@ -18527,7 +18544,7 @@ function ObraDoCanal({ L, canal }) {
         {L.atrasados > 0 && (
           <span className="gc-selo atraso"><AlertTriangle size={11} /> {L.atrasados} fora do prazo</span>
         )}
-      </button>
+      </Button>
 
       {aberto && (
         <div className="mh-corpo">
@@ -18973,14 +18990,14 @@ function EapSiengeView({ usuario }) {
             <Upload size={14} />
             <span>Suba o <b>Relatório de Orçamento</b> da obra modelo (Excel, exportado do Sienge). Dele saem os códigos de apropriação e a unidade construtiva que toda solicitação de compra exige. Importar <b>não apaga</b> a versão anterior: cria outra, e o mapa das verbas é herdado.</span>
           </div>
-          <button className="btn-import" disabled={salvando} onClick={() => inputRef.current && inputRef.current.click()}>
+          <Button disabled={salvando} onClick={() => inputRef.current && inputRef.current.click()}>
             <Upload size={13} /> Importar orçamento
-          </button>
-          <input ref={inputRef} type="file" accept=".xlsx,.xlsm,.xlsb,.xls" style={{ display: "none" }} onChange={aoEscolher} />
+          </Button>
+          <input ref={inputRef} type="file" accept=".xlsx,.xlsm,.xlsb,.xls" className="sr-only" onChange={aoEscolher} />
         </div>
         {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
         {aviso && <div className="import-erro" style={{ background: "var(--blue-bg)", color: "var(--blue)" }}>
-          <CheckCircle2 size={14} /> {aviso} <button className="clear-btn" onClick={() => setAviso(null)}><X size={12} /></button>
+          <CheckCircle2 size={14} /> {aviso} <Button variant="ghost" size="icon" onClick={() => setAviso(null)} aria-label="Fechar"><X size={12} /></Button>
         </div>}
       </div>
 
@@ -18992,11 +19009,11 @@ function EapSiengeView({ usuario }) {
               <div className="flat-panel-sub">Nada foi gravado ainda.</div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn-associar-sel" onClick={() => setPrevia(null)}>Cancelar</button>
-              <button className="btn-import" disabled={salvando || !previa.versao.unidadeId || !previa.itens.some((i) => i.folha)}
+              <Button variant="outline" onClick={() => setPrevia(null)}>Cancelar</Button>
+              <Button disabled={salvando || !previa.versao.unidadeId || !previa.itens.some((i) => i.folha)}
                 onClick={confirmarImportacao}>
                 {salvando ? "Gravando…" : "Gravar como versão nova"}
-              </button>
+              </Button>
             </div>
           </div>
           <div style={{ padding: "0 16px 14px", display: "grid", gap: 6 }}>
@@ -19032,7 +19049,7 @@ function EapSiengeView({ usuario }) {
                 ))}
               </select>
               {versao && !versao.padrao && (
-                <button className="btn-associar-sel" onClick={tornarPadrao}>Tornar padrão</button>
+                <Button variant="outline" onClick={tornarPadrao}>Tornar padrão</Button>
               )}
             </div>
           )}
@@ -19067,11 +19084,11 @@ function EapSiengeView({ usuario }) {
                         ))}
                       </select>
                       {sugestao && (
-                        <button className="btn-associar-sel" style={{ marginTop: 4 }}
+                        <Button variant="outline" className="mt-1"
                           onClick={() => ligar(v.num, sugestao.folha.codigo)}
                           title="Sugestão por semelhança de nome — confira antes de aceitar">
                           <Check size={12} /> usar {sugestao.folha.codigo} · {sugestao.folha.descricao}
-                        </button>
+                        </Button>
                       )}
                     </td>
                   </tr>
@@ -19098,7 +19115,7 @@ function EapSiengeView({ usuario }) {
             <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
               <Search size={13} className="dim" />
               <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-              {busca && <button className="clear-btn" onClick={() => setBusca("")}><X size={12} /></button>}
+              {busca && <Button variant="ghost" size="icon" onClick={() => setBusca("")} aria-label="Limpar busca"><X size={12} /></Button>}
             </div>
           </div>
           <div style={{ padding: "0 16px 16px" }}>
@@ -19111,12 +19128,12 @@ function EapSiengeView({ usuario }) {
                   const aberto = abertos.has(g.codigo) || !!termo;
                   return (
                     <div key={g.codigo} className="eap-grupo">
-                      <button className="btn-arvore-eap"
+                      <Button variant="ghost" size="sm"
                         onClick={() => setAbertos((p) => { const n = new Set(p); n.has(g.codigo) ? n.delete(g.codigo) : n.add(g.codigo); return n; })}>
                         {aberto ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                         <span className="mono">{g.codigo}</span> {g.descricao}
                         <span className="dim"> · {g.filhos.length}</span>
-                      </button>
+                      </Button>
                       {aberto && (termo ? dentro : g.filhos).map((f) => (
                         <div key={f.codigo} className="eap-folha">
                           <span className="mono">{f.codigo}</span> {f.descricao}
@@ -19189,16 +19206,18 @@ function BancoPrecosView({ usuario }) {
        isso, a associacao mostrava "MESA DE CENTRO/LATERAL", nome que o
        Sienge nao usa mais. */
     const doCadastro = cadastroAtivo && cadastroAtivo.length ? cadastroAtivo : lidos;
-    const ok = window.confirm(
-      `Cadastro de insumos do Sienge — ${n(doCadastro.length)} insumos ativos.\n\n` +
-      `• a associação passa a usar estes ${n(doCadastro.length)}, com o nome atual do Sienge.\n` +
-      `• quem não está mais no cadastro deixa de ser oferecido na associação.\n` +
-      (novos.length
-        ? `• ${n(novos.length)} insumos novos entram na base de preços.\n`
-        : `• nenhum preço novo: os insumos já estavam na base.\n`) +
-      (fora ? `• ${fora} ficaram de fora da base de preços.\n` : "") +
-      `\nNenhum preço é apagado: o que a obra pagou continua guardado, inclusive de insumo que saiu do cadastro.\n\nSeguir?`
-    );
+    const ok = await confirmar({
+      titulo: `Cadastro de insumos do Sienge — ${n(doCadastro.length)} insumos ativos`,
+      mensagem:
+        `A associação passa a usar estes ${n(doCadastro.length)}, com o nome atual do Sienge. ` +
+        `Quem não está mais no cadastro deixa de ser oferecido na associação. ` +
+        (novos.length
+          ? `${n(novos.length)} insumos novos entram na base de preços. `
+          : `Nenhum preço novo: os insumos já estavam na base. `) +
+        (fora ? `${fora} ficaram de fora da base de preços. ` : "") +
+        `Nenhum preço é apagado: o que a obra pagou continua guardado, inclusive de insumo que saiu do cadastro.`,
+      confirmar: "Importar cadastro", perigo: false,
+    });
     if (!ok) return;
     if (novos.length) {
       await salvarPrecos(novos, (feitas, tot) => setImportando(`Gravando ${feitas} de ${tot}…`));
@@ -19210,15 +19229,15 @@ function BancoPrecosView({ usuario }) {
     );
     setImportando(null);
     await recarregar();
-    alert(
-      (semTabela
-        ? `Os preços foram gravados, mas o cadastro de insumos ativos não: falta rodar o supabase/insumo-sienge.sql no Supabase. Até lá a associação continua como antes.`
-        : `Cadastro de insumos ativos atualizado: ${n(gravados)} insumos.` +
-          (removidos ? ` ${n(removidos)} saíram do Sienge e não são mais oferecidos na associação.` : "")) +
-      `\n\n` +
-      (novos.length ? `${n(novos.length)} preços novos na base. ` : "Nenhum preço novo. ") +
-      `${n(jaExistiam)} já estavam lá e não mudaram.`
-    );
+    const precos = (novos.length ? `${n(novos.length)} preços novos na base. ` : "Nenhum preço novo. ") +
+      `${n(jaExistiam)} já estavam lá e não mudaram.`;
+    if (semTabela) {
+      avisar.erro("Os preços foram gravados, mas o cadastro de insumos ativos não.",
+        `Falta rodar o supabase/insumo-sienge.sql no Supabase. Até lá a associação continua como antes. ${precos}`);
+    } else {
+      avisar.ok(`Cadastro de insumos ativos atualizado: ${n(gravados)} insumos.`,
+        (removidos ? `${n(removidos)} saíram do Sienge e não são mais oferecidos na associação. ` : "") + precos);
+    }
   }
 
   async function aoEscolher(e) {
@@ -19238,7 +19257,8 @@ function BancoPrecosView({ usuario }) {
       setImportando(null);
       await recarregar();
       setErro(null);
-      alert(`${lidos.length} insumos importados.${descartadosVb ? ` ${descartadosVb} linhas em "vb" foram ignoradas — valor fechado não serve de preço unitário.` : ""}`);
+      avisar.ok(`${lidos.length} insumos importados.`,
+        descartadosVb ? `${descartadosVb} linhas em "vb" foram ignoradas — valor fechado não serve de preço unitário.` : undefined);
     } catch (err) {
       setImportando(null);
       setErro(err.message || String(err));
@@ -19253,10 +19273,10 @@ function BancoPrecosView({ usuario }) {
             <Upload size={14} />
             <span>Suba o <b>Relação de Pedidos de Compra</b> do Sienge (PDF ou Excel). É o preço realmente pago; linhas em <b>vb</b> são ignoradas, porque valor fechado não serve de referência unitária. O <b>cadastro de Insumos</b> do Sienge (Excel) também entra: ele acrescenta os preços que faltam sem mexer nos que já estão aqui e, principalmente, <b>é ele que diz quais insumos estão ativos e como o Sienge chama cada um hoje</b> — a associação usa essa lista.</span>
           </div>
-          <button className="btn-import" disabled={!!importando} onClick={() => inputRef.current && inputRef.current.click()}>
+          <Button disabled={!!importando} onClick={() => inputRef.current && inputRef.current.click()}>
             <Upload size={13} /> {importando || "Importar do Sienge"}
-          </button>
-          <input ref={inputRef} type="file" accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv" style={{ display: "none" }} onChange={aoEscolher} />
+          </Button>
+          <input ref={inputRef} type="file" accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv" className="sr-only" onChange={aoEscolher} />
         </div>
         {erro && <div className="import-erro"><AlertTriangle size={14} /> {erro}</div>}
       </div>
@@ -19273,7 +19293,7 @@ function BancoPrecosView({ usuario }) {
           <div className="obra-search obra-search-wide" style={{ marginBottom: 0 }}>
             <Search size={13} className="dim" />
             <input placeholder="Buscar por código ou descrição…" value={busca} onChange={(e) => setBusca(e.target.value)} />
-            {busca && <button className="clear-btn" onClick={() => setBusca("")}><X size={12} /></button>}
+            {busca && <Button variant="ghost" size="icon" onClick={() => setBusca("")} aria-label="Limpar busca"><X size={12} /></Button>}
           </div>
         </div>
 
@@ -19373,8 +19393,8 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
           placeholder="Rua, número - complemento - bairro - cidade - UF - CEP"
           onChange={(e) => setValor(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") setEditando(false); }} />
-        <button className="btn-doc btn-template" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</button>
-        <button className="btn-doc" disabled={salvando} onClick={() => setEditando(false)}>cancelar</button>
+        <Button disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar"}</Button>
+        <Button disabled={salvando} onClick={() => setEditando(false)}>cancelar</Button>
         <span className="cad-nota">Em branco, volta o endereço do cadastro do Sienge.</span>
         {erro && <span className="cad-erro">{erro}</span>}
       </div>
@@ -19384,10 +19404,10 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
     <div className="eyebrow obra-endereco">
       {atual || "Endereço não informado"}
       {podeEditar && (
-        <button type="button" className="obra-endereco-btn" onClick={() => { setValor(atual); setEditando(true); }}
+        <Button variant="ghost" size="icon" type="button" onClick={() => { setValor(atual); setEditando(true); }}
           title="Corrigir o endereço da obra" aria-label="Editar endereço">
           <Pencil size={11} />
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -19431,9 +19451,9 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
 
   if (!aberto) {
     return (
-      <button className="btn-doc cad-abrir" onClick={() => setAberto(true)}>
+      <Button className="cad-abrir" onClick={() => setAberto(true)}>
         <Plus size={13} /> Cadastrar obra manualmente
-      </button>
+      </Button>
     );
   }
 
@@ -19441,7 +19461,7 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
     <div className="cad-box">
       <div className="cad-h">
         <span>Cadastrar obra manualmente</span>
-        <button className="ad-icon" onClick={() => setAberto(false)}><X size={13} /></button>
+        <Button variant="ghost" size="icon" aria-label="Fechar" onClick={() => setAberto(false)}><X size={13} /></Button>
       </div>
       <div className="cad-campos">
         <label className="cad-largo">Nome da obra
@@ -19473,9 +19493,9 @@ function CadastroManualObra({ onCriar, salvando, jaExistem, equipe = [], usuario
       </div>
       {erro && <div className="cad-erro cad-erro-larga">{erro}</div>}
       <div className="cad-acoes">
-        <button className="btn-doc btn-template" disabled={!pode} onClick={criar}>
+        <Button disabled={!pode} onClick={criar}>
           {salvando ? "Criando…" : "Criar e abrir"}
-        </button>
+        </Button>
         <span className="cad-nota">
           Ela nasce ativa e vazia — cliente e valor vendido entram quando os documentos subirem.
         </span>
@@ -19516,7 +19536,7 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
         <div className="obra-search obra-search-wide">
           <Search size={13} className="dim" />
           <input placeholder="Filtrar por nome, código, squad..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <button className="clear-btn" onClick={() => setSearch("")}><X size={12} /></button>}
+          {search && <Button variant="ghost" size="icon" onClick={() => setSearch("")} aria-label="Limpar busca"><X size={12} /></Button>}
         </div>
       )}
 
@@ -19538,9 +19558,9 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
               key={o.id}
               o={o}
               acao={
-                <button className="btn-start" disabled={salvando === o.id || semBanco} onClick={() => onStart(o)}>
+                <Button disabled={salvando === o.id || semBanco} onClick={() => onStart(o)}>
                   {salvando === o.id ? "Iniciando…" : <><Play size={13} /> Dar start</>}
-                </button>
+                </Button>
               }
             />
           ))}
@@ -19570,9 +19590,9 @@ function ArquivoView({ obras, onReabrir, salvando }) {
           key={o.id}
           o={o}
           acao={
-            <button className="btn-reabrir" disabled={salvando === o.id} onClick={() => onReabrir(o)}>
+            <Button variant="outline" disabled={salvando === o.id} onClick={() => onReabrir(o)}>
               {salvando === o.id ? "Reabrindo…" : <><RotateCcw size={13} /> Reabrir</>}
-            </button>
+            </Button>
           }
         />
       ))}
@@ -19646,14 +19666,14 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
         <span className={`be-salvo ${salvando === "parcial" ? "be-parcial" : ""}`}>
           {salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo" : salvando === "parcial" ? "salvo em parte" : ""}
         </span>
-        <button className="be-link" onClick={onFinalizar} disabled={salvando === "salvando"}>finalizar</button>
+        <Button variant="ghost" size="sm" onClick={onFinalizar} disabled={salvando === "salvando"}>finalizar</Button>
       </span>
     );
   } else {
     estado = (
       <span className="be-estado">
         <span className="be-ponto" /> Modo leitura
-        <button className="be-link" onClick={onHabilitar}>habilitar edição</button>
+        <Button variant="ghost" size="sm" onClick={onHabilitar}>habilitar edição</Button>
       </span>
     );
   }
@@ -19669,15 +19689,15 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
               {porQuem && <> por <b>{porQuem}</b></>}
               {em && <> · {new Date(em).toLocaleDateString("pt-BR")}</>}
             </span>
-            {!congelado && <button className="be-link" onClick={() => onReabrirEtapa(etapaId)}>reabrir</button>}
+            {!congelado && <Button variant="ghost" size="sm" onClick={() => onReabrirEtapa(etapaId)}>reabrir</Button>}
           </>
         ) : (
           <>
             {bloqueio && <span className="be-bloqueio"><AlertTriangle size={13} /> {bloqueio}</span>}
-            <button className="be-avancar" disabled={congelado || !!bloqueio} onClick={() => onConcluir(etapaId)}
+            <Button disabled={congelado || !!bloqueio} onClick={() => onConcluir(etapaId)}
               title={bloqueio ? "Aprove as pendências para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
               <Play size={13} /> Concluir etapa
-            </button>
+            </Button>
           </>
         ))}
       </div>
@@ -19698,7 +19718,7 @@ function BotaoApresentacao({ onAbrir, arquivo }) {
     try {
       window.open(await linkParaArquivo(arquivo.caminho), "_blank");
     } catch (e) {
-      window.alert(`Não consegui abrir o PDF: ${e.message || e}`);
+      avisar.erro("Não foi possível abrir o PDF.", String(e.message || e));
     }
   }
   return (
@@ -19706,13 +19726,13 @@ function BotaoApresentacao({ onAbrir, arquivo }) {
       {/* O PDF pronto mora junto dos cadernos do Executivo (Jornada da obra);
           aqui só avisa que ele existe e abre com um clique. */}
       {(arquivo?.caminho || arquivo?.url) && (
-        <button className="btn-apres-pdf" onClick={verPdf} title={`${arquivo.nome || "PDF"}: abrir`}>
+        <Button variant="outline" onClick={verPdf} title={`${arquivo.nome || "PDF"}: abrir`}>
           <Check size={12} /> PDF anexado
-        </button>
+        </Button>
       )}
-      <button className="btn-apres" onClick={onAbrir}>
+      <Button onClick={onAbrir}>
         <Presentation size={13} /> Apresentação de especificações
-      </button>
+      </Button>
     </>
   );
 }
@@ -20266,12 +20286,12 @@ export default function App() {
     // Concluir tira a obra da lista de todo mundo, e o botão fica ao lado
     // do nome da obra — dá pra clicar sem querer. Confirmar custa um
     // segundo; descobrir depois por que a obra sumiu custa bem mais.
-    const ok = window.confirm(
-      `Concluir a obra "${o.nome}"?\n\n` +
-      "Ela sai da lista de obras ativas e vai para o Arquivo, em modo consulta — " +
-      "ninguém do time consegue mais alterar nada nela.\n\n" +
-      "Dá para reabrir depois, pelo Arquivo."
-    );
+    const ok = await confirmar({
+      titulo: `Concluir a obra "${o.nome}"?`,
+      mensagem: "Ela sai da lista de obras ativas e vai para o Arquivo, em modo consulta — " +
+        "ninguém do time consegue mais alterar nada nela. Dá para reabrir depois, pelo Arquivo.",
+      confirmar: "Concluir obra", perigo: false,
+    });
     if (!ok) return;
 
     setSalvandoObra(o.id);
@@ -23160,7 +23180,7 @@ export default function App() {
            A linha fechada carrega o que se pergunta primeiro (quanto de
            MAT, quanto de MO); o item so aparece ao abrir. */
         .grp-block { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
-        /* O cabecalho deixou de ser um <button> pra caber controle
+        /* O cabecalho deixou de ser um botao pra caber controle
            dentro dele (o campo de dias do prazo). Quem abre o grupo agora
            e so a parte esquerda, que segue sendo a maior area da linha. */
         .grp-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-right: 16px; }
@@ -24896,7 +24916,7 @@ export default function App() {
             <div className="aviso-migracao">
               <AlertTriangle size={14} />
               <span>{migracao}</span>
-              <button className="aviso-x" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></button>
+              <Button variant="ghost" size="icon" onClick={() => setMigracao(null)} aria-label="Fechar aviso"><X size={13} /></Button>
             </div>
           )}
           {/* Enquanto nao se sabe quem entrou, nenhuma tela: sem isto a
@@ -24992,12 +25012,12 @@ export default function App() {
           {!canalPreso && (
           <div className="canal-chips">
             {CANAIS_COMPRA.map((c) => (
-              <button key={c.id} type="button"
+              <Button variant="ghost" key={c.id} type="button"
                 className={`canal-chip ${canalDoPainel === c.id ? "ativo" : ""}`}
                 onClick={() => setCanalDoPainel(c.id)}
                 style={canalDoPainel === c.id ? { color: c.cor, borderColor: c.cor, background: c.bg } : undefined}>
                 <b>{c.sigla}</b> {c.nome}
-              </button>
+              </Button>
             ))}
           </div>
           )}
@@ -25045,7 +25065,7 @@ export default function App() {
               {loading
                 ? "Carregando obras do Monday…"
                 : obrasNovas.length > 0
-                ? <>Nenhuma obra iniciada ainda. Comece em <button className="link-inline" onClick={() => setModulo("novas")}>Novas obras</button>.</>
+                ? <>Nenhuma obra iniciada ainda. Comece em <Button variant="ghost" size="sm" onClick={() => setModulo("novas")}>Novas obras</Button>.</>
                 : "Nenhuma obra encontrada."}
             </div>
           ) : (
@@ -25065,9 +25085,9 @@ export default function App() {
                 <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
               )}
               {grupo === "dashboard" && (
-                <button className="btn-concluir" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
+                <Button variant="outline" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
                   {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={13} /> Concluir obra</>}
-                </button>
+                </Button>
               )}
             </div>
           </div>

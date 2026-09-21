@@ -116,7 +116,7 @@ const escolher = src.slice(i0, src.indexOf("return (", i0));
 conf("o aviso é perguntado antes de aplicar o arquivo",
   escolher.indexOf("avisoAntesDeTrocar") < escolher.indexOf("await onFile(file)"), true);
 conf("... e 'cancelar' não deixa nada acontecer",
-  escolher.includes("if (aviso && !window.confirm(aviso)) return;"), true);
+  escolher.includes("if (aviso && !(await confirmar({ titulo: \"Trocar o documento?\", mensagem: aviso, confirmar: \"Trocar mesmo assim\" }))) return;"), true);
 conf("o aviso só aparece quando há planilha E há o que perder",
   src.includes("avisoAntesDeTrocar={temExecutivo && trocaCustaCaro ?"), true);
 conf("o aviso diz que a lista é TROCADA", src.includes("A lista de itens é TROCADA pela do arquivo novo"), true);

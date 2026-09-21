@@ -8,7 +8,7 @@ import "./estilos/design-system.css";
 import { Toaster } from "sonner";
 import App from "./App.jsx";
 import AuthGate from "./AuthGate.jsx";
-import { ConfirmarHost, MensagemHost } from "./lib/confirmar.jsx";
+import { ConfirmarHost, MensagemHost, PerguntarHost } from "./lib/confirmar.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -17,6 +17,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </AuthGate>
     <ConfirmarHost />
     <MensagemHost />
+    <PerguntarHost />
     <Toaster position="bottom-right" richColors closeButton />
   </React.StrictMode>
 );

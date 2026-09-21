@@ -112,7 +112,7 @@ conf("os dois modos existem", src.includes('localStorage.getItem(CHAVE_MODO_OBRA
    no modo squad. Dizê-lo duas vezes era o defeito da barra antiga. */
 conf("no modo número o símbolo vai na linha", src.includes('filtradas.map((o) => linhaDaObra(o, true))'), true);
 conf("no modo squad ele sai das linhas", src.includes("porSquad[nome].map((o) => linhaDaObra(o, false))"), true);
-conf("... e sobe pro cabeçalho", /<button className="squad-cab"[\s\S]{0,200}<IconeSquad/.test(src), true);
+conf("... e sobe pro cabeçalho", /<Button variant="ghost" className="squad-cab"[\s\S]{0,200}<IconeSquad/.test(src), true);
 
 /* AS NOVAS OBRAS NO TOPO, antes da busca. Estavam no pé e ela reparou: "achei
    muito pequeno no final da tela, pode passar despercebido". O problema era

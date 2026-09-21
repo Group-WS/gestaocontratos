@@ -79,7 +79,7 @@ conf("a foto é recortada, nunca esticada", app.includes(".avatar-foto { object-
 conf("o dashboard não duplica o avatar do trilho", app.includes('classe="ini-foto"'), false);
 
 console.log("\n=== 4. O MENU: FOTO, MEUS DADOS, SAIR ===");
-conf("a própria foto é o botão de trocar", app.includes('<button className="perfil-foto"'));
+conf("a própria foto é o botão de trocar", app.includes('<Button variant="ghost" className="perfil-foto"'));
 conf("a câmera só aparece no hover", app.includes(".perfil-foto:hover .perfil-foto-capa"));
 conf("Meus dados abre e fecha", app.includes('onClick={() => setVerDados((v) => !v)}'));
 conf("... em leitura, com o motivo escrito", app.includes("O nome é alterado por quem cuida da Equipe."));
@@ -87,7 +87,7 @@ conf("... em leitura, com o motivo escrito", app.includes("O nome é alterado po
 conf("cargo ficou fora do cartão", app.includes("<div><span>Cargo</span>"), false);
 conf("perfil também", app.includes("<div><span>Perfil</span>"), false);
 conf("dá pra voltar pras iniciais", app.includes("Remover a foto"));
-conf("Sair continua como estava", app.includes('<button className="perfil-sair" onClick={onSair}>'));
+conf("Sair continua como estava", app.includes('<Button variant="ghost" className="perfil-sair" onClick={onSair}>'));
 conf("erro de upload aparece no menu", app.includes('{erroFoto && <div className="perfil-aviso erro">{erroFoto}</div>}'));
 
 console.log("\n=== 5. SOBE, DEPOIS GRAVA ===");
