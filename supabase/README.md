@@ -31,11 +31,16 @@ Dentro de cada bloco a ordem não importa. Entre blocos, importa.
 `insumo-sienge.sql` · `sienge_obra.sql` · `sienge_eap.sql` ·
 `sienge_solicitacao.sql` · `sienge_obra_status_manual.sql` · `compradores.sql` ·
 `mao-de-obra-propria.sql` · `pessoa-canal.sql` · `ultimo-acesso.sql` ·
-`foto-perfil.sql` · `equipe-da-obra.sql` · `contrato-restrito.sql` ·
-`patch-obra.sql`
+`foto-perfil.sql` · `equipe-da-obra.sql` · `taylor-made.sql` ·
+`contrato-restrito.sql` · `patch-obra.sql`
 
 > `aditivo-exclusao.sql` e `obra-comentario.sql` chamam `admin_do_time()`,
 > que vem do bloco 2. Por isso o bloco 2 vem antes deste.
+>
+> `taylor-made.sql` vem depois de `equipe-da-obra.sql` (usa as colunas
+> `tailor_made` e `responsavel_executivo`). A parte 2 dele só age depois do
+> bloco 5 — e o bloco 6 (`rls-reforco.sql`) já traz a mesma `minhas_obras()`
+> com os três papéis.
 
 **4. Cadastrar a equipe e dar perfil a cada um, pelo app.**
 Alguém precisa ficar com **Admin master** — sem isso, o passo 5 se recusa
@@ -49,8 +54,8 @@ a rodar, de propósito.
 > caderno e as solicitações abertos.
 
 **6. O reforço da varredura de segurança (21/09/2026)**
-`rls-reforco.sql` — logo depois do bloco 5, e de novo **sempre** que o
-bloco 5 rodar.
+`rls-reforco.sql` → `rn-001-liberacao-de-compra.sql` — logo depois do
+bloco 5, e de novo **sempre** que o bloco 5 rodar.
 
 > Fecha o que o bloco 5 ainda deixava: apagar obra (as policies eram
 > `for all`), reescrever o histórico, aditivo em obra alheia e autoria
@@ -59,6 +64,10 @@ bloco 5 rodar.
 > recados e compradores, e as funções `security definer` sem `search_path`
 > vazio. Se o bloco 5 não tiver rodado, ele se recusa, de propósito. O
 > teste é o `tests/09-reforco.sql`.
+>
+> O `rn-001-liberacao-de-compra.sql` é a garantia no banco da regra RN-001
+> (só o administrador libera a compra — ficha em
+> `docs/regras-de-negocio/`). Teste: `tests/10-rn-001-liberacao.sql`.
 >
 > **Reaplicar um script dos blocos 3 a 5 desfaz parte do reforço** (eles
 > recriam funções e policies com a versão antiga). Rodou algum deles de

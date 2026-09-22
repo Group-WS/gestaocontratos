@@ -80,6 +80,10 @@ returns boolean
 language sql stable security definer set search_path = ''
 as $$ select coalesce(public.meu_perfil() = 'master', false) $$;
 
+-- A versao do taylor-made.sql (a mais nova): o GC e a Taylor Made veem a
+-- obra em que respondem por QUALQUER dos tres papeis — GC, Taylor Made ou
+-- Executivo — e as sem GC. Copiar a do rls-perfis.sql aqui tiraria de
+-- vista as obras em que a pessoa e' Taylor ou Executivo.
 create or replace function public.minhas_obras()
 returns setof text
 language sql stable security definer set search_path = ''
@@ -87,10 +91,17 @@ as $$
   select o.codigo from public.obra o
    where case public.meu_perfil()
            when 'master' then true
-           when 'admin' then true
-           when 'geral' then true
-           when 'gc'    then o.gc is null or lower(o.gc) = lower((select auth.jwt()) ->> 'email')
-           when 'mehoo' then true
+           when 'admin'  then true
+           when 'geral'  then true
+           when 'gc'     then o.gc is null
+                              or lower(o.gc) = lower((select auth.jwt()) ->> 'email')
+                              or lower(o.tailor_made) = lower((select auth.jwt()) ->> 'email')
+                              or lower(o.responsavel_executivo) = lower((select auth.jwt()) ->> 'email')
+           when 'taylor' then o.gc is null
+                              or lower(o.gc) = lower((select auth.jwt()) ->> 'email')
+                              or lower(o.tailor_made) = lower((select auth.jwt()) ->> 'email')
+                              or lower(o.responsavel_executivo) = lower((select auth.jwt()) ->> 'email')
+           when 'mehoo'  then true
            else false
          end
 $$;

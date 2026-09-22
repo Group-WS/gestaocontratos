@@ -51,7 +51,7 @@ ESTRUTURA=(
   arquivos.sql arquivos-obra.sql catalogo.sql insumo-sienge.sql
   sienge_obra.sql sienge_eap.sql sienge_solicitacao.sql sienge_obra_status_manual.sql
   compradores.sql mao-de-obra-propria.sql pessoa-canal.sql
-  ultimo-acesso.sql foto-perfil.sql equipe-da-obra.sql contrato-restrito.sql patch-obra.sql
+  ultimo-acesso.sql foto-perfil.sql equipe-da-obra.sql taylor-made.sql contrato-restrito.sql patch-obra.sql
 )
 for f in "${ESTRUTURA[@]}"; do aplicar "$SQL/$f"; done
 
@@ -63,8 +63,10 @@ for f in pessoa-escrita-restrita.sql rls-perfis.sql rls-perfis-complemento.sql; 
   aplicar "$SQL/$f"
 done
 
-# 6. O reforco da varredura de 21/09/2026 — sempre depois do bloco 5.
+# 6. O reforco da varredura de 21/09/2026 — sempre depois do bloco 5 — e a
+#    garantia da RN-001 (usa o meu_perfil() do reforco).
 aplicar "$SQL/rls-reforco.sql"
+aplicar "$SQL/rn-001-liberacao-de-compra.sql"
 
 # Os testes. `finish(true)` faz o pgTAP levantar erro quando algo falha,
 # e o ON_ERROR_STOP transforma isso no codigo de saida que o CI enxerga.

@@ -6,12 +6,19 @@
 -- prova o "nao" deixa passar a policy que nega tudo.
 
 begin;
-select plan(32);
+select plan(36);
 
 insert into obra (codigo, nome, gc) values
   ('9501', 'Obra do GC Um',   'gc1@teste.local'),
   ('9502', 'Obra do GC Dois', 'gc2@teste.local')
 on conflict (codigo) do update set gc = excluded.gc, nome = excluded.nome;
+-- Os tres papeis (taylor-made.sql): na 9503 o GC Um e' o Executivo; na
+-- 9501 a Taylor Made acompanha.
+insert into obra (codigo, nome, gc, responsavel_executivo) values ('9503', 'Obra do GC Dois, executivo do Um', 'gc2@teste.local', 'gc1@teste.local')
+on conflict (codigo) do update set gc = excluded.gc, responsavel_executivo = excluded.responsavel_executivo;
+update obra set tailor_made = 'taylor@teste.local' where codigo = '9501';
+insert into pessoa (email, nome, cargo, perfil, ativo) values ('taylor@teste.local', 'Tai Taylor', '', 'taylor', true)
+on conflict (email) do update set perfil = excluded.perfil, ativo = true;
 insert into obra_dados (obra_codigo) values ('9501'), ('9502') on conflict (obra_codigo) do nothing;
 insert into obra_versao (obra_codigo, conteudo, n_itens) values ('9501', '{}'::jsonb, 1);
 insert into sienge_solicitacao (obra_codigo, building_id, payload, resposta, ok)
@@ -46,6 +53,18 @@ select lives_ok($$ update obra set nome = 'Obra do GC Um (editada)' where codigo
   'o GC continua alterando a obra dele');
 select is((select nome from obra where codigo = '9501'), 'Obra do GC Um (editada)',
   '... e a alteracao vale');
+
+-- ---------- 1b. os tres papeis continuam valendo ----------
+select is((select count(*) from obra where codigo = '9503'), 1::bigint,
+  'o GC ve a obra em que e'' o Executivo (versao do taylor-made.sql)');
+select lives_ok($$ update obra set nome = 'Obra 9503 (editada pelo Executivo)' where codigo = '9503' $$,
+  '... e edita, como GC');
+set local request.jwt.claims = '{"email":"taylor@teste.local"}';
+select is((select count(*) from obra where codigo = '9501'), 1::bigint,
+  'a Taylor Made ve a obra que acompanha');
+select throws_ok($$ update obra set nome = 'mexido pela Taylor' where codigo = '9501' $$,
+  '42501', null, '... e nao altera nada');
+set local request.jwt.claims = '{"email":"gc1@teste.local"}';
 
 -- ---------- 2. historico so' se le; o rastro do Sienge nao some ----------
 delete from obra_versao where obra_codigo = '9501';

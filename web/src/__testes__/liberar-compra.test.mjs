@@ -437,9 +437,13 @@ conf("linha que pede conferência sai laranja",
 conf("o aviso do cliente saiu da linha (virou coluna)",
   src.includes(`{x.pendencia && x.pendencia.tipo !== "cliente" && (`), true);
 
-/* SÓ ADMINISTRADOR LIBERA — a mudança de regra mais sensível do ADR. */
+/* SÓ ADMINISTRADOR LIBERA — a mudança de regra mais sensível do ADR. Desde
+   21/09/2026 é a RN-001 (web/src/regras/liberacaoDeCompra.js) que decide,
+   e a tela só consulta: `podeLiberar` vem de `podeLiberarCompra`. */
+conf("quem decide é a RN-001", src.includes("const podeLiberar = migracaoPendente || podeLiberarCompra(eu);"), true);
+conf("... e a conferência recebe essa decisão", src.includes("podeLiberar={podeLiberar} onConcluirExecutivo="), true);
 conf("o botão de liberar exige administrador",
-  src.includes("disabled={!podeEditar || !souAdmin || !x.pode}"), true);
+  src.includes("disabled={!podeEditar || !podeLiberar || !x.pode}"), true);
 /* A ORDEM CONTINUA (o executivo vem antes), mas o clique não pede os dois:
    "quando o usuario coloca aprovado para compra, caso o executivo nao esteja
    aprovado, ele coloca como aprovado automaticamente" (18/09/2026). Pedir os
@@ -452,13 +456,13 @@ conf("... e a dica avisa que os dois saem juntos",
   src.includes(`: "Liberar para compra — marca o executivo como concluído junto"`), true);
 /* Quem não pode agir vê o estado; quem pode vê o botão. */
 conf("sem poder agir, a célula diz 'não aprovado'",
-  src.includes("{!x.liberado && (!podeEditar || !souAdmin) ? ("), true);
-conf("... e diz o motivo quando não é", src.includes(`: !souAdmin ? "Só um administrador libera a compra"`), true);
-conf("o liberar em massa só aparece para admin", src.includes("{podeEditar && souAdmin && faltam.length > 0 && ("), true);
+  src.includes("{!x.liberado && (!podeEditar || !podeLiberar) ? ("), true);
+conf("... e diz o motivo quando não é", src.includes(`: !podeLiberar ? "Só um administrador libera a compra"`), true);
+conf("o liberar em massa só aparece para admin", src.includes("{podeEditar && podeLiberar && faltam.length > 0 && ("), true);
 /* Os botões da verba dizem a decisão inteira, não o verbo solto (18/09/2026). */
 conf("o botão da verba diz 'Liberar para compra'", src.includes("Liberar para compra {faltam.length}"), true);
-conf("o 'conferi os alertas e libera' também", src.includes("{podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && ("), true);
-conf("desfazer a liberação também", src.includes("{podeEditar && souAdmin && x.it.liberadoCompra && !x.it.comprado && ("), true);
+conf("o 'conferi os alertas e libera' também", src.includes("{podeEditar && podeLiberar && onConferirVarios && travadosAqui.length > 0 && ("), true);
+conf("desfazer a liberação também", src.includes("{podeEditar && podeLiberar && x.it.liberadoCompra && !x.it.comprado && ("), true);
 /* Concluir NÃO é de admin: é de quem trabalha a linha. */
 conf("concluir não exige admin", src.includes("{podeEditar && onConcluir && aConcluir.length > 0 && ("), true);
 

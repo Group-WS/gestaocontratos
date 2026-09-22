@@ -82,6 +82,9 @@ async function exigirLogin(req, res, next) {
    A Mehoo ve e nao edita nada; quem nao tem perfil fica na sala de espera. */
 const PERFIS_QUE_EDITAM = ["master", "admin", "geral", "gc"];
 const PERFIS_QUE_VEEM_TODAS = ["master", "admin", "geral", "mehoo"];
+// Veem so' as obras em que respondem por algum papel (GC, Taylor Made ou
+// Executivo) e as sem GC — a versao de `minhas_obras()` do taylor-made.sql.
+const PERFIS_QUE_VEEM_AS_SUAS = ["gc", "taylor"];
 
 const SEM_ACESSO = "Você não tem acesso a esta área.";
 
@@ -133,9 +136,11 @@ async function exigirPerfilDeEdicao(req, res, next) {
 /**
  * Este usuario enxerga esta obra?
  *
- * Espelha `public.minhas_obras()` (supabase/rls-perfis.sql): master,
- * admin, geral e mehoo veem todas; o GC ve as dele e as sem dono;
- * quem nao tem perfil (sala de espera) nao ve nenhuma.
+ * Espelha `public.minhas_obras()` (supabase/rls-reforco.sql, a versao do
+ * taylor-made.sql): master, admin, geral e mehoo veem todas; o GC e a
+ * Taylor Made veem as obras em que respondem por algum dos tres papeis
+ * (GC, Taylor Made, Executivo) e as sem GC; quem nao tem perfil (sala de
+ * espera) nao ve nenhuma.
  *
  * Na duvida, NEGA: falha de leitura do banco nao vira permissao.
  */
@@ -147,11 +152,11 @@ async function podeAcessarObra(req, codigo) {
   if (!ehMembro(pessoa)) return false;
 
   if (PERFIS_QUE_VEEM_TODAS.includes(pessoa.perfil)) return true;
-  if (pessoa.perfil !== "gc") return false;
+  if (!PERFIS_QUE_VEEM_AS_SUAS.includes(pessoa.perfil)) return false;
 
   const { data: obra, error: erroObra } = await req.supabase
     .from("obra")
-    .select("codigo, gc")
+    .select("codigo, gc, tailor_made, responsavel_executivo")
     .eq("codigo", alvo)
     .maybeSingle();
 
@@ -161,8 +166,9 @@ async function podeAcessarObra(req, codigo) {
   }
   if (!obra) return false;
 
-  // Obra sem dono e' de quem pegar: e' assim que o GC assume a dele.
-  return !obra.gc || String(obra.gc).toLowerCase() === req.usuario.email;
+  // Obra sem GC e' de quem pegar: e' assim que o GC assume a dele.
+  const souEu = (email) => !!email && String(email).toLowerCase() === req.usuario.email;
+  return !obra.gc || souEu(obra.gc) || souEu(obra.tailor_made) || souEu(obra.responsavel_executivo);
 }
 
 /**

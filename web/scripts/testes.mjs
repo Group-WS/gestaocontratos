@@ -20,7 +20,9 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PASTAS = [join(WEB, "src", "__testes__"), join(WEB, "api", "_lib", "__testes__")];
+// As regras de negócio (src/regras) têm o teste AO LADO do arquivo, como o
+// padrão pede (NEG-03) — por isso a pasta entra aqui também.
+const PASTAS = [join(WEB, "src", "__testes__"), join(WEB, "src", "regras"), join(WEB, "api", "_lib", "__testes__")];
 const EH_TESTE = /\.test\.(mjs|cjs|js)$/;
 
 const arquivos = PASTAS.flatMap((pasta) => {

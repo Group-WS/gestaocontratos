@@ -71,6 +71,7 @@ import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
 import { LogoGroupWS } from "./marca.jsx";
 import iconeSienge from "./assets/icone-sienge.svg";
+import { podeLiberarCompra } from "./regras/liberacaoDeCompra.js";
 // Papel dos documentos impressos (escopo, aditivo, relatório): cores fixas de
 // propósito, fora do tema — ver o cabeçalho de estilos/papel.css.
 import "./estilos/papel.css";
@@ -7754,7 +7755,7 @@ const FILTRO_DA_PLANILHA = {
   falta_liberar: (x) => !x.titulo && !x.liberado,
 };
 
-function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "todos", podeEditar, souAdmin = false, obra,
+function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "todos", podeEditar, podeLiberar = false, obra,
   chavesES = null, onLiberar, onConferir, onConferirVarios, onLiberarSemCliente, onConcluir }) {
   const [abertos, setAbertos] = useState(() => new Set());
   /* Historia deste trecho: em 17/09 o aviso "46 produtos esperam a
@@ -7961,7 +7962,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                   )}
                   {/* SO' ADMINISTRADOR LIBERA (decisao dela, ADR-005) — e o botao
                       some pra quem nao e', em vez de aparecer e recusar no clique. */}
-                  {podeEditar && souAdmin && faltam.length > 0 && (
+                  {podeEditar && podeLiberar && faltam.length > 0 && (
                     <Button size="sm" onClick={async () => {
                       if (!(await confirmar({
                         titulo: `Liberar para compra ${faltam.length} ${faltam.length === 1 ? "item" : "itens"} da verba ${g.num}?`,
@@ -7973,7 +7974,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                       <Check size={14} aria-hidden="true" /> Liberar para compra {faltam.length}
                     </Button>
                   )}
-                  {podeEditar && souAdmin && onConferirVarios && travadosAqui.length > 0 && (
+                  {podeEditar && podeLiberar && onConferirVarios && travadosAqui.length > 0 && (
                     <Button variant="outline" size="sm"
                       title={`Marca o alerta como conferido no seu nome nos ${travadosAqui.length} produtos e libera os ${travadosAqui.length} para compra`}
                       onClick={async () => {
@@ -8157,7 +8158,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                             {/* Quem NAO pode agir ve o estado; quem pode ve o botao.
                                 O carimbo do executivo deixou de ser pre-requisito do
                                 clique: aprovar a compra conclui junto (18/09/2026). */}
-                            {!x.liberado && (!podeEditar || !souAdmin) ? (
+                            {!x.liberado && (!podeEditar || !podeLiberar) ? (
                                 <Badge tone="neutral">não aprovado</Badge>
                               ) : x.liberado ? (
                               <div className="inline-flex flex-col items-center gap-1">
@@ -8166,7 +8167,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                   : "Já estava no fluxo de compras"}>
                                   <Check size={12} aria-hidden="true" /> liberado
                                 </Badge>
-                                {podeEditar && souAdmin && x.it.liberadoCompra && !x.it.comprado && (
+                                {podeEditar && podeLiberar && x.it.liberadoCompra && !x.it.comprado && (
                                   <Button variant="ghost" size="sm" type="button"
                                     onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], false)}>desfazer</Button>
                                 )}
@@ -8177,9 +8178,9 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                     clique nao pede os dois: aprovar pra compra
                                     conclui o executivo junto, quando falta. */}
                                 <Button variant="outline" size="sm"
-                                  disabled={!podeEditar || !souAdmin || !x.pode}
+                                  disabled={!podeEditar || !podeLiberar || !x.pode}
                                   title={!podeEditar ? MODO_LEITURA_DICA
-                                    : !souAdmin ? "Só um administrador libera a compra"
+                                    : !podeLiberar ? "Só um administrador libera a compra"
                                     : !x.pode ? "Confira o alerta desta linha antes de liberar"
                                     : estaConcluido(x) ? "Liberar para compra"
                                     : "Liberar para compra — marca o executivo como concluído junto"}
@@ -8190,7 +8191,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                     ja existe no Plano de Compras: bloqueia por padrao, mas
                                     quem tem autoridade libera dizendo por que — e fica
                                     gravado no item, com nome. */}
-                                {podeEditar && souAdmin && x.pendencia?.tipo === "cliente" && onLiberarSemCliente && (
+                                {podeEditar && podeLiberar && x.pendencia?.tipo === "cliente" && onLiberarSemCliente && (
                                   excecao === x.chave
                                     ? <FormExcecaoCliente onCancelar={() => setExcecao(null)}
                                         onConfirmar={(dados) => { onLiberarSemCliente(x.catIdx, x.itemIdx, dados); setExcecao(null); }} />
@@ -8213,7 +8214,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
   );
 }
 
-function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, souAdmin = false, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente, onConcluirExecutivo, filtroInicial = null, onFiltroUsado,
+function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLinha, podeEditar, podeLiberar = false, onLiberarCompra, onConferirAlerta, onConferirAlertaEmVarios, onLiberarSemCliente, onConcluirExecutivo, filtroInicial = null, onFiltroUsado,
   usuario, onRegistrarAssinatura, onRemoverAssinatura, onAprovarCliente, obraComAditivos }) {
   /* A aprovacao do cliente mudou de casa (18/09/2026). Os dois blocos nascem
      FECHADOS: o trabalho do dia e' a planilha, e a assinatura e' um evento que
@@ -8374,7 +8375,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         ],
         contador: "",
         render: (busca, filtro) => (
-          <PlanilhaConferenciaView grupos={gruposParaLiberar} busca={busca} filtro={filtro} podeEditar={podeEditar} souAdmin={souAdmin}
+          <PlanilhaConferenciaView grupos={gruposParaLiberar} busca={busca} filtro={filtro} podeEditar={podeEditar} podeLiberar={podeLiberar}
             chavesES={chavesES}
             onLiberar={onLiberarCompra} onConferir={onConferirAlerta} onConferirVarios={onConferirAlertaEmVarios}
             onLiberarSemCliente={onLiberarSemCliente}
@@ -20829,6 +20830,9 @@ export default function App() {
      cara. */
   // Administrador e Admin master: o contrato da obra e os compradores.
   const souAdmin = migracaoPendente || ehAdministrador(eu);
+  // RN-001: liberar a compra (e liberar sem o cliente) — a regra decide, e
+  // o banco garante a mesma coisa (supabase/rn-001-liberacao-de-compra.sql).
+  const podeLiberar = migracaoPendente || podeLiberarCompra(eu);
   /* A PESSOA AMARRADA A UM CANAL.
      O perfil diz que ela so' ve' o painel; a ficha diz QUAL canal. Sem canal
      escolhido ela cairia num painel qualquer, entao vale o primeiro da lista
@@ -24607,7 +24611,7 @@ export default function App() {
             ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} souAdmin={souAdmin} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
-          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} souAdmin={souAdmin} onConcluirExecutivo={concluirItensExecutivo}
+          {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} podeLiberar={podeLiberar} onConcluirExecutivo={concluirItensExecutivo}
             filtroInicial={filtroConferencia} onFiltroUsado={() => setFiltroConferencia(null)}
               usuario={usuario} obraComAditivos={obraComAditivos}
               onRegistrarAssinatura={registrarAssinaturaCliente} onRemoverAssinatura={removerAssinaturaCliente}

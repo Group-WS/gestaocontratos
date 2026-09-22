@@ -31,9 +31,15 @@ const USUARIOS = {
   "t-inativo": { id: "u-inativo", email: "saiu@groupws.com.br", pessoa: { perfil: "gc", ativo: false } },
   "t-mehoo": { id: "u-mehoo", email: "mehoo@groupws.com.br", pessoa: { perfil: "mehoo", ativo: true } },
   "t-gc": { id: "u-gc", email: "gc@groupws.com.br", pessoa: { perfil: "gc", ativo: true } },
+  "t-exec": { id: "u-exec", email: "exec@groupws.com.br", pessoa: { perfil: "gc", ativo: true } },
+  "t-taylor": { id: "u-taylor", email: "taylor@groupws.com.br", pessoa: { perfil: "taylor", ativo: true } },
   "t-admin": { id: "u-admin", email: "admin@groupws.com.br", pessoa: { perfil: "admin", ativo: true } },
 };
-const OBRAS = { "2519": { codigo: "2519", gc: "gc@groupws.com.br" }, "2600": { codigo: "2600", gc: "outro@groupws.com.br" } };
+// Os tres papeis da obra: GC, Taylor Made e Executivo (supabase/taylor-made.sql).
+const OBRAS = {
+  "2519": { codigo: "2519", gc: "gc@groupws.com.br", tailor_made: "taylor@groupws.com.br", responsavel_executivo: null },
+  "2600": { codigo: "2600", gc: "outro@groupws.com.br", tailor_made: null, responsavel_executivo: "exec@groupws.com.br" },
+};
 // Solicitacoes que o "Sienge" conhece: o numero diz de qual obra ela e'.
 const SOLICITACOES = { 23000: { buildingId: 2519, status: "PENDING" }, 24000: { buildingId: 2600, status: "PENDING" } };
 const REF = "05.001.001.001";
@@ -121,6 +127,18 @@ const servidor = app.listen(0, async () => {
     // 3. GC: so' nas obras dele.
     conf("GC não cria solicitação em obra de outro GC",
       (await pedir("t-gc", "POST", "/api/sienge/solicitacao", { buildingId: 2600, itens: [item()] })).status, 404);
+
+    // 3b. Os tres papeis: quem e' Executivo (ou Taylor) de uma obra a enxerga.
+    conf("GC que é Executivo de outra obra consulta a solicitação dela",
+      (await pedir("t-exec", "GET", "/api/sienge/solicitacao/24000")).status, 200);
+    conf("... e cria solicitação nela (edita, como GC)",
+      (await pedir("t-exec", "POST", "/api/sienge/solicitacao", { buildingId: 2600, itens: [item()] })).status, 200);
+    conf("Taylor Made consulta a solicitação da obra em que responde",
+      (await pedir("t-taylor", "GET", "/api/sienge/solicitacao/23000")).status, 200);
+    conf("... mas não cria solicitação (acompanha, não edita)",
+      (await pedir("t-taylor", "POST", "/api/sienge/solicitacao", { buildingId: 2519, itens: [item()] })).status, 404);
+    conf("Taylor Made não consulta solicitação de obra em que não responde",
+      (await pedir("t-taylor", "GET", "/api/sienge/solicitacao/24000")).status, 404);
 
     // 4. O numero do reenvio tem que ser da mesma obra.
     const antes = chamadasSienge.length;
