@@ -368,42 +368,51 @@ import {
  *   3. A listagem pede as COLUNAS, nunca `*` (SQL-32).
  */
 {
-  const rotaApres = (await import("node:fs")).readFileSync(
-    new URL("../../api/_lib/rotas/apresentacoes.js", import.meta.url), "utf8");
+  /* A rota do aditivo e da apresentação é a MESMA (`documentosDaObra.js`):
+     os dois são documento de obra e gravam com a versão conferida pelo banco.
+     Quem protege o miolo dela é `web/api/_lib/__testes__/documentos-da-obra.test.cjs`,
+     que sobe o app e confere cada ida ao banco. O que fica aqui são as
+     decisões da APRESENTAÇÃO que aquele teste não olha. */
+  const rota = (await import("node:fs")).readFileSync(
+    new URL("../../api/_lib/rotas/documentosDaObra.js", import.meta.url), "utf8");
   let ok3 = 0;
   const t3 = (nome, f) => { f(); console.log("ok  ", nome); ok3++; };
 
-  t3("sem id é insert, não upsert — a revisão nova não apaga a anterior", () => {
-    assert.ok(/\.insert\(/.test(rotaApres), "a rota não insere");
-    assert.ok(!/\.upsert\(/.test(rotaApres), "a rota voltou a fazer upsert");
-  });
-
-  t3("com id é update da própria linha", () =>
-    assert.ok(/\.update\(linha\)\.eq\("id", doc\.id\)/.test(rotaApres)));
-
-  t3("quem gravou vem do login, não do corpo do pedido", () => {
-    assert.ok(rotaApres.includes("atualizado_por: req.usuario.email"));
-    assert.ok(rotaApres.includes("criado_por: req.usuario.email"));
-    assert.ok(!/atualizado_por:\s*(doc|req\.valido)/.test(rotaApres));
-  });
-
   t3("a listagem pede as colunas, nunca o asterisco", () => {
-    assert.ok(/const COLUNAS = "id, obra_codigo, rev, capa, slides, idioma, arquivo, gerado_em, atualizado_em, atualizado_por"/.test(rotaApres));
-    /* Sem as linhas de comentario: o proprio arquivo explica que nao usa
+    assert.ok(/const COLUNAS_APRESENTACAO = "id, obra_codigo, rev, idioma, arquivo, gerado_em/.test(rota));
+    /* Sem as linhas de comentário: o próprio arquivo explica que não usa
        `select("*")`, e a frase casaria com a busca. */
-    const semComentario = rotaApres.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
-    assert.ok(!/select\(\s*["'`]\*/.test(semComentario), 'voltou o select("*")');
+    const semComentario = rota.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    assert.ok(!/select\(\s*["\'`]\*/.test(semComentario), 'voltou o select("*")');
+  });
+
+  /* A capa e os slides são o documento inteiro: só descem quando alguém abre
+     UMA apresentação. A lista não pode carregá-los — vinte revisões de vinte
+     ambientes viriam junto para desenhar uma lista de títulos. */
+  t3("a lista não carrega capa e slides; só a apresentação aberta", () => {
+    assert.ok(rota.includes('.select(`${COLUNAS_APRESENTACAO}, capa, slides`)'));
+    assert.ok(!/COLUNAS_APRESENTACAO = "[^"]*\b(capa|slides)\b/.test(rota));
   });
 
   t3("a ordem continua da revisão mais nova pra mais velha", () =>
-    assert.ok(rotaApres.includes('.order("atualizado_em", { ascending: false })')));
+    assert.ok(rota.includes('.order("atualizado_em", { ascending: false })')));
 
   t3("toda rota daqui exige login e time", () =>
-    assert.ok(rotaApres.includes("rotas.use(exigirLogin, exigirMembro);")));
+    assert.ok(rota.includes("rotas.use(exigirLogin, exigirMembro);")));
 
-  t3("a imagem do ambiente continua no balde do catálogo, em pasta própria", () => {
-    assert.ok(rotaApres.includes('const BALDE_DAS_IMAGENS = "catalogo";'));
-    assert.ok(rotaApres.includes("`ambientes/${obraCodigo || \"sem-obra\"}/${Date.now()}.${ext}`"));
+  /* A IMAGEM DO AMBIENTE MUDOU DE BALDE (22/09/2026): era o `catalogo`, que é
+     público, e passou a ser o `obra-arquivos`, que é privado — render de casa
+     de cliente não fica num endereço que qualquer um abre. O caminho antigo
+     precisa continuar abrindo, senão toda apresentação já feita perde as
+     imagens. */
+  t3("a imagem do ambiente fica no balde privado da obra", () => {
+    assert.ok(rota.includes('const BALDE = "obra-arquivos";'));
+    assert.ok(rota.includes("`${codigo}/ambientes/`"));
+  });
+
+  t3("... e o caminho antigo, no balde público, continua abrindo", () => {
+    assert.ok(rota.includes('const BALDE_ANTIGO = "catalogo";'));
+    assert.ok(rota.includes("`ambientes/${codigo}/`"));
   });
 
   console.log(`OK — mais ${ok3} casos`);
