@@ -177,11 +177,65 @@ const patchDaObra = z.union([
 ]);
 const patchesDaObra = z.object({ versao: versaoDaObra, patches: z.array(patchDaObra).min(1).max(5000) }).strict();
 
+/* ---------- o aditivo e a apresentacao ---------- */
+
+// Os dois vao em JSON puro, sem gzip: o documento do aditivo e' de centenas
+// de KB, nao de megabytes como a obra. O teto e' o da rota, e fica abaixo do
+// corte de 4,5 MB da Vercel.
+const LIMITE_DOCUMENTO_JSON = 4 * 1024 * 1024;
+// A imagem do ambiente ja' chega reduzida pelo navegador; o teto e' o que
+// sobra para o resto do corpo.
+const LIMITE_IMAGEM_BYTES = 3 * 1024 * 1024;
+
+const idDeDocumento = z.string().uuid();
+const paramDocumentoDaObra = z.object({ codigo: codigoDeObra, id: idDeDocumento }).strict();
+const queryDaObra = z.object({ obra: codigoDeObra.optional() }).strict();
+
+// O documento do aditivo e da apresentacao: o formato de dentro muda com o
+// app e e' conferido la'. Aqui vale o formato de cada coluna — o mesmo que
+// as funcoes do banco conferem.
+const documentoDoAditivo = z.record(z.string(), z.unknown());
+const camposDoAditivo = z.object({
+  descricao: z.string().max(2000).optional(),
+  status: z.enum(["rascunho", "aguardando", "aprovado", "reprovado"]).optional(),
+  dados: documentoDoAditivo.optional(),
+  total_supressao: z.number().finite().optional(),
+  total_adicao: z.number().finite().optional(),
+}).strict();
+const aditivoNovo = z.object({ campos: camposDoAditivo }).strict();
+const gravacaoDoAditivo = z.object({ versao: versaoDaObra, campos: camposDoAditivo }).strict();
+
+const conteudoDaApresentacao = z.object({
+  capa: z.record(z.string(), z.unknown()).optional(),
+  slides: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
+  idioma: z.string().max(10).optional(),
+  arquivo: z.string().max(400).nullable().optional(),
+  gerado_em: z.string().max(40).nullable().optional(),
+}).strict();
+const revisao = z.string().trim().min(1).max(10).regex(/^[0-9A-Za-z._-]+$/);
+const apresentacaoNova = z.object({ rev: revisao, conteudo: conteudoDaApresentacao }).strict();
+const gravacaoDaApresentacao = z.object({ versao: versaoDaObra, conteudo: conteudoDaApresentacao }).strict();
+
+/* A imagem do ambiente vai em base64 pelo mesmo motivo do PDF do Sienge:
+   corpo binario ja' chegou corrompido pela Vercel. O tipo tem que casar com
+   o `allowed_mime_types` do balde `obra-arquivos`. */
+const imagemDoAmbiente = z.object({
+  nome: z.string().min(1).max(200),
+  tipo: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  base64: z.string().min(1).max(Math.ceil(LIMITE_IMAGEM_BYTES / 3) * 4).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+}).strict();
+const caminhosDeImagem = z.object({
+  caminhos: z.array(z.string().min(1).max(400)).min(1).max(500),
+}).strict();
+
 module.exports = {
   z, zValidator, validarPdf, pareceUmPdf,
   LIMITE_PDF_BYTES, LIMITE_PDF_BASE64, PAGINAS_MAX, LIMITE_GRAVACAO_BASE64, LIMITE_CONTEUDO_BYTES,
+  LIMITE_DOCUMENTO_JSON, LIMITE_IMAGEM_BYTES,
   esquemas: {
     solicitacaoDeCompra, paramObra, paramSolicitacao, queryInsumos, pdfEmBase64,
     paramCodigoObra, paramVersaoGuardada, gravacaoDaObra, conteudoDaObra, patchesDaObra,
+    paramDocumentoDaObra, queryDaObra, aditivoNovo, gravacaoDoAditivo,
+    apresentacaoNova, gravacaoDaApresentacao, imagemDoAmbiente, caminhosDeImagem,
   },
 };
