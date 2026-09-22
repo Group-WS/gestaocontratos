@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
-  Alert, AlertDescription, Badge, Button, EmptyState, Field, Input, Label, PageShell,
+  Alert, AlertDescription, AlertTitle, Badge, Button, EmptyState, Field, Input, Label, PageShell,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Tabs, TabsList, TabsTrigger, Textarea, Toggle, ToggleGroup, ToggleGroupItem,
 } from "@group-ws/ws-ui";
@@ -9,7 +9,7 @@ import { confirmar } from "./lib/confirmar.jsx";
 import {
   X, Plus, Trash2, Upload, Save, FileDown, Image as ImageIcon,
   AlertTriangle, Search, GripVertical, History, FileCheck,
-  Minus, Maximize2, List, Presentation, LayoutTemplate,
+  Minus, Maximize2, List, Presentation, LayoutTemplate, RotateCcw, RefreshCw,
 } from "lucide-react";
 import {
   novaApresentacao, novoSlide, acrescentar, dentro, renderDentro,
@@ -17,9 +17,13 @@ import {
   CAMPOS_CAPA, quebrar, caixaDoCampo, caixaDentro, ANO_NA_ARTE, COR_VALOR, COR_TITULO,
   LARGURA, ALTURA, RODAPE, BLOCO,
   blocosImagem, blocosLista, listaDoSlide, listaDentro, LISTA_ITEM, alternarModoBloco,
-  listarApresentacoes, salvarApresentacao, marcarGerada,
-  subirAmbiente, urlDaImagem, bytesDaImagem,
+  listarApresentacoes, carregarApresentacao, criarApresentacao, salvarApresentacao, marcarGerada,
+  subirAmbiente, criarLeitorDeImagens,
 } from "./lib/apresentacao";
+import { useImagensDaObra } from "./lib/imagensDaObra";
+import { criarFilaDeGravacao } from "./lib/filaDeGravacao";
+import { SituacaoDaGravacao } from "./lib/gravacaoUi.jsx";
+import { avisoDoDocumento, nomeDaApresentacao } from "./lib/documentosDaObra";
 import { IDIOMAS, TEXTOS, ambienteEm, textoDoBloco, faltamEmIngles } from "./lib/apresentacaoIdioma";
 import { gerarPdf } from "./lib/apresentacaoPdf";
 import { gerarPptx } from "./lib/apresentacaoPptx";
@@ -86,7 +90,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
      cima de um trabalho da semana passada seria o pior desfecho possível
      — e silencioso. */
   useEffect(() => {
-    if (!obraCod) { setDoc(null); return; }
+    if (!obraCod) { setDoc(null); return undefined; }
     primeiraCargaRef.current = true;
     let vivo = true;
     (async () => {
@@ -94,7 +98,15 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
         const l = await listarApresentacoes(obraCod);
         if (!vivo) return;
         setRevisoes(l);
-        setDoc(l.length ? { ...l[0] } : { ...novaApresentacao(obra), slides: [novoSlide("")] });
+        /* A lista não traz capa e slides: o documento vem por id, agora, do
+           banco. É o que garante que se começa a editar a partir do que
+           existe — e não de uma cópia que a lista trouxe. */
+        const carregado = l.length
+          ? await carregarApresentacao(obraCod, l[0].id)
+          : { ...novaApresentacao(obra), slides: [novoSlide("")] };
+        if (!vivo) return;
+        versaoRef.current = carregado.versao ?? null;
+        setDoc(carregado);
         setPagina("dados");
 
         /* Vincular a obra aqui, e não só na hora de gerar o PDF: uma obra
@@ -119,54 +131,154 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
     });
   }, [atual]);
 
-  /* SALVAMENTO AUTOMÁTICO
+  /* A GRAVAÇÃO
    *
-   * `persistir` é o único caminho que grava no banco — o botão "Salvar" e
-   * o autosave só diferem em mostrar ou não o aviso "Salvo.". Sem essa
-   * junção, era fácil os dois divergirem depois de um ajuste.
-   *
-   * `salvandoRef` evita gravação em cima de gravação (o clique manual
-   * caindo bem no meio do debounce automático, por exemplo) — quem chega
-   * depois desiste, e a próxima edição já dispara outro autosave.
+   * Uma por vez, sempre com o estado mais recente da tela e com a VERSÃO
+   * que ela leu — é o banco que confere (supabase/salvar-aditivo-apresentacao.sql).
+   * Antes, a edição feita durante uma gravação em andamento era descartada
+   * por uma trava de "gravação em cima de gravação", sem reagendar nada: a
+   * tela dizia "Salvo." e aquele ajuste não estava no banco. A fila é a
+   * mesma da obra — ela guarda a alteração e grava logo depois, tenta de
+   * novo sozinha quando falha, e para quando o banco recusa.
    */
-  const salvandoRef = useRef(false);
   const primeiraCargaRef = useRef(true);
+  const [gravacao, setGravacao] = useState({ estado: "salvo", em: null });
+  const docRef = useRef(null);
+  const idiomaRef = useRef(idioma);
+  const versaoRef = useRef(null);
+  useLayoutEffect(() => { docRef.current = doc; idiomaRef.current = idioma; });
 
-  const persistir = useCallback(async (comAviso) => {
-    if (salvandoRef.current || !doc || !obraCod) return;
-    salvandoRef.current = true;
-    setSalvando(true); setErro(null);
-    try {
-      const salvo = await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);
-      setDoc((d) => (d ? { ...d, id: salvo.id, atualizadoEm: salvo.atualizadoEm } : d));
-      setRevisoes(await listarApresentacoes(obraCod));
-      if (comAviso) { setAviso("Salvo."); setTimeout(() => setAviso(null), 2500); }
-    } catch (e) { setErro(mensagem(e)); }
-    finally { setSalvando(false); salvandoRef.current = false; }
-  }, [doc, obraCod, idioma, usuario]);
+  const fila = useMemo(() => criarFilaDeGravacao({
+    gravar: async () => {
+      const atual = docRef.current;
+      if (!atual || !obraCod) return;
+      const comIdioma = { ...atual, idioma: idiomaRef.current };
+      /* Ainda não existe no banco (obra que nunca teve apresentação): a
+         primeira gravação é que a cria, e o id volta para as próximas. */
+      if (!atual.id) {
+        const nova = await criarApresentacao(obraCod, atual.capa?.rev || atual.rev || "00", comIdioma);
+        versaoRef.current = nova.versao;
+        setDoc((d) => (d ? { ...d, id: nova.id, rev: nova.rev } : d));
+      } else {
+        const r = await salvarApresentacao(obraCod, atual.id, versaoRef.current, comIdioma);
+        versaoRef.current = r.versao;
+      }
+      listarApresentacoes(obraCod).then(setRevisoes).catch(() => { /* a lista lateral não é o trabalho */ });
+    },
+    aoMudar: setGravacao,
+  }), [obraCod]);
 
-  async function salvar() { await persistir(true); }
+  // A versão é a do documento que acabou de ser carregado, e o que a tela
+  // já tinha na fila deixa de valer: é outro documento.
+  const usarDocumento = useCallback((novo) => {
+    fila.descartar();
+    primeiraCargaRef.current = true;
+    versaoRef.current = novo?.versao ?? null;
+    docRef.current = novo;
+    setDoc(novo);
+  }, [fila]);
 
-  /* O gatilho é o CONTEÚDO (capa + slides), não o objeto `doc` inteiro —
-     salvar atualiza `doc.id`/`atualizadoEm` no próprio `doc`, e se o
-     efeito olhasse pra `doc` de novo isso religaria o debounce sozinho,
-     pra sempre, mesmo sem mais nenhuma edição real. */
-  const assinaturaConteudo = doc ? JSON.stringify({ capa: doc.capa, slides: doc.slides }) : null;
+  /* O gatilho é o CONTEÚDO (capa, slides e idioma), não o objeto `doc`
+     inteiro — gravar atualiza `doc.id` no próprio `doc`, e se o efeito
+     olhasse pra `doc` de novo isso religaria a fila sozinho, para sempre,
+     mesmo sem mais nenhuma edição real. */
+  const assinaturaConteudo = doc ? JSON.stringify({ capa: doc.capa, slides: doc.slides, idioma }) : null;
   useEffect(() => {
     if (!doc || !obraCod) return;
     if (primeiraCargaRef.current) { primeiraCargaRef.current = false; return; }
-    const t = setTimeout(() => { persistir(false); }, 1500);
-    return () => clearTimeout(t);
+    fila.alterou();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assinaturaConteudo]);
+
+  /* Fechar a aba com trabalho por gravar pergunta antes; esconder a aba
+     (trocar de janela, bloquear a tela) manda gravar já. */
+  useEffect(() => {
+    const aoSair = (e) => {
+      if (!fila.temPendencia()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const aoEsconder = () => { if (document.visibilityState === "hidden") fila.gravarAgora(); };
+    window.addEventListener("beforeunload", aoSair);
+    document.addEventListener("visibilitychange", aoEsconder);
+    return () => {
+      window.removeEventListener("beforeunload", aoSair);
+      document.removeEventListener("visibilitychange", aoEsconder);
+    };
+  }, [fila]);
+
+  /* As imagens dos ambientes moram no balde privado da obra: cada endereço
+     é assinado pela API e vale uma hora. O gancho pede os da tela de uma vez
+     e renova antes de vencer; o leitor é o que o gerador do PDF e do PPTX
+     usa para buscar os bytes. */
+  const caminhosDasImagens = useMemo(
+    () => (doc?.slides || []).flatMap((sl) => (sl?.render?.imagem ? [sl.render.imagem] : [])),
+    [doc]);
+  const imagens = useImagensDaObra(obraCod, caminhosDasImagens);
+  const leitorDeImagens = useMemo(() => criarLeitorDeImagens(obraCod), [obraCod]);
+
+  /** Grava o que falta e devolve o documento gravado (para gerar o PDF). */
+  async function garantirGravado() {
+    await fila.descarregar();
+    const atual = docRef.current;
+    if (!atual?.id) throw new Error("A apresentação ainda não foi gravada. Tente de novo em instantes.");
+    return atual;
+  }
+
+  async function salvar() {
+    setErro(null);
+    try {
+      await fila.gravarAgora();
+      setAviso("Salvo."); setTimeout(() => setAviso(null), 2500);
+    } catch (e) { setErro(mensagem(e)); }
+  }
+
+  /* Trazer do banco o que está lá, descartando o que esta tela tem por
+     gravar. Só com confirmação: o que se perde aqui não volta. */
+  async function recarregar() {
+    const atual = docRef.current;
+    if (!atual?.id) return;
+    const ok = await confirmar({
+      titulo: "Recarregar a apresentação?",
+      mensagem: "O que você alterou desde a última gravação será descartado, e a tela passa a mostrar o que está no banco.",
+      confirmar: "Recarregar e descartar",
+      cancelar: "Continuar vendo",
+      perigo: true,
+    });
+    if (!ok) return;
+    try {
+      usarDocumento(await carregarApresentacao(obraCod, atual.id));
+      setRevisoes(await listarApresentacoes(obraCod));
+      setErro(null);
+    } catch (e) { setErro(mensagem(e)); }
+  }
+
+  async function fechar() {
+    if (fila.temPendencia()) {
+      try {
+        await fila.descarregar();
+      } catch {
+        const ok = await confirmar({
+          titulo: "Sair sem gravar?",
+          mensagem: "As últimas alterações desta apresentação não foram gravadas. Saindo agora, elas se perdem.",
+          confirmar: "Sair mesmo assim",
+          cancelar: "Continuar aqui",
+          perigo: true,
+        });
+        if (!ok) return;
+      }
+    }
+    onFechar();
+  }
 
   async function gerar() {
     setGerando("Montando o PDF…"); setErro(null);
     try {
-      /* Salva ANTES de gerar: se a geração falhar no meio, o trabalho
-         continua no banco. */
-      const salvo = await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);
-      setDoc((d) => ({ ...d, id: salvo.id }));
+      /* Grava ANTES de gerar: se a geração falhar no meio, o trabalho
+         continua no banco. E se a gravação não passar — outra pessoa alterou
+         a revisão —, nem começa: o PDF sairia de uma versão que o banco
+         recusou. */
+      const salvo = await garantirGravado();
 
       const baixar = async (u) => new Uint8Array(await (await fetch(u)).arrayBuffer());
       const artes = {
@@ -174,7 +286,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
         dados: await baixar(arteDados),
         fechamento: await baixar(arteFechamento),
       };
-      const bytes = await gerarPdf(doc, artes, bytesDaImagem, idioma);
+      const bytes = await gerarPdf(doc, artes, leitorDeImagens, idioma);
 
       setGerando("Guardando em Arquivos da obra…");
       const nome = nomeDoArquivo({ ...doc, obraCodigo: obraCod }, idioma);
@@ -193,7 +305,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
         fase: "cliente",
       }, "O PDF foi gerado e baixado");
       if (!r) throw new Error("O PDF foi gerado, mas esta obra ainda não tem dados salvos — ele não pôde ser guardado em Arquivos da obra.");
-      await marcarGerada(salvo.id, info.caminho);
+      versaoRef.current = (await marcarGerada(obraCod, salvo.id, versaoRef.current, info.caminho)).versao;
 
       /* Baixa também: quem acabou de montar quer ver agora, não ir
          procurar em outra tela. */
@@ -216,8 +328,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
   async function gerarPowerPoint() {
     setGerandoPptx("Montando o PowerPoint…"); setErro(null);
     try {
-      const salvo = await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);
-      setDoc((d) => ({ ...d, id: salvo.id }));
+      await garantirGravado();
 
       const baixar = async (u) => new Uint8Array(await (await fetch(u)).arrayBuffer());
       const artes = {
@@ -225,7 +336,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
         dados: await baixar(arteDados),
         fechamento: await baixar(arteFechamento),
       };
-      const bytes = await gerarPptx(doc, artes, bytesDaImagem, idioma);
+      const bytes = await gerarPptx(doc, artes, leitorDeImagens, idioma);
 
       setGerandoPptx("Guardando em Arquivos da obra…");
       const nome = nomeDoArquivo({ ...doc, obraCodigo: obraCod }, idioma, "pptx");
@@ -270,20 +381,24 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
     if (!ok) return;
     setSalvando(true); setErro(null);
     try {
-      await salvarApresentacao({ ...doc, obraCodigo: obraCod, idioma }, usuario);   // fecha a atual
-      const nova = await salvarApresentacao(duplicarComoRev({ ...doc, obraCodigo: obraCod }, rev), usuario);
+      const anterior = doc.capa?.rev;
+      await garantirGravado();   // fecha a atual antes de copiá-la
+      const criada = await criarApresentacao(obraCod, rev, duplicarComoRev({ ...doc, obraCodigo: obraCod }, rev));
+      usarDocumento(await carregarApresentacao(obraCod, criada.id));
       setRevisoes(await listarApresentacoes(obraCod));
-      setDoc(nova); setPagina("dados");
-      setAviso(`Revisão ${rev} criada. A ${doc.capa?.rev} continua guardada.`);
+      setPagina("dados");
+      setAviso(`Revisão ${rev} criada. A ${anterior} continua guardada.`);
     } catch (e) { setErro(mensagem(e)); }
     finally { setSalvando(false); }
   }
 
+  const avisoDaFila = avisoDoDocumento(gravacao, { documento: nomeDaApresentacao(doc) });
+
   const acoes = (
     <div className="flex flex-wrap items-center gap-2">
-      {doc?.atualizadoEm && <span className="text-xs text-text-mute">salvo {fmtData(doc.atualizadoEm)}</span>}
+      <SituacaoDaGravacao situacao={gravacao} onTentarAgora={() => fila.tentarAgora()} />
       <Button variant="outline" size="sm" disabled={!doc || salvando} onClick={salvar}>
-        <Save size={16} /> {salvando ? "Salvando…" : "Salvar"}
+        <Save size={16} /> Salvar agora
       </Button>
       <Button variant="outline" size="sm" disabled={!conf.pronto || !!gerandoPptx} onClick={gerarPowerPoint}
         title={conf.pronto ? "Baixa um .pptx editável — texto e imagem soltos, pra mexer no PowerPoint"
@@ -294,7 +409,7 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
         title={conf.pronto ? "" : "Todo ambiente precisa de nome e de imagem"}>
         <FileDown size={16} /> {gerando || "Gerar PDF"}
       </Button>
-      <BotaoIcone rotulo="Fechar apresentação" variant="ghost" onClick={onFechar}>
+      <BotaoIcone rotulo="Fechar apresentação" variant="ghost" onClick={fechar}>
         <X size={16} />
       </BotaoIcone>
     </div>
@@ -334,9 +449,29 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
         actions={acoes} toolbar={barra} contentPadding={false}
         contentClassName="flex min-h-0 flex-1 flex-col overflow-auto lg:overflow-hidden">
 
-        {(erro || aviso) && (
+        {(erro || aviso || avisoDaFila) && (
           <div className="flex flex-col gap-2 px-4 pt-4 md:px-6">
             {erro && <Alert tone="danger" role="alert"><AlertDescription>{erro}</AlertDescription></Alert>}
+            {avisoDaFila && (
+              <Alert tone={avisoDaFila.tom} role="alert">
+                <AlertTitle as="h2">{avisoDaFila.titulo}</AlertTitle>
+                <AlertDescription>
+                  <p>{avisoDaFila.descricao}</p>
+                  <span className="mt-2 flex flex-wrap gap-2">
+                    {avisoDaFila.acao === "tentar" && (
+                      <Button size="sm" variant="outline" onClick={() => fila.tentarAgora()}>
+                        <RotateCcw size={14} aria-hidden="true" /> Tentar agora
+                      </Button>
+                    )}
+                    {avisoDaFila.acao === "recarregar" && (
+                      <Button size="sm" variant="outline" onClick={recarregar}>
+                        <RefreshCw size={14} aria-hidden="true" /> Recarregar a apresentação
+                      </Button>
+                    )}
+                  </span>
+                </AlertDescription>
+              </Alert>
+            )}
             {aviso && <Alert tone="success" role="status"><AlertDescription>{aviso}</AlertDescription></Alert>}
           </div>
         )}
@@ -415,7 +550,8 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
                     </Button>
                   </div>
 
-                  <Palco slide={slide} idioma={idioma} zoom={zoom} onZoom={setZoom} onMudar={mudarSlide} />
+                  <Palco slide={slide} idioma={idioma} zoom={zoom} onZoom={setZoom} onMudar={mudarSlide}
+                    urlDoAmbiente={imagens.url} />
 
                   <p className="mt-2 text-xs text-text-mute">
                     Arraste a imagem e os produtos. O canto de baixo à direita de cada um redimensiona.
@@ -440,7 +576,13 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
 
               {abaLateral === "revisoes" ? (
                 <Revisoes lista={revisoes} atualId={doc.id} rev={doc.capa?.rev}
-                  onAbrir={(r) => { setDoc({ ...r }); setPagina("dados"); setIdioma(r.idioma || "pt"); }}
+                  onAbrir={async (r) => {
+                    try {
+                      await garantirGravado();
+                      usarDocumento(await carregarApresentacao(obraCod, r.id));
+                      setPagina("dados"); setIdioma(r.idioma || "pt");
+                    } catch (e) { setErro(mensagem(e)); }
+                  }}
                   onNova={novaRevisao} ocupado={salvando} />
               ) : abaLateral === "capa" ? (
                 <Capa doc={doc} onMudar={(capa) => setDoc((d) => ({ ...d, capa }))} idioma={idioma} />
@@ -517,7 +659,7 @@ function mensagem(e) {
  * aqui é o que sai. A escala é a única conta — tudo o mais é guardado em
  * pontos, iguais aos do documento.
  */
-function Palco({ slide, idioma, zoom, onZoom, onMudar }) {
+function Palco({ slide, idioma, zoom, onZoom, onMudar, urlDoAmbiente }) {
   const caixa = useRef(null);
   const [cabe, setCabe] = useState(0.6);
   const [pegando, setPegando] = useState(null);
@@ -599,7 +741,7 @@ function Palco({ slide, idioma, zoom, onZoom, onMudar }) {
           style={{ left: pt(slide.render.x), top: pt(slide.render.y),
             width: pt(slide.render.w), height: pt(slide.render.h) }}
           onPointerDown={(e) => iniciar(e, "render", "mover")}>
-          <img src={urlDaImagem(slide.render.imagem)} alt="" draggable={false} />
+          <img src={urlDoAmbiente(slide.render.imagem) || undefined} alt="" draggable={false} />
           <span className="ap-puxador" onPointerDown={(e) => iniciar(e, "render", "tamanho")} />
         </div>
       ) : (

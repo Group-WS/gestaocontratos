@@ -1,7 +1,7 @@
 /**
  * Os dois documentos que moram fora da obra: o aditivo e a apresentacao.
  * -----------------------------------------------------------
- * GET    /api/aditivos                                 ?obra=   -> { aditivos }   (sem o documento)
+ * GET    /api/aditivos                                 ?obra=   -> { aditivos }
  * GET    /api/obras/:codigo/aditivos/:id                        -> { aditivo }    (com o documento)
  * POST   /api/obras/:codigo/aditivos                   { campos }          -> { id, seq, numero, versao }
  * POST   /api/obras/:codigo/aditivos/:id/gravar        { versao, campos }  -> { versao }
@@ -20,9 +20,11 @@
  * (supabase/salvar-aditivo-apresentacao.sql): so' grava com a versao que a
  * tela leu, e o que nao bater volta 409 com o motivo.
  *
- * As LISTAS nao levam o documento. Quem abre um aditivo ou uma revisao
- * carrega o documento por id, e assim comeca a editar sempre a partir do que
- * esta' no banco — e nao de uma copia que a lista trouxe minutos atras.
+ * Quem ABRE um aditivo ou uma revisao carrega o documento por id, e assim
+ * comeca a editar sempre a partir do que esta' no banco — e nao da copia que
+ * a lista trouxe minutos atras. A lista da apresentacao nem leva capa e
+ * slides; a do aditivo leva o documento porque as contas da obra (orcamento,
+ * CMV, Plano de Compras) leem os grupos de dentro dele.
  *
  * Molde das rotas de dados: valida -> autoriza (login, membro, edicao da
  * obra) -> fala com o banco pelo client do usuario (RLS) -> responde, com o
@@ -116,12 +118,19 @@ rotas.use(exigirLogin, exigirMembro);
 
 /* ---------- aditivo ---------- */
 
-// Sem obra na rota: a lista de todas as obras que a pessoa enxerga (a tela
-// de Aditivos e o painel do Início). Quem recorta e' o RLS.
+/* Sem obra na rota: todos os aditivos que a pessoa enxerga (a tela de
+   Aditivos e o painel do Início). Quem recorta e' o RLS.
+ *
+ * A lista leva o documento (`dados`), e nao e' desperdicio: os aditivos
+ * aprovados entram na conta do orcamento, do CMV e do Plano de Compras, e
+ * essa conta le os grupos de dentro do documento — tanto na obra aberta
+ * quanto no painel do Inicio. O que mudou e' que as colunas sao nomeadas
+ * (era `select('*')`), e que quem ABRE um aditivo o carrega por id, fresco,
+ * em vez de editar a copia que a lista trouxe. */
 rotas.get("/api/aditivos",
   zValidator("query", esquemas.queryDaObra),
   async (req, res) => {
-    let q = req.supabase.from("aditivo").select(COLUNAS_ADITIVO)
+    let q = req.supabase.from("aditivo").select(`${COLUNAS_ADITIVO}, dados`)
       .order("obra_codigo").order("seq", { ascending: false }).limit(TETO_DA_LISTA);
     if (req.valido.query.obra) q = q.eq("obra_codigo", req.valido.query.obra);
     const { data, error } = await q;

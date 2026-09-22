@@ -36,7 +36,7 @@ import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
   custoItem, custoGrupo, temCusto, margemDoDocumento, planilhaDoAditivo,
   rotuloSaldo, numeroAditivo, proximaSeq, linkPipefy, pipefyPendente } from "./lib/aditivoDoc";
-import { listarAditivos, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
+import { listarAditivos, carregarAditivo, criarAditivo, salvarAditivo, excluirAditivo } from "./lib/aditivos";
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
 // O pdf-lib já vem no pacote principal (a Apresentação usa); o relatório é só mais um arquivo pequeno.
 import { gerarRelatorioPdf } from "./lib/relatorioPdf.js";
@@ -91,6 +91,7 @@ import { supabase, supabaseConfigurado } from "./lib/supabase";
 import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, listarTravas, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR, definirEdicaoNestaAba } from "./lib/dadosObra";
 import { criarFilaDeGravacao } from "./lib/filaDeGravacao";
 import { mesmoConteudo, ErroDeGravacao } from "./lib/gravacaoObra";
+import { avisoDoDocumento, nomeDoAditivo, aplicarGravacao } from "./lib/documentosDaObra";
 import { SituacaoDaGravacao, AvisosDeGravacao } from "./lib/gravacaoUi.jsx";
 import { apiFetch } from "./lib/api";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
@@ -17675,17 +17676,76 @@ function SecaoEditor({ sec, titulo, grupos, total, onMudar, onCopiarPara, doExec
   );
 }
 
+/* O EDITOR DO ADITIVO.
+ *
+ * Duas coisas mudaram aqui, e as duas por causa de trabalho perdido:
+ *
+ *   ABRIR CARREGA DO BANCO. A lista pode estar aberta há meia hora, e o
+ *   documento dela seria uma cópia velha — editá-la sobrescreveria quem
+ *   mexeu no meio. Agora o documento vem por id, na hora de abrir.
+ *
+ *   GRAVA SOZINHO. Antes só o botão "Salvar" gravava: sair pela lista ou
+ *   fechar a aba jogava fora o que tinha sido digitado. Agora a fila grava
+ *   1,2 s depois da última tecla, com a VERSÃO que a tela leu — o banco
+ *   recusa se outra pessoa gravou no meio, e a tela avisa em vez de apagar
+ *   o trabalho dela. */
 function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo }) {
-  const [doc, setDoc] = useState(aditivo.doc);
+  const [doc, setDoc] = useState(aditivo.doc || novoDocumento(obra));
   const [descricao, setDescricao] = useState(aditivo.descricao);
   const [status, setStatus] = useState(aditivo.status);
-  const [salvando, setSalvando] = useState(false);
+  const [carregando, setCarregando] = useState(!aditivo.doc);
   const [erro, setErro] = useState(null);
-  const [sujo, setSujo] = useState(false);
+  const [gravacaoDoAditivo, setGravacaoDoAditivo] = useState({ estado: "salvo", em: null });
+
+  const versaoRef = useRef(aditivo.versao ?? null);
+  const estadoRef = useRef({ doc, descricao, status });
+  useLayoutEffect(() => { estadoRef.current = { doc, descricao, status }; });
+
+  useEffect(() => {
+    let vivo = true;
+    setCarregando(true);
+    carregarAditivo(aditivo.obraCodigo, aditivo.id)
+      .then((a) => {
+        if (!vivo) return;
+        versaoRef.current = a.versao;
+        setDoc(a.doc || novoDocumento(obra));
+        setDescricao(a.descricao);
+        setStatus(a.status);
+        setErro(null);
+      })
+      .catch((e) => { if (vivo) setErro(`Não consegui abrir este aditivo: ${e.message || e}`); })
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aditivo.id, aditivo.obraCodigo]);
+
+  const filaDoAditivo = useMemo(() => criarFilaDeGravacao({
+    gravar: async () => {
+      const atual = estadoRef.current;
+      const r = await salvarAditivo(aditivo.obraCodigo, aditivo.id, versaoRef.current, atual);
+      versaoRef.current = r.versao;
+      onSalvo(aplicarGravacao({ ...aditivo, ...atual }, r));
+    },
+    aoMudar: setGravacaoDoAditivo,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [aditivo.id, aditivo.obraCodigo]);
+
+  /* Fechar a aba com trabalho por gravar pergunta antes; esconder a aba
+     manda gravar já. */
+  useEffect(() => {
+    const aoSair = (e) => { if (filaDoAditivo.temPendencia()) { e.preventDefault(); e.returnValue = ""; } };
+    const aoEsconder = () => { if (document.visibilityState === "hidden") filaDoAditivo.gravarAgora(); };
+    window.addEventListener("beforeunload", aoSair);
+    document.addEventListener("visibilitychange", aoEsconder);
+    return () => {
+      window.removeEventListener("beforeunload", aoSair);
+      document.removeEventListener("visibilitychange", aoEsconder);
+    };
+  }, [filaDoAditivo]);
 
   const t = totaisDoDocumento(doc);
   const mg = margemDoDocumento(doc);
-  const mexer = (novo) => { setDoc(novo); setSujo(true); };
+  const mexer = (novo) => { setDoc(novo); filaDoAditivo.alterou(); };
   const campo = (k, v) => mexer({ ...doc, [k]: v });
 
   /* Copiar um item pra outra seção: procura o grupo de mesmo nome, e cria
@@ -17705,17 +17765,50 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
     mexer({ ...doc, [outra]: lista });
   };
 
-  async function salvar(extra = {}) {
-    setSalvando(true); setErro(null);
+  /** Trazer do banco o que está lá, descartando o que esta tela tem por gravar. */
+  async function recarregar() {
+    const ok = await confirmar({
+      titulo: "Recarregar o aditivo?",
+      mensagem: "O que você alterou desde a última gravação será descartado, e a tela passa a mostrar o que está no banco.",
+      confirmar: "Recarregar e descartar",
+      cancelar: "Continuar vendo",
+      perigo: true,
+    });
+    if (!ok) return;
+    filaDoAditivo.descartar();
+    setCarregando(true);
     try {
-      const salvo = await salvarAditivo(aditivo.id, { descricao, status, doc, usuario, ...extra });
-      onSalvo(salvo);
-      setSujo(false);
+      const a = await carregarAditivo(aditivo.obraCodigo, aditivo.id);
+      versaoRef.current = a.versao;
+      setDoc(a.doc || novoDocumento(obra));
+      setDescricao(a.descricao);
+      setStatus(a.status);
+      setErro(null);
+      onSalvo(a);
     } catch (e) {
-      setErro(`Não consegui salvar: ${e.message || e}`);
+      setErro(`Não consegui recarregar este aditivo: ${e.message || e}`);
     } finally {
-      setSalvando(false);
+      setCarregando(false);
     }
+  }
+
+  /** Sair para a lista: grava o que falta antes, e só desiste se a pessoa mandar. */
+  async function voltar() {
+    if (filaDoAditivo.temPendencia()) {
+      try {
+        await filaDoAditivo.descarregar();
+      } catch {
+        const ok = await confirmar({
+          titulo: "Sair sem gravar?",
+          mensagem: "As últimas alterações deste aditivo não foram gravadas. Saindo agora, elas se perdem.",
+          confirmar: "Sair mesmo assim",
+          cancelar: "Continuar aqui",
+          perigo: true,
+        });
+        if (!ok) return;
+      }
+    }
+    onVoltar();
   }
 
   /* O nome do arquivo sai do titulo da pagina — e' assim que todo
@@ -17763,21 +17856,14 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
     }
   }
 
-  async function mudarStatus(novo) {
+  function mudarStatus(novo) {
     setStatus(novo);
-    setSalvando(true); setErro(null);
-    try {
-      onSalvo(await salvarAditivo(aditivo.id, { descricao, status: novo, doc, usuario }));
-      setSujo(false);
-    } catch (e) {
-      setErro(`Não consegui salvar o status: ${e.message || e}`);
-    } finally {
-      setSalvando(false);
-    }
+    filaDoAditivo.alterou();
   }
 
   const idCampo = React.useId();
   const opcoesStatus = opcoesStatusAditivo();
+  const avisoDaGravacaoDoAditivo = avisoDoDocumento(gravacaoDoAditivo, { documento: nomeDoAditivo(aditivo) });
   const interno = <span className="text-xs font-normal normal-case italic tracking-normal text-text-mute">não sai no PDF</span>;
 
   return (
@@ -17788,7 +17874,7 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
       description={`${aditivo.numero}${obra?.nome ? ` · ${obra.nome}` : ""}`}
       actions={(
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <Button variant="outline" onClick={onVoltar}><ChevronLeft size={16} /> Aditivos da obra</Button>
+          <Button variant="outline" onClick={voltar}><ChevronLeft size={16} /> Aditivos da obra</Button>
           <Button variant="outline" onClick={imprimir} title="Abre a impressão do navegador — escolha Salvar como PDF">
             <Download size={16} /> PDF
           </Button>
@@ -17798,8 +17884,9 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
             title="Planilha interna: custo, margem e especificação de compra — o que não sai no PDF do cliente">
             <FileDown size={16} /> Excel
           </Button>
-          <Button onClick={() => salvar()} disabled={salvando || !sujo}>
-            {salvando ? "Salvando…" : sujo ? "Salvar" : "Salvo"}
+          <SituacaoDaGravacao situacao={gravacaoDoAditivo} onTentarAgora={() => filaDoAditivo.tentarAgora()} />
+          <Button variant="outline" onClick={() => filaDoAditivo.gravarAgora()} disabled={carregando}>
+            Salvar agora
           </Button>
         </div>
       )}>
@@ -17807,21 +17894,39 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
         <Field className="flex-1">
           <Label htmlFor={`${idCampo}-descricao`}>Do que se trata este aditivo</Label>
           <Input id={`${idCampo}-descricao`} value={descricao} placeholder="Do que se trata este aditivo"
-            onChange={(e) => { setDescricao(e.target.value); setSujo(true); }} />
+            onChange={(e) => { setDescricao(e.target.value); filaDoAditivo.alterou(); }} />
         </Field>
         <div className="flex flex-col gap-1">
           <Label htmlFor={`${idCampo}-status`}>Status</Label>
           <EscolhaEstado id={`${idCampo}-status`} valor={status} opcoes={opcoesStatus} onChange={mudarStatus}
-            disabled={salvando} rotulo="Status do aditivo" />
+            disabled={carregando} rotulo="Status do aditivo" />
         </div>
       </div>
 
       {erro && <Alert tone="danger" className="naoimprime"><AlertDescription>{erro}</AlertDescription></Alert>}
 
+      {avisoDaGravacaoDoAditivo && (
+        <Alert tone={avisoDaGravacaoDoAditivo.tom} role="alert" className="naoimprime">
+          <AlertTitle as="h2">{avisoDaGravacaoDoAditivo.titulo}</AlertTitle>
+          <AlertDescription>
+            <p>{avisoDaGravacaoDoAditivo.descricao}</p>
+            <span className="mt-2 flex flex-wrap gap-2">
+              {avisoDaGravacaoDoAditivo.acao === "tentar" && (
+                <Button size="sm" variant="outline" onClick={() => filaDoAditivo.tentarAgora()}>Tentar agora</Button>
+              )}
+              {avisoDaGravacaoDoAditivo.acao === "recarregar" && (
+                <Button size="sm" variant="outline" onClick={recarregar}>Recarregar o aditivo</Button>
+              )}
+            </span>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {status === "aprovado" && (
         <div className="naoimprime">
-          <PipefyAditivo a={{ ...aditivo, status, descricao, doc }} obraNome={obra?.nome} usuario={usuario}
-            onMarcar={(v) => { const novo = { ...doc, pipefy: v }; setDoc(novo); salvar({ doc: novo }); }} />
+          <PipefyAditivo a={{ ...aditivo, status, descricao, doc, resumo: { pipefy: doc?.pipefy || null } }}
+            obraNome={obra?.nome} usuario={usuario}
+            onMarcar={(v) => mexer({ ...doc, pipefy: v })} />
         </div>
       )}
 
@@ -17965,7 +18070,7 @@ function opcoesStatusAditivo() {
    que a pessoa vai precisar digitar. */
 function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
   const saldo = a.totalAdicao - a.totalSupressao;
-  const feito = a.doc?.pipefy?.em;
+  const feito = a.resumo?.pipefy?.em;
   const resumo = [
     `Obra: ${obraNome || a.obraCodigo}`,
     `Aditivo: ${a.numero}`,
@@ -17977,7 +18082,7 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
     return (
       <div className={`flex flex-wrap items-center gap-2 text-xs text-success ${compacto ? "mt-1" : ""}`}>
         <CheckCircle2 size={12} aria-hidden="true" />
-        <span>Pipefy enviado{a.doc.pipefy.por ? ` por ${a.doc.pipefy.por}` : ""} em {new Date(feito).toLocaleDateString("pt-BR")}</span>
+        <span>Pipefy enviado{a.resumo.pipefy.por ? ` por ${a.resumo.pipefy.por}` : ""} em {new Date(feito).toLocaleDateString("pt-BR")}</span>
         <Button variant="ghost" size="sm" onClick={() => onMarcar(null)}>desfazer</Button>
       </div>
     );
@@ -18029,14 +18134,20 @@ function PipefyAditivo({ a, obraNome, usuario, onMarcar, compacto }) {
    e migracao e' o passo que trava — este modulo ja custou tres. */
 function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onAbrir, onExcluir, onSalvo, onErro }) {
   const podeApagar = podeExcluirAditivo(a, usuario, souAdmin);
-  const [obs, setObs] = useState(a.doc?.observacao || "");
+  const [obs, setObs] = useState(a.resumo?.observacao || "");
   const [salvando, setSalvando] = useState(false);
   const saldo = a.totalAdicao - a.totalSupressao;
 
-  async function gravar(campos) {
+  /* Gravar daqui SEMPRE relê o aditivo antes: a lista pode estar aberta há
+     meia hora, e ela não traz o documento inteiro — gravar a partir dela
+     apagaria o que outra pessoa escreveu no meio. `mudar` recebe o aditivo
+     como está no banco e devolve só os campos que vão mudar. */
+  async function gravar(mudar) {
     setSalvando(true);
     try {
-      onSalvo(await salvarAditivo(a.id, { usuario, ...campos }));
+      const atual = await carregarAditivo(a.obraCodigo, a.id);
+      const r = await salvarAditivo(a.obraCodigo, a.id, atual.versao, mudar(atual));
+      onSalvo(aplicarGravacao(atual, r));
     } catch (e) {
       onErro(`Não consegui salvar: ${e.message || e}`);
     } finally {
@@ -18057,7 +18168,7 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
           {a.descricao || <span className="dim">sem descrição — clique para abrir</span>}
         </Button>
         <div className="text-xs text-text-mute">
-          {dataBR(a.doc?.data)}
+          {dataBR(a.resumo?.data)}
           {a.atualizadoPor ? ` · por ${a.atualizadoPor}` : ""}
         </div>
         {/* Salva ao sair do campo, e nao a cada tecla: gravar por tecla
@@ -18065,10 +18176,10 @@ function LinhaAditivo({ a, usuario, souAdmin = false, obraNome, mostrarObra, onA
         <Textarea rows={1} value={obs} placeholder="observação…" aria-label="Observação interna"
           className="mt-1 min-h-0 py-1 text-xs"
           onChange={(e) => setObs(e.target.value)}
-          onBlur={() => { if (obs !== (a.doc?.observacao || "")) gravar({ doc: { ...a.doc, observacao: obs } }); }} />
+          onBlur={() => { if (obs !== (a.resumo?.observacao || "")) gravar((atual) => ({ doc: { ...atual.doc, observacao: obs } })); }} />
         {a.status === "aprovado" && (
           <PipefyAditivo a={a} obraNome={obraNome} usuario={usuario} compacto
-            onMarcar={(v) => gravar({ doc: { ...a.doc, observacao: obs, pipefy: v } })} />
+            onMarcar={(v) => gravar((atual) => ({ doc: { ...atual.doc, observacao: obs, pipefy: v } }))} />
         )}
       </TableCell>
       <TableCell className="mono tabular-nums hidden text-right md:table-cell">{fmtBRL(a.totalSupressao)}</TableCell>
@@ -18157,11 +18268,9 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
     setErro(null);
     setEscolhendo(false);
     try {
-      const seq = proximaSeq(lista.filter((a) => String(a.obraCodigo) === String(o.codigo)));
-      const criado = await criarAditivo({
-        obraCodigo: o.codigo, seq, descricao: "",
-        doc: novoDocumento(o), usuario,
-      });
+      /* O número ("2405/3") sai do banco, com trava por obra: contar aqui
+         fazia duas pessoas criarem o mesmo número no mesmo segundo. */
+      const criado = await criarAditivo({ obraCodigo: o.codigo, descricao: "", doc: novoDocumento(o) });
       setLista((l) => [criado, ...l]);
       /* Focar o filtro na obra escolhida nao e' cosmetico: e' o que faz o
          executivo dela carregar, e sem executivo a busca de supressao
@@ -18182,7 +18291,7 @@ function AditivosView({ obras, usuario, souAdmin = false }) {
     }
     if (!(await confirmar({ titulo: "Excluir aditivo", mensagem: `Excluir o aditivo ${a.numero}? Isso não pode ser desfeito.`, confirmar: "Excluir" }))) return;
     try {
-      await excluirAditivo(a.id);
+      await excluirAditivo(a.obraCodigo, a.id);
       setLista((l) => l.filter((x) => x.id !== a.id));
     } catch (e) {
       setErro(`Não consegui excluir: ${e.message || e}`);

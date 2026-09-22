@@ -12,7 +12,7 @@
  *   2. o que a tela manda chega ao banco com a versão lida;
  *   3. o "não" do banco vira 409 com o motivo, para a tela avisar em vez de
  *      tentar de novo por cima;
- *   4. as listas NÃO levam o documento — quem abre carrega por id;
+ *   4. quem ABRE um aditivo ou uma revisão carrega por id, fresco do banco;
  *   5. a imagem do ambiente vai para o balde da obra, e o endereço dela é
  *      assinado só para caminho que é daquela obra.
  *
@@ -192,8 +192,9 @@ const servidor = app.listen(0, async () => {
     linhasDaTabela = [{ id: ID, obra_codigo: "2519", numero: "2519/1", versao: 2 }];
     chamadas.length = 0;
     await pedir("t-gc", "GET", "/api/aditivos");
-    conf("a lista de aditivos não pede o documento", /dados/.test(chamadas.at(-1)?.select || ""), false);
-    conf("... e pede a versão", /versao/.test(chamadas.at(-1)?.select || ""), true);
+    conf("a lista de aditivos pede colunas nomeadas, não *", /^id,obra_codigo|^id, obra_codigo/.test((chamadas.at(-1)?.select || "").replace(/\s+/g, " ")), true);
+    conf("... com o documento, que as contas da obra usam", /dados/.test(chamadas.at(-1)?.select || ""), true);
+    conf("... e com a versão, sem a qual não se grava", /versao/.test(chamadas.at(-1)?.select || ""), true);
     await pedir("t-gc", "GET", "/api/obras/2519/apresentacoes");
     conf("a lista de apresentações não pede capa nem slides",
       /slides|capa/.test(chamadas.at(-1)?.select || ""), false);
