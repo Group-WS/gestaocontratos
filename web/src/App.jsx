@@ -12557,13 +12557,24 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
           tom: "info",
         });
       } else {
-        const n = dados.itens.length;
+        /* A API do Sienge diz que a solicitação EXISTE, mas não lista os itens
+           dela (`GET /purchase-requests/{id}/items` responde 405 — ver a rota
+           em mondayApp.js, que devolve `itensDisponiveis: false`). Contar
+           `dados.itens` estourava TypeError, e a pendência nunca se encerrava
+           justo no caso em que dá pra encerrá-la com certeza.
+           Sem saber se todos os itens entraram, fica "parcial": continua
+           barrando o reenvio do mesmo conteúdo e não afirma o que não sabe. */
+        const itens = Array.isArray(dados.itens) ? dados.itens : null;
+        const todos = itens !== null && itens.length > 0;
         await reconciliarEnvio(p.id, {
           solicitacaoId: dados.solicitacaoId, resposta: dados,
-          status: n > 0 ? "concluido" : "parcial", ok: n > 0, por: usuario,
+          status: todos ? "concluido" : "parcial", ok: todos, por: usuario,
         });
+        const situacao = dados.cabecalho?.status ? ` (situação no Sienge: ${dados.cabecalho.status})` : "";
         await mensagem({
-          titulo: `A solicitação ${dados.solicitacaoId} EXISTE no Sienge, com ${n} ${n === 1 ? "item" : "itens"}`,
+          titulo: itens
+            ? `A solicitação ${dados.solicitacaoId} EXISTE no Sienge, com ${itens.length} ${itens.length === 1 ? "item" : "itens"}`
+            : `A solicitação ${dados.solicitacaoId} EXISTE no Sienge${situacao}`,
           mensagem: "NÃO reenvie o que já está lá. " +
             "Confira os itens no Sienge e, se faltar algum, selecione só ele nas Compras.",
         });
