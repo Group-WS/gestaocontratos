@@ -53,11 +53,12 @@ conf("a linha recebe a edição", i >= 0 && compras.slice(i, compras.indexOf("/>
 conf("solicitado trava em modo leitura", linha.includes("disabled={!podeEditar || !podeMudarSolicitado(it)}"));
 conf("comprado trava em modo leitura", linha.includes("disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}"));
 conf("insumo do Sienge fica só pra consulta", linha.includes("somenteLeitura={!podeEditar}") && /somenteLeitura = false/.test(escolha));
-/* Os canais viraram UM ToggleGroup com um so' disabled (antes eram cinco
-   botoes, cada um com o seu): marcar comprado, marcar solicitado, associar
-   e o grupo de canais — quatro travas, e a do canal tem que estar no grupo. */
+/* O canal do lote virou UM menu "Definir canal" (22/09/2026; antes um
+   ToggleGroup, e antes disso cinco botoes): marcar comprado, marcar
+   solicitado, associar e o gatilho do menu — quatro travas, e a do canal
+   tem que estar no botao que abre o menu. */
 conf("canal e marcações em massa travam", (compras.match(/disabled=\{!podeEditar\}/g) || []).length >= 4
-  && /<ToggleGroup type="single" value="" disabled=\{!podeEditar\}/.test(compras));
+  && /<DropdownMenuTrigger asChild>\s*<Button variant="outline" size="sm" disabled=\{!podeEditar\}/.test(compras));
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

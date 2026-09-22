@@ -61,6 +61,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   TkwsHeader, Avatar as AvatarDS, AvatarFallback, AvatarImage, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
   Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard, RadioGroupItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
@@ -13427,26 +13428,32 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">
-            {/* O pedido sai de qualquer canal — inclusive de quem ainda
-                nao tem um: as vezes a lista e pra pedir cotacao antes de
-                decidir por onde comprar. */}
-            <Button variant="outline" size="sm" onClick={() => {
-              setPedido({ itens: selecionados });
-              setTimeout(() => window.print(), 300);
-            }} title="Abre a impressão do navegador — escolha Salvar como PDF">
-              <FileText size={14} aria-hidden="true" /> PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => baixarPedidoExcel(
-              obra,
-              etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
-              selecionados, usuario)
-            } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
-              <Download size={14} aria-hidden="true" /> Excel
-            </Button>
-            <Button variant="outline" size="sm" onClick={solicitarNoPipefy}
-              title="Copia a lista dos selecionados e abre a solicitação de compra no Pipefy">
-              <ExternalLink size={14} aria-hidden="true" /> Solicitar no Pipefy
-            </Button>
+            {/* TRÊS GRUPOS, todos do mesmo tamanho (sm, dentro do card):
+                marcar (canal, comprado, solicitado, associar) · exportar
+                (PDF, Excel, resumo) · solicitar — este por último, com um
+                primário só: o Sienge na etapa Sienge, o Pipefy nas demais. */}
+            {/* O CANAL DO LOTE num menu só (22/09/2026): eram seis etiquetas de
+                canal soltas, com altura e cara diferentes dos botões ao lado.
+                Cada item continua sendo uma ação que define (ou tira) o canal
+                dos selecionados — o mesmo definirCanal de antes. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={!podeEditar}
+                  title={podeEditar ? "Define por onde comprar os selecionados" : `Em ${MODO_LEITURA_DICA}`}>
+                  <ShoppingCart size={14} aria-hidden="true" /> Definir canal <ChevronDown size={14} aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Comprar os selecionados por</DropdownMenuLabel>
+                {CANAIS_COMPRA.map((c) => (
+                  <DropdownMenuItem key={c.id} onSelect={() => definirCanal(c.id)}>
+                    <TagCanal id={c.id} comNome />
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => definirCanal(null)}>Tirar o canal</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
             {selecionados.some((r) => r.it.canalCompra) && (
@@ -13513,6 +13520,36 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 <PackageSearch size={14} aria-hidden="true" /> Associar {selecionados.length}
               </Button>
             )}
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
+            {/* O pedido sai de qualquer canal — inclusive de quem ainda
+                nao tem um: as vezes a lista e pra pedir cotacao antes de
+                decidir por onde comprar. */}
+            <Button variant="outline" size="sm" onClick={() => {
+              setPedido({ itens: selecionados });
+              setTimeout(() => window.print(), 300);
+            }} title="Abre a impressão do navegador — escolha Salvar como PDF">
+              <FileText size={14} aria-hidden="true" /> PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => baixarPedidoExcel(
+              obra,
+              etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
+              selecionados, usuario)
+            } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
+              <Download size={14} aria-hidden="true" /> Excel
+            </Button>
+            {etapa === "sienge" && (
+              <Button variant="outline" size="sm"
+                onClick={() => baixarResumoCadastroSienge(obra,
+                  resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}
+                title="Excel pra quem lança o pedido no Sienge: insumo, detalhe, códigos e quantidade — iguais somam numa linha">
+                <Download size={14} aria-hidden="true" /> Resumo p/ cadastro
+              </Button>
+            )}
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
+            <Button {...(etapa === "sienge" ? { variant: "outline" } : {})} size="sm" onClick={solicitarNoPipefy}
+              title="Copia a lista dos selecionados e abre a solicitação de compra no Pipefy">
+              <ExternalLink size={14} aria-hidden="true" /> Solicitar no Pipefy
+            </Button>
             {/* Solicitar no Sienge: o único botão daqui que ESCREVE em
                 outro sistema. Só na etapa Sienge — é o canal que passa por
                 lá.
@@ -13557,28 +13594,6 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 )}
               </Button>
             )}
-            {etapa === "sienge" && (
-              <Button variant="outline" size="sm"
-                onClick={() => baixarResumoCadastroSienge(obra,
-                  resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}
-                title="Excel pra quem lança o pedido no Sienge: insumo, detalhe, códigos e quantidade — iguais somam numa linha">
-                <Download size={14} aria-hidden="true" /> Resumo p/ cadastro
-              </Button>
-            )}
-            {/* O canal do lote: cada item e' uma acao (define e limpa a
-                selecao), por isso o grupo nunca fica "ligado" — o valor
-                vazio e' de proposito. */}
-            <ToggleGroup type="single" value="" disabled={!podeEditar} aria-label="Canal de compra dos selecionados"
-              onValueChange={(v) => { if (v) definirCanal(v === "__nenhum" ? null : v); }}>
-              {CANAIS_COMPRA.map((c) => (
-                <ToggleGroupItem key={c.id} value={c.id} size="sm"
-                  title={podeEditar ? `Marcar os selecionados como compra por ${c.nome}` : `Em ${MODO_LEITURA_DICA}`}>
-                  <TagCanal id={c.id} comNome />
-                </ToggleGroupItem>
-              ))}
-              <ToggleGroupItem value="__nenhum" size="sm"
-                title={podeEditar ? "Tirar o canal dos selecionados" : `Em ${MODO_LEITURA_DICA}`}>tirar canal</ToggleGroupItem>
-            </ToggleGroup>
           </div>
           </CardContent>
         </Card>
