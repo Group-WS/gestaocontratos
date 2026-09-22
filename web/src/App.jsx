@@ -53,7 +53,8 @@ import { abrirEnvio, fecharEnvio, enviosPendentes, envioComMesmoConteudo, reconc
   listarEnviosSienge, assinaturaDoEnvio, novaChaveIdempotencia } from "./lib/siengeSolicitacoes.js";
 import Catalogo from "./Catalogo";
 import { confirmar, mensagem, perguntar, avisar } from "./lib/confirmar.jsx";
-import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
+import {
+  adaptObras, Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
   Sheet, SheetContent, SheetTitle, Popover, PopoverTrigger, PopoverContent,
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
   NotificationBell, CommandGroup, Kbd,
@@ -18524,7 +18525,7 @@ function passosCriticosAtrasados(o) {
   return { dias, passos };
 }
 
-function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, nPendentes = 0, onAbrirObra, onModulo }) {
+function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, nPendentes = 0, onAbrirObra, onModulo, mapaDeObras = null, localizacaoCarregando = false }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const rows = useMemo(() => {
     const summaries = new Map(r.linhas.map((line) => [String(line.codigo), line]));
@@ -18600,7 +18601,10 @@ function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, n
   if (nPendentes) extraAlerts.push({ id: "acessos", peso: 2, ordem: -nPendentes, text: `Liberar acesso para ${nPendentes} ${nPendentes === 1 ? "pessoa" : "pessoas"}`, button: "Abrir equipe", action: () => onModulo("equipe") });
   if (novas.length) extraAlerts.push({ id: "novas", peso: 4, ordem: 1, text: `Iniciar ${novas.length} ${novas.length === 1 ? "obra que veio" : "obras que vieram"} do Monday`, button: "Abrir novas", action: () => onModulo("novas") });
   // "Início" é o rótulo do menu: o título da página repete o mesmo termo.
-  return <DashboardPage title="Início" memory={memory} rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts} />;
+  /* "Abrir obra" da ficha do mapa: o id do mapa é o código da obra. */
+  const abrirPeloCodigo = (codigo) => { const o = obras.find((x) => String(x.codigo) === String(codigo)); if (o) onAbrirObra(o.id); };
+  return <DashboardPage title="Início" memory={memory} rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts}
+    mapa={mapaDeObras} mapaCarregando={localizacaoCarregando} onAbrirCodigo={abrirPeloCodigo} />;
 }
 
 /* ============================================================
@@ -21073,6 +21077,35 @@ export default function App() {
     });
   }, [obras.length, enderecoSienge, registro]);
   const dadosLocalizacao = useMemo(() => agruparPorLocalizacao(siengeObras, registro), [siengeObras, registro]);
+
+  /* O MAPA DE OBRAS do Início (ObrasMap do DS). A base é a mesma do painel
+     "Onde estão as obras": o histórico do Sienge, com a mesma regra de
+     ativa/finalizada (statusSienge). As obras acompanhadas aqui ganham a
+     entrega, o GC e o link — só elas têm "Abrir obra" na ficha. Quem ainda
+     não tem coordenada fica na lista do painel, fora do mapa. */
+  const mapaDeObras = useMemo(() => {
+    const noApp = new Map(obrasAtivas.map((o) => [String(o.codigo), o]));
+    const nomeDe = (email) => (email ? (pessoas.find((p) => p.email === email)?.nome || nomeDoEmail(email)) : undefined);
+    const linhas = (siengeObras || []).map((r) => ({ r, o: noApp.get(String(r.codigo)) }));
+    // Obra acompanhada que não está no espelho do Sienge ainda entra na lista.
+    obrasAtivas.forEach((o) => { if (!linhas.some((l) => String(l.r.codigo) === String(o.codigo))) linhas.push({ r: { codigo: o.codigo, nome: o.nome }, o }); });
+    return adaptObras(linhas, {
+      id: ({ r }) => String(r.codigo),
+      code: ({ r }) => `#${r.codigo}`,
+      name: ({ r, o }) => o?.nome || r.nome,
+      address: ({ r }) => r.endereco_completo || undefined,
+      city: ({ r }) => r.cidade || undefined,
+      uf: ({ r }) => r.estado || undefined,
+      lat: ({ r }) => r.lat ?? null,
+      lng: ({ r }) => r.lng ?? null,
+      status: ({ r, o }) => (o ? "em_obra" : statusSienge(r, registro) === "finalizada" ? "concluida" : "em_obra"),
+      endDate: ({ o }) => o?.dataEntrega || undefined,
+      responsible: ({ o }) => nomeDe(o?.gc),
+      type: ({ o }) => (o ? o.squad || undefined : undefined),
+      href: ({ r, o }) => (o ? `/obra/${r.codigo}` : undefined),
+      details: ({ r }) => (r.geo_precisao === "cidade" ? [{ label: "Localização", value: "aproximada (centro da cidade)" }] : undefined),
+    }, { inferLate: false });
+  }, [siengeObras, obrasAtivas, registro, pessoas]);
   /* Otimista: a tela muda na hora, e desfaz sozinha se o Supabase
      recusar — sem isso, cada clique ficaria "cru" até a resposta ir e
      voltar, e um clique duplo enquanto isso ainda ia pro estado errado. */
@@ -24679,6 +24712,7 @@ export default function App() {
             erro={painelErro || erroBanco || avisoMonday} onRetry={() => { if (erroBanco || avisoMonday) window.location.reload(); else setPainelRevisao((value) => value + 1); }}
             usuario={usuario} equipe={pessoas} nPendentes={nPendentes}
             dadosLocalizacao={dadosLocalizacao} localizacaoCarregando={siengeCarregando}
+            mapaDeObras={mapaDeObras}
             onToggleLocalizacao={alternarStatusLocalizacao}
             onAbrirObra={(id, destino = null) => { setSelectedId(id); setModulo("comparativo"); setGrupo(destino ? grupoDaEtapa(destino) : "dashboard"); setTab(destino); }}
             onModulo={setModulo} />

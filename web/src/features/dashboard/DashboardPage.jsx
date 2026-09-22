@@ -4,10 +4,10 @@ import {
   Input, Label, PageShell, Progress, Skeleton, ActiveFilters, FilterChip, KpiHero, KpiMini,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, cn,
-  HoverCard, HoverCardTrigger, HoverCardContent,
+  HoverCard, HoverCardTrigger, HoverCardContent, ObrasMap,
 } from "@group-ws/ws-ui";
 import { BotaoIcone, SquadComIcone } from "../../lib/ui.jsx";
-import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, Search } from "lucide-react";
+import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, MapPin, Search } from "lucide-react";
 
 const money = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const compactMoney = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2 }).format(value);
@@ -153,7 +153,48 @@ function ReguaDos90({ days }) {
   return <Progress className="mx-auto mt-1 h-1 w-24" value={(dentro / 90) * 100} aria-label={`${Math.round((dentro / 90) * 100)}% da janela de 90 dias`} />;
 }
 
-export default function DashboardPage({ title = "Visão geral das obras", rows, loading, error, onRetry, onOpen, extraAlerts = [], memory }) {
+/* ONDE ESTÃO AS OBRAS — o ObrasMap do DS (Google Maps + painel + ficha da
+   obra), no lugar do painel estado → cidade que o Início já teve. Sem chave
+   do Google, o próprio componente cai no mapa do Brasil em SVG.
+
+   "Abrir obra" só existe na ficha de quem é acompanhada aqui (as outras
+   são o histórico do Sienge): elas trazem `href`, e o clique é trocado pela
+   navegação do app, sem recarregar a página. */
+const CHAVE_DO_MAPA = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || undefined;
+function MapaDasObras({ mapa, carregando, onAbrirCodigo }) {
+  const obras = mapa?.obras || [];
+  const semPino = obras.filter((o) => o.lat == null || o.lng == null).length;
+  const aproximadas = obras.filter((o) => o.details?.some((d) => d.label === "Localização")).length;
+  const abrirNoApp = (evento) => {
+    const link = evento.target.closest?.('a[href^="/obra/"]');
+    if (!link || evento.metaKey || evento.ctrlKey || evento.shiftKey) return;
+    evento.preventDefault();
+    onAbrirCodigo?.(link.getAttribute("href").split("/")[2]);
+  };
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <div className="min-w-0">
+          <CardTitle className="flex items-center gap-2"><MapPin size={16} className="shrink-0 text-brand" aria-hidden="true" />Onde estão as obras <Badge tone="neutral">{obras.length}</Badge></CardTitle>
+          <CardDescription>
+            Todas as obras do Sienge, pela localização. Clique num pino para ver a ficha; as acompanhadas aqui abrem direto.
+            {semPino > 0 && <> {semPino === obras.length ? "Nenhuma tem coordenada ainda — aparecem na lista, fora do mapa." : `${semPino} sem coordenada (na lista, fora do mapa).`}</>}
+            {aproximadas > 0 && <> {aproximadas} com o pino no centro da cidade.</>}
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {carregando ? <Skeleton className="h-96 w-full" />
+          : !obras.length ? <EmptyState title="Ainda sem obras no mapa" description="Falta importar as obras do Sienge (supabase/sienge_obra.sql)." />
+          : <div className="min-w-0" onClickCapture={abrirNoApp}>
+              <ObrasMap obras={obras} apiKey={CHAVE_DO_MAPA} panelTitle="Obras" height={560} />
+            </div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function DashboardPage({ title = "Visão geral das obras", rows, loading, error, onRetry, onOpen, extraAlerts = [], memory, mapa = null, mapaCarregando = false, onAbrirCodigo }) {
   const [filters, setFilters] = useState(() => {
     if (memory?.current.filters) return memory.current.filters;
     const query = new URLSearchParams(window.location.search);
@@ -362,6 +403,10 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
           </Table>}
         </CardContent>
       </Card>
+      {/* O mapa fecha a página: quem chega no Início quer primeiro o que
+          precisa de ação (alertas, entregas, a tabela de risco) — o mapa é
+          consulta, não trabalho pendente. */}
+      {mapa && <MapaDasObras mapa={mapa} carregando={mapaCarregando} onAbrirCodigo={onAbrirCodigo} />}
     </>
     {rows.length > 0 && rows.every((row) => row.unit === "Não informada") && <p className="text-xs text-text-mute">Unidade: aguardando o vínculo das obras com as filiais.</p>}
   </PageShell>;
