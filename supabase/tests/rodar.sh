@@ -69,6 +69,12 @@ done
 aplicar "$SQL/rls-reforco.sql"
 aplicar "$SQL/rn-001-liberacao-de-compra.sql"
 
+# 7. A gravação protegida da obra (trava e versão no banco). Em produção o
+#    `salvar-obra-contrair.sql` só roda depois do deploy do app novo; aqui o
+#    banco é montado já no estado final.
+aplicar "$SQL/salvar-obra.sql"
+aplicar "$SQL/salvar-obra-contrair.sql"
+
 # Os testes. `finish(true)` faz o pgTAP levantar erro quando algo falha,
 # e o ON_ERROR_STOP transforma isso no codigo de saida que o CI enxerga.
 falhou=0

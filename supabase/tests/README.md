@@ -21,6 +21,7 @@ O que eles cobrem hoje:
 | `09-reforco.sql` | o reforço de 21/09/2026 (`rls-reforco.sql`): ninguém apaga obra nem reescreve o histórico, aditivo só na própria obra e com autoria do login, arquivos por obra, catálogo sem listagem anônima, a fila fora do que é do time, `sienge_obra` só no status, funções fechadas para anônimo |
 | `10-rn-001-liberacao.sql` | RN-001: só o administrador libera a compra, em nome próprio; via alocação por quem edita; restaurar versão devolve a liberação, copiar para mais itens não |
 | `11-preferencia.sql` | a preferência é de cada um: lê e grava as suas, não as dos outros; anônimo nem lê |
+| `12-salvar-obra.sql` | a gravação protegida da obra (`salvar-obra.sql`): gravar sem a trava é recusado, versão desatualizada é recusada, obra vazia não grava por cima de obra cheia, a RN-001 continua valendo pela gravação, ninguém grava direto por cima da trava viva de outra pessoa, cada gravação inteira vira versão e a poda segura o histórico |
 
 ## Como rodar
 

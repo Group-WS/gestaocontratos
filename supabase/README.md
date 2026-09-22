@@ -73,6 +73,26 @@ bloco 5, e de novo **sempre** que o bloco 5 rodar.
 > recriam funções e policies com a versão antiga). Rodou algum deles de
 > novo? Rode o bloco 5 inteiro e depois este.
 
+**7. A gravação protegida da obra (22/09/2026)**
+`salvar-obra.sql` — depois do bloco 6. **E só depois do deploy do app novo:**
+`salvar-obra-contrair.sql`.
+
+> O `salvar-obra.sql` cria a coluna `obra_dados.versao` e as funções
+> `salvar_obra`, `aplicar_patch_obra` (agora com a versão) e
+> `restaurar_versao_obra`: o conteúdo da obra só é gravado com a trava de
+> quem grava e com a versão que a tela leu. Também recusa gravar por cima da
+> trava viva de outra pessoa e passa a guardar uma versão a cada gravação
+> inteira. É compatível com o app que está no ar — rode **antes** do deploy,
+> porque o app novo grava pela API e a API chama `salvar_obra`.
+>
+> O `salvar-obra-contrair.sql` fecha a gravação direta na tabela enquanto
+> houver trava viva: as abas abertas com o app antigo param de gravar e
+> pedem para recarregar. Rodado antes do deploy, ele impede o app de
+> produção de gravar. Teste dos dois: `tests/12-salvar-obra.sql`.
+>
+> Ele não fecha a gravação direta **sem** trava: é o caminho que o teste da
+> RN-001 exercita, e fechá-lo exige mudar o teste de uma regra protegida.
+
 **Antes do bloco 6, confira se o bloco 5 rodou em produção.** Os
 comentários do `taylor-made.sql` indicam que o `rls-perfis.sql` pode nunca
 ter sido aplicado lá. Esta consulta mostra o que vale hoje:
