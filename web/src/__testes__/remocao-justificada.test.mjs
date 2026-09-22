@@ -33,10 +33,13 @@ conf("e a dica diz que vai pedir motivo",
 conf("o campo abre embaixo da linha que vai sair", src.includes(`<TableRow className="bg-danger/10 hover:bg-danger/10">`), true);
 
 /* ---- 2. Sem texto não remove ---- */
-conf("o motivo é obrigatório", src.includes("const vale = motivo.trim().length >= 10;"), true);
+/* O piso baixou de 10 para 5 caracteres a pedido dela em 22/09/2026. */
+conf("o mínimo é de 5 caracteres", src.includes("const MINIMO_DA_JUSTIFICATIVA = 5;"), true);
+conf("o motivo é obrigatório", src.includes("const vale = motivo.trim().length >= MINIMO_DA_JUSTIFICATIVA;"), true);
 conf("e o botão fica travado sem ele", src.includes('<Button variant="danger" type="button" disabled={!vale}'), true);
-conf("a tela diz o que falta", src.includes("Escreva o motivo para remover (mínimo de 10 caracteres)."), true);
-conf("... e conta quantos caracteres faltam", src.includes("`Mínimo de 10 caracteres (${faltam === 1 ? \"falta 1\" : `faltam ${faltam}`}).`"), true);
+conf("a tela diz o que falta, com o mesmo número", src.includes("`Escreva o motivo para remover (mínimo de ${MINIMO_DA_JUSTIFICATIVA} caracteres).`"), true);
+conf("... e conta quantos caracteres faltam", src.includes("`Mínimo de ${MINIMO_DA_JUSTIFICATIVA} caracteres (${faltam === 1 ? \"falta 1\" : `faltam ${faltam}`}).`"), true);
+conf("nenhum 10 esquecido no formulário", !/Mínimo de 10|mínimo de 10|length >= 10;|= 10 - motivo/.test(src.slice(src.indexOf("function FormRemocao("), src.indexOf("function FormRemocao(") + 3000)), true);
 
 /* ---- 3. QUEM GRAVA CARIMBA O AUTOR ----
    Se o nome viesse da tela, bastaria um caminho novo chamando `onEditarItem`

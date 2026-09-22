@@ -7566,13 +7566,16 @@ function FormExcecaoCliente({ onConfirmar, onCancelar }) {
    precisa achar o porque sem perguntar pra ninguem. Por isso e' campo
    obrigatorio, e nao um "tem certeza?".
 
-   O minimo de 10 letras existe pra evitar o "ok" e o ".": nao e' garantia de
-   texto bom, e' o piso que faz a pessoa escrever alguma coisa. */
+   O minimo existe pra evitar o "ok" e o ".": nao e' garantia de texto bom,
+   e' o piso que faz a pessoa escrever alguma coisa. Era 10; baixou pra 5 a
+   pedido dela em 22/09/2026 — 10 obrigava a encher linguica em motivo curto
+   e verdadeiro ("duplicado", "cliente tirou"). */
+const MINIMO_DA_JUSTIFICATIVA = 5;
 function FormRemocao({ item, onCancelar, onConfirmar }) {
   const [motivo, setMotivo] = useState("");
   const idMotivo = React.useId();
-  const faltam = 10 - motivo.trim().length;
-  const vale = motivo.trim().length >= 10;
+  const faltam = MINIMO_DA_JUSTIFICATIVA - motivo.trim().length;
+  const vale = motivo.trim().length >= MINIMO_DA_JUSTIFICATIVA;
   return (
     <Card className="max-w-3xl text-left">
       <CardContent className="grid gap-4 p-4">
@@ -7584,8 +7587,8 @@ function FormRemocao({ item, onCancelar, onConfirmar }) {
             placeholder="Por que este item está saindo? (ex: cliente retirou na reunião de 12/09; duplicado da linha 4.2)"
             onChange={(e) => setMotivo(e.target.value)} />
           <FieldHint>{vale ? "A justificativa aparece na Conf. Executivo." : motivo.trim()
-            ? `Mínimo de 10 caracteres (${faltam === 1 ? "falta 1" : `faltam ${faltam}`}).`
-            : "Escreva o motivo para remover (mínimo de 10 caracteres)."}</FieldHint>
+            ? `Mínimo de ${MINIMO_DA_JUSTIFICATIVA} caracteres (${faltam === 1 ? "falta 1" : `faltam ${faltam}`}).`
+            : `Escreva o motivo para remover (mínimo de ${MINIMO_DA_JUSTIFICATIVA} caracteres).`}</FieldHint>
         </Field>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
