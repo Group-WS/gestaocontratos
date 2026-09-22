@@ -186,7 +186,7 @@ async function entrar(browser, pessoa, banco) {
   const page = await contexto.newPage();
   await simularBackend(page, banco);
   await page.goto(`${APP}/aditivos`);
-  await expect(page.getByRole("heading", { name: "Aditivos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Aditivos", exact: true })).toBeVisible();
   return page;
 }
 
@@ -267,7 +267,7 @@ test("o aditivo grava sozinho: sair da tela não joga fora o digitado", { tag: "
   /* A ORDEM é o que se prova aqui: quando a lista aparece, o que foi digitado
      JÁ ESTÁ no banco. Sem isso, o teste passaria mesmo se sair não gravasse
      nada — a fila continua viva por 1,2 s e gravaria depois, por acaso. */
-  await expect(ana.getByRole("heading", { name: "Aditivos" })).toBeVisible();
+  await expect(ana.getByRole("heading", { name: "Aditivos", exact: true })).toBeVisible();
   expect(banco.gravacoes.length).toBe(1);
   expect(banco.linha.descricao).toBe("Escrito e já saí da tela");
   expect(banco.gravacoes.every((g) => g.status === 200)).toBe(true);
