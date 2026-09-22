@@ -55,8 +55,13 @@ conf("nulo não derruba", tokenPodre(null), false);
 // `signOut` sozinho não basta: com token inválido ele tenta avisar o
 // servidor, leva erro e às vezes deixa a chave gravada. O F5 traz o mesmo
 // token podre de volta.
-conf("limpa o localStorage na mão", /localStorage[\s\S]{0,200}removeItem/.test(src), true);
-conf("... nas chaves de auth do Supabase", /\^sb-\.\*-auth-token/.test(src), true);
+/* Desde 21/09/2026 quem toca o armazenamento é o wrapper (NAV-03): o
+   AuthGate chama `apagarSessaoDoSupabase`, e é o wrapper que apaga a chave. */
+const wrapper = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "lib", "armazenamento.js"), "utf8");
+conf("limpa a chave da sessão na mão, pelo wrapper", /limparSessao[\s\S]{0,400}apagarSessaoDoSupabase\(\)/.test(src), true);
+conf("... o wrapper apaga do armazenamento", /apagarSessaoDoSupabase[\s\S]{0,300}removeItem/.test(wrapper), true);
+conf("... nas chaves de auth do Supabase", /\^sb-\.\*-auth-token/.test(wrapper), true);
 conf("signOut é local (não depende do servidor)", /scope:\s*"local"/.test(src), true);
 
 /* ---- e a sessão guardada precisa ser conferida no servidor ---- */

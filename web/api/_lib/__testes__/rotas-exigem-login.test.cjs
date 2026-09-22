@@ -26,17 +26,22 @@ const app = require(path.join(__dirname, "..", "mondayApp.js"));
 // recusar, isso e' ruido — o resultado e' o que conta.
 console.error = () => {};
 
-/* Toda rota que o Express conhece, com o metodo. Parametro de rota
-   (`:buildingId`) vira um valor qualquer: o que se testa e' a porta. */
+/* Toda rota que o Express conhece, com o metodo — inclusive as dos
+   routers de _lib/rotas/, montados sem prefixo (o caminho inteiro fica na
+   propria rota). Parametro de rota (`:buildingId`) vira um valor qualquer:
+   o que se testa e' a porta. */
 function rotasRegistradas() {
-  return app._router.stack
-    .filter((camada) => camada.route)
-    .flatMap((camada) =>
-      Object.keys(camada.route.methods).map((metodo) => ({
+  const achar = (pilha) => pilha.flatMap((camada) => {
+    if (camada.route) {
+      return Object.keys(camada.route.methods).map((metodo) => ({
         metodo: metodo.toUpperCase(),
         caminho: camada.route.path.replace(/:[^/]+/g, "1"),
-      }))
-    );
+      }));
+    }
+    if (camada.name === "router" && camada.handle && camada.handle.stack) return achar(camada.handle.stack);
+    return [];
+  });
+  return achar(app._router.stack);
 }
 
 let falhas = 0;

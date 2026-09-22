@@ -19,6 +19,8 @@ O que eles cobrem hoje:
 | `07-por-obra.sql` | o caderno e as solicitações seguem a obra |
 | `08-so-admin-escreve.sql` | compradores e prestadores: o time lê, só o admin escreve |
 | `09-reforco.sql` | o reforço de 21/09/2026 (`rls-reforco.sql`): ninguém apaga obra nem reescreve o histórico, aditivo só na própria obra e com autoria do login, arquivos por obra, catálogo sem listagem anônima, a fila fora do que é do time, `sienge_obra` só no status, funções fechadas para anônimo |
+| `10-rn-001-liberacao.sql` | RN-001: só o administrador libera a compra, em nome próprio; via alocação por quem edita; restaurar versão devolve a liberação, copiar para mais itens não |
+| `11-preferencia.sql` | a preferência é de cada um: lê e grava as suas, não as dos outros; anônimo nem lê |
 
 ## Como rodar
 

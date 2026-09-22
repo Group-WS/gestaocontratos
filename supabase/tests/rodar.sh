@@ -52,6 +52,7 @@ ESTRUTURA=(
   sienge_obra.sql sienge_eap.sql sienge_solicitacao.sql sienge_obra_status_manual.sql
   compradores.sql mao-de-obra-propria.sql pessoa-canal.sql
   ultimo-acesso.sql foto-perfil.sql equipe-da-obra.sql taylor-made.sql contrato-restrito.sql patch-obra.sql
+  preferencia.sql
 )
 for f in "${ESTRUTURA[@]}"; do aplicar "$SQL/$f"; done
 

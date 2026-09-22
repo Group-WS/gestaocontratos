@@ -72,6 +72,8 @@ import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compra
 import { LogoGroupWS } from "./marca.jsx";
 import iconeSienge from "./assets/icone-sienge.svg";
 import { podeLiberarCompra } from "./regras/liberacaoDeCompra.js";
+import { usePreferencia, esquecerPreferencias } from "./lib/preferencias.js";
+import { clearBrowserData } from "./lib/armazenamento.js";
 // Papel dos documentos impressos (escopo, aditivo, relatório): cores fixas de
 // propósito, fora do tema — ver o cabeçalho de estilos/papel.css.
 import "./estilos/papel.css";
@@ -9986,9 +9988,11 @@ function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modul
   );
 }
 
+/* As chaves ANTIGAS do localStorage, de antes de 21/09/2026: hoje as
+   preferencias moram no banco (lib/preferencias.js), e estas so' sao lidas
+   uma vez, pra quem ja' tinha escolhido nao perder a escolha. */
 const CHAVE_MINHAS = "tkws.so.minhas";
 const CHAVE_SQUADS = "tkws.squads.fechados";
-const CHAVE_OBRAS_ABERTAS = "confere:obras-abertas";
 /* Como a lista de obras e' ordenada: "numero" (crescente, o padrao) ou
    "squad" (agrupada). Pedido dela em 19/09/2026. */
 const CHAVE_MODO_OBRAS = "confere:obras-modo";
@@ -10347,37 +10351,25 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
   const irPara = (id) => { onModulo(id); fechar(); };
   const escolherObra = (id) => { onSelect(id); fechar(); };
 
-  /* Guardado, como o resto da barra: quem trabalha so nas suas obras nao
-     quer reativar o filtro a cada F5. */
-  const [soMinhas, setSoMinhas] = useState(() => {
-    try { return localStorage.getItem(CHAVE_MINHAS) === "1"; } catch { return false; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(CHAVE_MINHAS, soMinhas ? "1" : "0"); } catch { /* modo anonimo */ }
-  }, [soMinhas]);
+  /* Lembrado, como o resto da barra: quem trabalha so nas suas obras nao
+     quer reativar o filtro a cada F5. Mora no banco e segue a pessoa de um
+     computador pro outro (lib/preferencias.js). */
+  const [soMinhas, setSoMinhas] = usePreferencia("obras.so_minhas", false,
+    { antiga: CHAVE_MINHAS, converter: (v) => v === "1" });
 
   /* Por numero ou por squad (pedido dela, 19/09/2026). O padrao e' numero:
      e' a ordem estavel, e casa com o codigo sendo a voz da linha. */
-  const [modo, setModo] = useState(() => {
-    try { return localStorage.getItem(CHAVE_MODO_OBRAS) === "squad" ? "squad" : "numero"; } catch { return "numero"; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(CHAVE_MODO_OBRAS, modo); } catch { /* modo anonimo */ }
-  }, [modo]);
+  const [modo, setModo] = usePreferencia("obras.modo", "numero",
+    { antiga: CHAVE_MODO_OBRAS, converter: (v) => (v === "squad" ? "squad" : "numero") });
 
   const nMinhas = obras.filter((o) => obraDaPessoa(o, usuario)).length;
 
-  /* Quais squads estao dobrados — so' vale no modo squad. Guardado, porque
+  /* Quais squads estao dobrados — so' vale no modo squad. Lembrado, porque
      quem trabalha num squad so nao quer dobrar os outros a cada F5. */
-  const [fechados, setFechados] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem(CHAVE_SQUADS) || "[]")); } catch { return new Set(); }
-  });
-  const alternarSquad = (nome) => setFechados((g) => {
-    const n = new Set(g);
-    n.has(nome) ? n.delete(nome) : n.add(nome);
-    try { localStorage.setItem(CHAVE_SQUADS, JSON.stringify([...n])); } catch { /* modo anonimo */ }
-    return n;
-  });
+  const [squadsDobrados, setSquadsDobrados] = usePreferencia("obras.squads_fechados", [], { antiga: CHAVE_SQUADS });
+  const fechados = useMemo(() => new Set(squadsDobrados), [squadsDobrados]);
+  const alternarSquad = (nome) => setSquadsDobrados((lista) =>
+    (lista.includes(nome) ? lista.filter((x) => x !== nome) : [...lista, nome]));
 
   const barraRef = useRef(null);
 
@@ -18727,16 +18719,12 @@ function EquipeView({ pessoas, obras, carregando, erro, usuario, migracaoPendent
   const [editando, setEditando] = useState(null);
   const [acessoDe, setAcessoDe] = useState(null);
   /* Grupo fechado na setinha (a fila de liberação pode ter vinte pessoas).
-     Lembrado neste navegador; sem armazenamento, vale só nesta visita. */
-  const [fechados, setFechados] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("equipe-grupos-fechados") || "[]")); } catch { return new Set(); }
-  });
-  const alternarGrupo = (c) => setFechados((antes) => {
-    const n = new Set(antes);
-    if (n.has(c)) n.delete(c); else n.add(c);
-    try { localStorage.setItem("equipe-grupos-fechados", JSON.stringify([...n])); } catch { /* segue só nesta visita */ }
-    return n;
-  });
+     Lembrado no banco, e segue a pessoa (lib/preferencias.js). */
+  const [gruposDobrados, setGruposDobrados] = usePreferencia("equipe.grupos_fechados", [],
+    { antiga: "equipe-grupos-fechados" });
+  const fechados = useMemo(() => new Set(gruposDobrados), [gruposDobrados]);
+  const alternarGrupo = (c) => setGruposDobrados((lista) =>
+    (lista.includes(c) ? lista.filter((x) => x !== c) : [...lista, c]));
 
   /* Cargo digitado uma vez vira sugestao pra proxima pessoa: a lista se
      configura pelo uso, sem tela de cadastro de cargo. */
@@ -21088,8 +21076,14 @@ export default function App() {
     )));
   }
 
+  /* Sair (NAV-06): a sessao no Supabase, depois o que o app guardou no
+     navegador (a copia das preferencias) e na memoria — a proxima pessoa
+     neste computador nao abre a tela com as escolhas de quem saiu. O
+     supabase-js ja' avisa as outras abas; o reload limpa o resto. */
   async function sairDaConta() {
     try { await supabase.auth.signOut({ scope: "local" }); } catch { /* segue */ }
+    clearBrowserData();
+    esquecerPreferencias();
     window.location.reload();
   }
 

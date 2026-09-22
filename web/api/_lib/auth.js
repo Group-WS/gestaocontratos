@@ -49,6 +49,9 @@ function tokenDoPedido(req) {
  * que este arquivo fecha.
  */
 async function exigirLogin(req, res, next) {
+  // Ja' verificado neste pedido (o app aplica na entrada, e cada arquivo de
+  // rotas aplica de novo, por garantia): nao consulta o Auth duas vezes.
+  if (req.usuario && req.supabase) return next();
   if (!configurado) {
     console.error(JSON.stringify({ level: "error", event: "auth_sem_configuracao" }));
     return res.status(503).json({ erro: "Autenticação indisponível." });

@@ -45,6 +45,13 @@ const SOLICITACOES = { 23000: { buildingId: 2519, status: "PENDING" }, 24000: { 
 const REF = "05.001.001.001";
 
 const chamadasSienge = [];
+// Preferencias que o "banco" tem, e o que a API mandou gravar.
+const PREFERENCIAS = [
+  { email: "gc@groupws.com.br", chave: "obras.modo", valor: "squad" },
+  { email: "admin@groupws.com.br", chave: "obras.modo", valor: "numero" },
+  { email: "gc@groupws.com.br", chave: "chave.aposentada", valor: true },
+];
+const gravadas = [];
 const json = (corpo, status = 200) =>
   new Response(JSON.stringify(corpo), { status, headers: { "content-type": "application/json" } });
 
@@ -69,6 +76,14 @@ global.fetch = async (url, opcoes = {}) => {
     if (u.pathname === "/rest/v1/obra") {
       const codigo = (u.searchParams.get("codigo") || "").replace(/^eq\./, "");
       return responder(OBRAS[codigo] ? [OBRAS[codigo]] : []);
+    }
+    if (u.pathname === "/rest/v1/preferencia") {
+      if (metodo === "GET") {
+        const email = (u.searchParams.get("email") || "").replace(/^eq\./, "");
+        return json(PREFERENCIAS.filter((p) => p.email === email).map(({ chave, valor }) => ({ chave, valor })));
+      }
+      gravadas.push(JSON.parse(opcoes.body));
+      return json([], 201);
     }
     return json([], 404);
   }
@@ -188,6 +203,22 @@ const servidor = app.listen(0, async () => {
     conf("leitura do Sienge: corpo cru inválido ainda oferece o base64", (await semBase64.json()).podeBase64, true);
     conf("base64 fora do formato é recusado pelo schema",
       (await pedir("t-admin", "POST", "/api/sienge/texto", { pdfBase64: "não é base64!" })).status, 400);
+
+    // 8b. Preferencias: cada um as suas, no formato certo, com o e-mail do login.
+    const prefs = await pedir("t-gc", "GET", "/api/preferencias");
+    conf("a pessoa lê as próprias preferências", prefs.status, 200);
+    conf("... só as dela, e só as chaves que existem", JSON.stringify(await prefs.json()), JSON.stringify({ "obras.modo": "squad" }));
+    conf("preferência que não existe é recusada",
+      (await pedir("t-gc", "PUT", "/api/preferencias/qualquer.coisa", { valor: 1 })).status, 400);
+    conf("valor fora do formato é recusado",
+      (await pedir("t-gc", "PUT", "/api/preferencias/obras.modo", { valor: "de cabeça pra baixo" })).status, 400);
+    conf("e-mail no corpo do pedido é recusado (quem grava é o login)",
+      (await pedir("t-gc", "PUT", "/api/preferencias/obras.modo", { valor: "numero", email: "admin@groupws.com.br" })).status, 400);
+    const certo8 = await pedir("t-gc", "PUT", "/api/preferencias/obras.squads_fechados", { valor: ["Squad Moon"] });
+    conf("grava a própria preferência", certo8.status, 200);
+    conf("... no e-mail do login", gravadas.at(-1)?.email, "gc@groupws.com.br");
+    conf("quem está na sala de espera não grava preferência",
+      (await pedir("t-fila", "PUT", "/api/preferencias/obras.modo", { valor: "numero" })).status, 403);
 
     // 9. O caminho legitimo continua de pe': GC, obra dele, reenvio da mesma obra.
     const certo = await pedir("t-gc", "POST", "/api/sienge/solicitacao",

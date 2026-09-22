@@ -109,7 +109,10 @@ conf("o item ativo leva o fio e o fundo da marca",
    inline de fundo e cor, que apagava o destaque do ativo. */
 conf("o item do menu é um link com endereço", src.includes("<a href={href} onClick={aoClicar} className={classe}"), true);
 
-conf("os dois modos existem", src.includes('localStorage.getItem(CHAVE_MODO_OBRAS) === "squad" ? "squad" : "numero"'), true);
+/* O modo mora no banco desde 21/09/2026 (lib/preferencias.js): "numero" de
+   padrão, "squad" quando escolhido — inclusive vindo da chave antiga. */
+conf("os dois modos existem", src.includes('usePreferencia("obras.modo", "numero"')
+  && src.includes('converter: (v) => (v === "squad" ? "squad" : "numero")'), true);
 /* O símbolo do squad aparece UMA vez: na linha no modo número, no cabeçalho
    no modo squad. Dizê-lo duas vezes era o defeito da barra antiga. */
 conf("no modo número o símbolo vai na linha", src.includes('filtradas.map((o) => linhaDaObra(o, true))'), true);

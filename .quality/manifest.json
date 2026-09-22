@@ -46,12 +46,19 @@
     "exigirLogo": "LogoGroupWS"
   },
   "navegador": {
-    "wrapper": null,
+    "wrapper": "web/src/lib/armazenamento.js",
     "permitidos": [
       {
         "chave": "sb-<project-ref>-auth-token",
         "tipo": "sessao",
         "motivo": "Sessão do Supabase Auth, gerida pelo supabase-js"
+      },
+      {
+        "chave": "cache:preferencias",
+        "tipo": "cache",
+        "motivo": "Abrir a tela com as preferências da pessoa sem piscar; a API confirma logo depois",
+        "fonteDaVerdade": "public.preferencia (via /api/preferencias)",
+        "validade": "30d"
       }
     ]
   },
@@ -60,7 +67,8 @@
       "exigirLogin"
     ],
     "pastasDeRotas": [
-      "web/api/_lib/mondayApp.js"
+      "web/api/_lib/mondayApp.js",
+      "web/api/_lib/rotas"
     ],
     "clientesAdministrativos": [
       "supabaseAdmin",

@@ -73,6 +73,11 @@ app.use(exigirMembro);
 const jsonPadrao = express.json({ limit: "1mb" });
 app.use((req, res, next) => (req.path === "/api/sienge/texto" ? next() : jsonPadrao(req, res, next)));
 
+/* As rotas de DADOS do app moram em _lib/rotas/, uma por assunto, cada uma
+   com o proprio exigirLogin (que nao repete a verificacao feita acima). */
+const { rotasDePreferencias } = require("./rotas/preferencias.js");
+app.use(rotasDePreferencias);
+
 const MONDAY_API_URL = "https://api.monday.com/v2";
 
 function mondayToken() {

@@ -32,7 +32,7 @@ Dentro de cada bloco a ordem não importa. Entre blocos, importa.
 `sienge_solicitacao.sql` · `sienge_obra_status_manual.sql` · `compradores.sql` ·
 `mao-de-obra-propria.sql` · `pessoa-canal.sql` · `ultimo-acesso.sql` ·
 `foto-perfil.sql` · `equipe-da-obra.sql` · `taylor-made.sql` ·
-`contrato-restrito.sql` · `patch-obra.sql`
+`contrato-restrito.sql` · `patch-obra.sql` · `preferencia.sql`
 
 > `aditivo-exclusao.sql` e `obra-comentario.sql` chamam `admin_do_time()`,
 > que vem do bloco 2. Por isso o bloco 2 vem antes deste.

@@ -3,83 +3,6 @@
   "iniciadaEm": "2026-09-20",
   "itens": [
     {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 9701,
-      "trecho": "try { return localStorage.getItem(CHAVE_MINHAS) === \"1\"; } catch { return false; }",
-      "impressao": "3794e39f0e3b0b6c"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 9704,
-      "trecho": "try { localStorage.setItem(CHAVE_MINHAS, soMinhas ? \"1\" : \"0\"); } catch { /* modo anonimo */ }",
-      "impressao": "48b6395bb334e959"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 9710,
-      "trecho": "try { return localStorage.getItem(CHAVE_MODO_OBRAS) === \"squad\" ? \"squad\" : \"numero\"; } catch { return \"numero\"; }",
-      "impressao": "ac4348a41ec58714"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 9713,
-      "trecho": "try { localStorage.setItem(CHAVE_MODO_OBRAS, modo); } catch { /* modo anonimo */ }",
-      "impressao": "6abff94ff2cbb559"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 9809,
-      "trecho": "try { return new Set(JSON.parse(localStorage.getItem(CHAVE_SQUADS) || \"[]\")); } catch { return new Set(); }",
-      "impressao": "ca4a69e539f39d96"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 9814,
-      "trecho": "try { localStorage.setItem(CHAVE_SQUADS, JSON.stringify([...n])); } catch { /* modo anonimo */ }",
-      "impressao": "52840ef8c79c7ae3"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 18175,
-      "trecho": "try { return new Set(JSON.parse(localStorage.getItem(\"equipe-grupos-fechados\") || \"[]\")); } catch { return new Set(); }",
-      "impressao": "e79a09ae38639719"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/App.jsx",
-      "linha": 18180,
-      "trecho": "try { localStorage.setItem(\"equipe-grupos-fechados\", JSON.stringify([...n])); } catch { /* segue só nesta visita */ }",
-      "impressao": "8d5580dced3ee646"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/AuthGate.jsx",
-      "linha": 45,
-      "trecho": "Object.keys(localStorage)",
-      "impressao": "c22abe0d69ef4a9e"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/AuthGate.jsx",
-      "linha": 47,
-      "trecho": ".forEach((k) => localStorage.removeItem(k));",
-      "impressao": "2c7942286e57e01c"
-    },
-    {
-      "regra": "NAV-03",
-      "arquivo": "web/src/AuthGate.jsx",
-      "linha": 68,
-      "trecho": "`getSession` só lê o localStorage; quem pergunta ao servidor é",
-      "impressao": "6084d7d62c7a87df"
-    },
-    {
       "regra": "SQL-11",
       "arquivo": "supabase/catalogo.sql",
       "linha": 105,
@@ -864,5 +787,5 @@
       "impressao": "6031e2fef247d69b"
     }
   ],
-  "atualizadaEm": "2026-09-21"
+  "atualizadaEm": "2026-09-22"
 }

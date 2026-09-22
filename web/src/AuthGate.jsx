@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Alert, AlertDescription, Button, Card, CardContent, Spinner } from "@group-ws/ws-ui";
 import { Lock } from "lucide-react";
 import { supabase, supabaseConfigurado, configuracaoAusente } from "./lib/supabase";
+import { apagarSessaoDoSupabase, clearBrowserData } from "./lib/armazenamento";
 import { LogoGroupWS } from "./marca.jsx";
 import capa from "./assets/login-capa.jpg";
 import capaPequena from "./assets/login-capa-1000.jpg";
@@ -43,11 +44,9 @@ const tokenPodre = (e) => {
  * pra sempre, sem nem um botão de sair na tela. */
 async function limparSessao() {
   try { await supabase.auth.signOut({ scope: "local" }); } catch (e) { /* segue */ }
-  try {
-    Object.keys(localStorage)
-      .filter((k) => /^sb-.*-auth-token/.test(k))
-      .forEach((k) => localStorage.removeItem(k));
-  } catch (e) { /* navegador sem storage */ }
+  // A chave da sessão sai pelo wrapper, o único que toca o storage (NAV-03).
+  apagarSessaoDoSupabase();
+  clearBrowserData();
 }
 
 export default function AuthGate({ children }) {
@@ -67,7 +66,7 @@ export default function AuthGate({ children }) {
       if (!data.session) { setSession(null); return; }
 
       /* Sessão guardada não é sessão válida.
-         `getSession` só lê o localStorage; quem pergunta ao servidor é
+         `getSession` só lê o que ficou guardado no navegador; quem pergunta ao servidor é
          `getUser`. Sem esta checagem o app entrava achando que estava
          logado, toda chamada ao banco falhava e não havia como sair. */
       const { error } = await supabase.auth.getUser();
