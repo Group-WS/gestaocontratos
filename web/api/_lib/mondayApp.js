@@ -70,13 +70,18 @@ app.use(exigirMembro);
    que tem o proprio leitor com o limite do arquivo em base64. Antes o
    leitor global (100 KB) rodava primeiro e recusava o base64 de qualquer
    PDF acima de ~75 KB, antes de a rota ter a chance de ler. */
+/* A gravacao da obra tambem le por conta propria: o conteudo inteiro de
+   uma obra grande nao cabe no limite de 1 MB, nem comprimido. */
+const { rotasDaObra, CAMINHO_DA_GRAVACAO } = require("./rotas/obraDados.js");
+const CAMINHOS_COM_LEITOR_PROPRIO = [/^\/api\/sienge\/texto$/, CAMINHO_DA_GRAVACAO];
 const jsonPadrao = express.json({ limit: "1mb" });
-app.use((req, res, next) => (req.path === "/api/sienge/texto" ? next() : jsonPadrao(req, res, next)));
+app.use((req, res, next) => (CAMINHOS_COM_LEITOR_PROPRIO.some((c) => c.test(req.path)) ? next() : jsonPadrao(req, res, next)));
 
 /* As rotas de DADOS do app moram em _lib/rotas/, uma por assunto, cada uma
    com o proprio exigirLogin (que nao repete a verificacao feita acima). */
 const { rotasDePreferencias } = require("./rotas/preferencias.js");
 app.use(rotasDePreferencias);
+app.use(rotasDaObra);
 
 const MONDAY_API_URL = "https://api.monday.com/v2";
 

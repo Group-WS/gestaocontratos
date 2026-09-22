@@ -112,8 +112,76 @@ const pdfEmBase64 = z.object({
   pdfBase64: z.string().min(1).max(LIMITE_PDF_BASE64).regex(/^[A-Za-z0-9+/]+={0,2}$/),
 }).strict();
 
+/* ---------- a gravacao da obra ---------- */
+
+// O conteudo da obra vai comprimido (gzip) e em base64: o JSON inteiro passa
+// de 1 MB nas obras grandes, e a Vercel corta o corpo em 4,5 MB. Comprimido,
+// cabe com folga — e em JSON, porque corpo binario ja' chegou corrompido
+// pela Vercel (ver a leitura de PDF do Sienge).
+const LIMITE_GRAVACAO_BASE64 = 4 * 1024 * 1024;
+// Teto do JSON depois de descomprimido: nenhuma obra chega perto, e o teto
+// impede um arquivo pequeno feito para explodir na memoria da funcao.
+const LIMITE_CONTEUDO_BYTES = 48 * 1024 * 1024;
+
+const codigoDeObra = z.string().trim().min(1).max(40).regex(/^[0-9A-Za-z._-]+$/);
+const versaoDaObra = z.number().int().positive();
+const paramCodigoObra = z.object({ codigo: codigoDeObra }).strict();
+const paramVersaoGuardada = z.object({ codigo: codigoDeObra, id: z.coerce.number().int().positive() }).strict();
+
+const gravacaoDaObra = z.object({
+  versao: versaoDaObra,
+  gzip: z.string().min(1).max(LIMITE_GRAVACAO_BASE64).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+}).strict();
+
+/* O conteudo, com os nomes das colunas de `obra_dados`. As listas e mapas
+   levam o que o app monta — itens das tres fontes, cadernos, escopos —,
+   cujo formato muda com o app e e' conferido la'; aqui vale o formato de
+   cada coluna, o mesmo que a funcao `salvar_obra` confere no banco. */
+const textoOuNulo = z.string().max(20000).nullable();
+const dataOuNulo = z.string().regex(/^\d{4}-\d{2}-\d{2}/).max(40).nullable();
+const conteudoDaObra = z.object({
+  categorias: z.array(z.record(z.string(), z.unknown())).max(2000),
+  cadernos: z.record(z.string(), z.unknown()),
+  arquivos: z.array(z.unknown()).max(10000),
+  aprovacoes: z.array(z.unknown()).max(100000),
+  escopos: z.array(z.unknown()).max(2000),
+  etapas_concluidas: z.record(z.string(), z.unknown()),
+  depara_aprovado: z.boolean(),
+  executivo_liberado_direto: z.boolean(),
+  compras_liberadas: z.boolean(),
+  cliente_assinou_em: dataOuNulo,
+  cliente_assinatura_por: textoOuNulo,
+  cliente_assinatura_arq: z.record(z.string(), z.unknown()).nullable(),
+  cliente_assinatura_obs: textoOuNulo,
+  compra_sem_assinatura_por: textoOuNulo,
+  compra_sem_assinatura_em: dataOuNulo,
+  compra_sem_assinatura_just: textoOuNulo,
+  cmv_liberado: z.number().finite().nullable(),
+  cmv_liberado_em: dataOuNulo,
+  cmv_liberado_por: textoOuNulo,
+  data_entrega: dataOuNulo,
+}).strict();
+
+// Um patch e' "este campo deste item", "esta chave deste mapa da verba" ou
+// "esta marca da obra" — os tres formatos que `aplicar_patch_obra` entende.
+const camposDoPatch = z.record(z.string(), z.unknown());
+const patchDaObra = z.union([
+  z.object({
+    verba: z.number().int().nonnegative(), item: z.number().int().nonnegative(), campos: camposDoPatch,
+    confCodigo: z.string().max(200).optional(), confDesc: z.string().max(4000).optional(),
+  }).strict(),
+  z.object({
+    verba: z.number().int().nonnegative(), mapa: z.enum(["comprasAditivo"]), chave: z.string().min(1).max(200), campos: camposDoPatch,
+  }).strict(),
+  z.object({ coluna: z.string().min(1).max(60), valor: z.unknown() }).strict(),
+]);
+const patchesDaObra = z.object({ versao: versaoDaObra, patches: z.array(patchDaObra).min(1).max(5000) }).strict();
+
 module.exports = {
   z, zValidator, validarPdf, pareceUmPdf,
-  LIMITE_PDF_BYTES, LIMITE_PDF_BASE64, PAGINAS_MAX,
-  esquemas: { solicitacaoDeCompra, paramObra, paramSolicitacao, queryInsumos, pdfEmBase64 },
+  LIMITE_PDF_BYTES, LIMITE_PDF_BASE64, PAGINAS_MAX, LIMITE_GRAVACAO_BASE64, LIMITE_CONTEUDO_BYTES,
+  esquemas: {
+    solicitacaoDeCompra, paramObra, paramSolicitacao, queryInsumos, pdfEmBase64,
+    paramCodigoObra, paramVersaoGuardada, gravacaoDaObra, conteudoDaObra, patchesDaObra,
+  },
 };
