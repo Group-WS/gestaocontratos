@@ -1,7 +1,36 @@
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
 import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
-  Popover, PopoverTrigger, PopoverContent, Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@group-ws/ws-ui";
+  DateField, Popover, PopoverTrigger, PopoverContent, Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@group-ws/ws-ui";
 import { Check, ChevronDown, ChevronRight, ChevronsUpDown } from "lucide-react";
+
+/* CAMPO DE DATA DO DS, controlado.
+
+   O `DateField` do design system (calendário em pt-BR, dd/MM/aaaa, botão de
+   limpar) só fala com react-hook-form. O app guarda datas em estado comum,
+   como string "aaaa-mm-dd" — a mesma que o campo de data nativo devolvia.
+   Este wrapper dá ao DateField um formulário de um campo só e devolve a
+   string pelo `onChange`, então quem usa troca o input nativo sem mudar a
+   lógica: `onChange` recebe "aaaa-mm-dd" ou "" quando a data é limpa.
+
+   Só a mudança feita pela pessoa sobe (type "change"); a vinda de fora
+   (`valor` novo) só atualiza o campo, sem disparar `onChange` de volta. */
+export function CampoData({ valor, onChange, disabled, placeholder = "dd/mm/aaaa", className = "", minDate, maxDate, clearable = true }) {
+  const { control, setValue, watch } = useForm({ defaultValues: { data: valor || null } });
+  const aoMudar = useRef(onChange);
+  aoMudar.current = onChange;
+  useEffect(() => { setValue("data", valor || null); }, [valor, setValue]);
+  useEffect(() => {
+    const assinatura = watch((v, { name, type }) => {
+      if (name === "data" && type === "change") aoMudar.current?.(v.data || "");
+    });
+    return () => assinatura.unsubscribe();
+  }, [watch]);
+  return (
+    <DateField control={control} name="data" placeholder={placeholder} disabled={disabled}
+      className={className} minDate={minDate} maxDate={maxDate} clearable={clearable} />
+  );
+}
 
 /* Breakpoint `lg` do Tailwind: acima dele a barra lateral fica fixa na
    tela; abaixo, ela abre num Sheet pelo botão de menu do topo. */

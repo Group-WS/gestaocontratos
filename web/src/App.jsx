@@ -65,7 +65,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, CampoData, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -1253,7 +1253,6 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
   }));
   if (!obra.gc) pendencias.push({ tom: "aviso", txt: "esta obra está sem GC responsável" });
 
-  const entregaId = React.useId();
   const kpis = [
     { label: "Avanço geral", value: `${avancoGeral}%`, hint: "da obra concluída", tone: "brand" },
     {
@@ -1463,9 +1462,9 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
       <Card>
         <CardContent className="flex flex-wrap items-center gap-2">
           <Clock size={14} className="text-text-mute" aria-hidden="true" />
-          <Label htmlFor={entregaId}>Entrega prevista</Label>
-          <Input id={entregaId} type="date" className="w-auto" value={rascunho} disabled={!podeEditar}
-            onChange={(e) => setRascunho(e.target.value)} />
+          <Label>Entrega prevista</Label>
+          <CampoData className="w-44" valor={rascunho} disabled={!podeEditar}
+            onChange={(v) => setRascunho(v)} />
           {podeEditar && sujo && (
             <Button size="sm" onClick={() => onDataEntrega(rascunho || null)}>Salvar data</Button>
           )}
@@ -10693,7 +10692,6 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
   const [enviando, setEnviando] = useState(false);
   const [erroArq, setErroArq] = useState(null);
   const [baixando, setBaixando] = useState(false);
-  const idData = React.useId();
   const idObs = React.useId();
   const congelado = obra.comprasLiberadas || !podeEditar;
 
@@ -10810,10 +10808,9 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
         <CardContent className="flex flex-col gap-4">
           <div className="grid gap-4 md:grid-cols-2">
             <Field>
-              <Label htmlFor={idData}>Data da assinatura</Label>
-              <Input id={idData} type="date" value={data} disabled={congelado}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setData(e.target.value)} />
+              <Label>Data da assinatura</Label>
+              <CampoData valor={data} disabled={congelado} maxDate={new Date()}
+                onChange={(v) => setData(v)} />
             </Field>
 
             <Field className="md:col-span-2">
@@ -15265,12 +15262,12 @@ function FormNovoEscopo({ obra, servicos, onCriar, onCancelar }) {
       </Field>
       <div className="form-row form-row-3">
         <Field>
-          <Label htmlFor={`${id}-inicio`}>Início</Label>
-          <Input id={`${id}-inicio`} type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+          <Label>Início</Label>
+          <CampoData valor={inicio} onChange={(v) => setInicio(v)} />
         </Field>
         <Field>
-          <Label htmlFor={`${id}-fim`}>Fim</Label>
-          <Input id={`${id}-fim`} type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
+          <Label>Fim</Label>
+          <CampoData valor={fim} onChange={(v) => setFim(v)} />
         </Field>
         <span />
       </div>
@@ -15369,14 +15366,14 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
             onChange={(e) => onMudar({ fornecedor: e.target.value || null })} placeholder="—" />
         </Field>
         <Field>
-          <Label htmlFor={`${id}-inicio`}>Início</Label>
-          <Input id={`${id}-inicio`} type="date" value={escopo.inicio || ""} disabled={!podeEditar}
-            onChange={(e) => onMudar({ inicio: e.target.value || null })} />
+          <Label>Início</Label>
+          <CampoData valor={escopo.inicio || ""} disabled={!podeEditar}
+            onChange={(v) => onMudar({ inicio: v || null })} />
         </Field>
         <Field>
-          <Label htmlFor={`${id}-fim`}>Fim</Label>
-          <Input id={`${id}-fim`} type="date" value={escopo.fim || ""} disabled={!podeEditar}
-            onChange={(e) => onMudar({ fim: e.target.value || null })} />
+          <Label>Fim</Label>
+          <CampoData valor={escopo.fim || ""} disabled={!podeEditar}
+            onChange={(v) => onMudar({ fim: v || null })} />
         </Field>
       </div>
 
@@ -15393,9 +15390,9 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
                 })} />
             </Field>
             <Field className="parc-campo">
-              <Label htmlFor={`${id}-venc1`}>1º vencimento</Label>
-              <Input id={`${id}-venc1`} type="date" value={escopo.venc1 || ""}
-                onChange={(e) => onMudar({ venc1: e.target.value })} />
+              <Label>1º vencimento</Label>
+              <CampoData valor={escopo.venc1 || ""}
+                onChange={(v) => onMudar({ venc1: v })} />
             </Field>
             <Field className="parc-campo">
               <Label htmlFor={`${id}-intervalo`}>Intervalo (dias)</Label>
@@ -17801,8 +17798,8 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
                   <Input id={`${idCampo}-proposta`} value={doc.proposta} onChange={(e) => campo("proposta", e.target.value)} />
                 </Field>
                 <Field>
-                  <Label htmlFor={`${idCampo}-data`}>Data</Label>
-                  <Input id={`${idCampo}-data`} type="date" value={doc.data || ""} onChange={(e) => campo("data", e.target.value)} />
+                  <Label>Data</Label>
+                  <CampoData valor={doc.data || ""} onChange={(v) => campo("data", v)} />
                 </Field>
               </div>
             </CardContent>
