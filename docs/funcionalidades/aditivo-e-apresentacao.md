@@ -73,7 +73,8 @@ uma é assinado pela API e vale uma hora. As imagens antigas continuam abrindo d
   `web/src/App.jsx` (Aditivos), `web/src/Apresentacao.jsx`.
 - Testes: `supabase/tests/13-aditivo-apresentacao.sql`,
   `web/api/_lib/__testes__/documentos-da-obra.test.cjs`,
-  `web/src/__testes__/documentos-protegidos.test.mjs`.
+  `web/src/__testes__/documentos-protegidos.test.mjs` e, no navegador com duas
+  sessões de verdade, `e2e/duas-sessoes-aditivo.spec.mjs`.
 
 ## Fora do escopo
 

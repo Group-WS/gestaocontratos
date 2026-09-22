@@ -50,12 +50,16 @@ const erro = avisoDoDocumento({ estado: "erro", proximaEm: agora + 8000, erro: {
 conf("falha temporária avisa e tenta de novo", erro.acao, "tentar");
 conf("... dizendo em quantos segundos", /em 8 s/.test(erro.descricao), true);
 conf("... e nomeando o documento", /aditivo 2405\/1/.test(erro.titulo), true);
+conf("... em português: 'no aditivo', e não 'em o aditivo'",
+  erro.titulo, "As alterações no aditivo 2405/1 ainda não foram gravadas");
 
 const conflito = avisoDoDocumento({
   estado: "conflito",
   erro: { detalhe: { motivo: "versao", atualizadoPor: "ana@groupws.com.br", atualizadoEm: "2026-09-22T13:05:00Z" } },
 }, { documento: nomeDaApresentacao({ rev: "01" }), agora });
 conf("conflito manda recarregar, não tentar de novo", conflito.acao, "recarregar");
+conf("... com a preposição certa também no feminino",
+  /^Suas últimas alterações na revisão 01 da apresentação/.test(conflito.titulo), true);
 conf("... diz quem alterou", /ana@groupws\.com\.br/.test(conflito.descricao), true);
 conf("... e garante que nada foi gravado por cima", /nada desta tela foi gravado por cima/.test(conflito.descricao), true);
 conf("recusado pede uma decisão de quem está editando",

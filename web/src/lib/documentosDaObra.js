@@ -57,6 +57,11 @@ function hora(iso) {
 
 const segundosAte = (quando, agora) => Math.max(0, Math.ceil(((quando || 0) - agora) / 1000));
 
+/* "o aditivo 2405/1" -> "no aditivo 2405/1"; "a revisão 01 da apresentação"
+   -> "na revisão 01 da apresentação". O nome do documento já vem com o
+   artigo, que é o que diz o gênero; aqui ele só se junta à preposição. */
+const em = (documento) => String(documento).replace(/^o /, "no ").replace(/^a /, "na ");
+
 /**
  * O aviso com a explicação e a saída. `acao`: "tentar" (tentar agora) ou
  * "recarregar" (trazer do banco, descartando o que não foi gravado — sempre
@@ -71,7 +76,7 @@ export function avisoDoDocumento(situacao, { documento = "este documento", agora
     const s = segundosAte(situacao.proximaEm, agora);
     return {
       tom: "warning",
-      titulo: `As alterações em ${documento} ainda não foram gravadas`,
+      titulo: `As alterações ${em(documento)} ainda não foram gravadas`,
       descricao: `${e?.message || "O servidor não respondeu."} Uma nova tentativa sai ${s > 0 ? `em ${s} s` : "agora"}, e outras depois dela. Mantenha esta aba aberta até aparecer "salvo".`,
       acao: "tentar",
     };
@@ -87,7 +92,7 @@ export function avisoDoDocumento(situacao, { documento = "este documento", agora
   if (situacao?.estado === "conflito") {
     return {
       tom: "danger",
-      titulo: `Suas últimas alterações em ${documento} não foram gravadas`,
+      titulo: `Suas últimas alterações ${em(documento)} não foram gravadas`,
       descricao: `Outra pessoa alterou ${documento}${d.atualizadoPor ? `, ${d.atualizadoPor}` : ""}${hora(d.atualizadoEm)}, depois que esta tela o leu. Para não apagar esse trabalho, nada desta tela foi gravado por cima. Recarregue para ver como ele está agora — o que você alterou fica só nesta tela até lá.`,
       acao: "recarregar",
     };
