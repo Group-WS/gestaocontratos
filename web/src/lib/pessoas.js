@@ -1,4 +1,6 @@
-import { supabase, supabaseConfigurado } from "./supabase";
+import { supabaseConfigurado } from "./supabase";
+import { apiJson } from "./api";
+import { urlPublica, enviarAssinado } from "./storage";
 
 /**
  * A equipe.
@@ -6,6 +8,16 @@ import { supabase, supabaseConfigurado } from "./supabase";
  * Existe pra que atribuir o GC de uma obra seja ESCOLHER de uma lista, e
  * nao digitar um e-mail: e-mail digitado erra, e um caractere trocado faz
  * a obra ficar sem dono sem ninguem perceber.
+ *
+ * O CAMINHO ATE' O BANCO MUDOU (VH-02): quem fala com a tabela `pessoa` e'
+ * a API (web/api/_lib/rotas/pessoas.js), e esta lib fala com a API. O que
+ * decide quem ve e quem grava continua sendo o RLS de `pessoa`, porque a
+ * rota consulta com o client do proprio usuario. `supabaseConfigurado`
+ * segue aqui: e' so' uma bandeira ("ha banco configurado?"), nao acesso a
+ * dado, e e' ela que mantem o app util sem Supabase nenhum.
+ *
+ * O que NAO mudou de lugar: a traducao da linha do banco pro objeto da
+ * tela (`paraApp`) e todas as funcoes puras de acesso (quem ve o que).
  */
 
 /* Sugestoes, nao camisa de forca: o campo aceita qualquer texto, porque
@@ -62,9 +74,20 @@ export function nomeDoEmail(email) {
    que falta e' anunciado. */
 export const MIGRACAO_PENDENTE = "migracao-pendente";
 
-function faltaColuna(error) {
-  return error && (error.code === "42703" || error.code === "PGRST204"
-    || /column .* does not exist|Could not find the/i.test(error.message || ""));
+/* A INSTRUCAO DE MIGRACAO, de volta em forma de `erro.migracao`.
+ *
+ * Quem le' o codigo do erro do Postgres (42703 e companhia) agora e' a
+ * rota — e' la' que o banco responde. O que a API devolve e' a frase
+ * pronta e `code: "migracao"`; aqui isso volta a ser a propriedade que a
+ * tela sempre consultou (`e.migracao`), pra ela continuar dizendo o que
+ * falta rodar em vez de "deu erro". */
+async function comMigracao(pedir) {
+  try {
+    return await pedir();
+  } catch (e) {
+    if (e?.code === "migracao") e.migracao = true;
+    throw e;
+  }
 }
 
 /* Pergunta pela coluna, nao pela linha.
@@ -72,24 +95,32 @@ function faltaColuna(error) {
    `select("*")` NAO da erro quando `perfil` nao existe — ele devolve as
    colunas que ha. Foi assim que a deteccao anterior falhou: sem erro,
    ninguem tinha perfil, e o portao mandou todo mundo pra sala de espera.
-   Perguntar pela coluna especifica e' o unico jeito de saber. */
+   Perguntar pela coluna especifica e' o unico jeito de saber — e quem
+   pergunta e' a rota, que e' quem fala com o banco.
+
+   Pedido que nao chega conta como "a coluna existe": era o que acontecia
+   quando o erro do banco nao era "falta a coluna", e e' o lado seguro —
+   ligar o aviso por engano desligaria o controle de acesso inteiro. */
 export async function migracaoDePerfilFeita() {
   if (!supabaseConfigurado) return true;
-  const { error } = await supabase.from("pessoa").select("perfil").limit(1);
-  return !faltaColuna(error);
+  try {
+    const r = await apiJson("/api/pessoas/banco-disponivel");
+    return r?.feita !== false;
+  } catch {
+    return true;
+  }
 }
 
 export async function listarPessoas() {
   if (!supabaseConfigurado) return [];
-  const { data, error } = await supabase.from("pessoa").select("*").order("nome");
-  if (error) {
-    if (faltaColuna(error)) { const e = new Error(MIGRACAO_PENDENTE); e.migracao = true; throw e; }
-    throw error;
-  }
-  return (data || []).map(paraApp);
+  const linhas = await comMigracao(() => apiJson("/api/pessoas"));
+  return (linhas || []).map(paraApp);
 }
 
-export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, perfil, canal, modulos, obrasRegra, obras, por }) {
+/* `por` (quem esta' salvando) nao viaja mais no corpo: a rota pega o
+   e-mail de quem chamou do LOGIN (SEG-13). A tela pode continuar
+   passando — e passa —, que aqui ele so' nao e' reenviado. */
+export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, perfil, canal, modulos, obrasRegra, obras }) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado.");
   const e = String(email || "").trim().toLowerCase();
   if (!e) throw new Error("O e-mail é obrigatório.");
@@ -98,47 +129,29 @@ export async function salvarPessoa({ email, nome, cargo, ativo = true, admin, pe
     nome: String(nome || "").trim() || nomeDoEmail(e),
     cargo: cargo || null,
     ativo,
-    criado_por: por || null,
   };
   /* So' manda o que veio. Um upsert que sempre escreve `admin: false`
      apagaria o admin de alguem so' porque quem editou o nome nao mexeu
-     nessa parte da tela. */
+     nessa parte da tela. Campo ausente no JSON chega `undefined` na rota,
+     que e' exatamente o "nao mexi nisso" que ela espera. */
   if (admin !== undefined) campos.admin = !!admin;
   /* O canal segue a mesma regra dos outros campos: so' viaja quando veio.
      Mandar `null` sempre apagaria o canal de quem so' teve o nome corrigido. */
   if (canal !== undefined) campos.canal = canal || null;
-  if (perfil !== undefined) {
-    campos.perfil = perfil || null;
-    /* Quem liberou e quando. So' na hora de DAR o perfil — reescrever
-       isso a cada edicao de nome apagaria o registro de quem deu o
-       acesso, que e' a unica coisa que responde "quem deixou entrar". */
-    if (perfil) { campos.liberado_em = new Date().toISOString(); campos.liberado_por = por || null; }
-  }
+  /* Quem liberou e quando sao carimbados na rota, junto do perfil — ver
+     web/api/_lib/rotas/pessoas.js. */
+  if (perfil !== undefined) campos.perfil = perfil || null;
   if (modulos !== undefined) campos.modulos = lista(modulos);
-  if (obrasRegra !== undefined) campos.obras_regra = obrasRegra;
+  if (obrasRegra !== undefined) campos.obrasRegra = obrasRegra;
   if (obras !== undefined) campos.obras = lista(obras).map(String);
 
-  const { data, error } = await supabase.from("pessoa").upsert(campos, { onConflict: "email" }).select().single();
-  /* Erro do Postgres na cara de quem so' queria dar um perfil nao ajuda
-     ninguem: diz o que quebrou, nao o que fazer. Aqui vira instrucao. */
-  if (faltaColuna(error)) {
-    const e2 = new Error("Falta rodar supabase/perfis.sql no Supabase — as colunas de perfil ainda não existem no banco. Até lá dá pra cadastrar nome e cargo, mas não atribuir perfil.");
-    e2.migracao = true;
-    throw e2;
-  }
-  /* O perfil Admin master so' existe no banco depois do SQL: antes disso o
-     Postgres recusa a linha com um erro que nao diz o que fazer. */
-  if (error?.code === "23514" && /perfil/i.test(error.message || "")) {
-    throw new Error("O banco ainda não conhece o perfil Admin master: falta rodar supabase/admin-master.sql no Supabase (SQL Editor).");
-  }
-  if (error) throw error;
-  return paraApp(data);
+  const linha = await comMigracao(() => apiJson("/api/pessoas", { metodo: "PUT", corpo: campos }));
+  return paraApp(linha);
 }
 
 export async function excluirPessoa(email) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado.");
-  const { error } = await supabase.from("pessoa").delete().eq("email", email);
-  if (error) throw error;
+  await apiJson(`/api/pessoas/${encodeURIComponent(email)}`, { metodo: "DELETE" });
 }
 
 /* ---------- QUEM VE O QUE ----------
@@ -340,32 +353,21 @@ export const dominioPermitido = (email) =>
  * dela: ela entra pelo link, o app garante a linha com perfil NULO, e o
  * administrador ve um pendente.
  *
- * `ignoreDuplicates` e nao upsert comum: quem ja tem perfil nao pode ser
- * reescrito por um login: seria zerar o acesso de alguem toda vez que
- * ele entrasse.
+ * Le a linha antes de inserir, e nao um upsert: quem ja tem perfil nao
+ * pode ser reescrito por um login — seria zerar o acesso de alguem toda
+ * vez que ele entrasse. Isso tudo acontece na rota; aqui so' fica o que a
+ * tela precisa saber.
+ *
+ * O `email` continua na assinatura porque e' a tela que sabe se ha alguem
+ * logado (sem isso nao ha fila a garantir), mas ele NAO viaja: qual e' o
+ * e-mail de quem esta entrando quem diz e' o login, no servidor (SEG-13).
+ * Mandar o e-mail no corpo seria deixar qualquer um criar fila com o
+ * e-mail de outro.
  */
 export async function garantirPessoa(email) {
   if (!supabaseConfigurado || !email) return null;
-  const e = String(email).toLowerCase();
-
-  const { data: existe } = await supabase.from("pessoa").select("*").eq("email", e).maybeSingle();
-  if (existe) return paraApp(existe);
-
-  const { data, error } = await supabase.from("pessoa").insert({
-    email: e, nome: nomeDoEmail(e), perfil: null, ativo: true,
-    entrou_em: new Date().toISOString(),
-  }).select().single();
-
-  // Sem as colunas novas, nao ha fila pra entrar ainda.
-  if (faltaColuna(error)) return null;
-
-  /* Corrida entre duas abas abrindo ao mesmo tempo: a segunda recebe
-     violacao de chave, e o certo e' ler o que a primeira gravou. */
-  if (error) {
-    const { data: agora } = await supabase.from("pessoa").select("*").eq("email", e).maybeSingle();
-    return agora ? paraApp(agora) : null;
-  }
-  return paraApp(data);
+  const linha = await apiJson("/api/pessoas/entrada", { metodo: "POST", corpo: {} });
+  return linha ? paraApp(linha) : null;
 }
 
 /* Nunca pode faltar quem cuide da Equipe: sem essa pessoa ninguem mais
@@ -392,8 +394,14 @@ export const MINUTOS_ONLINE = 3;
 export async function registrarAcesso() {
   if (!supabaseConfigurado) return false;
   // Sem o SQL rodado a funcao nao existe: falha calada, o app segue igual.
-  const { error } = await supabase.rpc("registrar_acesso");
-  return !error;
+  // A rota ja' responde `ok: false` nesse caso; o try guarda o resto
+  // (pedido que nao chega), que antes tambem nao aparecia pra ninguem.
+  try {
+    const r = await apiJson("/api/acessos/registrar", { metodo: "POST", corpo: {} });
+    return !!r?.ok;
+  } catch {
+    return false;
+  }
 }
 
 export const estaOnline = (pessoa, agora = Date.now()) => {
@@ -429,6 +437,10 @@ export function quandoFoi(iso, agora = new Date()) {
    ============================================================ */
 
 const BALDE_FOTO = "catalogo";
+/* A pasta dentro do balde, so' como documentacao: quem monta o caminho da
+   foto e' a API (web/api/_lib/rotas/pessoas.js), a partir do e-mail do
+   login. `urlDaFoto` usa o caminho inteiro que veio do banco, entao esta
+   constante nao entra em nenhum endereco — mudar so' aqui nao muda nada. */
 export const PASTA_FOTO = "pessoas";
 
 /* Um circulo de 40px nao precisa dos 4 MB da camera do celular.
@@ -477,28 +489,40 @@ function quadradoDe(file, recorte) {
   });
 }
 
-/** Sobe a foto e devolve o CAMINHO dela no balde. Não grava na pessoa. */
+/**
+ * Sobe a foto e devolve o CAMINHO dela no balde. Não grava na pessoa.
+ *
+ * A imagem continua indo DIRETO pro Storage, e não pela API: o corpo da
+ * função da Vercel para em 4,5 MB e quem autoriza é a rota, que assina o
+ * endereço antes (web/src/lib/storage.js explica a decisão inteira).
+ *
+ * Quem escolhe o caminho agora é a rota — a pasta sai do e-mail do LOGIN
+ * (SEG-13), com o mesmo carimbo de tempo que fura o cache do navegador. O
+ * `email` segue na assinatura porque é a tela que sabe de quem é a foto;
+ * conferir isso passou a ser do servidor.
+ */
 export async function subirFotoPerfil(file, email, recorte) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado — a foto não tem onde ficar guardada.");
   if (!file?.type?.startsWith("image/")) throw new Error("Escolha uma imagem (JPG, PNG ou WEBP).");
 
   const quadrado = await quadradoDe(file, recorte);
-  const quem = String(email || "").trim().toLowerCase().replace(/[^a-z0-9._-]/g, "-");
-  /* Carimbo de tempo no nome: reusar o caminho faria o navegador seguir
-     mostrando a foto velha do cache depois da troca. */
-  const caminho = `${PASTA_FOTO}/${quem}/${Date.now()}.jpg`;
-
-  const { error } = await supabase.storage
-    .from(BALDE_FOTO)
-    .upload(caminho, quadrado, { contentType: "image/jpeg", upsert: true });
-  if (error) throw new Error("Não consegui guardar a foto: " + (error.message || ""));
-  return caminho;
+  try {
+    const assinatura = await apiJson("/api/pessoas/foto/envio", { metodo: "POST", corpo: {} });
+    return await enviarAssinado(BALDE_FOTO, assinatura, quadrado, { upsert: true });
+  } catch (err) {
+    /* `enviarAssinado` e a API já devolvem frase pronta ("Sua sessão expirou…",
+       "Arquivo grande demais…"). Prefixar por cima gerava "Não consegui
+       guardar a foto: Não consegui guardar o arquivo: …". O prefixo só entra
+       quando o que veio não explica nada. */
+    const m = String(err?.message || "");
+    throw new Error(m && /[a-zç]\s/i.test(m) ? m : "Não consegui guardar a foto: " + m);
+  }
 }
 
 /** O endereço público da foto. Síncrona — entra direto no src do <img>. */
 export function urlDaFoto(caminho) {
   if (!caminho || !supabaseConfigurado) return null;
-  return supabase.storage.from(BALDE_FOTO).getPublicUrl(caminho).data.publicUrl;
+  return urlPublica(BALDE_FOTO, caminho);
 }
 
 /**
@@ -514,14 +538,20 @@ export function urlDaFoto(caminho) {
  */
 export async function definirFotoPerfil(caminho) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado.");
-  const { error } = await supabase.rpc("definir_foto", { caminho: caminho || "" });
-  if (!error) return true;
-  /* Sem o SQL rodado a funcao nao existe, e o erro do Postgres nao diz o
-     que fazer. Aqui vira instrucao, como no resto do arquivo. */
-  if (/function .*definir_foto.* does not exist|PGRST202/i.test(`${error.message} ${error.code || ""}`)) {
-    const e = new Error("Falta rodar supabase/foto-perfil.sql no Supabase (SQL Editor) — a foto ainda não tem onde ser guardada.");
-    e.migracao = true;
-    throw e;
+  /* Quem chama `definir_foto` agora e' a rota (PUT /api/pessoas/foto): o
+     e-mail sai do login la', e nao do que o navegador mandasse. A
+     instrucao de "falta rodar o SQL" volta como `code: "migracao"`, que o
+     `comMigracao` converte de novo em `erro.migracao` pra tela. */
+  try {
+    await comMigracao(() => apiJson("/api/pessoas/foto", { metodo: "PUT", corpo: { caminho: caminho || "" } }));
+  } catch (e) {
+    /* A instrução de migração já se explica sozinha e chega inteira; o resto
+       vem genérico da API ("Você não tem permissão…") e, no meio da tela de
+       perfil, não diz o que deixou de salvar. */
+    if (e?.migracao) throw e;
+    const nova = new Error("Não consegui salvar a foto: " + (e?.message || ""));
+    nova.code = e?.code;
+    throw nova;
   }
-  throw new Error("Não consegui salvar a foto: " + (error.message || ""));
+  return true;
 }

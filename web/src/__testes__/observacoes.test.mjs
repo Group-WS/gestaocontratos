@@ -24,6 +24,12 @@ import { fileURLToPath } from "node:url";
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const src = fs.readFileSync(path.join(aqui, "..", "lib", "comentarios.js"), "utf8");
 const app = fs.readFileSync(path.join(aqui, "..", "App.jsx"), "utf8");
+/* Desde 22/09/2026 quem fala com a tabela e' a API, e nao o navegador
+   (VH-02). O que era conferido na biblioteca do front e dependia do banco —
+   o carimbo do autor, o nome das colunas, o "o SQL ainda nao rodou" — passa
+   a ser conferido na ROTA, que e' onde essas decisoes moram agora. */
+const rota = fs.readFileSync(path.join(aqui, "..", "..", "api", "_lib", "rotas", "comentarios.js"), "utf8");
+const auth = fs.readFileSync(path.join(aqui, "..", "..", "api", "_lib", "auth.js"), "utf8");
 /* `(select auth.jwt())` e `auth.jwt()` sao a MESMA regra: o primeiro so'
    avalia uma vez por consulta em vez de uma vez por linha (regra SQL-12 do
    padrao Group WS). Normalizar antes de comparar mantem as conferencias
@@ -36,23 +42,31 @@ const bloco = (assinatura, fim = "\n}\n") => {
   if (i === -1) throw new Error(`não achei em comentarios.js: ${assinatura}`);
   return src.slice(i, src.indexOf(fim, i) + fim.length);
 };
-const trecho = (comeco, fim) => {
-  const i = src.indexOf(comeco);
-  return src.slice(i, src.indexOf(fim, i) + fim.length);
+const trechoDa = (texto, onde, comeco, fim) => {
+  const i = texto.indexOf(comeco);
+  if (i === -1) throw new Error(`não achei em ${onde}: ${comeco}`);
+  return texto.slice(i, texto.indexOf(fim, i) + fim.length);
 };
 
+/* O pedido que sai do navegador. Não há mais linha de banco aqui: o que a
+   biblioteca decide é o que VIAJA — e o que NÃO viaja (o autor). */
 let enviado = null;
-const supabaseStub = {
-  from: () => ({
-    insert: (linha) => { enviado = linha; return { select: () => ({ single: async () => ({ data: { id: 1, ...linha }, error: null }) }) }; },
-  }),
+const apiJsonStub = async (caminho, opcoes = {}) => {
+  enviado = { caminho, ...opcoes };
+  return { id: 1, ...(opcoes.corpo || {}) };
 };
 const M = eval("(function () {\n"
   + "  const supabaseConfigurado = true;\n"
-  + "  const supabase = supabaseStub;\n"
-  + trecho("const semTabela =", ";\n")
+  + "  const apiJson = apiJsonStub;\n"
   + bloco("export async function criarComentario(").replace("export ", "")
-  + "  return { semTabela, criarComentario };\n"
+  + "  return { criarComentario };\n"
+  + "})()");
+
+/* O "o SQL ainda não rodou" mora na rota desde a migração — é lá que o
+   código do Postgres é lido. */
+const R = eval("(function () {\n"
+  + trechoDa(rota, "rotas/comentarios.js", "const semTabela =", ";\n")
+  + "  return { semTabela };\n"
   + "})()");
 
 let f = 0;
@@ -65,18 +79,30 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
 {
   enviado = null;
   await M.criarComentario({ obraCodigo: 2597, verbaNum: "21", itemChave: "divisor de talher", texto: "  falta comprar  ", autor: "Lorena@GroupWS.com.br" });
-  conf("grava o texto sem os espaços das pontas", enviado.texto, "falta comprar");
-  conf("o autor vai em minúsculas", enviado.autor, "lorena@groupws.com.br");
-  conf("a obra vai como texto", enviado.obra_codigo, "2597");
-  conf("e a verba também", enviado.verba_num, "21");
-  conf("a chave do item vai junto", enviado.item_chave, "divisor de talher");
+  conf("grava o texto sem os espaços das pontas", enviado.corpo.texto, "falta comprar");
+  /* O AUTOR NÃO VIAJA NO PEDIDO. Antes a biblioteca o mandava em minúsculas;
+     agora quem carimba é o servidor, com o e-mail do login (SEG-13) — e
+     nenhum caminho novo consegue assinar por outra pessoa. */
+  conf("o autor não vai no pedido", "autor" in enviado.corpo, false);
+  conf("quem assina é o login conferido no servidor", rota.includes("autor: req.usuario.email"), true);
+  conf("... e o login já chega em minúsculas",
+    auth.includes(`email: String(data.user.email || "").toLowerCase()`), true);
+  conf("a obra vai como texto", enviado.caminho, "/api/obras/2597/comentarios");
+  conf("e a verba também", enviado.corpo.verbaNum, "21");
+  conf("a chave do item vai junto", enviado.corpo.itemChave, "divisor de talher");
+  /* As colunas são nomeadas na rota, uma a uma — nunca `select("*")`. */
+  conf("a rota grava a obra do caminho", rota.includes("obra_codigo: codigoDoPedido(req)"), true);
+  conf("a verba vira a coluna dela", rota.includes("verba_num: c.verbaNum"), true);
+  conf("e o texto também", rota.includes("texto: c.texto"), true);
+  conf("nenhuma coluna entra por atacado", /select\("\*"\)/.test(rota), false);
 }
 /* Sem chave = observação da VERBA. String vazia tem que virar null, senão o
    comentário fica preso a um produto de nome "" que não existe. */
 {
   enviado = null;
   await M.criarComentario({ obraCodigo: 2597, verbaNum: "21", itemChave: "", texto: "ver o tapetinho", autor: "a@b.com" });
-  conf("sem item, é observação da verba", enviado.item_chave, "null");
+  conf("sem item, é observação da verba", enviado.corpo.itemChave, "null");
+  conf("... e a rota também recusa a chave vazia", rota.includes("item_chave: c.itemChave || null"), true);
 }
 /* Texto vazio não vira recado — e o banco também recusa (check). */
 {
@@ -92,9 +118,21 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
   conf("sem autor não grava", /quem está escrevendo/.test(erro?.message || ""), true);
 }
 
-conf("42P01 é tabela que não existe", M.semTabela({ code: "42P01" }), true);
-conf("PGRST205 também", M.semTabela({ code: "PGRST205" }), true);
-conf("erro de rede não é", M.semTabela({ code: "500" }), false);
+conf("42P01 é tabela que não existe", R.semTabela({ code: "42P01" }), true);
+conf("PGRST205 também", R.semTabela({ code: "PGRST205" }), true);
+conf("erro de rede não é", R.semTabela({ code: "500" }), false);
+/* A tela continua recebendo `{ semTabela: true, comentarios: [] }` em vez de
+   erro: quem lê o código do Postgres mudou de lado, o que a tela vê não. */
+conf("sem a tabela, a leitura volta vazia e avisando",
+  rota.includes('return res.json({ semTabela: true, comentarios: [] });'), true);
+conf("e escrever diz o SQL que falta",
+  rota.includes("falta rodar supabase/obra-comentario.sql."), true);
+/* A rota é da obra, e é da OBRA que ela pede a permissão — ler e escrever.
+   Comentar não exige a trava nem o perfil de edição: a decisão de
+   19/09/2026 é que todo mundo que entra no app comenta. */
+conf("a rota exige login e ser do time", rota.includes("rotas.use(exigirLogin, exigirMembro);"), true);
+conf("... e que a obra seja sua de ver", (rota.match(/exigirObra\(codigoDoPedido\)/g) || []).length, 2);
+conf("comentar não pede o perfil de edição", /exigirEdicaoDeObra\(/.test(rota), false);
 
 /* ============================================================
    2. O BANCO

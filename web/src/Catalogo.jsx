@@ -338,12 +338,16 @@ export default function Catalogo({ usuario, obras, podeEditar }) {
 
 /* Erro de banco na cara de quem só queria cadastrar um spot não ajuda.
    Os dois que de fato acontecem viram frase. */
+/* Quem le' o erro do Postgres agora e' a API, que devolve a frase pronta e o
+   `code` do banco (web/src/lib/api.js o copia para o Error). Entao o que
+   identifica o caso e' o CODIGO — o texto do Postgres nao chega mais aqui. */
 function mensagemDeErro(e) {
   const m = String(e?.message || e || "");
-  if (/relation .*catalogo.* does not exist|Could not find the table/i.test(m)) {
+  if (e?.code === "42P01" || e?.code === "PGRST205"
+      || /relation .*catalogo.* does not exist|Could not find the table/i.test(m)) {
     return "As tabelas do catálogo ainda não existem no banco. Falta rodar supabase/catalogo.sql no Supabase.";
   }
-  if (/duplicate key|unique constraint/i.test(m)) {
+  if (e?.code === "23505" || /duplicate key|unique constraint/i.test(m)) {
     return "Já existe um produto com esse código para esse fornecedor.";
   }
   return m;

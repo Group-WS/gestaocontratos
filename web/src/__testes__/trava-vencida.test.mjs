@@ -17,6 +17,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "lib", "dadosObra.js"), "utf8");
+/* O vencimento vale em três lugares, e dois deles passaram para a API
+   quando o navegador deixou de falar com o Supabase: a condição do UPDATE
+   que toma a trava e o filtro da lista de cadeados. O terceiro — a leitura
+   da obra — continua aqui, em `paraApp`. */
+const rota = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "api", "_lib", "rotas", "obraConteudo.js"), "utf8");
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = src.indexOf(assinatura);
   if (i === -1) throw new Error(`não achei em dadosObra.js: ${assinatura}`);
@@ -63,7 +68,22 @@ conf("data no futuro ainda é trava", M.travaViva(minutosAtras(-5)), true);
 /* A leitura da obra tem que usar a mesma régua do cadeado da lista lateral —
    é a divergência entre as duas que criou o caso de 17/09. */
 conf("a leitura da obra aplica a régua", /editandoPor: travaViva\(/.test(src), true);
-conf("listarTravas continua filtrando por data", /gte\("editando_desde", limite\)/.test(src), true);
+conf("a trava que a tela não conseguiu pegar também", /por: travaViva\(r\.desde\)/.test(src), true);
+conf("listarTravas continua filtrando por data", /\.gte\("editando_desde", limiteDaTrava\(\)\)/.test(rota), true);
+/* O MESMO PRAZO NOS DOIS LADOS. O servidor não importa a constante da tela
+   (são mundos separados): prazo diferente aqui e lá faria o cadeado sumir
+   da lista com a obra ainda travada, ou o contrário. */
+conf("o servidor usa o mesmo prazo", /const MINUTOS_ATE_TRAVA_EXPIRAR = 5;/.test(rota), true);
+
+/* QUEM CHEGA EM SEGUNDO LUGAR NÃO TOMA A TRAVA.
+   A condição vai DENTRO do UPDATE: ler, decidir e só então gravar deixaria
+   a fresta em que as duas pessoas leem "livre" antes de qualquer uma
+   escrever. Isto vive na rota desde que a gravação passou pela API. */
+const pegar = rota.slice(rota.indexOf('rotas.post("/api/obras/:codigo/edicao"'), rota.indexOf("/** Devolve a obra pros outros"));
+conf("a trava é tomada por UPDATE condicional",
+  /\.update\(\{ editando_por: email, editando_desde: agora \}\)[\s\S]{0,200}\.or\(`editando_por\.is\.null,editando_por\.eq\.\$\{email\},editando_desde\.lt\.\$\{limite\}`\)/.test(pegar), true);
+conf("... com o e-mail de quem está logado, não o que o pedido mandou",
+  pegar.includes("const email = req.usuario.email;"), true);
 
 /* A TELA TAMBÉM DESISTE, e não só o banco.
    Sem isto, passado o prazo a trava apenas PODE ser assumida por outra

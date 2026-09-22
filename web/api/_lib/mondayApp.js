@@ -64,6 +64,18 @@ app.use(
    Vem ANTES das rotas de proposito: rota nova nasce protegida, sem
    ninguem precisar lembrar. */
 app.use(exigirLogin);
+
+/* A EXCECAO, e a razao de ela existir: quem entrou pela primeira vez ainda
+   NAO e' do time — nao tem linha em `pessoa`. Se o `exigirMembro` viesse
+   antes, ele recusaria o pedido que cria essa linha, e a pessoa nunca
+   apareceria na fila do administrador: sem entrar, e sem ninguem poder
+   libera-la a nao ser por SQL na mao. Era o que a policy "entro na fila"
+   (supabase/rls-perfis.sql) fazia quando o navegador gravava direto.
+   As rotas de pessoa trazem o proprio `exigirLogin`, e cada uma decide o
+   que exige: so' as que precisam ser do time chamam `exigirMembro`. */
+const { rotasDePessoas } = require("./rotas/pessoas.js");
+app.use(rotasDePessoas);
+
 app.use(exigirMembro);
 
 /* JSON em todas as rotas, com limite — menos na leitura de PDF do Sienge,
@@ -73,19 +85,48 @@ app.use(exigirMembro);
 /* A gravacao da obra tambem le por conta propria: o conteudo inteiro de
    uma obra grande nao cabe no limite de 1 MB, nem comprimido. */
 const { rotasDaObra, CAMINHO_DA_GRAVACAO } = require("./rotas/obraDados.js");
-/* O aditivo, a apresentacao e a imagem do ambiente tambem passam do limite
-   global de 1 MB. */
-const { rotasDosDocumentos, CAMINHOS_DE_DOCUMENTO } = require("./rotas/documentosDaObra.js");
-const CAMINHOS_COM_LEITOR_PROPRIO = [/^\/api\/sienge\/texto$/, CAMINHO_DA_GRAVACAO, ...CAMINHOS_DE_DOCUMENTO];
+/* O documento do aditivo, a apresentacao e a imagem do ambiente tambem
+   passam do limite global de 1 MB. */
+const { rotasDeAditivos, CAMINHOS_DE_ADITIVO } = require("./rotas/aditivos.js");
+const { rotasDeApresentacoes, CAMINHOS_DE_APRESENTACAO } = require("./rotas/apresentacoes.js");
+const CAMINHOS_COM_LEITOR_PROPRIO = [
+  /^\/api\/sienge\/texto$/, CAMINHO_DA_GRAVACAO, ...CAMINHOS_DE_ADITIVO, ...CAMINHOS_DE_APRESENTACAO,
+];
 const jsonPadrao = express.json({ limit: "1mb" });
 app.use((req, res, next) => (CAMINHOS_COM_LEITOR_PROPRIO.some((c) => c.test(req.path)) ? next() : jsonPadrao(req, res, next)));
 
 /* As rotas de DADOS do app moram em _lib/rotas/, uma por assunto, cada uma
-   com o proprio exigirLogin (que nao repete a verificacao feita acima). */
+   com o proprio exigirLogin (que nao repete a verificacao feita acima).
+
+   Sao todas as portas por onde o navegador chega ao banco. Ate' 22/09/2026
+   ele falava com o Supabase direto, de dentro das libs de web/src/lib/ —
+   cada tela decidindo sozinha o que podia ler e gravar. Agora quem decide
+   e' aqui, onde o login ja' foi conferido e o RLS continua valendo por
+   baixo (VH-02). Assunto novo = arquivo novo em rotas/ + uma linha aqui. */
 const { rotasDePreferencias } = require("./rotas/preferencias.js");
+const { rotasDeObras } = require("./rotas/obras.js");
+const { rotasDeObraConteudo } = require("./rotas/obraConteudo.js");
+const { rotasDeCatalogo } = require("./rotas/catalogo.js");
+const { rotasDeInsumos } = require("./rotas/insumos.js");
+const { rotasDeEap } = require("./rotas/eap.js");
+const { rotasDeArquivos } = require("./rotas/arquivos.js");
+const { rotasDeComentarios } = require("./rotas/comentarios.js");
+const { rotasDeCadastros } = require("./rotas/cadastros.js");
+const { rotasDeSiengeBanco } = require("./rotas/siengeBanco.js");
+
 app.use(rotasDePreferencias);
 app.use(rotasDaObra);
-app.use(rotasDosDocumentos);
+app.use(rotasDeObraConteudo);
+app.use(rotasDeObras);
+app.use(rotasDeCatalogo);
+app.use(rotasDeInsumos);
+app.use(rotasDeEap);
+app.use(rotasDeApresentacoes);
+app.use(rotasDeArquivos);
+app.use(rotasDeAditivos);
+app.use(rotasDeComentarios);
+app.use(rotasDeCadastros);
+app.use(rotasDeSiengeBanco);
 
 const MONDAY_API_URL = "https://api.monday.com/v2";
 

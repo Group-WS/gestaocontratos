@@ -1,4 +1,5 @@
-import { supabase, supabaseConfigurado } from "./supabase";
+import { supabaseConfigurado } from "./supabase";
+import { apiJson } from "./api";
 
 /* OBSERVACOES DA OBRA — o recado pra quem executa depois.
  *
@@ -13,11 +14,12 @@ import { supabase, supabaseConfigurado } from "./supabase";
  * Planilha Executivo, e escrever ali exigiria a trava de edicao da obra —
  * quem quer deixar um aviso nao pode ter que tomar a obra de quem esta'
  * trabalhando nela.
+ *
+ * Desde 22/09/2026 quem fala com a tabela e' a API
+ * (web/api/_lib/rotas/comentarios.js), e nao mais o navegador (VH-02).
+ * Duas coisas foram junto, porque dependem do banco: o AUTOR (o servidor
+ * carimba o e-mail do login) e a leitura do "o SQL ainda nao rodou".
  */
-
-/* O SQL ainda nao rodou. Dois codigos, um sentido so' — 42P01 e' o
-   Postgres, PGRST205 e' o PostgREST sem a tabela no cache do schema. */
-const semTabela = (erro) => erro?.code === "42P01" || erro?.code === "PGRST205";
 
 /**
  * Todas as observacoes de uma obra, das mais antigas pras mais novas.
@@ -27,30 +29,26 @@ const semTabela = (erro) => erro?.code === "42P01" || erro?.code === "PGRST205";
  * pagina.
  *
  * Devolve `{ semTabela: true, comentarios: [] }` enquanto o SQL nao rodou,
- * pra tela poder dizer isso em vez de mostrar erro.
+ * pra tela poder dizer isso em vez de mostrar erro. Quem reconhece a tabela
+ * que falta e' a rota — o codigo do Postgres nao chega mais aqui.
  */
 export async function listarComentarios(obraCodigo) {
   if (!supabaseConfigurado) return { comentarios: [] };
-  const { data, error } = await supabase
-    .from("obra_comentario")
-    .select("id, verba_num, item_chave, texto, autor, criado_em")
-    .eq("obra_codigo", String(obraCodigo))
-    .order("criado_em", { ascending: true });
-
-  if (error) {
-    if (semTabela(error)) return { semTabela: true, comentarios: [] };
-    throw error;
-  }
-  return { comentarios: data || [] };
+  return apiJson(`/api/obras/${encodeURIComponent(String(obraCodigo))}/comentarios`);
 }
 
 /**
  * Escreve uma observacao. `itemChave` vazio = observacao da VERBA.
  *
- * O AUTOR vai daqui, e nao da tela: e' o mesmo cuidado da remocao de item
- * (18/09/2026). Se o nome viesse da tela, bastaria um caminho novo pra
- * observacao chegar sem dono — e recado sem dono nao se cobra de ninguem.
- * A regra tambem esta' no banco: o `with check` recusa assinar por outro.
+ * O AUTOR nao vai no pedido, e' o SERVIDOR que carimba quem esta' logado:
+ * e' o mesmo cuidado da remocao de item (18/09/2026), agora um passo mais
+ * atras. Se o nome viesse da tela, bastaria um caminho novo pra observacao
+ * chegar sem dono — e recado sem dono nao se cobra de ninguem. A regra
+ * tambem esta' no banco: o `with check` recusa assinar por outro.
+ *
+ * `autor` continua sendo pedido aqui porque a tela sem ninguem identificado
+ * nao tenta gravar: a recusa acontece antes da viagem, com a mesma frase de
+ * sempre.
  */
 export async function criarComentario({ obraCodigo, verbaNum, itemChave = null, texto, autor }) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
@@ -58,23 +56,10 @@ export async function criarComentario({ obraCodigo, verbaNum, itemChave = null, 
   if (!limpo) throw new Error("Escreva a observação interna antes de salvar.");
   if (!autor) throw new Error("Não consegui identificar quem está escrevendo.");
 
-  const { data, error } = await supabase
-    .from("obra_comentario")
-    .insert({
-      obra_codigo: String(obraCodigo),
-      verba_num: String(verbaNum),
-      item_chave: itemChave || null,
-      texto: limpo,
-      autor: String(autor).toLowerCase(),
-    })
-    .select("id, verba_num, item_chave, texto, autor, criado_em")
-    .single();
-
-  if (error) {
-    if (semTabela(error)) throw new Error("As observações internas ainda não foram criadas no banco — falta rodar supabase/obra-comentario.sql.");
-    throw error;
-  }
-  return data;
+  return apiJson(`/api/obras/${encodeURIComponent(String(obraCodigo))}/comentarios`, {
+    metodo: "POST",
+    corpo: { verbaNum: String(verbaNum), itemChave: itemChave || null, texto: limpo },
+  });
 }
 
 /**
@@ -87,6 +72,5 @@ export async function criarComentario({ obraCodigo, verbaNum, itemChave = null, 
  */
 export async function apagarComentario(id) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
-  const { error } = await supabase.from("obra_comentario").delete().eq("id", id);
-  if (error) throw error;
+  await apiJson(`/api/comentarios/${encodeURIComponent(id)}`, { metodo: "DELETE" });
 }

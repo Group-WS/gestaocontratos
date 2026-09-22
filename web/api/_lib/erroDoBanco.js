@@ -18,6 +18,12 @@ const CONHECIDOS = {
   "23503": [409, "Não é possível concluir: existem registros vinculados."],
   "23514": [422, "Os dados enviados não passaram na conferência do banco."],
   "42501": [403, "Você não tem permissão para esta ação."],
+  /* Tabela que ainda nao existe (42P01) ou que o PostgREST ainda nao
+     enxerga (PGRST205, o cache de schema dele demora a recarregar depois de
+     um `create table`). Nao e' defeito de quem esta' usando: e' o SQL que
+     falta rodar. O `code` sobe junto pra tela poder dizer QUAL arquivo. */
+  "42P01": [503, "Uma tabela que esta tela usa ainda não existe no banco."],
+  PGRST205: [503, "Uma tabela que esta tela usa ainda não existe no banco."],
   PGRST116: [404, "Registro não encontrado."],
   "57014": [504, "A consulta demorou demais. Tente de novo."],
 };

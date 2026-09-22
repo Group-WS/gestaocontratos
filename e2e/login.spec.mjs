@@ -51,13 +51,27 @@ async function simularSupabase(page, { sair } = {}) {
     const json = (corpo, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(corpo) });
     if (u.pathname === "/auth/v1/user") return json({ id: "e2e-usuario", email: PESSOA.email, aud: "authenticated", role: "authenticated" });
     if (u.pathname === "/auth/v1/logout") { sair?.(); return route.fulfill({ status: 204, body: "" }); }
-    if (u.pathname.startsWith("/rest/v1/pessoa") && req.method() === "GET") return json([PESSOA]);
     if (u.pathname.startsWith("/rest/v1/rpc/")) return json(null);
     if (req.method() === "GET" || req.method() === "HEAD") return json([]);
     return json([], 201);
   });
-  // O `vite preview` não tem a API: as rotas respondem vazio.
-  await page.route(`${APP}/api/**`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  /* O `vite preview` não tem a API: as rotas respondem vazio — menos a da
+     EQUIPE, que é por onde o app descobre o perfil de quem entrou. Desde a
+     adequação (VH-02) é ela que responde isso, e não mais o Supabase. */
+  await page.route(`${APP}/api/**`, (route) => {
+    const req = route.request();
+    const caminho = new URL(req.url()).pathname;
+    /* A EQUIPE é o que interessa aqui: `/api/pessoas` e
+       `/api/pessoas/entrada` são por onde a tela descobre o perfil de quem
+       entrou — desde a adequação (VH-02) é a API que responde isso, e não
+       mais o Supabase. O resto das rotas devolve vazio; listagem responde
+       LISTA vazia, porque a tela faz `.map` no que recebe. */
+    const corpo = caminho === "/api/pessoas" ? JSON.stringify([PESSOA])
+      : caminho === "/api/pessoas/entrada" ? JSON.stringify(PESSOA)
+        : req.method() === "GET" ? "[]"
+          : "{}";
+    return route.fulfill({ status: 200, contentType: "application/json", body: corpo });
+  });
 }
 
 test("o botão manda para o login da Microsoft, voltando para o próprio app", { tag: "@login" }, async ({ page }) => {

@@ -25,6 +25,9 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 const app = fs.readFileSync(path.join(aqui, "..", "App.jsx"), "utf8");
 const dados = fs.readFileSync(path.join(aqui, "..", "lib", "dadosObra.js"), "utf8");
 const ui = fs.readFileSync(path.join(aqui, "..", "lib", "gravacaoUi.jsx"), "utf8");
+/* Desde que o navegador deixou de falar com o Supabase, quem toma a trava
+   (e devolve a obra junto) é a rota. */
+const rota = fs.readFileSync(path.join(aqui, "..", "..", "api", "_lib", "rotas", "obraConteudo.js"), "utf8");
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -50,8 +53,28 @@ conf("... e só então libera a edição",
 conf("sem a versão no banco (SQL não rodou), a edição não abre",
   /if \(r\.dados\?\.versao == null\) \{[\s\S]*await liberarEdicao\(codigo, usuario\);[\s\S]*return;/.test(habilitar), true);
 conf("com conflito em aberto, primeiro a pessoa decide", habilitar.includes('if (fila.situacao().estado === "conflito") return;'), true);
-conf("a trava volta junto com a linha do banco", /if \(data\) return \{ ok: true, dados: paraApp\(data\) \};/.test(dados), true);
+/* A TRAVA VOLTA JUNTO COM A LINHA DO BANCO — é o mesmo UPDATE que toma a
+   trava e devolve a obra como ela está naquele instante. Sem isso, quem
+   habilitava a edição continuava editando a cópia que abriu de manhã. */
+conf("a trava volta junto com a linha do banco",
+  /\.update\(\{ editando_por: email, editando_desde: agora \}\)[\s\S]{0,300}\.select\(COLUNAS_DA_OBRA\.join/.test(rota), true);
+conf("... e a tela a recebe no formato de sempre", /if \(r\.ok\) return \{ ok: true, dados: paraApp\(doGzip\(r\.gzip\)\) \};/.test(dados), true);
+/* A lista de colunas substitui o `select("*")` de antes: campo que faltar
+   nela não dá erro nenhum — some da tela como se o banco estivesse vazio. */
+conf("a leitura traz todas as colunas que a tela lê",
+  Object.keys(Object.fromEntries(
+    [...entre(dados, "function paraApp(linha) {", "\n}\n").matchAll(/linha\.([a-z_]+)/g)].map((m) => [m[1], true]),
+  )).every((coluna) => entre(rota, "const COLUNAS_DA_OBRA = [", "\n];").includes(`"${coluna}"`)), true);
 conf("a leitura traz a versão", dados.includes("versao: linha.versao ?? null,"), true);
+/* COLUNA QUE AINDA NÃO EXISTE NÃO DERRUBA A OBRA. Entre publicar o app e
+   alguém rodar o SQL novo, o Postgres recusa a leitura INTEIRA por causa de
+   uma coluna desconhecida. O `select("*")` de antes atravessava essa janela
+   sozinho; a lista de colunas só atravessa com este retry. */
+conf("coluna que ainda não existe cai no conjunto mínimo",
+  rota.includes("const COLUNAS_DE_SEMPRE = [") && /faltaColuna\(completa\.error\)/.test(rota), true);
+conf("... e o mínimo não inclui as colunas que vieram depois",
+  ["versao", "escopos", "etapas_concluidas", "cmv_liberado"]
+    .every((c) => !entre(rota, "const COLUNAS_DE_SEMPRE = [", "\n];").includes(`"${c}"`)), true);
 const aplicar = entre(app, "function aplicarDadosDoBanco(codigo, dados) {", "\n  }\n");
 conf("aplicar o que veio do banco guarda a versão lida", aplicar.includes("versaoDaObra.current.set(chave, dados.versao ?? null);"), true);
 conf("... e marca que não é alteração de ninguém", aplicar.includes("cargaDoBanco.current.add(chave);"), true);

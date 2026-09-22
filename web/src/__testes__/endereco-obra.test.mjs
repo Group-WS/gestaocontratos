@@ -13,6 +13,11 @@ import { fileURLToPath } from "node:url";
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const src = fs.readFileSync(path.join(dir, "..", "App.jsx"), "utf8");
 const lib = fs.readFileSync(path.join(dir, "..", "lib", "obras.js"), "utf8");
+/* Quem grava passou a ser a API: o navegador não fala mais com a tabela
+   (VH-02). A conta continua a mesma — corrigir o endereço tem que escrever
+   na coluna `endereco` da obra —, só que agora ela se prova em dois
+   lugares: a lib chama a rota, e a rota grava a coluna. */
+const rota = fs.readFileSync(path.join(dir, "..", "..", "api", "_lib", "rotas", "obras.js"), "utf8");
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = src.indexOf(assinatura);
   if (i === -1) throw new Error(`não achei no App.jsx: ${assinatura}`);
@@ -31,7 +36,8 @@ conf("traço conta como vazio", enderecoResolvido("—", "—", "Rua Sienge, 3")
 conf("sem nada em lugar nenhum, fica como está", enderecoResolvido("—", null, undefined), "—");
 conf("só administrador e admin master veem o lápis", /<EnderecoDaObra obra=\{obra\} podeEditar=\{souAdmin\}/.test(src), true);
 conf("souAdmin é administrador ou admin master", /const souAdmin = migracaoPendente \|\| ehAdministrador\(eu\);/.test(src), true);
-conf("a lib grava a coluna endereco da obra", /export async function definirEndereco[\s\S]*?\.update\(\{ endereco:/.test(lib), true);
+conf("a lib manda o endereço pra rota da obra", /export async function definirEndereco[\s\S]*?\/endereco`[\s\S]*?corpo: \{ endereco \}/.test(lib), true);
+conf("a rota grava a coluna endereco da obra", /patch\("\/api\/obras\/:codigo\/endereco"[\s\S]*?\.update\(\{ endereco:/.test(rota), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

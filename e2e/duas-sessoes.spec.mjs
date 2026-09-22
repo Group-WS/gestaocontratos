@@ -23,7 +23,7 @@
  * playwright.config.mjs), e as respostas dele e da API vêm daqui.
  */
 import { test, expect } from "@playwright/test";
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 const APP = "http://localhost:4173";
 const SUPABASE = "https://e2e-nao-existe.supabase.co";
@@ -115,68 +115,74 @@ function gravar(banco, quem, versao, conteudo) {
   return [200, { versao: l.versao }];
 }
 
+/* O QUE A TELA CONVERSA, AGORA TUDO PELA API.
+ *
+ * Até 22/09/2026 o navegador falava com o Supabase direto, e era isso que
+ * este arquivo simulava. Com a adequação (VH-02), leitura e gravação passam
+ * pelas rotas de `web/api/_lib/rotas/` — do Supabase sobrou o login. O banco
+ * simulado é o mesmo; o que mudou é por onde ele responde.
+ */
+const comprimido = (valor) => ({ gzip: gzipSync(Buffer.from(JSON.stringify(valor ?? null), "utf8")).toString("base64") });
+
 async function simularBackend(page, banco) {
   await page.route(`${SUPABASE}/**`, async (route) => {
     const req = route.request();
     const u = new URL(req.url());
-    const metodo = req.method();
     const quem = emailDoPedido(req);
     const json = (corpo, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(corpo) });
-    const umSo = (req.headers().accept || "").includes("vnd.pgrst.object");
-    const linhas = (lista) => (umSo
-      ? (lista.length ? json(lista[0]) : json({ code: "PGRST116", details: "The result contains 0 rows", message: "JSON object requested, multiple (or no) rows returned" }, 406))
-      : json(lista));
-
     if (u.pathname === "/auth/v1/user") return json({ id: `e2e-${quem}`, email: quem, aud: "authenticated", role: "authenticated" });
-    if (u.pathname.startsWith("/rest/v1/pessoa")) return metodo === "GET" ? json([ANA, BRUNO]) : json([], 201);
-    if (u.pathname === "/rest/v1/obra") {
-      return metodo === "GET"
-        ? json([{ codigo: OBRA, nome: NOME_DA_OBRA, situacao: "ativa", squad: null, board_id: null, endereco: null, cliente: null,
-          gc: null, valor_vendido: 0, iniciada_em: null, concluida_em: null, tailor_made: null, responsavel_executivo: null }])
-        : json([], 201);
-    }
-    if (u.pathname === "/rest/v1/obra_dados") {
-      const l = banco.linha;
-      if (metodo === "GET") {
-        // O cadeado da barra lateral só quer quem está com trava viva.
-        if (u.searchParams.get("editando_por") === "not.is.null") return linhas(travaViva(l) ? [l] : []);
-        return linhas([l]);
-      }
-      if (metodo === "POST") return json([], 201); // garantir a linha: ela já existe
-      if (metodo === "PATCH") {
-        const corpo = JSON.parse(req.postData() || "{}");
-        const ou = u.searchParams.get("or");
-        if (ou) {
-          // pegarEdicao: livre, minha, ou vencida.
-          const minha = ou.match(/editando_por\.eq\.([^,)]+)/)?.[1];
-          const limite = ou.match(/editando_desde\.lt\.([^,)]+)/)?.[1];
-          const livre = !l.editando_por || l.editando_por === minha || new Date(l.editando_desde) < new Date(limite);
-          if (!livre) return linhas([]);
-          Object.assign(l, corpo);
-          return linhas([l]);
-        }
-        const dono = (u.searchParams.get("editando_por") || "").replace(/^eq\./, "");
-        if (dono) {
-          // liberarEdicao: só quem está com ela.
-          if (l.editando_por === dono) Object.assign(l, corpo);
-          return route.fulfill({ status: 204, body: "" });
-        }
-        Object.assign(l, corpo);
-        return linhas([l]);
-      }
-    }
-    if (u.pathname.startsWith("/rest/v1/rpc/")) return json(null);
-    if (metodo === "GET" || metodo === "HEAD") return json([]);
+    // Nada mais sai daqui: se sair, é porque alguma tela voltou a falar com o banco.
+    if (req.method() === "GET" || req.method() === "HEAD") return json([]);
     return json([], 201);
   });
 
   await page.route(`${APP}/api/**`, async (route) => {
     const req = route.request();
     const u = new URL(req.url());
+    const metodo = req.method();
     const quem = emailDoPedido(req);
     const json = (corpo, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(corpo) });
-    const corpo = req.method() === "POST" ? JSON.parse(req.postData() || "{}") : {};
+    const corpo = ["POST", "PUT", "PATCH"].includes(metodo) ? JSON.parse(req.postData() || "{}") : {};
+    const l = banco.linha;
 
+    if (u.pathname === "/api/pessoas") return json([ANA, BRUNO]);
+    // Quem entrou: a rota devolve a linha de quem chamou (é dela que sai o perfil).
+    if (u.pathname === "/api/pessoas/entrada") return json([ANA, BRUNO].find((p) => p.email === quem) || null);
+    if (u.pathname === "/api/obras") {
+      return json([{ codigo: OBRA, nome: NOME_DA_OBRA, situacao: "ativa", squad: null, board_id: null, endereco: null,
+        cliente: null, gc: null, valor_vendido: 0, iniciada_em: null, concluida_em: null,
+        tailor_made: null, responsavel_executivo: null }]);
+    }
+    if (u.pathname === "/api/preferencias") return json({});
+    if (u.pathname === "/api/aditivos") return json({ aditivos: [] });
+
+    // A obra: ler, garantir a linha, pegar e devolver a trava.
+    if (u.pathname === `/api/obras/${OBRA}/conteudo`) {
+      return metodo === "GET" ? json(comprimido(l)) : json({});
+    }
+    if (u.pathname === `/api/obras/${OBRA}/edicao`) {
+      if (metodo === "POST") {
+        /* A trava só é tomada se estiver livre, já for desta pessoa ou tiver
+           vencido — a mesma condição que a rota põe dentro do UPDATE. */
+        if (travaViva(l) && (l.editando_por || "").toLowerCase() !== quem) {
+          return json({ ok: false, por: l.editando_por, desde: l.editando_desde });
+        }
+        l.editando_por = quem;
+        l.editando_desde = new Date().toISOString();
+        return json({ ok: true, ...comprimido(l) });
+      }
+      if (metodo === "DELETE") {
+        if ((l.editando_por || "").toLowerCase() === quem) { l.editando_por = null; l.editando_desde = null; }
+        return json({});
+      }
+    }
+    if (u.pathname === "/api/obras-travas") {
+      return json(travaViva(l) ? [{ obra_codigo: OBRA, editando_por: l.editando_por, editando_desde: l.editando_desde }] : []);
+    }
+    if (u.pathname === "/api/obras-resumos") return json(comprimido([]));
+    if (u.pathname === `/api/obras/${OBRA}/versoes`) return json({ versoes: [] });
+
+    // A gravação protegida.
     if (u.pathname === `/api/obras/${OBRA}/gravar`) {
       const conteudo = JSON.parse(gunzipSync(Buffer.from(corpo.gzip, "base64")).toString("utf8"));
       const [status, resposta] = gravar(banco, quem, corpo.versao, conteudo);
@@ -188,7 +194,6 @@ async function simularBackend(page, banco) {
       const [status, resposta] = gravar(banco, quem, corpo.versao, marcas);
       return json(status === 200 ? { ...resposta, aplicados: corpo.patches.length, recusados: [] } : resposta, status);
     }
-    if (u.pathname === "/api/preferencias") return json({});
     // O Monday não tem obra nenhuma: a obra do teste vem só do nosso banco.
     return json([]);
   });

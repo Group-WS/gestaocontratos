@@ -355,3 +355,76 @@ import {
 
   console.log(`OK — mais ${ok2} casos`);
 }
+
+/* ---------- O QUE SAIU DO NAVEGADOR, E ONDE A GARANTIA FICOU ----------
+ *
+ * O front deixou de falar com a tabela e com o Storage (VH-02), e logo
+ * depois a gravação passou a ser protegida por VERSÃO
+ * (supabase/salvar-aditivo-apresentacao.sql). As garantias são as mesmas de
+ * antes; o que mudou é o lugar delas — e é isso que este bloco cobra, para
+ * nenhuma voltar para o navegador nem sumir na troca:
+ *
+ *   1. Gravar sem `id` cria OUTRA revisão; a REV 01 nasce sem apagar a 00,
+ *      que já foi ao cliente. Agora é `criar_apresentacao`, no banco, que
+ *      recusa revisão repetida em vez de sobrescrever.
+ *   2. Alterar é sempre da própria linha, e só com a versão que a tela leu:
+ *      `salvar_apresentacao`.
+ *   3. Quem gravou vem do LOGIN (SEG-13) — agora num gatilho, que alcança
+ *      até o UPDATE feito à mão no SQL Editor.
+ *   4. A listagem pede as COLUNAS, nunca `*` (SQL-32).
+ */
+{
+  const fs = await import("node:fs");
+  const rotaApres = fs.readFileSync(
+    new URL("../../api/_lib/rotas/apresentacoes.js", import.meta.url), "utf8");
+  const sqlGravacao = fs.readFileSync(
+    new URL("../../../supabase/salvar-aditivo-apresentacao.sql", import.meta.url), "utf8");
+  let ok3 = 0;
+  const t3 = (nome, f) => { f(); console.log("ok  ", nome); ok3++; };
+
+  t3("a revisão nova nasce por uma função que recusa repetida, e nunca por upsert", () => {
+    assert.ok(rotaApres.includes('rpc("criar_apresentacao"'), "a rota não cria pela função");
+    assert.ok(!/\.upsert\(/.test(rotaApres), "a rota voltou a fazer upsert");
+    assert.ok(/motivo', 'rev_existe/.test(sqlGravacao), "a função deixou de recusar revisão repetida");
+  });
+
+  t3("alterar é da própria linha, e só com a versão que a tela leu", () => {
+    assert.ok(rotaApres.includes('rpc("salvar_apresentacao"'));
+    assert.ok(/p_id: req\.valido\.param\.id/.test(rotaApres));
+    assert.ok(/p_versao: req\.valido\.json\.versao/.test(rotaApres));
+    assert.ok(/linha\.versao <> p_versao/.test(sqlGravacao), "o banco deixou de conferir a versão");
+  });
+
+  t3("quem gravou vem do login, não do corpo do pedido", () => {
+    /* Na lista de COLUNAS ele aparece (a tela mostra quem mexeu por último);
+       o que não pode é a rota ATRIBUIR o valor. */
+    assert.ok(!/atualizado_por\s*:/.test(rotaApres), "a rota voltou a decidir autoria");
+    assert.ok(/create trigger apresentacao_autoria/.test(sqlGravacao));
+    assert.ok(/new\.atualizado_por := quem;/.test(sqlGravacao));
+  });
+
+  t3("a listagem pede as colunas, nunca o asterisco", () => {
+    assert.ok(/const COLUNAS = "id, obra_codigo, rev, idioma, arquivo, gerado_em/.test(rotaApres));
+    /* Capa e slides ficam DE FORA da lista de propósito: quem abre uma
+       revisão a carrega por id, fresca do banco. */
+    assert.ok(!/const COLUNAS = "[^"]*\bslides\b/.test(rotaApres));
+    const semComentario = rotaApres.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    assert.ok(!/select\(\s*["\'`]\*/.test(semComentario), 'voltou o select("*")');
+  });
+
+  t3("a ordem continua da revisão mais nova pra mais velha", () =>
+    assert.ok(rotaApres.includes('.order("atualizado_em", { ascending: false })')));
+
+  t3("toda rota daqui exige login e time", () =>
+    assert.ok(rotaApres.includes("rotas.use(exigirLogin, exigirMembro);")));
+
+  t3("a imagem do ambiente foi para o balde da OBRA, em pasta própria", () => {
+    assert.ok(rotaApres.includes('const BALDE = "obra-arquivos";'));
+    assert.ok(rotaApres.includes("`${codigoDoPedido(req)}/ambientes/${Date.now()}.${EXTENSAO[tipo]}`"));
+    /* A que já estava no balde do catálogo continua abrindo — mudar de
+       balde não pode apagar apresentação nenhuma. */
+    assert.ok(rotaApres.includes('const BALDE_ANTIGO = "catalogo";'));
+  });
+
+  console.log(`OK — mais ${ok3} casos`);
+}

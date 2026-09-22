@@ -23,6 +23,7 @@
  * playwright.config.mjs), e as respostas dele e da API vêm daqui.
  */
 import { test, expect } from "@playwright/test";
+import { gzipSync } from "node:zlib";
 
 const APP = "http://localhost:4173";
 const SUPABASE = "https://e2e-nao-existe.supabase.co";
@@ -125,21 +126,10 @@ async function simularBackend(page, banco) {
     const u = new URL(req.url());
     const quem = emailDoPedido(req);
     const json = (corpo, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(corpo) });
-    const umSo = (req.headers().accept || "").includes("vnd.pgrst.object");
-    const linhas = (lista) => (umSo
-      ? (lista.length ? json(lista[0]) : json({ code: "PGRST116", details: "The result contains 0 rows", message: "JSON object requested, multiple (or no) rows returned" }, 406))
-      : json(lista));
-
     if (u.pathname === "/auth/v1/user") return json({ id: `e2e-${quem}`, email: quem, aud: "authenticated", role: "authenticated" });
-    if (u.pathname.startsWith("/rest/v1/pessoa")) return req.method() === "GET" ? json([ANA, BRUNO]) : json([], 201);
-    if (u.pathname === "/rest/v1/obra") {
-      return req.method() === "GET"
-        ? json([{ codigo: OBRA, nome: NOME_DA_OBRA, situacao: "ativa", squad: null, board_id: null, endereco: null, cliente: null,
-          gc: null, valor_vendido: 0, iniciada_em: null, concluida_em: null, tailor_made: null, responsavel_executivo: null }])
-        : json([], 201);
-    }
-    if (u.pathname === "/rest/v1/obra_dados") return req.method() === "GET" ? linhas([]) : json([], 201);
-    if (u.pathname.startsWith("/rest/v1/rpc/")) return json(null);
+    /* Do Supabase sobrou o login: desde a adequação (VH-02), o dado todo
+       passa pelas rotas da API. Se algo sair por aqui, é porque uma tela
+       voltou a falar com o banco direto. */
     if (req.method() === "GET" || req.method() === "HEAD") return json([]);
     return json([], 201);
   });
@@ -150,6 +140,25 @@ async function simularBackend(page, banco) {
     const quem = emailDoPedido(req);
     const json = (corpo, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(corpo) });
     const corpo = req.method() === "POST" ? JSON.parse(req.postData() || "{}") : {};
+
+    if (u.pathname === "/api/pessoas") return json([ANA, BRUNO]);
+    // Quem entrou: a rota devolve a linha de quem chamou (é dela que sai o perfil).
+    if (u.pathname === "/api/pessoas/entrada") return json([ANA, BRUNO].find((p) => p.email === quem) || null);
+    if (u.pathname === "/api/obras") {
+      return json([{ codigo: OBRA, nome: NOME_DA_OBRA, situacao: "ativa", squad: null, board_id: null, endereco: null,
+        cliente: null, gc: null, valor_vendido: 0, iniciada_em: null, concluida_em: null,
+        tailor_made: null, responsavel_executivo: null }]);
+    }
+    // A obra não tem linha de conteúdo neste teste: o que se edita é o aditivo.
+    if (u.pathname === `/api/obras/${OBRA}/conteudo`) {
+      return req.method() === "GET"
+        ? json({ gzip: gzipSync(Buffer.from(JSON.stringify(null), "utf8")).toString("base64") })
+        : json({});
+    }
+    if (u.pathname === "/api/obras-travas") return json([]);
+    if (u.pathname === "/api/obras-resumos") {
+      return json({ gzip: gzipSync(Buffer.from(JSON.stringify([]), "utf8")).toString("base64") });
+    }
 
     // A lista, com o documento (é dela que saem as contas da obra).
     if (u.pathname === "/api/aditivos") return json({ aditivos: [banco.linha] });

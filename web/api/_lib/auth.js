@@ -157,11 +157,24 @@ async function podeAcessarObra(req, codigo) {
   if (PERFIS_QUE_VEEM_TODAS.includes(pessoa.perfil)) return true;
   if (!PERFIS_QUE_VEEM_AS_SUAS.includes(pessoa.perfil)) return false;
 
-  const { data: obra, error: erroObra } = await req.supabase
+  let { data: obra, error: erroObra } = await req.supabase
     .from("obra")
     .select("codigo, gc, tailor_made, responsavel_executivo")
     .eq("codigo", alvo)
     .maybeSingle();
+
+  /* Coluna de Equipe da obra que ainda nao existe (42703) nao pode virar
+     "voce nao tem acesso". Entre publicar o app e rodar o
+     supabase/equipe-da-obra.sql, esta barreira falhava e o GC perdia ate' o
+     que so' depende do `gc` — concluir a obra, corrigir o endereco. Cai pro
+     conjunto minimo, que e' o que existia antes dessas colunas. */
+  if (erroObra && (erroObra.code === "42703" || erroObra.code === "PGRST204")) {
+    ({ data: obra, error: erroObra } = await req.supabase
+      .from("obra")
+      .select("codigo, gc")
+      .eq("codigo", alvo)
+      .maybeSingle());
+  }
 
   if (erroObra) {
     console.error(JSON.stringify({ level: "error", event: "obra_ilegivel", usuario: req.usuario.id, codigo: erroObra.code || null }));

@@ -1,4 +1,5 @@
-import { supabase, supabaseConfigurado } from "./supabase";
+import { supabaseConfigurado } from "./supabase";
+import { apiJson } from "./api";
 
 /**
  * Banco de preços por insumo.
@@ -7,32 +8,33 @@ import { supabase, supabaseConfigurado } from "./supabase";
  * realmente pago, não preço de tabela. Serve de referência quando o time
  * lança item na mão no Executivo.
  *
+ * Quem fala com o banco é a API (`web/api/_lib/rotas/insumos.js`): aqui
+ * só se monta o pedido e se lê a resposta. O que mudou foi o CAMINHO
+ * (navegador → API → banco), não a regra — cada função exportada continua
+ * recebendo e devolvendo o mesmo de antes.
+ *
  * Sem Supabase configurado (modo local), tudo aqui devolve vazio em
  * silêncio: o app continua abrindo, só não tem referência de preço.
  */
 
 // O Supabase rejeita payload muito grande de uma vez, e a base tem
-// milhares de linhas — sobe em blocos.
+// milhares de linhas — sobe em blocos. O laço dos blocos fica AQUI, e não
+// na rota, por dois motivos: é ele que alimenta o `onProgresso` da tela, e
+// é ele que garante que nenhum corpo de pedido passe de 1 MB.
 const TAMANHO_BLOCO = 500;
 
 export async function listarPrecos({ busca = "", limite = 200 } = {}) {
   if (!supabaseConfigurado) return [];
-  let q = supabase
-    .from("insumo_preco")
-    .select("codigo, descricao, unidade, custo_unitario, data_ref, fornecedor")
-    .order("data_ref", { ascending: false })
-    .limit(limite);
-
-  const termo = busca.trim();
-  if (termo) {
-    // busca no código OU na descrição — quem procura às vezes sabe o
-    // código, às vezes só lembra do nome
-    q = q.or(`codigo.ilike.%${termo}%,descricao.ilike.%${termo}%`);
-  }
-
-  const { data, error } = await q;
-  if (error) throw error;
-  return data || [];
+  const q = new URLSearchParams({ limite: String(limite) });
+  // busca no código OU na descrição — quem procura às vezes sabe o
+  // código, às vezes só lembra do nome. Quem monta o filtro é a rota, que
+  // escapa o termo antes de ele virar condição do PostgREST.
+  /* O mesmo teto da rota (web/api/_lib/rotas/insumos.js, `termoDeBusca`).
+     Cortar aqui é o que mantém o comportamento de antes: descrição inteira
+     colada no campo devolvia lista vazia, não um alerta vermelho. */
+  const termo = busca.trim().slice(0, 200);
+  if (termo) q.set("busca", termo);
+  return (await apiJson(`/api/insumos/precos?${q}`)) || [];
 }
 
 /* Toda a base, pra casar item por item sem ida e volta ao banco.
@@ -50,11 +52,7 @@ export async function carregarTodosInsumos() {
   const todos = [];
   const passo = 1000;
   for (let de = 0; ; de += passo) {
-    const { data, error } = await supabase
-      .from("insumo_preco")
-      .select("codigo, descricao, unidade, custo_unitario")
-      .range(de, de + passo - 1);
-    if (error) throw error;
+    const data = await apiJson(`/api/insumos/precos/pagina?de=${de}&passo=${passo}&campos=custo`);
     todos.push(...(data || []));
     if (!data || data.length < passo) break;
   }
@@ -65,11 +63,8 @@ export async function carregarTodosInsumos() {
 
 export async function contarPrecos() {
   if (!supabaseConfigurado) return 0;
-  const { count, error } = await supabase
-    .from("insumo_preco")
-    .select("*", { count: "exact", head: true });
-  if (error) throw error;
-  return count || 0;
+  const r = await apiJson("/api/insumos/precos/contagem");
+  return r?.total || 0;
 }
 
 /**
@@ -96,10 +91,7 @@ export async function salvarPrecos(precos, onProgresso) {
   let gravadas = 0;
   for (let i = 0; i < linhas.length; i += TAMANHO_BLOCO) {
     const bloco = linhas.slice(i, i + TAMANHO_BLOCO);
-    const { error } = await supabase
-      .from("insumo_preco")
-      .upsert(bloco, { onConflict: "codigo,descricao,unidade" });
-    if (error) throw error;
+    await apiJson("/api/insumos/precos", { metodo: "POST", corpo: { linhas: bloco } });
     gravadas += bloco.length;
     if (onProgresso) onProgresso(gravadas, linhas.length);
   }
@@ -138,11 +130,7 @@ export async function chavesDaBase() {
   if (!supabaseConfigurado) return new Set();
   const chaves = new Set();
   for (let de = 0; ; de += 1000) {
-    const { data, error } = await supabase
-      .from("insumo_preco")
-      .select("codigo, descricao, unidade")
-      .range(de, de + 999);
-    if (error) throw error;
+    const data = await apiJson(`/api/insumos/precos/pagina?de=${de}&passo=1000&campos=chave`);
     (data || []).forEach((r) => chaves.add(chaveDoInsumo(r)));
     if (!data || data.length < 1000) break;
   }
@@ -169,18 +157,12 @@ export async function sugerirPrecos(descricao, limite = 6) {
     .filter((p) => p.length >= 4)
     .sort((a, b) => b.length - a.length)
     .slice(0, 2);
+  // Sem palavra que sirva não há o que procurar: nem chega a pedir à API.
   if (palavras.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("insumo_preco")
-    .select("codigo, descricao, unidade, custo_unitario, data_ref, fornecedor")
-    .or(palavras.map((p) => `descricao.ilike.%${p}%`).join(","))
-    // Preço zero é insumo do cadastro sem preço de tabela: não é referência.
-    .gt("custo_unitario", 0)
-    .order("data_ref", { ascending: false })
-    .limit(limite);
-  if (error) throw error;
-  return data || [];
+  const q = new URLSearchParams({ limite: String(limite) });
+  palavras.forEach((p) => q.append("palavra", p));
+  return (await apiJson(`/api/insumos/precos/sugestoes?${q}`)) || [];
 }
 
 /* ============================================================
@@ -205,25 +187,14 @@ export async function sugerirPrecos(descricao, limite = 6) {
    Precisa do `supabase/insumo-sienge.sql`. Enquanto a tabela nao existir ou
    estiver vazia, tudo aqui devolve vazio em silencio e o app se comporta
    como antes — importar cadastro e' o que liga a regra.
+
+   QUEM DECIDE "A TABELA NAO EXISTE" E' A ROTA (web/api/_lib/rotas/insumos.js).
+   Essa decisao depende do codigo do erro do Postgres (42P01 e PGRST205), e
+   codigo de erro do banco nao chega mais aqui — quem fala com o banco e' a
+   API. A leitura volta vazia; a gravacao volta `semTabela` (e `cachePendente`
+   quando e' so' o cache de schema do PostgREST, que pede outra saida). O
+   front so' repassa a decisao ja' tomada.
    ============================================================ */
-
-/* "A TABELA NAO EXISTE" E' SO' ISSO — e nao qualquer erro que cite o nome
-   dela (17/09/2026).
-
-   A primeira versao testava o nome no texto do erro. So' que o Postgres cita
-   o nome da tabela em quase tudo: falta de permissao vem como `new row
-   violates row-level security policy for table "insumo_sienge"`. Ou seja, um
-   banco que RECUSOU a gravacao era anunciado como "falta rodar o SQL" — e ela
-   ja' tinha rodado. Erro disfarcado de outro erro custa a tarde de quem esta'
-   do outro lado.
-
-   Os dois codigos que realmente dizem isso:
-   - 42P01: a tabela nao existe mesmo.
-   - PGRST205: ela existe, mas o PostgREST ainda nao a enxerga (o cache de
-     schema dele demora a recarregar depois de um `create table`). A saida
-     e' outra, e por isso o app precisa saber diferenciar. */
-const semTabelaCadastro = (e) => e?.code === "42P01" || e?.code === "PGRST205";
-const cachePendente = (e) => e?.code === "PGRST205";
 
 /** O cadastro inteiro: { codigo, descricao, unidade }. Vazio = regra desligada. */
 export async function carregarCadastroSienge() {
@@ -231,12 +202,9 @@ export async function carregarCadastroSienge() {
   const todos = [];
   const passo = 1000;
   for (let de = 0; ; de += passo) {
-    const { data, error } = await supabase
-      .from("insumo_sienge")
-      .select("codigo, descricao, unidade")
-      .range(de, de + passo - 1);
-    // Tabela ainda nao criada: nao e' erro de tela, e' regra desligada.
-    if (error) { if (semTabelaCadastro(error)) return []; throw error; }
+    // Tabela ainda nao criada: a rota devolve vazio — nao e' erro de tela,
+    // e' regra desligada.
+    const data = await apiJson(`/api/insumos/sienge?de=${de}&passo=${passo}`);
     todos.push(...(data || []));
     if (!data || data.length < passo) break;
   }
@@ -250,6 +218,9 @@ export async function carregarCadastroSienge() {
  * Sair da tabela e' o unico jeito de o insumo desativado parar de ser
  * oferecido, e e' seguro: aqui nao mora preco pago nenhum — isso fica em
  * `insumo_preco`, que esta funcao nao encosta.
+ *
+ * `usuario` continua na assinatura, mas nao vai mais no pedido: quem
+ * importou o servidor tira do LOGIN (SEG-13), e e' o mesmo e-mail.
  */
 export async function salvarCadastroSienge(insumos, usuario, onProgresso) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
@@ -259,7 +230,6 @@ export async function salvarCadastroSienge(insumos, usuario, onProgresso) {
       descricao: String(i.descricao || "").replace(/\s+/g, " ").trim(),
       unidade: String(i.unidade || "").trim(),
       preco_tabela: Number.isFinite(i.precoTabela) ? i.precoTabela : null,
-      importado_por: usuario || null,
     }))
     .filter((i) => i.codigo && i.descricao);
   // Relatorio vazio nao apaga o cadastro do time: arquivo lido errado
@@ -272,18 +242,13 @@ export async function salvarCadastroSienge(insumos, usuario, onProgresso) {
   let gravados = 0;
   for (let i = 0; i < unicos.length; i += TAMANHO_BLOCO) {
     const bloco = unicos.slice(i, i + TAMANHO_BLOCO);
-    const { error } = await supabase.from("insumo_sienge").upsert(bloco, { onConflict: "codigo" });
-    if (error) {
-      if (semTabelaCadastro(error)) {
-        return { gravados: 0, removidos: 0, semTabela: true, cachePendente: cachePendente(error) };
-      }
-      /* Qualquer outro motivo sobe com o texto do banco. O caso que importa
-         e' a politica de acesso: se o `create policy` do insumo-sienge.sql
-         nao tiver rodado, a leitura devolve vazio (RLS esconde tudo) e a
-         gravacao e' recusada — e sem a mensagem ninguem descobre isso. */
-      throw new Error(`O banco recusou a gravação do cadastro: ${error.message || error}`
-        + (error.code ? ` (código ${error.code})` : "")
-        + `. Se falar em "row-level security", falta a política do supabase/insumo-sienge.sql — rode o arquivo inteiro.`);
+    const r = await apiJson("/api/insumos/sienge", { metodo: "POST", corpo: { linhas: bloco } });
+    /* Falta rodar o SQL: a rota avisa em vez de quebrar, e a tela mostra o
+       recado do arquivo que falta. Qualquer outro motivo sobe como erro,
+       com a mensagem que a rota montou — o caso que importa e' a politica
+       de acesso, que sem mensagem ninguem descobre. */
+    if (r?.semTabela) {
+      return { gravados: 0, removidos: 0, semTabela: true, cachePendente: !!r.cachePendente };
     }
     gravados += bloco.length;
     if (onProgresso) onProgresso(gravados, unicos.length);
@@ -295,8 +260,7 @@ export async function salvarCadastroSienge(insumos, usuario, onProgresso) {
   let removidos = 0;
   for (let i = 0; i < sairam.length; i += 150) {
     const bloco = sairam.slice(i, i + 150);
-    const { error } = await supabase.from("insumo_sienge").delete().in("codigo", bloco);
-    if (error) throw error;
+    await apiJson("/api/insumos/sienge/remover", { metodo: "POST", corpo: { codigos: bloco } });
     removidos += bloco.length;
   }
   return { gravados, removidos };
@@ -304,6 +268,5 @@ export async function salvarCadastroSienge(insumos, usuario, onProgresso) {
 
 export async function limparPrecos() {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
-  const { error } = await supabase.from("insumo_preco").delete().gte("id", 0);
-  if (error) throw error;
+  await apiJson("/api/insumos/precos", { metodo: "DELETE" });
 }
