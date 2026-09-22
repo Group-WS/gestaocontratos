@@ -6,7 +6,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, cn,
 } from "@group-ws/ws-ui";
 import { BotaoIcone } from "../../lib/ui.jsx";
-import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, Search } from "lucide-react";
+import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, ChevronRight, ClipboardList, Search } from "lucide-react";
 
 const money = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const compactMoney = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2 }).format(value);
@@ -33,6 +33,37 @@ function Status({ critical, attention }) {
   return <Badge tone={critical ? "danger" : attention ? "warning" : "success"}>
     {critical ? "Crítica" : attention ? "Atenção" : "No prazo"}
   </Badge>;
+}
+
+/* A ESTEIRA EM UMA LINHA (22/09/2026). Eram as seis etapas em selos, uma
+   embaixo da outra: cada obra ocupava ~150px e a etapa em que ela está se
+   perdia no meio das outras. Agora: a etapa atual em destaque, o "N de M"
+   ao lado, e uma trilha de seis segmentos com a cor de cada passo —
+   concluído (verde), atrasado (vermelho, TODO passo atrasado), atual (marca)
+   e o que falta (neutro). O nome de cada passo fica no title e no texto
+   para leitor de tela. */
+const COR_DO_PASSO = { success: "bg-success", danger: "bg-danger", brand: "bg-brand", neutral: "bg-line-2" };
+function Esteira({ row }) {
+  const tomDe = (step) => (step.feito ? "success" : row.overdueSteps?.includes(step.chave) ? "danger" : step.chave === row.currentStep ? "brand" : "neutral");
+  const nome = (step) => (step.chave === "execucao" ? "Execução" : step.rotulo || step.curto);
+  const atual = row.steps.find((step) => step.chave === row.currentStep);
+  const feitos = row.steps.filter((step) => step.feito).length;
+  const pct = row.steps.length ? Math.round(feitos / row.steps.length * 100) : 0;
+  const resumo = row.steps.map((step) => `${nome(step)}: ${step.feito ? "concluído" : row.overdueSteps?.includes(step.chave) ? "atrasado" : "pendente"}`).join(" · ");
+  return (
+    <div className="relative flex min-w-48 flex-col gap-2" title={resumo}>
+      <div className="flex items-center justify-between gap-2">
+        {atual
+          ? <Badge tone={tomDe(atual)}>{nome(atual)}</Badge>
+          : <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Jornada concluída</Badge>}
+        <span className="whitespace-nowrap text-xs text-text-mute tabular-nums">{row.steps.filter((step) => step.feito).length} de {row.steps.length} · {pct}%</span>
+      </div>
+      <div className="flex gap-1" aria-hidden="true">
+        {row.steps.map((step) => <span key={step.chave} className={cn("h-2 flex-1 rounded-full", COR_DO_PASSO[tomDe(step)])} />)}
+      </div>
+      <span className="sr-only">{resumo}</span>
+    </div>
+  );
 }
 
 function Percentage({ value, label }) {
@@ -252,20 +283,18 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
               <TableHead>Obra</TableHead>
               <TableHead className="w-24 text-center">Situação</TableHead>
               <TableHead className="w-32 text-center">Cronograma</TableHead>
-              <TableHead>Etapa atual</TableHead>
-              <TableHead className="w-32">Progresso</TableHead>
+              <TableHead className="w-56">Etapa atual</TableHead>
               <TableHead className="w-32">Compras</TableHead>
-              <TableHead>Próxima pendência</TableHead>
+              <TableHead className="min-w-56">Próxima pendência</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow></TableHeader>
             <TableBody>{tableRows.map((row) => <TableRow key={row.id}>
               <TableCell className="min-w-52"><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-sm font-semibold text-text" onClick={() => onOpen(row.id)}><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</Button><div className="text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div><Equipe team={row.team} /></TableCell>
               <TableCell className="w-24 text-center"><Status critical={row.alerts.some((a) => a.critical)} attention={row.alerts.length > 0} /></TableCell>
               <TableCell className="w-32 text-center"><span className="flex items-center justify-center gap-1 whitespace-nowrap text-xs"><CalendarDays size={12} aria-hidden="true" />{date(row.delivery)}</span>{row.days !== null && <div className={cn("text-xs", row.days < 0 ? "text-danger" : "text-text-mute")}>• {row.days < 0 ? `${-row.days} dias de atraso` : `${row.days} dias`}</div>}<ReguaDos90 days={row.days} /></TableCell>
-              <TableCell><div className="flex flex-wrap items-center gap-1"><span className="whitespace-nowrap text-xs text-text-mute">{row.steps.filter((step) => step.feito).length} de {row.steps.length}</span>{row.steps.map((step, index) => <React.Fragment key={step.chave}><Badge className="gap-1" tone={step.feito ? "success" : row.overdueSteps?.includes(step.chave) ? "danger" : step.chave === row.currentStep ? "brand" : "neutral"} title={`${step.rotulo}: ${step.feito ? "concluído" : "pendente"}`}>{step.feito ? <CheckCircle2 size={12} aria-hidden="true" /> : <Circle size={12} aria-hidden="true" />}{step.chave === "execucao" ? "Execução" : step.curto}</Badge>{index < row.steps.length - 1 && <ArrowRight size={10} className="shrink-0 text-text-mute" aria-hidden="true" />}</React.Fragment>)}</div></TableCell>
-              <TableCell><Percentage value={row.steps.length ? row.steps.filter((step) => step.feito).length / row.steps.length * 100 : 0} label="Etapas concluídas da jornada; não representa avanço físico" /></TableCell>
+              <TableCell className="w-56"><Esteira row={row} /></TableCell>
               <TableCell><Percentage value={row.summary?.mat.pct ?? null} label="Percentual do valor de material comprado" /></TableCell>
-              <TableCell className="min-w-44"><span className="text-sm text-text">{row.alerts[0]?.title || row.alerts[0]?.text || row.stage}</span><div className="text-xs text-danger">{row.alerts[0]?.days != null ? `• ${Math.abs(row.alerts[0].days)} dias` : row.days != null && row.alerts.length ? `• ${Math.abs(row.days)} dias` : ""}</div>{row.alerts[0]?.amount != null && <div className="text-right font-mono text-sm tabular-nums text-danger">{money(row.alerts[0].amount)}</div>}</TableCell>
+              <TableCell className="min-w-56"><span className="line-clamp-2 text-sm text-text">{row.alerts[0]?.title || row.alerts[0]?.text || row.stage}</span><div className="mt-1 flex items-baseline justify-between gap-3 text-xs"><span className="whitespace-nowrap text-danger">{row.alerts[0]?.days != null ? `${Math.abs(row.alerts[0].days)} dias` : row.days != null && row.alerts.length ? `${Math.abs(row.days)} dias` : ""}</span>{row.alerts[0]?.amount != null && <span className="whitespace-nowrap font-mono text-sm tabular-nums text-danger">{money(row.alerts[0].amount)}</span>}</div></TableCell>
               <TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onOpen(row.id)}>Ver detalhes <ArrowRight size={14} aria-hidden="true" /></Button></TableCell>
             </TableRow>)}</TableBody>
           </Table>}
