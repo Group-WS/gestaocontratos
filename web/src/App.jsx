@@ -67,7 +67,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, CampoData, IconeSquad, SquadComIcone, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, CampoData, IconeSquad, SquadComIcone, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, DicaInfo, EscolhaEstado } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -12061,16 +12061,19 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
   return (
     <div className="flex flex-col gap-2">
       {/* A MAE, sempre da base. */}
-      <div className="flex flex-col gap-1">
-        <SecaoRotulo>insumo mãe no Sienge</SecaoRotulo>
-        <FieldHint>O grupo do Sienge em que este produto entra. É ele que define quais detalhes aparecem abaixo.</FieldHint>
-      </div>
+      <SecaoRotulo rotuloDica="O que é o insumo mãe"
+        dica="O grupo do Sienge em que este produto entra (ex.: Luminária – pendentes decorativos). É ele que define quais detalhes aparecem abaixo.">
+        insumo mãe no Sienge
+      </SecaoRotulo>
       {mae ? (
         <div className="flex flex-col gap-2 text-sm">
-          <div className="flex items-start gap-2">
-            <span className="mono text-xs text-text-mute">{mae.codigo}</span>
-            <span className="min-w-0 flex-1 text-text">{mae.nome}</span>
-          </div>
+          {/* Com o seletor na tela, o texto repetia a mesma mãe logo acima dele. */}
+          {!(candidatas.length > 1 && !buscando && !somenteLeitura) && (
+            <div className="flex items-start gap-2">
+              <span className="mono text-xs text-text-mute">{mae.codigo}</span>
+              <span className="min-w-0 flex-1 text-text">{mae.nome}</span>
+            </div>
+          )}
           {candidatas.length > 1 && !buscando && !somenteLeitura && (
             <Select value={mae.codigo} onValueChange={onMae}>
               <SelectTrigger aria-label="Insumo mãe no Sienge"><SelectValue /></SelectTrigger>
@@ -12123,15 +12126,20 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
           dizer. Agora as opcoes sao um radio so — as que ja existem no
           Sienge e a nova — e a marcada e' a que vale. */}
       <div className="flex flex-col gap-2">
-        <SecaoRotulo conta={escolhida ? "usa um detalhe que já existe" : "cadastra um detalhe novo"}>qual descrição vai pra planilha</SecaoRotulo>
-        {/* A REGRA, onde a decisão acontece. "Bate tudo" e "falta…" não se
-            explicavam: quem não sabia que era a comparação de PALAVRAS da
-            descrição do item lia "bate tudo" como "é este, pode ir". */}
-        <FieldHint>
-          Se um detalhe que já existe no Sienge descreve este produto, escolha-o — a linha não precisa ser cadastrada de novo.
-          {" "}<b>Bate tudo</b>: todas as palavras da descrição do item aparecem no detalhe. <b>Falta…</b>: as palavras do item que o detalhe não tem — confira se é o mesmo produto.
-          {" "}A associação em massa só escolhe sozinha quando bate tudo.
-        </FieldHint>
+        {/* A REGRA mora no ⓘ, e não num parágrafo: "bate tudo" e "falta…"
+            não se explicavam sozinhos — quem não sabia que era a comparação
+            de PALAVRAS lia "bate tudo" como "é este, pode ir" —, mas o texto
+            inteiro na tela era ruído para quem já sabia. */}
+        <SecaoRotulo conta={escolhida ? "usa um detalhe que já existe" : "cadastra um detalhe novo"}
+          rotuloDica="Como escolher a descrição"
+          dica={<>
+            Se um detalhe que já existe no Sienge descreve este produto, escolha-o — a linha não precisa ser cadastrada de novo.
+            <br /><br /><b>Bate tudo</b>: todas as palavras da descrição do item aparecem no detalhe.
+            <br /><b>Falta…</b>: as palavras do item que o detalhe não tem — confira se é o mesmo produto.
+            <br /><br />A associação em massa só escolhe sozinha quando bate tudo.
+          </>}>
+          qual descrição vai pra planilha
+        </SecaoRotulo>
 
         <RadioGroup value={escolhida ?? "__nova__"} disabled={somenteLeitura} aria-label="Descrição que vai pra planilha"
           onValueChange={(v) => onEscolher(v === "__nova__" ? null : v)} className="flex flex-col gap-2">
@@ -12190,23 +12198,26 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
               cadastrada — quem escolheu variante nao preenche nada. */}
           <div className="grid gap-2 sm:grid-cols-2">
             <Field>
-              <Label htmlFor={`${idBase}-det`}>cód. do detalhe</Label>
+              <Label htmlFor={`${idBase}-det`} className="flex items-center gap-1">
+                cód. do detalhe
+                <DicaInfo rotulo="O que é o código do detalhe">Pode ficar vazio: o Sienge numera ao cadastrar.</DicaInfo>
+              </Label>
               <CampoRascunho as={Input} id={`${idBase}-det`} valor={codDet} placeholder="o Sienge numera" readOnly={somenteLeitura}
                 onSalvar={onCodDet} aoSair={aoSair} />
-              <FieldHint>Pode ficar vazio: o Sienge numera ao cadastrar.</FieldHint>
             </Field>
             <Field>
               <Label htmlFor={`${idBase}-aux`} className="flex items-center gap-2">
-                cód. auxiliar {auxMarca && <Badge tone="warning">{auxMarca}</Badge>}
+                cód. auxiliar
+                <DicaInfo rotulo="O que é o código auxiliar">
+                  A referência do fornecedor.
+                  {auxMarca === "gerado" && <><br /><br /><b>Gerado</b>: o fornecedor não informou código nem modelo, e o app criou um a partir do item — sai igual a cada download e não repete no grupo. Digite o do fornecedor se tiver.</>}
+                  {auxMarca === "sorteado" && <><br /><br /><b>Sorteado</b>: o item não tinha, e o app preencheu um. Digite o do fornecedor se tiver.</>}
+                </DicaInfo>
+                {auxMarca && <Badge tone="warning">{auxMarca}</Badge>}
               </Label>
               <CampoRascunho as={Input} id={`${idBase}-aux`}
                 valor={aux} placeholder="referência do fornecedor" readOnly={somenteLeitura}
                 onSalvar={onAux} aoSair={aoSair} />
-              <FieldHint>
-                A referência do fornecedor.
-                {auxMarca === "gerado" && " Marcado “gerado”: o fornecedor não informou código nem modelo, e o app criou um a partir do item — sai igual a cada download e não repete no grupo. Digite o do fornecedor se tiver."}
-                {auxMarca === "sorteado" && " Marcado “sorteado”: o item não tinha, e o app preencheu um. Digite o do fornecedor se tiver."}
-              </FieldHint>
             </Field>
           </div>
         </div>
@@ -12262,7 +12273,15 @@ function AssociacaoSienge({ item, detalheItem, onHabilitar, editandoPor, ...esco
       <Sheet open={aberto} onOpenChange={setAberto}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
           <SheetHeader className="border-b border-line-1 p-5">
-            <SheetTitle>Associar ao insumo do Sienge</SheetTitle>
+            {/* O MODO SEMPRE À VISTA, ao lado do título: dá pra alterar, ou é
+                só consulta? Sem isso a pessoa descobre clicando e vendo que
+                nada acontece. */}
+            <div className="flex flex-wrap items-center gap-2 pr-8">
+              <SheetTitle>Associar ao insumo do Sienge</SheetTitle>
+              {somenteLeitura
+                ? <Badge tone="neutral"><Lock size={12} aria-hidden="true" /> só consulta</Badge>
+                : <Badge tone="success"><Pencil size={12} aria-hidden="true" /> em edição</Badge>}
+            </div>
             <SheetDescription className="flex flex-col gap-1">
               <span className="font-semibold text-text">{item}</span>
               {detalheItem && <span className="text-xs">{detalheItem}</span>}
@@ -12274,9 +12293,8 @@ function AssociacaoSienge({ item, detalheItem, onHabilitar, editandoPor, ...esco
                 cartões, clicava e nada acontecia — sem saber por quê. */}
             {somenteLeitura && (
               <Alert tone="info">
-                <AlertTitle>Só consulta</AlertTitle>
-                <AlertDescription className="flex flex-col gap-2">
-                  <span>
+                <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <span className="min-w-0 flex-1">
                     {editandoPor
                       ? <><b>{editandoPor}</b> está editando esta obra. A escolha fica disponível quando a edição for liberada.</>
                       : onHabilitar
@@ -12284,7 +12302,7 @@ function AssociacaoSienge({ item, detalheItem, onHabilitar, editandoPor, ...esco
                         : "O seu perfil consulta as Compras, sem alterar a associação."}
                   </span>
                   {onHabilitar && !editandoPor && (
-                    <span><Button size="sm" onClick={onHabilitar}><Lock size={14} aria-hidden="true" /> Habilitar edição</Button></span>
+                    <Button size="sm" className="shrink-0" onClick={onHabilitar}><Lock size={14} aria-hidden="true" /> Habilitar edição</Button>
                   )}
                 </AlertDescription>
               </Alert>

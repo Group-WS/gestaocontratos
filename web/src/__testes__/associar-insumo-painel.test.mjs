@@ -31,13 +31,22 @@ conf("o selo vai embaixo do texto, e não numa coluna de largura fixa", !escolha
 /* MODO LEITURA DITO DENTRO DO PAINEL (22/09/2026). "Aqui diz que bate tudo
    mas não consigo selecionar": a obra estava sem edição habilitada, os
    cartões seguiam com cursor de clique e nada dizia por que não mudavam. */
-conf("o painel explica o modo leitura", painel.includes("<AlertTitle>Só consulta</AlertTitle>"));
+/* O MODO SEMPRE À VISTA, ao lado do título — nos dois sentidos. */
+conf("o topo do painel diz quando é só consulta", painel.includes("só consulta</Badge>"));
+conf("... e quando está em edição", painel.includes("em edição</Badge>"));
+conf("o painel explica o modo leitura", painel.includes("Para escolher a descrição ou mudar o insumo, habilite a edição da obra."));
 conf("... e oferece habilitar a edição ali mesmo", painel.includes("onClick={onHabilitar}"));
 conf("... e diz quem está editando, quando é outra pessoa", painel.includes("{editandoPor}</b> está editando esta obra"));
 conf("as Compras passam o habilitar até a linha", /<LinhaCompra [\s\S]{0,1500}onHabilitar=\{onHabilitar\} editandoPor=\{editandoPor\}/.test(src));
 conf("cartão em modo leitura não finge ser clicável", escolha.includes('somenteLeitura ? "" : "cursor-pointer hover:bg-surface-2"'));
 
-/* AS REGRAS, onde a decisão acontece. */
+/* AS REGRAS, num ⓘ com tooltip, e não em parágrafos (22/09/2026: "está
+   muito poluído com texto"). */
+const ui = fs.readFileSync(new URL("../lib/ui.jsx", import.meta.url), "utf8");
+conf("existe o ícone de dica do app, com o Tooltip do DS", /export function DicaInfo\(/.test(ui) && ui.includes("<TooltipContent side={lado}"));
+conf("a dica é um botão (o Tab chega nela) com nome para leitor de tela", /<Button variant="ghost" size="icon" type="button" aria-label=\{rotulo\}/.test(ui));
+conf("o painel não tem mais parágrafo de regra", !/<FieldHint>/.test(escolha));
+conf("as quatro regras moram em dicas", (escolha.match(/rotuloDica=|<DicaInfo /g) || []).length >= 4);
 conf("diz o que é o insumo mãe", escolha.includes("O grupo do Sienge em que este produto entra"));
 conf("diz o que é 'bate tudo' e 'falta…'", escolha.includes("todas as palavras da descrição do item aparecem no detalhe"));
 conf("o selo explica ao passar o mouse", /<Badge tone="warning" title=\{`Estas palavras da descrição do item não aparecem/.test(escolha));

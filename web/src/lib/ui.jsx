@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
   DateField, Popover, PopoverTrigger, PopoverContent, Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@group-ws/ws-ui";
-import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown } from "lucide-react";
+import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown, Info } from "lucide-react";
 
 /* CAMPO DE DATA DO DS, controlado.
 
@@ -89,6 +89,27 @@ export function BotaoIcone({ rotulo, lado = "top", children, ...props }) {
         <TooltipContent side={lado}>{rotulo}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+/* A REGRA NUM ÍCONE, e não num parágrafo (22/09/2026).
+
+   Explicação escrita por extenso ao lado de cada campo deixava o painel
+   "poluído com texto" — e quem já sabe a regra tinha de ler em volta dela
+   todas as vezes. O ⓘ fica discreto; quem quer saber passa o mouse ou foca
+   pelo teclado (é um botão, então o Tab chega nele), e o leitor de tela lê
+   o `rotulo`. */
+export function DicaInfo({ rotulo = "Saiba mais", lado = "top", children }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" type="button" aria-label={rotulo}
+          className="h-6 w-6 shrink-0 self-center text-text-mute">
+          <Info size={14} aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side={lado} className="max-w-xs whitespace-normal text-left normal-case tracking-normal">{children}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -260,10 +281,11 @@ export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", ac
 /* Rotulo de secao dentro de um dialog ou card: mono, caixa alta, discreto
    (classe `label-mono` do DS). `conta` e' o complemento em texto normal
    ao lado ("12 linhas selecionadas"). Substitui o `.sol-secao-rotulo`. */
-export function SecaoRotulo({ conta, className = "", children }) {
+export function SecaoRotulo({ conta, dica, rotuloDica, className = "", children }) {
   return (
     <h2 className={`flex flex-wrap items-baseline gap-2 ${className}`}>
       <span className="label-mono">{children}</span>
+      {dica && <DicaInfo rotulo={rotuloDica || "O que é isto?"}>{dica}</DicaInfo>}
       {conta && <span className="text-xs font-normal normal-case tracking-normal text-text-mute">{conta}</span>}
     </h2>
   );
