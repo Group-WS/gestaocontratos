@@ -3619,11 +3619,11 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
       </TableCell>
       <TableCell className="mono text-right tabular-nums">
         {material > 0 ? fmtBRL(material) : <span className="text-text-mute">—</span>}
-        {estimado && !manual && material > 0 && <span className="ml-1 text-xs italic text-text-mute" title="A planilha não trouxe a coluna de material — assumido o custo total">est.</span>}
+        {estimado && !manual && material > 0 && <span className="ml-1 text-xs italic text-text-mute" title="A planilha não disse quanto é material (coluna ausente ou zerada) — assumido o custo total">est.</span>}
       </TableCell>
       <TableCell className="mono text-right tabular-nums">
         {mo > 0 ? fmtBRL(mo) : <span className="text-text-mute">—</span>}
-        {estimado && !manual && mo > 0 && <span className="ml-1 text-xs italic text-text-mute" title="A planilha não trouxe a coluna de mão de obra — assumido o custo total">est.</span>}
+        {estimado && !manual && mo > 0 && <span className="ml-1 text-xs italic text-text-mute" title="A planilha não disse quanto é mão de obra (coluna ausente ou zerada) — assumido o custo total">est.</span>}
       </TableCell>
       {/* O total sai da SOMA das duas colunas ao lado, nao de `item.custo`.
 
@@ -3716,7 +3716,18 @@ function parcelasDaPlanilha(it) {
   const qtd = it.qtdExecutivo ?? it.qtdVendida ?? null;
   const mat = it.totalMaterial ?? (it.custoMaterial != null && qtd ? it.custoMaterial * qtd : null);
   const mo = it.totalMO ?? (it.custoMO != null && qtd ? it.custoMO * qtd : null);
-  if (mat == null && mo == null) {
+  /* Coluna ausente e coluna zerada dizem a MESMA coisa: a planilha nao
+     disse como o dinheiro se divide entre material e mao de obra. Antes
+     so' o `null` caia no chute abaixo, e o item que vinha com
+     `totalMaterial: 0` e `totalMO: 0` mas `custo` preenchido — o enxoval
+     e os vasos da obra 2195 — saia daqui valendo ZERO, e marcado como se
+     esse zero fosse o numero da planilha. O item seguia todo o fluxo de
+     compra sem valor: verba, liberacao, Plano de Compras.
+
+     Zero nao e' resposta, e' ausencia de resposta. Se as duas parcelas
+     estao vazias, vale o `custo` do item, do mesmo jeito de sempre, e o
+     item sai `estimado: true` — a divisao foi chutada aqui, nao lida. */
+  if (!mat && !mo) {
     return ehProduto(it)
       ? { material: it.custo || 0, mo: 0, estimado: true }
       : { material: 0, mo: it.custo || 0, estimado: true };
