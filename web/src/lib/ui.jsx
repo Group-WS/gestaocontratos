@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
   DateField, Popover, PopoverTrigger, PopoverContent, Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@group-ws/ws-ui";
-import { Check, ChevronDown, ChevronRight, ChevronsUpDown } from "lucide-react";
+import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown } from "lucide-react";
 
 /* CAMPO DE DATA DO DS, controlado.
 
@@ -303,5 +303,50 @@ export function EscolhaEstado({ id, valor, opcoes, onChange, disabled, rotulo = 
       </Select>
       {aviso}
     </div>
+  );
+}
+
+/* Um simbolo por squad, pra barra recolhida.
+
+   Com 62px de largura nao cabe "SQUAD COMET", e sem nada as obras de
+   tres squads viram uma coluna unica de predinhos iguais. O simbolo e' a
+   unica coisa que separa os grupos ali. */
+export function IconeSquad({ nome, size = 13 }) {
+  const t = String(nome || "").toLowerCase();
+  if (t.includes("moon")) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M20.5 15.6A8.6 8.6 0 0 1 9 4.1a1 1 0 0 0-1.4-1.2 10.5 10.5 0 1 0 14 14 1 1 0 0 0-1.1-1.3z" />
+    </svg>;
+  }
+  if (t.includes("sun")) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.4" />
+      <path d="M12 1.4v3M12 19.6v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1.4 12h3M19.6 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"
+        stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" fill="none" />
+    </svg>;
+  }
+  if (t.includes("comet")) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="16.5" cy="7.5" r="4" />
+      <path d="M12.6 10.8 2.9 20.5a1 1 0 0 0 1.1 1.6l7.5-3a1 1 0 0 0 .5-.4l2.2-3.6z" opacity=".75" />
+    </svg>;
+  }
+  return <Building2 size={size} />;
+}
+
+/* O squad com o símbolo dele, em todo lugar que o squad aparece (pedido
+   dela, 22/09/2026): o mesmo cometa, lua e sol do menu lateral. "Squad X"
+   quando o nome vem só "X"; "Sem squad" e "Outras obras" ficam como estão. */
+export function rotuloDoSquad(nome) {
+  const n = String(nome || "").trim();
+  if (!n) return "Sem squad";
+  return /^squad\b|^sem squad$|^outras obras$/i.test(n) ? n : `Squad ${n}`;
+}
+export function SquadComIcone({ nome, size = 12, className = "" }) {
+  return (
+    <span className={`inline-flex min-w-0 items-center gap-1 ${className}`}>
+      <IconeSquad nome={nome} size={size} />
+      <span className="min-w-0 truncate">{rotuloDoSquad(nome)}</span>
+    </span>
   );
 }

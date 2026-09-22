@@ -19,7 +19,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -66,7 +66,7 @@ import { Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, CampoData, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, CampoData, IconeSquad, SquadComIcone, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, EscolhaEstado } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -613,18 +613,31 @@ function jornadaDaObra(obra) {
   return { passos, atualIndex: i === -1 ? passos.length - 1 : i };
 }
 
+/* A TRILHA DA JORNADA (22/09/2026): colunas iguais, o mesmo círculo em todas
+   as fases e uma linha ligando uma à outra — verde até onde a obra já
+   chegou. Antes eram selos de largura diferente (um check, um número), e o
+   nome de cada fase ficava fora do centro. */
 function JornadaStepper({ passos, atualIndex }) {
   return (
-    <ol className="flex flex-wrap gap-4">
+    <ol className="grid auto-cols-fr grid-flow-col">
       {passos.map((p, i) => {
-        const atual = i === atualIndex || p.andamento;
+        const atual = !p.feito && (i === atualIndex || p.andamento);
+        const status = p.feito ? "Concluído" : atual ? "Em andamento" : "Aguardando";
         return (
-          <li key={p.chave} className="flex min-w-0 flex-1 basis-32 flex-col items-center gap-1 text-center">
-            <Badge tone={p.feito ? "success" : atual ? "brand" : "neutral"}>
-              {p.feito ? <Check size={14} aria-hidden="true" /> : i + 1}
-            </Badge>
-            <span className="text-sm text-text">{p.nome}</span>
-            <span className="text-xs text-text-mute">{p.feito ? "Concluído" : atual ? "Em andamento" : "Aguardando"}</span>
+          <li key={p.chave} className="flex min-w-0 flex-col items-center gap-2 text-center">
+            <div className="flex w-full items-center" aria-hidden="true">
+              <span className={cn("h-px flex-1", i === 0 ? "bg-transparent" : p.feito || atual ? "bg-success" : "bg-line-2")} />
+              <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tabular-nums",
+                p.feito ? "border-success bg-success text-bg"
+                  : atual ? "border-brand bg-brand-soft text-brand ring-4 ring-brand-soft"
+                  : "border-line-2 bg-surface-1 text-text-mute")}>
+                {p.feito ? <Check size={16} /> : i + 1}
+              </span>
+              <span className={cn("h-px flex-1", i === passos.length - 1 ? "bg-transparent" : p.feito ? "bg-success" : "bg-line-2")} />
+            </div>
+            <span className="px-1 text-sm font-semibold leading-tight text-text">{p.nome}</span>
+            <span className={cn("text-xs", p.feito ? "text-success" : atual ? "text-brand" : "text-text-mute")}>{status}</span>
+            <span className="sr-only">{`${p.nome}: ${status}`}</span>
           </li>
         );
       })}
@@ -1482,21 +1495,35 @@ function DashboardObra({ obra, totals, podeEditar, onDataEntrega, onIrParaCompra
               <CardTitle className="flex items-center gap-2">
                 <LayoutGrid size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Jornada da obra
               </CardTitle>
+              {/* A descrição diz o que o card guarda — sem isso, "Expandir"
+                  escondia que é aqui que moram o contrato, o criativo e os
+                  cadernos de cada fase. */}
               <CardDescription>
                 {jornadaAberta
-                  ? "Os arquivos de cada fase da obra — guardados também em Documentos."
-                  : "Acompanhe as principais fases e o status atual da obra."}
+                  ? "Os arquivos de cada fase — contrato, criativo e cadernos do executivo. Ficam também em Documentos."
+                  : "Em que fase a obra está. Os arquivos de cada fase (contrato, criativo e cadernos) abrem em “Ver arquivos das fases”."}
               </CardDescription>
             </div>
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" type="button">
-                {jornadaAberta ? "Recolher" : "Expandir"}
+              <Button variant="outline" size="sm" type="button" className="shrink-0">
+                <FolderOpen size={14} aria-hidden="true" />
+                {jornadaAberta ? "Ocultar arquivos" : "Ver arquivos das fases"}
                 <ChevronDown size={14} className={cn("transition-transform", jornadaAberta && "rotate-180")} aria-hidden="true" />
               </Button>
             </CollapsibleTrigger>
           </CardHeader>
           <CardContent className="space-y-4">
             <JornadaStepper passos={jornada.passos} atualIndex={jornada.atualIndex} />
+            {!jornadaAberta && (
+              <div className="flex justify-center border-t border-line-1 pt-3">
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" type="button">
+                    <FolderOpen size={14} aria-hidden="true" /> Ver os arquivos de cada fase
+                    <ChevronDown size={14} aria-hidden="true" />
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+            )}
             <CollapsibleContent>
               <AnexosDaJornada obra={obra} usuario={usuario} podeEditar={podeEditar} souAdmin={souAdmin}
                 onImportCaderno={onImportCaderno} onArquivos={onArquivos} />
@@ -10226,33 +10253,6 @@ const MODULOS = [
   { id: "arquivo", nome: "Finalizadas", sub: "obras que ja' terminaram", Icone: Archive },
 ];
 
-/* Um simbolo por squad, pra barra recolhida.
-
-   Com 62px de largura nao cabe "SQUAD COMET", e sem nada as obras de
-   tres squads viram uma coluna unica de predinhos iguais. O simbolo e' a
-   unica coisa que separa os grupos ali. */
-function IconeSquad({ nome, size = 13 }) {
-  const t = String(nome || "").toLowerCase();
-  if (t.includes("moon")) {
-    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M20.5 15.6A8.6 8.6 0 0 1 9 4.1a1 1 0 0 0-1.4-1.2 10.5 10.5 0 1 0 14 14 1 1 0 0 0-1.1-1.3z" />
-    </svg>;
-  }
-  if (t.includes("sun")) {
-    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="12" cy="12" r="4.4" />
-      <path d="M12 1.4v3M12 19.6v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1.4 12h3M19.6 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"
-        stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" fill="none" />
-    </svg>;
-  }
-  if (t.includes("comet")) {
-    return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="16.5" cy="7.5" r="4" />
-      <path d="M12.6 10.8 2.9 20.5a1 1 0 0 0 1.1 1.6l7.5-3a1 1 0 0 0 .5-.4l2.2-3.6z" opacity=".75" />
-    </svg>;
-  }
-  return <Building2 size={size} />;
-}
 
 /* Novas obras e Finalizadas NAO sao destinos do trilho: sao OBRAS.
  *
@@ -16116,7 +16116,7 @@ function EscolherObra({ obras, numeroDe, onEscolher, aberto, onAbrir, children }
           <CommandList className="max-h-80 overflow-y-auto">
             <CommandEmpty>Nenhuma obra com esse nome ou código.</CommandEmpty>
             {grupos.map(([squad, lista]) => (
-              <CommandGroup key={squad} heading={squad}>
+              <CommandGroup key={squad} heading={<span className="inline-flex items-center gap-1"><IconeSquad nome={squad} size={12} />{squad}</span>}>
                 {lista.map((o) => (
                   <CommandItem key={o.codigo} value={`${o.codigo} ${o.nome} ${o.squad || ""}`} onSelect={() => onEscolher(o)}>
                     <span className="mono w-16 shrink-0 text-xs text-text-mute">#{o.codigo}</span>
@@ -20195,7 +20195,7 @@ function ObraCard({ o, acao, children }) {
         <div className="text-sm font-semibold text-text">{o.nome}</div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-text-mute">
           <span className="font-mono">#{o.codigo}</span>
-          {o.squad && <Badge tone="neutral">{o.squad}</Badge>}
+          {o.squad && <Badge tone="neutral" className="gap-1"><IconeSquad nome={o.squad} size={11} />{o.squad}</Badge>}
           {o.cliente && o.cliente !== "—" && <span className="min-w-0 truncate">{o.cliente}</span>}
         </div>
         {children}
@@ -20412,7 +20412,7 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
 
       {nomes.map((squad) => (
         <section key={squad} className="space-y-2" aria-label={squad}>
-          <SecaoRotulo conta={`${grupos[squad].length}`}>{squad}</SecaoRotulo>
+          <SecaoRotulo conta={`${grupos[squad].length}`}><span className="inline-flex items-center gap-1"><IconeSquad nome={squad} size={12} />{squad}</span></SecaoRotulo>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {grupos[squad].map((o) => (
               <ObraCard
@@ -24794,7 +24794,7 @@ export default function App() {
               <PageShell className="!mb-0" contentPadding={false}
                 breadcrumbs={[
                   { label: <a href="/" className="transition-colors hover:text-brand" onClick={(e) => { e.preventDefault(); setModulo("inicio"); }}>Início</a> },
-                  { label: /^squad\b/i.test(squad) ? squad : `Squad ${squad}` },
+                  { label: <SquadComIcone nome={squad} /> },
                   { label: `Obra #${obra.codigo}`, current: true },
                 ]}
                 /* O CODIGO no titulo: e' por ele que a equipe se organiza ("a

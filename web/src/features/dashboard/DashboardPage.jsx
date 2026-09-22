@@ -6,7 +6,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, cn,
   HoverCard, HoverCardTrigger, HoverCardContent,
 } from "@group-ws/ws-ui";
-import { BotaoIcone } from "../../lib/ui.jsx";
+import { BotaoIcone, SquadComIcone } from "../../lib/ui.jsx";
 import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, Search } from "lucide-react";
 
 const money = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -17,14 +17,14 @@ const options = (rows, key) => [...new Set(rows.map((row) => row[key]))].sort((a
 
 /* A opcao vazia diz o campo ("Todas as unidades"): o rotulo e' so' para
    leitor de tela, e um "Todas" solto na barra nao dizia de que filtro era. */
-function Choice({ label, value, values, onChange, disabled = false, allLabel }) {
+function Choice({ label, value, values, onChange, disabled = false, allLabel, renderItem }) {
   const id = React.useId();
   return <div className="flex min-w-0 flex-col gap-1 sm:w-48">
     <Label htmlFor={id} className="sr-only">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger id={id} aria-label={label}><SelectValue /></SelectTrigger>
       <SelectContent><SelectItem value="all">{allLabel}</SelectItem>
-        {values.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+        {values.map((item) => <SelectItem key={item} value={item}>{renderItem ? renderItem(item) : item}</SelectItem>)}
       </SelectContent>
     </Select>
   </div>;
@@ -82,7 +82,7 @@ function ResumoDaObra({ row, onOpen }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-semibold text-text"><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</div>
-          <div className="text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div>
+          <div className="text-xs text-text-mute"><SquadComIcone nome={row.squad} /></div>
         </div>
         <Status critical={criticas > 0} attention={row.alerts.length > 0} />
       </div>
@@ -229,7 +229,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
   const controls = <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3" role="group" aria-label="Filtros do dashboard">
     <div className="col-span-2 flex w-full min-w-0 flex-col gap-1 sm:w-72"><Label htmlFor="dashboard-search" className="sr-only">Buscar obra</Label><Input icon={<Search size={16} aria-hidden="true" />} id="dashboard-search" placeholder="Código ou nome" value={filters.search} onChange={(event) => update("search", event.target.value)} /></div>
     <Choice label="Unidade" allLabel="Todas as unidades" disabled={!rows.some((row) => row.unit !== "Não informada")} value={filters.unit} values={options(rows, "unit")} onChange={(value) => update("unit", value)} />
-    <Choice label="Squad" allLabel="Todos os squads" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} />
+    <Choice label="Squad" allLabel="Todos os squads" value={filters.squad} values={options(rows, "squad")} onChange={(value) => update("squad", value)} renderItem={(item) => <SquadComIcone nome={item} />} />
     <Choice label="GC" allLabel="Todos os GCs" value={filters.gc} values={options(rows, "gc")} onChange={(value) => update("gc", value)} />
     <Choice label="Taylor Made" allLabel="Todas as Taylor Made" value={filters.taylor || "all"} values={options(rows, "taylor")} onChange={(value) => update("taylor", value)} />
   </div>;
@@ -321,7 +321,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold text-text"><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</span>
-                        <span className="mt-1 block text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</span>
+                        <span className="mt-1 block text-xs text-text-mute"><SquadComIcone nome={row.squad} /></span>
                       </span>
                       <Badge tone={critica ? "danger" : atencao ? "warning" : "success"} className="w-28 shrink-0 justify-center"
                         title={critica ? "Obra com pendência crítica" : atencao ? "Obra com pendência de atenção" : "Obra no prazo"}>{prazo}</Badge>
@@ -351,7 +351,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
               <TableCell className="min-w-52">{/* O resumo mora dentro da célula (o HoverCard do DS não usa portal
                   e um <div> solto no <tbody> não é HTML válido); ele se posiciona
                   fora do fluxo, então não mexe na tabela. */}
-                <HoverCardContent side="bottom" align="start" sideOffset={4} collisionPadding={16} className="w-96"><ResumoDaObra row={row} onOpen={onOpen} /></HoverCardContent><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-sm font-semibold text-text" onClick={() => onOpen(row.id)}><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</Button><div className="text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div><Equipe team={row.team} /></TableCell>
+                <HoverCardContent side="bottom" align="start" sideOffset={4} collisionPadding={16} className="w-96"><ResumoDaObra row={row} onOpen={onOpen} /></HoverCardContent><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-sm font-semibold text-text" onClick={() => onOpen(row.id)}><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</Button><div className="text-xs text-text-mute"><SquadComIcone nome={row.squad} /></div><Equipe team={row.team} /></TableCell>
               <TableCell className="w-24 text-center"><Status critical={row.alerts.some((a) => a.critical)} attention={row.alerts.length > 0} /></TableCell>
               <TableCell className="w-32 text-center"><span className="flex items-center justify-center gap-1 whitespace-nowrap text-xs"><CalendarDays size={12} aria-hidden="true" />{date(row.delivery)}</span>{row.days !== null && <div className={cn("text-xs", row.days < 0 ? "text-danger" : "text-text-mute")}>• {row.days < 0 ? `${-row.days} dias de atraso` : `${row.days} dias`}</div>}<ReguaDos90 days={row.days} /></TableCell>
               <TableCell className="w-56"><Esteira row={row} /></TableCell>

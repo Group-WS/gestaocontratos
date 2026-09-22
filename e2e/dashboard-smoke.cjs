@@ -32,7 +32,7 @@ await page.getByLabel('Buscar obra',{exact:true}).fill('sixteen');
 await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').nth(1).waitFor({state:'detached'});assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),1);
 await page.getByRole('button',{name:'Ver detalhes',exact:true}).click();assert.equal(await page.evaluate(()=>window.lastAction),'open-2');
 await page.getByRole('button',{name:'Limpar tudo',exact:true}).click();
-await page.getByRole('combobox',{name:'Squad',exact:true}).click();await page.getByRole('option',{name:'Sun',exact:true}).click();
+await page.getByRole('combobox',{name:'Squad',exact:true}).click();await page.getByRole('option',{name:'Squad Sun',exact:true}).click();
 assert.equal(await page.getByRole('table',{name:'Obras ativas',exact:true}).locator('tbody tr').count(),3);
 await page.getByRole('button',{name:'Limpar tudo',exact:true}).click();
 await page.getByRole('combobox',{name:'Unidade',exact:true}).click();await page.getByRole('option',{name:'São Paulo',exact:true}).click();
