@@ -424,6 +424,19 @@ async function textoDoPDF(buf) {
   return (await res.json()).texto;
 }
 
+/* Abre o link de um arquivo em aba nova. So' blob: (o arquivo que ainda
+   esta' no navegador) e https: (o link assinado do Storage) — e http: so'
+   no localhost, em desenvolvimento. O endereco vem do banco (a lista de
+   arquivos da obra), e outro esquema (javascript:, data:) nao abre. */
+function abrirArquivo(url) {
+  let u;
+  try { u = new URL(url, window.location.href); } catch { return false; }
+  const local = u.protocol === "http:" && ["localhost", "127.0.0.1"].includes(u.hostname);
+  if (!["blob:", "https:"].includes(u.protocol) && !local) return false;
+  window.open(u.href, "_blank", "noopener,noreferrer");
+  return true;
+}
+
 function downloadFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime || "text/plain;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -433,7 +446,15 @@ function downloadFile(filename, content, mime) {
   URL.revokeObjectURL(url);
 }
 
-function csvCell(v) { return `"${String(v ?? "").replace(/"/g, '""')}"`; }
+/* Célula de CSV. Texto que começa com = + - @ (ou tab/retorno) o Excel lê
+   como FÓRMULA ao abrir: um nome de fornecedor "=HYPERLINK(...)" vindo do
+   banco viraria link, ou pior. Esses ganham um apóstrofo na frente — e
+   número, inclusive negativo ("-1.234,56"), continua número. */
+function csvCell(v) {
+  let s = String(v ?? "");
+  if (/^[=+\-@\t\r]/.test(s) && !/^-?[\d.,]+$/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+}
 
 function exportVendidoCSV(obra) {
   const rows = [["Código", "Verba", "Valor Vendido (R$)"]];
@@ -9004,11 +9025,11 @@ function CadernoSlot({ titulo, arquivo, chave, obraCodigo, usuario, onImportar, 
   }
 
   async function abrir(baixar) {
-    if (arquivo?.url) { window.open(arquivo.url, "_blank", "noopener,noreferrer"); return; }
+    if (arquivo?.url) { abrirArquivo(arquivo.url); return; }
     setErro(null);
     setOcupado(baixar ? "baixar" : "ver");
     try {
-      window.open(await linkParaArquivo(arquivo.caminho, { baixar }), "_blank", "noopener,noreferrer");
+      abrirArquivo(await linkParaArquivo(arquivo.caminho, { baixar }));
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -10714,10 +10735,10 @@ function AssinaturaClienteView({ obra, usuario, onRegistrar, onRemover, podeEdit
   }
 
   async function baixarDocumento(arq) {
-    if (arq.url) { window.open(arq.url, "_blank", "noopener,noreferrer"); return; }
+    if (arq.url) { abrirArquivo(arq.url); return; }
     setBaixando(true);
     try {
-      window.open(await linkParaBaixar(arq.caminho), "_blank", "noopener,noreferrer");
+      abrirArquivo(await linkParaBaixar(arq.caminho));
     } catch (err) {
       setErroArq(err.message);
     } finally {
@@ -19043,10 +19064,10 @@ function ArquivoLinha({ a, podeEditar, onExcluir, semFase = false }) {
   const perdido = !anexoRecuperavel(a);
 
   async function abrir(baixar) {
-    if (a.url) { window.open(a.url, "_blank", "noopener,noreferrer"); return; }
+    if (a.url) { abrirArquivo(a.url); return; }
     setErro(null); setOcupado(baixar ? "baixar" : "ver");
     try {
-      window.open(await linkParaArquivo(a.caminho, { baixar }), "_blank", "noopener,noreferrer");
+      abrirArquivo(await linkParaArquivo(a.caminho, { baixar }));
     } catch (e) {
       setErro(e.message || String(e));
     } finally {
@@ -19201,10 +19222,10 @@ function CadernoBaixar({ titulo, arquivo }) {
   const [erro, setErro] = useState(null);
 
   async function abrir(baixar) {
-    if (arquivo?.url) { window.open(arquivo.url, "_blank", "noopener,noreferrer"); return; }
+    if (arquivo?.url) { abrirArquivo(arquivo.url); return; }
     setErro(null); setOcupado(baixar ? "baixar" : "ver");
     try {
-      window.open(await linkParaArquivo(arquivo.caminho, { baixar }), "_blank", "noopener,noreferrer");
+      abrirArquivo(await linkParaArquivo(arquivo.caminho, { baixar }));
     } catch (e) {
       setErro(e.message || String(e));
     } finally {
@@ -20552,9 +20573,9 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
    especificações nascem. */
 function BotaoApresentacao({ onAbrir, arquivo }) {
   async function verPdf() {
-    if (arquivo?.url) { window.open(arquivo.url, "_blank", "noopener,noreferrer"); return; }
+    if (arquivo?.url) { abrirArquivo(arquivo.url); return; }
     try {
-      window.open(await linkParaArquivo(arquivo.caminho), "_blank", "noopener,noreferrer");
+      abrirArquivo(await linkParaArquivo(arquivo.caminho));
     } catch (e) {
       avisar.erro("Não foi possível abrir o PDF.", String(e.message || e));
     }

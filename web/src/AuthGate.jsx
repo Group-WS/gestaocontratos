@@ -133,10 +133,11 @@ export function erroDaVolta(href) {
       || new URLSearchParams(u.hash.replace(/^#/, "")).get("error");
   } catch { return null; }
   if (!bruto) return null;
-  const t = decodeURIComponent(bruto);
+  // O URLSearchParams ja' decodifica. Decodificar de novo derrubava a tela
+  // de login inteira quando o texto trazia um "%" (URIError).
+  const t = bruto;
 
-  /* Os codigos AADSTS que tem conserto conhecido viram instrucao. O resto
-     aparece cru: melhor um texto feio do que esconder o motivo. */
+  /* Os codigos AADSTS que tem conserto conhecido viram instrucao. */
   if (/AADSTS50194|multi-?tenant/i.test(t)) {
     return "O app do Azure é de um único tenant, mas o Supabase está chamando o endereço /common. "
       + "Conserto: no Supabase, em Authentication → Sign In / Providers → Azure, preencha o campo "
@@ -163,7 +164,13 @@ export function erroDaVolta(href) {
     return "O acesso foi negado no login da Microsoft — ou você cancelou, ou o app precisa de consentimento "
       + "do administrador do diretório.";
   }
-  return t;
+  /* O resto NAO aparece cru. O texto vem da URL, e qualquer um monta um link
+     com a frase que quiser ("sua senha expirou, ligue para...") para ela
+     aparecer dentro da nossa tela de login. O motivo nao some: fica o
+     codigo do Azure, que e' o que o suporte procura (SEG-33). */
+  const codigo = (t.match(/\bAADSTS\d{4,}\b/) || [])[0];
+  return "Não conseguimos concluir a entrada pela Microsoft. Tente de novo; se continuar, avise quem cuida do sistema"
+    + (codigo ? ` (código ${codigo}).` : ".");
 }
 
 function LoginScreen({ derrubada }) {
@@ -200,7 +207,7 @@ function LoginScreen({ derrubada }) {
       setCarregando(false);
       setErro(/provider is not enabled/i.test(error.message)
         ? "O login da Microsoft ainda não foi ligado no Supabase."
-        : `Não consegui abrir o login da Microsoft: ${error.message}`);
+        : "Não conseguimos abrir o login da Microsoft. Tente de novo em instantes.");
     }
     // Deu certo: o navegador sai desta pagina, entao nao ha o que limpar.
   }

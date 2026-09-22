@@ -22,8 +22,16 @@ const casos = [
   ["https://x.app/?error_description=AADSTS7000215%3A+Invalid+client+secret",
    /Client Secret/, "segredo invalido fala de gerar outro"],
   ["https://x.app/?error=access_denied", /negado/, "recusa do usuario"],
+  /* Ate' 21/09/2026 o desconhecido aparecia cru. Mas o texto vem da URL, e
+     qualquer um monta um link com a frase que quiser dentro da nossa tela
+     de login. O motivo nao some — fica o codigo do Azure, que e' o que o
+     suporte procura —, e a frase livre nao aparece. */
   ["https://x.app/?error_description=Coisa+nunca+vista",
-   /Coisa nunca vista/, "codigo desconhecido aparece cru, nao some"],
+   /^Não conseguimos concluir a entrada pela Microsoft\.[^]*sistema\.$/, "desconhecido vira a mensagem padrao"],
+  ["https://x.app/?error_description=AADSTS12345%3A+Sua+senha+expirou%2C+ligue+para+0800",
+   /\(código AADSTS12345\)\.$/, "... com o codigo do Azure, e sem a frase que veio na URL"],
+  ["https://x.app/?error_description=100%25+quebrado",
+   /Não conseguimos concluir/, "um % no texto nao derruba a tela"],
   ["https://x.app/", null, "sem erro na URL, nada a mostrar"],
   ["https://x.app/#access_token=abc&type=bearer", null, "volta BOA nao vira erro"],
   ["nao-e-url", null, "URL quebrada nao derruba a tela"],
