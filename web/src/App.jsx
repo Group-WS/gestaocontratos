@@ -8718,8 +8718,11 @@ function CelulaEditavel({ valor, onSalvar, formato = "moeda", congelado, coord, 
 
   if (editando) {
     return (
-      <input
-        className={`celula-input ${ehTexto ? "texto" : "mono"} ${alinhar || ""}`}
+      /* Campo do DS, compacto para caber na célula: texto à esquerda, número
+         à direita (ou centralizado, com alinhar="centro"). */
+      <Input
+        className={cn("h-8 w-full px-2 text-sm", ehTexto ? "text-left" : "mono tabular-nums", !ehTexto && (alinhar === "centro" ? "text-center" : "text-right"))}
+        aria-label="Editar célula"
         autoFocus
         value={texto}
         onChange={(e) => setTexto(ehTexto ? e.target.value : mascarar(e.target.value).texto)}
@@ -8776,8 +8779,9 @@ function CelulaTexto({ texto, linhas = 2, onVerTudo, onEditar, congelado, coord,
 
   if (editando) {
     return (
-      <textarea
-        className="celula-input texto multi"
+      <Textarea
+        className="min-h-0 w-full resize-y px-2 py-1 text-sm"
+        aria-label="Editar texto da célula"
         autoFocus
         rows={2}
         value={rascunho}
@@ -23070,7 +23074,6 @@ export default function App() {
         .ad-card-b { padding: 12px 14px; }
         .ad-item-campos label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
         .ad-largo { grid-column: 1 / -1; }
-        .ad-item-campos .form-input { margin-top: 3px; width: 100%; font-size: 12.5px; }
 
         .ad-grupo { border: 1px solid var(--border-soft); border-radius: 9px; margin-bottom: 10px; }
         .ad-gh { display: flex; align-items: center; gap: 6px; padding: 7px 9px; background: var(--panel); border-bottom: 1px solid var(--border-soft); border-radius: 9px 9px 0 0; }
@@ -23283,11 +23286,8 @@ export default function App() {
            comprar chegou mesmo la? */
         /* Gerador avulso: mesma associacao, sem obra e sem gravar nada. */
         .det-sorteado { color: var(--amber); font-weight: 700; }
-        .det-codigos .form-input.sorteado { border-style: dashed; border-color: var(--amber); }
         .det-codigos { display: flex; gap: 8px; margin-top: 5px; }
         .det-codigos label { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; color: var(--ink-3); }
-        .det-codigos .form-input { margin-top: 0; font-size: 11px; padding: 4px 6px; font-family: var(--font-mono); }
-        .det-codigos .form-input.vazio { border-color: var(--amber); background: var(--amber-bg); }
         .det-escolha { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; }
         .det-escolha-rot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; color: var(--ink-3); margin-bottom: 4px; }
         .det-selo-vai { color: var(--blue); background: var(--blue-bg); border-radius: 4px; padding: 1px 5px; text-transform: none; letter-spacing: 0; }
@@ -23304,7 +23304,6 @@ export default function App() {
         .det-forn { background: var(--blue-bg); color: var(--blue); }
         .det-amb { background: var(--panel); color: var(--ink-2); }
         .ger-busca { display: flex; flex-direction: column; gap: 3px; padding: 6px; background: var(--panel); border-radius: 8px; }
-        .ger-busca .form-input { margin-top: 0; font-size: 12px; padding: 5px 8px; }
         /* DASHBOARD MO — a base de orcado de um escopo. */
         /* A soma so aparece quando ha selecao: e o unico numero da tela
            contra o qual a proposta do fornecedor vai ser comparada. */
@@ -23693,7 +23692,6 @@ export default function App() {
         .form-row { margin-bottom: 12px; }
         .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; }
         .form-label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; font-weight: 600; color: var(--ink-2); }
-        .form-input, .form-select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; font-family: var(--font-sans); color: var(--ink); background: var(--surface-1); }
         .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
         .btn-cancelar { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
         .btn-criar { background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
@@ -23769,12 +23767,9 @@ export default function App() {
         .detalhe-acoes { display: flex; justify-content: flex-end; margin-top: 10px; }
         .celula-corte.editavel { cursor: text; border-radius: 4px; padding: 1px 3px; margin: -1px -3px; }
         .celula-corte.editavel:hover { background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--border); }
-        .celula-input.texto { text-align: left; font-family: inherit; }
         /* O campo de texto em edição fica com a cara de campo: fundo branco,
            borda azul e altura de linha própria. Antes se confundia com a
            tabela e parecia um retângulo vazio atravessando a linha. */
-        .vend-itens .celula-input.texto { padding: 4px 7px; line-height: 1.4; box-shadow: var(--shadow-1); }
-        .celula-input.multi { resize: vertical; line-height: 1.35; }
         .saldo-exec.sem-cmv { border-style: dashed; }
         .saldo-exec.sem-cmv .saldo-valor.dim { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 
@@ -23788,11 +23783,10 @@ export default function App() {
         .celula-valor:hover { border-color: var(--border); background: var(--surface-1); }
         .celula-valor.travada { cursor: default; color: var(--ink-3); }
         .celula-valor.travada:hover { border-color: transparent; background: transparent; }
-        .celula-input { width: 100%; border: 1px solid var(--blue); border-radius: 5px; padding: 2px 5px; font-size: 11.5px; text-align: right; outline: none; background: var(--surface-1); font-family: var(--font-mono); box-shadow: 0 0 0 2px var(--blue-bg); }
         /* .celula-valor alinhava TUDO à direita, inclusive Qtd. e Un., que
            o <td className="center"> pedia centralizadas — o botão de 100% de
            largura vencia o alinhamento da célula. */
-        .celula-valor.centro, .celula-input.centro { text-align: center; }
+        .celula-valor.centro { text-align: center; }
         .celula-valor.texto { font-family: inherit; }
         .btn-add-item { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0 10px 34px; background: transparent; border: 1px dashed var(--border); border-radius: 7px; padding: 5px 11px; font-size: 11.5px; color: var(--ink-3); cursor: pointer; font-family: inherit; }
         .btn-add-item:hover { color: var(--blue); border-color: var(--blue); }
@@ -23814,7 +23808,6 @@ export default function App() {
         .cad-h { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 11px; }
         .cad-campos { display: grid; grid-template-columns: 1fr 140px 170px; gap: 10px; }
         .cad-campos label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
-        .cad-campos .form-input { margin-top: 3px; width: 100%; font-size: 13px; }
         .cad-largo { grid-column: auto; }
         .cad-erro { display: block; font-size: 10.5px; color: var(--red); font-weight: 600; text-transform: none; letter-spacing: 0; margin-top: 3px; }
         .cad-erro-larga { margin-top: 9px; }
@@ -23838,7 +23831,6 @@ export default function App() {
         .ac-regra.on { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
         .ac-lista { background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px; padding: 10px; margin-top: 9px; }
         .ac-lista-topo { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
-        .ac-lista-topo .form-input { margin-top: 0; flex: 1; font-size: 12px; }
         .ac-lista-itens { max-height: 220px; overflow-y: auto; }
         .ac-obra { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 6px; font-size: 12px; cursor: pointer; }
         .ac-obra:hover { background: var(--panel); }
@@ -23866,9 +23858,6 @@ export default function App() {
         .arq-topo-n { font-family: var(--font-sans); font-size: 30px; font-weight: 700; color: var(--ink); line-height: 1; }
         .arq-topo-rot { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
         .arq-subir { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-        .arq-subir .form-input { margin-top: 0; font-size: 12.5px; }
-        .arq-subir input.form-input { width: 220px; }
-        .arq-subir select.form-input { width: 170px; }
         .arq-bloco { margin-bottom: 20px; }
         .arq-bloco-h { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
         .arq-bloco-tit { font-size: 13px; font-weight: 700; color: var(--ink); }
@@ -23963,7 +23952,6 @@ export default function App() {
         .obra-endereco-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 6px; vertical-align: -5px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer; opacity: 0.6; }
         .obra-endereco-btn:hover { opacity: 1; background: var(--surface-2); color: var(--ink); }
         .obra-endereco-edita { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 22px; }
-        .obra-endereco-edita .form-input { flex: 1 1 380px; margin: 0; }
         .rel-doc .rel-sub { font-size: 10.5pt; font-weight: 600; color: var(--casa-tinta); margin-top: 1.5mm; letter-spacing: 0; }
         .rel-doc .rel-extra { font-size: 7.4pt; color: var(--casa-cinza); margin-top: .6mm; }
         .rel-doc .rel-entrega { font-size: 8pt; font-weight: 400; color: var(--casa-cinza); text-transform: none; letter-spacing: 0; }
@@ -24119,12 +24107,11 @@ export default function App() {
            Padrão obrigatório do DS: fundo --field, borda --line-2, foco em
            brand com anel suave, raio 10, 14px. Os campos pequenos de tabela
            mantêm o tamanho e herdam só a linguagem. */
-        :is(.form-input, .form-select, .detalhe-texto) { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
+        :is(.detalhe-texto) { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: 10px; background-color: var(--field); color: var(--text); font-family: var(--font-sans); font-size: 14px; transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
         :is(.ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit) { border-color: var(--line-2); border-radius: 8px; background-color: var(--field); color: var(--text); transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
-        :is(.form-input, .form-select, .detalhe-texto, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit):focus,
-        :is(.form-input, .form-select, .detalhe-texto)::placeholder { color: var(--text-mute); }
-        :is(.form-input, .form-select):disabled { opacity: 0.5; cursor: not-allowed; }
-        select.form-input, .form-select, .casa-sel { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px; }
+        :is(.detalhe-texto, .ec-input, .input-valor, .ad-num, .ad-gnome, .casa-sel, .padrao-edit):focus,
+        :is(.detalhe-texto)::placeholder { color: var(--text-mute); }
+        .casa-sel { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px; }
         .casa-sel { padding-right: 22px; background-position: right 6px center; background-size: 10px; }
 
         /* Caixa de seleção (Checkbox): 18px, raio 5, marcada em brand. */
