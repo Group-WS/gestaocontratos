@@ -28,5 +28,22 @@ conf("cada opção é um cartão clicável inteiro", /<label key=\{d\.insumo\.de
 conf("a opção marcada fica em destaque", escolha.includes('marcada ? "border-brand bg-brand-soft"'));
 conf("o selo vai embaixo do texto, e não numa coluna de largura fixa", !escolha.includes('className="w-32 shrink-0 text-right"'));
 
+/* MODO LEITURA DITO DENTRO DO PAINEL (22/09/2026). "Aqui diz que bate tudo
+   mas não consigo selecionar": a obra estava sem edição habilitada, os
+   cartões seguiam com cursor de clique e nada dizia por que não mudavam. */
+conf("o painel explica o modo leitura", painel.includes("<AlertTitle>Só consulta</AlertTitle>"));
+conf("... e oferece habilitar a edição ali mesmo", painel.includes("onClick={onHabilitar}"));
+conf("... e diz quem está editando, quando é outra pessoa", painel.includes("{editandoPor}</b> está editando esta obra"));
+conf("as Compras passam o habilitar até a linha", /<LinhaCompra [\s\S]{0,1500}onHabilitar=\{onHabilitar\} editandoPor=\{editandoPor\}/.test(src));
+conf("cartão em modo leitura não finge ser clicável", escolha.includes('somenteLeitura ? "" : "cursor-pointer hover:bg-surface-2"'));
+
+/* AS REGRAS, onde a decisão acontece. */
+conf("diz o que é o insumo mãe", escolha.includes("O grupo do Sienge em que este produto entra"));
+conf("diz o que é 'bate tudo' e 'falta…'", escolha.includes("todas as palavras da descrição do item aparecem no detalhe"));
+conf("o selo explica ao passar o mouse", /<Badge tone="warning" title=\{`Estas palavras da descrição do item não aparecem/.test(escolha));
+conf("diz que a associação em massa só escolhe quando bate tudo", escolha.includes("A associação em massa só escolhe sozinha quando bate tudo."));
+conf("diz que o código do detalhe pode ficar vazio", escolha.includes("o Sienge numera ao cadastrar"));
+conf("diz o que é o auxiliar 'gerado'", escolha.includes("o fornecedor não informou código nem modelo"));
+
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

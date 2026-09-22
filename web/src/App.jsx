@@ -12061,6 +12061,10 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
   return (
     <div className="flex flex-col gap-2">
       {/* A MAE, sempre da base. */}
+      <div className="flex flex-col gap-1">
+        <SecaoRotulo>insumo mãe no Sienge</SecaoRotulo>
+        <FieldHint>O grupo do Sienge em que este produto entra. É ele que define quais detalhes aparecem abaixo.</FieldHint>
+      </div>
       {mae ? (
         <div className="flex flex-col gap-2 text-sm">
           <div className="flex items-start gap-2">
@@ -12119,7 +12123,15 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
           dizer. Agora as opcoes sao um radio so — as que ja existem no
           Sienge e a nova — e a marcada e' a que vale. */}
       <div className="flex flex-col gap-2">
-        <SecaoRotulo conta={escolhida ? "já cadastrada — fica de fora" : "a nova, abaixo"}>qual descrição vai pra planilha</SecaoRotulo>
+        <SecaoRotulo conta={escolhida ? "usa um detalhe que já existe" : "cadastra um detalhe novo"}>qual descrição vai pra planilha</SecaoRotulo>
+        {/* A REGRA, onde a decisão acontece. "Bate tudo" e "falta…" não se
+            explicavam: quem não sabia que era a comparação de PALAVRAS da
+            descrição do item lia "bate tudo" como "é este, pode ir". */}
+        <FieldHint>
+          Se um detalhe que já existe no Sienge descreve este produto, escolha-o — a linha não precisa ser cadastrada de novo.
+          {" "}<b>Bate tudo</b>: todas as palavras da descrição do item aparecem no detalhe. <b>Falta…</b>: as palavras do item que o detalhe não tem — confira se é o mesmo produto.
+          {" "}A associação em massa só escolhe sozinha quando bate tudo.
+        </FieldHint>
 
         <RadioGroup value={escolhida ?? "__nova__"} disabled={somenteLeitura} aria-label="Descrição que vai pra planilha"
           onValueChange={(v) => onEscolher(v === "__nova__" ? null : v)} className="flex flex-col gap-2">
@@ -12132,21 +12144,21 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
             const marcada = escolhida === d.insumo.descricao;
             return (
               <label key={d.insumo.descricao + k} htmlFor={`${idBase}-v${k}`} title={d.insumo.descricao}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${marcada ? "border-brand bg-brand-soft" : "border-line-1 hover:bg-surface-2"}`}>
+                className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${marcada ? "border-brand bg-brand-soft" : "border-line-1"} ${somenteLeitura ? "" : "cursor-pointer hover:bg-surface-2"}`}>
                 <RadioGroupItem id={`${idBase}-v${k}`} value={d.insumo.descricao} className="mt-1" />
                 <span className="flex min-w-0 flex-1 flex-col gap-2">
                   <span className="text-sm leading-snug text-text">{d.insumo.detalhe}</span>
                   <span>
                     {d.faltaram.length > 0
-                      ? <Badge tone="warning">falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
-                      : <Badge tone="success">bate tudo</Badge>}
+                      ? <Badge tone="warning" title={`Estas palavras da descrição do item não aparecem neste detalhe: ${d.faltaram.join(", ")}. Confira se é o mesmo produto antes de escolher.`}>falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
+                      : <Badge tone="success" title="Todas as palavras da descrição do item aparecem neste detalhe do Sienge.">bate tudo</Badge>}
                   </span>
                 </span>
               </label>
             );
           })}
           <label htmlFor={`${idBase}-nova`} title="Usar a descrição gerada — é ela que preenche o template do Sienge"
-            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${!escolhida ? "border-brand bg-brand-soft" : "border-line-1 hover:bg-surface-2"}`}>
+            className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${!escolhida ? "border-brand bg-brand-soft" : "border-line-1"} ${somenteLeitura ? "" : "cursor-pointer hover:bg-surface-2"}`}>
             <RadioGroupItem id={`${idBase}-nova`} value="__nova__" className="mt-1" />
             <span className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="text-sm font-semibold text-text">Cadastrar como detalhe novo</span>
@@ -12181,6 +12193,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
               <Label htmlFor={`${idBase}-det`}>cód. do detalhe</Label>
               <CampoRascunho as={Input} id={`${idBase}-det`} valor={codDet} placeholder="o Sienge numera" readOnly={somenteLeitura}
                 onSalvar={onCodDet} aoSair={aoSair} />
+              <FieldHint>Pode ficar vazio: o Sienge numera ao cadastrar.</FieldHint>
             </Field>
             <Field>
               <Label htmlFor={`${idBase}-aux`} className="flex items-center gap-2">
@@ -12189,6 +12202,11 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
               <CampoRascunho as={Input} id={`${idBase}-aux`}
                 valor={aux} placeholder="referência do fornecedor" readOnly={somenteLeitura}
                 onSalvar={onAux} aoSair={aoSair} />
+              <FieldHint>
+                A referência do fornecedor.
+                {auxMarca === "gerado" && " Marcado “gerado”: o fornecedor não informou código nem modelo, e o app criou um a partir do item — sai igual a cada download e não repete no grupo. Digite o do fornecedor se tiver."}
+                {auxMarca === "sorteado" && " Marcado “sorteado”: o item não tinha, e o app preencheu um. Digite o do fornecedor se tiver."}
+              </FieldHint>
             </Field>
           </div>
         </div>
@@ -12208,7 +12226,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
  * variante existente ou detalhe novo — e o painel lateral abre a escolha
  * com espaço. Nada mudou no que se grava: é a mesma EscolhaSienge, com os
  * mesmos campos, gravando do mesmo jeito (os de texto, ao sair do campo). */
-function AssociacaoSienge({ item, detalheItem, ...escolha }) {
+function AssociacaoSienge({ item, detalheItem, onHabilitar, editandoPor, ...escolha }) {
   const [aberto, setAberto] = useState(false);
   const { mae, escolhida, somenteLeitura } = escolha;
   const variante = escolhida && mae
@@ -12250,7 +12268,27 @@ function AssociacaoSienge({ item, detalheItem, ...escolha }) {
               {detalheItem && <span className="text-xs">{detalheItem}</span>}
             </SheetDescription>
           </SheetHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+            {/* MODO LEITURA DITO AQUI DENTRO. O aviso da tela fica lá no topo
+                das Compras, longe do painel: quem abria a escolha via os
+                cartões, clicava e nada acontecia — sem saber por quê. */}
+            {somenteLeitura && (
+              <Alert tone="info">
+                <AlertTitle>Só consulta</AlertTitle>
+                <AlertDescription className="flex flex-col gap-2">
+                  <span>
+                    {editandoPor
+                      ? <><b>{editandoPor}</b> está editando esta obra. A escolha fica disponível quando a edição for liberada.</>
+                      : onHabilitar
+                        ? "Para escolher a descrição ou mudar o insumo, habilite a edição da obra."
+                        : "O seu perfil consulta as Compras, sem alterar a associação."}
+                  </span>
+                  {onHabilitar && !editandoPor && (
+                    <span><Button size="sm" onClick={onHabilitar}><Lock size={14} aria-hidden="true" /> Habilitar edição</Button></span>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
             <EscolhaSienge {...escolha} />
           </div>
           <SheetFooter className="border-t border-line-1 p-4">
@@ -13318,7 +13356,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                           grupos={grupos} aux={auxiliares ? auxiliares.get(r.chave) : null}
                           mostrarSienge={mostrarInsumo}
                           lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
-                          podeEditar={podeEditar}
+                          podeEditar={podeEditar} onHabilitar={onHabilitar} editandoPor={editandoPor}
                           trocando={trocando === r.chave} equipe={equipe} executivo={obra.responsavelExecutivo}
                           /* Linha de aditivo nao troca de produto: a troca cria itens novos
                              na planilha, e o item do aditivo mora no documento aprovado. */
@@ -15052,7 +15090,7 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
 
 function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false,
   trocando = false, equipe = [], executivo, onAbrirTroca, onFecharTroca, onRegistrarTroca, onDesfazerTroca, troca = null,
-  obs = [], obsSemTabela = false, onAdicionarObs, onApagarObs, usuario, souAdmin = false }) {
+  obs = [], obsSemTabela = false, onAdicionarObs, onApagarObs, usuario, souAdmin = false, onHabilitar, editandoPor }) {
   const { it, material } = row;
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
   const quando = (rot, em) => `${rot}${em ? ` em ${new Date(em).toLocaleDateString("pt-BR")}` : ""}`;
@@ -15226,7 +15264,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               onCodDet={(v) => onItemChange({ codigoDetalheSienge: v.trim() ? v.trim() : null })}
               aux={aux?.codigo || ""} auxMarca={aux?.gerado ? "gerado" : null}
               onAux={(v) => onItemChange({ codigoAuxSienge: v.trim() ? v.trim() : null })}
-              aoSair somenteLeitura={!podeEditar} />
+              aoSair somenteLeitura={!podeEditar} onHabilitar={onHabilitar} editandoPor={editandoPor} />
           )}
         </TableCell>
       )}
