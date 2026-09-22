@@ -35,7 +35,8 @@ conf("o campo abre embaixo da linha que vai sair", src.includes(`<TableRow class
 /* ---- 2. Sem texto não remove ---- */
 conf("o motivo é obrigatório", src.includes("const vale = motivo.trim().length >= 10;"), true);
 conf("e o botão fica travado sem ele", src.includes('<Button variant="danger" type="button" disabled={!vale}'), true);
-conf("a tela diz o que falta", src.includes("Escreva o motivo para remover."), true);
+conf("a tela diz o que falta", src.includes("Escreva o motivo para remover (mínimo de 10 caracteres)."), true);
+conf("... e conta quantos caracteres faltam", src.includes("`Mínimo de 10 caracteres (${faltam === 1 ? \"falta 1\" : `faltam ${faltam}`}).`"), true);
 
 /* ---- 3. QUEM GRAVA CARIMBA O AUTOR ----
    Se o nome viesse da tela, bastaria um caminho novo chamando `onEditarItem`

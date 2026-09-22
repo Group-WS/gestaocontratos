@@ -7571,6 +7571,7 @@ function FormExcecaoCliente({ onConfirmar, onCancelar }) {
 function FormRemocao({ item, onCancelar, onConfirmar }) {
   const [motivo, setMotivo] = useState("");
   const idMotivo = React.useId();
+  const faltam = 10 - motivo.trim().length;
   const vale = motivo.trim().length >= 10;
   return (
     <Card className="max-w-3xl text-left">
@@ -7582,7 +7583,9 @@ function FormRemocao({ item, onCancelar, onConfirmar }) {
           <Textarea id={idMotivo} rows={2} value={motivo} autoFocus
             placeholder="Por que este item está saindo? (ex: cliente retirou na reunião de 12/09; duplicado da linha 4.2)"
             onChange={(e) => setMotivo(e.target.value)} />
-          <FieldHint>{vale ? "A justificativa aparece na Conf. Executivo." : "Escreva o motivo para remover."}</FieldHint>
+          <FieldHint>{vale ? "A justificativa aparece na Conf. Executivo." : motivo.trim()
+            ? `Mínimo de 10 caracteres (${faltam === 1 ? "falta 1" : `faltam ${faltam}`}).`
+            : "Escreva o motivo para remover (mínimo de 10 caracteres)."}</FieldHint>
         </Field>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="outline" type="button" onClick={onCancelar}>Cancelar</Button>
