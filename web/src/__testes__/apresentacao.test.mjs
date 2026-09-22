@@ -418,12 +418,19 @@ import {
   t3("toda rota daqui exige login e time", () =>
     assert.ok(rotaApres.includes("rotas.use(exigirLogin, exigirMembro);")));
 
-  t3("a imagem do ambiente foi para o balde da OBRA, em pasta própria", () => {
+  /* A IMAGEM DO AMBIENTE MUDOU DE BALDE (22/09/2026): era o `catalogo`, que é
+     público, e passou a ser o `obra-arquivos`, que é privado — render de casa
+     de cliente não fica num endereço que qualquer um abre. */
+  t3("a imagem do ambiente fica no balde privado da obra", () => {
     assert.ok(rotaApres.includes('const BALDE = "obra-arquivos";'));
     assert.ok(rotaApres.includes("`${codigoDoPedido(req)}/ambientes/${Date.now()}.${EXTENSAO[tipo]}`"));
-    /* A que já estava no balde do catálogo continua abrindo — mudar de
-       balde não pode apagar apresentação nenhuma. */
+  });
+
+  /* O caminho antigo precisa continuar abrindo, senão toda apresentação já
+     feita perde as imagens. */
+  t3("... e o caminho antigo, no balde público, continua abrindo", () => {
     assert.ok(rotaApres.includes('const BALDE_ANTIGO = "catalogo";'));
+    assert.ok(rotaApres.includes("`ambientes/${codigo}/`"));
   });
 
   console.log(`OK — mais ${ok3} casos`);

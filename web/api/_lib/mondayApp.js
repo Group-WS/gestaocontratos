@@ -116,14 +116,18 @@ const { rotasDeSiengeBanco } = require("./rotas/siengeBanco.js");
 
 app.use(rotasDePreferencias);
 app.use(rotasDaObra);
+/* O aditivo e a apresentacao gravam com a versao conferida pelo banco
+   (supabase/salvar-aditivo-apresentacao.sql), a mesma protecao da obra:
+   duas pessoas no mesmo documento deixaram de gravar uma por cima da
+   outra. */
+app.use(rotasDeAditivos);
+app.use(rotasDeApresentacoes);
 app.use(rotasDeObraConteudo);
 app.use(rotasDeObras);
 app.use(rotasDeCatalogo);
 app.use(rotasDeInsumos);
 app.use(rotasDeEap);
-app.use(rotasDeApresentacoes);
 app.use(rotasDeArquivos);
-app.use(rotasDeAditivos);
 app.use(rotasDeComentarios);
 app.use(rotasDeCadastros);
 app.use(rotasDeSiengeBanco);
