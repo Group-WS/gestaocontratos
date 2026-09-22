@@ -104,7 +104,7 @@ export function DicaInfo({ rotulo = "Saiba mais", lado = "top", children }) {
     <Tooltip>
       <TooltipTrigger asChild>
         <Button variant="ghost" size="icon" type="button" aria-label={rotulo}
-          className="h-6 w-6 shrink-0 self-center text-text-mute">
+          className="h-6 w-6 shrink-0 text-text-mute">
           <Info size={14} aria-hidden="true" />
         </Button>
       </TooltipTrigger>
@@ -283,7 +283,10 @@ export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", ac
    ao lado ("12 linhas selecionadas"). Substitui o `.sol-secao-rotulo`. */
 export function SecaoRotulo({ conta, dica, rotuloDica, className = "", children }) {
   return (
-    <h2 className={`flex flex-wrap items-baseline gap-2 ${className}`}>
+    /* Com dica, a linha centraliza: o ⓘ é um botão de 24px, sem linha de
+       base de texto, e no alinhamento por baseline ele ficava torto em
+       relação ao rótulo. Sem dica, segue a baseline de sempre. */
+    <h2 className={`flex flex-wrap ${dica ? "items-center" : "items-baseline"} gap-2 ${className}`}>
       <span className="label-mono">{children}</span>
       {dica && <DicaInfo rotulo={rotuloDica || "O que é isto?"}>{dica}</DicaInfo>}
       {conta && <span className="text-xs font-normal normal-case tracking-normal text-text-mute">{conta}</span>}

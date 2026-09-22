@@ -12198,7 +12198,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
               cadastrada — quem escolheu variante nao preenche nada. */}
           <div className="grid gap-2 sm:grid-cols-2">
             <Field>
-              <Label htmlFor={`${idBase}-det`} className="flex items-center gap-1">
+              <Label htmlFor={`${idBase}-det`} className="flex items-center gap-2">
                 cód. do detalhe
                 <DicaInfo rotulo="O que é o código do detalhe">Pode ficar vazio: o Sienge numera ao cadastrar.</DicaInfo>
               </Label>

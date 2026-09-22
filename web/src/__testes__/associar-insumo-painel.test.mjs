@@ -45,6 +45,10 @@ conf("cartão em modo leitura não finge ser clicável", escolha.includes('somen
 const ui = fs.readFileSync(new URL("../lib/ui.jsx", import.meta.url), "utf8");
 conf("existe o ícone de dica do app, com o Tooltip do DS", /export function DicaInfo\(/.test(ui) && ui.includes("<TooltipContent side={lado}"));
 conf("a dica é um botão (o Tab chega nela) com nome para leitor de tela", /<Button variant="ghost" size="icon" type="button" aria-label=\{rotulo\}/.test(ui));
+/* O ⓘ na mesma linha do texto (22/09/2026: "não pode ficar torto"). É um
+   botão de 24px, sem linha de base: com items-baseline ele descia. */
+conf("título com dica centraliza a linha", ui.includes('${dica ? "items-center" : "items-baseline"}'));
+conf("o ícone não força alinhamento próprio", !/aria-label=\{rotulo\}\s*\n\s*className="[^"]*self-center/.test(ui));
 conf("o painel não tem mais parágrafo de regra", !/<FieldHint>/.test(escolha));
 conf("as quatro regras moram em dicas", (escolha.match(/rotuloDica=|<DicaInfo /g) || []).length >= 4);
 conf("diz o que é o insumo mãe", escolha.includes("O grupo do Sienge em que este produto entra"));
