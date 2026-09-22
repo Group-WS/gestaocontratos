@@ -73,13 +73,6 @@
       "impressao": "b756b66c455d994a"
     },
     {
-      "regra": "TST-04",
-      "arquivo": "e2e",
-      "linha": 1,
-      "trecho": "nenhum teste E2E marcado @login",
-      "impressao": "220474d9255a2309"
-    },
-    {
       "regra": "VH-02",
       "arquivo": "web/src/lib/aditivos.js",
       "linha": 27,

@@ -6,13 +6,18 @@
  * renderiza o painel antes de saber quem e' a pessoa entrega, no minimo, a
  * estrutura do sistema e os nomes das telas.
  *
- * O marcador de "estou dentro do sistema" e' o `nav.trilho` (a navegacao
- * principal) e o botao Sair — os dois so' existem depois do login.
+ * O marcador de "estou dentro do sistema" e' a navegacao principal (o menu
+ * de modulos) e o botao da conta — os dois so' existem depois do login.
+ *
+ * Ate' 21/09/2026 o marcador era `nav.trilho`, classe que sumiu na migracao
+ * para o design system: o teste passava sem provar nada. O login.spec.mjs
+ * confere que estes marcadores APARECEM com sessao valida — e' o que
+ * garante que a ausencia deles aqui significa alguma coisa.
  */
 import { test, expect } from "@playwright/test";
 
 const dentroDoSistema = (page) => [
-  page.locator("nav.trilho"),
+  page.getByRole("navigation", { name: "Módulos" }),
   page.getByRole("button", { name: /sair/i }),
 ];
 
