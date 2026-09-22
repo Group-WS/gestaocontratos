@@ -8571,6 +8571,17 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
 
   const tamanho = termo.trim().length;
 
+  /* CADASTRAR À MÃO SEMPRE FOI POSSÍVEL — o botão é que sumia.
+     Ele só aparecia no "Nada encontrado". Com a busca dando erro, ou trazendo
+     resultados que não servem, quem precisava lançar um item que não está no
+     banco de preços ficava sem saída. Agora ele está sempre ao alcance, e o
+     que a pessoa já digitou vira a descrição do item (entra sem código do
+     Sienge e sem preço de referência — os campos seguem editáveis na linha). */
+  const cadastrarAMao = () => {
+    const texto = termo.trim();
+    onEscolher(texto ? { descricao: texto, unidade: null, custo_unitario: null, codigo: null, data_ref: null } : null);
+  };
+
   return (
     <Card className="w-full max-w-3xl border-brand">
       <CardContent className="flex flex-col gap-2 p-3">
@@ -8589,9 +8600,9 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
         </div>
 
         {erro && (
-          <Alert tone="danger">
+          <Alert tone="warning">
             <AlertTitle>Não foi possível buscar no banco de preços</AlertTitle>
-            <AlertDescription>{erro}</AlertDescription>
+            <AlertDescription>Você pode cadastrar o item à mão, logo abaixo.</AlertDescription>
           </Alert>
         )}
         {!erro && tamanho > 0 && tamanho < 3 && <FieldHint>Digite ao menos 3 letras.</FieldHint>}
@@ -8602,8 +8613,7 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
         )}
         {!erro && !buscando && tamanho >= 3 && lista.length === 0 && (
           <EmptyState as="h4" className="py-4" icon={<PackageSearch size={24} />}
-            title="Nada encontrado" description="Nenhum insumo parecido no banco de preços."
-            action={<Button variant="ghost" size="sm" onClick={() => onEscolher(null)}>Criar item em branco</Button>} />
+            title="Nada encontrado" description="Nenhum insumo parecido no banco de preços." />
         )}
 
         {lista.length > 0 && (
@@ -8619,6 +8629,13 @@ function BuscaInsumo({ onEscolher, onCancelar }) {
             ))}
           </div>
         )}
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line-1 pt-2">
+          <FieldHint>Não está no banco de preços? Cadastre e preencha os campos na linha.</FieldHint>
+          <Button variant="outline" size="sm" onClick={cadastrarAMao}>
+            <Plus size={14} aria-hidden="true" /> {tamanho > 0 ? "Cadastrar com esta descrição" : "Cadastrar item à mão"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
