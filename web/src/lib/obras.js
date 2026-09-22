@@ -1,4 +1,5 @@
-import { supabase, supabaseConfigurado } from "./supabase";
+import { supabaseConfigurado } from "./supabase";
+import { apiJson } from "./api";
 
 /**
  * Ciclo de vida das obras.
@@ -6,6 +7,12 @@ import { supabase, supabaseConfigurado } from "./supabase";
  * O Monday lista tudo que existe; esta tabela guarda o que o time
  * decidiu acompanhar. Uma obra do Monday que ninguém iniciou é só uma
  * sugestão — aparece em "Novas obras" e mais nada.
+ *
+ * Quem fala com o banco é a API (web/api/_lib/rotas/obras.js): o
+ * navegador não consulta mais a tabela direto (VH-02). Mudou o caminho,
+ * não o que a tela recebe — mesma função, mesmo retorno, mesma frase de
+ * erro. As decisões que dependiam do código do erro do Postgres (a coluna
+ * nova que ainda não existe) vivem na rota, e aqui chega a lista pronta.
  *
  * Sem Supabase configurado (modo local, sem .env), tudo aqui vira
  * conversa fiada silenciosa: devolve vazio e não grava. O app continua
@@ -27,37 +34,17 @@ export function faltandoNaTela(linhas, obras) {
   return (linhas || []).filter((l) => l && l.codigo && !naTela.has(String(l.codigo)));
 }
 
-const COLUNAS_OBRA = "codigo, nome, squad, situacao, iniciada_em, concluida_em, cliente, endereco, gc, board_id, valor_vendido";
-
-/* Coluna nova (tailor_made, responsavel_executivo) que ainda não existe
-   no banco não pode derrubar a lista de obras INTEIRA.
-
-   Entre o deploy do app e alguém rodar a migração existe uma janela em
-   que o Postgres rejeita a leitura inteira por causa de uma coluna
-   desconhecida — e como é ESTA função que preenche `registro` (de onde
-   sai "essa obra está ativa?"), o efeito era o pior possível: toda obra
-   ativa virava invisível, como se tivesse sumido. Aconteceu de verdade
-   em 2026-09-05, com as colunas de Equipe da obra. */
-const faltaColuna = (error) => !!error && (
-  error.code === "42703" || error.code === "PGRST204"
-  || /column .* does not exist|Could not find the/i.test(error.message || ""));
+const daObra = (codigo) => `/api/obras/${encodeURIComponent(String(codigo))}`;
 
 export async function listarObras() {
   if (!supabaseConfigurado) return [];
-  /* Traz TUDO que descreve a obra, e não só a situação.
-     Obra cadastrada à mão não existe no Monday: se a leitura do banco
-     devolvesse só `situacao`, não haveria como remontá-la, e ela
-     sumiria a cada recarregada — que foi exatamente o que aconteceu
-     com a 2517. */
-  const { data, error } = await supabase
-    .from("obra")
-    .select(`${COLUNAS_OBRA}, tailor_made, responsavel_executivo`);
-  if (!error) return data || [];
-  if (!faltaColuna(error)) throw error;
-
-  const retry = await supabase.from("obra").select(COLUNAS_OBRA);
-  if (retry.error) throw retry.error;
-  return retry.data || [];
+  /* Traz TUDO que descreve a obra, e não só a situação (a rota lista as
+     colunas). Obra cadastrada à mão não existe no Monday: se a leitura do
+     banco devolvesse só `situacao`, não haveria como remontá-la, e ela
+     sumiria a cada recarregada — que foi exatamente o que aconteceu com a
+     2517. A obra ativa continua aparecendo mesmo antes de a migração das
+     colunas novas rodar: quem resolve isso agora é a rota. */
+  return apiJson("/api/obras");
 }
 
 /**
@@ -68,74 +55,53 @@ export async function listarObras() {
  */
 export async function iniciarObra(obra) {
   if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from("obra")
-    .insert({
-      codigo: String(obra.codigo),
-      nome: obra.nome,
-      squad: obra.squad,
-      board_id: obra.boardId ? String(obra.boardId) : null,
-      cliente: obra.cliente,
-      endereco: obra.endereco,
-      gc: obra.gc,
-      valor_vendido: obra.valorVendido || null,
-      situacao: "ativa",
-    })
-    .select("codigo, nome, squad, situacao, iniciada_em, concluida_em")
-    .single();
-  if (error) throw error;
-  return data;
+  try {
+    return await apiJson("/api/obras", {
+      metodo: "POST",
+      corpo: {
+        codigo: String(obra.codigo),
+        nome: obra.nome,
+        squad: obra.squad,
+        boardId: obra.boardId ? String(obra.boardId) : null,
+        cliente: obra.cliente,
+        endereco: obra.endereco,
+        gc: obra.gc,
+        valorVendido: obra.valorVendido || null,
+      },
+    });
+  } catch (err) {
+    /* Centro de custo repetido. Antes o texto cru do Postgres ("duplicate
+       key…") chegava até a tela, que o traduzia; agora o Postgres não fala
+       mais com o navegador — vem o código do erro, e a frase que a pessoa
+       lê é montada aqui, palavra por palavra igual à de antes. */
+    if (err?.code === "23505") throw new Error(`Já existe uma obra com o centro de custo ${obra.codigo}.`);
+    throw err;
+  }
 }
 
 /** Tira da sidebar e manda pro Arquivo (só leitura). */
 export async function concluirObra(codigo) {
   if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from("obra")
-    .update({ situacao: "concluida", concluida_em: new Date().toISOString() })
-    .eq("codigo", String(codigo))
-    .select("codigo, nome, squad, situacao, iniciada_em, concluida_em")
-    .single();
-  if (error) throw error;
-  return data;
+  return apiJson(`${daObra(codigo)}/situacao`, { metodo: "PATCH", corpo: { situacao: "concluida" } });
 }
 
 /** Volta pra sidebar — pra quando alguém concluir sem querer. */
 export async function reabrirObra(codigo) {
   if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from("obra")
-    .update({ situacao: "ativa", concluida_em: null })
-    .eq("codigo", String(codigo))
-    .select("codigo, nome, squad, situacao, iniciada_em, concluida_em")
-    .single();
-  if (error) throw error;
-  return data;
+  return apiJson(`${daObra(codigo)}/situacao`, { metodo: "PATCH", corpo: { situacao: "ativa" } });
 }
 
 /**
  * Quem responde pela obra.
  *
- * Guarda o E-MAIL, nao o nome: e' a identidade que o login ja da', e e'
+ * Guarda o E-MAIL, nao o nome: e' a identidade que o login ja' da', e e'
  * o unico jeito de "as minhas obras" saber quais sao as minhas sem
  * alguem manter uma tabela de nomes em dia. O nome bonito sai do proprio
  * e-mail na hora de mostrar.
  */
 export async function definirGC(codigo, email) {
   if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from("obra")
-    .update({ gc: email || null })
-    .eq("codigo", String(codigo))
-    .select(`${COLUNAS_OBRA}, tailor_made, responsavel_executivo`)
-    .single();
-  if (!error) return data;
-  // O UPDATE em si (só a coluna `gc`) sempre funciona; só o SELECT de
-  // retorno pode pedir uma coluna que ainda não existe.
-  if (!faltaColuna(error)) throw error;
-  const retry = await supabase.from("obra").select(COLUNAS_OBRA).eq("codigo", String(codigo)).single();
-  if (retry.error) throw retry.error;
-  return retry.data;
+  return apiJson(`${daObra(codigo)}/papel`, { metodo: "PATCH", corpo: { papel: "gc", email } });
 }
 
 /* Os outros dois papéis de "Equipe da obra" — mesmo padrão do GC, cada
@@ -143,51 +109,22 @@ export async function definirGC(codigo, email) {
 
    Aqui, diferente do GC, é o próprio UPDATE que toca a coluna nova —
    sem migração rodada não tem como salvar de jeito nenhum, então o
-   erro precisa dizer isso claramente em vez de estourar cru na tela. */
+   erro precisa dizer isso claramente em vez de estourar cru na tela.
+   Quem distingue os dois casos é a rota, que é quem vê o erro do banco;
+   a frase chega aqui pronta, dentro do `Error`. */
 export async function definirTailorMade(codigo, email) {
   if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from("obra")
-    .update({ tailor_made: email || null })
-    .eq("codigo", String(codigo))
-    .select(`${COLUNAS_OBRA}, tailor_made, responsavel_executivo`)
-    .single();
-  if (error) {
-    if (faltaColuna(error)) throw new Error("Falta rodar supabase/equipe-da-obra.sql — a coluna de Taylor Made ainda não existe.");
-    throw error;
-  }
-  return data;
+  return apiJson(`${daObra(codigo)}/papel`, { metodo: "PATCH", corpo: { papel: "tailor_made", email } });
 }
 
 export async function definirResponsavelExecutivo(codigo, email) {
   if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from("obra")
-    .update({ responsavel_executivo: email || null })
-    .eq("codigo", String(codigo))
-    .select(`${COLUNAS_OBRA}, tailor_made, responsavel_executivo`)
-    .single();
-  if (error) {
-    if (faltaColuna(error)) throw new Error("Falta rodar supabase/equipe-da-obra.sql — a coluna de Executivo ainda não existe.");
-    throw error;
-  }
-  return data;
+  return apiJson(`${daObra(codigo)}/papel`, { metodo: "PATCH", corpo: { papel: "responsavel_executivo", email } });
 }
 
 /* O endereço da obra, corrigido à mão (só administrador e admin master veem
    o botão). Vazio grava nulo, e a tela volta ao endereço do cadastro do Sienge. */
 export async function definirEndereco(codigo, endereco) {
   if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from("obra")
-    .update({ endereco: String(endereco || "").trim() || null })
-    .eq("codigo", String(codigo))
-    .select(`${COLUNAS_OBRA}, tailor_made, responsavel_executivo`)
-    .single();
-  if (!error) return data;
-  // Como no GC: o UPDATE sempre funciona; só o SELECT de volta pode pedir coluna que falta.
-  if (!faltaColuna(error)) throw error;
-  const retry = await supabase.from("obra").select(COLUNAS_OBRA).eq("codigo", String(codigo)).single();
-  if (retry.error) throw retry.error;
-  return retry.data;
+  return apiJson(`${daObra(codigo)}/endereco`, { metodo: "PATCH", corpo: { endereco } });
 }

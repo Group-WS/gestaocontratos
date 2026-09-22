@@ -12,11 +12,18 @@
  *   2. "Bucket not found" não é defeito do arquivo: é a migração que
  *      não rodou. Essa mensagem tem que continuar dizendo QUAL SQL
  *      rodar, senão vira chamado.
+ *
+ * A tradução do erro do Storage saiu daqui e foi pra `explicarStorage`
+ * (lib/storage.js), que é quem fala com o Storage desde que o front
+ * parou de falar com ele direto (VH-02). É lá que ela é conferida
+ * agora — a mesma conferência, no lugar onde a frase é montada.
  */
 const src = (await import("fs")).readFileSync(new URL("../lib/arquivos.js", import.meta.url), "utf8");
-const pega = (n) => { const i = src.indexOf(`function ${n}(`); return src.slice(i, src.indexOf("\n}\n", i) + 2); };
+const srcStorage = (await import("fs")).readFileSync(new URL("../lib/storage.js", import.meta.url), "utf8");
+const de = (texto, n) => { const i = texto.indexOf(`function ${n}(`); return texto.slice(i, texto.indexOf("\n}\n", i) + 2); };
+const pega = (n) => de(src, n);
 const nomeSeguro = eval(`(${pega("nomeSeguro")})`);
-const explicar = eval(`(${pega("explicar")})`);
+const explicar = eval(`(${de(srcStorage, "explicarStorage")})`);
 
 let falhas = 0;
 const conf = (nome, obtido, esperado) => {
@@ -55,6 +62,40 @@ contem("arquivo grande fala do limite", explicar({ message: "The object exceeded
 contem("tipo recusado lista o que vale", explicar({ message: "mime type text/x-python is not supported" }), "PDF");
 contem("sessão vencida manda reentrar", explicar({ message: "new row violates row-level security policy" }), "Saia e entre de novo");
 contem("erro desconhecido não some", explicar({ message: "network timeout" }), "network timeout");
+
+/* ---- QUEM ESCOLHE ONDE O ARQUIVO GRAVA É O SERVIDOR ----
+ *
+ * O front deixou de falar com o Storage (VH-02): ele manda o NOME do
+ * arquivo e a rota monta o caminho (obra + chave + carimbo de tempo) e
+ * assina o envio. Se o caminho voltar a vir do navegador, qualquer
+ * pessoa logada escolhe em que pasta grava — inclusive a do contrato,
+ * que só o administrador abre.
+ */
+const rota = (await import("fs")).readFileSync(new URL("../../api/_lib/rotas/arquivos.js", import.meta.url), "utf8");
+console.log("=== O CAMINHO É MONTADO NA ROTA ===");
+conf("a rota monta obra + chave + carimbo de tempo",
+  rota.includes("`${obraCodigo}/${chave}/${Date.now()}-${nome}`"), true);
+conf("... e não aceita caminho pronto do navegador",
+  /corpoDoEnvio\s*=\s*z\.object\(\{[^}]*obraCodigo[^}]*chave[^}]*nome[^}]*\}\)\.strict\(\)/s.test(rota), true);
+conf("o nome ainda é o subconjunto que o Storage aceita",
+  rota.includes('z.string().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/)'), true);
+conf("a chave não pode virar outra pasta (a do contrato é restrita)",
+  rota.includes("regex(/^[a-z][a-z0-9-]*$/)"), true);
+conf("o balde continua sendo o privado", rota.includes('const BALDE = "obra-arquivos";'), true);
+conf("cada envio grava em caminho novo — nada por cima de nada",
+  rota.includes("{ upsert: false }"), true);
+
+/* Ver e baixar continuam sendo duas coisas: quem confere uma prancha
+   quer ABRIR, quem manda pro fornecedor quer SALVAR. */
+conf("o link temporário mantém a distinção ver/baixar",
+  rota.includes("baixar,") && rota.includes("baixar: z.boolean().optional()"), true);
+conf("e o link continua durando uma hora", rota.includes("const MINUTOS_DO_LINK = 60;"), true);
+conf("toda rota daqui exige login e time",
+  rota.includes("rotas.use(exigirLogin, exigirMembro);"), true);
+
+/* Faxina é calada: apagar o arquivo trocado falhar não pode virar erro
+   na tela de quem só queria trocar um anexo. */
+conf("apagar arquivo continua em silêncio", /export async function apagarArquivo[\s\S]*?catch \{\s*\/\* silêncio proposital \*\/\s*\}/.test(src), true);
 
 /* ---- CONGELAR É NÃO TROCAR, NÃO É NÃO ANEXAR (17/09/2026) ----
  *

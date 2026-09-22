@@ -1,5 +1,5 @@
-import { supabase, supabaseConfigurado } from "./supabase";
-import { apiFetch } from "./api";
+import { supabaseConfigurado } from "./supabase";
+import { apiFetch, apiJson } from "./api";
 
 /* VERSOES ANTERIORES DA OBRA.
  *
@@ -10,15 +10,11 @@ import { apiFetch } from "./api";
  * Isso e' de proposito. Historico escrito pelo app teria o mesmo defeito do
  * app: o caminho que esquece de chamar. O gatilho pega tudo, inclusive
  * UPDATE rodado a mao no SQL Editor.
- */
-
-/* O SQL ainda nao rodou.
  *
- * 42P01 e' o Postgres ("relation does not exist"); PGRST205 e' o PostgREST
- * quando o cache de schema nao conhece a tabela. Dois codigos, um sentido
- * so' — e nenhum outro erro pode virar "tabela nao existe", senao uma queda
- * de rede apareceria na tela como migracao pendente. */
-const semTabela = (erro) => erro?.code === "42P01" || erro?.code === "PGRST205";
+ * Quem fala com o banco e' a API (web/api/_lib/rotas/obraConteudo.js): daqui
+ * saem dois pedidos, e a decisao que dependia do codigo de erro do Postgres
+ * ("a tabela ainda nao existe") e' tomada la', onde o erro aparece.
+ */
 
 /* O que volta pro lugar numa restauracao mora na funcao do banco
  * `restaurar_versao_obra` (supabase/salvar-obra.sql), e nao mais aqui.
@@ -40,21 +36,12 @@ const semTabela = (erro) => erro?.code === "42P01" || erro?.code === "PGRST205";
  * O conteudo so' e' lido na hora de restaurar.
  *
  * Devolve `{ semTabela: true, versoes: [] }` enquanto o SQL nao rodou, pra
- * tela poder dizer isso em vez de mostrar erro.
+ * tela poder dizer isso em vez de mostrar erro — quem decide isso e' a rota,
+ * que e' quem ve o codigo do erro do banco.
  */
 export async function listarVersoes(codigo) {
   if (!supabaseConfigurado) return { versoes: [] };
-  const { data, error } = await supabase
-    .from("obra_versao")
-    .select("id, n_itens, queda, atualizado_por, criado_em")
-    .eq("obra_codigo", String(codigo))
-    .order("criado_em", { ascending: false });
-
-  if (error) {
-    if (semTabela(error)) return { semTabela: true, versoes: [] };
-    throw error;
-  }
-  return { versoes: data || [] };
+  return apiJson(`/api/obras/${encodeURIComponent(String(codigo))}/versoes`);
 }
 
 /**

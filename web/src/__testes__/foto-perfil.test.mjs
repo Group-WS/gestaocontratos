@@ -28,6 +28,10 @@ import { readFileSync } from "fs";
 const app = readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../lib/pessoas.js", import.meta.url), "utf8");
 const sql = readFileSync(new URL("../../../supabase/foto-perfil.sql", import.meta.url), "utf8");
+/* Desde 22/09/2026 o navegador nao fala com o banco (VH-02): quem escolhe o
+   caminho da foto e quem chama `definir_foto` e' a rota. O que este teste
+   protege nao mudou — mudou o arquivo onde a decisao mora. */
+const rota = readFileSync(new URL("../../api/_lib/rotas/pessoas.js", import.meta.url), "utf8");
 
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = app.indexOf(assinatura);
@@ -106,11 +110,17 @@ conf("a imagem é reduzida antes de subir", lib.includes("const LADO_FOTO = 256;
    ser esticado pra caber. O "de onde" virou escolha da pessoa (ver a
    seção 11); o "quadrado" continua sendo regra. */
 conf("recorte quadrado, nunca esticado", lib.includes("ctx.drawImage(img, sx, sy, lado, lado, 0, 0, LADO_FOTO, LADO_FOTO);"));
-conf("carimbo de tempo fura o cache", lib.includes("${PASTA_FOTO}/${quem}/${Date.now()}.jpg"));
+conf("carimbo de tempo fura o cache", rota.includes("${PASTA_FOTO}/${quem}/${Date.now()}.jpg"));
+/* A pasta sai do e-mail do LOGIN, e nao do que o navegador mandar: sem isto
+   qualquer pessoa logada sobe uma imagem na pasta de outra (SEG-13). */
+conf("a pasta vem do e-mail de quem esta logado", rota.includes("String(req.usuario.email)"));
 conf("o balde é o do catálogo, não um novo", lib.includes('const BALDE_FOTO = "catalogo";'));
 conf("a url é síncrona, pra entrar no src", lib.includes("export function urlDaFoto(caminho) {"));
-conf("grava pela função, não por upsert", lib.includes('supabase.rpc("definir_foto", { caminho: caminho || "" })'));
-conf("e diz qual SQL falta rodar", lib.includes("Falta rodar supabase/foto-perfil.sql"));
+conf("grava pela função, não por upsert", rota.includes('.rpc("definir_foto", { caminho: req.valido.json.caminho || "" })'));
+conf("e diz qual SQL falta rodar", rota.includes("Falta rodar supabase/foto-perfil.sql"));
+/* A instrucao volta como `code: "migracao"` e a lib a transforma de novo em
+   `erro.migracao` — e' o que a tela consulta pra dizer o que falta rodar. */
+conf("a tela continua recebendo erro.migracao", lib.includes('if (e?.code === "migracao") e.migracao = true;'));
 
 console.log("\n=== 7. O SQL ===");
 conf("a coluna é reaplicável", sql.includes("alter table pessoa add column if not exists foto text;"));

@@ -1,15 +1,17 @@
-import { supabase, supabaseConfigurado } from "./supabase";
+import { supabaseConfigurado } from "./supabase";
+import { apiJson } from "./api";
 
 /**
- * A EAP padrão da empresa, vinda da tabela `eap_grupo`.
+ * A EAP padrão da empresa, vinda da tabela `eap_grupo` — agora pela API
+ * (`GET /api/eap/grupos`), que é quem fala com o banco (VH-02).
  *
  * O app precisa da EAP em funções puras (os importadores, o depara), que
  * rodam em qualquer momento e não podem esperar uma promessa. Por isso o
  * padrão vive num registro de módulo: começa com o que veio no código e é
  * TROCADO quando o banco responde.
  *
- * Isso é de propósito, não preguiça. Se o Supabase estiver fora do ar ou
- * a tabela vazia, o app continua com uma EAP válida em vez de abrir sem
+ * Isso é de propósito, não preguiça. Se a API estiver fora do ar ou a
+ * tabela vazia, o app continua com uma EAP válida em vez de abrir sem
  * grupo nenhum e descartar tudo que for importado.
  */
 
@@ -29,13 +31,8 @@ export let veioDoBanco = false;
 export async function carregarEapDoBanco() {
   if (!supabaseConfigurado) return null;
 
-  const { data, error } = await supabase
-    .from("eap_grupo")
-    .select("num, nome, apelidos, analisar, motivo_na")
-    .eq("ativo", true)
-    .order("ordem");
+  const data = await apiJson("/api/eap/grupos");
 
-  if (error) throw error;
   // Tabela vazia não substitui o padrão do código: ficar sem EAP é pior
   // que ficar com uma desatualizada — sem grupo, todo item importado é
   // descartado.

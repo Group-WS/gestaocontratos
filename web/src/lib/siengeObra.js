@@ -1,4 +1,5 @@
-import { supabase, supabaseConfigurado } from "./supabase";
+import { supabaseConfigurado } from "./supabase";
+import { apiJson } from "./api";
 
 /**
  * O histórico de obras do Sienge — de onde saem nome, cidade e estado
@@ -8,27 +9,16 @@ import { supabase, supabaseConfigurado } from "./supabase";
  * importação (ver supabase/sienge_obra.sql) — não é uma leitura ao vivo
  * do Sienge. Enquanto não existir uma API direta, atualizar esta tabela
  * é reexportar e reimportar.
+ *
+ * Quem fala com o banco é a API (web/api/_lib/rotas/siengeBanco.js): aqui
+ * mora só o pedido. As colunas lidas e a convivência com o banco que
+ * ainda não tem as coordenadas moram lá, porque é lá que se sabe o que o
+ * Postgres respondeu.
  */
-const COLUNAS = "codigo, nome, cidade, estado, status_manual, endereco_completo";
 
 export async function listarSiengeObras() {
   if (!supabaseConfigurado) return [];
-  // O endereço completo também serve pra obra que não tem um (Monday não traz
-  // a Localização). As coordenadas são do mapa do Início.
-  const comMapa = await supabase
-    .from("sienge_obra")
-    .select(`${COLUNAS}, lat, lng, geo_precisao`);
-  if (!comMapa.error) return comMapa.data || [];
-  /* Coluna que ainda não existe (42703): supabase/sienge-obra-coordenadas.sql
-     não rodou neste banco. A tela segue sem os pinos, em vez de perder a
-     lista inteira — o mapa mostra as obras no painel e os estados no mapa. */
-  if (comMapa.error.code !== "42703") throw comMapa.error;
-  const { data, error } = await supabase
-    // gate-allow VH-02: repete a consulta acima sem lat/lng/geo_precisao — compatibilidade de schema (SQL-03) antes de supabase/sienge-obra-coordenadas.sql rodar; some quando a migration for aplicada em todo ambiente
-    .from("sienge_obra")
-    .select(COLUNAS);
-  if (error) throw error;
-  return data || [];
+  return apiJson("/api/sienge-obras");
 }
 
 /**
@@ -38,9 +28,6 @@ export async function listarSiengeObras() {
  */
 export async function marcarStatusSienge(codigo, status) {
   if (!supabaseConfigurado) throw new Error("Supabase não configurado.");
-  const { error } = await supabase
-    .from("sienge_obra")
-    .update({ status_manual: status })
-    .eq("codigo", String(codigo));
-  if (error) throw error;
+  await apiJson(`/api/sienge-obras/${encodeURIComponent(String(codigo))}/status`,
+    { metodo: "PUT", corpo: { status } });
 }

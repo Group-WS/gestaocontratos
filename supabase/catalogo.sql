@@ -1,3 +1,4 @@
+-- gate-allow SQL-02: este arquivo e' script reaplicavel (drop/create if exists), nao migration numerada — a mudanca so' escreve o papel (to anon, authenticated) de uma policy que o proprio arquivo ja' recria a cada execucao
 -- ============================================================
 -- CATÁLOGO TKWS
 -- Como usar: Supabase -> SQL Editor -> cole tudo -> Run.
@@ -103,7 +104,9 @@ on conflict (id) do update set public = true;
 -- uma ida ao servidor por cartao.
 drop policy if exists "catalogo le" on storage.objects;
 create policy "catalogo le" on storage.objects
-  for select using (bucket_id = 'catalogo');
+  -- `to anon, authenticated` diz o que ja' acontecia: sem papel, a policy vale
+  -- pra PUBLIC, e ninguem lendo o arquivo sabe se foi escolha ou esquecimento.
+  for select to anon, authenticated using (bucket_id = 'catalogo');
 
 drop policy if exists "catalogo escreve" on storage.objects;
 create policy "catalogo escreve" on storage.objects

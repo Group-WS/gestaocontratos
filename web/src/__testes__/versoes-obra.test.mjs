@@ -31,25 +31,30 @@ const restaurarSql = sqlNovo.slice(sqlNovo.indexOf("create or replace function p
 const gatilhoSql = sqlNovo.slice(sqlNovo.indexOf("create or replace function public.obra_dados_guarda_versao()"),
   sqlNovo.indexOf("revoke execute on function private.obra_dados_controle()"));
 
+/* Quem fala com o banco é a rota (o navegador não acessa mais o Supabase):
+   a consulta do histórico e a decisão "a tabela ainda não existe" moram
+   aqui, e é aqui que este teste vai conferi-las. */
+const rota = fs.readFileSync(path.join(aqui, "..", "..", "api", "_lib", "rotas", "obraConteudo.js"), "utf8");
+
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = src.indexOf(assinatura);
   if (i === -1) throw new Error(`não achei em versoesObra.js: ${assinatura}`);
   return src.slice(i, src.indexOf(fim, i) + fim.length);
 };
-const trecho = (comeco, fim) => {
-  const i = src.indexOf(comeco);
-  if (i === -1) throw new Error(`não achei em versoesObra.js: ${comeco}`);
-  return src.slice(i, src.indexOf(fim, i) + fim.length);
+const trechoDaRota = (comeco, fim) => {
+  const i = rota.indexOf(comeco);
+  if (i === -1) throw new Error(`não achei em obraConteudo.js: ${comeco}`);
+  return rota.slice(i, rota.indexOf(fim, i) + fim.length);
 };
 
-let supabaseStub = null;
 let respostaDaApi = null;
+let respostaEmJson = null;
 const pedidos = [];
 const M = eval("(function () {\n"
   + "  const supabaseConfigurado = true;\n"
-  + "  const supabase = { from: (t) => supabaseStub.from(t) };\n"
   + "  const apiFetch = async (caminho, opcoes) => { pedidos.push({ caminho, opcoes }); return respostaDaApi; };\n"
-  + trecho("const semTabela =", ";\n")
+  + "  const apiJson = async (caminho, opcoes) => { pedidos.push({ caminho, opcoes }); return respostaEmJson; };\n"
+  + trechoDaRota("const semTabela =", ";\n")
   + bloco("export async function listarVersoes(").replace("export ", "")
   + bloco("export async function restaurarVersao(").replace("export ", "")
   + "  return { semTabela, listarVersoes, restaurarVersao };\n"
@@ -139,9 +144,21 @@ conf("o navegador não grava mais a obra direto na restauração", /\.from\("obr
    ============================================================ */
 /* Não traz o `conteudo`: é o JSONB gordo, centenas de KB POR VERSÃO. Uma
    lista de 24 versões arrastaria megabytes para mostrar data e contagem. */
-const corpoLista = bloco("export async function listarVersoes(");
+const corpoLista = trechoDaRota('rotas.get("/api/obras/:codigo/versoes"', "\n  });\n");
 conf("a lista NÃO carrega o conteúdo das versões", /select\("id, n_itens, queda, atualizado_por, criado_em"\)/.test(corpoLista), true);
 conf("... da mais nova pra mais velha", /ascending: false/.test(corpoLista), true);
+/* A lista é de UMA obra: a barreira de leitura da obra responde antes da
+   consulta, e o RLS é a última linha. */
+conf("... só de quem enxerga a obra", /exigirObra\(codigoDoPedido\)/.test(corpoLista), true);
+/* E o navegador não lê mais a tabela direto — quem pergunta ao banco é a
+   rota, e é lá que o erro do Postgres aparece. */
+conf("o navegador não lê mais o histórico direto", /\.from\("obra_versao"\)/.test(src), false);
+{
+  respostaEmJson = { versoes: [{ id: 7 }] };
+  const r = await M.listarVersoes("2450");
+  conf("a tela pede a lista pela API", pedidos.at(-1)?.caminho, "/api/obras/2450/versoes");
+  conf("... e devolve o que a API mandou", r?.versoes?.[0]?.id, 7);
+}
 
 /* "Tabela não existe" é só isso — dois códigos. Qualquer outro erro virando
    "falta rodar o SQL" esconderia queda de rede atrás de migração pendente. */

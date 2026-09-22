@@ -355,3 +355,56 @@ import {
 
   console.log(`OK — mais ${ok2} casos`);
 }
+
+/* ---------- O QUE SAIU DO NAVEGADOR E FOI PRA ROTA ----------
+ *
+ * O front deixou de falar com a tabela e com o Storage (VH-02). Três
+ * coisas que moravam aqui e agora moram em web/api/_lib/rotas/apresentacoes.js
+ * — se voltarem pro navegador, voltam sem ninguém perceber:
+ *
+ *   1. Gravar SEM `id` é insert, não upsert. É isso que faz a REV 01
+ *      nascer sem apagar a 00, que já foi ao cliente.
+ *   2. Quem gravou vem do LOGIN, não do corpo do pedido (SEG-13).
+ *   3. A listagem pede as COLUNAS, nunca `*` (SQL-32).
+ */
+{
+  const rotaApres = (await import("node:fs")).readFileSync(
+    new URL("../../api/_lib/rotas/apresentacoes.js", import.meta.url), "utf8");
+  let ok3 = 0;
+  const t3 = (nome, f) => { f(); console.log("ok  ", nome); ok3++; };
+
+  t3("sem id é insert, não upsert — a revisão nova não apaga a anterior", () => {
+    assert.ok(/\.insert\(/.test(rotaApres), "a rota não insere");
+    assert.ok(!/\.upsert\(/.test(rotaApres), "a rota voltou a fazer upsert");
+  });
+
+  t3("com id é update da própria linha", () =>
+    assert.ok(/\.update\(linha\)\.eq\("id", doc\.id\)/.test(rotaApres)));
+
+  t3("quem gravou vem do login, não do corpo do pedido", () => {
+    assert.ok(rotaApres.includes("atualizado_por: req.usuario.email"));
+    assert.ok(rotaApres.includes("criado_por: req.usuario.email"));
+    assert.ok(!/atualizado_por:\s*(doc|req\.valido)/.test(rotaApres));
+  });
+
+  t3("a listagem pede as colunas, nunca o asterisco", () => {
+    assert.ok(/const COLUNAS = "id, obra_codigo, rev, capa, slides, idioma, arquivo, gerado_em, atualizado_em, atualizado_por"/.test(rotaApres));
+    /* Sem as linhas de comentario: o proprio arquivo explica que nao usa
+       `select("*")`, e a frase casaria com a busca. */
+    const semComentario = rotaApres.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    assert.ok(!/select\(\s*["'`]\*/.test(semComentario), 'voltou o select("*")');
+  });
+
+  t3("a ordem continua da revisão mais nova pra mais velha", () =>
+    assert.ok(rotaApres.includes('.order("atualizado_em", { ascending: false })')));
+
+  t3("toda rota daqui exige login e time", () =>
+    assert.ok(rotaApres.includes("rotas.use(exigirLogin, exigirMembro);")));
+
+  t3("a imagem do ambiente continua no balde do catálogo, em pasta própria", () => {
+    assert.ok(rotaApres.includes('const BALDE_DAS_IMAGENS = "catalogo";'));
+    assert.ok(rotaApres.includes("`ambientes/${obraCodigo || \"sem-obra\"}/${Date.now()}.${ext}`"));
+  });
+
+  console.log(`OK — mais ${ok3} casos`);
+}
