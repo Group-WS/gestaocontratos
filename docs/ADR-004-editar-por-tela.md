@@ -133,3 +133,20 @@ trabalho.
 1. Seguir pelo caminho A, nas três fatias?
 2. Ou parar na fatia 1 (ou 2), que já elimina o risco de sobrescrita nas
    ações mais disputadas, e manter a trava por obra com os 5 minutos?
+
+## Atualização de 22/09/2026 — a gravação protegida
+
+A análise de confiabilidade da gravação mudou uma premissa deste ADR: o
+salvamento inteiro deixou de ser um UPSERT sem condição. Agora a função
+`salvar_obra` (supabase/salvar-obra.sql) só grava com a trava de quem grava e
+com a **versão** da obra que a tela leu — a coluna `obra_dados.versao`, que
+sobe a cada mudança de conteúdo. O patch passou a conferir as duas coisas
+também quando o app manda a versão (`aplicar_patch_obra(codigo, patches,
+versao)`), e toda gravação do app vai pela API (`/api/obras/:codigo/...`).
+
+O que isso significa para a fatia 3: com a versão conferida, duas pessoas na
+mesma obra não se sobrescrevem mais em silêncio — a segunda gravação é
+recusada e a tela avisa. Para as duas conviverem de verdade (trava por tela),
+o patch terá de voltar a aceitar gravar **sem** exigir a versão da obra
+inteira, conferindo o item pelo id estável descrito acima. A versão continua
+valendo para a gravação inteira.

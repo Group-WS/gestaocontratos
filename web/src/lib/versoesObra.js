@@ -1,4 +1,5 @@
 import { supabase, supabaseConfigurado } from "./supabase";
+import { apiFetch } from "./api";
 
 /* VERSOES ANTERIORES DA OBRA.
  *
@@ -19,7 +20,8 @@ import { supabase, supabaseConfigurado } from "./supabase";
  * de rede apareceria na tela como migracao pendente. */
 const semTabela = (erro) => erro?.code === "42P01" || erro?.code === "PGRST205";
 
-/* O que volta pro lugar numa restauracao.
+/* O que volta pro lugar numa restauracao mora na funcao do banco
+ * `restaurar_versao_obra` (supabase/salvar-obra.sql), e nao mais aqui.
  *
  * FICAM DE FORA, de proposito:
  *   editando_por / editando_desde — a trava e' de agora, nao de entao.
@@ -27,17 +29,8 @@ const semTabela = (erro) => erro?.code === "42P01" || erro?.code === "PGRST205";
  *     esta' mais nela.
  *   obra_codigo / criado_em / id — identidade da linha, nao conteudo.
  *   atualizado_por / atualizado_em — quem restaurou e' quem clicou agora.
+ *   versao — a versao da obra sobe na restauracao, nunca volta.
  */
-const CAMPOS_RESTAURAVEIS = [
-  "categorias", "cadernos", "arquivos", "aprovacoes",
-  "depara_aprovado", "executivo_liberado_direto", "compras_liberadas",
-  "etapas_concluidas",
-  "cliente_assinou_em", "cliente_assinatura_por", "cliente_assinatura_arq",
-  "cliente_assinatura_obs",
-  "compra_sem_assinatura_por", "compra_sem_assinatura_em", "compra_sem_assinatura_just",
-  "cmv_liberado", "cmv_liberado_em", "cmv_liberado_por",
-  "data_entrega", "escopos",
-];
 
 /**
  * As versoes guardadas desta obra, da mais nova pra mais velha.
@@ -69,41 +62,27 @@ export async function listarVersoes(codigo) {
  *
  * A propria restauracao vira versao: o UPDATE dispara o gatilho, que guarda
  * o estado de agora antes de troca-lo. Restaurar errado tem volta.
+ *
+ * Era um UPSERT feito daqui, sem conferir nada. Agora passa pela API e pela
+ * funcao `restaurar_versao_obra` (supabase/salvar-obra.sql), que faz o que
+ * este arquivo fazia — so' os campos de conteudo que existem na versao,
+ * a versao tem que ser desta obra, a obra apagada volta inteira — e mais:
+ * nao restaura por cima de quem esta' editando, e sobe a versao da obra,
+ * entao a tela que tinha a copia anterior nao grava por cima da restauracao.
  */
-export async function restaurarVersao(codigo, versaoId, email) {
+export async function restaurarVersao(codigo, versaoId) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
 
-  const { data: versao, error } = await supabase
-    .from("obra_versao")
-    .select("id, obra_codigo, conteudo, n_itens, criado_em")
-    .eq("id", versaoId)
-    .maybeSingle();
-  if (error) throw semTabela(error) ? new Error("O histórico de versões ainda não foi criado no banco.") : error;
-  if (!versao) throw new Error("Essa versão não existe mais.");
-
-  /* A versao e' de OUTRA obra. Nao deveria acontecer pela tela, mas o id
-     vem de fora da funcao e restaurar a obra errada e' irreversivel do
-     ponto de vista de quem perdeu o trabalho. */
-  if (String(versao.obra_codigo) !== String(codigo)) {
-    throw new Error("Essa versão é de outra obra — não restaurei nada.");
+  const res = await apiFetch(`/api/obras/${encodeURIComponent(String(codigo))}/versoes/${encodeURIComponent(String(versaoId))}/restaurar`,
+    { method: "POST" });
+  let dados = null;
+  try { dados = await res.json(); } catch { /* resposta sem corpo */ }
+  if (!res.ok) {
+    if (res.status === 409 && dados?.motivo === "trava") {
+      throw new Error(`${dados.por || "Outra pessoa"} está editando esta obra agora. Restaure depois que a edição terminar, para não apagar o trabalho em andamento.`);
+    }
+    if (res.status === 404) throw new Error("Essa versão não existe mais.");
+    throw new Error(dados?.error || "Não foi possível restaurar a versão. Tente novamente em instantes.");
   }
-
-  const de = versao.conteudo || {};
-  const patch = { atualizado_por: email || null };
-  /* So' o que EXISTE na versao. Coluna criada depois do snapshot nao
-     aparece ali, e escrever `undefined` nela apagaria o valor de hoje. */
-  CAMPOS_RESTAURAVEIS.forEach((c) => {
-    if (Object.prototype.hasOwnProperty.call(de, c)) patch[c] = de[c];
-  });
-
-  /* UPSERT e nao UPDATE: a obra pode ter sido APAGADA, e nao so'
-     sobrescrita — o gatilho guarda versao nos dois casos. Um UPDATE numa
-     linha que nao existe mais nao atualiza nada e nao reclama: a tela diria
-     "restaurado" e nada teria voltado. */
-  const { error: erroAoGravar } = await supabase
-    .from("obra_dados")
-    .upsert({ ...patch, obra_codigo: String(codigo) }, { onConflict: "obra_codigo" });
-  if (erroAoGravar) throw erroAoGravar;
-
-  return { restaurou: versao.n_itens, de: versao.criado_em };
+  return { restaurou: dados.restaurou, de: dados.de, versao: dados.versao };
 }

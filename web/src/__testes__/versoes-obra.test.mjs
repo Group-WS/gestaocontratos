@@ -23,6 +23,13 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 const src = fs.readFileSync(path.join(aqui, "..", "lib", "versoesObra.js"), "utf8");
 const app = fs.readFileSync(path.join(aqui, "..", "App.jsx"), "utf8");
 const sql = fs.readFileSync(path.join(aqui, "..", "..", "..", "supabase", "obra-versao.sql"), "utf8");
+/* Desde 22/09/2026 a restauração e o gatilho vigentes moram em
+   supabase/salvar-obra.sql (que substitui a função do obra-versao.sql). */
+const sqlNovo = fs.readFileSync(path.join(aqui, "..", "..", "..", "supabase", "salvar-obra.sql"), "utf8");
+const restaurarSql = sqlNovo.slice(sqlNovo.indexOf("create or replace function public.restaurar_versao_obra("),
+  sqlNovo.indexOf("revoke execute on function public.restaurar_versao_obra("));
+const gatilhoSql = sqlNovo.slice(sqlNovo.indexOf("create or replace function public.obra_dados_guarda_versao()"),
+  sqlNovo.indexOf("revoke execute on function private.obra_dados_controle()"));
 
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = src.indexOf(assinatura);
@@ -36,14 +43,16 @@ const trecho = (comeco, fim) => {
 };
 
 let supabaseStub = null;
+let respostaDaApi = null;
+const pedidos = [];
 const M = eval("(function () {\n"
   + "  const supabaseConfigurado = true;\n"
   + "  const supabase = { from: (t) => supabaseStub.from(t) };\n"
+  + "  const apiFetch = async (caminho, opcoes) => { pedidos.push({ caminho, opcoes }); return respostaDaApi; };\n"
   + trecho("const semTabela =", ";\n")
-  + trecho("const CAMPOS_RESTAURAVEIS =", "];\n")
   + bloco("export async function listarVersoes(").replace("export ", "")
   + bloco("export async function restaurarVersao(").replace("export ", "")
-  + "  return { semTabela, CAMPOS_RESTAURAVEIS, listarVersoes, restaurarVersao };\n"
+  + "  return { semTabela, listarVersoes, restaurarVersao };\n"
   + "})()");
 
 let f = 0;
@@ -51,108 +60,79 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
   console.log(`${ok ? "ok  " : "FALHOU"} ${n.padEnd(62)} ${String(o).padEnd(8)} ${ok ? "" : "esperava " + e}`); };
 
 /* ============================================================
-   1. O QUE NÃO VOLTA NUMA RESTAURAÇÃO
+   1. O QUE VOLTA — E O QUE NÃO VOLTA — NUMA RESTAURAÇÃO
+   A lista mora na função do banco `restaurar_versao_obra`.
    ============================================================ */
-const campos = M.CAMPOS_RESTAURAVEIS;
-conf("as categorias voltam", campos.includes("categorias"), true);
-conf("os cadernos voltam", campos.includes("cadernos"), true);
-conf("os arquivos voltam", campos.includes("arquivos"), true);
-conf("as aprovações voltam", campos.includes("aprovacoes"), true);
-conf("o CMV liberado volta", campos.includes("cmv_liberado"), true);
-conf("as etapas concluídas voltam", campos.includes("etapas_concluidas"), true);
+const lista = restaurarSql.slice(restaurarSql.indexOf("where e.key in ("), restaurarSql.indexOf(");", restaurarSql.indexOf("where e.key in (")));
+const volta = (c) => lista.includes(`'${c}'`);
+conf("as categorias voltam", volta("categorias"), true);
+conf("os cadernos voltam", volta("cadernos"), true);
+conf("os arquivos voltam", volta("arquivos"), true);
+conf("as aprovações voltam", volta("aprovacoes"), true);
+conf("o CMV liberado volta", volta("cmv_liberado"), true);
+conf("as etapas concluídas voltam", volta("etapas_concluidas"), true);
 
 /* A TRAVA NÃO VOLTA. Ela é de agora, não de então — devolver a trava antiga
    deixaria a obra presa em nome de quem já foi embora, e sem ninguém para
    soltá-la a não ser o vencimento de 5 minutos. */
-conf("a trava de edição NÃO volta", campos.includes("editando_por"), false);
-conf("... nem a hora dela", campos.includes("editando_desde"), false);
+conf("a trava de edição NÃO volta", volta("editando_por"), false);
+conf("... nem a hora dela", volta("editando_desde"), false);
 /* Identidade da linha não é conteúdo: reescrever o código da obra moveria a
    linha para outra obra. */
-conf("o código da obra NÃO volta", campos.includes("obra_codigo"), false);
-conf("quem restaurou é quem clicou agora", campos.includes("atualizado_por"), false);
+conf("o código da obra NÃO volta", volta("obra_codigo"), false);
+conf("quem restaurou é quem clicou agora", volta("atualizado_por"), false);
+/* A versão sobe na restauração, nunca volta: é o que faz a tela que tinha a
+   cópia de antes da restauração não gravar por cima dela. */
+conf("a versão da obra NÃO volta", volta("versao"), false);
 
 /* ============================================================
    2. A RESTAURAÇÃO
+   Quem decide é o banco (restaurar_versao_obra), pela API. O navegador
+   só pede e traduz a resposta.
    ============================================================ */
-function montarStub({ versao, erroNaBusca = null }) {
-  const chamadas = { buscou: 0, gravou: 0, patch: null };
-  const stub = {
-    from: (tabela) => ({
-      select: () => ({
-        eq: () => ({
-          order: async () => ({ data: [], error: null }),
-          maybeSingle: async () => {
-            chamadas.buscou += 1;
-            return erroNaBusca ? { data: null, error: erroNaBusca } : { data: versao, error: null };
-          },
-        }),
-      }),
-      upsert: async (patch) => {
-        chamadas.gravou += 1;
-        chamadas.patch = patch;
-        return { error: null };
-      },
-    }),
-  };
-  return { stub, chamadas };
-}
-
-const conteudo = {
-  obra_codigo: "2450",
-  categorias: [{ num: "01", itens: [{ desc: "mesa" }] }],
-  cadernos: { especificacao: { nome: "x.pdf" } },
-  cmv_liberado: 1000,
-  editando_por: "quemfoiembora@x.com",
-  editando_desde: "2026-09-18T10:00:00Z",
-  atualizado_por: "lorena@x.com",
-};
+const resposta = (status, corpo) => ({ ok: status < 400, status, json: async () => corpo });
 
 /* O caminho feliz. */
 {
-  const { stub, chamadas } = montarStub({ versao: { id: 7, obra_codigo: "2450", conteudo, n_itens: 269, criado_em: "2026-09-18T19:00:00Z" } });
-  supabaseStub = stub;
+  respostaDaApi = resposta(200, { versao: 12, restaurou: 269, de: "2026-09-18T19:00:00Z" });
   let erro = null;
-  const r = await M.restaurarVersao("2450", 7, "eu@x.com").catch((e) => { erro = e; return null; });
-  conf("restaura", chamadas.gravou, 1);
+  const r = await M.restaurarVersao("2450", 7).catch((e) => { erro = e; return null; });
+  conf("restaura", pedidos.at(-1)?.caminho, "/api/obras/2450/versoes/7/restaurar");
+  conf("... por POST", pedidos.at(-1)?.opcoes?.method, "POST");
   conf("... sem erro", erro, "null");
   conf("... e diz quantos itens voltaram", r?.restaurou, 269);
-  conf("... levando as categorias", JSON.stringify(chamadas.patch?.categorias?.[0]?.itens?.[0]), '{"desc":"mesa"}');
-  conf("... e carimbando quem restaurou", chamadas.patch?.atualizado_por, "eu@x.com");
-  conf("... sem devolver a trava de quem foi embora",
-    Object.prototype.hasOwnProperty.call(chamadas.patch, "editando_por"), false);
+  conf("... e a versão nova da obra", r?.versao, 12);
 }
 
-/* VERSÃO DE OUTRA OBRA. O id vem de fora da função, e restaurar a obra
-   errada é irreversível para quem perdeu o trabalho. */
+/* ALGUÉM ESTÁ EDITANDO. Restaurar por cima apagaria o trabalho em andamento. */
 {
-  const { stub, chamadas } = montarStub({ versao: { id: 9, obra_codigo: "2498", conteudo, n_itens: 611 } });
-  supabaseStub = stub;
+  respostaDaApi = resposta(409, { motivo: "trava", por: "lorena@x.com" });
   let erro = null;
-  await M.restaurarVersao("2450", 9, "eu@x.com").catch((e) => { erro = e; });
-  conf("versão de outra obra: NÃO grava", chamadas.gravou, 0);
-  conf("... e diz por quê", /de outra obra/.test(erro?.message || ""), true);
+  await M.restaurarVersao("2450", 7).catch((e) => { erro = e; });
+  conf("com a obra em edição, não restaura", /lorena@x\.com está editando/.test(erro?.message || ""), true);
 }
 
 /* Versão que não existe mais (podada, ou id inventado). */
 {
-  const { stub, chamadas } = montarStub({ versao: null });
-  supabaseStub = stub;
+  respostaDaApi = resposta(404, { error: "Registro não encontrado." });
   let erro = null;
-  await M.restaurarVersao("2450", 999, "eu@x.com").catch((e) => { erro = e; });
-  conf("versão inexistente: NÃO grava", chamadas.gravou, 0);
-  conf("... e avisa", /não existe mais/.test(erro?.message || ""), true);
+  await M.restaurarVersao("2450", 999).catch((e) => { erro = e; });
+  conf("versão inexistente: avisa", /não existe mais/.test(erro?.message || ""), true);
 }
 
-/* Campo que a versão não tem (coluna criada depois do snapshot) não pode ser
-   escrito como `undefined`, senão a restauração APAGA o valor de hoje. */
-{
-  const { stub, chamadas } = montarStub({ versao: { id: 3, obra_codigo: "2450", conteudo: { categorias: [] }, n_itens: 0 } });
-  supabaseStub = stub;
-  await M.restaurarVersao("2450", 3, "eu@x.com").catch(() => {});
-  conf("campo ausente na versão não é escrito",
-    Object.prototype.hasOwnProperty.call(chamadas.patch, "cmv_liberado"), false);
-  conf("... e o que existe é escrito", Object.prototype.hasOwnProperty.call(chamadas.patch, "categorias"), true);
-}
+/* O banco faz o que o navegador fazia — e mais. */
+conf("versão de OUTRA obra é recusada no banco", /if guardada\.obra_codigo <> p_codigo then\s*\n\s*return jsonb_build_object\('ok', false, 'motivo', 'outra_obra'\)/.test(restaurarSql), true);
+conf("campo ausente na versão não é escrito (coluna criada depois da cópia)",
+  restaurarSql.includes("from jsonb_each(guardada.conteudo) e"), true);
+conf("... porque a escrita só mexe no que veio", sqlNovo.includes("categorias                 = case when c ? 'categorias' then c -> 'categorias' else d.categorias end"), true);
+conf("não restaura por cima da trava viva de outra pessoa",
+  /linha\.dono <> '' and linha\.dono <> quem and linha\.editando_desde > now\(\) - interval '5 minutes' then\s*\n\s*return jsonb_build_object\('ok', false, 'motivo', 'trava'/.test(restaurarSql), true);
+/* E a restauração tem que conseguir RECRIAR a linha apagada. UPDATE numa
+   linha que não existe não atualiza nada e não reclama: a tela diria
+   "restaurado" e nada teria voltado. */
+conf("restaurar recria a obra apagada, não só atualiza",
+  restaurarSql.includes("insert into public.obra_dados (obra_codigo) values (p_codigo);"), true);
+conf("o navegador não grava mais a obra direto na restauração", /\.from\("obra_dados"\)/.test(bloco("export async function restaurarVersao(")), false);
 
 /* ============================================================
    3. A LISTA
@@ -175,13 +155,18 @@ conf("nem permissão negada", M.semTabela({ code: "42501" }), false);
    ============================================================ */
 conf("o gatilho é BEFORE UPDATE em obra_dados",
   /create trigger trg_obra_dados_versao\s*\n\s*before update on obra_dados/.test(sql), true);
-conf("... guardando a linha inteira de antes", sql.includes("to_jsonb(OLD)"), true);
+conf("... guardando a linha inteira de antes", gatilhoSql.includes("to_jsonb(old)"), true);
 /* Guardar a linha inteira (e não coluna por coluna) é o que faz o histórico
    sobreviver a colunas novas sem ninguém mexer no SQL de novo. */
-conf("... uma por hora", sql.includes("ultima < now() - interval '1 hour'"), true);
-conf("... e SEMPRE que os itens caem", sql.includes("or eh_queda or ultima is null"), true);
+/* HISTÓRICO MAIS FINO (22/09/2026): toda gravação INTEIRA vira versão, e não
+   só uma por hora. O patch e a gravação direta seguem de hora em hora. */
+conf("... toda gravação inteira", gatilhoSql.includes("inteira      boolean := coalesce(current_setting('confere.gravacao', true), '') = 'inteira';"), true);
+conf("... uma por hora nas outras (o marco)", gatilhoSql.includes("eh_marco := ultimo_marco is null or ultimo_marco < now() - interval '1 hour';"), true);
+conf("... e SEMPRE que os itens caem", gatilhoSql.includes("if apagando or eh_queda or inteira or eh_marco then"), true);
+conf("só a gravação inteira da função liga a cópia fina",
+  sqlNovo.includes("nova := private.obra_dados_escrever(p_codigo, p_conteudo, quem, 'inteira', linha.editando_por);"), true);
 conf("gravação que não mexeu no conteúdo não vira versão",
-  sql.includes("OLD.categorias  is not distinct from NEW.categorias"), true);
+  gatilhoSql.includes("(to_jsonb(new) - private.obra_dados_controle())\n       is not distinct from (to_jsonb(old) - private.obra_dados_controle())"), true);
 
 /* O APAGAMENTO DA LINHA também vira versão.
  *
@@ -193,38 +178,37 @@ conf("gravação que não mexeu no conteúdo não vira versão",
 conf("existe gatilho no apagamento também",
   /create trigger trg_obra_dados_versao_del\s*\n\s*before delete on obra_dados/.test(sql), true);
 conf("apagar SEMPRE guarda versão, sem esperar o relógio",
-  sql.includes("if apagando or eh_queda or ultima is null"), true);
-conf("... e não passa pelo filtro de 'nada mudou'", sql.includes("if not apagando then"), true);
+  gatilhoSql.includes("if apagando or eh_queda or inteira or eh_marco then"), true);
+conf("... e não passa pelo filtro de 'nada mudou'", gatilhoSql.includes("if not apagando then"), true);
 conf("depois de apagar sobram zero itens",
-  sql.includes("case when apagando then 0 else obra_conta_itens(NEW.categorias) end"), true);
+  gatilhoSql.includes("depois := case when apagando then 0 else private.obra_conta_itens(new.categorias) end;"), true);
 /* Num gatilho BEFORE, devolver NULL CANCELA a operação — um `return NEW`
    no DELETE (NEW é nulo ali) impediria qualquer apagamento no banco. */
 conf("o gatilho deixa o apagamento seguir",
-  sql.includes("return case when apagando then OLD else NEW end;"), true);
-/* E a restauração tem que conseguir RECRIAR a linha apagada. UPDATE numa
-   linha que não existe não atualiza nada e não reclama: a tela diria
-   "restaurado" e nada teria voltado. */
-conf("restaurar recria a obra apagada, não só atualiza",
-  src.includes('.upsert({ ...patch, obra_codigo: String(codigo) }, { onConflict: "obra_codigo" })'), true);
+  gatilhoSql.includes("return case when apagando then old else new end;"), true);
 
 /* A PODA não pode comer a versão de antes do estrago: é justamente a que
    alguém vem buscar, e as gravações seguintes a empurrariam para fora. */
 conf("a poda guarda as quedas por 30 dias",
-  sql.includes("not (v.queda and v.criado_em > now() - interval '30 days')"), true);
-conf("... e as 24 mais novas de cada obra", /order by criado_em desc\s*\n\s*limit 24/.test(sql), true);
+  gatilhoSql.includes("not (v.queda and v.criado_em > now() - interval '30 days')"), true);
+conf("... as 24 mais novas de cada obra", /order by r\.criado_em desc, r\.id desc\s*\n\s*limit 24\)/.test(gatilhoSql), true);
+/* Com uma cópia por gravação, uma tarde de digitação empurraria para fora a
+   cópia de ontem. Os marcos de hora em hora têm lugar próprio na poda. */
+conf("... e os 24 marcos mais novos", /where m\.obra_codigo = old\.obra_codigo and m\.marco\s*\n\s*order by m\.criado_em desc, m\.id desc\s*\n\s*limit 24\)/.test(gatilhoSql), true);
+conf("as cópias que já existiam nascem como marcos", sqlNovo.includes("add column if not exists marco boolean not null default true;"), true);
 
 /* Histórico que pode ser editado não é histórico. */
 conf("a tabela tem RLS", sql.includes("alter table obra_versao enable row level security"), true);
 conf("o time LÊ o histórico", /create policy[^;]*on obra_versao\s*\n\s*for select/.test(sql), true);
 conf("e ninguém escreve nele na mão", /for (insert|update|delete)[\s\S]{0,200}on obra_versao/.test(sql), false);
-conf("o gatilho passa por cima da RLS pra conseguir gravar", sql.includes("security definer"), true);
-conf("... com search_path fixo, que é o cuidado que vem junto", sql.includes("set search_path = public"), true);
+conf("o gatilho passa por cima da RLS pra conseguir gravar", gatilhoSql.includes("security definer"), true);
+conf("... com search_path vazio, que é o cuidado que vem junto", gatilhoSql.includes("set search_path = ''"), true);
 
 /* Lista que não é lista vale zero: obra antiga pode ter chave em formato
    velho, e um erro aqui travaria o salvamento da obra inteira. */
 conf("contar itens não quebra com formato inesperado",
-  sql.includes("case when jsonb_typeof(v) = 'array' then jsonb_array_length(v) else 0 end"), true);
-conf("as quatro fontes contam", /itensContrato[\s\S]{0,200}itensPlanilhaExecutivo/.test(sql), true);
+  sqlNovo.includes("case when jsonb_typeof(c -> 'itens') = 'array' then jsonb_array_length(c -> 'itens') else 0 end"), true);
+conf("as quatro fontes contam", /itensContrato[\s\S]{0,300}itensPlanilhaExecutivo/.test(sqlNovo), true);
 
 /* ============================================================
    5. A TELA
@@ -232,7 +216,7 @@ conf("as quatro fontes contam", /itensContrato[\s\S]{0,200}itensPlanilhaExecutiv
 conf("restaurar é do admin master",
   app.includes("podeRestaurar={podeGerenciarPessoas(eu, pessoas)}"), true);
 conf("as versões moram dentro do Histórico da obra",
-  app.includes("<VersoesDaObra obra={obra} podeRestaurar={podeRestaurar} usuario={usuario} />"), true);
+  app.includes("<VersoesDaObra obra={obra} podeRestaurar={podeRestaurar} />"), true);
 /* Sem permissão o botão não existe — e a lista continua visível, porque
    saber o que aconteceu com a obra não é privilégio de ninguém. */
 const tela = app.slice(app.indexOf("function VersoesDaObra("), app.indexOf("/* O HISTORICO NO PE' DA PAGINA."));

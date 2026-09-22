@@ -11,168 +11,73 @@
  * O CAMINHO. Ao abrir uma obra, ela começa na memória como o esqueleto do
  * cadastro do Monday — as verbas da EAP, sem item nenhum. Os itens chegam
  * numa SEGUNDA viagem ao banco. Se essa viagem falha, o esqueleto fica; o
- * "Carregando…" some, o "habilitar edição" reaparece, e o salvamento
- * automático — que não conferia nada — grava o esqueleto por cima da obra
+ * "Carregando…" some, o "habilitar edição" reaparecia, e o salvamento
+ * automático — que não conferia nada — gravava o esqueleto por cima da obra
  * inteira. Sem aviso e sem rastro.
  *
  * Este arquivo tranca as duas portas:
- *   1. `salvarDadosObra` RECUSA gravar quando a tela não tem item e o banco
- *      tem. Vale contra qualquer caminho, inclusive os que não conhecemos.
+ *   1. a gravação RECUSA quando o que vai ser gravado não tem item e o banco
+ *      tem. Desde 22/09/2026 quem confere é a função `salvar_obra`, no banco
+ *      (supabase/salvar-obra.sql), na mesma transação da gravação — antes era
+ *      uma leitura extra feita pelo navegador, com uma janela entre conferir
+ *      e gravar. O comportamento é provado contra o banco de verdade em
+ *      supabase/tests/12-salvar-obra.sql; aqui fica o desenho.
  *   2. A BarraEtapa não oferece edição numa obra que não carregou.
- *
- * O arquivo é fatiado em vez de importado: `dadosObra.js` puxa o cliente do
- * Supabase na primeira linha, e o Node não resolve esse import fora do Vite.
- * A montagem usa CONCATENAÇÃO, não template literal: o corpo de
- * `salvarDadosObra` tem `${...}` dentro, e uma crase aqui interpolaria tudo
- * na hora de montar o teste.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { erroDaResposta, avisoDaGravacao } from "../lib/gravacaoObra.js";
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
-const src = fs.readFileSync(path.join(aqui, "..", "lib", "dadosObra.js"), "utf8");
 const app = fs.readFileSync(path.join(aqui, "..", "App.jsx"), "utf8");
-
-const bloco = (assinatura, fim = "\n}\n") => {
-  const i = src.indexOf(assinatura);
-  if (i === -1) throw new Error(`não achei em dadosObra.js: ${assinatura}`);
-  return src.slice(i, src.indexOf(fim, i) + fim.length);
-};
-
-let supabaseStub = null;
-const M = eval("(function () {\n"
-  + "  const supabaseConfigurado = true;\n"
-  + "  const supabase = { from: (t) => supabaseStub.from(t) };\n"
-  + "  const listaDeArquivos = (a) => (Array.isArray(a) ? a : []);\n"
-  + "  const paraApp = (l) => l;\n"
-  + bloco("export function temItemNasCategorias(").replace("export ", "")
-  + bloco("export async function salvarDadosObra(").replace("export ", "")
-  + "  return { temItemNasCategorias, salvarDadosObra };\n"
-  + "})()");
+const sql = fs.readFileSync(path.join(aqui, "..", "..", "..", "supabase", "salvar-obra.sql"), "utf8");
+const teste = fs.readFileSync(path.join(aqui, "..", "..", "..", "supabase", "tests", "12-salvar-obra.sql"), "utf8");
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
   console.log(`${ok ? "ok  " : "FALHOU"} ${n.padEnd(60)} ${String(o).padEnd(8)} ${ok ? "" : "esperava " + e}`); };
 
 /* ============================================================
-   1. A PERGUNTA PURA: esta obra tem item?
+   1. O CINTO, NO BANCO
    ============================================================ */
-const { temItemNasCategorias: tem } = M;
-
-/* O esqueleto do Monday, que é exatamente o que o banco da 2450 tinha depois
-   do apagamento: verba com número, nome e os dois totais — e nada dentro. */
-const esqueleto = [
-  { num: "01", nome: "Arquitetura e Engenharia", vendido: 0, executivo: 0 },
-  { num: "02", nome: "Serviços Complementares", vendido: 0, executivo: 0 },
-];
-
-conf("sem categorias, não tem item", tem([]), false);
-conf("null não quebra", tem(null), false);
-conf("undefined não quebra", tem(undefined), false);
-conf("o esqueleto do Monday NÃO é obra cheia", tem(esqueleto), false);
-conf("verba com lista vazia também não", tem([{ num: "01", itens: [], itensPlanilha: [] }]), false);
+const salvar = sql.slice(sql.indexOf("create or replace function public.salvar_obra("),
+  sql.indexOf("revoke execute on function public.salvar_obra("));
+const conta = sql.slice(sql.indexOf("create or replace function private.obra_conta_itens("),
+  sql.indexOf("$$;", sql.indexOf("create or replace function private.obra_conta_itens(")));
 
 /* As QUATRO fontes contam. Uma obra que só tem o contrato importado é tão
    cheia quanto uma que já foi até as compras — perder qualquer uma é perder
    trabalho de alguém. */
-conf("um item do Executivo já é obra cheia", tem([{ num: "01", itens: [{ desc: "x" }] }]), true);
-conf("... e um do Vendido Contrato também", tem([{ num: "01", itensContrato: [{ desc: "x" }] }]), true);
-conf("... e um do Vendido Planilha também", tem([{ num: "01", itensPlanilha: [{ desc: "x" }] }]), true);
-conf("... e um da planilha do Executivo também", tem([{ num: "01", itensPlanilhaExecutivo: [{ desc: "x" }] }]), true);
-conf("item numa verba lá no fim conta igual",
-  tem([...esqueleto, { num: "33", itens: [{ desc: "x" }] }]), true);
+["itens", "itensContrato", "itensPlanilha", "itensPlanilhaExecutivo"].forEach((fonte) => {
+  conf(`a conta de itens olha ${fonte}`, conta.includes(`c -> '${fonte}'`), true);
+});
+conf("lista que não é lista vale zero, sem derrubar a gravação", conta.includes("jsonb_typeof(c -> 'itens') = 'array'"), true);
 
-/* ============================================================
-   2. O CINTO: a gravação recusa
-   ============================================================ */
-function montarStub({ categoriasNoBanco, erroNaLeitura = null }) {
-  const chamadas = { leu: 0, gravou: 0, payload: null };
-  const stub = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => {
-            chamadas.leu += 1;
-            return erroNaLeitura
-              ? { data: null, error: { message: erroNaLeitura } }
-              : { data: categoriasNoBanco === null ? null : { categorias: categoriasNoBanco }, error: null };
-          },
-        }),
-      }),
-      upsert: (linha) => {
-        chamadas.gravou += 1;
-        chamadas.payload = linha;
-        return { select: () => ({ single: async () => ({ data: linha, error: null }) }) };
-      },
-    }),
-  };
-  return { stub, chamadas };
-}
-
-const cheia = [{ num: "01", nome: "Arquitetura", itens: [{ desc: "mesa" }] }];
-
-/* O CASO DA 2450: tela vazia, banco cheio. Não grava, e diz por quê. */
-{
-  const { stub, chamadas } = montarStub({ categoriasNoBanco: cheia });
-  supabaseStub = stub;
-  let erro = null;
-  await M.salvarDadosObra("2450", { categorias: esqueleto }, "eu@x.com").catch((e) => { erro = e; });
-  conf("tela vazia + banco cheio: NÃO grava", chamadas.gravou, 0);
-  conf("... conferiu o banco antes", chamadas.leu, 1);
-  conf("... e explicou que foi de propósito", /NÃO GRAVEI/.test(erro?.message || ""), true);
-  conf("... mandando recarregar", /F5/.test(erro?.message || ""), true);
-}
-
-/* Obra NOVA de verdade: vazia dos dois lados. Tem que gravar — senão nenhuma
-   obra começa. */
-{
-  const { stub, chamadas } = montarStub({ categoriasNoBanco: null });
-  supabaseStub = stub;
-  let erro = null;
-  await M.salvarDadosObra("9999", { categorias: esqueleto }, "eu@x.com").catch((e) => { erro = e; });
-  conf("obra nova (banco sem linha): grava", chamadas.gravou, 1);
-  conf("... sem erro", erro, "null");
-}
-
-/* Linha existente, mas também sem item: segue gravando. É o caso de quem
-   acabou de iniciar a obra e ainda não subiu planilha nenhuma. */
-{
-  const { stub, chamadas } = montarStub({ categoriasNoBanco: esqueleto });
-  supabaseStub = stub;
-  await M.salvarDadosObra("9999", { categorias: esqueleto }, "eu@x.com").catch(() => {});
-  conf("banco também vazio: grava", chamadas.gravou, 1);
-}
-
-/* Obra CHEIA: grava como sempre gravou, e NEM LÊ o banco antes. A consulta
-   extra só existe no caso perigoso — o salvamento normal não fica mais lento. */
-{
-  const { stub, chamadas } = montarStub({ categoriasNoBanco: cheia });
-  supabaseStub = stub;
-  await M.salvarDadosObra("2450", { categorias: cheia }, "eu@x.com").catch(() => {});
-  conf("obra cheia: grava", chamadas.gravou, 1);
-  conf("... sem consulta extra", chamadas.leu, 0);
-}
-
-/* Não deu pra conferir? Também não grava. A dúvida pesa mais que a gravação:
-   o que está na tela é uma obra sem item nenhum. */
-{
-  const { stub, chamadas } = montarStub({ categoriasNoBanco: cheia, erroNaLeitura: "sem rede" });
-  supabaseStub = stub;
-  let erro = null;
-  await M.salvarDadosObra("2450", { categorias: esqueleto }, "eu@x.com").catch((e) => { erro = e; });
-  conf("leitura falhou: NÃO grava", chamadas.gravou, 0);
-  conf("... e conta o motivo", /sem rede/.test(erro?.message || ""), true);
-}
-
-/* A ORDEM IMPORTA no código-fonte: o cinto tem que estar ANTES do upsert.
-   Depois dele não serviria de nada. */
-const corpo = bloco("export async function salvarDadosObra(");
+conf("tela sem item + banco com item: recusa com o motivo 'vazia'",
+  /private\.obra_conta_itens\(p_conteudo -> 'categorias'\) = 0\s*\n\s*and private\.obra_conta_itens\(linha\.categorias\) > 0 then\s*\n\s*return jsonb_build_object\('ok', false, 'motivo', 'vazia'\)/.test(salvar), true);
+/* A ORDEM IMPORTA: o cinto tem que vir ANTES da escrita. Depois dela não
+   serviria de nada. */
 conf("o cinto vem antes da gravação",
-  corpo.indexOf("temItemNasCategorias(conteudo.categorias)") < corpo.indexOf(".upsert("), true);
+  salvar.indexOf("'motivo', 'vazia'") > 0 && salvar.indexOf("'motivo', 'vazia'") < salvar.indexOf("private.obra_dados_escrever("), true);
+/* Na MESMA transação: a linha fica segura (`for update`) desde a leitura, e
+   ninguém grava entre conferir e escrever. */
+conf("... com a linha segura desde a conferência", /from public\.obra_dados d\s*\n\s*where d\.obra_codigo = p_codigo\s*\n\s*for update;/.test(salvar), true);
+/* Obra nova de verdade (vazia dos dois lados) grava: senão nenhuma começa.
+   E obra cheia grava como sempre. O teste do banco prova os dois lados. */
+conf("o teste do banco prova a recusa", teste.includes("'obra sem item não grava por cima de obra com itens'"), true);
+conf("... e que os itens ficam", teste.includes("'... e os itens ficam'"), true);
+
+/* A tela diz o que aconteceu — e não manda dar F5, que levaria junto o que
+   outras obras ainda não gravaram. A saída é recarregar ESTA obra. */
+const aviso = avisoDaGravacao({ estado: "conflito", erro: erroDaResposta(409, { motivo: "vazia" }) }, { obra: "2450" });
+conf("a recusa vira conflito (não é repetida por cima)", erroDaResposta(409, { motivo: "vazia" }).tipo, "conflito");
+conf("... e a tela explica que foi de propósito", /apagaria o trabalho de todo mundo/.test(aviso.descricao), true);
+conf("... oferecendo recarregar a obra", aviso.acao, "recarregar");
+conf("... sem mandar dar F5", /F5/.test(aviso.descricao), false);
 
 /* ============================================================
-   3. A SEGUNDA PORTA: obra que não carregou não abre pra edição
+   2. A SEGUNDA PORTA: obra que não carregou não abre pra edição
    ============================================================ */
 conf("a falha de carregamento é guardada por CÓDIGO",
   app.includes("const [falhaAoCarregar, setFalhaAoCarregar] = useState(null);"), true);
@@ -185,11 +90,19 @@ conf("a barra recebe a falha desta obra, não de qualquer uma",
 
 /* E o aviso tem que vir ANTES do ramo que oferece "habilitar edição" — é o
    ramo final do if, quem chegar lá ganha o botão. */
-const barra = app.slice(app.indexOf("function BarraEtapa({"), app.indexOf("function BarraEtapa({") + 4000);
+const barra = app.slice(app.indexOf("function BarraEtapa({"), app.indexOf("function BarraEtapa({") + 6000);
 conf("o aviso de falha existe na barra", barra.includes("} else if (falhouCarregar) {"), true);
 conf("... antes do botão de habilitar",
   barra.indexOf("} else if (falhouCarregar) {") < barra.indexOf("onClick={onHabilitar}"), true);
-conf("... e diz o que fazer", barra.includes("recarregue a página (F5) antes de mexer"), true);
+conf("... e diz o que acontece", barra.includes("Não consegui carregar esta obra. A edição fica fechada até ela carregar."), true);
+/* A saída era "recarregue a página (F5)". Agora é tentar carregar de novo
+   aqui mesmo: recarregar a página levaria junto o que outras obras desta
+   aba ainda não gravaram. */
+conf("... oferecendo tentar de novo, sem recarregar a página", barra.includes("onClick={onTentarCarregar}"), true);
+conf("... e sem mandar dar F5", /F5/.test(barra.slice(barra.indexOf("} else if (falhouCarregar) {"), barra.indexOf("} else if (edicao.por) {"))
+  .split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n")), false);
+conf("tentar de novo roda a abertura outra vez", app.includes("onTentarCarregar={() => setCargaPedida((n) => n + 1)}"), true);
+conf("... porque o efeito da abertura depende do pedido", app.includes("}, [obra?.codigo, usuario, cargaPedida]);"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

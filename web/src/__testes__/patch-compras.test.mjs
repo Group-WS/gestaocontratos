@@ -11,10 +11,14 @@
  * Três coisas aqui não podem quebrar:
  *   1. só campo de COMPRA vai por patch. Um campo de fora na mesma alteração
  *      e o salvamento inteiro tem que levar tudo junto;
- *   2. qualquer falha cai no salvamento de sempre. O pior resultado possível
- *      é gravar como antes;
+ *   2. patch recusado cai no salvamento inteiro, e patch que não chegou ao
+ *      banco volta para a fila — nada do lote se perde;
  *   3. o patch vai com o código e a descrição que a tela viu, porque ele
  *      endereça o item por POSIÇÃO.
+ *
+ * Desde 22/09/2026 o patch vai pela API e confere trava e versão como a
+ * gravação inteira (supabase/salvar-obra.sql, que substituiu a função do
+ * patch-obra.sql).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -23,7 +27,10 @@ import { fileURLToPath } from "node:url";
 const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const src = fs.readFileSync(path.join(raiz, "web", "src", "App.jsx"), "utf8");
 const lib = fs.readFileSync(path.join(raiz, "web", "src", "lib", "dadosObra.js"), "utf8");
-const sql = fs.readFileSync(path.join(raiz, "supabase", "patch-obra.sql"), "utf8");
+// A função vigente: salvar-obra.sql substituiu a do patch-obra.sql (que fica como histórico).
+const sqlCompleto = fs.readFileSync(path.join(raiz, "supabase", "salvar-obra.sql"), "utf8");
+const sql = sqlCompleto.slice(sqlCompleto.indexOf("drop function if exists public.aplicar_patch_obra(text, jsonb);"),
+  sqlCompleto.indexOf("-- ---------- 6. Restaurar uma versão"));
 const bloco = (assinatura, fim = "\n}\n") => {
   const i = src.indexOf(assinatura);
   if (i === -1) throw new Error(`não achei no App.jsx: ${assinatura}`);
@@ -88,7 +95,11 @@ conf("o patch leva a posição da verba e do item",
 /* A fila se descarta quando a obra muda por outro caminho: é o que faz
    nenhum dos outros 43 caminhos de gravação precisar avisar nada. */
 conf("mudança de fora descarta a fila",
-  /if \(nEnfileirados\.current !== nVistos\.current\) \{ nVistos\.current = nEnfileirados\.current; return; \}\s*\n\s*filaPatch\.current = null;/.test(src), true);
+  /if \(nEnfileirados\.current !== nVistos\.current\) \{ nVistos\.current = nEnfileirados\.current; return; \}\s*\n\s*if \(obra\?\.codigo\) filasDePatch\.current\.set\(String\(obra\.codigo\), null\);/.test(src), true);
+/* Uma fila por OBRA: quem sai de uma obra com a gravação falhando e edita
+   outra não pode ter os patches da segunda mandados para a primeira. */
+conf("uma fila de patches por obra", src.includes("const filasDePatch = useRef(new Map());"), true);
+conf("... e o patch entra na fila da obra aberta", /const fila = filaDePatchDaObra\(\);\s*\n\s*if \(fila === null\) return;\s*\n\s*fila\.push\(p\);/.test(src), true);
 conf("a compra de aditivo vai por patch de mapa", src.includes('mapa: "comprasAditivo", chave: itemId'), true);
 
 /* Liberar ou aprovar uma verba inteira são dezenas de linhas: cada uma vira
@@ -135,30 +146,40 @@ conf("reabrir compras vai por patch", src.includes("enfileirarMarcas({ comprasLi
 conf("liberar compras NÃO vai por patch",
   src.slice(src.indexOf("function liberarCompras("), src.indexOf("function reabrirCompras(")).includes("enfileirarMarcas"), false);
 
-/* ---- 3. Falha sempre cai no salvamento de sempre ---- */
-conf("o salvamento tenta o patch primeiro", /const p = await aplicarPatchObra\(obra\.codigo, fila\);/.test(src), true);
-conf("patch recusado não é tratado como sucesso", src.includes("p?.ok && !(p.recusados && p.recusados.length)"), true);
+/* ---- 3. O patch primeiro; recusado, a obra inteira; falhou, nada se perde ---- */
+const rodada = bloco("async function gravarUmaVez(codigo) {", "\n  }\n");
+conf("a gravação tenta o patch primeiro, com a versão lida", rodada.includes("const p = await aplicarPatchObra(codigo, lote, v);"), true);
+conf("... e anda a versão com o que o banco devolveu", rodada.includes("v = p.versao;") && rodada.includes("versaoDaObra.current.set(codigo, v);"), true);
+conf("patch aceito inteiro encerra a rodada", rodada.includes("if (!(p.recusados && p.recusados.length)) return;"), true);
 /* O desvio é seguro, mas silencioso — e silêncio não se diagnostica. */
-conf("e o desvio deixa rastro no console", src.includes('console.warn("[obra] patch não aplicado, gravando a obra inteira:"'), true);
-conf("dizendo o motivo", src.includes("a função aplicar_patch_obra ainda não existe no banco"), true);
-conf("e depois dele vem o salvamento inteiro",
-  src.indexOf("await aplicarPatchObra(") < src.indexOf("const r = await salvarDadosObra(obra.codigo, obra, usuario);"), true);
-conf("sem a função no banco, o lib avisa em vez de estourar", lib.includes("return { semFuncao: true };"), true);
-conf("e reconhece os dois códigos de erro", lib.includes('error.code === "42883"') && lib.includes('error.code === "PGRST202"'), true);
+conf("patch recusado deixa rastro no console", rodada.includes("patch(es) recusado(s), gravando a obra inteira"), true);
+conf("e depois dele vem o salvamento inteiro, com a versão que o patch deixou",
+  rodada.indexOf("await aplicarPatchObra(") < rodada.indexOf("const r = await salvarDadosObra(codigo, atual, v);"), true);
+conf("o lote sai da fila, e o que chega durante a gravação entra numa nova",
+  rodada.includes("filasDePatch.current.set(codigo, []);"), true);
+conf("falhou: o lote volta para a fila (ou pede a obra inteira)",
+  rodada.includes("filasDePatch.current.set(codigo, lote === null || foiPorPatch || durante == null ? null : [...lote, ...durante]);"), true);
+conf("o patch vai pela API, com a versão",
+  lib.includes("postarGravacao(`/api/obras/${encodeURIComponent(String(codigo))}/patch`, { versao, patches })"), true);
+conf("e o lib não fala mais direto com a função do banco", /supabase\.rpc\("aplicar_patch_obra"/.test(lib), false);
 
-/* ---- 4. A função no banco ---- */
+/* ---- 4. A função no banco (a versão vigente, em salvar-obra.sql) ---- */
 conf("aprende a gravar coluna", sql.includes("elsif p ? 'coluna' then"), true);
 conf("com lista fechada de colunas", /if col in \('aprovacoes'/.test(sql), true);
-conf("cada marca só é escrita se veio na chamada", /case when marcas \? 'etapas_concluidas' then/.test(sql), true);
-conf("e a função continua com a mesma assinatura",
-  sql.includes("create or replace function public.aplicar_patch_obra(p_codigo text, p_patches jsonb)"), true);
-conf("segura a linha enquanto grava", /select categorias[\s\S]*for update/.test(sql), true);
+conf("cada marca só é escrita se veio na chamada", /marcas := marcas \|\| jsonb_build_object\(col, p->'valor'\)/.test(sql), true);
+conf("a assinatura ganhou a versão, opcional para o app antigo",
+  sql.includes("create or replace function public.aplicar_patch_obra(p_codigo text, p_patches jsonb, p_versao bigint default null)"), true);
+conf("... e a assinatura antiga sai, para o PostgREST não ficar em dúvida", sql.includes("drop function if exists public.aplicar_patch_obra(text, jsonb);"), true);
+conf("segura a linha enquanto grava", /select d\.categorias[\s\S]*for update/.test(sql), true);
 conf("confere o código antes de escrever", sql.includes("coalesce(alvo->>'codigo', '') <> coalesce(p->>'confCodigo', '')"), true);
 conf("confere a descrição antes de escrever", sql.includes("coalesce(alvo->>'desc', '')   <> coalesce(p->>'confDesc', '')"), true);
 conf("recusa em vez de gravar na linha errada", sql.includes("recusados := recusados || jsonb_build_array(p)"), true);
-conf("respeita a trava de outra pessoa", sql.includes("'trava de outra pessoa'"), true);
-conf("renova a trava de quem está gravando", /editando_desde = now\(\)/.test(sql), true);
-conf("e é liberada pra quem está logado", sql.includes("grant execute on function public.aplicar_patch_obra(text, jsonb) to authenticated"), true);
+conf("com a versão: só grava com a trava de quem grava", /if linha\.dono <> quem then\s*\n\s*return jsonb_build_object\('ok', false, 'motivo', 'trava'/.test(sql), true);
+conf("... e com a versão que a tela leu", /if linha\.versao <> p_versao then/.test(sql), true);
+conf("sem a versão (app antigo): respeita a trava viva de outra pessoa", sql.includes("'trava de outra pessoa'"), true);
+conf("renova a trava de quem está gravando", /'patch',\s*\n\s*case when linha\.dono = quem then linha\.editando_por else quem end\)/.test(sql), true);
+conf("e devolve a versão nova", sql.includes("'recusados', recusados, 'versao', nova"), true);
+conf("e é liberada pra quem está logado", sql.includes("grant execute on function public.aplicar_patch_obra(text, jsonb, bigint) to authenticated"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

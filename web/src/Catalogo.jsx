@@ -25,7 +25,7 @@ import { eapAtual } from "./lib/eap";
 import { lerProdutos, ancorasDeImagem, juntar, resumoDaImportacao } from "./lib/catalogoImport";
 import { lerPptx, resumoPptx } from "./lib/catalogoPptx";
 import Apresentacao from "./Apresentacao";
-import { carregarDadosObra, salvarDadosObra } from "./lib/dadosObra";
+import { alterarObra } from "./lib/dadosObra";
 
 /**
  * CATÁLOGO TKWS — o que a casa especifica.
@@ -768,30 +768,33 @@ function EnviarParaObra({ produtos, obras, usuario, nomeVerba, onFechar, onPront
   async function enviar() {
     setIndo(true); setErro(null);
     try {
-      const dados = await carregarDadosObra(obra);
-      if (!dados) throw new Error("Esta obra ainda não tem planilha carregada. Suba o Executivo dela primeiro.");
-      /* A trava de edição existe pra impedir dois navegadores gravando
-         em cima um do outro. Ela vale aqui também: escrever no orçamento
-         de uma obra que outra pessoa está editando apagaria o trabalho
-         dela sem aviso. */
-      const outro = dados.editandoPor && dados.editandoPor !== usuario;
-      if (outro) throw new Error(`${dados.editandoPor} está editando esta obra agora. Espere ela sair pra não gravar por cima.`);
-
-      const categorias = (dados.categorias || []).map((c) => ({ ...c }));
+      /* A trava de edição existe pra impedir dois navegadores gravando em
+         cima um do outro. Ela vale aqui também: escrever no orçamento de uma
+         obra que outra pessoa está editando apagaria o trabalho dela sem
+         aviso. `alterarObra` pega a trava, lê a obra como está no banco
+         agora, e grava com a versão lida — ninguém é sobrescrito no meio. */
       let novos = 0;
-      porVerba.forEach(([verba, ps]) => {
-        const cat = categorias.find((c) => c.num === verba);
-        if (!cat) return;
-        const itens = [...(cat.itensPlanilhaExecutivo || [])];
-        ps.forEach((p) => { itens.push(produtoParaItem(p, qtds.get(p.id) || 1)); novos++; });
-        cat.itensPlanilhaExecutivo = itens;
+      const r = await alterarObra(obra, usuario, (dados) => {
+        const categorias = (dados.categorias || []).map((c) => ({ ...c }));
+        novos = 0;
+        porVerba.forEach(([verba, ps]) => {
+          const cat = categorias.find((c) => c.num === verba);
+          if (!cat) return;
+          const itens = [...(cat.itensPlanilhaExecutivo || [])];
+          ps.forEach((p) => { itens.push(produtoParaItem(p, qtds.get(p.id) || 1)); novos++; });
+          cat.itensPlanilhaExecutivo = itens;
+        });
+        if (!novos) throw new Error("Nenhuma verba correspondente foi encontrada na planilha desta obra.");
+        return { ...dados, categorias };
       });
-      if (!novos) throw new Error("Nenhuma verba correspondente foi encontrada na planilha desta obra.");
-
-      await salvarDadosObra(obra, { ...dados, categorias }, usuario);
+      if (!r) throw new Error("Esta obra ainda não tem planilha carregada. Suba o Executivo dela primeiro.");
       const o = obras.find((x) => String(x.codigo) === String(obra));
       onPronto(`${novos} ${novos === 1 ? "produto foi" : "produtos foram"} para o Executivo de ${o?.nome || obra}.`);
-    } catch (e) { setErro(mensagemDeErro(e)); }
+    } catch (e) {
+      setErro(e?.detalhe?.motivo === "trava"
+        ? `${e.detalhe.por || "Outra pessoa"} está editando esta obra agora. Espere ela sair pra não gravar por cima.`
+        : mensagemDeErro(e));
+    }
     finally { setIndo(false); }
   }
 

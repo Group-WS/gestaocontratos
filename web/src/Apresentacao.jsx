@@ -25,7 +25,7 @@ import { gerarPdf } from "./lib/apresentacaoPdf";
 import { gerarPptx } from "./lib/apresentacaoPptx";
 import { urlDaImagem as urlProduto, filtrarProdutos } from "./lib/catalogo";
 import { subirArquivo } from "./lib/arquivos";
-import { carregarDadosObra, salvarDadosObra, garantirObraDados } from "./lib/dadosObra";
+import { alterarObra, garantirObraDados } from "./lib/dadosObra";
 /* As três páginas fixas do documento: a abertura da marca, a folha de
    dados do projeto e o fechamento. Vieram do PPTX dela, não de
    reconstituição — reconstituir marca é errar de leve e ninguém saber
@@ -186,21 +186,13 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
       /* Subir pro depósito NÃO é o mesmo que aparecer em Arquivos da
          obra: a tela lê a lista guardada na obra, e um arquivo que só
          existe no depósito é um arquivo que ninguém acha. */
-      const dados = await carregarDadosObra(obraCod);
-      if (!dados) throw new Error("O PDF foi gerado, mas esta obra ainda não tem dados salvos — ele não pôde ser guardado em Arquivos da obra.");
-      const outro = dados.editandoPor && dados.editandoPor !== usuario;
-      if (outro) throw new Error(`O PDF foi gerado e baixado, mas ${dados.editandoPor} está editando esta obra agora — não guardei em Arquivos da obra pra não gravar por cima. Tente de novo depois.`);
-
-      const avulsos = Array.isArray(dados.arquivos) ? dados.arquivos : [];
-      await salvarDadosObra(obraCod, {
-        ...dados,
-        arquivos: [...avulsos, {
-          ...info,
-          id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          titulo: nome,
-          fase: "cliente",
-        }],
-      }, usuario);
+      const r = await guardarEmArquivosDaObra(obraCod, usuario, {
+        ...info,
+        id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        titulo: nome,
+        fase: "cliente",
+      }, "O PDF foi gerado e baixado");
+      if (!r) throw new Error("O PDF foi gerado, mas esta obra ainda não tem dados salvos — ele não pôde ser guardado em Arquivos da obra.");
       await marcarGerada(salvo.id, info.caminho);
 
       /* Baixa também: quem acabou de montar quer ver agora, não ir
@@ -242,25 +234,14 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
       });
       const info = await subirArquivo({ obraCodigo: obraCod, chave: "apresentacao", file, por: usuario });
 
-      const dados = await carregarDadosObra(obraCod);
-      if (dados) {
-        const outro = dados.editandoPor && dados.editandoPor !== usuario;
-        if (outro) {
-          throw new Error(`O PowerPoint foi gerado e baixado, mas ${dados.editandoPor} está editando esta obra agora — não guardei em Arquivos da obra pra não gravar por cima.`);
-        }
-        const avulsos = Array.isArray(dados.arquivos) ? dados.arquivos : [];
-        await salvarDadosObra(obraCod, {
-          ...dados,
-          arquivos: [...avulsos, {
-            ...info,
-            id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            titulo: nome,
-            /* "outros", não "cliente": esta cópia não saiu pra aprovação
-               de ninguém, é material de edição. */
-            fase: "outros",
-          }],
-        }, usuario);
-      }
+      const dados = await guardarEmArquivosDaObra(obraCod, usuario, {
+        ...info,
+        id: `arq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        titulo: nome,
+        /* "outros", não "cliente": esta cópia não saiu pra aprovação
+           de ninguém, é material de edição. */
+        fase: "outros",
+      }, "O PowerPoint foi gerado e baixado");
 
       const url = URL.createObjectURL(new Blob([bytes], {
         type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -496,6 +477,29 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
       </PageShell>
     </div>
   );
+}
+
+/* O arquivo gerado entra em Arquivos da obra.
+ *
+ * Era "ler a obra, acrescentar o arquivo, gravar a linha inteira": se alguém
+ * gravasse no meio, a lista voltava sem o trabalho dessa pessoa — e, com a
+ * obra aberta para edição nesta mesma aba, a gravação automática da tela
+ * apagava o arquivo recém-guardado. `alterarObra` resolve os dois: pela tela
+ * quando a obra está em edição aqui, pela trava e pela versão quando não.
+ *
+ * Devolve null quando a obra ainda não tem linha no banco. */
+async function guardarEmArquivosDaObra(obraCod, usuario, arquivo, oQueAconteceu) {
+  try {
+    return await alterarObra(obraCod, usuario, (obra) => ({
+      ...obra,
+      arquivos: [...(Array.isArray(obra.arquivos) ? obra.arquivos : []), arquivo],
+    }));
+  } catch (e) {
+    if (e?.detalhe?.motivo === "trava") {
+      throw new Error(`${oQueAconteceu}, mas ${e.detalhe.por || "outra pessoa"} está editando esta obra agora — não guardei em Arquivos da obra pra não gravar por cima. Tente de novo depois.`);
+    }
+    throw e;
+  }
 }
 
 function mensagem(e) {

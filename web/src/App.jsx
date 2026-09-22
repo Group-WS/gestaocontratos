@@ -86,7 +86,10 @@ import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, ac
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos, carregarCadastroSienge, salvarCadastroSienge } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, listarTravas, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR } from "./lib/dadosObra";
+import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, listarTravas, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR, definirEdicaoNestaAba } from "./lib/dadosObra";
+import { criarFilaDeGravacao } from "./lib/filaDeGravacao";
+import { mesmoConteudo, ErroDeGravacao } from "./lib/gravacaoObra";
+import { SituacaoDaGravacao, AvisosDeGravacao } from "./lib/gravacaoUi.jsx";
 import { apiFetch } from "./lib/api";
 import { subirArquivo, linkParaBaixar, linkParaArquivo, apagarArquivo, anexoRecuperavel, EXTENSOES_ACEITAS, tipoAceito } from "./lib/arquivos";
 
@@ -3102,7 +3105,7 @@ function contaItensDaObra(obra) {
  * trabalho de outras pessoas de uma vez, e e' o mais perigoso do app. Todo
  * mundo VE a lista: saber o que aconteceu com a obra nao e' privilegio.
  */
-function VersoesDaObra({ obra, podeRestaurar, usuario }) {
+function VersoesDaObra({ obra, podeRestaurar }) {
   const [aberto, setAberto] = useState(false);
   const [estado, setEstado] = useState("parado");   // parado · carregando · pronto · erro
   const [versoes, setVersoes] = useState([]);
@@ -3156,10 +3159,12 @@ function VersoesDaObra({ obra, podeRestaurar, usuario }) {
   async function restaurar(v) {
     setRestaurando(true); setErro(null);
     try {
-      await restaurarVersao(obra.codigo, v.id, usuario);
+      await restaurarVersao(obra.codigo, v.id);
       /* Recarrega a pagina inteira de proposito: a obra na memoria acabou
          de virar outra coisa, e meia tela atualizada e' pior do que uma
-         tela nova. A restauracao ja' esta' gravada quando isto roda. */
+         tela nova. A restauracao ja' esta' gravada quando isto roda — e,
+         se alguma obra ainda tiver alteracao por gravar, o navegador
+         pergunta antes de sair (o aviso de `beforeunload` do App). */
       window.location.reload();
     } catch (e) {
       setErro(e.message || String(e));
@@ -3243,7 +3248,7 @@ function VersoesDaObra({ obra, podeRestaurar, usuario }) {
    do lado. E diz o que NAO sabe: item que conta como liberado sem ninguem
    ter liberado aparece como "sem registro de quem" em vez de ficar calado —
    foi essa a pergunta que gerou o pedido. */
-function HistoricoDaObra({ obra, tela, podeRestaurar = false, usuario }) {
+function HistoricoDaObra({ obra, tela, podeRestaurar = false }) {
   const [aberto, setAberto] = useState(false);
   const [tudo, setTudo] = useState(false);
   const [maisLinhas, setMaisLinhas] = useState(false);
@@ -3308,7 +3313,7 @@ function HistoricoDaObra({ obra, tela, podeRestaurar = false, usuario }) {
           )}
           {/* As versoes fecham o bloco: o que aconteceu vem primeiro, como
               desfazer vem depois. */}
-          <VersoesDaObra obra={obra} podeRestaurar={podeRestaurar} usuario={usuario} />
+          <VersoesDaObra obra={obra} podeRestaurar={podeRestaurar} />
         </>
       )}
     </div>
@@ -20450,7 +20455,7 @@ function ArquivoView({ obras, onReabrir, salvando }) {
    Minimalista de propósito: o estado é um ponto colorido e uma palavra;
    as ações são texto. O único botão cheio é o de avançar, porque é a
    única coisa aqui que empurra a obra pra frente. */
-function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar, onFinalizar,
+function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar,
                       etapaId, obra, onConcluir, onReabrirEtapa }) {
   const mostraEtapa = !!etapaId && !!onConcluir;
   const feita = mostraEtapa && etapaConcluida(etapaId, obra);
@@ -20473,11 +20478,18 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
      * item nenhum. Um clique e qualquer alteracao depois, o salvamento
      * automatico gravava esse esqueleto por cima da obra inteira.
      *
-     * A frase diz o que fazer (F5), porque quem esta' na tela nao tem como
-     * saber que a obra que ele ve' nao e' a obra que esta' no banco. */
+     * A frase diz o que fazer, porque quem esta' na tela nao tem como saber
+     * que a obra que ele ve' nao e' a obra que esta' no banco. Ela mandava
+     * dar F5 — o que levaria junto o que OUTRAS obras ainda nao gravaram.
+     * Agora a saida e' tentar carregar de novo aqui mesmo. */
     estado = (
-      <span className="flex items-center gap-2 text-sm text-danger">
-        <AlertTriangle size={16} aria-hidden="true" /> Não consegui carregar esta obra — recarregue a página (F5) antes de mexer.
+      <span className="flex flex-wrap items-center gap-2 text-sm text-danger">
+        <AlertTriangle size={16} aria-hidden="true" /> Não consegui carregar esta obra. A edição fica fechada até ela carregar.
+        {onTentarCarregar && (
+          <Button variant="outline" onClick={onTentarCarregar}>
+            <RotateCcw size={16} aria-hidden="true" /> Tentar de novo
+          </Button>
+        )}
       </span>
     );
   } else if (edicao.por) {
@@ -20490,26 +20502,29 @@ function BarraEtapa({ edicao, salvando, carregando, falhouCarregar, onHabilitar,
     );
   } else if (edicao.minha) {
     estado = (
-      <span className="flex items-center gap-2 text-sm">
+      <span className="flex flex-wrap items-center gap-2 text-sm">
         <Badge tone="brand">Editando</Badge>
-        {/* "salvo" so quando salvou INTEIRO. Enquanto falta coluna no
-            banco a palavra vira "salvo em parte", senao a tela garante
-            uma coisa que nao aconteceu. */}
-        <span className={cn("text-xs", salvando === "parcial" ? "text-warning" : "text-text-mute")}>
-          {salvando === "salvando" ? "salvando…" : salvando === "salvo" ? "salvo" : salvando === "parcial" ? "salvo em parte" : ""}
-        </span>
-        <Button variant="outline" onClick={onFinalizar} disabled={salvando === "salvando"}>
+        {/* "salvo" só quando o banco aceitou. Enquanto não, a barra diz o que
+            está acontecendo — inclusive a próxima tentativa, quando falhou. */}
+        <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />
+        <Button variant="outline" onClick={onFinalizar}>
           <Check size={16} aria-hidden="true" /> Finalizar edição
         </Button>
       </span>
     );
   } else {
+    /* Em modo leitura a situação da gravação continua à vista: quem acabou
+       de finalizar vê o "salvando…" virar "salvo" — ou o aviso, se não. Com
+       conflito em aberto, habilitar de novo espera a pessoa decidir. */
     estado = (
-      <span className="flex items-center gap-2 text-sm">
+      <span className="flex flex-wrap items-center gap-2 text-sm">
         <Badge tone="neutral">Modo leitura</Badge>
-        <Button variant="outline" onClick={onHabilitar}>
-          <Pencil size={16} aria-hidden="true" /> Habilitar edição
-        </Button>
+        <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />
+        {gravacao?.estado !== "conflito" && (
+          <Button variant="outline" onClick={onHabilitar}>
+            <Pencil size={16} aria-hidden="true" /> Habilitar edição
+          </Button>
+        )}
       </span>
     );
   }
@@ -20620,9 +20635,6 @@ export default function App() {
       .finally(() => { if (vivo) setSiengeCarregando(false); });
     return () => { vivo = false; };
   }, []);
-  // Coluna que o banco ainda nao tem. Fica visivel ate a migracao rodar —
-  // salvar pela metade em silencio e pior que nao salvar.
-  const [migracao, setMigracao] = useState(null);
   const [salvandoObra, setSalvandoObra] = useState(null);
   // null = nenhuma aba aberta: a obra abre mostrando só o cabeçalho e o
   // resumo. Antes a aba ficava onde a pessoa tinha parado na obra
@@ -20654,10 +20666,18 @@ export default function App() {
   // Quem está usando o app. Vira o dono da trava de edição e assina as
   // alterações — sem isso não dá pra dizer "fulano está editando".
   const [usuario, setUsuario] = useState(null);
-  // Estado da edição da obra aberta: quem tem a trava e se há algo por salvar.
+  // Estado da edição da obra aberta: quem tem a trava.
   const [edicao, setEdicao] = useState({ minha: false, por: null, desde: null });
-  const [salvando, setSalvando] = useState(null);
+  /* A situação da gravação de CADA obra que esta aba alterou: salvo,
+     pendente, salvando, erro (tentando de novo), recusado ou conflito. Por
+     obra, e não só a aberta: quem sai de uma obra com a gravação falhando
+     continua vendo o aviso dela em qualquer tela. Ver filaDaObra. */
+  const [gravacoes, setGravacoes] = useState(() => new Map());
   const [carregandoDados, setCarregandoDados] = useState(false);
+  /* Pedido de "tentar carregar de novo" a obra que não carregou: cada clique
+     soma um e o efeito da abertura roda outra vez — sem recarregar a página,
+     que levaria junto o que outras obras ainda não gravaram. */
+  const [cargaPedida, setCargaPedida] = useState(0);
   /* O CODIGO da obra cujo conteudo NAO chegou.
    *
    * Codigo, e nao um booleano: o app troca de obra sem recarregar a pagina, e
@@ -21082,6 +21102,25 @@ export default function App() {
      neste computador nao abre a tela com as escolhas de quem saiu. O
      supabase-js ja' avisa as outras abas; o reload limpa o resto. */
   async function sairDaConta() {
+    /* Sair não descarta trabalho calado: o que falta gravar sai primeiro. Se
+       não der em alguns segundos (sem rede, conflito), a pessoa decide —
+       depois de sair, a sessão acaba e nada mais grava. */
+    const filas = [...filasDeGravacao.current.values()].filter((f) => f.temPendencia());
+    if (filas.length) {
+      const gravou = await Promise.race([
+        Promise.all(filas.map((f) => f.descarregar())).then(() => true, () => false),
+        new Promise((r) => { setTimeout(() => r(false), 8000); }),
+      ]);
+      if (!gravou) {
+        if (!(await confirmar({
+          titulo: "Descartar alterações?",
+          mensagem: "Há alterações de obra que ainda não foram gravadas no banco. Se sair agora, elas se perdem.",
+          confirmar: "Descartar", cancelar: "Continuar editando", perigo: true,
+        }))) return;
+        // A pessoa decidiu: o navegador não precisa perguntar de novo ao recarregar.
+        filas.forEach((f) => f.descartar());
+      }
+    }
     try { await supabase.auth.signOut({ scope: "local" }); } catch { /* segue */ }
     clearBrowserData();
     esquecerPreferencias();
@@ -21262,6 +21301,60 @@ export default function App() {
     try { setProdutosApres(await listarProdutos()); } catch { setProdutosApres([]); }
   }
 
+  /* A OBRA COMO ESTÁ NO BANCO, POSTA NA TELA — na abertura, ao habilitar a
+     edição e ao recarregar a obra depois de um conflito. Um lugar só, para
+     os três caminhos nunca discordarem sobre o que volta do banco.
+
+     Junto vem a VERSÃO que esta leitura viu: é com ela que a próxima gravação
+     se apresenta ao banco, que recusa se alguém tiver mudado a obra depois. */
+  function aplicarDadosDoBanco(codigo, dados) {
+    const chave = String(codigo);
+    versaoDaObra.current.set(chave, dados.versao ?? null);
+    // A primeira gravação depois de uma leitura é inteira.
+    filasDePatch.current.set(chave, null);
+    // O que acabou de chegar do banco não é alteração de ninguém: não grava.
+    cargaDoBanco.current.add(chave);
+    setObras((prev) => prev.map((o) => (String(o.codigo) === chave ? {
+      ...o,
+      /* `devolverMOaoGrupoDeOrigem` conserta sozinha as obras que ja
+         tinham separacao: a linha de mao de obra ia parar numa verba
+         de "Execucao e Mao de Obra", longe do grupo onde o valor e
+         conferido. Sem isso, seria preciso desfazer e refazer uma a
+         uma na mao. */
+      categorias: (dados.categorias || []).length
+        ? devolverMOaoGrupoDeOrigem(normalizarCategorias(dados.categorias))
+        : o.categorias,
+      cadernos: dados.cadernos,
+      arquivos: dados.arquivos,
+      aprovacoes: dados.aprovacoes,
+      deparaAprovado: dados.deparaAprovado,
+      executivoLiberadoDireto: dados.executivoLiberadoDireto,
+      comprasLiberadas: dados.comprasLiberadas,
+      // Sem estas três, o CMV liberado se perdia no reload: a aba
+      // Executivo continuava aberta (isso é `deparaAprovado`), mas o
+      // teto voltava vazio e os blocos que dependem dele — resumo do
+      // topo e fechamento do rodapé — simplesmente não renderizavam.
+      etapasConcluidas: dados.etapasConcluidas,
+      clienteAssinouEm: dados.clienteAssinouEm,
+      clienteAssinaturaPor: dados.clienteAssinaturaPor,
+      clienteAssinaturaArq: dados.clienteAssinaturaArq,
+      clienteAssinaturaObs: dados.clienteAssinaturaObs,
+      compraSemAssinaturaPor: dados.compraSemAssinaturaPor,
+      compraSemAssinaturaEm: dados.compraSemAssinaturaEm,
+      compraSemAssinaturaJust: dados.compraSemAssinaturaJust,
+      cmvLiberado: dados.cmvLiberado,
+      cmvLiberadoEm: dados.cmvLiberadoEm,
+      cmvLiberadoPor: dados.cmvLiberadoPor,
+      dataEntrega: dados.dataEntrega,
+      escopos: dados.escopos,
+      // Campos DERIVADOS das categorias. Sem refazer a conta aqui, a
+      // obra volta do banco com os itens certos e os totais do Monday
+      // — que sao zero. O cabecalho dizia "R$ 0,00" numa obra com R$
+      // 632 mil em produtos.
+      ...derivadosDasCategorias(devolverMOaoGrupoDeOrigem(normalizarCategorias(dados.categorias)), o),
+    } : o)));
+  }
+
   // Ao abrir uma obra, traz o que já foi salvo dela.
   useEffect(() => {
     if (!obra?.codigo || !usuario) return;
@@ -21281,51 +21374,18 @@ export default function App() {
     carregarDadosObra(codigo)
       .then((dados) => {
         if (!vivo || !dados) return;
-        setObras((prev) => prev.map((o) => (o.codigo === codigo ? {
-          ...o,
-          /* `devolverMOaoGrupoDeOrigem` conserta sozinha as obras que ja
-             tinham separacao: a linha de mao de obra ia parar numa verba
-             de "Execucao e Mao de Obra", longe do grupo onde o valor e
-             conferido. Sem isso, seria preciso desfazer e refazer uma a
-             uma na mao. */
-          categorias: (dados.categorias || []).length
-            ? devolverMOaoGrupoDeOrigem(normalizarCategorias(dados.categorias))
-            : o.categorias,
-          cadernos: dados.cadernos,
-          arquivos: dados.arquivos,
-          aprovacoes: dados.aprovacoes,
-          deparaAprovado: dados.deparaAprovado,
-          executivoLiberadoDireto: dados.executivoLiberadoDireto,
-          comprasLiberadas: dados.comprasLiberadas,
-          // Sem estas três, o CMV liberado se perdia no reload: a aba
-          // Executivo continuava aberta (isso é `deparaAprovado`), mas o
-          // teto voltava vazio e os blocos que dependem dele — resumo do
-          // topo e fechamento do rodapé — simplesmente não renderizavam.
-          etapasConcluidas: dados.etapasConcluidas,
-          clienteAssinouEm: dados.clienteAssinouEm,
-          clienteAssinaturaPor: dados.clienteAssinaturaPor,
-          clienteAssinaturaArq: dados.clienteAssinaturaArq,
-          clienteAssinaturaObs: dados.clienteAssinaturaObs,
-          compraSemAssinaturaPor: dados.compraSemAssinaturaPor,
-          compraSemAssinaturaEm: dados.compraSemAssinaturaEm,
-          compraSemAssinaturaJust: dados.compraSemAssinaturaJust,
-          cmvLiberado: dados.cmvLiberado,
-          cmvLiberadoEm: dados.cmvLiberadoEm,
-          cmvLiberadoPor: dados.cmvLiberadoPor,
-          dataEntrega: dados.dataEntrega,
-          escopos: dados.escopos,
-          // Campos DERIVADOS das categorias. Sem refazer a conta aqui, a
-          // obra volta do banco com os itens certos e os totais do Monday
-          // — que sao zero. O cabecalho dizia "R$ 0,00" numa obra com R$
-          // 632 mil em produtos.
-          ...derivadosDasCategorias(devolverMOaoGrupoDeOrigem(normalizarCategorias(dados.categorias)), o),
-        } : o)));
+        /* ALTERAÇÃO DESTA OBRA AINDA POR GRAVAR (a pessoa saiu com a gravação
+           falhando e voltou): a cópia desta tela é a mais nova que existe.
+           Trocá-la pelo que está no banco apagaria justamente o que falta
+           gravar — a fila segue tentando, e a versão conferida decide. */
+        if (!filaDaObra(codigo).temPendencia()) aplicarDadosDoBanco(codigo, dados);
         const deOutro = dados.editandoPor && dados.editandoPor !== usuario;
         setEdicao({
           /* `perfilEdita` tambem aqui: a trava do banco pode dizer que a
              obra e' minha de uma sessao anterior, mas quem nao edita por
-             perfil nao passa a editar por causa disso. */
-          minha: dados.editandoPor === usuario && (migracaoPendente || perfilEdita(eu)),
+             perfil nao passa a editar por causa disso. Sem a versao (o SQL
+             da gravacao protegida nao rodou), ninguem edita: nada gravaria. */
+          minha: dados.editandoPor === usuario && dados.versao != null && (migracaoPendente || perfilEdita(eu)),
           por: deOutro ? dados.editandoPor : null,
           desde: deOutro ? dados.editandoDesde : null,
         });
@@ -21338,65 +21398,193 @@ export default function App() {
       .finally(() => { if (vivo) setCarregandoDados(false); });
 
     return () => { vivo = false; };
-  }, [obra?.codigo, usuario]);
+  }, [obra?.codigo, usuario, cargaPedida]);
 
-  // Salvamento automático. Sem botão "Salvar", porque botão é justamente
-  // o jeito de esquecer e perder o trabalho. Espera a mão parar — subir
-  // uma planilha dispara várias mudanças seguidas — e só grava quem está
-  // com a trava, senão duas pessoas se sobrescreveriam.
-  // Dispara sempre que o conteúdo da obra muda — em vez de marcar "sujo"
-  // em cada uma das dezenas de ações, que é onde se esquece uma e o dado
-  // se perde justamente ali.
-  useEffect(() => {
-    if (!obra?.codigo || !edicao.minha) return;
-    const t = setTimeout(async () => {
-      setSalvando("salvando");
-      try {
-        /* O aviso de coluna faltando existia e nunca chegava na tela.
+  /* ---------- A GRAVAÇÃO DA OBRA ----------
 
-           `salvarDadosObra` tira do payload a coluna que o banco ainda
-           nao conhece, grava o resto e devolve `migracaoPendente` dizendo
-           qual. Ninguem lia esse retorno: o app dizia "salvo", o campo
-           novo voltava vazio no F5 e o defeito parecia estar no campo.
-           Foi o que aconteceu com a data de entrega. */
-        /* SÓ O QUE MUDOU, quando dá (fatia 1 do ADR-004).
+     Salvamento automático. Sem botão "Salvar", porque botão é justamente o
+     jeito de esquecer e perder o trabalho. Dispara sempre que o conteúdo da
+     obra muda — em vez de marcar "sujo" em cada uma das dezenas de ações,
+     que é onde se esquece uma e o dado se perde justamente ali.
 
-           Se tudo que mudou desde o último salvamento é estado de compra, o
-           banco recebe só isso. Qualquer coisa fora do previsto — o SQL
-           ainda não rodado, trava de outra pessoa, patch recusado porque a
-           posição não bate — cai no salvamento inteiro, que é o caminho de
-           sempre e sabe avisar na tela. O pior resultado possível é gravar
-           como antes. */
-        const fila = filaPatch.current;
-        if (fila && fila.length) {
-          const p = await aplicarPatchObra(obra.codigo, fila);
-          if (p?.ok && !(p.recusados && p.recusados.length)) {
-            filaPatch.current = [];
-            setSalvando("salvo");
-            setTimeout(() => setSalvando(null), 2000);
-            return;
-          }
-          /* Cair no salvamento inteiro é seguro, mas silencioso — e silêncio
-             não se diagnostica. O aviso diz POR QUE caiu: SQL não rodado,
-             trava de outra pessoa, ou patch recusado porque a posição do item
-             não bate mais. Não vira erro na tela: o trabalho está sendo
-             gravado do mesmo jeito. */
-          console.warn("[obra] patch não aplicado, gravando a obra inteira:",
-            p?.semFuncao ? "a função aplicar_patch_obra ainda não existe no banco"
-            : p?.motivo || `${p?.recusados?.length || 0} patch(es) recusado(s)`, p);
-        }
-        const r = await salvarDadosObra(obra.codigo, obra, usuario);
-        filaPatch.current = [];
-        setMigracao(r?.migracaoPendente || null);
-        setSalvando(r?.migracaoPendente ? "parcial" : "salvo");
-        setTimeout(() => setSalvando(null), 2000);
-      } catch (e) {
-        setSalvando(null);
-        setErroBanco(`Não consegui salvar: ${e.message || e}`);
+     O que mudou em 22/09/2026 (a confiabilidade da gravação):
+       - cada obra tem UMA fila (lib/filaDeGravacao.js): uma gravação por
+         vez, sempre com o estado mais recente, e nova tentativa sozinha,
+         esperando cada vez mais, quando falha. Antes, duas gravações seguidas
+         podiam chegar fora de ordem e a mais velha desfazia a mais nova;
+         e a que falhava avisava uma vez e desistia;
+       - o banco só grava com a trava de quem grava e com a VERSÃO que esta
+         tela leu (supabase/salvar-obra.sql). Uma cópia velha não vai mais
+         por cima do trabalho de ninguém: a gravação é recusada, a fila para
+         e a tela diz o que aconteceu.
+
+     `versaoDaObra`: a versão que esta tela conhece de cada obra. Nasce na
+     leitura (aplicarDadosDoBanco) e anda a cada gravação que o banco aceita. */
+  const versaoDaObra = useRef(new Map());
+  // O que chegou do banco agora há pouco, e por isso não é alteração de ninguém.
+  const cargaDoBanco = useRef(new Set());
+  // A última versão de cada obra vista na tela: é contra ela que se decide
+  // se a obra mudou de verdade (mesmoConteudo) ou só ganhou aditivo e total.
+  const conteudoVisto = useRef(new Map());
+  const filasDeGravacao = useRef(new Map());
+
+  /* As obras mais recentes, pra gravação ler na hora de gravar — e não o
+     retrato do render em que a fila foi criada. `useLayoutEffect` porque ele
+     roda antes das limpezas dos efeitos comuns: a gravação feita ao sair da
+     tela precisa enxergar a última tecla. */
+  const obrasRef = useRef(obras);
+  useLayoutEffect(() => { obrasRef.current = obras; }, [obras]);
+
+  /* Uma rodada de gravação: o que está na fila de patches vai por patch;
+     qualquer outra mudança, ou patch recusado, grava a obra inteira. Lança
+     ErroDeGravacao quando o banco não grava — a fila decide o que fazer. */
+  async function gravarUmaVez(codigo) {
+    const atual = obrasRef.current.find((o) => String(o.codigo) === codigo);
+    if (!atual) return;
+    const versao = versaoDaObra.current.get(codigo);
+    if (versao == null) {
+      throw new ErroDeGravacao("Esta obra foi aberta sem a versão do banco, então não dá para conferir se alguém a mudou.",
+        { tipo: "conflito", detalhe: { motivo: "versao" } });
+    }
+    // O lote sai da fila; o que for alterado durante a gravação entra numa nova.
+    const lote = filasDePatch.current.has(codigo) ? filasDePatch.current.get(codigo) : null;
+    filasDePatch.current.set(codigo, []);
+    let foiPorPatch = false;
+    try {
+      let v = versao;
+      /* SÓ O QUE MUDOU, quando dá (ADR-004): se tudo que mudou desde a
+         última gravação é estado de compra ou marca da obra, o banco recebe
+         só isso. */
+      if (lote && lote.length) {
+        const p = await aplicarPatchObra(codigo, lote, v);
+        foiPorPatch = true;
+        v = p.versao;
+        versaoDaObra.current.set(codigo, v);
+        if (!(p.recusados && p.recusados.length)) return;
+        /* Patch recusado porque a posição do item não bate mais: a obra
+           inteira vai em seguida, com a versão que o patch deixou. Não vira
+           erro na tela — o trabalho está sendo gravado do mesmo jeito. */
+        console.warn(`[obra ${codigo}] ${p.recusados.length} patch(es) recusado(s), gravando a obra inteira`);
       }
-    }, 1200);
-    return () => clearTimeout(t);
-  }, [obra, edicao.minha, usuario]);
+      const r = await salvarDadosObra(codigo, atual, v);
+      versaoDaObra.current.set(codigo, r.versao);
+    } catch (e) {
+      // Nada deste lote pode se perder: volta para a fila (ou pede a obra inteira).
+      const durante = filasDePatch.current.get(codigo);
+      filasDePatch.current.set(codigo, lote === null || foiPorPatch || durante == null ? null : [...lote, ...durante]);
+      throw e;
+    }
+  }
+
+  /* A trava saiu desta tela sem ninguém assumir (venceu parada, ou outra aba
+     desta pessoa a soltou): assume de novo e tenta uma vez. A versão continua
+     conferida — se alguém mexeu na obra nesse meio tempo, é recusada igual. */
+  async function gravarObraAgora(codigo) {
+    try {
+      await gravarUmaVez(codigo);
+    } catch (e) {
+      const d = e?.detalhe || {};
+      if (e?.tipo !== "conflito" || d.motivo !== "trava" || (d.por && travaViva(d.desde))) throw e;
+      const r = await pegarEdicao(codigo, usuario).catch(() => ({ ok: false }));
+      if (!r.ok) throw e;
+      await gravarUmaVez(codigo);
+    }
+  }
+  const gravarRef = useRef(gravarObraAgora);
+  useLayoutEffect(() => { gravarRef.current = gravarObraAgora; });
+
+  /* A fila de uma obra: criada na primeira alteração e mantida enquanto a
+     aba viver — sair da obra não pode levar junto o que ainda não gravou. */
+  function filaDaObra(codigo) {
+    const chave = String(codigo);
+    let fila = filasDeGravacao.current.get(chave);
+    if (!fila) {
+      fila = criarFilaDeGravacao({
+        gravar: () => gravarRef.current(chave),
+        aoMudar: (situacao) => setGravacoes((prev) => new Map(prev).set(chave, situacao)),
+      });
+      filasDeGravacao.current.set(chave, fila);
+    }
+    return fila;
+  }
+
+  // Toda mudança de conteúdo na obra, com a edição habilitada, entra na fila.
+  useEffect(() => {
+    if (!obra?.codigo) return;
+    const codigo = String(obra.codigo);
+    const antes = conteudoVisto.current.get(codigo);
+    conteudoVisto.current.set(codigo, obra);
+    if (cargaDoBanco.current.delete(codigo)) return;
+    if (!edicao.minha || !antes || mesmoConteudo(antes, obra)) return;
+    filaDaObra(codigo).alterou();
+  }, [obra, edicao.minha]);
+
+  /* CONFLITO: A OBRA MUDOU NO BANCO, OU A TRAVA É DE OUTRA PESSOA. A tela
+     volta ao modo leitura — continuar digitando seria trabalho que não tem
+     como gravar. O que não gravou continua na tela até a pessoa decidir
+     (o aviso oferece recarregar a obra). */
+  const gravacaoDaObra = obra?.codigo ? gravacoes.get(String(obra.codigo)) || null : null;
+  useEffect(() => {
+    if (gravacaoDaObra?.estado === "conflito" && edicao.minha) setEdicao({ minha: false, por: null, desde: null });
+  }, [gravacaoDaObra, edicao.minha]);
+
+  /* NÃO SAIR COM TRABALHO POR GRAVAR.
+     - fechar ou recarregar a aba: o navegador pergunta antes (e o que falta
+       já sai para o banco);
+     - esconder a aba (trocar de janela, bloquear o celular): grava agora,
+       sem esperar a mão parar — aba escondida pode ser encerrada sem aviso;
+     - a rede voltou: tenta de novo na hora, sem esperar o relógio. */
+  useEffect(() => {
+    const filas = () => [...filasDeGravacao.current.values()];
+    const antesDeSair = (e) => {
+      if (!filas().some((f) => f.temPendencia())) return;
+      filas().forEach((f) => { f.gravarAgora(); });
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const aoEsconder = () => {
+      if (document.visibilityState === "hidden") filas().forEach((f) => { f.gravarAgora(); });
+    };
+    const aoVoltarARede = () => filas().forEach((f) => { if (f.situacao().estado === "erro") f.tentarAgora(); });
+    window.addEventListener("beforeunload", antesDeSair);
+    document.addEventListener("visibilitychange", aoEsconder);
+    window.addEventListener("online", aoVoltarARede);
+    return () => {
+      window.removeEventListener("beforeunload", antesDeSair);
+      document.removeEventListener("visibilitychange", aoEsconder);
+      window.removeEventListener("online", aoVoltarARede);
+    };
+  }, []);
+
+  /* RECARREGAR A OBRA DO BANCO — a saída de um conflito. Descarta o que esta
+     tela não conseguiu gravar, e por isso sempre pergunta antes. */
+  async function recarregarObra(codigo) {
+    const chave = String(codigo);
+    const nome = obras.find((o) => String(o.codigo) === chave)?.nome || chave;
+    const ok = await confirmar({
+      titulo: "Recarregar a obra?",
+      mensagem: `A obra ${nome} volta a mostrar o que está gravado no banco. O que foi alterado nesta tela desde a última gravação será descartado.`,
+      confirmar: "Recarregar e descartar",
+      cancelar: "Continuar vendo",
+      perigo: true,
+    });
+    if (!ok) return;
+    try {
+      const dados = await carregarDadosObra(chave);
+      filaDaObra(chave).descartar();
+      if (dados) aplicarDadosDoBanco(chave, dados);
+      if (travaRef.current === chave) {
+        // A limpeza do efeito da trava devolve a obra (não sobrou nada a gravar).
+        setEdicao({ minha: false, por: null, desde: null });
+      } else {
+        // A trava que ficou quando a gravação falhou ao sair da tela.
+        await liberarEdicao(chave, usuario);
+      }
+      avisar.ok("Obra recarregada do banco.");
+    } catch (e) {
+      avisar.erro("Não foi possível recarregar a obra.", "Tente novamente em instantes.");
+    }
+  }
 
   /* A TRAVA SO VIVE ENQUANTO A PESSOA ESTA NA OBRA.
 
@@ -21413,37 +21601,37 @@ export default function App() {
   const travaRef = useRef(null);
   const naObra = modulo === "comparativo";
 
-  /* A obra mais recente, pra gravar na hora de soltar.
-
-     O estado da obra muda a cada tecla; a limpeza do efeito enxerga o
-     valor do render em que ela foi criada. Sem este espelho, o "grava
-     antes de soltar" gravaria uma versao velha — que e' pior que nao
-     gravar, porque desfaz o que a pessoa acabou de escrever. */
-  const obraRef = useRef(obra);
-  useEffect(() => { obraRef.current = obra; }, [obra]);
-
   /* A TELA em que a pessoa esta trabalhando. Trocar de aba dentro da obra
      conta como trocar de tela: e' o pedido dela de 17/09/2026. */
   const telaDeTrabalho = naObra ? `obra:${obra?.codigo || ""}:${tab || "resumo"}` : `modulo:${modulo}`;
 
   useEffect(() => {
-    const codigo = edicao.minha && naObra ? obra?.codigo : null;
-    travaRef.current = codigo || null;
+    const codigo = edicao.minha && naObra && obra?.codigo ? String(obra.codigo) : null;
+    travaRef.current = codigo;
     if (!codigo) return;
     return () => {
-      /* GRAVA E SO' ENTAO SOLTA.
+      /* GRAVA E SÓ ENTÃO SOLTA — E, SE NÃO GRAVAR, NÃO SOLTA.
 
-         O salvamento automatico espera 1,2s depois da ultima alteracao, e
-         a limpeza do outro efeito cancela esse relogio. Quem digitasse e
-         trocasse de aba na sequencia perderia o ultimo segundo de
-         trabalho. A ordem tambem importa no banco: `salvarDadosObra` so'
-         grava pra quem esta com a trava, entao gravar depois de soltar
-         nao gravaria nada. */
-      const ultima = obraRef.current;
-      const gravou = ultima && String(ultima.codigo) === String(codigo)
-        ? salvarDadosObra(codigo, ultima, usuario).catch(() => {})
-        : Promise.resolve();
-      gravou.then(() => liberarEdicao(codigo, usuario).catch(() => {}));
+         A gravação espera a mão parar; quem digitasse e trocasse de aba na
+         sequência perderia o último segundo de trabalho. Por isso a saída
+         esvazia a fila da obra agora, e só depois devolve a trava — o banco
+         só grava para quem está com ela.
+
+         Antes, uma falha aqui era engolida (`.catch(() => {})`): a trava era
+         solta do mesmo jeito e o que não gravou sumia no próximo F5, sem
+         aviso. Agora a falha fica visível (o aviso da gravação, em qualquer
+         tela), a fila segue tentando, e a trava continua desta tela até
+         gravar — quando grava, é devolvida. */
+      filaDaObra(codigo).descarregar()
+        .then(() => {
+          // A pessoa voltou a editar esta obra enquanto a gravação esperava:
+          // a trava é de novo desta tela, e fica.
+          if (travaRef.current === codigo) return undefined;
+          return liberarEdicao(codigo, usuario);
+        })
+        .catch((e) => {
+          console.warn(`[obra ${codigo}] não gravou ao sair da tela; a trava fica com esta tela até gravar:`, e?.message || e);
+        });
     };
   }, [edicao.minha, naObra, obra?.codigo, usuario, telaDeTrabalho]);
 
@@ -21459,7 +21647,7 @@ export default function App() {
 
      Nao solta a trava aqui de proposito: mudar `edicao.minha` faz a limpeza
      do efeito de cima rodar, e e' ela que GRAVA antes de soltar. Fazer as
-     duas coisas daria dois salvamentos e duas liberacoes. */
+     duas coisas daria duas gravacoes e duas liberacoes. */
   useEffect(() => {
     if (!edicao.minha || !naObra || !obra?.codigo) return;
     const t = setTimeout(() => {
@@ -21517,14 +21705,33 @@ export default function App() {
 
   /* Fechar a aba. `pagehide` e nao `beforeunload` porque este dispara em
      celular e em navegacao de volta; a promessa nao termina, mas o pedido
-     sai — e se nao sair, a expiracao de 5 minutos ainda cobre. */
+     sai — e se nao sair, a expiracao de 5 minutos ainda cobre.
+
+     Com alteracao por gravar, a trava FICA: a gravacao que o `beforeunload`
+     acabou de mandar ainda precisa dela para ser aceita pelo banco. */
   useEffect(() => {
     const sair = () => {
-      if (travaRef.current) liberarEdicao(travaRef.current, usuario).catch(() => {});
+      const codigo = travaRef.current;
+      if (!codigo || filaDaObra(codigo).temPendencia()) return;
+      liberarEdicao(codigo, usuario).catch((e) => console.warn(`[obra ${codigo}] trava não devolvida ao fechar (vence sozinha):`, e?.message || e));
     };
     window.addEventListener("pagehide", sair);
     return () => window.removeEventListener("pagehide", sair);
   }, [usuario]);
+
+  /* A OBRA EM EDIÇÃO NESTA ABA, para quem altera a obra por fora da tela.
+     A Apresentação, aberta de dentro da obra, guarda o PDF em Arquivos da
+     obra: se esta aba está editando a obra, a mudança entra pela tela e a
+     fila de gravação dela leva — gravar por fora brigaria com ela pela
+     versão, e uma das duas seria recusada. Ver `alterarObra`. */
+  useEffect(() => {
+    definirEdicaoNestaAba((codigo, mudar) => {
+      if (travaRef.current !== codigo) return false;
+      setObras((prev) => prev.map((o) => (String(o.codigo) === codigo ? mudar(o) : o)));
+      return true;
+    });
+    return () => definirEdicaoNestaAba(null);
+  }, []);
 
   /* O perfil manda na edicao antes da trava: o Mehoo consulta, e nem
      chega a disputar a obra com ninguem. */
@@ -21533,29 +21740,42 @@ export default function App() {
   async function habilitarEdicao() {
     if (!perfilPermiteEditar) return;
     if (!obra?.codigo) return;
+    const codigo = String(obra.codigo);
+    const fila = filaDaObra(codigo);
+    // Conflito em aberto: primeiro a pessoa decide (o aviso oferece recarregar).
+    if (fila.situacao().estado === "conflito") return;
     setErroBanco(null);
     try {
-      const r = await pegarEdicao(obra.codigo, usuario);
-      if (r.ok) setEdicao({ minha: true, por: null, desde: null });
-      else setEdicao({ minha: false, por: r.por, desde: r.desde });
+      const r = await pegarEdicao(codigo, usuario);
+      if (!r.ok) { setEdicao({ minha: false, por: r.por, desde: r.desde }); return; }
+      /* A CÓPIA DESTA TELA PODE SER VELHA. Quem abriu a obra às 9h e habilita
+         a edição às 9h20 tem na memória a obra das 9h — e o que outra pessoa
+         gravou nesse meio tempo sumiria na primeira gravação. Por isso a trava
+         volta junto com a obra como está no banco AGORA, e é essa que a
+         pessoa passa a editar.
+
+         A exceção é alteração desta tela ainda por gravar: ela é mais nova que
+         o banco, e trocar pela do banco a apagaria. Ela segue na fila, e a
+         versão conferida na gravação decide. */
+      if (!fila.temPendencia()) {
+        if (r.dados?.versao == null) {
+          await liberarEdicao(codigo, usuario);
+          setErroBanco("A gravação protegida ainda não está no banco (falta rodar supabase/salvar-obra.sql). A edição fica fechada até lá, para nada se perder.");
+          return;
+        }
+        aplicarDadosDoBanco(codigo, r.dados);
+      }
+      setEdicao({ minha: true, por: null, desde: null });
     } catch (e) {
-      setErroBanco(e.message || String(e));
+      setErroBanco(`Não foi possível habilitar a edição: ${e.message || e}`);
     }
   }
 
-  async function finalizarEdicao() {
-    if (!obra?.codigo) return;
-    setSalvando("salvando");
-    try {
-      const r = await salvarDadosObra(obra.codigo, obra, usuario);
-      setMigracao(r?.migracaoPendente || null);
-      await liberarEdicao(obra.codigo, usuario);
-      setEdicao({ minha: false, por: null, desde: null });
-      setSalvando(null);
-    } catch (e) {
-      setSalvando(null);
-      setErroBanco(`Não consegui salvar antes de liberar: ${e.message || e}`);
-    }
+  /* Finalizar é só voltar ao modo leitura: a limpeza do efeito da trava
+     grava o que falta e só então devolve a obra. Se a gravação falhar, a
+     trava fica e o aviso da gravação diz o que está acontecendo. */
+  function finalizarEdicao() {
+    setEdicao({ minha: false, por: null, desde: null });
   }
 
   const totals = useMemo(() => {
@@ -21582,9 +21802,13 @@ export default function App() {
      outra compra — so' muda o endereco. */
   /* A FILA DE PATCHES — fatia 1 do ADR-004.
 
-     `filaPatch` guarda o que dá pra gravar como "só isto mudou". `null`
+     Guarda, por obra, o que dá pra gravar como "só isto mudou". `null`
      quer dizer "precisa salvar a obra inteira", e é o estado inicial: o
      primeiro salvamento depois de abrir a obra é sempre completo.
+
+     Uma fila por OBRA, e não uma só: quem sai de uma obra com a gravação
+     falhando e vai editar outra não pode ter os patches da segunda
+     mandados, pela fila da primeira, para a obra errada.
 
      Como a fila sabe que alguém mexeu por FORA dela: cada enfileiramento
      soma um no contador, e o efeito abaixo compara. Se a obra mudou sem o
@@ -21592,21 +21816,26 @@ export default function App() {
      gravação — e aí a fila é descartada, porque o salvamento inteiro tem
      que levar tudo junto. Assim nenhum caminho novo precisa se lembrar de
      avisar nada: o padrão é o seguro. */
-  const filaPatch = useRef(null);
+  const filasDePatch = useRef(new Map());
   const nEnfileirados = useRef(0);
   const nVistos = useRef(0);
+  const filaDePatchDaObra = () => (obra?.codigo ? filasDePatch.current.get(String(obra.codigo)) ?? null : null);
 
   useEffect(() => {
     if (nEnfileirados.current !== nVistos.current) { nVistos.current = nEnfileirados.current; return; }
-    filaPatch.current = null;
+    if (obra?.codigo) filasDePatch.current.set(String(obra.codigo), null);
   }, [obra]);
 
-  const precisaSalvarTudo = () => { filaPatch.current = null; nEnfileirados.current += 1; };
+  const precisaSalvarTudo = () => {
+    if (obra?.codigo) filasDePatch.current.set(String(obra.codigo), null);
+    nEnfileirados.current += 1;
+  };
   const enfileirarPatch = (p) => {
     nEnfileirados.current += 1;
     // Já precisa salvar tudo: o patch entra no bolo, não na fila.
-    if (filaPatch.current === null) return;
-    filaPatch.current.push(p);
+    const fila = filaDePatchDaObra();
+    if (fila === null) return;
+    fila.push(p);
   };
 
   /* AS MARCAS DA OBRA — fatia 2 do ADR-004.
@@ -21631,7 +21860,7 @@ export default function App() {
      a fila, cada chamada partiria do mesmo estado velho e só a última
      valeria, perdendo as outras. */
   const valorNaFila = (coluna, seNaoTiver) => {
-    const fila = filaPatch.current;
+    const fila = filaDePatchDaObra();
     if (fila) {
       for (let i = fila.length - 1; i >= 0; i--) if (fila[i].coluna === coluna) return fila[i].valor;
     }
@@ -24365,13 +24594,20 @@ export default function App() {
       )}
       {avisoMonday && <div className="aviso-monday">{avisoMonday}</div>}
           {erroBanco && <div className="aviso-monday">{erroBanco}</div>}
-          {migracao && (
-            <div className="aviso-migracao">
-              <AlertTriangle size={14} />
-              <span>{migracao}</span>
-              <BotaoIcone rotulo="Fechar aviso" variant="ghost" onClick={() => setMigracao(null)}><X size={13} /></BotaoIcone>
-            </div>
-          )}
+          {/* O QUE AINDA NÃO FOI GRAVADO, em qualquer tela: quem sai de uma
+              obra com a gravação falhando continua vendo o aviso dela, com a
+              saída (tentar de novo, recarregar a obra ou abri-la). */}
+          <AvisosDeGravacao gravacoes={gravacoes}
+            nomeDaObra={(codigo) => obras.find((o) => String(o.codigo) === codigo)?.nome || codigo}
+            codigoEmEdicao={edicao.minha && naObra && obra?.codigo ? String(obra.codigo) : null}
+            codigoAberto={naObra && obra?.codigo ? String(obra.codigo) : null}
+            onTentarAgora={(codigo) => { filaDaObra(codigo).tentarAgora(); }}
+            onRecarregar={recarregarObra}
+            onAbrir={(codigo) => {
+              const alvo = obras.find((o) => String(o.codigo) === codigo);
+              if (!alvo) return;
+              setSelectedId(alvo.id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo");
+            }} />
         </div>
         <main className="main w-full min-w-0 flex-1">
           {/* Enquanto nao se sabe quem entrou, nenhuma tela: sem isto a
@@ -24548,8 +24784,10 @@ export default function App() {
                 actions={(
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <BarraEtapa
-                      edicao={edicao} salvando={salvando} carregando={carregandoDados}
+                      edicao={edicao} gravacao={gravacaoDaObra} carregando={carregandoDados}
                       falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
+                      onTentarCarregar={() => setCargaPedida((n) => n + 1)}
+                      onTentarGravar={() => filaDaObra(obra.codigo).tentarAgora()}
                       onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao}
                       etapaId={ETAPAS_COM_CONCLUSAO.has(tab) ? tab : null} obra={obra}
                       onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
@@ -24639,7 +24877,7 @@ export default function App() {
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}
           {/* O historico fecha a pagina, em qualquer tela da obra. */}
           <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"}
-            podeRestaurar={podeGerenciarPessoas(eu, pessoas)} usuario={usuario} />
+            podeRestaurar={podeGerenciarPessoas(eu, pessoas)} />
           </>
           )}
         </main>

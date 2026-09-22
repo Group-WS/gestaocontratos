@@ -1,4 +1,7 @@
+import { gzipSync, strToU8 } from "fflate";
 import { supabase, supabaseConfigurado } from "./supabase";
+import { apiFetch } from "./api";
+import { linhaParaGravar, erroDaResposta, ErroDeGravacao, bytesParaBase64 } from "./gravacaoObra";
 
 /* A coluna `arquivos` ja existia em obra_dados guardando `{}` — objeto,
    nao lista. `{} || []` devolve o objeto, e `.forEach` num objeto derruba
@@ -63,192 +66,114 @@ export async function carregarDadosObra(codigo) {
   return data ? paraApp(data) : null;
 }
 
-/* A obra tem item em ALGUMA das quatro fontes?
- *
- * Quatro e não uma: o Vendido Contrato, o Vendido Planilha, o Executivo e a
- * planilha do Executivo entram em momentos diferentes da obra, e uma obra que
- * só tem o contrato importado é tão "cheia" quanto uma que já foi até as
- * compras. Perder qualquer uma delas é perder trabalho.
- *
- * Fica fora de `salvarDadosObra` de propósito: é uma pergunta pura, e o teste
- * a lê sem precisar do Supabase.
- */
-export function temItemNasCategorias(categorias) {
-  return (categorias || []).some((c) =>
-    (c.itens || []).length > 0 ||
-    (c.itensContrato || []).length > 0 ||
-    (c.itensPlanilha || []).length > 0 ||
-    (c.itensPlanilhaExecutivo || []).length > 0);
+/* Uma chamada de gravação à API. Resposta de erro vira ErroDeGravacao, com o
+   tipo que diz à fila o que fazer (repetir, parar, esperar alteração nova);
+   sem resposta nenhuma (rede) é temporário. */
+async function postarGravacao(caminho, corpo) {
+  let res;
+  try {
+    res = await apiFetch(caminho, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+    });
+  } catch {
+    throw new ErroDeGravacao("Sem conexão com o servidor.", { tipo: "temporario" });
+  }
+  let dados = null;
+  try { dados = await res.json(); } catch { /* resposta sem corpo */ }
+  if (!res.ok) throw erroDaResposta(res.status, dados);
+  return dados || {};
 }
 
 /**
- * Grava o conteúdo da obra. Só quem está com a trava consegue —
- * o `eq("editando_por", email)` é o que garante isso no próprio banco,
- * e não só na tela: se dois navegadores tentarem, um deles não grava.
+ * Grava o conteúdo inteiro da obra — pela API, e quem decide é o banco.
+ *
+ * Era um UPSERT da linha inteira feito daqui, e o comentário dizia que só
+ * quem estava com a trava conseguia gravar; o UPSERT não conferia nada. Uma
+ * cópia velha da obra ia por cima do trabalho de outra pessoa sem ninguém
+ * saber. Agora a função `salvar_obra` (supabase/salvar-obra.sql) só grava com
+ * a trava de quem grava e com a `versao` que esta tela leu — e o cinto da
+ * obra 2450 (obra vazia não grava por cima de obra cheia) mora lá, na mesma
+ * transação.
+ *
+ * O conteúdo vai comprimido: a obra inteira passa de 1 MB, e a função da
+ * Vercel corta o corpo em 4,5 MB.
+ *
+ * Devolve `{ versao }`, a versão nova — é com ela que a próxima gravação
+ * desta tela vai se apresentar. Não gravou, lança ErroDeGravacao.
  */
-export async function salvarDadosObra(codigo, conteudo, email) {
+export async function salvarDadosObra(codigo, conteudo, versao) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
-
-  /* CINTO DE SEGURANÇA: obra vazia NÃO grava por cima de obra cheia.
-   *
-   * Em 19/09/2026 a obra 2450 amanheceu com as 33 verbas da EAP e zero itens
-   * — 269 itens, cadernos, anexos e aprovações apagados de uma vez. Só um
-   * backup do Supabase trouxe de volta.
-   *
-   * O caminho é este: ao abrir uma obra, ela começa na memória como o
-   * esqueleto do cadastro do Monday, e os itens chegam numa segunda viagem ao
-   * banco. Se essa viagem falha, o esqueleto FICA — e o salvamento
-   * automático, que não perguntava nada, gravava o esqueleto por cima da obra
-   * inteira. Sem aviso e sem rastro.
-   *
-   * Então: quando o que vai ser gravado não tem item nenhum, a gente lê a
-   * linha antes. Se lá tem item, RECUSA. A consulta extra só acontece no caso
-   * perigoso — obra com conteúdo grava como sempre gravou.
-   *
-   * Isto não conserta a causa (a viagem que falhou); ele impede o estrago,
-   * inclusive vindo de caminhos que ainda não conhecemos.
-   */
-  if (!temItemNasCategorias(conteudo.categorias)) {
-    const { data: atual, error: erroDaLeitura } = await supabase
-      .from("obra_dados")
-      .select("categorias")
-      .eq("obra_codigo", String(codigo))
-      .maybeSingle();
-    /* Não deu pra conferir? Também não grava. Aqui a dúvida pesa mais que a
-       gravação: o que está na tela é uma obra sem item nenhum. */
-    if (erroDaLeitura) {
-      throw new Error(`Não gravei: não consegui conferir a obra no banco antes (${erroDaLeitura.message}). Recarregue a página.`);
-    }
-    if (atual && temItemNasCategorias(atual.categorias)) {
-      throw new Error(
-        "NÃO GRAVEI — e foi de propósito. Esta tela está sem os itens da obra, "
-        + "mas a obra no banco tem itens. Gravar assim apagaria o trabalho de todo mundo. "
-        + "Recarregue a página (F5) e abra a obra de novo."
-      );
-    }
-  }
-
-  const linha = {
-    obra_codigo: String(codigo),
-    categorias: conteudo.categorias || [],
-    cadernos: conteudo.cadernos || {},
-    arquivos: listaDeArquivos(conteudo.arquivos),
-    aprovacoes: Array.from(conteudo.aprovacoes || []),
-    depara_aprovado: !!conteudo.deparaAprovado,
-    // Executivo destravado sem passar pelo Depara — obra sem Vendido pra
-    // comparar. Separado de depara_aprovado de proposito: o Depara
-    // continua "nao concluido" no Planejamento, porque nao foi feito.
-    executivo_liberado_direto: !!conteudo.executivoLiberadoDireto,
-    compras_liberadas: !!conteudo.comprasLiberadas,
-    // Esteira: quem concluiu cada etapa, e o portão da assinatura do
-    // cliente que segura a liberação de compras.
-    etapas_concluidas: conteudo.etapasConcluidas || {},
-    cliente_assinou_em: conteudo.clienteAssinouEm || null,
-    cliente_assinatura_por: conteudo.clienteAssinaturaPor || null,
-    cliente_assinatura_arq: conteudo.clienteAssinaturaArq || null,
-    cliente_assinatura_obs: conteudo.clienteAssinaturaObs || null,
-    compra_sem_assinatura_por: conteudo.compraSemAssinaturaPor || null,
-    compra_sem_assinatura_em: conteudo.compraSemAssinaturaEm || null,
-    compra_sem_assinatura_just: conteudo.compraSemAssinaturaJust || null,
-    // O CMV liberado é o teto com que a equipe trabalha daqui pra frente.
-    // Ficava só na memória do navegador: ao recarregar, o resumo do topo
-    // e o fechamento do rodapé do Executivo sumiam sem dizer nada.
-    // A data de entrega comanda o prazo de compra de todos os grupos.
-    data_entrega: conteudo.dataEntrega || null,
-    // Escopos de contratacao: o texto do modelo vem copiado dentro de
-    // cada um, entao o documento nao muda quando o modelo muda.
-    escopos: conteudo.escopos || [],
-    cmv_liberado: conteudo.cmvLiberado ?? null,
-    cmv_liberado_em: conteudo.cmvLiberadoEm || null,
-    cmv_liberado_por: conteudo.cmvLiberadoPor || null,
-    atualizado_por: email || null,
-    editando_por: email || null,
-    editando_desde: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabase
-    .from("obra_dados")
-    .upsert(linha, { onConflict: "obra_codigo" })
-    .select()
-    .single();
-
-  /* Coluna que ainda não existe no banco não pode derrubar o salvamento
-     inteiro.
-
-     Quando o app ganha um campo novo, a coluna correspondente só passa a
-     existir depois que alguém roda a migração — e entre o deploy e o SQL
-     existe uma janela em que o Postgres rejeita o UPSERT todo por causa
-     de uma coluna desconhecida. O efeito era o pior possível: a pessoa
-     continuava trabalhando e NADA era gravado, com um aviso genérico no
-     topo.
-
-     Aqui a gente tira os campos que o banco não conhece e grava o resto.
-     O trabalho é salvo; só os campos novos ficam de fora até a migração
-     rodar — e o aviso diz exatamente isso, em vez de "não consegui". */
-  if (error && (error.code === "PGRST204" || /column .* does not exist|Could not find the/i.test(error.message || ""))) {
-    const desconhecida = (error.message || "").match(/'([^']+)'/)?.[1];
-    const opcionais = [
-      "etapas_concluidas", "cliente_assinou_em", "cliente_assinatura_por",
-      "cliente_assinatura_arq", "cliente_assinatura_obs",
-      "compra_sem_assinatura_por", "compra_sem_assinatura_em", "compra_sem_assinatura_just",
-      "cmv_liberado", "cmv_liberado_em", "cmv_liberado_por",
-      "data_entrega", "escopos", "arquivos", "executivo_liberado_direto",
-    ];
-    const reduzida = { ...linha };
-    opcionais.forEach((c) => { delete reduzida[c]; });
-
-    const retry = await supabase
-      .from("obra_dados")
-      .upsert(reduzida, { onConflict: "obra_codigo" })
-      .select()
-      .single();
-    if (retry.error) throw retry.error;
-
-    const app = paraApp(retry.data);
-    app.migracaoPendente = desconhecida
-      ? `A coluna "${desconhecida}" ainda não existe no banco. Salvei o resto — rode o SQL que falta (supabase/etapas.sql ou supabase/prazos.sql).`
-      : "Faltam colunas novas no banco. Salvei o resto — rode os SQL de supabase/.";
-    return app;
-  }
-
-  if (error) throw error;
-  return paraApp(data);
+  const gzip = bytesParaBase64(gzipSync(strToU8(JSON.stringify(linhaParaGravar(conteudo)))));
+  const r = await postarGravacao(`/api/obras/${encodeURIComponent(String(codigo))}/gravar`, { versao, gzip });
+  return { versao: r.versao };
 }
 
 /**
- * Grava SÓ o que mudou, em vez da obra inteira.
+ * Grava SÓ o que mudou, em vez da obra inteira (ADR-004).
  *
- * Fatia 1 do ADR-004. Cada patch é um de dois formatos:
+ * Cada patch é um de três formatos:
  *   { verba, item, campos, confCodigo?, confDesc? }  — um campo de um item
  *   { verba, mapa, chave, campos }                   — um mapa da verba
+ *   { coluna, valor }                                — uma marca da obra
  *
  * `verba` e `item` são POSIÇÕES, e posição muda quando alguém insere ou apaga
- * linha: por isso vão junto o código e a descrição que a tela viu. A função
- * no banco confere antes de escrever e recusa o que não bater, em vez de
- * gravar na linha errada.
+ * linha: por isso vão junto o código e a descrição que a tela viu. O banco
+ * confere antes de escrever e recusa o que não bater. Trava e versão são
+ * conferidas como na gravação inteira.
  *
- * Devolve `{ semFuncao: true }` quando o `supabase/patch-obra.sql` ainda não
- * rodou — quem chamou volta ao salvamento de sempre, sem incomodar ninguém.
+ * Devolve `{ versao, aplicados, recusados }`.
  */
-export async function aplicarPatchObra(codigo, patches) {
+export async function aplicarPatchObra(codigo, patches, versao) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
-  if (!patches?.length) return { ok: true, aplicados: 0 };
+  return postarGravacao(`/api/obras/${encodeURIComponent(String(codigo))}/patch`, { versao, patches });
+}
 
-  const { data, error } = await supabase.rpc("aplicar_patch_obra", {
-    p_codigo: String(codigo),
-    p_patches: patches,
-  });
+/* A obra aberta para edição NESTA aba, se houver: quem a registra é a tela
+   (App.jsx), que sabe aplicar uma mudança no que está na memória e deixar a
+   fila de gravação dela levar junto. */
+let edicaoNestaAba = null;
+export function definirEdicaoNestaAba(fn) { edicaoNestaAba = fn; }
 
-  if (error) {
-    /* A função ainda não existe no banco. Não é erro de quem está usando o
-       app: é migração pendente, e o salvamento de sempre dá conta. */
-    if (error.code === "42883" || error.code === "PGRST202"
-        || /aplicar_patch_obra|Could not find the function/i.test(error.message || "")) {
-      return { semFuncao: true };
+/**
+ * Uma alteração avulsa da obra, fora da tela de edição — o Catálogo mandando
+ * produtos para o Executivo, a Apresentação guardando o PDF em Arquivos da
+ * obra. `mudar(obra)` recebe a obra e devolve a obra alterada.
+ *
+ * Antes, cada uma lia a obra, mudava e gravava a linha inteira de volta: se
+ * alguém gravasse no meio, a gravação avulsa apagava esse trabalho — e ainda
+ * deixava a trava presa no nome de quem nem estava editando. Agora:
+ *   - obra em edição nesta aba: a mudança entra pela tela, e a fila de
+ *     gravação da tela a leva (gravar por fora brigaria com ela pela versão);
+ *   - senão: pega a trava (a obra volta junto, como está no banco agora),
+ *     muda, grava com a versão lida e devolve a trava.
+ *
+ * Devolve null quando a obra ainda não tem linha no banco. Obra em edição
+ * por outra pessoa lança ErroDeGravacao com `detalhe.motivo = "trava"`.
+ */
+export async function alterarObra(codigo, email, mudar) {
+  const chave = String(codigo);
+  if (edicaoNestaAba && edicaoNestaAba(chave, mudar)) return { naTela: true };
+
+  const antes = await carregarDadosObra(chave);
+  if (!antes) return null;
+  const trava = (por, desde) => new ErroDeGravacao(`${por || "Outra pessoa"} está editando esta obra agora.`,
+    { tipo: "conflito", detalhe: { motivo: "trava", por: por || null, desde: desde || null } });
+  if (antes.editandoPor && antes.editandoPor !== email) throw trava(antes.editandoPor, antes.editandoDesde);
+
+  // A trava já era desta pessoa (outra aba dela): fica. Senão, volta ao fim.
+  const eraMinha = antes.editandoPor === email;
+  const r = await pegarEdicao(chave, email);
+  if (!r.ok) throw trava(r.por, r.desde);
+  try {
+    await salvarDadosObra(chave, mudar(r.dados), r.dados.versao);
+  } finally {
+    if (!eraMinha) {
+      await liberarEdicao(chave, email).catch((e) => console.warn(`[obra ${chave}] trava não devolvida (vence sozinha):`, e?.message || e));
     }
-    throw error;
   }
-  return data || { ok: false };
+  return { naTela: false };
 }
 
 /**
@@ -272,10 +197,15 @@ export async function garantirObraDados(codigo) {
 /**
  * Tenta pegar a obra pra editar.
  *
- * Devolve { ok: true } quando conseguiu, ou { ok: false, por, desde }
+ * Devolve { ok: true, dados } quando conseguiu, ou { ok: false, por, desde }
  * quando outra pessoa está com ela. A trava só é tomada se estiver livre
  * ou vencida — a condição vai no UPDATE, então quem chegar em segundo
  * lugar simplesmente não atualiza nenhuma linha e descobre isso.
+ *
+ * `dados` é a obra como está no banco NO INSTANTE em que a trava foi pega —
+ * a mesma linha que o UPDATE devolve. É ela que a tela passa a editar: a
+ * cópia que estava aberta pode ser de antes da última gravação de outra
+ * pessoa, e editar a partir dela apagaria esse trabalho.
  */
 export async function pegarEdicao(codigo, email) {
   if (!supabaseConfigurado) return { ok: true, local: true };
@@ -293,7 +223,7 @@ export async function pegarEdicao(codigo, email) {
     .select()
     .maybeSingle();
   if (error) throw error;
-  if (data) return { ok: true };
+  if (data) return { ok: true, dados: paraApp(data) };
 
   // não conseguiu: alguém está com ela
   const atual = await carregarDadosObra(codigo);
@@ -352,6 +282,10 @@ function paraApp(linha) {
     editandoDesde: travaViva(linha.editando_desde) ? linha.editando_desde || null : null,
     atualizadoEm: linha.atualizado_em || null,
     atualizadoPor: linha.atualizado_por || null,
+    /* A versão que esta leitura viu. A gravação a devolve ao banco, que só
+       grava se ninguém tiver mudado a obra depois. Nula enquanto o
+       supabase/salvar-obra.sql não rodou — e aí a tela não abre edição. */
+    versao: linha.versao ?? null,
   };
 }
 
