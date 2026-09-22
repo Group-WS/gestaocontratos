@@ -2848,15 +2848,57 @@ const codigoVisivel = (it) => (/^null(-T\d*)?$/.test(String(it?.codigo ?? "")) ?
 
    Dinheiro e quantidade NAO entram de proposito: com `custo` na lista, buscar
    "1000" traria tudo que custa mil. */
+/* TUDO QUE A LINHA MOSTRA ENTRA NA BUSCA (pedido dela, 22/09/2026): "precisa
+   buscar tudo que tem na listagem, inclusive descrições". Os dois lados do
+   depara (`a` e `b`), o que veio do Sienge (a descrição do detalhe, o código
+   do detalhe e o auxiliar) e a unidade — tudo que a pessoa lê na tela, ela
+   consegue procurar. */
 function textoDoItem(it, cat) {
   return [
     it?.desc, it?.a?.desc, it?.b?.desc,
-    codigoVisivel(it), it?.marca, it?.ambiente, it?.especificacao,
+    codigoVisivel(it), it?.marca, it?.a?.marca, it?.b?.marca,
+    it?.ambiente, it?.a?.ambiente, it?.b?.ambiente,
+    it?.especificacao, it?.a?.especificacao, it?.b?.especificacao,
+    it?.detalheSienge, it?.descritivoSienge, it?.codigoDetalheSienge, it?.codigoAuxSienge, it?.maeSienge,
+    it?.un, it?.canalCompra,
     cat?.num, cat?.nome,
   ].filter(Boolean).join(" ");
 }
 
-/* O termo casa com o texto?
+/* A NORMALIZAÇÃO É CARA E O TEXTO DA LINHA NÃO MUDA ENQUANTO NINGUÉM EDITA.
+   `norm` faz NFD + quatro regex; com ~500 itens em cinco telas, repetir isso
+   a cada tecla digitada trava a lista. Aqui cada item é normalizado UMA vez e
+   fica guardado no WeakMap: editar o item cria outro objeto (o app grava
+   imutável), e a entrada velha sai sozinha do cache. */
+const textoBuscavelDoItem = new WeakMap();
+function textoBuscavel(it, cat) {
+  if (!it || typeof it !== "object") return normSienge(textoDoItem(it, cat));
+  /* A VERBA ENTRA NA CHAVE. O texto inclui o número e o nome dela, e o mesmo
+     item pode ser lido com outra verba (a Conf. Executivo monta a verba a
+     cada linha). Guardar só pelo item devolvia o texto da primeira leitura —
+     e a busca por "marcenaria" deixava de achar os itens dela. */
+  const chave = `${cat?.num ?? ""}|${cat?.nome ?? ""}`;
+  const guardado = textoBuscavelDoItem.get(it);
+  if (guardado && guardado.chave === chave) return guardado.texto;
+  const texto = normSienge(textoDoItem(it, cat));
+  textoBuscavelDoItem.set(it, { chave, texto });
+  return texto;
+}
+
+/* O termo também só é normalizado quando muda — quem digita repete o mesmo
+   termo para os 500 itens da lista. Nulo = termo curto demais, e aí o filtro
+   aceita tudo (a mesma regra do `casaBusca`). */
+let termoBuscado = null;
+let palavrasBuscadas = null;
+function palavrasDoTermo(termo) {
+  if (termo === termoBuscado) return palavrasBuscadas;
+  const t = normSienge(termo);
+  termoBuscado = termo;
+  palavrasBuscadas = t.length < 2 ? null : t.split(" ");
+  return palavrasBuscadas;
+}
+
+/* O filtro das cinco listas da obra.
 
    ATENCAO A INVERSAO: termo vazio, so' espaco ou com uma letra devolve TRUE —
    ou seja, nao filtra nada. O `acharNoExecutivo` faz o oposto (devolve lista
@@ -2867,11 +2909,11 @@ function textoDoItem(it, cat) {
    Casa TODAS as palavras do termo, em qualquer ordem e como pedaco: "cozinha
    bancada" acha "Bancada da cozinha". `normSienge` tira acento e preserva o
    separador de milhar, entao "9000" acha "9.000 BTUS" e nao acha "18.000". */
-function casaBusca(texto, termo) {
-  const t = normSienge(termo);
-  if (t.length < 2) return true;
-  const alvo = normSienge(texto);
-  return t.split(" ").every((palavra) => alvo.includes(palavra));
+function casaItem(it, cat, termo) {
+  const palavras = palavrasDoTermo(termo);
+  if (!palavras) return true;
+  const alvo = textoBuscavel(it, cat);
+  return palavras.every((palavra) => alvo.includes(palavra));
 }
 
 /* Quanto trabalho esta' parado nesta obra, e esperando quem.
@@ -4192,7 +4234,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
   const grupos = useMemo(() => {
     if (!busca.trim()) return gruposSemBusca;
     return gruposSemBusca
-      .map(({ cat, itens }) => ({ cat, itens: itens.filter((it) => casaBusca(textoDoItem(it, cat), busca)) }))
+      .map(({ cat, itens }) => ({ cat, itens: itens.filter((it) => casaItem(it, cat, busca)) }))
       .filter((g) => g.itens.length > 0);
   }, [gruposSemBusca, busca]);
   const contaItens = (gs) => gs.reduce((a, g) => a + g.itens.length, 0);
@@ -5555,7 +5597,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
   const buscando = !!busca.trim();
   // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
   const abreNaBusca = useAbertosComBusca(buscando);
-  const naBusca = (itens, c) => (buscando ? (itens || []).filter((it) => casaBusca(textoDoItem(it, c), busca)) : (itens || []));
+  const naBusca = (itens, c) => (buscando ? (itens || []).filter((it) => casaItem(it, c, busca)) : (itens || []));
   const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
 
   // Mesma leitura do Vendido Contrato: a EAP inteira sempre aparece, e o
@@ -6676,7 +6718,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
      encolhe. `porVerba` e os grupos saem de `visiveis`, entao verba sem
      resultado nem chega a existir. */
   const visiveis = buscando
-    ? porStatus.filter((l) => casaBusca(textoDoItem(l, { num: l.catNum, nome: l.catNome }), busca))
+    ? porStatus.filter((l) => casaItem(l, { num: l.catNum, nome: l.catNome }, busca))
     : porStatus;
   const chave = (l) => `${l.catNum}:${l.codigo}`;
   const pendentesVisiveis = visiveis.filter((l) => l.status !== "ok");
@@ -7875,7 +7917,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
   const grupos = !filtrando ? todosOsGrupos : todosOsGrupos
     .map((g) => ({ ...g, itens: g.itens.filter((x) =>
       (!peneiraDoCartao || x.titulo || peneiraDoCartao(x))
-      && casaBusca(textoDoItem(x.it, { num: g.num, nome: g.nome }), busca)) }))
+      && casaItem(x.it, { num: g.num, nome: g.nome }, busca)) }))
     // Verba que sobrou so' com titulo nao e' resultado.
     .filter((g) => g.itens.some((x) => !x.titulo));
 
@@ -9227,7 +9269,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
   const buscando = !!busca.trim();
   // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
   const abreNaBusca = useAbertosComBusca(buscando);
-  const contaNaBusca = (itens, c) => (itens || []).filter((it) => casaBusca(textoDoItem(it, c), busca)).length;
+  const contaNaBusca = (itens, c) => (itens || []).filter((it) => casaItem(it, c, busca)).length;
   const todasVerbas = obra.categorias.filter((c) => !c.foraDaEapPadrao);
   const vendidas = todasVerbas.filter((c) => grupoFoiVendido(c.itensPlanilhaExecutivo));
   const verbas = filtroVenda === "vendido" ? vendidas
@@ -9452,7 +9494,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                              segunda linha da planilha, que e' outra. Sem erro na
                              tela e sem ninguem perceber ate' conferir a
                              planilha. */
-                          if (buscando && !casaBusca(textoDoItem(it, c), busca)) return null;
+                          if (buscando && !casaItem(it, c, busca)) return null;
                           const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
                           // Coordenada da célula na planilha: linha da lista + posição
                           // visual da coluna. É o que Tab e Enter seguem.
@@ -12348,7 +12390,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   const buscando = !!busca.trim();
   // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
   const abreNaBusca = useAbertosComBusca(buscando);
-  const casaRow = (r) => casaBusca(textoDoItem(r.it, { num: r.catNum, nome: r.catNome }), busca);
+  const casaRow = (r) => casaItem(r.it, { num: r.catNum, nome: r.catNome }, busca);
   const [abertos, setAbertos] = useState(() => new Set());
   const [baseSienge, setBaseSienge] = useState(null);
   /* O cadastro ativo do Sienge: ele diz quais insumos existem hoje e
@@ -21084,28 +21126,61 @@ export default function App() {
      entrega, o GC e o link — só elas têm "Abrir obra" na ficha. Quem ainda
      não tem coordenada fica na lista do painel, fora do mapa. */
   const mapaDeObras = useMemo(() => {
-    const noApp = new Map(obrasAtivas.map((o) => [String(o.codigo), o]));
+    const noApp = new Map(obrasDoPainel.map((o) => [String(o.codigo), o]));
     const nomeDe = (email) => (email ? (pessoas.find((p) => p.email === email)?.nome || nomeDoEmail(email)) : undefined);
     const linhas = (siengeObras || []).map((r) => ({ r, o: noApp.get(String(r.codigo)) }));
     // Obra acompanhada que não está no espelho do Sienge ainda entra na lista.
-    obrasAtivas.forEach((o) => { if (!linhas.some((l) => String(l.r.codigo) === String(o.codigo))) linhas.push({ r: { codigo: o.codigo, nome: o.nome }, o }); });
+    obrasDoPainel.forEach((o) => { if (!linhas.some((l) => String(l.r.codigo) === String(o.codigo))) linhas.push({ r: { codigo: o.codigo, nome: o.nome }, o }); });
+    /* A FICHA DO MAPA MOSTRA O QUE A OBRA TEM. Para as obras acompanhadas
+       aqui, o card do DS recebe o avanço da jornada, a entrega, a equipe e —
+       em `details`, com o rótulo certo — os números que são nossos: plano de
+       compras, mão de obra e pendências. Não uso `value`/`billed` de
+       propósito: o card os rotula como "Contrato" e "Medido", e nenhum dos
+       dois é o que essas contas significam aqui.
+
+       As outras ~530 são o histórico do Sienge: existem para aparecer no
+       mapa, e da ficha delas só sai o que o espelho guarda. */
+    const resumos = new Map(obrasDoPainel.map((o) => [String(o.codigo), { resumo: resumoDaObra(o), jornada: esteiraDaObra(o) }]));
+    const fichaDaObra = ({ r, o }) => {
+      const extra = [];
+      if (r.geo_precisao === "cidade") extra.push({ label: "Localização", value: "aproximada (centro da cidade)" });
+      if (!o) return extra.length ? extra : undefined;
+      const { resumo, jornada } = resumos.get(String(o.codigo)) || {};
+      const passo = jornada?.passos?.find((p) => !p.feito);
+      if (passo) extra.push({ label: "Etapa atual", value: passo.rotulo });
+      if (resumo && !resumo.semDados) {
+        extra.push({ label: "Plano de compras", value: `${fmtBRL(resumo.mat.feito)} de ${fmtBRL(resumo.mat.total)} comprado` });
+        if (resumo.mo.total > 0) extra.push({ label: "Mão de obra", value: `${fmtBRL(resumo.mo.feito)} de ${fmtBRL(resumo.mo.total)} contratado` });
+      }
+      if (resumo?.atrasos?.length) extra.push({ label: "Compras vencidas", value: `${resumo.atrasos.length} ${resumo.atrasos.length === 1 ? "verba" : "verbas"}` });
+      return extra.length ? extra : undefined;
+    };
     return adaptObras(linhas, {
       id: ({ r }) => String(r.codigo),
       code: ({ r }) => `#${r.codigo}`,
       name: ({ r, o }) => o?.nome || r.nome,
+      // "—" é como o Monday manda cliente vazio: na ficha, vazio é não mostrar.
+      client: ({ o }) => (o?.cliente && o.cliente !== "—" ? o.cliente : undefined),
       address: ({ r }) => r.endereco_completo || undefined,
       city: ({ r }) => r.cidade || undefined,
       uf: ({ r }) => r.estado || undefined,
       lat: ({ r }) => r.lat ?? null,
       lng: ({ r }) => r.lng ?? null,
       status: ({ r, o }) => (o ? "em_obra" : statusSienge(r, registro) === "finalizada" ? "concluida" : "em_obra"),
+      // O avanço é o da jornada — a mesma conta do "Avanço geral" da obra.
+      progress: ({ o }) => {
+        const passos = o ? resumos.get(String(o.codigo))?.jornada?.passos : null;
+        return passos?.length ? (passos.filter((p) => p.feito).length / passos.length) * 100 : undefined;
+      },
       endDate: ({ o }) => o?.dataEntrega || undefined,
       responsible: ({ o }) => nomeDe(o?.gc),
+      team: ({ o }) => (o ? [nomeDe(o.tailorMade), nomeDe(o.responsavelExecutivo)].filter(Boolean) : undefined),
       type: ({ o }) => (o ? o.squad || undefined : undefined),
+      updatedAt: ({ r }) => r.atualizado_em || undefined,
       href: ({ r, o }) => (o ? `/obra/${r.codigo}` : undefined),
-      details: ({ r }) => (r.geo_precisao === "cidade" ? [{ label: "Localização", value: "aproximada (centro da cidade)" }] : undefined),
+      details: fichaDaObra,
     }, { inferLate: false });
-  }, [siengeObras, obrasAtivas, registro, pessoas]);
+  }, [siengeObras, obrasDoPainel, registro, pessoas]);
   /* Otimista: a tela muda na hora, e desfaz sozinha se o Supabase
      recusar — sem isso, cada clique ficaria "cru" até a resposta ir e
      voltar, e um clique duplo enquanto isso ainda ia pro estado errado. */

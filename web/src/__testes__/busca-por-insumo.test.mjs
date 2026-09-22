@@ -30,19 +30,28 @@ const linha = (comeco) => {
 };
 
 /* `normSienge` vem do lib de verdade, não de um stub: metade do que este
-   arquivo garante (acento, pontuação, separador de milhar) é dele. */
+   arquivo garante (acento, pontuação, separador de milhar) é dele.
+
+   O caminho testado é o MESMO que as cinco telas usam: `casaItem`, com o
+   cache do texto (WeakMap) e o do termo. Testar só o `textoDoItem` deixaria
+   o cache — que é onde mora o risco de mostrar resultado velho — sem prova. */
 const M = eval(`(function () {
   ${linha("const codigoVisivel =")}
   ${bloco("function textoDoItem(")}
-  ${bloco("function casaBusca(")}
-  return { textoDoItem, casaBusca };
+  ${linha("const textoBuscavelDoItem =")}
+  ${bloco("function textoBuscavel(")}
+  ${linha("let termoBuscado =")}
+  ${linha("let palavrasBuscadas =")}
+  ${bloco("function palavrasDoTermo(")}
+  ${bloco("function casaItem(")}
+  return { textoDoItem, textoBuscavel, casaItem };
 })()`);
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
   console.log(`${ok ? "ok  " : "FALHOU"} ${n.padEnd(58)} ${String(o).padEnd(12)} ${ok ? "" : "esperava " + e}`); };
 
-const casa = (it, termo, cat) => M.casaBusca(M.textoDoItem(it, cat), termo);
+const casa = (it, termo, cat) => M.casaItem(it, cat, termo);
 const cuba = { desc: "Cuba de apoio em Inox", codigo: "12.03", marca: "Rivatti", ambiente: "Cozinha", especificacao: "Obs: chegar montada" };
 
 /* ---- 1. O termo que NÃO filtra ----
@@ -79,6 +88,34 @@ conf("acha pelo número da verba", casa(cuba, "21", { num: "21", nome: "Marcenar
 /* A Conf. Executivo põe o vendido e o executivo lado a lado na mesma linha. */
 conf("acha na coluna do vendido (a.desc)", casa({ a: { desc: "Cuba" }, b: null }, "cuba"), true);
 conf("acha na coluna do executivo (b.desc)", casa({ a: null, b: { desc: "Cuba" } }, "cuba"), true);
+/* Pedido dela em 22/09/2026: "precisa buscar tudo que tem na listagem". O
+   fornecedor, o ambiente e a especificação também aparecem nas duas colunas —
+   antes só o do item solto era lido. */
+conf("acha o fornecedor da coluna do vendido", casa({ a: { marca: "Deca" }, b: null }, "deca"), true);
+conf("acha o ambiente da coluna do executivo", casa({ a: null, b: { ambiente: "Lavabo" } }, "lavabo"), true);
+conf("acha a especificação da coluna do executivo", casa({ b: { especificacao: "com ducha higiênica" } }, "ducha"), true);
+
+/* O que veio do Sienge aparece na linha das Compras e da Conf. Executivo:
+   a descrição do detalhe, os códigos e a unidade. */
+conf("acha pela descrição do detalhe no Sienge", casa({ desc: "Cuba", detalheSienge: "CUBA INOX 40X34 TRAMONTINA" }, "tramontina"), true);
+conf("acha pelo descritivo editado à mão", casa({ desc: "Cuba", descritivoSienge: "cuba redonda escovada" }, "escovada"), true);
+conf("acha pelo código do detalhe no Sienge", casa({ desc: "Cuba", codigoDetalheSienge: "99871" }, "99871"), true);
+conf("acha pelo código auxiliar", casa({ desc: "Cuba", codigoAuxSienge: "AUX-450" }, "aux 450"), true);
+conf("acha pela unidade", casa({ desc: "Cabo flexível", un: "rolo" }, "rolo"), true);
+conf("acha pelo canal de compra", casa({ desc: "Cuba", canalCompra: "mehoo" }, "mehoo"), true);
+
+/* ---- 3b. O cache não pode devolver texto velho ----
+   O texto normalizado fica num WeakMap por item. Editar o item cria OUTRO
+   objeto (o app grava imutável), então o texto novo tem que valer; e o mesmo
+   item lido com outra verba não pode responder pela verba da primeira vez. */
+const antes = { desc: "Cuba de apoio" };
+conf("cache: acha antes de editar", casa(antes, "apoio"), true);
+const depois = { ...antes, desc: "Cuba de embutir" };
+conf("cache: item editado vale pelo texto novo", casa(depois, "embutir"), true);
+conf("cache: e não pelo texto antigo", casa(depois, "apoio"), false);
+const compartilhado = { desc: "Luminária" };
+conf("cache: acha pela primeira verba", casa(compartilhado, "eletrica", { num: "05", nome: "Elétrica" }), true);
+conf("cache: e pela segunda verba, no mesmo item", casa(compartilhado, "iluminacao", { num: "06", nome: "Iluminação" }), true);
 
 /* ---- 4. Dinheiro NÃO entra ----
    Com `custo` na lista, buscar "1000" traria tudo que custa mil. */
