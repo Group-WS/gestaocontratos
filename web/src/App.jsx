@@ -10367,7 +10367,8 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
   const largo = useMediaQuery(LARGO);
   const fechar = () => { if (!largo && onFechar) onFechar(); };
   const irPara = (id) => { onModulo(id); fechar(); };
-  const escolherObra = (id) => { onSelect(id); fechar(); };
+  // Escolheu a obra: ela abre e a lista sai do caminho.
+  const escolherObra = (id) => { onSelect(id); onListaAberta?.(false); fechar(); };
 
   /* Lembrado, como o resto da barra: quem trabalha so nas suas obras nao
      quer reativar o filtro a cada F5. Mora no banco e segue a pessoa de um
@@ -10429,13 +10430,13 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
   /* O painel so' existe onde ha' o que percorrer — hoje, so' dentro da obra.
      Catalogo, Aditivos e Painel por canal entram depois. */
   const naObra = modulo === "comparativo";
-  /* A LISTA DE OBRAS COMEÇA OCULTA dentro da obra (pedido dela, 22/09/2026):
-     a obra ganha a largura toda, e a lista volta num clique — pelo botão
-     "Lista de obras" do topo, pelo "Obras" do menu ou pelo "Ocultar" do
-     próprio cabeçalho dela. A escolha é lembrada no banco
-     (preferência "obras.lista_aberta"). No celular a barra inteira vive na
-     gaveta do menu, e lá a lista aparece sempre. */
-  const temPainel = naObra && mostrarObras && (listaAberta || !largo);
+  /* A LISTA DE OBRAS SÓ APARECE QUANDO PEDIDA (pedido dela, 22/09/2026):
+     o "Obras" do menu abre a lista em qualquer tela, escolher uma obra abre
+     a obra e fecha a lista, e trocar de tela fecha as duas. Dentro da obra,
+     o botão "Lista de obras" do topo e o "Ocultar" do cabeçalho dela também
+     alternam. No celular, dentro da obra, a lista segue sempre à vista na
+     gaveta do menu. */
+  const temPainel = mostrarObras && (listaAberta || (!largo && naObra));
 
   const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
   const destinosPe = noMenu.filter((m) => DESTINOS_NO_PE.has(m.id));
@@ -10464,13 +10465,9 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
     /* CLICAR EM "OBRAS" abre a obra, e com ela a lista de obras.
        CAPACETE, e nao predio (escolha dela, 19/09/2026): num app de obra
        tudo e' predio, entao o predio nao distinguia nada. */
-    <ItemTrilho key="obras" rotulo={naObra && largo ? (listaAberta ? "Obras · ocultar a lista" : "Obras · mostrar a lista") : "Obras"} ativo={naObra} aberto={trilhoAberto}
-      href={(() => { const o = obras.find((x) => x.id === selected) || filtradas[0] || obras[0]; return o ? `/obra/${o.codigo}` : "/"; })()}
-      onClick={() => {
-        // Já na obra, "Obras" mostra e oculta a lista; fora dela, abre a obra.
-        if (naObra) { if (largo) onListaAberta?.(!listaAberta); return; }
-        onSelect(selected || filtradas[0]?.id || obras[0]?.id);
-      }}
+    <ItemTrilho key="obras" rotulo={listaAberta ? "Obras · ocultar a lista" : "Obras · escolher uma obra"} ativo={naObra || listaAberta} aberto={trilhoAberto}
+      href={(() => { const o = obras.find((x) => x.id === selected); return o ? `/obra/${o.codigo}` : "/"; })()}
+      onClick={() => onListaAberta?.(!listaAberta)}
       disabled={!obras.length}>
       <HardHat size={16} />
     </ItemTrilho>
@@ -20639,8 +20636,10 @@ export default function App() {
   const [obras, setObras] = useState([]);
   /* Abaixo de lg a barra lateral abre num Sheet pelo botao de menu do topo. */
   const [menuAberto, setMenuAberto] = useState(false);
-  /* A lista de obras ao lado da obra: oculta por padrão, lembrada no banco. */
-  const [listaObrasAberta, setListaObrasAberta] = usePreferencia("obras.lista_aberta", false);
+  /* A lista de obras: fechada por padrão. Abre pelo "Obras" do menu (ou pelo
+     botão do topo, dentro da obra) e fecha sozinha ao escolher uma obra ou
+     trocar de tela — por isso não é lembrada. */
+  const [listaObrasAberta, setListaObrasAberta] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   /* O endereco lido na abertura, esperando a lista de obras ficar completa
      pra ser aplicado. Mora aqui, perto da obra selecionada, porque o efeito
@@ -21094,8 +21093,22 @@ export default function App() {
        ainda chegavam — e era ela que trocava a 2450 pela 2195. */
     if (rotaPendente?.modulo === "comparativo") return;
     if (obrasAtivas.length === 0) { setSelectedId(null); return; }
-    setSelectedId((prev) => (obrasAtivas.some((o) => o.id === prev) ? prev : obrasAtivas[0].id));
+    /* A OBRA SÓ ABRE QUANDO A PESSOA ESCOLHE (pedido dela, 22/09/2026). Antes
+       esta regra abria a primeira da lista sozinha; agora ela só solta a
+       obra que saiu da lista (concluída) — nunca escolhe uma no lugar. */
+    setSelectedId((prev) => (prev && obrasAtivas.some((o) => o.id === prev) ? prev : null));
   }, [obrasAtivas]);
+
+  /* SAIR DA OBRA FECHA A OBRA (pedido dela, 22/09/2026): trocar de tela
+     solta a obra selecionada, e voltar a uma obra é pelo "Obras" do menu,
+     escolhendo na lista. Qualquer troca de tela também fecha a lista. */
+  const moduloAnterior = useRef(modulo);
+  useEffect(() => {
+    if (moduloAnterior.current === modulo) return;
+    moduloAnterior.current = modulo;
+    setListaObrasAberta(false);
+    if (modulo !== "comparativo") setSelectedId(null);
+  }, [modulo]);
 
   async function darStart(o) {
     setSalvandoObra(o.id);
@@ -21298,7 +21311,8 @@ export default function App() {
          desta pessoa): vale a regra de sempre, a primeira obra ativa. A
          regra ficou parada enquanto o endereco esperava, entao e' aqui que
          ela precisa acontecer. */
-      setSelectedId((prev) => prev ?? (obrasAtivas[0]?.id ?? null));
+      /* Sem abrir outra no lugar: a lista abre pra pessoa escolher. */
+      setListaObrasAberta(true);
     }
     setRotaPendente(null);
   }, [rotaPendente, obras, obrasProntas, obrasAtivas]);
@@ -24754,6 +24768,8 @@ export default function App() {
             <div className="empty-note">
               {loading
                 ? "Carregando obras do Monday…"
+                : obrasAtivas.length > 0
+                ? <>Escolha uma obra na <Button variant="ghost" size="sm" onClick={() => setListaObrasAberta(true)}>lista de obras</Button>.</>
                 : obrasNovas.length > 0
                 ? <>Nenhuma obra iniciada ainda. Comece em <Button variant="ghost" size="sm" onClick={() => setModulo("novas")}>Novas obras</Button>.</>
                 : "Nenhuma obra encontrada."}

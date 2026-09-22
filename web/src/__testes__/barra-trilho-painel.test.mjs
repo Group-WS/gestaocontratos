@@ -100,10 +100,15 @@ conf("nem o botão de esconder a lista", src.includes("Esconder a lista de obras
    ============================================================ */
 /* O painel só existe onde há o que percorrer: hoje, dentro da obra. */
 conf("o painel só aparece na obra", src.includes('const naObra = modulo === "comparativo";'), true);
-/* Oculto por padrão na obra (pedido dela, 22/09/2026), lembrado no banco, e
-   sempre à vista no celular, onde a barra inteira vive na gaveta do menu. */
-conf("... e, na obra, abre só quando a pessoa pede", src.includes("const temPainel = naObra && mostrarObras && (listaAberta || !largo);"), true);
-conf("... começando oculto e lembrado no banco", src.includes('usePreferencia("obras.lista_aberta", false)'), true);
+/* A lista só aparece quando pedida (pedido dela, 22/09/2026): o "Obras" do
+   menu abre, escolher a obra fecha, trocar de tela fecha obra e lista. No
+   celular, dentro da obra, segue à vista na gaveta do menu. */
+conf("... e abre só quando a pessoa pede", src.includes("const temPainel = mostrarObras && (listaAberta || (!largo && naObra));"), true);
+conf("... começando fechada, sem lembrar", src.includes("const [listaObrasAberta, setListaObrasAberta] = useState(false);"), true);
+conf("o Obras do menu abre e fecha a lista, sem abrir obra", src.includes("onClick={() => onListaAberta?.(!listaAberta)}"), true);
+conf("escolher a obra fecha a lista", src.includes("const escolherObra = (id) => { onSelect(id); onListaAberta?.(false); fechar(); };"), true);
+conf("sair da obra fecha a obra", src.includes('if (modulo !== "comparativo") setSelectedId(null);'), true);
+conf("nenhuma obra abre sozinha", src.includes("(prev && obrasAtivas.some((o) => o.id === prev) ? prev : null)"), true);
 conf("... com o botão do topo que diz o que faz", src.includes('{listaAberta ? "Ocultar obras" : "Lista de obras"}'), true);
 conf("... e o de ocultar no cabeçalho da lista", src.includes('rotulo="Ocultar a lista de obras"'), true);
 /* O destino ativo veste a cor do que abriu à direita. */
