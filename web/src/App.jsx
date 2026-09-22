@@ -55,7 +55,7 @@ import Catalogo from "./Catalogo";
 import { confirmar, mensagem, perguntar, avisar } from "./lib/confirmar.jsx";
 import {
   adaptObras, Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
-  Sheet, SheetContent, SheetTitle, Popover, PopoverTrigger, PopoverContent,
+  Sheet, SheetContent, SheetTitle, SheetHeader, SheetDescription, SheetFooter, Popover, PopoverTrigger, PopoverContent,
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
   NotificationBell, CommandGroup, Kbd,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
@@ -12011,7 +12011,8 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
         )}
       </TableCell>
       <TableCell className="w-80 align-top">
-        <EscolhaSienge desc={linha.desc} mae={mae} candidatas={candidatas} grupos={grupos} onMae={onMae}
+        <AssociacaoSienge item={linha.desc} detalheItem={[linha.fornecedor, linha.codigo].filter(Boolean).join(" · ")}
+          desc={linha.desc} mae={mae} candidatas={candidatas} grupos={grupos} onMae={onMae}
           escolhida={escolhida} onEscolher={onEscolher}
           descrito={descrito} editado={editado} onDescrito={onDescrito}
           aux={aux} codDet={codDet} onAux={onAux} onCodDet={onCodDet}
@@ -12122,22 +12123,37 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
 
         <RadioGroup value={escolhida ?? "__nova__"} disabled={somenteLeitura} aria-label="Descrição que vai pra planilha"
           onValueChange={(v) => onEscolher(v === "__nova__" ? null : v)} className="flex flex-col gap-2">
-          {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
-            <div key={d.insumo.descricao + k} className="flex items-start gap-2 text-sm" title={d.insumo.descricao}>
-              <RadioGroupItem id={`${idBase}-v${k}`} value={d.insumo.descricao} />
-              <Label htmlFor={`${idBase}-v${k}`} className="min-w-0 flex-1 font-normal text-text">{d.insumo.detalhe}</Label>
-              <span className="w-32 shrink-0 text-right">
-                {d.faltaram.length > 0
-                  ? <Badge tone="warning">falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
-                  : <Badge tone="success">bate tudo</Badge>}
-              </span>
-            </div>
-          ))}
-          <div className="flex items-start gap-2 text-sm" title="Usar a descrição gerada — é ela que preenche o template do Sienge">
-            <RadioGroupItem id={`${idBase}-nova`} value="__nova__" />
-            <Label htmlFor={`${idBase}-nova`} className="min-w-0 flex-1 font-normal text-text">cadastrar como detalhe novo</Label>
-            <span className="w-32 shrink-0 text-right">{editado && <Badge tone="neutral">editada à mão</Badge>}</span>
-          </div>
+          {/* CARTÕES, e não linhas de rótulo. O texto ia no `Label` do DS —
+              que é rótulo de campo: mono, caixa-alta, 10,5px — e a descrição
+              do Sienge virava uma tira ilegível. O cartão inteiro é clicável,
+              o texto fica em caixa normal e o selo vai embaixo dele, em vez
+              de disputar a largura ao lado. */}
+          {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => {
+            const marcada = escolhida === d.insumo.descricao;
+            return (
+              <label key={d.insumo.descricao + k} htmlFor={`${idBase}-v${k}`} title={d.insumo.descricao}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${marcada ? "border-brand bg-brand-soft" : "border-line-1 hover:bg-surface-2"}`}>
+                <RadioGroupItem id={`${idBase}-v${k}`} value={d.insumo.descricao} className="mt-1" />
+                <span className="flex min-w-0 flex-1 flex-col gap-2">
+                  <span className="text-sm leading-snug text-text">{d.insumo.detalhe}</span>
+                  <span>
+                    {d.faltaram.length > 0
+                      ? <Badge tone="warning">falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
+                      : <Badge tone="success">bate tudo</Badge>}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+          <label htmlFor={`${idBase}-nova`} title="Usar a descrição gerada — é ela que preenche o template do Sienge"
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${!escolhida ? "border-brand bg-brand-soft" : "border-line-1 hover:bg-surface-2"}`}>
+            <RadioGroupItem id={`${idBase}-nova`} value="__nova__" className="mt-1" />
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="text-sm font-semibold text-text">Cadastrar como detalhe novo</span>
+              <span className="text-xs text-text-mute">Nenhuma das acima serve: vai a descrição abaixo, que você pode ajustar.</span>
+              {editado && <span><Badge tone="neutral">editada à mão</Badge></span>}
+            </span>
+          </label>
         </RadioGroup>
 
         <div className={`flex flex-col gap-2 ${escolhida ? "opacity-60" : ""}`}>
@@ -12177,6 +12193,71 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* A ASSOCIAÇÃO NA TABELA — um resumo, e a escolha num painel.
+ *
+ * A escolha inteira (mãe, quatro variantes, a descrição nova e os dois
+ * códigos) morava dentro de uma coluna de 320px. Cada linha passava de
+ * 700px de altura, e uma verba de 21 itens virava uma página de 12 mil
+ * pixels onde não dava pra comparar uma opção com a outra.
+ *
+ * Agora a célula diz em uma olhada o que está decidido — a mãe e se vai
+ * variante existente ou detalhe novo — e o painel lateral abre a escolha
+ * com espaço. Nada mudou no que se grava: é a mesma EscolhaSienge, com os
+ * mesmos campos, gravando do mesmo jeito (os de texto, ao sair do campo). */
+function AssociacaoSienge({ item, detalheItem, ...escolha }) {
+  const [aberto, setAberto] = useState(false);
+  const { mae, escolhida, somenteLeitura } = escolha;
+  const variante = escolhida && mae
+    ? (mae.variantes || []).find((v) => v.descricao === escolhida)?.detalhe || escolhida
+    : null;
+
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      {mae ? (
+        <div className="flex items-start gap-2">
+          <span className="mono shrink-0 text-xs text-text-mute">{mae.codigo}</span>
+          <span className="line-clamp-2 min-w-0 flex-1 text-text">{mae.nome}</span>
+        </div>
+      ) : (
+        <span><Badge tone="warning">sem insumo mãe</Badge></span>
+      )}
+
+      {mae && (variante ? (
+        <div className="flex flex-col gap-1">
+          <span><Badge tone="success">usa detalhe existente</Badge></span>
+          <span className="line-clamp-2 text-xs text-text-soft" title={variante}>{variante}</span>
+        </div>
+      ) : (
+        <span><Badge tone="neutral">cadastra detalhe novo</Badge></span>
+      ))}
+
+      <span>
+        <Button variant="outline" size="sm" onClick={() => setAberto(true)}>
+          {somenteLeitura ? "Ver associação" : mae ? "Revisar associação" : "Escolher insumo"}
+        </Button>
+      </span>
+
+      <Sheet open={aberto} onOpenChange={setAberto}>
+        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
+          <SheetHeader className="border-b border-line-1 p-5">
+            <SheetTitle>Associar ao insumo do Sienge</SheetTitle>
+            <SheetDescription className="flex flex-col gap-1">
+              <span className="font-semibold text-text">{item}</span>
+              {detalheItem && <span className="text-xs">{detalheItem}</span>}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            <EscolhaSienge {...escolha} />
+          </div>
+          <SheetFooter className="border-t border-line-1 p-4">
+            <Button onClick={() => setAberto(false)}>{somenteLeitura ? "Fechar" : "Concluir"}</Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -15131,7 +15212,8 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               depois qual descricao vai pro template. Aqui ela fica
               guardada no proprio item da obra. */}
           {!casamento ? <span className="text-text-mute">—</span> : (
-            <EscolhaSienge desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
+            <AssociacaoSienge item={it.desc} detalheItem={[it.marca ? `Fornecedor: ${nomeDoFornecedor(it)}` : null, it.especificacao].filter(Boolean).join(" · ")}
+              desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
               onMae={(cod) => onItemChange({ maeSienge: cod || null, detalheSienge: null })}
               escolhida={it.detalheSienge || null}
               onEscolher={(d) => onItemChange({
