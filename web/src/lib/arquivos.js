@@ -1,4 +1,6 @@
-import { supabase, supabaseConfigurado } from "./supabase";
+import { supabaseConfigurado } from "./supabase";
+import { apiJson } from "./api";
+import { enviarAssinado } from "./storage";
 
 /**
  * Os arquivos que a equipe anexa na obra — cadernos do Executivo e o
@@ -12,19 +14,26 @@ import { supabase, supabaseConfigurado } from "./supabase";
  *
  * Agora o arquivo vai pro bucket `obra-arquivos` do Supabase e o que
  * fica gravado na obra é o CAMINHO dele lá dentro.
+ *
+ * Quem fala com o Storage é a API (VH-02): ela confere quem está
+ * mandando, MONTA o caminho e assina o endereço; o arquivo em si sobe
+ * daqui direto, pelo endereço assinado, porque a função da Vercel corta
+ * o corpo em 4,5 MB e o balde aceita 50 MB. Ver web/src/lib/storage.js
+ * e web/api/_lib/rotas/arquivos.js.
  */
 
 // O bucket é privado — contrato e documento assinado de cliente não
 // ficam num endereço que qualquer um abre. Cada download pede um
-// endereço temporário, válido por esta janela.
-const MINUTOS_DO_LINK = 60;
+// endereço temporário, válido por esta janela; quanto tempo ele dura é
+// decisão da rota (`MINUTOS_DO_LINK`, em web/api/_lib/rotas/arquivos.js).
 
 /**
  * Manda o arquivo pro Storage e devolve o que a obra guarda dele.
  *
  * O caminho leva a hora do envio, então trocar um caderno nunca
  * sobrescreve o anterior no meio de um download em andamento — quem
- * chama apaga o antigo depois, com `apagarArquivo`.
+ * chama apaga o antigo depois, com `apagarArquivo`. Quem monta esse
+ * caminho é a rota: o navegador manda o NOME, não o lugar.
  */
 /* O que o deposito aceita. Tem que casar com `allowed_mime_types` do
    bucket: tipo de fora e' recusado pelo Storage com uma mensagem que nao
@@ -39,12 +48,11 @@ export function tipoAceito(nome) {
 export async function subirArquivo({ obraCodigo, chave, file, por }) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado — o arquivo não tem onde ficar guardado.");
 
-  const caminho = `${obraCodigo}/${chave}/${Date.now()}-${nomeSeguro(file.name)}`;
-  const { error } = await supabase.storage
-    .from("obra-arquivos")
-    .upload(caminho, file, { contentType: file.type || undefined, upsert: false });
-
-  if (error) throw new Error(explicar(error));
+  const assinatura = await apiJson("/api/arquivos/envio", {
+    metodo: "POST",
+    corpo: { obraCodigo: String(obraCodigo), chave, nome: nomeSeguro(file.name) },
+  });
+  const caminho = await enviarAssinado("obra-arquivos", assinatura, file, { upsert: false });
 
   return {
     nome: file.name,
@@ -56,17 +64,14 @@ export async function subirArquivo({ obraCodigo, chave, file, por }) {
 }
 
 /** Endereço temporário pra baixar. Some sozinho depois de uma hora. */
-/* `download: true` manda o navegador SALVAR; sem ele, ele ABRE o PDF na
+/* `baixar: true` manda o navegador SALVAR; sem ele, ele ABRE o PDF na
    aba. Sao duas coisas diferentes e as duas sao pedidas: quem vai
    conferir uma prancha quer ver, quem vai mandar pro fornecedor quer o
    arquivo. Mesmo link assinado, uma opcao a mais. */
 export async function linkParaArquivo(caminho, { baixar = true } = {}) {
   if (!supabaseConfigurado) throw new Error("Banco de dados não configurado.");
-  const { data, error } = await supabase.storage
-    .from("obra-arquivos")
-    .createSignedUrl(caminho, MINUTOS_DO_LINK * 60, baixar ? { download: true } : {});
-  if (error) throw new Error(explicar(error));
-  return data.signedUrl;
+  const { url } = await apiJson("/api/arquivos/link", { metodo: "POST", corpo: { caminho, baixar } });
+  return url;
 }
 
 export const linkParaBaixar = (caminho) => linkParaArquivo(caminho, { baixar: true });
@@ -80,7 +85,7 @@ export const linkParaVer = (caminho) => linkParaArquivo(caminho, { baixar: false
 export async function apagarArquivo(caminho) {
   if (!supabaseConfigurado || !caminho) return;
   try {
-    await supabase.storage.from("obra-arquivos").remove([caminho]);
+    await apiJson("/api/arquivos/remover", { metodo: "POST", corpo: { caminho } });
   } catch {
     /* silêncio proposital */
   }
@@ -99,7 +104,7 @@ export function anexoRecuperavel(arq) {
 // O Storage aceita um subconjunto de caracteres no caminho; acento e
 // espaço no nome do arquivo derrubavam o upload com um erro que não
 // dizia isso. O nome original continua guardado em `nome` — este aqui
-// só serve pra endereçar.
+// só serve pra endereçar. A rota confere que o nome chegou assim.
 function nomeSeguro(nome) {
   return nome
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -111,16 +116,8 @@ function nomeSeguro(nome) {
 /* Erro de Storage chega como uma frase em inglês vinda do servidor. As
    três que a equipe realmente encontra viram instrução em português —
    principalmente a primeira, que não é defeito nem culpa de quem está
-   anexando: é a migração que ainda não rodou. */
-function explicar(error) {
-  const msg = error?.message || "";
-  if (/bucket not found/i.test(msg))
-    return 'O depósito de arquivos ainda não existe no banco. Rode "supabase/arquivos.sql" no SQL Editor do Supabase e tente de novo.';
-  if (/exceeded the maximum allowed size|payload too large/i.test(msg))
-    return "Arquivo grande demais — o limite é 50 MB por arquivo.";
-  if (/mime type|not supported/i.test(msg))
-    return "Tipo de arquivo não aceito aqui. Vale PDF, Excel, CSV, PNG ou JPG.";
-  if (/row-level security|not authorized|jwt/i.test(msg))
-    return "Sua sessão expirou. Saia e entre de novo pra anexar.";
-  return "Não consegui guardar o arquivo: " + msg;
-}
+   anexando: é a migração que ainda não rodou.
+   A tradução mora em `explicarStorage` (web/src/lib/storage.js), pra
+   subida daqui, e em `erroDoStorage` (web/api/_lib/storage.js), pro que
+   a rota responde. Duas cópias divergentes já custaram uma frase que
+   não dizia qual SQL rodar. */

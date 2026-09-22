@@ -502,12 +502,16 @@ async function guardarEmArquivosDaObra(obraCod, usuario, arquivo, oQueAconteceu)
   }
 }
 
+/* Pelo CODIGO do banco, e nao pelo texto: quem fala com o Postgres agora e' a
+   API (web/api/_lib/rotas/apresentacoes.js), que traduz a mensagem e manda o
+   `code` junto. O texto cru do Postgres nao chega mais nesta tela. */
 function mensagem(e) {
   const m = String(e?.message || e || "");
-  if (/relation .*apresentacao.* does not exist|Could not find the table/i.test(m)) {
+  if (e?.code === "42P01" || e?.code === "PGRST205"
+      || /relation .*apresentacao.* does not exist|Could not find the table/i.test(m)) {
     return "A tabela da apresentação ainda não existe no banco. Falta rodar supabase/apresentacao.sql no Supabase.";
   }
-  if (/duplicate key/i.test(m)) return "Já existe uma apresentação desta obra com esta revisão. Mude o número da Rev na aba Capa.";
+  if (e?.code === "23505" || /duplicate key/i.test(m)) return "Já existe uma apresentação desta obra com esta revisão. Mude o número da Rev na aba Capa.";
   return m;
 }
 

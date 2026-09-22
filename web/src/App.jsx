@@ -88,7 +88,7 @@ import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, ac
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos, carregarCadastroSienge, salvarCadastroSienge } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
-import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, listarTravas, travaViva, MINUTOS_ATE_TRAVA_EXPIRAR, definirEdicaoNestaAba } from "./lib/dadosObra";
+import { carregarResumoDeVarias, carregarDadosObra, salvarDadosObra, aplicarPatchObra, pegarEdicao, liberarEdicao, listarTravas, travaViva, mesmaPessoa, MINUTOS_ATE_TRAVA_EXPIRAR, definirEdicaoNestaAba } from "./lib/dadosObra";
 import { criarFilaDeGravacao } from "./lib/filaDeGravacao";
 import { mesmoConteudo, ErroDeGravacao } from "./lib/gravacaoObra";
 import { SituacaoDaGravacao, AvisosDeGravacao } from "./lib/gravacaoUi.jsx";
@@ -21549,13 +21549,13 @@ export default function App() {
            Trocá-la pelo que está no banco apagaria justamente o que falta
            gravar — a fila segue tentando, e a versão conferida decide. */
         if (!filaDaObra(codigo).temPendencia()) aplicarDadosDoBanco(codigo, dados);
-        const deOutro = dados.editandoPor && dados.editandoPor !== usuario;
+        const deOutro = dados.editandoPor && !mesmaPessoa(dados.editandoPor, usuario);
         setEdicao({
           /* `perfilEdita` tambem aqui: a trava do banco pode dizer que a
              obra e' minha de uma sessao anterior, mas quem nao edita por
              perfil nao passa a editar por causa disso. Sem a versao (o SQL
              da gravacao protegida nao rodou), ninguem edita: nada gravaria. */
-          minha: dados.editandoPor === usuario && dados.versao != null && (migracaoPendente || perfilEdita(eu)),
+          minha: mesmaPessoa(dados.editandoPor, usuario) && dados.versao != null && (migracaoPendente || perfilEdita(eu)),
           por: deOutro ? dados.editandoPor : null,
           desde: deOutro ? dados.editandoDesde : null,
         });

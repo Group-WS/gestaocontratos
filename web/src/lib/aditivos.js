@@ -1,8 +1,16 @@
-import { supabase, supabaseConfigurado } from "./supabase";
+import { supabaseConfigurado } from "./supabase";
+import { apiJson } from "./api";
 import { totaisDoDocumento, numeroAditivo } from "./aditivoDoc";
 
-/* O banco. O modelo do documento — totais, numeracao, saldo — mora em
-   aditivoDoc.js, sem import de supabase, pra poder rodar no teste. */
+/* O banco, agora pela API (web/api/_lib/rotas/aditivos.js) — o navegador
+   nao fala mais com a tabela (VH-02).
+
+   O modelo do documento — totais, numeracao, saldo — continua em
+   aditivoDoc.js, sem import de supabase, pra poder rodar no teste. E
+   continua sendo AQUI que ele e' aplicado: os totais e o numero sao
+   calculados antes de mandar, pela mesma funcao de sempre, e a rota so'
+   grava o que recebe. Conta de aditivo e' dinheiro de contrato; mudar
+   ela de lado nesta migracao seria mudar quem a confere. */
 
 /* ---------- banco ---------- */
 
@@ -24,56 +32,56 @@ const paraApp = (l) => ({
 
 export async function listarAditivos(obraCodigo) {
   if (!supabaseConfigurado) return [];
-  let q = supabase.from("aditivo").select("*").order("obra_codigo").order("seq", { ascending: false });
-  if (obraCodigo) q = q.eq("obra_codigo", String(obraCodigo));
-  const { data, error } = await q;
-  if (error) throw error;
+  // Sem obra = todos os que a pessoa enxerga, como era no `if (obraCodigo)`.
+  const filtro = obraCodigo ? `?obra=${encodeURIComponent(String(obraCodigo))}` : "";
+  const data = await apiJson(`/api/aditivos${filtro}`);
   return (data || []).map(paraApp);
 }
 
-export async function criarAditivo({ obraCodigo, seq, descricao, doc, usuario }) {
+/* `usuario` continua na assinatura porque a tela o passa, mas nao viaja
+   mais no pedido: quem assina o aditivo e' o login conferido no servidor
+   (SEG-13), e e' esse e-mail que a politica de exclusao compara depois. */
+export async function criarAditivo({ obraCodigo, seq, descricao, doc }) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado.");
   const t = totaisDoDocumento(doc);
-  const { data, error } = await supabase.from("aditivo").insert({
-    obra_codigo: String(obraCodigo),
-    seq,
-    numero: numeroAditivo(obraCodigo, seq),
-    descricao: descricao || "",
-    dados: doc,
-    total_supressao: t.supressao,
-    total_adicao: t.adicao,
-    criado_por: usuario || null,
-    atualizado_por: usuario || null,
-  }).select().single();
-  if (error) throw error;
+  const data = await apiJson("/api/aditivos", {
+    metodo: "POST",
+    corpo: {
+      obraCodigo: String(obraCodigo),
+      seq,
+      numero: numeroAditivo(obraCodigo, seq),
+      descricao: descricao || "",
+      doc,
+      totalSupressao: t.supressao,
+      totalAdicao: t.adicao,
+    },
+  });
   return paraApp(data);
 }
 
-export async function salvarAditivo(id, { descricao, status, doc, usuario }) {
+export async function salvarAditivo(id, { descricao, status, doc } = {}) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado.");
-  const campos = { atualizado_em: new Date().toISOString(), atualizado_por: usuario || null };
+  const campos = {};
   if (descricao !== undefined) campos.descricao = descricao;
   if (status !== undefined) campos.status = status;
+  /* Os totais vao JUNTO com o documento, sempre os dois: `dados` novo com
+     total velho faria o Dashboard, o CMV e o Plano de Compras lerem um
+     valor que nao existe em documento nenhum. A rota recusa um sem o
+     outro. */
   if (doc !== undefined) {
     const t = totaisDoDocumento(doc);
-    campos.dados = doc;
-    campos.total_supressao = t.supressao;
-    campos.total_adicao = t.adicao;
+    campos.doc = doc;
+    campos.totalSupressao = t.supressao;
+    campos.totalAdicao = t.adicao;
   }
-  const { data, error } = await supabase.from("aditivo").update(campos).eq("id", id).select().single();
-  /* A fase "Aguardando cliente" so' existe no banco depois do SQL: antes
-     disso o Postgres recusa a linha com um erro que nao diz o que fazer
-     ("violates check constraint"), e a pessoa fica achando que o app
-     quebrou. */
-  if (error?.code === "23514" && /status/i.test(error.message || "")) {
-    throw new Error("O banco ainda não conhece a fase “Aguardando cliente”: falta rodar supabase/aditivo-aguardando.sql no Supabase (SQL Editor).");
-  }
-  if (error) throw error;
+  /* A tradução do "falta rodar supabase/aditivo-aguardando.sql" mora na
+     rota: quem ve o codigo do Postgres (23514) e' quem fala com o banco.
+     A frase que chega aqui e' a mesma de antes. */
+  const data = await apiJson(`/api/aditivos/${encodeURIComponent(id)}`, { metodo: "PATCH", corpo: campos });
   return paraApp(data);
 }
 
 export async function excluirAditivo(id) {
   if (!supabaseConfigurado) throw new Error("Banco não configurado.");
-  const { error } = await supabase.from("aditivo").delete().eq("id", id);
-  if (error) throw error;
+  await apiJson(`/api/aditivos/${encodeURIComponent(id)}`, { metodo: "DELETE" });
 }

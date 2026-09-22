@@ -1,6 +1,6 @@
-import { gzipSync, strToU8 } from "fflate";
-import { supabase, supabaseConfigurado } from "./supabase";
-import { apiFetch } from "./api";
+import { gzipSync, strToU8, gunzipSync, strFromU8 } from "fflate";
+import { supabaseConfigurado } from "./supabase";
+import { apiFetch, apiJson } from "./api";
 import { linhaParaGravar, erroDaResposta, ErroDeGravacao, bytesParaBase64 } from "./gravacaoObra";
 
 /* A coluna `arquivos` ja existia em obra_dados guardando `{}` — objeto,
@@ -11,6 +11,21 @@ import { linhaParaGravar, erroDaResposta, ErroDeGravacao, bytesParaBase64 } from
    Entao a leitura decide a forma, sempre. Coluna compartilhada com uma
    versao anterior nunca chega no formato que a versao nova espera. */
 const listaDeArquivos = (v) => (Array.isArray(v) ? v : []);
+
+/* O QUE VEM DA API, DESCOMPRIMIDO — o caminho inverso do que a gravação faz.
+ *
+ * A função da Vercel corta o corpo em 4,5 MB, nos dois sentidos. É por isso
+ * que `salvarDadosObra` SOBE comprimida, e a leitura da obra tem o mesmo
+ * teto e a mesma carga: o `categorias` de uma obra grande sozinho passa de
+ * 1 MB em JSON. Então a obra inteira e os lotes do painel voltam em
+ * `{ gzip: "<base64>" }` (web/api/_lib/rotas/obraConteudo.js) e são abertos
+ * aqui, com o mesmo `fflate` que comprime na ida. */
+function doGzip(base64) {
+  const bruto = atob(base64);
+  const bytes = new Uint8Array(bruto.length);
+  for (let i = 0; i < bruto.length; i += 1) bytes[i] = bruto.charCodeAt(i);
+  return JSON.parse(strFromU8(gunzipSync(bytes)));
+}
 
 /**
  * O conteúdo de uma obra: o que os uploads produziram, as aprovações do
@@ -49,21 +64,48 @@ export const MINUTOS_ATE_TRAVA_EXPIRAR = 5;
  * 136 minutos depois, com o cadeado da lista lateral já apagado. Quem olhava
  * a obra achava que não podia mexer, e podia.
  */
+/* MESMA PESSOA, INDEPENDENTE DA CAIXA.
+ *
+ * Quem grava a trava agora e' o servidor, com o e-mail do LOGIN (SEG-13), e
+ * a portaria o normaliza em minusculas. A tela compara com o `usuario` como
+ * o `supabase.auth` o devolveu — que pode vir com maiuscula. Comparar cru
+ * fazia quem acabou de pegar a trava ver a tarja "está editando esta obra"
+ * apontando para si mesmo, sem conseguir habilitar a edição. */
+export const mesmaPessoa = (a, b) =>
+  !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
+
 export function travaViva(desde) {
   if (!desde) return false;
   const quando = new Date(desde).getTime();
   return Number.isFinite(quando) && Date.now() - quando < MINUTOS_ATE_TRAVA_EXPIRAR * 60_000;
 }
 
+/**
+ * A obra como está no banco — pela API, que devolve a linha comprimida.
+ *
+ * Era um `select("*")` feito daqui; agora a rota lista as colunas (as mesmas
+ * que `paraApp` lê) e o navegador só descomprime e traduz. Obra sem linha no
+ * banco continua devolvendo null.
+ */
 export async function carregarDadosObra(codigo) {
   if (!supabaseConfigurado) return null;
-  const { data, error } = await supabase
-    .from("obra_dados")
-    .select("*")
-    .eq("obra_codigo", String(codigo))
-    .maybeSingle();
-  if (error) throw error;
-  return data ? paraApp(data) : null;
+  let resposta;
+  try {
+    resposta = await apiJson(`/api/obras/${encodeURIComponent(String(codigo))}/conteudo`);
+  } catch (e) {
+    /* 404 É AUSÊNCIA, NÃO FALHA.
+     *
+     * A rota responde "Obra não encontrada" tanto para a obra que não existe
+     * quanto para a que esta pessoa não enxerga — de propósito, para não
+     * confirmar que ela existe (SEG-14). Quando o navegador lia a tabela, o
+     * RLS simplesmente não devolvia linha e isto aqui era `null`: a obra
+     * abria vazia. Tratar como erro poria uma tarja vermelha no lugar de uma
+     * tela em branco, que é o que a pessoa já esperava ver. */
+    if (e?.status === 404) return null;
+    throw e;
+  }
+  const linha = doGzip(resposta.gzip);
+  return linha ? paraApp(linha) : null;
 }
 
 /* Uma chamada de gravação à API. Resposta de erro vira ErroDeGravacao, com o
@@ -160,10 +202,10 @@ export async function alterarObra(codigo, email, mudar) {
   if (!antes) return null;
   const trava = (por, desde) => new ErroDeGravacao(`${por || "Outra pessoa"} está editando esta obra agora.`,
     { tipo: "conflito", detalhe: { motivo: "trava", por: por || null, desde: desde || null } });
-  if (antes.editandoPor && antes.editandoPor !== email) throw trava(antes.editandoPor, antes.editandoDesde);
+  if (antes.editandoPor && !mesmaPessoa(antes.editandoPor, email)) throw trava(antes.editandoPor, antes.editandoDesde);
 
   // A trava já era desta pessoa (outra aba dela): fica. Senão, volta ao fim.
-  const eraMinha = antes.editandoPor === email;
+  const eraMinha = mesmaPessoa(antes.editandoPor, email);
   const r = await pegarEdicao(chave, email);
   if (!r.ok) throw trava(r.por, r.desde);
   try {
@@ -185,13 +227,15 @@ export async function alterarObra(codigo, email, mudar) {
  * planilha) nunca ganha essa linha sozinha, e sem ela "Arquivos da obra"
  * não tem onde guardar nada — quem descobria isso era a geração de PDF
  * da apresentação, no meio do processo, tarde demais.
+ *
+ * Quem faz o upsert é a API; o `ignoreDuplicates` continua lá. Falha aqui
+ * segue sem voz, como sempre foi: o upsert daqui nunca reclamou, e quem
+ * chama (a Apresentação, ao abrir) não tem o que fazer com o aviso — quem
+ * precisa mesmo da linha é a gravação, que falaria por si.
  */
 export async function garantirObraDados(codigo) {
   if (!supabaseConfigurado) return;
-  await supabase.from("obra_dados").upsert(
-    { obra_codigo: String(codigo) },
-    { onConflict: "obra_codigo", ignoreDuplicates: true }
-  );
+  await apiJson(`/api/obras/${encodeURIComponent(String(codigo))}/conteudo`, { metodo: "POST" }).catch(() => {});
 }
 
 /**
@@ -206,51 +250,48 @@ export async function garantirObraDados(codigo) {
  * a mesma linha que o UPDATE devolve. É ela que a tela passa a editar: a
  * cópia que estava aberta pode ser de antes da última gravação de outra
  * pessoa, e editar a partir dela apagaria esse trabalho.
+ *
+ * O UPDATE com a condição dentro é o que garante isso, e ele mora na rota
+ * (web/api/_lib/rotas/obraConteudo.js) — junto com o `garantirObraDados`,
+ * que passou a ser feito lá, na mesma ida. O `email` continua na assinatura
+ * porque é o de quem está logado nesta aba; quem o servidor grava na trava é
+ * o do LOGIN (SEG-13), que é o mesmo.
  */
 export async function pegarEdicao(codigo, email) {
   if (!supabaseConfigurado) return { ok: true, local: true };
 
-  const limite = new Date(Date.now() - MINUTOS_ATE_TRAVA_EXPIRAR * 60_000).toISOString();
-  const agora = new Date().toISOString();
+  const r = await apiJson(`/api/obras/${encodeURIComponent(String(codigo))}/edicao`, { metodo: "POST" });
+  if (r.ok) return { ok: true, dados: paraApp(doGzip(r.gzip)) };
 
-  await garantirObraDados(codigo);
-
-  const { data, error } = await supabase
-    .from("obra_dados")
-    .update({ editando_por: email, editando_desde: agora })
-    .eq("obra_codigo", String(codigo))
-    .or(`editando_por.is.null,editando_por.eq.${email},editando_desde.lt.${limite}`)
-    .select()
-    .maybeSingle();
-  if (error) throw error;
-  if (data) return { ok: true, dados: paraApp(data) };
-
-  // não conseguiu: alguém está com ela
-  const atual = await carregarDadosObra(codigo);
-  return { ok: false, por: atual?.editandoPor, desde: atual?.editandoDesde };
+  /* Não conseguiu: alguém está com ela. A trava vem como está no banco, e a
+     régua do vencimento é aplicada aqui — a mesma de `paraApp`, para a tarja
+     nunca anunciar trava que já morreu. */
+  return {
+    ok: false,
+    por: travaViva(r.desde) ? r.por || null : null,
+    desde: travaViva(r.desde) ? r.desde || null : null,
+  };
 }
 
-/** Devolve a obra pros outros — some a trava, o conteúdo fica. */
+/**
+ * Devolve a obra pros outros — some a trava, o conteúdo fica.
+ *
+ * Só a própria trava sai: a rota confere o e-mail de quem chamou, como o
+ * `.eq("editando_por", email)` daqui fazia. Falha continua sem voz — este
+ * caminho nunca reclamou, e a trava que fica vence sozinha em 5 minutos.
+ */
 export async function liberarEdicao(codigo, email) {
   if (!supabaseConfigurado) return;
-  await supabase
-    .from("obra_dados")
-    .update({ editando_por: null, editando_desde: null })
-    .eq("obra_codigo", String(codigo))
-    .eq("editando_por", email);
+  await apiJson(`/api/obras/${encodeURIComponent(String(codigo))}/edicao`, { metodo: "DELETE" }).catch(() => {});
 }
 
 /** Quem está editando cada obra — pra sidebar mostrar o cadeado. */
 export async function listarTravas() {
   if (!supabaseConfigurado) return new Map();
-  const limite = new Date(Date.now() - MINUTOS_ATE_TRAVA_EXPIRAR * 60_000).toISOString();
-  const { data, error } = await supabase
-    .from("obra_dados")
-    .select("obra_codigo, editando_por, editando_desde")
-    .not("editando_por", "is", null)
-    .gte("editando_desde", limite);
-  if (error) throw error;
-  return new Map((data || []).map((d) => [String(d.obra_codigo), { por: d.editando_por, desde: d.editando_desde }]));
+  /* O filtro por data (trava vencida não é trava) vai junto na rota: é a
+     mesma régua do `travaViva` daqui, aplicada no banco. */
+  const lista = await apiJson("/api/obras-travas");
+  return new Map((lista || []).map((d) => [String(d.obra_codigo), { por: d.editando_por, desde: d.editando_desde }]));
 }
 
 function paraApp(linha) {
@@ -312,14 +353,11 @@ export async function carregarResumoDeVarias(codigos, onParcial) {
   const tudo = new Map();
   for (let i = 0; i < codigos.length; i += LOTE) {
     const fatia = codigos.slice(i, i + LOTE).map(String);
-    const { data, error } = await supabase
-      .from("obra_dados")
-      /* `cliente_assinou_em` entra pra contagem de pendencias do Inicio:
-         sem ele, obra com assinatura geral do cliente apareceria com TODOS
-         os itens "esperando o cliente" — o oposto da verdade. */
-      .select("obra_codigo, categorias, data_entrega, compras_liberadas, cadernos, depara_aprovado, cmv_liberado, cliente_assinou_em")
-      .in("obra_codigo", fatia);
-    if (error) throw error;
+    /* Um lote por pedido. As colunas (as poucas que esta tela lê) e o filtro
+       moram na rota; a resposta vem comprimida pelo mesmo motivo da obra
+       inteira — `categorias` de doze obras não cabe no teto da Vercel. */
+    const { gzip } = await apiJson("/api/obras-resumos", { metodo: "POST", corpo: { codigos: fatia } });
+    const data = doGzip(gzip);
     (data || []).forEach((l) => tudo.set(String(l.obra_codigo), {
       categorias: l.categorias || [],
       dataEntrega: l.data_entrega || null,
