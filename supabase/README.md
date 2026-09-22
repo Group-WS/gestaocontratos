@@ -32,10 +32,16 @@ Dentro de cada bloco a ordem não importa. Entre blocos, importa.
 `sienge_solicitacao.sql` · `sienge_obra_status_manual.sql` · `compradores.sql` ·
 `mao-de-obra-propria.sql` · `pessoa-canal.sql` · `ultimo-acesso.sql` ·
 `foto-perfil.sql` · `equipe-da-obra.sql` · `taylor-made.sql` ·
-`contrato-restrito.sql` · `patch-obra.sql` · `preferencia.sql`
+`contrato-restrito.sql` · `patch-obra.sql` · `preferencia.sql` ·
+`sienge-obra-coordenadas.sql`
 
 > `aditivo-exclusao.sql` e `obra-comentario.sql` chamam `admin_do_time()`,
 > que vem do bloco 2. Por isso o bloco 2 vem antes deste.
+>
+> `sienge-obra-coordenadas.sql` vem depois de `sienge_obra.sql` (acrescenta
+> `lat`, `lng` e `geo_precisao`). Os dados entram pelo arquivo que
+> `web/scripts/geocodificar-obras.mjs` gera, `sienge-obra-coordenadas-dados.sql`,
+> rodado depois dele — ver o comentário no topo do script.
 >
 > `taylor-made.sql` vem depois de `equipe-da-obra.sql` (usa as colunas
 > `tailor_made` e `responsavel_executivo`). A parte 2 dele só age depois do

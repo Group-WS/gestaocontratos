@@ -20,3 +20,6 @@ supabase/.temp/
 
 # tem token do GitHub Packages escrito dentro — use ${NODE_AUTH_TOKEN} se precisar versionar
 web/.npmrc
+
+# cache do script de geocodificação (respostas do Google)
+web/scripts/.geocodificacao-cache.json
