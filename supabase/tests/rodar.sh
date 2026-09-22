@@ -75,6 +75,9 @@ aplicar "$SQL/rn-001-liberacao-de-compra.sql"
 aplicar "$SQL/salvar-obra.sql"
 aplicar "$SQL/salvar-obra-contrair.sql"
 
+# 8. A gravação protegida do aditivo e da apresentação (versão no banco).
+aplicar "$SQL/salvar-aditivo-apresentacao.sql"
+
 # Os testes. `finish(true)` faz o pgTAP levantar erro quando algo falha,
 # e o ON_ERROR_STOP transforma isso no codigo de saida que o CI enxerga.
 falhou=0

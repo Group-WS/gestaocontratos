@@ -99,6 +99,24 @@ bloco 5, e de novo **sempre** que o bloco 5 rodar.
 > Ele não fecha a gravação direta **sem** trava: é o caminho que o teste da
 > RN-001 exercita, e fechá-lo exige mudar o teste de uma regra protegida.
 
+**8. A gravação protegida do aditivo e da apresentação (22/09/2026)**
+`salvar-aditivo-apresentacao.sql` — depois do bloco 7.
+
+> Cria a coluna `versao` em `aditivo` e em `apresentacao` e as funções
+> `salvar_aditivo`, `criar_aditivo`, `salvar_apresentacao` e
+> `criar_apresentacao`: os dois documentos só são gravados com a versão que
+> a tela leu, então duas pessoas no mesmo aditivo (ou na mesma revisão da
+> apresentação) não se apagam mais em silêncio. Aqui não há trava: as duas
+> telas gravam sozinhas, e a versão faz o conflito aparecer em segundos.
+>
+> Também: o número do aditivo ("2405/3") passa a sair do banco, com trava
+> por obra, em vez de ser contado na tela; a autoria da apresentação passa a
+> sair do login, como já era no aditivo; e `aditivo_versao` guarda o
+> histórico do aditivo — uma cópia a cada gravação inteira, mais o
+> apagamento, com poda de 24. É compatível com o app que está no ar: rode
+> **antes** do deploy, porque o app novo grava pela API.
+> Teste: `tests/13-aditivo-apresentacao.sql`.
+
 **Antes do bloco 6, confira se o bloco 5 rodou em produção.** Os
 comentários do `taylor-made.sql` indicam que o `rls-perfis.sql` pode nunca
 ter sido aplicado lá. Esta consulta mostra o que vale hoje:
