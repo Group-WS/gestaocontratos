@@ -4,9 +4,10 @@ import {
   Input, Label, PageShell, Progress, Skeleton, ActiveFilters, FilterChip, KpiHero, KpiMini,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, cn,
+  HoverCard, HoverCardTrigger, HoverCardContent,
 } from "@group-ws/ws-ui";
 import { BotaoIcone } from "../../lib/ui.jsx";
-import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, ChevronRight, ClipboardList, Search } from "lucide-react";
+import { ArrowRight, Building2, CalendarDays, TriangleAlert, CheckCircle2, Circle, ChevronRight, ClipboardList, Search } from "lucide-react";
 
 const money = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const compactMoney = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2 }).format(value);
@@ -53,8 +54,9 @@ function Esteira({ row }) {
   return (
     <div className="relative flex min-w-48 flex-col gap-2" title={resumo}>
       <div className="flex items-center justify-between gap-2">
+        {/* O selo da etapa atual no estilo de antes: círculo = pendente. */}
         {atual
-          ? <Badge tone={tomDe(atual)}>{nome(atual)}</Badge>
+          ? <Badge className="gap-1" tone={tomDe(atual)}><Circle size={12} aria-hidden="true" />{nome(atual)}</Badge>
           : <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Jornada concluída</Badge>}
         <span className="whitespace-nowrap text-xs text-text-mute tabular-nums">{row.steps.filter((step) => step.feito).length} de {row.steps.length} · {pct}%</span>
       </div>
@@ -62,6 +64,63 @@ function Esteira({ row }) {
         {row.steps.map((step) => <span key={step.chave} className={cn("h-2 flex-1 rounded-full", COR_DO_PASSO[tomDe(step)])} />)}
       </div>
       <span className="sr-only">{resumo}</span>
+    </div>
+  );
+}
+
+/* RESUMO RÁPIDO DA OBRA ao passar o mouse na linha (22/09/2026): o que se
+   pergunta antes de abrir a obra — quando entrega, quem responde, quanto
+   falta comprar, o que está pendente — e a esteira inteira, no estilo de
+   selos com seta, que na linha virou a trilha compacta. */
+function ResumoDaObra({ row, onOpen }) {
+  const tomDe = (step) => (step.feito ? "success" : row.overdueSteps?.includes(step.chave) ? "danger" : step.chave === row.currentStep ? "brand" : "neutral");
+  const criticas = row.alerts.filter((a) => a.critical).length;
+  const mat = row.summary?.mat;
+  const pendencia = row.alerts[0];
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-semibold text-text"><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</div>
+          <div className="text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div>
+        </div>
+        <Status critical={criticas > 0} attention={row.alerts.length > 0} />
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <div>
+          <dt className="label-mono text-text-mute">Entrega</dt>
+          <dd className="text-text">{date(row.delivery)}{row.days !== null && <span className={cn("ml-1 text-xs", row.days < 0 ? "text-danger" : "text-text-mute")}>· {row.days < 0 ? `${-row.days} dias de atraso` : `${row.days} dias`}</span>}</dd>
+        </div>
+        <div>
+          <dt className="label-mono text-text-mute">Compras</dt>
+          <dd className="text-text">{mat ? <>{Math.round(mat.pct || 0)}% <span className="text-xs text-text-mute">· falta {money(mat.falta || 0)}</span></> : <span className="text-text-mute">Sem planilha</span>}</dd>
+        </div>
+        <div>
+          <dt className="label-mono text-text-mute">Pendências</dt>
+          <dd className="text-text">{row.alerts.length}{criticas > 0 && <span className="ml-1 text-xs text-danger">· {criticas} {criticas === 1 ? "crítica" : "críticas"}</span>}</dd>
+        </div>
+        <div>
+          <dt className="label-mono text-text-mute">Equipe</dt>
+          <dd><Equipe team={row.team} /></dd>
+        </div>
+      </dl>
+      <div>
+        <div className="label-mono mb-1 text-text-mute">Jornada · {row.steps.filter((step) => step.feito).length} de {row.steps.length}</div>
+        <div className="flex flex-wrap items-center gap-1">
+          {row.steps.map((step, index) => <React.Fragment key={step.chave}>
+            <Badge className="gap-1" tone={tomDe(step)}>{step.feito ? <CheckCircle2 size={12} aria-hidden="true" /> : <Circle size={12} aria-hidden="true" />}{step.chave === "execucao" ? "Execução" : step.curto}</Badge>
+            {index < row.steps.length - 1 && <ArrowRight size={10} className="shrink-0 text-text-mute" aria-hidden="true" />}
+          </React.Fragment>)}
+        </div>
+      </div>
+      {pendencia && (
+        <div className="border-t border-line-1 pt-2">
+          <div className="label-mono mb-1 text-text-mute">Próxima pendência</div>
+          <div className="text-text">{pendencia.title || pendencia.text}</div>
+          {pendencia.amount != null && <div className="mt-1 text-right font-mono tabular-nums text-danger">{money(pendencia.amount)}</div>}
+        </div>
+      )}
+      <Button variant="outline" size="sm" className="self-end" onClick={() => onOpen(row.id)}>Abrir a obra <ArrowRight size={14} aria-hidden="true" /></Button>
     </div>
   );
 }
@@ -288,15 +347,18 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
               <TableHead className="min-w-56">Próxima pendência</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow></TableHeader>
-            <TableBody>{tableRows.map((row) => <TableRow key={row.id}>
-              <TableCell className="min-w-52"><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-sm font-semibold text-text" onClick={() => onOpen(row.id)}><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</Button><div className="text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div><Equipe team={row.team} /></TableCell>
+            <TableBody>{tableRows.map((row) => <HoverCard key={row.id} openDelay={500} closeDelay={150}><HoverCardTrigger asChild><TableRow>
+              <TableCell className="min-w-52">{/* O resumo mora dentro da célula (o HoverCard do DS não usa portal
+                  e um <div> solto no <tbody> não é HTML válido); ele se posiciona
+                  fora do fluxo, então não mexe na tabela. */}
+                <HoverCardContent side="bottom" align="start" sideOffset={4} collisionPadding={16} className="w-96"><ResumoDaObra row={row} onOpen={onOpen} /></HoverCardContent><Button variant="ghost" size="sm" className="h-auto whitespace-normal p-0 text-left text-sm font-semibold text-text" onClick={() => onOpen(row.id)}><span className="font-mono text-xs font-normal text-text-mute">#{row.code}</span> {row.name}</Button><div className="text-xs text-text-mute">{/^squad\b/i.test(row.squad) ? row.squad : `Squad ${row.squad}`}</div><Equipe team={row.team} /></TableCell>
               <TableCell className="w-24 text-center"><Status critical={row.alerts.some((a) => a.critical)} attention={row.alerts.length > 0} /></TableCell>
               <TableCell className="w-32 text-center"><span className="flex items-center justify-center gap-1 whitespace-nowrap text-xs"><CalendarDays size={12} aria-hidden="true" />{date(row.delivery)}</span>{row.days !== null && <div className={cn("text-xs", row.days < 0 ? "text-danger" : "text-text-mute")}>• {row.days < 0 ? `${-row.days} dias de atraso` : `${row.days} dias`}</div>}<ReguaDos90 days={row.days} /></TableCell>
               <TableCell className="w-56"><Esteira row={row} /></TableCell>
               <TableCell><Percentage value={row.summary?.mat.pct ?? null} label="Percentual do valor de material comprado" /></TableCell>
               <TableCell className="min-w-56"><span className="line-clamp-2 text-sm text-text">{row.alerts[0]?.title || row.alerts[0]?.text || row.stage}</span><div className="mt-1 flex items-baseline justify-between gap-3 text-xs"><span className="whitespace-nowrap text-danger">{row.alerts[0]?.days != null ? `${Math.abs(row.alerts[0].days)} dias` : row.days != null && row.alerts.length ? `${Math.abs(row.days)} dias` : ""}</span>{row.alerts[0]?.amount != null && <span className="whitespace-nowrap font-mono text-sm tabular-nums text-danger">{money(row.alerts[0].amount)}</span>}</div></TableCell>
               <TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onOpen(row.id)}>Ver detalhes <ArrowRight size={14} aria-hidden="true" /></Button></TableCell>
-            </TableRow>)}</TableBody>
+            </TableRow></HoverCardTrigger></HoverCard>)}</TableBody>
           </Table>}
         </CardContent>
       </Card>
