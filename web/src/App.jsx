@@ -9978,7 +9978,7 @@ function SinoDasObras({ obras, onObra }) {
 /* O TOPO, no molde do App Shell do DS: so' sobre a coluna do conteudo (a
    marca e o nome do produto moram no alto da barra lateral), com a busca a'
    esquerda e o sino e a conta a' direita. */
-function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modulos, obras, onModulo, onObra }) {
+function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modulos, obras, onModulo, onObra, naObra = false, listaAberta = false, onListaAberta }) {
   return (
     <header className="naoimprime sticky top-0 z-20 flex h-15 shrink-0 items-center justify-between gap-4 border-b border-line-1 bg-surface-1 px-4 md:px-5">
       {/* Abaixo de lg a barra lateral vive num Sheet, e este e' o botao que a abre. */}
@@ -9986,6 +9986,15 @@ function TopBar({ onMenu, onInicio, usuario, equipe, onSair, onTrocarFoto, modul
         <Menu size={18} />
       </BotaoIcone>
       <div className="flex min-w-0 flex-1 items-center gap-4">
+        {/* Dentro da obra, no desktop: mostra e oculta a lista de obras. O
+            texto diz o que o clique faz, e o estado aparece pelo aria-pressed. */}
+        {naObra && onListaAberta && (
+          <Button variant="outline" className="hidden h-10 shrink-0 lg:inline-flex" aria-pressed={listaAberta}
+            onClick={() => onListaAberta(!listaAberta)}>
+            {listaAberta ? <PanelLeftClose size={16} aria-hidden="true" /> : <PanelLeftOpen size={16} aria-hidden="true" />}
+            {listaAberta ? "Ocultar obras" : "Lista de obras"}
+          </Button>
+        )}
         <BuscaGlobal modulos={modulos} obras={obras} onModulo={onModulo} onObra={onObra} />
       </div>
       <div className="flex items-center gap-2">
@@ -10351,7 +10360,7 @@ const GRUPOS_DO_MENU = [
   { id: "referencia", rotulo: "Referência", ids: ["catalogo", "gerador", "precos", "eap"] },
 ];
 
-function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar }) {
+function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar, listaAberta = false, onListaAberta }) {
   /* Acima de lg a barra e' fixa ao lado do conteudo; abaixo, ela abre num
      Sheet pelo botao de menu do topo. Uma casca so' de cada vez. */
   const largo = useMediaQuery(LARGO);
@@ -10419,11 +10428,13 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
   /* O painel so' existe onde ha' o que percorrer — hoje, so' dentro da obra.
      Catalogo, Aditivos e Painel por canal entram depois. */
   const naObra = modulo === "comparativo";
-  /* A LISTA DE OBRAS FICA ABERTA dentro da obra, sempre (21/09/2026).
-     Saiu o botao de esconder e o recolher automatico no primeiro clique:
-     quem esta' na obra usa a lista pra pular entre obras, e ela sumir era o
-     app decidindo pela pessoa. */
-  const temPainel = naObra && mostrarObras;
+  /* A LISTA DE OBRAS COMEÇA OCULTA dentro da obra (pedido dela, 22/09/2026):
+     a obra ganha a largura toda, e a lista volta num clique — pelo botão
+     "Lista de obras" do topo, pelo "Obras" do menu ou pelo "Ocultar" do
+     próprio cabeçalho dela. A escolha é lembrada no banco
+     (preferência "obras.lista_aberta"). No celular a barra inteira vive na
+     gaveta do menu, e lá a lista aparece sempre. */
+  const temPainel = naObra && mostrarObras && (listaAberta || !largo);
 
   const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
   const destinosPe = noMenu.filter((m) => DESTINOS_NO_PE.has(m.id));
@@ -10452,9 +10463,13 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
     /* CLICAR EM "OBRAS" abre a obra, e com ela a lista de obras.
        CAPACETE, e nao predio (escolha dela, 19/09/2026): num app de obra
        tudo e' predio, entao o predio nao distinguia nada. */
-    <ItemTrilho key="obras" rotulo="Obras" ativo={naObra} aberto={trilhoAberto}
+    <ItemTrilho key="obras" rotulo={naObra && largo ? (listaAberta ? "Obras · ocultar a lista" : "Obras · mostrar a lista") : "Obras"} ativo={naObra} aberto={trilhoAberto}
       href={(() => { const o = obras.find((x) => x.id === selected) || filtradas[0] || obras[0]; return o ? `/obra/${o.codigo}` : "/"; })()}
-      onClick={() => { if (!naObra) onSelect(selected || filtradas[0]?.id || obras[0]?.id); }}
+      onClick={() => {
+        // Já na obra, "Obras" mostra e oculta a lista; fora dela, abre a obra.
+        if (naObra) { if (largo) onListaAberta?.(!listaAberta); return; }
+        onSelect(selected || filtradas[0]?.id || obras[0]?.id);
+      }}
       disabled={!obras.length}>
       <HardHat size={16} />
     </ItemTrilho>
@@ -10541,6 +10556,11 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
           duas linhas de divisao se encontram. */}
       <div className="-mx-3 mb-3 flex h-15 shrink-0 items-center justify-between gap-2 border-b border-line-1 px-3">
         <span className="text-sm font-semibold">Obras <span className="font-mono text-xs font-normal text-text-mute">{obras.length}</span></span>
+        {largo && (
+          <BotaoIcone rotulo="Ocultar a lista de obras" variant="ghost" onClick={() => onListaAberta?.(false)}>
+            <PanelLeftClose size={16} aria-hidden="true" />
+          </BotaoIcone>
+        )}
       </div>
       {/* Dois modos, em linha propria e de largura inteira: nao e' filtro, os
           dois mostram a lista inteira, muda so' a ordem de leitura. */}
@@ -20604,6 +20624,8 @@ export default function App() {
   const [obras, setObras] = useState([]);
   /* Abaixo de lg a barra lateral abre num Sheet pelo botao de menu do topo. */
   const [menuAberto, setMenuAberto] = useState(false);
+  /* A lista de obras ao lado da obra: oculta por padrão, lembrada no banco. */
+  const [listaObrasAberta, setListaObrasAberta] = usePreferencia("obras.lista_aberta", false);
   const [selectedId, setSelectedId] = useState(null);
   /* O endereco lido na abertura, esperando a lista de obras ficar completa
      pra ser aplicado. Mora aqui, perto da obra selecionada, porque o efeito
@@ -24565,6 +24587,7 @@ export default function App() {
           obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
+          listaAberta={listaObrasAberta} onListaAberta={setListaObrasAberta}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
@@ -24572,7 +24595,9 @@ export default function App() {
         <TopBar onMenu={() => setMenuAberto(true)} onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} usuario={usuario}
           equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
           modulos={modulosVisiveis} obras={migracaoPendente || podeAbrirObras(eu) ? obrasAtivas : []} onModulo={setModulo}
-          onObra={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
+          onObra={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }}
+          naObra={modulo === "comparativo" && (migracaoPendente || podeAbrirObras(eu))}
+          listaAberta={listaObrasAberta} onListaAberta={setListaObrasAberta} />
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
         {/* Sem padding proprio: as margens da pagina sao do PageShell de cada tela. */}

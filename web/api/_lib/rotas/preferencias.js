@@ -24,6 +24,7 @@ const nomeDeGrupo = z.string().min(1).max(120);
 const PREFERENCIAS = {
   "obras.so_minhas": z.boolean(),
   "obras.modo": z.enum(["numero", "squad"]),
+  "obras.lista_aberta": z.boolean(),
   "obras.squads_fechados": z.array(nomeDeGrupo).max(50),
   "equipe.grupos_fechados": z.array(nomeDeGrupo).max(50),
 };

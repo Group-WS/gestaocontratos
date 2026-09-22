@@ -100,7 +100,12 @@ conf("nem o botão de esconder a lista", src.includes("Esconder a lista de obras
    ============================================================ */
 /* O painel só existe onde há o que percorrer: hoje, dentro da obra. */
 conf("o painel só aparece na obra", src.includes('const naObra = modulo === "comparativo";'), true);
-conf("... e, na obra, está sempre aberto", src.includes("const temPainel = naObra && mostrarObras;"), true);
+/* Oculto por padrão na obra (pedido dela, 22/09/2026), lembrado no banco, e
+   sempre à vista no celular, onde a barra inteira vive na gaveta do menu. */
+conf("... e, na obra, abre só quando a pessoa pede", src.includes("const temPainel = naObra && mostrarObras && (listaAberta || !largo);"), true);
+conf("... começando oculto e lembrado no banco", src.includes('usePreferencia("obras.lista_aberta", false)'), true);
+conf("... com o botão do topo que diz o que faz", src.includes('{listaAberta ? "Ocultar obras" : "Lista de obras"}'), true);
+conf("... e o de ocultar no cabeçalho da lista", src.includes('rotulo="Ocultar a lista de obras"'), true);
 /* O destino ativo veste a cor do que abriu à direita. */
 /* O destino ativo: fio da marca à esquerda e fundo suave (App Shell do DS). */
 conf("o item ativo leva o fio e o fundo da marca",

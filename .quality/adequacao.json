@@ -341,13 +341,6 @@
     {
       "regra": "VH-02",
       "arquivo": "web/src/lib/dadosObra.js",
-      "linha": 237,
-      "trecho": "const { data, error } = await supabase.rpc(\"aplicar_patch_obra\", {",
-      "impressao": "70bb6c51270fcc96"
-    },
-    {
-      "regra": "VH-02",
-      "arquivo": "web/src/lib/dadosObra.js",
       "linha": 266,
       "trecho": "await supabase.from(\"obra_dados\").upsert(",
       "impressao": "225ec5c8abf27d0d"
@@ -358,27 +351,6 @@
       "linha": 289,
       "trecho": ".from(\"obra_dados\")",
       "impressao": "85d9691b13a2787c#5"
-    },
-    {
-      "regra": "VH-02",
-      "arquivo": "web/src/lib/dadosObra.js",
-      "linha": 307,
-      "trecho": ".from(\"obra_dados\")",
-      "impressao": "85d9691b13a2787c#6"
-    },
-    {
-      "regra": "VH-02",
-      "arquivo": "web/src/lib/dadosObra.js",
-      "linha": 318,
-      "trecho": ".from(\"obra_dados\")",
-      "impressao": "85d9691b13a2787c#7"
-    },
-    {
-      "regra": "VH-02",
-      "arquivo": "web/src/lib/dadosObra.js",
-      "linha": 382,
-      "trecho": ".from(\"obra_dados\")",
-      "impressao": "85d9691b13a2787c#8"
     },
     {
       "regra": "VH-02",
@@ -764,20 +736,6 @@
       "linha": 55,
       "trecho": ".from(\"obra_versao\")",
       "impressao": "5a96c70047e4c131"
-    },
-    {
-      "regra": "VH-02",
-      "arquivo": "web/src/lib/versoesObra.js",
-      "linha": 77,
-      "trecho": ".from(\"obra_versao\")",
-      "impressao": "5a96c70047e4c131#2"
-    },
-    {
-      "regra": "VH-02",
-      "arquivo": "web/src/lib/versoesObra.js",
-      "linha": 104,
-      "trecho": ".from(\"obra_dados\")",
-      "impressao": "6031e2fef247d69b"
     }
   ],
   "atualizadaEm": "2026-09-22"
