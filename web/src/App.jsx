@@ -9506,7 +9506,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     { rotulo: "Custo total", classe: "w-24 text-center" },
     { rotulo: "Vendido (criativo)", classe: "w-24 border-l-2 border-line-2 text-center" },
     { rotulo: "Diferença", classe: "w-24 text-center" },
-    { rotulo: "", classe: "w-12" },
+    { rotulo: "Ações", classe: "sticky right-0 z-10 w-28 border-l border-line-1 bg-surface-2 text-right" },
   ];
 
   return (
@@ -9696,68 +9696,49 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                             : "";
                           const linha = (
                             <TableRow key={it.codigo || i} className={`group ${fundo} ${apagado ? "text-text-mute" : ""}`}>
-                              {/* O "+" mora aqui, na coluna congelada.
-                                  Ele estava na ÚLTIMA das 15 colunas, e a tabela
-                                  rola na horizontal — pra achar o botão era
-                                  preciso passar por dez colunas. Na primeira, ele
-                                  acompanha a rolagem e está sempre à vista. */}
+                              {/* A coluna Item mostra SÓ o código (23/09/2026): os
+                                  botões dividiam os 80px com ele e o "⇆" ficava
+                                  cortado. Eles moram agora na coluna Ações. */}
                               <TableCell className={`sticky left-0 z-10 whitespace-nowrap align-middle ${fundo}`}>
-                                <div className="flex items-center justify-between gap-1">
-                                  <span className={`mono text-text-mute ${corte}`}>{it.codigo || "—"}</span>
-                                  {!congeladoDaTela && !it.excluido && (
-                                    <span className="inline-flex">
-                                      <BotaoIcone rotulo={`Inserir item abaixo do ${it.codigo || "item"}`} variant="ghost" className="h-7 w-7"
-                                        onClick={() => setBuscandoEm({ verba: c.num, depois: i })}>
-                                        <Plus size={14} aria-hidden="true" />
-                                      </BotaoIcone>
-                                      {/* Substituir: exclui este e encaixa o escolhido
-                                          logo abaixo, ligado a ele. Linha travada
-                                          (RN-002) não se substitui. */}
-                                      {!travada && <BotaoIcone rotulo={`Substituir ${it.codigo || "este item"} por outro`} variant="ghost" className="h-7 w-7"
-                                        onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}>
-                                        <ArrowLeftRight size={14} aria-hidden="true" />
-                                      </BotaoIcone>}
-                                    </span>
-                                  )}
-                                </div>
+                                <span className={`mono text-text-mute ${corte}`}>{it.codigo || "—"}</span>
                               </TableCell>
                               <TableCell className={`sticky left-20 z-10 wrap-anywhere align-middle ${fundo} ${barra} ${saindo ? "line-through" : ""}`}>
                                 <CelulaTexto texto={it.desc} congelado={congelado} coord={cel(0)} onNavegar={nav}
                                   onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
                                   onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
-                                {it.excluido && !it.substituidoPorDesc && <Badge tone="danger" className="ml-2">removido</Badge>}
-                                {/* O par da substituição. Cada lado aponta pro outro,
-                                    então a linha se explica sem precisar procurar.
-                                    As etiquetas ficam curtas: repetir a descrição
-                                    inteira do outro lado dobrava o texto da linha
-                                    justamente onde já havia texto demais. */}
-                                {it.substituidoPorDesc && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge tone="purple" className="ml-2 cursor-help"><ArrowDown size={14} aria-hidden="true" /> trocado</Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-xs whitespace-normal">Substituído por: {it.substituidoPorDesc}</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {it.substituiDesc && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge tone="purple" className="ml-2 cursor-help"><CornerDownRight size={14} aria-hidden="true" /> entrou no lugar</Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-xs whitespace-normal">Entrou no lugar de: {it.substituiDesc}</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {travada && !it.excluido && (
-                                  <Badge tone="neutral" className="ml-2" title="Aprovado para compra: não se edita, remove nem substitui aqui. Para mexer, desfaça a aprovação na Conferência do executivo.">
-                                    <Lock size={12} aria-hidden="true" /> aprovado p/ compra
-                                  </Badge>
-                                )}
-                                {it.ehTitulo && <Badge tone="neutral" className="ml-2">N/A — título, não entra na conferência</Badge>}
-                                {/* "alterado no executivo" saiu daqui: a barra amarela
-                                    na lateral da linha já diz isso, e a etiqueta
-                                    aparecia em quase toda linha — repetida assim, ela
-                                    parava de informar e só ocupava espaço. */}
-                                {it.precoNaoRevisado && <Badge tone="danger" className="ml-2"><AlertTriangle size={14} aria-hidden="true" /> preço não revisado</Badge>}
+                                {/* OS ESTADOS DO ITEM, numa linha própria embaixo da
+                                    descrição e com a cor do que significam (23/09/2026):
+                                    aprovado verde, removido vermelho, troca roxa, preço
+                                    a revisar amarelo, título cinza. Antes eles entravam
+                                    no meio do texto e o aprovado era cinza como
+                                    informação comum. A barra lateral continua. */}
+                                {(() => {
+                                  const estados = [];
+                                  if (travada && !it.excluido) estados.push(
+                                    <Badge key="aprovado" tone="success" title="Aprovado para compra: não se edita, remove nem substitui aqui. Para mexer, desfaça a aprovação na Conferência do executivo.">
+                                      <Lock size={12} aria-hidden="true" /> aprovado p/ compra
+                                    </Badge>);
+                                  if (it.excluido && !it.substituidoPorDesc) estados.push(<Badge key="removido" tone="danger"><X size={12} aria-hidden="true" /> removido</Badge>);
+                                  /* O par da substituição. Cada lado aponta pro outro,
+                                     então a linha se explica sem precisar procurar. */
+                                  if (it.substituidoPorDesc) estados.push(
+                                    <Tooltip key="trocado">
+                                      <TooltipTrigger asChild>
+                                        <Badge tone="purple" className="cursor-help"><ArrowDown size={12} aria-hidden="true" /> trocado</Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs whitespace-normal">Substituído por: {it.substituidoPorDesc}</TooltipContent>
+                                    </Tooltip>);
+                                  if (it.substituiDesc) estados.push(
+                                    <Tooltip key="entrou">
+                                      <TooltipTrigger asChild>
+                                        <Badge tone="purple" className="cursor-help"><CornerDownRight size={12} aria-hidden="true" /> entrou no lugar</Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs whitespace-normal">Entrou no lugar de: {it.substituiDesc}</TooltipContent>
+                                    </Tooltip>);
+                                  if (it.precoNaoRevisado) estados.push(<Badge key="preco" tone="warning"><AlertTriangle size={12} aria-hidden="true" /> preço não revisado</Badge>);
+                                  if (it.ehTitulo) estados.push(<Badge key="titulo" tone="neutral">título · não entra na conferência</Badge>);
+                                  return estados.length ? <div className="mt-1 flex flex-wrap gap-1">{estados}</div> : null;
+                                })()}
                                 {/* Só no hover: em trinta linhas seguidas, trinta
                                     links iguais viram textura, não ação. */}
                                 {it.precoNaoRevisado && !congelado && (
@@ -9799,17 +9780,47 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                   return <span className={d > 0 ? "text-danger" : "text-success"}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
                                 })()}
                               </TableCell>
-                              <TableCell className="overflow-visible align-middle text-center">
-                                {!congelado && (
-                                      <BotaoIcone variant="ghost" className="h-7 w-7"
-                                        rotulo={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}
-                                        onClick={() => (it.excluido
-                                          ? onEditarItem(c.num, i, { excluido: false })
-                                          : setRemovendo(`${c.num}:${i}`))}
-                                      >
-                                        {it.excluido ? <RotateCcw size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
-                                      </BotaoIcone>
-                                )}
+                              {/* AÇÕES, a última coluna, presa à direita (23/09/2026):
+                                  inserir abaixo, substituir e remover/trazer de volta
+                                  ficam juntos e sempre à vista ao rolar para o lado.
+                                  Na linha travada (RN-002) o "+" continua (é item
+                                  novo); substituir e remover aparecem bloqueados,
+                                  com o motivo, em vez de sumir. */}
+                              <TableCell className={`sticky right-0 z-10 whitespace-nowrap border-l border-line-1 align-middle ${fundo}`}>
+                                {!congeladoDaTela && (() => {
+                                  const motivoTrava = "Aprovado para compra: desfaça a aprovação na Conferência do executivo para mexer";
+                                  const bloqueado = { "aria-disabled": true, className: "h-7 w-7 cursor-not-allowed opacity-50", onClick: (e) => e.preventDefault() };
+                                  return (
+                                    <div className="flex items-center justify-end gap-1">
+                                      {!it.excluido && (
+                                        <BotaoIcone rotulo={`Inserir item abaixo do ${it.codigo || "item"}`} variant="ghost" className="h-7 w-7"
+                                          onClick={() => setBuscandoEm({ verba: c.num, depois: i })}>
+                                          <Plus size={14} aria-hidden="true" />
+                                        </BotaoIcone>
+                                      )}
+                                      {/* Substituir: exclui este e encaixa o escolhido
+                                          logo abaixo, ligado a ele. */}
+                                      {!it.excluido && (travada
+                                        ? <BotaoIcone rotulo={motivoTrava} variant="ghost" {...bloqueado}><ArrowLeftRight size={14} aria-hidden="true" /></BotaoIcone>
+                                        : <BotaoIcone rotulo={`Substituir ${it.codigo || "este item"} por outro`} variant="ghost" className="h-7 w-7"
+                                            onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}>
+                                            <ArrowLeftRight size={14} aria-hidden="true" />
+                                          </BotaoIcone>)}
+                                      {travada
+                                        ? <BotaoIcone rotulo={motivoTrava} variant="ghost" {...bloqueado}>{it.excluido ? <RotateCcw size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}</BotaoIcone>
+                                        : (
+                                          <BotaoIcone variant="ghost" className="h-7 w-7"
+                                            rotulo={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}
+                                            onClick={() => (it.excluido
+                                              ? onEditarItem(c.num, i, { excluido: false })
+                                              : setRemovendo(`${c.num}:${i}`))}
+                                          >
+                                            {it.excluido ? <RotateCcw size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
+                                          </BotaoIcone>
+                                        )}
+                                    </div>
+                                  );
+                                })()}
                               </TableCell>
                             </TableRow>
                           );
