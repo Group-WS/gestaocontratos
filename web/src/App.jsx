@@ -19,7 +19,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Maximize2, Minimize2,
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -607,9 +607,17 @@ function jornadaDaObra(obra) {
     // Vendido Contrato deixou de ser etapa navegável (o CMV agora sai
     // direto da Planilha) — esse marco passa a fechar quando a Planilha
     // fecha, senão ficaria travado pra sempre em obra nenhuma.
-    { chave: "contrato", nome: "Contrato", feito: etapaConcluida("vendido_planilha", obra) },
+    // O contrato assinado anexado também fecha o marco (23/09/2026): a obra
+    // com o contrato na Jornada aparecia "Em andamento" até alguém concluir
+    // a Planilha — os outros marcos já fecham pelo próprio arquivo.
+    { chave: "contrato", nome: "Contrato", feito: !!cad.contrato || etapaConcluida("vendido_planilha", obra) },
     { chave: "criativo", nome: "Criativo", feito: !!cad.criativo },
-    { chave: "executivo", nome: "Executivo", feito: !!cad.projeto },
+    // Executivo pelos três cadernos (decisão de 23/09/2026): concluído com
+    // Especificação, Marcenaria e o Caderno Completo anexados; com parte
+    // deles, em andamento. Antes só o Caderno Completo contava.
+    { chave: "executivo", nome: "Executivo",
+      feito: ["especificacao", "marcenaria", "projeto"].every((k) => !!cad[k]),
+      andamento: ["especificacao", "marcenaria", "projeto"].some((k) => !!cad[k]) },
     // Sem cronograma ainda, a execução não fecha sozinha: compras liberadas
     // quer dizer que a obra COMEÇOU, não que acabou. Quando o módulo de
     // Execução tiver o cronograma, é ele que conclui este marco.
@@ -5305,17 +5313,27 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             <Trash2 size={16} /> Remover
           </BotaoComMotivo>
         )}
-        {/* O ⓘ vai COLADO no botão que ele explica — antes ficava numa
-            linha solta embaixo de tudo, sem dizer a qual dos botões se
-            referia (pedido de 23/09/2026: "está muito jogado"). Só
-            aparece fora do estado congelado: quando congelado, o que
-            importa é o motivo de estar travado, não como importar. */}
-        <div className="flex items-center gap-1">
-          <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
+        {/* COMO IMPORTAR MORA NO PRÓPRIO BOTÃO (23/09/2026): o ⓘ solto ao
+            lado parecia um terceiro controle entre dois botões. Passar o
+            mouse (ou focar) no botão de importar mostra a explicação.
+            Congelado, a dica não aparece: ali importa o motivo da trava,
+            que está no aviso embaixo. */}
+        {congelado ? (
+          <Button onClick={() => inputRef.current && inputRef.current.click()} disabled>
             <Upload size={16} /> {carregando ? "Lendo…" : label}
           </Button>
-          {!congelado && <DicaInfo rotulo="Como importar">{dica}</DicaInfo>}
-        </div>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando}>
+                <Upload size={16} /> {carregando ? "Lendo…" : label}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs whitespace-normal text-left normal-case tracking-normal">
+              <span className="flex flex-col gap-1"><b>Como importar</b>{dica}</span>
+            </TooltipContent>
+          </Tooltip>
+        )}
         <SeletorDeArquivo ref={inputRef} accept={accept} onChange={aoEscolher} />
       </div>
       {/* Estado (congelado) continua em texto: é aviso, muda o que dá pra
@@ -12500,30 +12518,25 @@ function AssociacaoSienge({ item, detalheItem, onHabilitar, editandoPor, ...esco
     : null;
 
   return (
-    <div className="flex flex-col gap-2 text-sm">
+    /* O INSUMO NUMA LINHA (23/09/2026): código e nome do insumo mãe com um
+       selo pequeno do detalhe (existente ou novo) — e é o próprio texto que
+       abre a revisão. Antes eram três linhas: o insumo, o selo e um botão
+       "Revisar associação" separado. */
+    <div className="text-sm">
       {mae ? (
-        <div className="flex items-start gap-2">
+        <Button variant="ghost" size="sm" type="button" onClick={() => setAberto(true)}
+          className="-ml-2 h-auto max-w-full justify-start gap-2 px-2 py-1 text-left font-normal whitespace-normal"
+          aria-label={`${somenteLeitura ? "Ver associação" : "Revisar associação"}: ${mae.codigo} ${mae.nome}`}
+          title={`${mae.codigo} ${mae.nome} — ${variante ? `usa detalhe existente: ${variante}` : "cadastra detalhe novo"}`}>
           <span className="mono shrink-0 text-xs text-text-mute">{mae.codigo}</span>
-          <span className="line-clamp-2 min-w-0 flex-1 text-text">{mae.nome}</span>
-        </div>
-      ) : (
-        <span><Badge tone="warning">sem insumo mãe</Badge></span>
-      )}
-
-      {mae && (variante ? (
-        <div className="flex flex-col gap-1">
-          <span><Badge tone="success">usa detalhe existente</Badge></span>
-          <span className="line-clamp-2 text-xs text-text-soft" title={variante}>{variante}</span>
-        </div>
-      ) : (
-        <span><Badge tone="neutral">cadastra detalhe novo</Badge></span>
-      ))}
-
-      <span>
-        <Button variant="outline" size="sm" onClick={() => setAberto(true)}>
-          {somenteLeitura ? "Ver associação" : mae ? "Revisar associação" : "Escolher insumo"}
+          <span className="line-clamp-1 min-w-0 text-text">{mae.nome}</span>
+          <Badge tone={variante ? "success" : "neutral"} className="shrink-0">{variante ? "detalhe existente" : "detalhe novo"}</Badge>
         </Button>
-      </span>
+      ) : (
+        <Button variant="outline" size="sm" type="button" onClick={() => setAberto(true)}>
+          <AlertTriangle size={14} aria-hidden="true" /> {somenteLeitura ? "sem insumo mãe" : "Escolher insumo — sem insumo mãe"}
+        </Button>
+      )}
 
       <Sheet open={aberto} onOpenChange={setAberto}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
@@ -13301,16 +13314,26 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
           <TabsList variant="pill" className="h-auto w-max min-w-full items-stretch" aria-label="Etapas da compra">
             {etapas.map((e, i) => (
               <React.Fragment key={e.id}>
-                <TabsTrigger value={e.id} className="h-auto min-w-24 flex-1 basis-0 flex-col items-center justify-start gap-1 px-4 py-2 whitespace-nowrap">
-                  {e.canal ? <TagCanal id={e.canal} /> : <span className="invisible" aria-hidden="true"><TagCanal id="sienge" /></span>}
+                {/* O FUNIL MAIS LEGÍVEL (23/09/2026):
+                   - Tudo e Sem canal ganham ícone no lugar da etiqueta
+                     invisível, e a linha fica com o mesmo ritmo;
+                   - o valor sai por extenso em todas (antes "R$ 3mil" ao lado
+                     de "R$ 349,02" — dois formatos na mesma régua);
+                   - canal sem nenhum produto fica apagado: o olho vai para
+                     onde há o que fazer;
+                   - a linha "N de M comprados" guarda o lugar em todas, para
+                     os estágios terem a mesma altura. */}
+                <TabsTrigger value={e.id} className={cn("h-auto min-w-28 flex-1 basis-0 flex-col items-center justify-start gap-1 px-4 py-2 whitespace-nowrap",
+                  e.n === 0 && "opacity-60 data-[state=active]:opacity-100")}>
+                  {e.canal ? <TagCanal id={e.canal} />
+                    : <span className="flex h-6 items-center" aria-hidden="true">{e.id === "todos" ? <Layers size={16} /> : <CircleDashed size={16} />}</span>}
                   <span className="text-lg font-semibold leading-none tabular-nums">{e.n}</span>
                   <span className="text-xs">{e.rot}</span>
-                  <span className="mono text-xs opacity-80">{fmtCompactBRL(e.v)}</span>
-                  {e.canal && e.n > 0 && (
-                    <span className={`flex items-center gap-1 text-xs ${e.feitos === e.n ? "text-success" : "opacity-80"}`}>
-                      {e.feitos === e.n ? <><Check size={12} aria-hidden="true" /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
-                    </span>
-                  )}
+                  <span className="mono text-xs opacity-80">{fmtBRL(e.v)}</span>
+                  <span className={`flex items-center gap-1 text-xs ${e.n > 0 && e.feitos === e.n ? "text-success" : "opacity-80"}`}>
+                    {!e.canal || e.n === 0 ? <span className="invisible">—</span>
+                      : e.feitos === e.n ? <><Check size={12} aria-hidden="true" /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
+                  </span>
                 </TabsTrigger>
                 {i === 1 && <ChevronRight size={16} className="shrink-0 self-center text-text-mute" aria-hidden="true" />}
               </React.Fragment>
@@ -13593,8 +13616,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                         {/* Na etapa Sienge o canal é sempre Sienge: a coluna dá lugar ao
                             status da solicitação, que é o passo antes da compra. */}
                         {!noSienge && <TableHead className="w-28 text-center">Canal</TableHead>}
-                        {noSienge && <TableHead className="w-32 text-center">Status solicitado</TableHead>}
-                        <TableHead className="w-28 text-center">{noSienge ? "Status comprado" : "Status"}</TableHead>
+                        {noSienge && <TableHead className="w-32 text-center">Solicitado</TableHead>}
+                        <TableHead className="w-36 text-center">Comprado</TableHead>
                         {noSienge && doSienge && <TableHead className="w-32 text-center">Lançado Sienge</TableHead>}
                         {/* A mae virou a primeira linha do detalhe: eram
                             duas colunas contando a mesma historia, e a
@@ -13919,8 +13942,46 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             </DropdownMenu>
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
-            {selecionados.some((r) => r.it.canalCompra) && (
-              <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
+            {/* MARCAR num menu só (23/09/2026): comprado e solicitado eram dois
+                botões iguais lado a lado; agora a barra fica numa linha e cada
+                marcação diz o que faz. As regras de cada uma são as mesmas. */}
+            {(etapa === "sienge" || selecionados.some((r) => r.it.canalCompra)) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar} title={podeEditar ? undefined : `Em ${MODO_LEITURA_DICA}`}>
+                    <Check size={14} aria-hidden="true" /> Marcar <ChevronDown size={14} aria-hidden="true" />
+                  </BotaoComMotivo>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Marcar os selecionados como</DropdownMenuLabel>
+                  {etapa === "sienge" && (
+                    <DropdownMenuItem onSelect={async () => {
+                const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
+                // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
+                const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
+                if (vao.length && !(await confirmar(desmarcar ? {
+                  titulo: `Desmarcar ${vao.length} ${vao.length === 1 ? "item solicitado" : "itens solicitados"}?`,
+                  mensagem: "Eles voltam a não solicitados no Sienge e a data da solicitação é apagada. Nada muda no Sienge.",
+                  confirmar: `Desmarcar ${vao.length}`,
+                } : {
+                  titulo: `Marcar ${vao.length} ${vao.length === 1 ? "item" : "itens"} como solicitado?`,
+                  mensagem: "Fica registrado que já foram solicitados no Sienge, com a data de hoje. Nada é enviado ao Sienge e dá para desmarcar depois.",
+                  confirmar: `Marcar ${vao.length}`, perigo: false,
+                }))) return;
+                vao.forEach((r) => mudar(r.catIdx, r.itemIdx, {
+                  solicitado: !desmarcar, solicitadoEm: desmarcar ? null : new Date().toISOString(),
+                }));
+                const presos = desmarcar ? selecionados.length - vao.length : 0;
+                if (presos > 0) await mensagem({
+                  titulo: "Nem tudo foi desmarcado",
+                  mensagem: `${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`,
+                });
+                    }}>
+                      {selecionados.every((r) => estaSolicitado(r.it)) ? "Não solicitado no Sienge" : "Solicitado no Sienge"}
+                    </DropdownMenuItem>
+                  )}
+                  {selecionados.some((r) => r.it.canalCompra) && (
+                    <DropdownMenuItem onSelect={async () => {
                 const comCanal = selecionados.filter((r) => r.it.canalCompra);
                 const desmarcar = comCanal.every((r) => r.it.comprado);
                 // Marcar só mexe em quem ainda não foi comprado (a data de quem já
@@ -13946,36 +14007,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   mensagem: `${faltam} ${faltam === 1 ? "item do Sienge ainda não foi solicitado" : "itens do Sienge ainda não foram solicitados"}: marque como solicitado (etapa Sienge) antes de comprado.`,
                 });
                 setSel(new Set());
-              }} title={podeEditar ? "Marca os selecionados que já têm canal — entra no total do Dashboard. No Sienge, só o que já foi solicitado." : `Em ${MODO_LEITURA_DICA}`}>
-                <Check size={14} aria-hidden="true" /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
-                  ? "Desmarcar comprado" : "Marcar comprado"}
-              </BotaoComMotivo>
-            )}
-            {etapa === "sienge" && (
-              <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
-                const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
-                // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
-                const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
-                if (vao.length && !(await confirmar(desmarcar ? {
-                  titulo: `Desmarcar ${vao.length} ${vao.length === 1 ? "item solicitado" : "itens solicitados"}?`,
-                  mensagem: "Eles voltam a não solicitados no Sienge e a data da solicitação é apagada. Nada muda no Sienge.",
-                  confirmar: `Desmarcar ${vao.length}`,
-                } : {
-                  titulo: `Marcar ${vao.length} ${vao.length === 1 ? "item" : "itens"} como solicitado?`,
-                  mensagem: "Fica registrado que já foram solicitados no Sienge, com a data de hoje. Nada é enviado ao Sienge e dá para desmarcar depois.",
-                  confirmar: `Marcar ${vao.length}`, perigo: false,
-                }))) return;
-                vao.forEach((r) => mudar(r.catIdx, r.itemIdx, {
-                  solicitado: !desmarcar, solicitadoEm: desmarcar ? null : new Date().toISOString(),
-                }));
-                const presos = desmarcar ? selecionados.length - vao.length : 0;
-                if (presos > 0) await mensagem({
-                  titulo: "Nem tudo foi desmarcado",
-                  mensagem: `${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`,
-                });
-              }} title={podeEditar ? "Marca os selecionados como já solicitados no Sienge" : `Em ${MODO_LEITURA_DICA}`}>
-                <Check size={14} aria-hidden="true" /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
-              </BotaoComMotivo>
+                    }}>
+                      {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado) ? "Não comprado" : "Comprado (entra no Dashboard)"}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {etapa === "sienge" && baseSienge && (
               <BotaoComMotivo variant="outline" size="sm" onClick={associarSelecionados} disabled={!podeEditar}
@@ -13987,27 +14024,35 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             {/* O pedido sai de qualquer canal — inclusive de quem ainda
                 nao tem um: as vezes a lista e pra pedir cotacao antes de
                 decidir por onde comprar. */}
-            <Button variant="outline" size="sm" onClick={() => {
-              setPedido({ itens: selecionados });
-              setTimeout(() => window.print(), 300);
-            }} title="Abre a impressão do navegador — escolha Salvar como PDF">
-              <FileText size={14} aria-hidden="true" /> PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => baixarPedidoExcel(
-              obra,
-              etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
-              selecionados, usuario)
-            } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
-              <Download size={14} aria-hidden="true" /> Excel
-            </Button>
-            {etapa === "sienge" && (
-              <Button variant="outline" size="sm"
-                onClick={() => baixarResumoCadastroSienge(obra,
-                  resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}
-                title="Excel pra quem lança o pedido no Sienge: insumo, detalhe, códigos e quantidade — iguais somam numa linha">
-                <Download size={14} aria-hidden="true" /> Resumo p/ cadastro
-              </Button>
-            )}
+            {/* EXPORTAR num menu só (23/09/2026): PDF, Excel e Resumo eram três
+                botões que ninguém usa ao mesmo tempo. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Download size={14} aria-hidden="true" /> Exportar <ChevronDown size={14} aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => {
+                  setPedido({ itens: selecionados });
+                  setTimeout(() => window.print(), 300);
+                }}>
+                  <FileText size={14} aria-hidden="true" /> PDF do pedido (impressão)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => baixarPedidoExcel(
+                  obra,
+                  etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
+                  selecionados, usuario)}>
+                  <Download size={14} aria-hidden="true" /> Excel do pedido (com valor)
+                </DropdownMenuItem>
+                {etapa === "sienge" && (
+                  <DropdownMenuItem onSelect={() => baixarResumoCadastroSienge(obra,
+                    resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}>
+                    <Download size={14} aria-hidden="true" /> Resumo para cadastro no Sienge
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Separator orientation="vertical" className="hidden h-6 sm:block" />
             <Button {...(etapa === "sienge" ? { variant: "outline" } : {})} size="sm" onClick={solicitarNoPipefy}
               title="Copia a lista dos selecionados e abre a solicitação de compra no Pipefy">
@@ -15277,8 +15322,13 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
  * embaixo do nome; no item, na propria linha. Enter salva (Shift+Enter quebra
  * a linha), como o campo de uma linha que havia antes.
  */
-function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = false, ondeFica = "verba", semTabela = false }) {
-  const [escrevendo, setEscrevendo] = useState(false);
+function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = false, ondeFica = "verba", semTabela = false,
+  escrevendo: escrevendoFora, onEscrevendo, semBotao = false }) {
+  /* `escrevendo`/`onEscrevendo`/`semBotao`: quem abre o formulário é outro
+     controle (o menu ⋯ da linha de Compras) — o "+ observação interna" some. */
+  const [escrevendoAqui, setEscrevendoAqui] = useState(false);
+  const escrevendo = escrevendoFora ?? escrevendoAqui;
+  const setEscrevendo = onEscrevendo || setEscrevendoAqui;
   const [texto, setTexto] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
@@ -15303,6 +15353,7 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
   };
 
   if (semTabela && !lista.length) return null;
+  if (semBotao && !escrevendo && !lista.length) return null;
 
   return (
     <div className={cn("flex flex-col gap-1", ondeFica === "verba" ? "px-4 pb-3 pl-10" : "mt-1")} onClick={(e) => e.stopPropagation()}>
@@ -15339,7 +15390,7 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
           </div>
         </form>
       ) : (
-        onAdicionar && (
+        onAdicionar && !semBotao && (
           <Button variant="ghost" size="sm" type="button" className="self-start" onClick={() => setEscrevendo(true)}
             title={ondeFica === "item" ? "Deixar uma observação interna neste produto" : "Deixar uma observação interna nesta verba"}>
             <Plus size={14} aria-hidden="true" /> observação interna
@@ -15366,6 +15417,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
     : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
     : "Marcar como solicitado no Sienge";
   const alternarSolicitado = () => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() });
+  const [escrevendoObs, setEscrevendoObs] = useState(false);
 
   // O produto que foi trocado: riscado, em cinza, sem ação nenhuma.
   if (it.troca) {
@@ -15409,47 +15461,73 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         <Checkbox checked={!!selecionado} onCheckedChange={onSelecionar} aria-label="Selecionar produto" />
       </TableCell>
       <TableCell className="mono text-xs text-text-mute">{codigoVisivel(it)}</TableCell>
+      {/* A LINHA COMPACTA (23/09/2026): descrição numa linha (inteira na
+          dica), os dados do produto numa linha cinza embaixo e as ações
+          raras (trocar, observação) no menu ⋯ — a linha caiu para menos da
+          metade da altura e cabem o dobro de produtos na tela. */}
       <TableCell>
-        <div className="text-sm font-semibold text-text">{it.desc}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          {it.aditivo && (
-            <Badge tone="purple" title={it.descCompleta ? `Texto do cliente: ${it.descCompleta}` : undefined}>
-              <FileText size={12} aria-hidden="true" /> aditivo {it.aditivo}
-            </Badge>
-          )}
-          {it.ambiente && <span className="text-xs text-text-mute">{it.ambiente}</span>}
-          {/* Quem vende. Na planilha do Executivo a coluna se chama
-              Fornecedor e vira `marca` no item; importado de PDF ela vem vazia. */}
-          {it.marca
-            ? <Badge tone="neutral" title={it.marca}>Fornecedor: {nomeDoFornecedor(it)}</Badge>
-            : <span className="text-xs text-text-mute">sem fornecedor</span>}
-          {troca?.tipo === "nova" && (
-            <span className="inline-flex items-center gap-1 text-xs text-text-mute">
-              troca de {troca.de}{troca.dif != null && Math.abs(troca.dif) >= 0.005
-                ? ` · ${troca.dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(troca.dif))}` : ""}
-              {podeEditar && !it.comprado && onDesfazerTroca && (
-                <Button variant="ghost" size="sm" type="button" onClick={onDesfazerTroca}>desfazer</Button>
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="line-clamp-1 text-sm font-semibold text-text" title={it.desc}>{it.desc}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-mute">
+              {it.aditivo && (
+                <Badge tone="purple" title={it.descCompleta ? `Texto do cliente: ${it.descCompleta}` : undefined}>
+                  <FileText size={12} aria-hidden="true" /> aditivo {it.aditivo}
+                </Badge>
               )}
-            </span>
-          )}
-          {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
-            <Button variant="ghost" size="sm" type="button" onClick={onAbrirTroca} title="Trocar por outro produto (aprovado com o executivo da obra)">
-              <ArrowLeftRight size={14} aria-hidden="true" /> trocar
-            </Button>
+              {/* Quem vende: na planilha do Executivo a coluna Fornecedor vira
+                  `marca` no item; a especificação separa peças de mesmo nome. */}
+              <span className="min-w-0" title={[it.ambiente, it.marca, it.especificacao].filter(Boolean).join(" · ")}>
+                {[it.ambiente, it.marca ? nomeDoFornecedor(it) : "sem fornecedor", it.especificacao].filter(Boolean).join(" · ")}
+              </span>
+              {obs.length > 0 && !escrevendoObs && (
+                <span className="inline-flex items-center gap-1 text-obs"><MessageSquare size={12} aria-hidden="true" /> {obs.length}</span>
+              )}
+            </div>
+            {troca?.tipo === "nova" && (
+              <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-text-mute">
+                troca de {troca.de}{troca.dif != null && Math.abs(troca.dif) >= 0.005
+                  ? ` · ${troca.dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(troca.dif))}` : ""}
+                {" · "}{qtdFmt} {it.un} × {fmtBRL(it.custoMaterial ?? (qtdLinha > 0 ? material / qtdLinha : 0))}
+              </div>
+            )}
+          </div>
+          {/* Ações raras da linha, num menu: trocar o produto, deixar uma
+              observação e desfazer a troca. */}
+          {(podeEditar || onAdicionarObs) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" type="button" className="h-7 w-7 shrink-0 text-text-mute" aria-label={`Mais ações — ${it.desc}`}>
+                  <MoreHorizontal size={16} aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {onAdicionarObs && (
+                  <DropdownMenuItem onSelect={() => setEscrevendoObs(true)}>
+                    <MessageSquare size={14} aria-hidden="true" /> Observação interna
+                  </DropdownMenuItem>
+                )}
+                {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
+                  <DropdownMenuItem onSelect={onAbrirTroca}>
+                    <ArrowLeftRight size={14} aria-hidden="true" /> Trocar por outro produto
+                  </DropdownMenuItem>
+                )}
+                {troca?.tipo === "nova" && podeEditar && !it.comprado && onDesfazerTroca && (
+                  <DropdownMenuItem onSelect={onDesfazerTroca}>
+                    <Undo2 size={14} aria-hidden="true" /> Desfazer a troca
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
-        {troca?.tipo === "nova" && (
-          <div className="mt-1 text-xs text-text-mute">
-            {qtdFmt} {it.un} × {fmtBRL(it.custoMaterial ?? (qtdLinha > 0 ? material / qtdLinha : 0))}
-          </div>
-        )}
-        {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
-            "Cuba de apoio" e todas as cubas de apoio que existem. */}
-        {it.especificacao && <div className="mt-1 text-xs text-text-mute">{it.especificacao}</div>}
         {/* A OBSERVACAO DO PRODUTO, na propria linha — e' aqui que quem vai
-            comprar esta' olhando. */}
-        <Observacoes lista={obs} semTabela={obsSemTabela} usuario={usuario} souAdmin={souAdmin}
-          ondeFica="item" onAdicionar={onAdicionarObs} onApagar={onApagarObs} />
+            comprar esta' olhando. Abre pelo menu ⋯. */}
+        {(escrevendoObs || obs.length > 0) && (
+          <Observacoes lista={obs} semTabela={obsSemTabela} usuario={usuario} souAdmin={souAdmin}
+            ondeFica="item" onAdicionar={onAdicionarObs} onApagar={onApagarObs}
+            semBotao escrevendo={escrevendoObs} onEscrevendo={setEscrevendoObs} />
+        )}
       </TableCell>
       <TableCell className="mono text-center tabular-nums">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{it.un}</span></TableCell>
       <TableCell className="mono text-right tabular-nums">{fmtBRL(material)}</TableCell>
@@ -15460,7 +15538,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       )}
       {noSienge && (
         <TableCell className="text-center">
-          <EstadoAcao feito={estaSolicitado(it)} rotuloFeito="solicitado" acao="solicitar"
+          <EstadoAcao rotuloItem={`${codigoVisivel(it)} ${it.desc}`} feito={estaSolicitado(it)} rotuloFeito="solicitado" acao="solicitar"
             disabled={!podeEditar || !podeMudarSolicitado(it)}
             onClick={alternarSolicitado} title={tituloSolicitado} />
         </TableCell>
@@ -15475,11 +15553,11 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               (pedido de 15/09/2026). A regra é a mesma: primeiro solicitado,
               depois comprado. */}
           {!noSienge && it.canalCompra === "sienge" && (
-            <EstadoAcao feito={estaSolicitado(it)} rotuloFeito="solicitado" rotuloPendente="não solicitado" acao="solicitar"
+            <EstadoAcao rotuloItem={`${codigoVisivel(it)} ${it.desc}`} feito={estaSolicitado(it)} rotuloFeito="solicitado" rotuloPendente="não solicitado" acao="solicitar"
               disabled={!podeEditar || !podeMudarSolicitado(it)}
               onClick={alternarSolicitado} title={tituloSolicitado} />
           )}
-          <EstadoAcao feito={!!it.comprado} rotuloFeito="comprado" acao="marcar comprado"
+          <EstadoAcao rotuloItem={`${codigoVisivel(it)} ${it.desc}`} feito={!!it.comprado} rotuloFeito="comprado" acao="marcar comprado"
             disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}
             onClick={() => onItemChange({ comprado: !it.comprado, compradoEm: it.comprado ? null : new Date().toISOString() })}
             title={!podeEditar ? `${it.comprado ? quando("Comprado", it.compradoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
@@ -25085,6 +25163,9 @@ export default function App() {
         .tag-canal[data-canal="cortinas"] { color: var(--alert); background: var(--alert-soft); }
         .tag-canal[data-canal="gc"] { color: var(--indigo); background: var(--indigo-soft); }
         .tag-canal[data-canal="estoque"] { color: var(--mod-settings); background: color-mix(in srgb, var(--mod-settings) 14%, transparent); }
+        /* Na aba ativa do funil (fundo da marca) a etiqueta ganha fundo claro:
+           o tom suave dela sumia sobre o azul. */
+        [role="tab"][data-state="active"] .tag-canal { background: var(--bg); }
         .pill { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-contratos { background: var(--panel); color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
@@ -26046,7 +26127,10 @@ export default function App() {
                         nome ("Allysson Pere…") e sobrava vazio ao lado de "sem
                         data". Cada bloco mede pelo conteúdo e quebra linha
                         quando falta espaço. */}
-                    <span className="mt-2 flex w-full flex-wrap gap-x-10 gap-y-3">
+                    {/* Numa linha só (23/09/2026): não quebra; com pouco espaço
+                        os nomes encolhem com "…" (o nome inteiro está no
+                        seletor), e a entrega nunca encolhe. */}
+                    <span className="equipe-da-obra mt-2 flex w-full flex-nowrap justify-between gap-x-6 [&>*:first-child]:shrink-0">
                       <span className="flex min-w-0 flex-col gap-1">
                         <span className="label-mono text-text-mute">Entrega</span>
                         {obra.dataEntrega ? (() => {

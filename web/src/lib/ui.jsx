@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
   DateField, Popover, PopoverTrigger, PopoverContent, Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@group-ws/ws-ui";
-import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown, Info } from "lucide-react";
+import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown, Info, Undo2 } from "lucide-react";
 
 /* CAMPO DE DATA DO DS, controlado.
 
@@ -294,16 +294,33 @@ export function KpiBotao({ ativo, onClick, label, value, hint, tone = "neutral",
    Substitui o `.pill-btn`, que era selo e botao ao mesmo tempo. `disabled`
    trava so' a acao (modo leitura, pre-requisito nao cumprido); o selo
    continua contando o estado. */
-export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", acao, desfazer = "desfazer", disabled, onClick, title, tone = "success", className = "" }) {
+export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", acao, desfazer = "desfazer", disabled, onClick, title, tone = "success", className = "", rotuloItem }) {
+  /* O ESTADO VIRA AÇÃO (23/09/2026): antes era um selo "pendente" com a
+     ação em texto solto embaixo, que não parecia botão. Agora, pendente,
+     é o próprio botão com a ação ("Solicitar"); feito, é o selo verde com
+     o ✓ e um desfazer pequeno ao lado. `rotuloPendente` fica para quem
+     não pode agir (o selo continua dizendo o estado). */
+  const acaoMaiuscula = acao ? acao.charAt(0).toUpperCase() + acao.slice(1) : acao;
+  if (feito) {
+    return (
+      <span className={`inline-flex items-center gap-1 ${className}`}>
+        <Badge tone={tone} title={title}><Check size={12} aria-hidden="true" />{rotuloFeito}</Badge>
+        {!disabled && (
+          <Button variant="ghost" size="icon" type="button" className="h-6 w-6 text-text-mute"
+            onClick={onClick} title={title} aria-label={`${desfazer}${rotuloItem ? ` — ${rotuloItem}` : ""}`}>
+            <Undo2 size={12} aria-hidden="true" />
+          </Button>
+        )}
+      </span>
+    );
+  }
   return (
-    <div className={`inline-flex flex-col items-center gap-1 ${className}`}>
-      <Badge tone={feito ? tone : "neutral"} title={title}>
-        {feito && <Check size={12} />}{feito ? rotuloFeito : rotuloPendente}
-      </Badge>
-      <BotaoComMotivo variant="ghost" size="sm" type="button" disabled={disabled} onClick={onClick} title={title}>
-        {feito ? desfazer : acao}
+    <span className={`inline-flex ${className}`}>
+      <BotaoComMotivo variant="outline" size="sm" type="button" disabled={disabled} onClick={onClick} title={title}
+        aria-label={rotuloItem ? `${acaoMaiuscula} — ${rotuloItem}` : undefined}>
+        {acaoMaiuscula}
       </BotaoComMotivo>
-    </div>
+    </span>
   );
 }
 

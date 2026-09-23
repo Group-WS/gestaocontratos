@@ -635,3 +635,13 @@ header div:has(> [cmdk-input]) {
 .main.em-tela-cheia:has(> .faixa-da-edicao) .conteudo-da-aba > .filtros-da-aba {
   top: 3.75rem;
 }
+
+/* A LINHA DA EQUIPE OCUPA A LARGURA DO CABEÇALHO (23/09/2026).
+
+   A descrição do PageShell do DS tem teto de leitura (max-w-2xl, 672px),
+   bom para frase e ruim para a linha Entrega · GC · Taylor Made ·
+   Executivo, que é dado e não texto: presa em 672px, cortava os nomes.
+   Só o parágrafo que contém essa linha perde o teto. */
+p:has(.equipe-da-obra) {
+  max-width: none;
+}
