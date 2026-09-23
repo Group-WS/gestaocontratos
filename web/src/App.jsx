@@ -21190,7 +21190,7 @@ function PageShell({ description, actions, className, toolbar, toolbarSecondary,
       /* Alinhadas pelo TOPO: as ações da tela costumam ser uma coluna (o
          botão e, embaixo, o aviso de modo leitura); centralizado, o botão
          de tela cheia ficava no meio dessa coluna, fora da linha. */
-      actions={actions || botao ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}{botao}</div> : undefined}
+      actions={actions ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}</div> : undefined}
       /* O MESMO ESQUELETO EM TODAS AS ABAS (23/09/2026): cabeçalho → avisos
          → filtros e cards → tabelas, com o mesmo espaço pequeno entre eles.
          Os filtros saem da barra do PageShell (que ficava ACIMA dos avisos)
@@ -21198,9 +21198,15 @@ function PageShell({ description, actions, className, toolbar, toolbarSecondary,
          primeiro, os filtros logo depois (fixos no topo ao rolar) e iguala
          o espaço entre os blocos. */
       contentClassName={cn(contentClassName, "conteudo-da-aba")}>
-      {(toolbar || toolbarSecondary) && (
+      {/* O botão de tela cheia mora NA LINHA DOS FILTROS, na ponta direita
+          (23/09/2026): é o que muda a vista da lista, como os filtros — e
+          fica ao alcance quando a barra deles está fixa no topo. */}
+      {(toolbar || toolbarSecondary || botao) && (
         <div className="filtros-da-aba flex flex-col gap-2">
-          {toolbar && <div className="flex flex-wrap items-center gap-3">{toolbar}</div>}
+          <div className="flex items-start gap-3">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">{toolbar}</div>
+            {botao}
+          </div>
           {toolbarSecondary && <div className="flex flex-wrap items-center gap-2">{toolbarSecondary}</div>}
         </div>
       )}
