@@ -15,6 +15,9 @@
  *     trocar a folha de uma verba ja' ligada vira erro de chave repetida.
  *  3. Quem importou e quem ligou a verba vem do LOGIN (SEG-13), nunca do
  *     corpo do pedido — que, alias, e' recusado se vier com campo a mais.
+ *  4. O REGISTRO (23/09/2026): cada gesto vira uma linha em
+ *     `sienge_eap_evento`, e o codigo que SAI e' lido antes de escrever —
+ *     e' o que separa "ligou" de "trocou". Registrar nunca derruba o gesto.
  *
  * O Supabase aqui e' de mentira: o que se confere e' QUAL comando a rota
  * manda, com quais filtros e em que ordem. Banco de verdade e' assunto dos
@@ -38,11 +41,23 @@ const RESPOSTAS = {
     { verba_num: "20", codigo: "04.001.001.001" },
     { verba_num: "21", codigo: "99.999.999.999" },
   ],
+  sienge_eap_evento: [],
+};
+
+/* A linha que o `.maybeSingle()` devolve por tabela: e' assim que a rota
+   descobre o nome da versao e o codigo que a verba tinha ANTES. */
+const UNICOS = {
+  sienge_eap_versao: { id: 77, nome: "EAP INICIAL", padrao: false },
+  sienge_eap_mapa: { codigo: "04.000.000.000" },
 };
 
 function consulta(tabela) {
   const q = { filtros: {} };
-  q.select = (colunas) => { q.colunas = colunas; return q; };
+  q.select = (colunas, opcoes) => { q.colunas = colunas; q.contagem = opcoes; return q; };
+  q.maybeSingle = () => {
+    comandos.push({ tabela, op: "select", colunas: q.colunas, filtros: { ...q.filtros }, unico: true });
+    return Promise.resolve({ data: UNICOS[tabela] ?? null, error: null });
+  };
   q.eq = (coluna, valor) => { q.filtros[coluna] = valor; return q; };
   q.order = () => q;
   q.single = () => {
@@ -81,7 +96,10 @@ function consulta(tabela) {
   // Consulta sem `.single()`: e' aqui que o `await` cai.
   q.then = (ok, erro) => {
     comandos.push({ tabela, op: "select", colunas: q.colunas, filtros: { ...q.filtros } });
-    return Promise.resolve({ data: RESPOSTAS[tabela] || [], error: null }).then(ok, erro);
+    const linhas = RESPOSTAS[tabela] || [];
+    // `select(col, { count: "exact", head: true })` conta em vez de trazer.
+    const resposta = q.contagem?.head ? { data: null, count: linhas.length, error: null } : { data: linhas, error: null };
+    return Promise.resolve(resposta).then(ok, erro);
   };
   return q;
 }
@@ -166,6 +184,42 @@ const servidor = app.listen(0, async () => {
     [200, "20"]);
   conf("campo a mais no corpo e' recusado (o e-mail nao entra por aqui)",
     (await pedir("PUT", "/api/eap/mapa", { versaoId: 77, verbaNum: "20", codigo: "04.001.001.001", por: "outro@x.com" })).status, 400);
+
+  console.log("\n— o registro: quem mexeu —");
+  const evento = (n = 1) => [...comandos].reverse().filter((c) => c.tabela === "sienge_eap_evento" && c.op === "insert")[n - 1];
+
+  await pedir("PUT", "/api/eap/mapa", { versaoId: 77, verbaNum: "20", codigo: "04.001.001.002" });
+  conf("trocar a folha guarda o codigo que saiu e o que entrou",
+    [evento().linhas.acao, evento().linhas.codigo_anterior, evento().linhas.codigo],
+    ["trocou", "04.000.000.000", "04.001.001.002"]);
+  conf("quem mexeu vem do login, nunca do pedido", evento().linhas.autor, "quem@chamou.com.br");
+  conf("reconfirmar a MESMA folha nao vira linha",
+    (await pedir("PUT", "/api/eap/mapa", { versaoId: 77, verbaNum: "20", codigo: "04.000.000.000" }), evento().linhas.codigo),
+    "04.001.001.002");
+  await pedir("PUT", "/api/eap/mapa", { versaoId: 77, verbaNum: "20", codigo: null });
+  conf("desligar guarda o que a verba apontava", [evento().linhas.acao, evento().linhas.codigo_anterior], ["desligou", "04.000.000.000"]);
+  conf("de onde veio o gesto entra na linha",
+    (await pedir("PUT", "/api/eap/mapa", { versaoId: 77, verbaNum: "20", codigo: "04.001.001.001", obraCodigo: "2195" }), evento().linhas.obra_codigo),
+    "2195");
+  await pedir("PUT", "/api/eap/versoes/77/padrao");
+  conf("tornar padrao vira linha", evento().linhas.acao, "tornou_padrao");
+
+  const registro = await pedir("POST", "/api/eap/versoes/77/registro", { nItens: 130, nFolhas: 40, herdadas: 34, orfaos: ["21"] });
+  conf("a importacao fecha em UMA linha, com os numeros",
+    [registro.status, evento().linhas.acao, evento().linhas.detalhe],
+    [200, "importou", { nItens: 130, nFolhas: 40, herdadas: 34, orfaos: ["21"], herdouDe: null }]);
+
+  const excluida = await pedir("DELETE", "/api/eap/versoes/77");
+  conf("excluir versao responde e registra ANTES de apagar",
+    [excluida.status, evento().linhas.acao, evento().linhas.versao_nome],
+    [200, "excluiu", "EAP INICIAL"]);
+  conf("o delete e' da versao pedida", ultimo("delete", "sienge_eap_versao").filtros, { id: 77 });
+
+  // A padrao e' a EAP com que TODA solicitacao sai: apagar sem querer a de
+  // baixo do pe' de quem esta enviando e' o pior jeito de descobrir isso.
+  UNICOS.sienge_eap_versao = { id: 77, nome: "EAP INICIAL", padrao: true };
+  conf("a versao PADRAO nao se exclui", (await pedir("DELETE", "/api/eap/versoes/77")).status, 409);
+  UNICOS.sienge_eap_versao = { id: 77, nome: "EAP INICIAL", padrao: false };
 
   console.log("\n— o que o select pede —");
   const selects = comandos.filter((c) => c.op === "select" || (c.op === "insert" && c.colunas));

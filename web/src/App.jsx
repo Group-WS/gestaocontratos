@@ -49,7 +49,8 @@ import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 // A EAP do SIENGE (apropriação do orçamento) — outra coisa da `lib/eap`
 // acima, que é a EAP da casa. Ver o cabeçalho de lib/eapApropriacao.js.
 import { parseEapSienge, folhasDaEap, sugerirFolha, ehMaterial } from "./lib/eapSienge.js";
-import { listarVersoesEap, carregarEap, importarEap, definirVersaoPadrao, definirMapaVerba } from "./lib/eapApropriacao.js";
+import { listarVersoesEap, carregarEap, importarEap, definirVersaoPadrao, definirMapaVerba,
+  listarEventosEap, excluirVersaoEap } from "./lib/eapApropriacao.js";
 import { montarSolicitacaoSienge, corpoDoEnvio, casarDetalhes } from "./lib/siengeSolicitacao.js";
 import { abrirEnvio, fecharEnvio, enviosPendentes, envioComMesmoConteudo, reconciliarEnvio,
   listarEnviosSienge, assinaturaDoEnvio, novaChaveIdempotencia } from "./lib/siengeSolicitacoes.js";
@@ -14427,7 +14428,9 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
     setMapa((m) => { const n = { ...m }; if (codigo) n[verbaNum] = codigo; else delete n[verbaNum]; return n; });
     setErroMapa(null);
     try {
-      await definirMapaVerba(eap.versao.id, verbaNum, codigo, usuario);
+      // O registro precisa saber que o gesto veio de dentro desta obra,
+      // e não da tela EAP Sienge — o mapa é o mesmo.
+      await definirMapaVerba(eap.versao.id, verbaNum, codigo, { obraCodigo: obra.codigo });
     } catch (e) {
       setMapa(antes); // o cadastro recusou: a tela não pode dizer o contrário
       setErroMapa(e.message || String(e));
@@ -20290,7 +20293,7 @@ function arvoreDaEap(itens) {
   return raizes;
 }
 
-function EapSiengeView({ usuario }) {
+function EapSiengeView({ usuario, souAdmin = false }) {
   const [versoes, setVersoes] = useState([]);
   const [versaoId, setVersaoId] = useState(null);
   const [itens, setItens] = useState([]);
@@ -20302,6 +20305,11 @@ function EapSiengeView({ usuario }) {
   const [salvando, setSalvando] = useState(false);
   const [busca, setBusca] = useState("");
   const [abertos, setAbertos] = useState(() => new Set());
+  // Excluir versão é em dois tempos, na própria linha: o primeiro clique
+  // arma, o segundo confirma. Some ao trocar de versão.
+  const [excluindo, setExcluindo] = useState(false);
+  // Sobe a cada gesto gravado: é o que faz o registro se atualizar sozinho.
+  const [gestos, setGestos] = useState(0);
   const inputRef = useRef(null);
 
   const versao = versoes.find((v) => v.id === versaoId) || null;
@@ -20389,7 +20397,8 @@ function EapSiengeView({ usuario }) {
     const antes = mapa;
     setMapa((m) => { const n = { ...m }; if (codigo) n[verbaNum] = codigo; else delete n[verbaNum]; return n; });
     try {
-      await definirMapaVerba(versaoId, verbaNum, codigo, usuario);
+      await definirMapaVerba(versaoId, verbaNum, codigo);
+      setGestos((n) => n + 1);
     } catch (e) {
       setMapa(antes); // o banco recusou: a tela não pode ficar dizendo o contrário
       setErro(e.message || String(e));
@@ -20400,7 +20409,21 @@ function EapSiengeView({ usuario }) {
     try {
       await definirVersaoPadrao(versaoId);
       await recarregarVersoes(versaoId);
+      setGestos((n) => n + 1);
     } catch (e) { setErro(e.message || String(e)); }
+  }
+
+  /* Excluir a versão aberta. Nunca a padrão — é com ela que as solicitações
+     de compra saem; o servidor recusa e o botão nem aparece. */
+  async function excluirVersao() {
+    setErro(null);
+    try {
+      await excluirVersaoEap(versaoId);
+      setExcluindo(false);
+      setAviso("Versão excluída. O registro guarda o que ela tinha.");
+      await recarregarVersoes();
+      setGestos((n) => n + 1);
+    } catch (e) { setExcluindo(false); setErro(e.message || String(e)); }
   }
 
   const semFolha = verbas.filter((v) => !mapa[v.num]);
@@ -20490,6 +20513,21 @@ function EapSiengeView({ usuario }) {
                 onChange={(v) => setVersaoId(Number(v))} compacto className="w-full sm:w-96" />
               {versao && !versao.padrao && (
                 <Button variant="outline" size="sm" onClick={tornarPadrao}>Tornar padrão</Button>
+              )}
+              {souAdmin && versao && !versao.padrao && (
+                excluindo ? (
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setExcluindo(false)}>Cancelar</Button>
+                    <Button variant="danger" size="sm" onClick={excluirVersao}>
+                      <Trash2 size={14} aria-hidden="true" /> Confirmar exclusão
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={() => setExcluindo(true)}
+                    title="A versão padrão não pode ser excluída — é com ela que as solicitações saem">
+                    <Trash2 size={14} aria-hidden="true" /> Excluir versão
+                  </Button>
+                )
               )}
             </div>
           )}
@@ -20598,8 +20636,147 @@ function EapSiengeView({ usuario }) {
           </div>
         </Card>
       )}
+
+      {souAdmin && <RegistroDoEap gestos={gestos} />}
     </>
   );
+}
+
+/* O registro do EAP — quem mexeu, do mais novo pro mais antigo.
+
+   Existe porque o cadastro guardava só o ESTADO de hoje: trocar a folha de
+   uma verba apagava o autor anterior, desligar a verba apagava a linha, e
+   "Tornar padrão" — que decide a EAP com que TODA solicitação de compra sai
+   — não deixava carimbo nenhum.
+
+   Só administrador vê (a barreira de verdade é o RLS da tabela e a rota;
+   aqui a tela só evita pedir o que vai voltar 403). */
+function RegistroDoEap({ gestos }) {
+  const [eventos, setEventos] = useState([]);
+  const [semTabela, setSemTabela] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [tudo, setTudo] = useState(false);
+
+  const QUANTOS = 12;
+
+  useEffect(() => {
+    let vivo = true;
+    setCarregando(true);
+    (async () => {
+      try {
+        const r = await listarEventosEap();
+        if (!vivo) return;
+        setEventos(r.eventos || []);
+        setSemTabela(!!r.semTabela);
+        setErro(null);
+      } catch (e) {
+        if (vivo) setErro(e.message || String(e));
+      } finally {
+        if (vivo) setCarregando(false);
+      }
+    })();
+    return () => { vivo = false; };
+  }, [gestos]);
+
+  const visiveis = tudo ? eventos : eventos.slice(0, QUANTOS);
+
+  return (
+    <Card className="p-0">
+      <CardHeader className="px-4 pt-4">
+        <div className="min-w-0">
+          <CardTitle>Quem mexeu</CardTitle>
+          <CardDescription>
+            Cada importação, cada "tornar padrão" e cada verba ligada, trocada ou desligada — aqui
+            e dentro das obras. Só administrador vê, e nada aqui se edita nem se apaga.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <div className="px-4 pb-4">
+        {carregando ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : erro ? (
+          <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>
+        ) : semTabela ? (
+          <Alert tone="warning">
+            <AlertDescription>
+              O registro ainda não existe no banco — falta rodar <span className="mono">supabase/sienge-eap-evento.sql</span>.
+              O cadastro funciona normalmente; só o rastro não grava.
+            </AlertDescription>
+          </Alert>
+        ) : !eventos.length ? (
+          <p className="text-sm text-text-mute">Nada registrado ainda — o registro começa no próximo gesto.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-44">Quando</TableHead>
+                  <TableHead className="w-64">Quem</TableHead>
+                  <TableHead>O que fez</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visiveis.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell className="text-xs text-text-mute">
+                      {e.criado_em ? new Date(e.criado_em).toLocaleString("pt-BR") : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-text">{e.autor}</TableCell>
+                    <TableCell className="text-sm text-text">
+                      <div className="flex flex-col items-start gap-1">
+                        {fraseDoEvento(e)}
+                        {e.obra_codigo && <Badge tone="neutral">na obra {e.obra_codigo}</Badge>}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {eventos.length > QUANTOS && (
+              <div className="pt-3">
+                <Button variant="outline" size="sm" onClick={() => setTudo((v) => !v)}>
+                  {tudo ? "Mostrar menos" : `Mostrar todos (${eventos.length})`}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* O gesto em português. A linha do registro guarda os fatos (o código que
+   saiu, o que entrou); a frase é só leitura. */
+function fraseDoEvento(e) {
+  const versao = e.versao_nome || (e.versao_id ? `versão ${e.versao_id}` : "a versão");
+  const d = e.detalhe || {};
+  switch (e.acao) {
+    case "importou": {
+      const orfaos = Array.isArray(d.orfaos) ? d.orfaos : [];
+      return `Importou ${versao} — ${d.nItens ?? "?"} itens, ${d.nFolhas ?? "?"} apropriáveis`
+        + (d.herdadas ? `, ${d.herdadas} verbas herdadas` : "")
+        + (orfaos.length ? `, ${orfaos.length} sem ligação (${orfaos.join(", ")})` : "");
+    }
+    case "tornou_padrao":
+      return `Tornou padrão ${versao} — é com ela que as solicitações passam a sair`;
+    case "ligou":
+      return `Ligou a verba ${e.verba_num} a ${e.codigo}`;
+    case "trocou":
+      return `Trocou a verba ${e.verba_num} de ${e.codigo_anterior} para ${e.codigo}`;
+    case "desligou":
+      return `Desligou a verba ${e.verba_num} (era ${e.codigo_anterior})`;
+    case "excluiu":
+      return `Excluiu ${versao}`
+        + (d.nItens != null ? ` — ${d.nItens} itens e ${d.nVerbasLigadas ?? 0} verbas ligadas foram junto` : "");
+    default:
+      return e.acao;
+  }
 }
 
 function BancoPrecosView({ usuario }) {
@@ -25734,7 +25911,7 @@ export default function App() {
           ) : modulo === "eap" ? (
           <>
           <PageShell crumb="Integração Sienge" title="EAP Sienge" description="Onde cada produto é apropriado no orçamento — o que a solicitação de compra exige." contentClassName="flex flex-col gap-6">
-            <EapSiengeView usuario={usuario} />
+            <EapSiengeView usuario={usuario} souAdmin={souAdmin} />
           </PageShell>
           </>
           ) : modulo === "a_contratar" ? (

@@ -25,6 +25,7 @@ usada na planilha, no depara e no Catálogo.
 | Perfil | O que pode | Onde é conferido |
 |---|---|---|
 | Admin master, Administrador, Geral, GC | ver, importar versão nova, tornar padrão, ligar/desligar verba (aqui e no envio da solicitação) | a rota só exige ser membro (`web/api/_lib/rotas/eap.js:80`); quem barra a escrita é o RLS "escrevo referencia" (`supabase/rls-perfis-complemento.sql:92-96`) |
+| Admin master, Administrador | além do acima: ver o painel **"Quem mexeu"** e **excluir versão** (nunca a padrão) | `exigirAdministrador` (`web/api/_lib/auth.js`) e o RLS de `sienge_eap_evento` |
 | Taylor Made | vê a tela e os botões; toda gravação é recusada pelo banco | RLS (a tela não esconde os botões) |
 | Mehoo, Canal de compra | não veem o módulo | tela (`web/src/lib/pessoas.js:253`, `:262`) |
 
@@ -76,6 +77,7 @@ O GC edita um cadastro **global**: a EAP e o mapa valem para todas as obras (ver
 | Prévia da importação | detalhe de confirmação | `/eap` | `EapSiengeView` |
 | Verbas da casa → item do orçamento (seletor de versão, "Tornar padrão") | configurações (tabela editável) | `/eap` | `EapSiengeView` |
 | A EAP como o Sienge mostra (árvore com busca) | detalhe (árvore) | `/eap` | `EapSiengeView`, `arvoreDaEap` |
+| Quem mexeu (registro; só administrador) | configurações (tabela de leitura) | `/eap` | `RegistroDoEap` |
 | Apropriação no orçamento, na janela do envio | formulário | obra, Compras de Produtos → Sienge | `ModalSolicitarSienge` (`App.jsx:14114`) |
 
 ## Estados e mensagens
@@ -89,6 +91,10 @@ O GC edita um cadastro **global**: a EAP e o mapa valem para todas as obras (ver
 - **Importação concluída:** "EAP importada e o mapa das verbas foi herdado inteiro." ou "EAP importada. N
   verbas perderam a ligação porque o código não existe nesta versão: 20 → 04.001.001.001, … Refaça
   abaixo."
+- **Registro:** "Nada registrado ainda — o registro começa no próximo gesto."; sem o SQL rodado, aviso
+  amarelo "O registro ainda não existe no banco — falta rodar `supabase/sienge-eap-evento.sql`".
+- **Excluir versão:** dois cliques ("Excluir versão" → "Confirmar exclusão"); a padrão não mostra o
+  botão, e o servidor recusa com "Esta é a versão padrão — … Torne outra padrão antes de excluir."
 - **Erros:** "A planilha não traz a unidade construtiva — sem ela não dá pra apropriar."; "A planilha não
   tem item apropriável (nível 4)."; recusas do banco em aviso vermelho.
 - **Nas Compras:** "Nenhuma EAP do Sienge cadastrada — vá em EAP Sienge (menu lateral) e importe o
@@ -104,6 +110,16 @@ Tabelas em `supabase/sienge_eap.sql`:
 | `sienge_eap_versao` | `id`, `nome`, `unidade_id`, `obra_modelo`, `versao_orcamento`, `data_base`, `padrao`, `importado_por` (do login), `importado_em` | uma importação; **uma só padrão** (índice único parcial, `sienge_eap.sql:40-41`) |
 | `sienge_eap_item` | `versao_id`, `codigo`, `descricao`, `nivel` (1–4), `unidade`, `folha` | a árvore; chave `(versao_id, codigo)` |
 | `sienge_eap_mapa` | `versao_id`, `verba_num`, `codigo`, `definido_por` (do login), `definido_em` | verba da casa → folha; chave `(versao_id, verba_num)`; FK composta impede apontar para código de outra versão (`sienge_eap.sql:64-73`) |
+
+Registro em `supabase/sienge-eap-evento.sql` (23/09/2026):
+
+| Tabela | Campos | Significado |
+|---|---|---|
+| `sienge_eap_evento` | `acao` (`importou`, `tornou_padrao`, `ligou`, `trocou`, `desligou`, `excluiu`), `versao_id`, `versao_nome`, `verba_num`, `codigo`, `codigo_anterior`, `obra_codigo`, `detalhe` (jsonb), `autor` (do login), `criado_em` | **quem mexeu**; só cresce (sem policy de update nem de delete); **só administrador lê** |
+
+**Sem FK para a versão, de propósito:** o registro precisa sobreviver à exclusão da versão — é
+justamente o caso em que ele é a única memória do que existia. Por isso a linha guarda também o
+**nome** da versão, congelado, e a exclusão é gravada **antes** do `delete`.
 
 **Seed:** `supabase/sienge_eap_seed.sql`, gerado por `web/scripts/gerar-seed-eap.mjs` com o mesmo parser
 da tela, planta a versão "EAP INICIAL - TKWS INTERIORES" (unidade construtiva 9, 127 itens, 53 folhas)
@@ -121,7 +137,36 @@ propósito (02, 13 e 29), por ambiguidade (ADR-002, decisão 5).
 | POST | `/api/eap/versoes/:id/itens` | idem | `eap.js:155` | insere um bloco da árvore (até 500) |
 | POST | `/api/eap/versoes/:id/herdar` | idem | `eap.js:185` | copia o mapa da versão indicada para as folhas que existem; devolve os órfãos |
 | PUT | `/api/eap/versoes/:id/padrao` | idem | `eap.js:231` | desmarca a padrão atual e marca esta (dois comandos) |
-| PUT | `/api/eap/mapa` | idem | `eap.js:245` | liga (upsert) ou desliga (delete) uma verba |
+| PUT | `/api/eap/mapa` | idem | `eap.js:323` | liga (upsert) ou desliga (delete) uma verba; `obraCodigo` opcional diz de onde veio o gesto |
+| POST | `/api/eap/versoes/:id/registro` | idem | `eap.js:371` | fecha o registro da importação numa linha (itens, folhas, herdadas, órfãs) |
+| DELETE | `/api/eap/versoes/:id` | login + membro + **administrador**; RLS | `eap.js:405` | exclui uma versão — **nunca a padrão** (409); registra antes de apagar |
+| GET | `/api/eap/eventos` | login + membro + **administrador**; RLS | `eap.js:446` | o registro, do mais novo para o mais antigo (100) |
+
+As linhas das rotas de padrão e do mapa mudaram com o registro: `PUT .../padrao` está em
+`eap.js:303`.
+
+### Quem mexeu (auditoria)
+
+Até 23/09/2026 o módulo guardava só o **estado de hoje**: trocar a folha de uma verba apagava o autor
+anterior, desligar a verba apagava a linha inteira, e **Tornar padrão** — que decide a EAP com que toda
+solicitação de compra sai — não deixava carimbo nenhum.
+
+Agora cada gesto vira uma linha em `sienge_eap_evento`, e o painel **"Quem mexeu"**, no fim da tela,
+mostra as últimas. Três decisões:
+
+- **Só administrador lê.** O GC edita o mapa e não vê o registro (o painel nem aparece para ele). A
+  barreira de verdade é o RLS; a rota responde 403 em vez de lista vazia.
+- **O gesto nunca cai por causa do registro.** A gravação principal já aconteceu; se registrar falhar,
+  a resposta volta com `registro: "falhou"` e o servidor loga — não vira erro na cara de quem clicou.
+- **A importação é uma linha só**, com os números (itens, apropriáveis, verbas herdadas e as órfãs
+  nomeadas). Uma linha por verba herdada afogaria o painel.
+
+O mesmo mapa é editado de dentro da obra (Compras de Produtos → etapa Sienge); de lá o evento leva o
+`obra_codigo`, e o painel mostra "na obra 2195".
+
+**Excluir versão** nasceu junto: não existia antes. Só administrador, nunca a padrão — é com ela que as
+solicitações saem —, em dois cliques na própria linha (armar e confirmar). Os itens e o mapa vão junto
+pelo `on delete cascade`; o registro fica.
 
 ## Integrações
 
