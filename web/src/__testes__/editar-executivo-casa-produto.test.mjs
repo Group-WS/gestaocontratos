@@ -108,7 +108,14 @@ conf("a linha de mão de obra só recebe a identidade",
 /* SEM PAR, NÃO GRAVA. Melhor não gravar do que gravar no vizinho: era
    exatamente isso que fazia a compra sair errada. */
 conf("sem produto correspondente, a lista fica intacta",
-  corpo.includes("chaveBase == null ? (c.itens || [])"), true);
+  corpo.includes("(it) => chaveBase != null && chaveDescricao(it.desc) === chaveBase"), true);
+
+/* O ID DA LINHA GANHA DA DESCRIÇÃO (ADR-007, 23/09/2026). Na obra 9999, quatro
+   "Painel de embutir ECO 18W" (um por ambiente) recebiam a edição de um só. */
+conf("com id, o alvo é a linha exata",
+  corpo.includes("? (it) => it.idLinha === base.idLinha"), true);
+conf("e o id não se edita",
+  corpo.includes('Object.prototype.hasOwnProperty.call(patch, "idLinha")'), true);
 
 /* E O ÍNDICE NÃO PODE VOLTAR. Esta linha existe para que um copiar-e-colar
    futuro não reintroduza o defeito mais caro do app. */

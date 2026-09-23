@@ -35,13 +35,20 @@ export function itemTravadoNoExecutivo(it) {
 
 /**
  * RN-002 — a linha da planilha do Executivo está travada?
- * A linha casa com os itens da verba pela descrição normalizada (`chave`),
- * a mesma que a edição do Executivo usa para achar o produto.
+ *
+ * A linha casa com os itens da verba pelo identificador da linha (`idLinha`,
+ * ADR-007): o item e a linha de mão de obra separada dele levam o mesmo id,
+ * e basta um deles aprovado para travar. Linha sem id (obra que a migração
+ * não conseguiu casar com certeza) fica do lado seguro: casa pela descrição
+ * normalizada (`chave`) e trava se QUALQUER item com a mesma descrição
+ * estiver aprovado.
  */
 export function linhaDoExecutivoTravada(linha, itensDaVerba, chave) {
   if (!linha) return false;
+  const itens = Array.isArray(itensDaVerba) ? itensDaVerba : [];
+  if (linha.idLinha) return itens.some((it) => it?.idLinha === linha.idLinha && itemTravadoNoExecutivo(it));
   const k = chave(linha.desc);
-  return (Array.isArray(itensDaVerba) ? itensDaVerba : []).some((it) => chave(it?.desc) === k && itemTravadoNoExecutivo(it));
+  return itens.some((it) => chave(it?.desc) === k && itemTravadoNoExecutivo(it));
 }
 
 /* A digital do item: só os campos travados, em ordem fixa. `excluido` vale

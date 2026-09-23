@@ -308,13 +308,13 @@ conf("o contador usa os produtos do grupo",
    Antes era "7 de 7 liberados · 7 concluídos": liberado na frente, os dois
    com o nome pela metade, e só um com denominador. */
 conf("e diz quantos foram concluídos pelo executivo, com o nome inteiro",
-  src.includes("de {compraveisDoGrupo(g).length} concluído executivo"), true);
+  src.includes("de {compraveisDoGrupo(g).length}</b> concluído executivo"), true);
 conf("... e quantos foram liberados para compra, idem",
-  src.includes("de {compraveisDoGrupo(g).length} liberado para compra"), true);
+  src.includes("de {compraveisDoGrupo(g).length}</b> liberado para compra"), true);
 /* A ordem é a do fluxo: sem o carimbo do executivo o admin não libera, então
    ler "liberado" antes de "concluído" conta a história de trás pra frente. */
 conf("o concluído vem ANTES do liberado na barra",
-  src.indexOf("concluído executivo</Badge>") < src.indexOf("liberado para compra</Badge>"), true);
+  src.indexOf("</b> concluído executivo</span>") < src.indexOf("</b> liberado para compra</span>"), true);
 /* Os dois olham a MESMA lista — todo item passa pelas duas decisões,
    independente da alocação —, então os dois têm o mesmo denominador e dá
    pra comparar um com o outro de relance. */

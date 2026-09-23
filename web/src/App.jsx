@@ -77,6 +77,7 @@ import { LogoGroupWS } from "./marca.jsx";
 import iconeSienge from "./assets/icone-sienge.svg";
 import { podeLiberarCompra } from "./regras/liberacaoDeCompra.js";
 import { linhaDoExecutivoTravada } from "./regras/itemAprovadoNoExecutivo.js";
+import { novoIdDeLinha } from "./lib/idDaLinha.js";
 import { usePreferencia, esquecerPreferencias } from "./lib/preferencias.js";
 import { clearBrowserData } from "./lib/armazenamento.js";
 // Papel dos documentos impressos (escopo, aditivo, relatório): cores fixas de
@@ -8172,37 +8173,25 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal p-0 text-left font-normal hover:bg-transparent">
                     {aberto ? <ChevronDown size={16} className="shrink-0 text-text-mute" /> : <ChevronRight size={16} className="shrink-0 text-text-mute" />}
-                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap">
-                      <span className="mono w-6 shrink-0 text-xs text-text-mute">{g.num}</span>
-                      <span className="min-w-0 flex-1 basis-40 text-sm font-semibold text-text lg:truncate" title={g.nome}>{g.nome}</span>
-                      {/* Sem shrink-0 no celular: com ele os selos pediam a
-                          largura de todos numa fila so e estouravam os 375px. */}
-                      <span className="flex min-w-0 flex-wrap justify-end gap-2 lg:shrink-0 lg:flex-nowrap">
-                      {/* O CONTADOR E' DO GRUPO, sempre — nao do recorte na tela.
-
-                          Com o filtro de travados ligado ela leu "13 de 8
-                          liberados" (17/09/2026): os 13 eram da verba inteira e
-                          os 8 eram o que tinha sobrado na tela. Agora o de
-                          dentro diz o grupo, e o que esta' na tela vira um
-                          segundo numero, dito com o nome do filtro. */}
-                      {/* Largura fixa (lg) por selo: sem ela a fila de selos mudava
-                          de lugar de uma verba para outra conforme os numeros. */}
-                      <Badge tone="neutral" className="lg:w-28 lg:justify-center">{g.nProdutos ?? g.itens.length} {(g.nProdutos ?? g.itens.length) === 1 ? "produto" : "produtos"}</Badge>
-                      {/* OS NOMES INTEIROS, E NA ORDEM DO FLUXO — pedido dela em
-                          19/09/2026: "vamos padronizar os nomes: sempre colocar
-                          'Concluido executivo' e 'Liberado para compra' mesmo aqui
-                          na barra. e sempre na ordem, primeiro vem o concluido e
-                          depois o liberado."
-
-                          Antes a barra dizia "7 de 7 liberados · 7 concluídos":
-                          o liberado vinha na frente (fora da ordem do fluxo), os
-                          dois com o nome pela metade, e um com denominador e o
-                          outro sem. Os dois olham a MESMA lista — todo item passa
-                          pelas duas decisões, independente da alocação —, entao
-                          mostrar os dois como "X de Y" e' o que deixa comparar. */}
-                      <Badge tone="neutral" className="lg:w-56 lg:justify-center">{compraveisDoGrupo(g).filter((x) => estaConcluido(x)).length} de {compraveisDoGrupo(g).length} concluído executivo</Badge>
-                      <Badge tone="neutral" className="lg:w-60 lg:justify-center">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length} liberado para compra</Badge>
-                      {filtrando && <Badge tone="warning">{g.itens.length} nesta busca</Badge>}
+                    {/* DUAS LINHAS FIXAS (pedido de 23/09/2026: "melhore a
+                        usabilidade destes itens"). Os três selos quebravam de
+                        um jeito diferente em cada verba e chegaram a cobrir o
+                        valor. Agora: nome na primeira linha; embaixo, o resumo
+                        em texto discreto, na ordem do fluxo (concluído antes
+                        de liberado, pedido de 19/09/2026) e com a mesma base
+                        nos dois. O valor e os botões ficam à direita. */}
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="mono w-6 shrink-0 text-xs text-text-mute">{g.num}</span>
+                        <span className="min-w-0 truncate text-sm font-semibold text-text" title={g.nome}>{g.nome}</span>
+                        {filtrando && <Badge tone="warning" className="shrink-0">{g.itens.length} nesta busca</Badge>}
+                      </span>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-8 text-xs text-text-mute">
+                        <span>{g.nProdutos ?? g.itens.length} {(g.nProdutos ?? g.itens.length) === 1 ? "produto" : "produtos"}</span>
+                        <span aria-hidden="true">·</span>
+                        <span><b className="mono font-semibold tabular-nums text-text-soft">{compraveisDoGrupo(g).filter((x) => estaConcluido(x)).length} de {compraveisDoGrupo(g).length}</b> concluído executivo</span>
+                        <span aria-hidden="true">·</span>
+                        <span><b className="mono font-semibold tabular-nums text-text-soft">{compraveisDoGrupo(g).filter((x) => x.liberado).length} de {compraveisDoGrupo(g).length}</b> liberado para compra</span>
                       </span>
                     </span>
                   </Button>
@@ -22981,6 +22970,11 @@ export default function App() {
   // mostra) e `itens` (o que alimenta Plano de Compras, Compras e
   // Contratos). As duas nascem do mesmo import, na mesma ordem.
   function editarItemExecutivo(catNum, idx, patch) {
+    // ADR-007: o id da linha é imutável — nenhuma edição o troca.
+    if (patch && Object.prototype.hasOwnProperty.call(patch, "idLinha")) {
+      const { idLinha, ...resto } = patch;
+      patch = resto;
+    }
     /* A REMOCAO CARIMBA QUEM E QUANDO (ADR-005 fatia 3, 18/09/2026).
 
        "Sempre que for removido um item, precisa abrir o campo de observacao
@@ -23028,6 +23022,14 @@ export default function App() {
          */
         const base = (c.itensPlanilhaExecutivo || [])[idx];
         const chaveBase = base ? chaveDescricao(base.desc) : null;
+        /* ADR-007 (23/09/2026): com o id da linha, o alvo e' EXATO — o item
+           e a linha de mao de obra dele. Pela descricao, os quatro "Painel
+           de embutir ECO 18W" da obra 9999 (um por ambiente) recebiam a
+           edicao de um so'. A descricao fica so' para linha sem id (obra que
+           a migracao nao casou com certeza). */
+        const eDaLinha = base?.idLinha
+          ? (it) => it.idLinha === base.idLinha
+          : (it) => chaveBase != null && chaveDescricao(it.desc) === chaveBase;
 
         const mexer = (it, soIdentidade) => {
           const efetivo = soIdentidade ? somenteIdentidade(patch) : patch;
@@ -23041,8 +23043,7 @@ export default function App() {
           itensPlanilhaExecutivo: (c.itensPlanilhaExecutivo || []).map((it, i) => (i === idx ? mexer(it, false) : it)),
           // Na lista de trabalho, quem manda e' o produto. `separadoDe`
           // marca a linha de mao de obra, que so' recebe a identidade.
-          itens: chaveBase == null ? (c.itens || [])
-            : (c.itens || []).map((it) => (chaveDescricao(it.desc) === chaveBase ? mexer(it, !!it.separadoDe) : it)),
+          itens: (c.itens || []).map((it) => (eDaLinha(it) ? mexer(it, !!it.separadoDe) : it)),
         };
       });
       return { ...o, categorias };
@@ -23064,6 +23065,7 @@ export default function App() {
         if (base.length === 0) return c;
         const copia = base.map((it) => ({
           ...it,
+          idLinha: novoIdDeLinha(), // ADR-007: o id nasce com a linha do Executivo
           origem: "criativo",
           vendido: {
             qtd: it.qtdVendida, custoUnitario: it.custoUnitario, custo: it.custo,
@@ -23105,6 +23107,7 @@ export default function App() {
       const categorias = o.categorias.map((c) => {
         if (c.num !== catNum) return c;
         const novo = insumo ? {
+          idLinha: novoIdDeLinha(), // ADR-007
           codigo: null, num: catNum,
           desc: insumo.descricao,
           un: insumo.unidade || null,
@@ -23119,6 +23122,7 @@ export default function App() {
           manual: true, tipo: "produto", contavel: false,
           alteradoExecutivo: true,
         } : {
+          idLinha: novoIdDeLinha(), // ADR-007
           codigo: null, desc: "Novo item — clique para descrever", num: catNum,
           qtdVendida: null, un: null, custoMaterial: null, custoMO: null,
           totalMaterial: null, totalMO: null, custo: null,
@@ -23300,6 +23304,8 @@ export default function App() {
         // Copiar tudo evita que a próxima coluna nova se perca igual.
         const doArquivo = porVerba[c.num].map((it) => ({
           ...it,
+          // ADR-007: a linha nasce aqui com o id que ela leva para sempre.
+          idLinha: novoIdDeLinha(),
           qtdVendida: it.qtdVendida ?? it.qtdExecutivo,
           // Item vindo do EXECUTIVO tem quantidade de executivo. O leitor
           // grava so em `qtdVendida` (o campo que o criativo usa), e todo

@@ -37,6 +37,18 @@ conf("RN-002 · linha casa pela descrição e trava",
 conf("RN-002 · linha sem par aprovado não trava",
   linhaDoExecutivoTravada({ desc: "Fretes e deslocamentos" }, [art({ liberadoCompra: carimbo }), frete()], chave), false);
 
+// ---------- a linha casa pelo id, não pela descrição (obra 9999, 23/09/2026) ----------
+const painel = (ambiente, id, extra = {}) => ({ desc: "Painel de embutir ECO 18W 20,2x20,2cm", ambiente, idLinha: id, ...extra });
+const paineis = [painel("Living", "a", { liberadoCompra: carimbo }), painel("Dormitório", "b", { liberadoCompra: carimbo }), painel("Banheiro", "c"), painel("Sacada", "d")];
+conf("RN-002 · mesma descrição: a linha aprovada trava",
+  linhaDoExecutivoTravada(painel("Living", "a"), paineis, chave), true);
+conf("RN-002 · mesma descrição: a linha NÃO aprovada não trava",
+  linhaDoExecutivoTravada(painel("Banheiro", "c"), paineis, chave), false);
+conf("RN-002 · a linha de mão de obra aprovada trava o produto (mesmo id)",
+  linhaDoExecutivoTravada(painel("Banheiro", "c"), [painel("Banheiro", "c"), painel("Banheiro", "c", { separadoDe: {}, liberadoCompra: carimbo })], chave), true);
+conf("RN-002 · linha sem id fica do lado seguro (trava pela descrição)",
+  linhaDoExecutivoTravada(painel("Banheiro", undefined), paineis, chave), true);
+
 // ---------- a gravação ----------
 const aprovado = art({ liberadoCompra: carimbo });
 conf("RN-002 · editar o custo do aprovado é recusado",

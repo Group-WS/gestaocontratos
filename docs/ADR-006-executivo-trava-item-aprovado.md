@@ -63,3 +63,9 @@ mudar o que já foi aprovado.
   andaram.
 - **Falta rodar em produção:** `supabase/rn-002-item-aprovado-no-executivo.sql`. Até lá, só a
   tela garante a regra.
+
+## Atualização (23/09/2026)
+
+A linha do Executivo casava com o item aprovado pela descrição, e descrições repetidas na mesma
+verba travavam juntas. Corrigido com o identificador da linha: ver
+`docs/ADR-007-id-da-linha-do-executivo.md`.
