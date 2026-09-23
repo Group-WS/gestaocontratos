@@ -144,6 +144,10 @@ const servidor = app.listen(0, async () => {
     cliente: "—", endereco: "", gc: null, valor_vendido: null, situacao: "ativa",
   }]);
   conf("... e a tela recebe a linha gravada", r.corpo.codigo, "2517");
+  /* O insert NAO pede a linha de volta: com RETURNING, a linha nova teria
+     de passar na policy de leitura, que consulta a propria tabela e ainda
+     nao a enxerga — era o 42501 para todo perfil (23/09/2026). */
+  conf("... sem pedir a linha no mesmo insert (RETURNING esbarra na policy de leitura)", recebido.select, "");
 
   duplicado = true;
   r = await pedir("t-admin", "POST", "/api/obras", { codigo: "2517" });

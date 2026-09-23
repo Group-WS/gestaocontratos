@@ -134,17 +134,21 @@ conf("... e sobe pro cabeçalho", /<CollapsibleTrigger asChild>[\s\S]{0,400}<Ico
    POSIÇÃO, não tamanho — o fim de uma lista é onde as coisas vão para ser
    ignoradas. Com isto o painel lê na ordem da vida de uma obra: as que vão
    começar, as que estão em andamento, as que terminaram. */
-conf("as novas obras ficam no topo", src.includes('{novasNoPainel && novasCount > 0 && ('), true);
+conf("as novas obras ficam no topo", src.includes('{novasNoPainel && ('), true);
 conf("... antes da busca",
   src.indexOf('onClick={() => irPara("novas")} title={novasNoPainel.sub}') < src.indexOf('placeholder="Nome, código ou cliente"'), true);
-/* Zero obra esperando não ocupa o topo de nada. */
-conf("... e só quando existe alguma", /novasNoPainel && novasCount > 0/.test(src), true);
-/* Fonte normal, escolha dela: o destaque vem do lugar e do fundo. O 11.5px é
-   o mesmo do nome da obra — se alguém aumentar aqui, a decisão se perde. */
-conf("em fonte normal, não maior", /variant="outline" size="sm" className=\{cn\("mb-2 w-full justify-start gap-2 border-brand text-brand"/.test(src), true);
+/* Ficam SEMPRE (23/09/2026): com a fila do Monday vazia a entrada sumia, e
+   junto o único caminho para cadastrar obra. O que some com zero é o número. */
+conf("... sempre, mesmo sem nenhuma", /novasNoPainel && novasCount > 0/.test(src), false);
+conf("... e o número só quando existe alguma", src.includes("{novasCount > 0 && <Contador tom=\"brand\">{novasCount}</Contador>}"), true);
+/* Fonte normal, escolha dela: o destaque vem do lugar e do fundo. */
+conf("em fonte normal, não maior", /variant="ghost" size="sm" className=\{cn\("mb-2 w-full justify-start gap-2"/.test(src), true);
 /* O número antes do rótulo: é ele que faz reparar. */
 conf("o número vem antes do rótulo",
-  src.includes('<span className="mono">{novasCount}</span>'), true);
+  src.indexOf("<Contador tom=\"brand\">{novasCount}</Contador>") < src.indexOf("<span>Vindas do Monday</span>"), true);
+/* Nova obra é a ação primária do painel, acima de tudo, e só para quem edita. */
+conf("Nova obra no topo do painel, antes das vindas do Monday",
+  src.indexOf("{onNovaObra && (") > 0 && src.indexOf("{onNovaObra && (") < src.indexOf("{novasNoPainel && ("), true);
 conf("as Finalizadas ficam no pé", src.includes('onClick={() => irPara("arquivo")} title={finalizadasNoPainel.sub}'), true);
 /* O painel tem 232px, e a barra antiga tinha 288: o texto da busca era
    cortado no meio da palavra ("...cód, clie"). */

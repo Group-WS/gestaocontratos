@@ -124,7 +124,14 @@ rotas.post("/api/obras",
   exigirPerfilDeEdicao,
   async (req, res) => {
     const obra = req.valido.json;
-    const { data, error } = await req.supabase
+    /* GRAVA E SO' DEPOIS LE (23/09/2026). O `insert ... select` devolvia
+       42501 para TODO perfil, master inclusive: com RETURNING, a linha nova
+       precisa passar na policy de LEITURA ("obra: ler" = codigo in
+       minhas_obras()), e minhas_obras() consulta a propria tabela obra com
+       o retrato de antes do insert — a linha recem-criada nao esta' la'.
+       Separados, o insert passa pelo `with check` de criar e a leitura
+       seguinte ja' enxerga a obra. */
+    const { error } = await req.supabase
       .from("obra")
       .insert({
         codigo: obra.codigo,
@@ -136,11 +143,16 @@ rotas.post("/api/obras",
         gc: obra.gc,
         valor_vendido: obra.valorVendido || null,
         situacao: "ativa",
-      })
-      .select(COLUNAS_DA_SITUACAO)
-      .single();
+      });
     if (error) return erroDoBanco(res, error);
-    return res.json(data);
+    const { data, error: erroLeitura } = await req.supabase
+      .from("obra")
+      .select(COLUNAS_DA_SITUACAO)
+      .eq("codigo", obra.codigo)
+      .maybeSingle();
+    if (erroLeitura) return erroDoBanco(res, erroLeitura);
+    // O GC que cria obra de outro GC nao a enxerga: criou, mas nao le.
+    return res.json(data || { codigo: obra.codigo, nome: obra.nome, squad: obra.squad, situacao: "ativa", iniciada_em: null, concluida_em: null });
   });
 
 /**

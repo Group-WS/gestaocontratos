@@ -194,7 +194,7 @@ function MapaDasObras({ mapa, carregando, onAbrirCodigo }) {
   );
 }
 
-export default function DashboardPage({ title = "Visão geral das obras", rows, loading, error, onRetry, onOpen, extraAlerts = [], memory, mapa = null, mapaCarregando = false, onAbrirCodigo }) {
+export default function DashboardPage({ title = "Visão geral das obras", rows, loading, error, onRetry, onOpen, extraAlerts = [], memory, mapa = null, mapaCarregando = false, onAbrirCodigo, actions }) {
   const [filters, setFilters] = useState(() => {
     if (memory?.current.filters) return memory.current.filters;
     const query = new URLSearchParams(window.location.search);
@@ -287,7 +287,7 @@ export default function DashboardPage({ title = "Visão geral das obras", rows, 
   return <PageShell crumb="Operação" title={title}
     italic={unavailable ? undefined : `${compactMoney(pending)} a comprar · ${filtered.length} ${filtered.length === 1 ? "obra" : "obras"}`}
     description={`Prazos, compras e pontos críticos da operação · ${hoje}`}
-    toolbar={controls} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-4">
+    actions={actions} toolbar={controls} toolbarSecondary={filtrosAtivos} contentClassName="flex flex-col gap-4">
     {error && <Card accent="danger"><CardContent className="flex flex-col items-start gap-3"><p role="alert" className="text-sm text-text">Não conseguimos carregar todos os dados das obras. Atualize para consultar os indicadores.</p><Button onClick={onRetry}>Tentar novamente</Button></CardContent></Card>}
     <div className="grid grid-cols-12 gap-4" aria-label="Indicadores das obras" aria-busy={loading}>
       <div className="col-span-12 flex flex-col gap-2 xl:col-span-5">
