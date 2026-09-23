@@ -3661,12 +3661,18 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {/* A linha separada esta logo abaixo, na mesma verba — nao ha
                 mais pra onde mandar a pessoa. */}
-            <Badge tone="purple"><CornerDownRight size={12} aria-hidden="true" /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo</Badge>
+            {/* Curto e quebrando linha (23/09/2026): a frase inteira num selo
+                que não quebra passava por cima da coluna Ambiente. O texto
+                completo fica na dica. */}
+            <Badge tone="purple" className="max-w-full whitespace-normal"
+              title={`Mão de obra de ${fmtBRL(item.moSeparada.valor)} separada na linha abaixo`}>
+              <CornerDownRight size={12} aria-hidden="true" /> MO {fmtBRL(item.moSeparada.valor)} na linha abaixo
+            </Badge>
             {onJuntarMO && podeEditar && <Button variant="ghost" size="sm" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</Button>}
           </div>
         )}
         {item.separadoDe && (
-          <Badge tone="purple" className="mt-1">
+          <Badge tone="purple" className="mt-1 max-w-full whitespace-normal">
             <CornerDownRight size={12} aria-hidden="true" /> mão de obra do item {item.separadoDe.codigo}
           </Badge>
         )}
@@ -3821,10 +3827,9 @@ function parcelasDaPlanilha(it) {
    entrega da obra, e data digitada nao. */
 function PrazoCompra({ cat, itens, dataEntrega }) {
   const prazo = prazoDoGrupo(cat, itens);
-  // Celula vazia, e nao ausente: sem ela as colunas MAT e MO dos grupos
-  // sem regra deslizariam pra esquerda e a lista deixaria de ser lida
-  // como coluna.
-  if (!prazo) return <span className="hidden sm:block sm:w-36 sm:shrink-0" aria-hidden="true" />;
+  // Sem regra de prazo, nada: o selo mora junto dos outros selos da verba,
+  // e MAT/MO têm largura fixa própria, então não deslizam.
+  if (!prazo) return null;
 
   const limite = dataLimiteCompra(dataEntrega, prazo.dias);
   const faltam = diasAte(limite);
@@ -3840,26 +3845,17 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
       ? `${prazo.dias} dias (${prazo.fornecedor})${prazo.varios ? " — o mais apertado do grupo" : ""}`
       : `${prazo.dias} dias antes da entrega`;
 
+  /* Um selo numa linha (23/09/2026), no lugar das três linhas empilhadas
+     (rótulo, data, contagem): o cabeçalho da verba fica da altura do
+     Executivo, e a cor do selo diz a urgência como a cor do texto dizia. */
+  const tomSelo = faltam == null ? "neutral" : faltam < 0 ? "danger" : faltam <= 15 ? "warning" : "neutral";
   return (
-    <span className="col-span-2 block text-center sm:col-span-1 sm:w-36 sm:shrink-0" title={porque}>
-      <span className="label-mono block text-center text-text-mute">
-        COMPRAR ATÉ
-        {prazo.incerto && <Badge tone="warning" className="ml-1" title={porque}>?</Badge>}
-      </span>
-      {limite ? (
-        <>
-          <span className={cn("mono block text-sm tabular-nums", tom || "text-text")}>{fmtData(limite)}</span>
-          <span className={cn("block text-xs", tom || "text-text-mute")}>{conta}</span>
-        </>
-      ) : (
-        /* Sem data de entrega, mostra so a antecedencia. Repetir "falta a
-           data de entrega" em quinze grupos era encher a tela com o mesmo
-           recado — ele passou a ser um aviso unico, no topo. */
-        <>
-          <span className="mono block text-sm tabular-nums text-text-mute">{prazo.dias} dias</span>
-          <span className="block text-xs text-text-mute">antes da entrega</span>
-        </>
-      )}
+    <span className="inline-flex max-w-full" title={porque}>
+      <Badge tone={limite ? tomSelo : "neutral"} className="max-w-full whitespace-normal">
+        <Clock size={12} aria-hidden="true" />
+        {limite ? `Comprar até ${fmtData(limite)} · ${conta}` : `Comprar ${prazo.dias} dias antes da entrega`}
+        {prazo.incerto && " (?)"}
+      </Badge>
     </span>
   );
 }
@@ -3883,7 +3879,8 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
         <span className="flex min-w-0 flex-1 basis-64 items-start gap-2">
           <span className="mono w-6 shrink-0 text-xs text-text-mute">{cat.num}</span>
           <span className="min-w-0 flex-1 text-sm font-semibold text-text">{cat.nome}</span>
-          <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-56">
+          <span className="flex min-w-0 flex-wrap justify-end gap-2">
+            <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega} />
             {cat.foraDeEscopoCategoria && <Badge tone="danger"><XCircle size={12} aria-hidden="true" /> Fora do escopo vendido</Badge>}
             <Badge tone="neutral">{itens.length} {itens.length === 1 ? "item" : "itens"}</Badge>
             {nAvulsos > 0 && <Badge tone="purple"><Plus size={12} aria-hidden="true" /> {nAvulsos} avulso{nAvulsos > 1 ? "s" : ""}</Badge>}
@@ -3906,20 +3903,23 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
         </span>
         {/* No celular o prazo ocupa a fila de cima e MAT/MO dividem a de
             baixo: as tres colunas lado a lado passam de 375px. */}
-        <span className="grid w-full shrink-0 grid-cols-2 gap-x-4 gap-y-2 sm:flex sm:w-auto sm:items-start sm:justify-end sm:gap-4">
-          <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega} />
-          <span className="min-w-0 sm:w-32 sm:shrink-0">
-            <span className="label-mono block text-center text-text-mute">MAT</span>
-            <span className={cn("mono block text-right text-sm font-semibold tabular-nums", mat > 0 ? "text-text" : "text-text-mute")}>{mat > 0 ? fmtBRL(mat) : "—"}</span>
+        {/* Uma linha só, como a verba do Executivo (23/09/2026): o rótulo
+            MAT/MO vai na frente do valor, não em cima dele — antes o
+            cabeçalho da verba tinha duas linhas e o dobro da altura. */}
+        <span className="flex w-full shrink-0 flex-wrap items-start justify-end gap-x-4 gap-y-1 sm:w-auto sm:flex-nowrap">
+          <span className={cn("mono shrink-0 text-right text-sm font-semibold tabular-nums sm:w-36", mat > 0 ? "text-text" : "text-text-mute")}>
+            <span className="label-mono mr-1 font-normal text-text-mute">MAT</span>{mat > 0 ? fmtBRL(mat) : "—"}
           </span>
-          <span className="min-w-0 sm:w-32 sm:shrink-0">
-            <span className="label-mono block text-center text-text-mute">MO</span>
-            <span className={cn("mono block text-right text-sm font-semibold tabular-nums", mo > 0 ? "text-text" : "text-text-mute")}>{mo > 0 ? fmtBRL(mo) : "—"}</span>
+          <span className={cn("mono shrink-0 text-right text-sm font-semibold tabular-nums sm:w-36", mo > 0 ? "text-text" : "text-text-mute")}>
+            <span className="label-mono mr-1 font-normal text-text-mute">MO</span>{mo > 0 ? fmtBRL(mo) : "—"}
           </span>
         </span>
       </span>
     )}>
-      <div className="border-t border-line-1 bg-surface-2">
+      {/* Mesma moldura da tabela do Executivo (23/09/2026): fundo branco,
+          encostada nas bordas do card, sem o cinza que a fazia parecer
+          outro bloco. */}
+      <div className="border-t border-line-1">
         {/* Fora do cabecalho de proposito: ele e um botao, e botao
             dentro de botao nao e HTML valido — o clique de um comeria o
             do outro. Aqui tambem fica melhor: separa depois de olhar. */}
@@ -3936,8 +3936,8 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
             </AlertDescription>
           </Alert>
         )}
-        <div className="overflow-x-auto">
-          <Table className="min-w-4xl table-fixed">
+        <div className="tabela-da-verba">
+          <Table className="min-w-4xl w-full table-fixed bg-surface-1">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-16">Cód.</TableHead>
@@ -4158,6 +4158,9 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
                 : "Ao liberar, este vira o plano oficial de compra: Vendido, Depara e Executivo ficam congelados."}
             </DialogDescription>
           </DialogHeader>
+          {/* Sem aviso nem exceção, não há corpo (23/09/2026): o DialogBody
+              vazio desenhava uma faixa em branco entre dois divisores. */}
+          {(semAssinatura || acimaDoTeto) && (
           <DialogBody className="flex flex-col gap-4">
             {semAssinatura && (
               <Alert tone="danger">
@@ -4193,9 +4196,13 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
               </div>
             )}
           </DialogBody>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setAberto(false)}>Cancelar</Button>
-            <Button disabled={bloqueado} onClick={() => {
+            <BotaoComMotivo disabled={bloqueado}
+              title={!temItens ? "sem itens no Executivo não há o que liberar"
+                : !podeEditar ? MODO_LEITURA_DICA
+                : faltaJustificar ? "preencha a justificativa (15 letras ou mais) e quem autorizou" : undefined} onClick={() => {
               onLiberar(precisaExcecao
                 ? { estouro: acimaDoTeto ? estouro : 0, semAssinatura,
                     justificativa: justificativa.trim(), aprovador: aprovador.trim() }
@@ -4203,7 +4210,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
               setAberto(false);
             }}>
               <ShieldCheck size={16} aria-hidden="true" /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar plano de compras"}
-            </Button>
+            </BotaoComMotivo>
           </DialogFooter>
         </DialogContent>
       </Dialog>
