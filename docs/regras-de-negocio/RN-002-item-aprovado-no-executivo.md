@@ -1,8 +1,8 @@
 # RN-002 · Item aprovado para compra não se edita nem se remove no Executivo
 
-**Status:** proposta
+**Status:** vigente
 **Contexto:** Executivo · Conferência do Executivo · Plano de compras
-**Aprovada por:** a confirmar pelo dev · **Desde:** 2026-09-23 (proposta)
+**Aprovada por:** Allysson Pereira · **Desde:** 2026-09-23
 
 ## Enunciado
 
@@ -48,4 +48,6 @@ regra". Decisões e alternativas em `docs/ADR-006-executivo-trava-item-aprovado.
 
 | Data | Mudança | Aprovada por | PR |
 |---|---|---|---|
-| 2026-09-23 | Criação | a confirmar pelo dev | — |
+| 2026-09-23 | Criação | Allysson Pereira | — |
+| 2026-09-23 | Confirmada como vigente | Allysson Pereira | — |
+| 2026-09-23 | Correção da implementação: a linha casa com o item pelo id da linha (ADR-007), não pela descrição. Enunciado sem mudança. | Allysson Pereira | — |
