@@ -5630,8 +5630,8 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                     )}
                   </span>
                 </span>}>
-                <div className="overflow-x-auto border-t border-line-1 bg-surface-2">
-                  <Table className="min-w-lg table-fixed">
+                <div className="border-t border-line-1 bg-surface-2 pb-4 pl-10 pr-4 pt-3">
+                  <Table className="bg-surface-1 min-w-lg table-fixed">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-16">Cód.</TableHead>
@@ -5841,8 +5841,8 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
                     planilha de origem — os dois documentos usam o mesmo
                     cabeçalho, e manter o padrão é o que deixa comparar
                     um com o outro sem procurar onde cada coisa está. */}
-                <div className="overflow-x-auto border-t border-line-1 bg-surface-2">
-                  <Table className="min-w-5xl table-fixed">
+                <div className="border-t border-line-1 bg-surface-2 pb-4 pl-10 pr-4 pt-3">
+                  <Table className="bg-surface-1 min-w-5xl table-fixed">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-12">Item</TableHead>
@@ -8246,8 +8246,8 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
               </div>
 
               <CollapsibleContent>
-                <div className="overflow-x-auto border-t border-line-1">
-                  <Table>
+                <div className="border-t border-line-1 bg-surface-2 pb-4 pl-10 pr-4 pt-3">
+                  <Table className="bg-surface-1">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-10">
@@ -9638,8 +9638,8 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                   <span className="mono w-32 shrink-0 text-right text-sm font-semibold tabular-nums text-text">{temItens ? fmtBRL(subtotal) : "—"}</span>
                 </span>}>
                 {temItens && (
-                  <div className="overflow-x-auto border-t border-line-1 bg-surface-2">
-                    <Table className="w-full table-fixed">
+                  <div className="border-t border-line-1 bg-surface-2 pb-4 pl-10 pr-4 pt-3">
+                    <Table className="bg-surface-1 w-full table-fixed">
                       <TableHeader>
                         <TableRow>
                           {colunas.map((col, k) => (
