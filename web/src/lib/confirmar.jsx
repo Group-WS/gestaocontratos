@@ -158,8 +158,16 @@ export function PerguntarHost() {
 
 /* Toast padronizado (TELA-50/51): sucesso "<Entidade> <particípio>.",
    erro "Não foi possível <verbo>…". */
+/* `opcoes.duracao` (ms): para o aviso que precisa ser LIDO, como os alertas
+   da leitura de um arquivo — o tempo padrão do toast some antes. */
+const opcoesDoToast = (descricao, opcoes = {}) => {
+  const o = {};
+  if (descricao) o.description = descricao;
+  if (opcoes.duracao) o.duration = opcoes.duracao;
+  return Object.keys(o).length ? o : undefined;
+};
 export const avisar = {
-  ok: (texto, descricao) => toast.success(texto, descricao ? { description: descricao } : undefined),
-  erro: (texto, descricao) => toast.error(texto, descricao ? { description: descricao } : undefined),
-  info: (texto, descricao) => toast(texto, descricao ? { description: descricao } : undefined),
+  ok: (texto, descricao, opcoes) => toast.success(texto, opcoesDoToast(descricao, opcoes)),
+  erro: (texto, descricao, opcoes) => toast.error(texto, opcoesDoToast(descricao, opcoes)),
+  info: (texto, descricao, opcoes) => toast(texto, opcoesDoToast(descricao, opcoes)),
 };

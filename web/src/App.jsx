@@ -5187,8 +5187,6 @@ async function confirmarImportacao({ arquivo, categorias, itens, documento, nums
 function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada,
                        motivoCongelado }) {
   const inputRef = useRef(null);
-  const [erro, setErro] = useState(null);
-  const [ok, setOk] = useState(null);
   const [carregando, setCarregando] = useState(false);
 
   async function aoEscolher(e) {
@@ -5196,14 +5194,22 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
     e.target.value = ""; // permite subir o MESMO arquivo de novo
     if (!file) return;
 
-    setErro(null); setOk(null); setCarregando(true);
+    /* O RETORNO É TOAST, O PADRÃO DO DS (DS-10, 23/09/2026). Antes era um
+       Alert fixo embaixo do botão, que ficava na tela e empurrava o
+       cabeçalho. O primeiro parágrafo da mensagem é o título; o resto (os
+       alertas da leitura: quantidade colada na descrição, grupo não
+       reconhecido) vai na descrição, e aí o toast fica mais tempo — é
+       coisa para ler, não para passar. */
+    setCarregando(true);
     try {
-      const msg = await onFile(file);
-      setOk(msg);
+      const msg = String((await onFile(file)) || "");
+      const [titulo, ...resto] = msg.split(/\n\s*\n/);
+      const detalhe = resto.join("\n\n").trim();
+      avisar.ok(titulo || "Arquivo importado.", detalhe || undefined, detalhe ? { duracao: 20000 } : undefined);
     } catch (err) {
       // Desistir no aviso da troca não é falha de leitura.
       if (err?.cancelado) return;
-      setErro("Não consegui ler o arquivo: " + err.message);
+      avisar.erro("Não consegui ler o arquivo.", err?.message, { duracao: 12000 });
     } finally {
       setCarregando(false);
     }
@@ -5253,7 +5259,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
               `Remover ${oQueLimpa || "os dados importados"}?\n\n` +
               "Some tudo que veio deste documento nesta obra. As outras etapas não são tocadas.\n\n" +
               "Não dá pra desfazer — depois é só subir o arquivo de novo."
-            )) { setOk(null); setErro(null); onLimpar(); }
+            )) onLimpar();
           }}>
             <Trash2 size={16} /> Remover
           </Button>
@@ -5291,8 +5297,6 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             : "Modo leitura — habilite a edição desta obra para importar ou remover.")}</span>
         </p>
       ) : null}
-      {ok && <Alert tone="success"><AlertDescription>{ok}</AlertDescription></Alert>}
-      {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
     </div>
   );
 }
