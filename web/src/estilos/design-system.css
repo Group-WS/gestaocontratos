@@ -533,3 +533,14 @@ header div:has(> [cmdk-input]) {
 .modo-foco > .border-b:first-child {
   display: none;
 }
+
+/* A TABELA DA VERBA OCUPA A VERBA INTEIRA (23/09/2026).
+
+   A tabela que abre em cada verba (Vendido Contrato, Vendido Planilha,
+   Conf. Executivo, Executivo) fica encostada nas bordas do card, sem a
+   borda e o canto arredondado que o contêiner da Table do DS sempre põe —
+   dentro do card, a borda dele já separa. A rolagem lateral continua. */
+.tabela-da-verba > div {
+  border-width: 0;
+  border-radius: 0;
+}

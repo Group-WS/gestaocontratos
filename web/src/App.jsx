@@ -5630,7 +5630,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
                     )}
                   </span>
                 </span>}>
-                <div className="border-t border-line-1 bg-surface-2 pb-4 pl-10 pr-4 pt-3">
+                <div className="tabela-da-verba border-t border-line-1">
                   <Table className="bg-surface-1 min-w-lg table-fixed">
                     <TableHeader>
                       <TableRow>
@@ -5841,7 +5841,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
                     planilha de origem — os dois documentos usam o mesmo
                     cabeçalho, e manter o padrão é o que deixa comparar
                     um com o outro sem procurar onde cada coisa está. */}
-                <div className="border-t border-line-1 bg-surface-2 pb-4 pl-10 pr-4 pt-3">
+                <div className="tabela-da-verba border-t border-line-1">
                   <Table className="bg-surface-1 min-w-5xl table-fixed">
                     <TableHeader>
                       <TableRow>
@@ -8246,7 +8246,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
               </div>
 
               <CollapsibleContent>
-                <div className="border-t border-line-1 bg-surface-2 pb-4 pl-10 pr-4 pt-3">
+                <div className="tabela-da-verba border-t border-line-1">
                   <Table className="bg-surface-1">
                     <TableHeader>
                       <TableRow>
@@ -9638,7 +9638,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                   <span className="mono w-32 shrink-0 text-right text-sm font-semibold tabular-nums text-text">{temItens ? fmtBRL(subtotal) : "—"}</span>
                 </span>}>
                 {temItens && (
-                  <div className="border-t border-line-1 bg-surface-2 pb-4 pl-10 pr-4 pt-3">
+                  <div className="tabela-da-verba border-t border-line-1">
                     <Table className="bg-surface-1 w-full table-fixed">
                       <TableHeader>
                         <TableRow>
@@ -21173,16 +21173,21 @@ function PageShell({ description, actions, className, ...props }) {
      a moldura (menu, topo, cabeçalho da obra, abas e o título da tela) e
      deixa só a busca, os filtros e a lista. Em tela cheia o título some
      pelo CSS (.modo-foco), e a barra do App diz onde se está e como sair. */
+  /* Button no tamanho padrão (38px), como os outros botões do cabeçalho;
+     o de ícone do DS tem 36px e ficava fora da linha deles. */
   const botao = aba.onTelaCheia && (
-    <BotaoIcone rotulo="Abrir a tabela em tela cheia" variant="outline" onClick={aba.onTelaCheia}>
+    <Button variant="outline" aria-label="Abrir a tabela em tela cheia" title="Tela cheia" onClick={aba.onTelaCheia}>
       <Maximize2 size={16} aria-hidden="true" />
-    </BotaoIcone>
+    </Button>
   );
   return (
     <PageShellDoDS {...props}
       className={cn(className, aba.telaCheia && "modo-foco")}
       description={aba.estado ? <>{description}{aba.estado}</> : description}
-      actions={actions || botao ? <>{actions}{botao}</> : undefined} />
+      /* Alinhadas pelo TOPO: as ações da tela costumam ser uma coluna (o
+         botão e, embaixo, o aviso de modo leitura); centralizado, o botão
+         de tela cheia ficava no meio dessa coluna, fora da linha. */
+      actions={actions || botao ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}{botao}</div> : undefined} />
   );
 }
 
