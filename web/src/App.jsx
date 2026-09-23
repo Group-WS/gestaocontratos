@@ -5150,26 +5150,39 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             <Trash2 size={16} /> Remover
           </Button>
         )}
-        <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
-          <Upload size={16} /> {carregando ? "Lendo…" : label}
-        </Button>
+        {/* O ⓘ vai COLADO no botão que ele explica — antes ficava numa
+            linha solta embaixo de tudo, sem dizer a qual dos botões se
+            referia (pedido de 23/09/2026: "está muito jogado"). Só
+            aparece fora do estado congelado: quando congelado, o que
+            importa é o motivo de estar travado, não como importar. */}
+        <div className="flex items-center gap-1">
+          <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
+            <Upload size={16} /> {carregando ? "Lendo…" : label}
+          </Button>
+          {!congelado && <DicaInfo rotulo="Como importar">{dica}</DicaInfo>}
+        </div>
         <SeletorDeArquivo ref={inputRef} accept={accept} onChange={aoEscolher} />
       </div>
-      <p className="flex items-start gap-2 text-xs text-text-soft">
-        {congelado ? <Lock size={14} className="mt-px shrink-0" /> : <Upload size={14} className="mt-px shrink-0" />}
-        {/* Dizer "está congelada" sem dizer como sair é beco sem saída:
-            o botão de reabrir mora em OUTRA aba, e quem chega aqui pra
-            trocar um arquivo errado não tem como adivinhar isso. */}
-        {/* `motivoCongelado` vem na frente porque ele e' o motivo MAIS
-            especifico: quem chega aqui numa obra com compra aprovada
-            precisa ler isso, e nao "modo leitura". */}
-        <span>{congelado
-          ? (motivoCongelado
-              || (compraLiberada
-              ? <>Plano de Compras já liberado — esta etapa está congelada. Para <b>substituir ou remover</b> este documento, reabra as etapas.</>
-              : "Modo leitura — habilite a edição desta obra para importar ou remover."))
-          : dica}</span>
-      </p>
+      {/* Estado (congelado) continua em texto: é aviso, muda o que dá pra
+          fazer agora. A EXPLICAÇÃO de como importar — o que cada formato
+          traz, o que se perde — mora só no ⓘ, como as demais dicas da tela
+          (padrão de 22/09/2026): fora do hover ela era ruído para quem já
+          sabia, e nem por isso ficava mais clara pra quem não sabia. */}
+      {congelado ? (
+        <p className="flex items-start gap-2 text-xs text-text-soft">
+          <Lock size={14} className="mt-px shrink-0" />
+          {/* Dizer "está congelada" sem dizer como sair é beco sem saída:
+              o botão de reabrir mora em OUTRA aba, e quem chega aqui pra
+              trocar um arquivo errado não tem como adivinhar isso. */}
+          {/* `motivoCongelado` vem na frente porque ele e' o motivo MAIS
+              especifico: quem chega aqui numa obra com compra aprovada
+              precisa ler isso, e nao "modo leitura". */}
+          <span>{motivoCongelado
+            || (compraLiberada
+            ? <>Plano de Compras já liberado — esta etapa está congelada. Para <b>substituir ou remover</b> este documento, reabra as etapas.</>
+            : "Modo leitura — habilite a edição desta obra para importar ou remover.")}</span>
+        </p>
+      ) : null}
       {ok && <Alert tone="success"><AlertDescription>{ok}</AlertDescription></Alert>}
       {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
     </div>
@@ -5757,7 +5770,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             );
           })}
 
-          <div className="flex items-center justify-between border-t-2 border-text px-4 py-3">
+          <div className="flex items-center justify-between border-t-2 border-line-3 px-4 py-3">
             <span className="text-sm font-semibold text-text">Total da planilha</span>
             <span className="mono w-32 shrink-0 text-right text-sm font-semibold tabular-nums">{fmtBRL(totalPlanilha)}</span>
           </div>
@@ -6570,7 +6583,11 @@ function conferirExecutivoObra(categorias) {
   // A conferencia do executivo ve a planilha inteira (pedido dela,
   // 17/09/2026): nenhuma verba fica de fora da comparacao.
   const vendido = juntarItens(categorias, "itensPlanilha", { tudo: true });
-  const executivo = juntarItens(categorias, "itensPlanilhaExecutivo", { tudo: true });
+  /* O QUE FOI REMOVIDO NO EXECUTIVO NAO ENTRA (pedido dele, 23/09/2026):
+     o Executivo e' onde a planilha se ajusta; a conferencia olha so' o que
+     ficou. O par vendido do removido aparece como "nao esta no executivo". */
+  const executivo = juntarItens(categorias, "itensPlanilhaExecutivo", { tudo: true })
+    .filter((it) => !it.excluido);
   const cruzado = cruzarItens(vendido, executivo, (x) => x.qtdVendida, (x) => x.qtdVendida);
   const deslocamento = detectarDeslocamentoVerba(cruzado);
   const linhas = cruzado
@@ -7215,11 +7232,10 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
 
 /* O que entrou e o que saiu do vendido, por categoria.
 
-   Não dá pra ler isso só do status do cruzamento: item excluído ou
-   trocado no Executivo continua na planilha, só marcado — e o cruzamento
-   acha o par dele no vendido e dá "conferido". Por isso a conta olha as
-   marcas que o próprio Executivo grava (excluido, manual, substitui),
-   além das sobras do cruzamento. */
+   Na Conf. Executivo o removido já chega fora do cruzamento (23/09/2026):
+   o par vendido dele sobra sozinho e cai em "saiu". A conta ainda lê as
+   marcas que o Executivo grava (excluido, manual, substitui), para quem
+   passar o cruzamento com os removidos dentro. */
 /* O DETALHE DA LINHA, pra conferir contra a planilha (pedido dela,
    17/09/2026): "mostrar tambem o detalhe (cod/ espeficicacao e fornecedor),
    que sao as informacoes que estao na planilha do executivo. (deixar bem
@@ -8164,8 +8180,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                            do cliente NAO pinta a linha: ela virou coluna, e
                            repetir em cor o que a coluna ja' diz e' barulho. */
                         <TableRow key={x.chave} className={
-                          x.it.excluido ? "bg-danger/10 text-text-mute"
-                          : x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "bg-alert/10"
+                          x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "bg-alert/10"
                           : ""
                         }>
                           <TableCell className="w-10">
@@ -8173,7 +8188,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                               <Checkbox aria-label="Selecionar linha" checked={sel.has(x.chave)} onCheckedChange={() => marcar(x.chave)} />
                             )}
                           </TableCell>
-                          <TableCell className={`mono hidden text-text-mute md:table-cell ${x.it.excluido ? "line-through" : ""}`}>{codigoVisivel(x.it) || "—"}</TableCell>
+                          <TableCell className="mono hidden text-text-mute md:table-cell">{codigoVisivel(x.it) || "—"}</TableCell>
                           <TableCell>
                             {/* O texto inteiro fica no title: a descricao corta em
                                 duas linhas pra lista caber na tela. */}
@@ -8188,15 +8203,6 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                               <div className="text-xs text-text-mute">
                                 {[x.it.especificacao, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente]
                                   .filter(Boolean).join(" · ")}
-                              </div>
-                            )}
-                            {/* A JUSTIFICATIVA DA REMOCAO (ADR-005): item removido da
-                                planilha aparece aqui dizendo por que, e por quem. */}
-                            {x.it.excluido && (
-                              <div className="mt-1 flex flex-wrap items-baseline gap-1 text-xs text-danger">
-                                <X size={12} aria-hidden="true" /> <span>Removido do executivo</span>
-                                {x.it.excluidoMotivo ? <> — {x.it.excluidoMotivo}</> : <> — sem justificativa registrada</>}
-                                {x.it.excluidoPor ? <span className="text-text-mute"> · {x.it.excluidoPor}</span> : null}
                               </div>
                             )}
                             {/* O aviso do cliente saiu daqui: ele virou a coluna
@@ -9754,7 +9760,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             );
           })}
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t-2 border-text px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t-2 border-line-3 px-4 py-3">
             <span className="text-sm font-semibold text-text">Total da planilha executivo</span>
             <span className="flex flex-wrap items-baseline justify-end gap-4">
               <span className="mono text-xs tabular-nums text-text-mute">
@@ -11370,6 +11376,8 @@ function itensParaLiberar(obra, entrouPorDesc = null, { comMaoDeObra = false } =
         return;
       }
       if (it.troca) return;
+      // Removido no Executivo nao se confere nem se libera (23/09/2026).
+      if (it.excluido) return;
       const { material, mo } = parcelasDoItem(it, cat);
       const ehMO = alocacaoDoItem(it, cat) === ALOC_MO;
       if (ehMO && !comMaoDeObra) return;
@@ -19689,6 +19697,12 @@ function ObraDoCanal({ L, canal }) {
             <div className="flex w-20 shrink-0 flex-col items-center text-center">
               <span className="label-mono whitespace-nowrap">Itens</span>
               <span className="mono text-sm tabular-nums text-text">{L.itens.length}</span>
+            </div>
+            {/* O total do canal na obra, comprado ou nao: sem ele o "falta
+                comprar" zerado nao diz se a obra tem pouco ou ja' comprou tudo. */}
+            <div className="flex w-36 shrink-0 flex-col items-center text-center">
+              <span className="label-mono whitespace-nowrap">Total</span>
+              <span className="mono whitespace-nowrap text-sm tabular-nums text-text">{fmtBRL(L.total)}</span>
             </div>
             <div className="flex w-40 shrink-0 flex-col gap-1">
               <span className="label-mono whitespace-nowrap text-center">Falta comprar</span>

@@ -433,7 +433,7 @@ conf("espec., fornecedor e ambiente ficam na célula do produto",
    "conferi" — e são eles que travam a liberação. Falta do cliente NÃO pinta:
    ela virou coluna, e repetir em cor o que a coluna diz é barulho. */
 conf("linha que pede conferência sai laranja",
-  src.includes(`: x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "bg-alert/10"`), true);
+  src.includes(`x.pendencia && x.pendencia.tipo !== "cliente" && !x.it.alertaConferido ? "bg-alert/10"`), true);
 conf("o aviso do cliente saiu da linha (virou coluna)",
   src.includes(`{x.pendencia && x.pendencia.tipo !== "cliente" && (`), true);
 
@@ -490,9 +490,8 @@ conf("o cartão de cima usa essa regra",
   src.includes("contador: `${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => x.liberado).length, 0)}"), true);
 conf("e o placar da lista também", src.includes("const compraveis = compraveisDoGrupo;"), true);
 
-/* A justificativa da remoção aparece na linha (a gravação dela é a fatia 3). */
-conf("a linha removida mostra a justificativa", src.includes("Removido do executivo"), true);
-conf("... e diz quando não tem", src.includes("sem justificativa registrada"), true);
+/* O removido no Executivo não aparece na Conf. Executivo (23/09/2026). */
+conf("a lista para liberar deixa o removido de fora", src.includes("if (it.excluido) return;"), true);
 
 /* "quando eu clico em conf executivo quero ver a listagem geral como esta
    nessa tela": a planilha é o trabalho; o depara lado a lado virou consulta. */
@@ -588,7 +587,7 @@ conf("e o placar parou de repetir os cartões", /de <span className="mono tabula
    célula do produto, onde ele se perdia entre especificação e fornecedor. */
 conf("o código tem coluna própria, na esquerda", src.includes(`<th className="c-cod">Cód.</th>`), true);
 conf("... e a célula vem antes do produto",
-  src.includes('<TableCell className={`mono hidden text-text-mute md:table-cell ${x.it.excluido ? "line-through" : ""}`}>{codigoVisivel(x.it) || "—"}</TableCell>'), true);
+  src.includes('<TableCell className="mono hidden text-text-mute md:table-cell">{codigoVisivel(x.it) || "—"}</TableCell>'), true);
 
 /* ---- SELECIONAR PARA CONCLUIR EM MASSA (18/09/2026) ---- */
 conf("existe seleção por linha", src.includes(`aria-label="Selecionar linha"`), true);

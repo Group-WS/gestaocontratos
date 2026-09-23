@@ -52,11 +52,10 @@ conf("a tela só manda o motivo", src.includes("onEditarItem(c.num, i, { excluid
 conf("desfazer limpa a justificativa",
   src.includes("patch = { ...patch, excluidoMotivo: null, excluidoPor: null, excluidoEm: null };"), true);
 
-/* ---- 5. E aparece na Conf. Executivo ---- */
-conf("a Conf. Executivo mostra a justificativa", src.includes("Removido do executivo"), true);
-conf("... com quem removeu", src.includes("{x.it.excluidoPor ? <span className=\"text-text-mute\"> · {x.it.excluidoPor}</span> : null}"), true);
-conf("... e diz quando não tem (removido antes desta regra)",
-  src.includes("sem justificativa registrada"), true);
+/* ---- 5. E NÃO aparece na Conf. Executivo (23/09/2026) ----
+   O Executivo é onde a planilha se ajusta; a conferência vê só o que ficou. */
+conf("o cruzamento deixa o removido de fora", src.includes(".filter((it) => !it.excluido);"), true);
+conf("a Conf. Executivo não mostra mais a linha removida", src.includes("Removido do executivo"), false);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
