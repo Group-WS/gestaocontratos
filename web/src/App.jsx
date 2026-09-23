@@ -21277,9 +21277,8 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
             {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
             {!temBotao && ato && <span className="text-xs text-text-mute">{ato}</span>}
             {temBotao && (
-              /* Azul cheio (variante default) enquanto o DS não tem a
-                 variante verde: pedida em 23/09/2026 (Group-WS/groupws-design-system#1)
-                 (variant="success"). Quando chegar, troca aqui. */
+              /* Azul cheio (variante default): só as cores que o DS já tem
+                 (decisão de 23/09/2026 — sem variante verde). */
               <Button size="sm" disabled={congelado || !!bloqueio} onClick={async () => {
                 if (await confirmar({
                   titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
