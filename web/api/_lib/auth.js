@@ -136,6 +136,22 @@ async function exigirPerfilDeEdicao(req, res, next) {
   res.status(403).json({ erro: SEM_ACESSO });
 }
 
+/* Administrador, como o banco entende em `public.sou_admin()`. */
+const PERFIS_DE_ADMINISTRADOR = ["master", "admin"];
+
+/**
+ * Middleware: so' administrador (Admin master e Administrador).
+ *
+ * Espelha o `public.sou_admin()` do banco (supabase/rls-reforco.sql), que
+ * e' quem de fato barra — a API decide antes so' pra responder 403 em vez
+ * de devolver lista vazia.
+ */
+async function exigirAdministrador(req, res, next) {
+  const pessoa = await pessoaDoPedido(req);
+  if (ehMembro(pessoa) && PERFIS_DE_ADMINISTRADOR.includes(pessoa.perfil)) return next();
+  res.status(403).json({ erro: SEM_ACESSO });
+}
+
 /**
  * Este usuario enxerga esta obra?
  *
@@ -212,6 +228,6 @@ const exigirObra = barreiraDeObra(podeAcessarObra);
 const exigirEdicaoDeObra = barreiraDeObra(podeEditarObra);
 
 module.exports = {
-  exigirLogin, exigirMembro, exigirPerfilDeEdicao, exigirObra, exigirEdicaoDeObra,
+  exigirLogin, exigirMembro, exigirPerfilDeEdicao, exigirAdministrador, exigirObra, exigirEdicaoDeObra,
   podeAcessarObra, podeEditarObra, PERFIS_QUE_EDITAM,
 };

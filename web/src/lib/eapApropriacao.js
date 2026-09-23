@@ -25,6 +25,11 @@ import { apiJson } from "./api";
  * importou e quem definiu o mapa saem do login, no servidor, e por isso
  * não viajam no corpo do pedido (SEG-13).
  *
+ * QUEM MEXEU: cada gesto (importar, tornar padrão, ligar, trocar, desligar,
+ * excluir) também vira uma linha no registro, gravada pelo servidor. Só
+ * administrador lê (`listarEventosEap`). O registro nunca derruba o gesto:
+ * se falhar, a resposta volta com `registro: "falhou"` e o gesto vale.
+ *
  * Sem Supabase configurado (modo local), tudo devolve vazio em silêncio,
  * no mesmo espírito de lib/insumos.js: o app abre, só não tem EAP.
  */
@@ -85,7 +90,34 @@ export async function importarEap({ versao, itens }, { herdarDe = null } = {}) {
     }));
   }
 
+  /* Fecha o registro da importação: uma linha só, com os números do que
+     entrou. Os números descrevem o ARQUIVO (o navegador acabou de lê-lo);
+     quem importou sai do login, no servidor. Falhar aqui não desfaz a
+     importação — ela já está gravada. */
+  const folhas = itens.filter((i) => i.folha).length;
+  const herdadas = herdarDe ? Math.max(0, (await mapaDaVersao(herdarDe)) - orfaos.length) : 0;
+  try {
+    await apiJson(`/api/eap/versoes/${encodeURIComponent(id)}/registro`, {
+      metodo: "POST",
+      corpo: {
+        nItens: itens.length,
+        nFolhas: folhas,
+        herdadas,
+        orfaos: orfaos.map((o) => String(o.verba)),
+        herdouDe: herdarDe || null,
+      },
+    });
+  } catch { /* o rastro é o que se perde, não a importação */ }
+
   return { id, orfaos };
+}
+
+/** Quantas verbas a versão tinha ligadas — só para contar o que foi herdado. */
+async function mapaDaVersao(versaoId) {
+  try {
+    const { mapa } = await carregarEap(versaoId);
+    return Object.keys(mapa || {}).length;
+  } catch { return 0; }
 }
 
 /* Uma padrão por vez — é o que o índice único parcial da tabela garante.
@@ -96,9 +128,38 @@ export async function definirVersaoPadrao(versaoId) {
   await apiJson(`/api/eap/versoes/${encodeURIComponent(versaoId)}/padrao`, { metodo: "PUT" });
 }
 
-/** Liga (ou desliga, com `codigo` nulo) uma verba do GC a uma folha da EAP. */
-export async function definirMapaVerba(versaoId, verbaNum, codigo) {
+/**
+ * Liga (ou desliga, com `codigo` nulo) uma verba do GC a uma folha da EAP.
+ *
+ * `obraCodigo` diz de ONDE veio o gesto: vazio é a tela EAP Sienge,
+ * preenchido é o envio da solicitação de compra dentro daquela obra. O mapa
+ * é o mesmo — o registro é que precisa saber a diferença.
+ */
+export async function definirMapaVerba(versaoId, verbaNum, codigo, { obraCodigo = null } = {}) {
   if (!supabaseConfigurado) throw new Error("Sem banco configurado.");
   // Código vazio e código nulo são a mesma coisa aqui: "desliga esta verba".
-  await apiJson("/api/eap/mapa", { metodo: "PUT", corpo: { versaoId, verbaNum, codigo: codigo || null } });
+  await apiJson("/api/eap/mapa", {
+    metodo: "PUT",
+    corpo: { versaoId, verbaNum, codigo: codigo || null, obraCodigo: obraCodigo || null },
+  });
+}
+
+/**
+ * O registro do EAP: quem mexeu, do mais novo pro mais antigo.
+ *
+ * Só administrador lê — quem não for recebe 403 do servidor, e a tela nem
+ * pergunta. `semTabela` é o SQL que ainda falta rodar, não um erro.
+ */
+export async function listarEventosEap() {
+  if (!supabaseConfigurado) return { eventos: [] };
+  return await apiJson("/api/eap/eventos");
+}
+
+/**
+ * Exclui uma versão da EAP. Nunca a padrão — é com ela que as solicitações
+ * saem; o servidor recusa e a tela mostra o motivo.
+ */
+export async function excluirVersaoEap(versaoId) {
+  if (!supabaseConfigurado) throw new Error("Sem banco configurado.");
+  await apiJson(`/api/eap/versoes/${encodeURIComponent(versaoId)}`, { metodo: "DELETE" });
 }

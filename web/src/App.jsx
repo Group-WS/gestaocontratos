@@ -14,12 +14,12 @@ import * as XLSX from "xlsx";
 import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
   Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
-  ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
+  Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Maximize2, Minimize2,
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -31,7 +31,7 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
   PAPEIS_DA_OBRA, obraDaPessoa, equipeDaObra } from "./lib/pessoas";
 import { listarVersoes, restaurarVersao } from "./lib/versoesObra";
 import { listarComentarios, criarComentario, apagarComentario } from "./lib/comentarios";
-import { DOCUMENTOS, resumoDaImportacao, linhasDoAviso, listarImportacoes, registrarImportacao } from "./lib/importacoes.js";
+import { DOCUMENTOS, resumoDaImportacao, linhasDoAviso, ROTULO_SUBSTITUIR_TUDO, listarImportacoes, registrarImportacao } from "./lib/importacoes.js";
 import { listarEventosDeArquivo, registrarEventoDeArquivo } from "./lib/arquivoEventos.js";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
@@ -49,7 +49,8 @@ import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
 // A EAP do SIENGE (apropriação do orçamento) — outra coisa da `lib/eap`
 // acima, que é a EAP da casa. Ver o cabeçalho de lib/eapApropriacao.js.
 import { parseEapSienge, folhasDaEap, sugerirFolha, ehMaterial } from "./lib/eapSienge.js";
-import { listarVersoesEap, carregarEap, importarEap, definirVersaoPadrao, definirMapaVerba } from "./lib/eapApropriacao.js";
+import { listarVersoesEap, carregarEap, importarEap, definirVersaoPadrao, definirMapaVerba,
+  listarEventosEap, excluirVersaoEap } from "./lib/eapApropriacao.js";
 import { montarSolicitacaoSienge, corpoDoEnvio, casarDetalhes } from "./lib/siengeSolicitacao.js";
 import { abrirEnvio, fecharEnvio, enviosPendentes, envioComMesmoConteudo, reconciliarEnvio,
   listarEnviosSienge, assinaturaDoEnvio, novaChaveIdempotencia } from "./lib/siengeSolicitacoes.js";
@@ -69,7 +70,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, CampoData, IconeSquad, SquadComIcone, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, DicaInfo, EscolhaEstado } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, CampoData, IconeSquad, SquadComIcone, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, DicaInfo, EscolhaEstado, BotaoComMotivo } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -606,9 +607,17 @@ function jornadaDaObra(obra) {
     // Vendido Contrato deixou de ser etapa navegável (o CMV agora sai
     // direto da Planilha) — esse marco passa a fechar quando a Planilha
     // fecha, senão ficaria travado pra sempre em obra nenhuma.
-    { chave: "contrato", nome: "Contrato", feito: etapaConcluida("vendido_planilha", obra) },
+    // O contrato assinado anexado também fecha o marco (23/09/2026): a obra
+    // com o contrato na Jornada aparecia "Em andamento" até alguém concluir
+    // a Planilha — os outros marcos já fecham pelo próprio arquivo.
+    { chave: "contrato", nome: "Contrato", feito: !!cad.contrato || etapaConcluida("vendido_planilha", obra) },
     { chave: "criativo", nome: "Criativo", feito: !!cad.criativo },
-    { chave: "executivo", nome: "Executivo", feito: !!cad.projeto },
+    // Executivo pelos três cadernos (decisão de 23/09/2026): concluído com
+    // Especificação, Marcenaria e o Caderno Completo anexados; com parte
+    // deles, em andamento. Antes só o Caderno Completo contava.
+    { chave: "executivo", nome: "Executivo",
+      feito: ["especificacao", "marcenaria", "projeto"].every((k) => !!cad[k]),
+      andamento: ["especificacao", "marcenaria", "projeto"].some((k) => !!cad[k]) },
     // Sem cronograma ainda, a execução não fecha sozinha: compras liberadas
     // quer dizer que a obra COMEÇOU, não que acabou. Quando o módulo de
     // Execução tiver o cronograma, é ele que conclui este marco.
@@ -3660,12 +3669,18 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {/* A linha separada esta logo abaixo, na mesma verba — nao ha
                 mais pra onde mandar a pessoa. */}
-            <Badge tone="purple"><CornerDownRight size={12} aria-hidden="true" /> mão de obra de {fmtBRL(item.moSeparada.valor)} separada na linha abaixo</Badge>
+            {/* Curto e quebrando linha (23/09/2026): a frase inteira num selo
+                que não quebra passava por cima da coluna Ambiente. O texto
+                completo fica na dica. */}
+            <Badge tone="purple" className="max-w-full whitespace-normal"
+              title={`Mão de obra de ${fmtBRL(item.moSeparada.valor)} separada na linha abaixo`}>
+              <CornerDownRight size={12} aria-hidden="true" /> MO {fmtBRL(item.moSeparada.valor)} na linha abaixo
+            </Badge>
             {onJuntarMO && podeEditar && <Button variant="ghost" size="sm" onClick={onJuntarMO} title="Traz a mão de obra de volta para este item e apaga a linha separada">juntar de volta</Button>}
           </div>
         )}
         {item.separadoDe && (
-          <Badge tone="purple" className="mt-1">
+          <Badge tone="purple" className="mt-1 max-w-full whitespace-normal">
             <CornerDownRight size={12} aria-hidden="true" /> mão de obra do item {item.separadoDe.codigo}
           </Badge>
         )}
@@ -3713,8 +3728,8 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
       </TableCell>
       <TableCell className="text-center">
         {bloqueado
-          ? <Button size="sm" onClick={onAprovar} disabled={!podeEditar}
-              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={14} aria-hidden="true" /> Aprovar p/ compra</Button>
+          ? <BotaoComMotivo size="sm" onClick={onAprovar} disabled={!podeEditar}
+              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={14} aria-hidden="true" /> Aprovar p/ compra</BotaoComMotivo>
           : <DestinoCompra item={item} aloc={aloc} />}
       </TableCell>
     </TableRow>
@@ -3820,10 +3835,9 @@ function parcelasDaPlanilha(it) {
    entrega da obra, e data digitada nao. */
 function PrazoCompra({ cat, itens, dataEntrega }) {
   const prazo = prazoDoGrupo(cat, itens);
-  // Celula vazia, e nao ausente: sem ela as colunas MAT e MO dos grupos
-  // sem regra deslizariam pra esquerda e a lista deixaria de ser lida
-  // como coluna.
-  if (!prazo) return <span className="hidden sm:block sm:w-36 sm:shrink-0" aria-hidden="true" />;
+  // Sem regra de prazo, nada: o selo mora junto dos outros selos da verba,
+  // e MAT/MO têm largura fixa própria, então não deslizam.
+  if (!prazo) return null;
 
   const limite = dataLimiteCompra(dataEntrega, prazo.dias);
   const faltam = diasAte(limite);
@@ -3839,26 +3853,17 @@ function PrazoCompra({ cat, itens, dataEntrega }) {
       ? `${prazo.dias} dias (${prazo.fornecedor})${prazo.varios ? " — o mais apertado do grupo" : ""}`
       : `${prazo.dias} dias antes da entrega`;
 
+  /* Um selo numa linha (23/09/2026), no lugar das três linhas empilhadas
+     (rótulo, data, contagem): o cabeçalho da verba fica da altura do
+     Executivo, e a cor do selo diz a urgência como a cor do texto dizia. */
+  const tomSelo = faltam == null ? "neutral" : faltam < 0 ? "danger" : faltam <= 15 ? "warning" : "neutral";
   return (
-    <span className="col-span-2 block text-center sm:col-span-1 sm:w-36 sm:shrink-0" title={porque}>
-      <span className="label-mono block text-center text-text-mute">
-        COMPRAR ATÉ
-        {prazo.incerto && <Badge tone="warning" className="ml-1" title={porque}>?</Badge>}
-      </span>
-      {limite ? (
-        <>
-          <span className={cn("mono block text-sm tabular-nums", tom || "text-text")}>{fmtData(limite)}</span>
-          <span className={cn("block text-xs", tom || "text-text-mute")}>{conta}</span>
-        </>
-      ) : (
-        /* Sem data de entrega, mostra so a antecedencia. Repetir "falta a
-           data de entrega" em quinze grupos era encher a tela com o mesmo
-           recado — ele passou a ser um aviso unico, no topo. */
-        <>
-          <span className="mono block text-sm tabular-nums text-text-mute">{prazo.dias} dias</span>
-          <span className="block text-xs text-text-mute">antes da entrega</span>
-        </>
-      )}
+    <span className="inline-flex max-w-full" title={porque}>
+      <Badge tone={limite ? tomSelo : "neutral"} className="max-w-full whitespace-normal">
+        <Clock size={12} aria-hidden="true" />
+        {limite ? `Comprar até ${fmtData(limite)} · ${conta}` : `Comprar ${prazo.dias} dias antes da entrega`}
+        {prazo.incerto && " (?)"}
+      </Badge>
     </span>
   );
 }
@@ -3882,7 +3887,8 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
         <span className="flex min-w-0 flex-1 basis-64 items-start gap-2">
           <span className="mono w-6 shrink-0 text-xs text-text-mute">{cat.num}</span>
           <span className="min-w-0 flex-1 text-sm font-semibold text-text">{cat.nome}</span>
-          <span className="flex shrink-0 flex-wrap justify-end gap-2 sm:w-56">
+          <span className="flex min-w-0 flex-wrap justify-end gap-2">
+            <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega} />
             {cat.foraDeEscopoCategoria && <Badge tone="danger"><XCircle size={12} aria-hidden="true" /> Fora do escopo vendido</Badge>}
             <Badge tone="neutral">{itens.length} {itens.length === 1 ? "item" : "itens"}</Badge>
             {nAvulsos > 0 && <Badge tone="purple"><Plus size={12} aria-hidden="true" /> {nAvulsos} avulso{nAvulsos > 1 ? "s" : ""}</Badge>}
@@ -3905,20 +3911,23 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
         </span>
         {/* No celular o prazo ocupa a fila de cima e MAT/MO dividem a de
             baixo: as tres colunas lado a lado passam de 375px. */}
-        <span className="grid w-full shrink-0 grid-cols-2 gap-x-4 gap-y-2 sm:flex sm:w-auto sm:items-start sm:justify-end sm:gap-4">
-          <PrazoCompra cat={cat} itens={itens} dataEntrega={dataEntrega} />
-          <span className="min-w-0 sm:w-32 sm:shrink-0">
-            <span className="label-mono block text-center text-text-mute">MAT</span>
-            <span className={cn("mono block text-right text-sm font-semibold tabular-nums", mat > 0 ? "text-text" : "text-text-mute")}>{mat > 0 ? fmtBRL(mat) : "—"}</span>
+        {/* Uma linha só, como a verba do Executivo (23/09/2026): o rótulo
+            MAT/MO vai na frente do valor, não em cima dele — antes o
+            cabeçalho da verba tinha duas linhas e o dobro da altura. */}
+        <span className="flex w-full shrink-0 flex-wrap items-start justify-end gap-x-4 gap-y-1 sm:w-auto sm:flex-nowrap">
+          <span className={cn("mono shrink-0 text-right text-sm font-semibold tabular-nums sm:w-36", mat > 0 ? "text-text" : "text-text-mute")}>
+            <span className="label-mono mr-1 font-normal text-text-mute">MAT</span>{mat > 0 ? fmtBRL(mat) : "—"}
           </span>
-          <span className="min-w-0 sm:w-32 sm:shrink-0">
-            <span className="label-mono block text-center text-text-mute">MO</span>
-            <span className={cn("mono block text-right text-sm font-semibold tabular-nums", mo > 0 ? "text-text" : "text-text-mute")}>{mo > 0 ? fmtBRL(mo) : "—"}</span>
+          <span className={cn("mono shrink-0 text-right text-sm font-semibold tabular-nums sm:w-36", mo > 0 ? "text-text" : "text-text-mute")}>
+            <span className="label-mono mr-1 font-normal text-text-mute">MO</span>{mo > 0 ? fmtBRL(mo) : "—"}
           </span>
         </span>
       </span>
     )}>
-      <div className="border-t border-line-1 bg-surface-2">
+      {/* Mesma moldura da tabela do Executivo (23/09/2026): fundo branco,
+          encostada nas bordas do card, sem o cinza que a fazia parecer
+          outro bloco. */}
+      <div className="border-t border-line-1">
         {/* Fora do cabecalho de proposito: ele e um botao, e botao
             dentro de botao nao e HTML valido — o clique de um comeria o
             do outro. Aqui tambem fica melhor: separa depois de olhar. */}
@@ -3935,8 +3944,8 @@ function GrupoPlano({ cat, itens, expanded, onToggle, onItemChange, onAlocar, on
             </AlertDescription>
           </Alert>
         )}
-        <div className="overflow-x-auto">
-          <Table className="min-w-4xl table-fixed">
+        <div className="tabela-da-verba">
+          <Table className="min-w-4xl w-full table-fixed bg-surface-1">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-16">Cód.</TableHead>
@@ -4144,9 +4153,9 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
      CMV, a justificativa, o nome de quem autorizou) abre num dialog. */
   return (
     <>
-      <Button disabled={!podeEditar} title={podeEditar ? undefined : MODO_LEITURA_DICA} onClick={() => setAberto(true)}>
+      <BotaoComMotivo disabled={!podeEditar} title={podeEditar ? undefined : MODO_LEITURA_DICA} onClick={() => setAberto(true)}>
         <ShieldCheck size={16} aria-hidden="true" /> Liberar compra
-      </Button>
+      </BotaoComMotivo>
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent size="md">
           <DialogHeader>
@@ -4157,6 +4166,9 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
                 : "Ao liberar, este vira o plano oficial de compra: Vendido, Depara e Executivo ficam congelados."}
             </DialogDescription>
           </DialogHeader>
+          {/* Sem aviso nem exceção, não há corpo (23/09/2026): o DialogBody
+              vazio desenhava uma faixa em branco entre dois divisores. */}
+          {(semAssinatura || acimaDoTeto) && (
           <DialogBody className="flex flex-col gap-4">
             {semAssinatura && (
               <Alert tone="danger">
@@ -4192,9 +4204,13 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
               </div>
             )}
           </DialogBody>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setAberto(false)}>Cancelar</Button>
-            <Button disabled={bloqueado} onClick={() => {
+            <BotaoComMotivo disabled={bloqueado}
+              title={!temItens ? "sem itens no Executivo não há o que liberar"
+                : !podeEditar ? MODO_LEITURA_DICA
+                : faltaJustificar ? "preencha a justificativa (15 letras ou mais) e quem autorizou" : undefined} onClick={() => {
               onLiberar(precisaExcecao
                 ? { estouro: acimaDoTeto ? estouro : 0, semAssinatura,
                     justificativa: justificativa.trim(), aprovador: aprovador.trim() }
@@ -4202,7 +4218,7 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
               setAberto(false);
             }}>
               <ShieldCheck size={16} aria-hidden="true" /> {precisaExcecao ? "Liberar com exceção registrada" : "Liberar plano de compras"}
-            </Button>
+            </BotaoComMotivo>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -4347,7 +4363,17 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
   const limparFiltros = () => { setBusca(""); setItemFilter("todos"); setTipoFilter("todos"); };
 
   return (
-    <PageShell title="Plano de Compras"
+    /* O que o plano faz mora no ⓘ do título (23/09/2026): era um Alert azul
+       fixo que toda visita repetia. O congelamento, quando já aconteceu,
+       continua como aviso — aí é estado, não explicação. */
+    <PageShell title={(
+      <span className="inline-flex items-center gap-2">
+        Plano de Compras
+        <DicaInfo rotulo="O que é o Plano de Compras">
+          Este é o plano que libera compras e contratações. Ao liberar, as etapas anteriores são congeladas e não podem mais ser alteradas.
+        </DicaInfo>
+      </span>
+    )}
       description="O que a obra vai comprar e contratar, verba a verba — e com que dinheiro."
       contentClassName="flex flex-col gap-6"
       actions={(
@@ -4414,13 +4440,9 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
           </Toggle>
         </div>
       )}>
-      {obra.comprasLiberadas ? (
+      {obra.comprasLiberadas && (
         <Alert tone="success">
           <AlertDescription>Plano de Compras liberado — as etapas anteriores estão congeladas.</AlertDescription>
-        </Alert>
-      ) : (
-        <Alert tone="info">
-          <AlertDescription>Este é o plano que libera compras e contratações. Ao liberar, <b>as etapas anteriores são congeladas</b> e não podem mais ser alteradas.</AlertDescription>
         </Alert>
       )}
 
@@ -5160,34 +5182,53 @@ async function confirmarImportacao({ arquivo, categorias, itens, documento, nums
   const resumo = resumoDaImportacao(categorias, itens, DOCUMENTOS[documento].campo, numsExtras);
   const temPerda = Array.isArray(perda) && perda.length > 0;
   if (resumo.haviaConteudo || temPerda) {
-    const blocos = linhasDoAviso(resumo).map((linha) => [linha]);
+    const blocosExtras = [];
     if (temPerda) {
-      blocos.push(["Hoje esta obra tem:", ...perda.map((l) => `· ${l}`), "Nas verbas trocadas, isso é apagado."]);
-      blocos.push(["O que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra e sem a ligação com o Sienge."]);
-      blocos.push(["O histórico de versões guarda o estado de agora, então dá para voltar atrás."]);
+      blocosExtras.push(["Hoje esta obra tem:", ...perda.map((l) => `· ${l}`), "Nas verbas trocadas, isso é apagado."]);
+      blocosExtras.push(["O que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra e sem a ligação com o Sienge."]);
+      blocosExtras.push(["O histórico de versões guarda o estado de agora, então dá para voltar atrás."]);
     }
-    const ok = await confirmar({
-      titulo: temPerda ? "Substituir a Planilha Executivo?" : `Importar “${arquivo.name}”?`,
-      mensagem: blocos.map((linhas, i) => (
+    const texto = (substituirTudo) => {
+      const blocos = [...linhasDoAviso(resumo, { substituirTudo }).map((linha) => [linha]), ...blocosExtras];
+      return blocos.map((linhas, i) => (
         <React.Fragment key={i}>
           {i > 0 && <><br /><br /></>}
           {linhas.map((l, j) => <React.Fragment key={j}>{j > 0 && <br />}{l}</React.Fragment>)}
         </React.Fragment>
-      )),
-      confirmar: temPerda ? "Trocar mesmo assim" : "Importar",
-      perigo: temPerda,
+      ));
+    };
+    /* A ESCOLHA DE SUBSTITUIR TUDO MORA NA PRÓPRIA PERGUNTA (23/09/2026).
+
+       O padrão continua sendo "manter e avisar" (RN-029): o arquivo troca
+       só as verbas que trouxe. Mas quem tem o documento inteiro na mão
+       precisava de um jeito de dizer isso — antes, a única saída era
+       limpar o documento e importar de novo, dois passos e um estado
+       vazio no meio. A opção nasce desmarcada e, marcada, muda o texto e
+       o botão: apagar o que a importação anterior deixou é destrutivo e
+       precisa estar escrito antes do clique. */
+    const resposta = await confirmar({
+      titulo: (marcada) => {
+        if (marcada) return `Substituir todo o ${DOCUMENTOS[documento].rotulo}?`;
+        return temPerda ? "Substituir a Planilha Executivo?" : `Importar “${arquivo.name}”?`;
+      },
+      mensagem: (marcada) => texto(marcada),
+      confirmar: (marcada) => (marcada ? "Substituir tudo" : (temPerda ? "Trocar mesmo assim" : "Importar")),
+      perigo: (marcada) => marcada || temPerda,
+      opcao: { rotulo: ROTULO_SUBSTITUIR_TUDO },
     });
-    if (!ok) {
+    if (!resposta) {
       const desistiu = new Error("Importação cancelada.");
       desistiu.cancelado = true;
       throw desistiu;
     }
+    return { ...resumo, substituirTudo: Boolean(resposta.marcada) };
   }
-  return resumo;
+  return { ...resumo, substituirTudo: false };
 }
 
 function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada,
                        motivoCongelado }) {
+  const acaoDaEtapa = useContext(EtapaDaAbaContexto)?.acaoDaEtapa ?? null;
   const inputRef = useRef(null);
   const [carregando, setCarregando] = useState(false);
 
@@ -5224,8 +5265,14 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
      mede pelo conteúdo — sem teto, a dica pedia a largura da frase inteira
      e a página rolava de lado a 375px. */
   return (
-    <div className="flex w-full max-w-xs flex-col gap-2 sm:w-auto sm:max-w-md">
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+    /* Os botões numa linha só (23/09/2026): o teto de largura fica nos
+       textos (aviso e retorno), não na fila — com a Apresentação ao lado,
+       o teto do bloco inteiro empurrava o importar para a linha de baixo. */
+    <div className="flex w-full max-w-xs flex-col gap-2 sm:w-auto sm:max-w-none sm:items-end">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:justify-end">
+        {/* A ação da etapa (Apresentação) entra na MESMA linha dos botões
+            de importar, alinhada com eles; o aviso fica embaixo dos dois. */}
+        {acaoDaEtapa}
         {/* Subir o arquivo errado tem que ter volta. Sem isto, o unico
             jeito de desfazer era subir outro por cima — e se o certo
             ainda nao existisse, a obra ficava com dado errado. */}
@@ -5250,7 +5297,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             leitura e na etapa congelada — e botao que some nao se procura,
             se conclui que nao existe. */}
         {onLimpar && temConteudo && (
-          <Button variant="outline" className="text-danger" disabled={carregando || congelado}
+          <BotaoComMotivo variant="outline" className="text-danger" disabled={carregando || congelado}
             title={congelado
               ? (compraLiberada
                   ? "O Plano de Compras já foi liberado e congelou esta etapa. Use \"Reabrir etapas\" antes de remover."
@@ -5264,19 +5311,29 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             )) onLimpar();
           }}>
             <Trash2 size={16} /> Remover
-          </Button>
+          </BotaoComMotivo>
         )}
-        {/* O ⓘ vai COLADO no botão que ele explica — antes ficava numa
-            linha solta embaixo de tudo, sem dizer a qual dos botões se
-            referia (pedido de 23/09/2026: "está muito jogado"). Só
-            aparece fora do estado congelado: quando congelado, o que
-            importa é o motivo de estar travado, não como importar. */}
-        <div className="flex items-center gap-1">
-          <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando || congelado}>
+        {/* COMO IMPORTAR MORA NO PRÓPRIO BOTÃO (23/09/2026): o ⓘ solto ao
+            lado parecia um terceiro controle entre dois botões. Passar o
+            mouse (ou focar) no botão de importar mostra a explicação.
+            Congelado, a dica não aparece: ali importa o motivo da trava,
+            que está no aviso embaixo. */}
+        {congelado ? (
+          <Button onClick={() => inputRef.current && inputRef.current.click()} disabled>
             <Upload size={16} /> {carregando ? "Lendo…" : label}
           </Button>
-          {!congelado && <DicaInfo rotulo="Como importar">{dica}</DicaInfo>}
-        </div>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button onClick={() => inputRef.current && inputRef.current.click()} disabled={carregando}>
+                <Upload size={16} /> {carregando ? "Lendo…" : label}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs whitespace-normal text-left normal-case tracking-normal">
+              <span className="flex flex-col gap-1"><b>Como importar</b>{dica}</span>
+            </TooltipContent>
+          </Tooltip>
+        )}
         <SeletorDeArquivo ref={inputRef} accept={accept} onChange={aoEscolher} />
       </div>
       {/* Estado (congelado) continua em texto: é aviso, muda o que dá pra
@@ -5285,7 +5342,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
           (padrão de 22/09/2026): fora do hover ela era ruído para quem já
           sabia, e nem por isso ficava mais clara pra quem não sabia. */}
       {congelado ? (
-        <p className="flex items-start gap-2 text-xs text-text-soft">
+        <p className="flex items-start gap-2 text-xs text-text-soft sm:max-w-md">
           <Lock size={14} className="mt-px shrink-0" />
           {/* Dizer "está congelada" sem dizer como sair é beco sem saída:
               o botão de reabrir mora em OUTRA aba, e quem chega aqui pra
@@ -5372,7 +5429,15 @@ const FILTROS_VENDA = [
    então nunca chegava aqui — o total da planilha vinha menor que o do
    arquivo, calado. A regra da empresa é o contrário: o que não está no
    padrão é acrescido no final. */
-function aplicarItensNasVerbas(categorias, itens, campo) {
+/* `substituirTudo` (RN-029, 23/09/2026): a pessoa marcou na pergunta que o
+   arquivo é o documento inteiro. Aí a verba que NÃO veio no arquivo perde o
+   que tinha neste campo, em vez de ficar como estava. Só este campo: a mesma
+   verba pode ter itens de outro documento, e eles não são da conta desta
+   importação. */
+const CAMPOS_DE_ITENS = ["itens", "itensContrato", "itensPlanilha", "itensPlanilhaExecutivo"];
+const semNenhumItem = (c) => CAMPOS_DE_ITENS.every((k) => !(c[k] || []).length);
+
+function aplicarItensNasVerbas(categorias, itens, campo, { substituirTudo = false } = {}) {
   const padrao = {};
   const fora = new Map();
   (itens || []).forEach((it) => {
@@ -5387,7 +5452,11 @@ function aplicarItensNasVerbas(categorias, itens, campo) {
 
   const base = categorias
     .filter((c) => !c.foraDaEapPadrao)
-    .map((c) => (padrao[c.num] ? { ...c, [campo]: padrao[c.num] } : c));
+    .map((c) => {
+      if (padrao[c.num]) return { ...c, [campo]: padrao[c.num] };
+      if (substituirTudo && (c[campo] || []).length) return { ...c, [campo]: [] };
+      return c;
+    });
 
   // grupos fora do padrão que já existiam de outra importação continuam
   const jaFora = categorias.filter((c) => c.foraDaEapPadrao);
@@ -5407,7 +5476,11 @@ function aplicarItensNasVerbas(categorias, itens, campo) {
   jaFora.forEach((c) => {
     if (fora.has(c.nome)) return;
     if (verbaPorNome(c.nome)) return;
-    extras.push(c);
+    if (!substituirTudo) { extras.push(c); return; }
+    // Substituindo tudo: o grupo fora do padrão perde os itens deste
+    // documento e só continua existindo se ainda tiver os de outro.
+    const limpo = { ...c, [campo]: [] };
+    if (!semNenhumItem(limpo)) extras.push(limpo);
   });
 
   return [...base, ...extras];
@@ -5538,7 +5611,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
     // O contrato toca tambem as verbas em que so' leu valor, sem item.
     const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens,
       documento: "vendido_contrato", numsExtras: Object.keys(valores || {}) });
-    onImportContrato(valores, itens);
+    onImportContrato(valores, itens, { substituirTudo: resumo.substituirTudo });
     onRegistrarImportacao?.("vendido_contrato", file, resumo);
 
     // Presta contas da leitura. O que o leitor NÃO conseguiu ler precisa
@@ -5770,7 +5843,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
         : "Não encontrei colunas de Descrição + Marca/Custo nessa planilha. Me manda o arquivo que eu calibro o leitor pro seu layout.");
     }
     const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "vendido_planilha" });
-    onImportPlanilha(itens);
+    onImportPlanilha(itens, { substituirTudo: resumo.substituirTudo });
     onRegistrarImportacao?.("vendido_planilha", file, resumo);
     const temCusto = itens.some((it) => it.custo != null);
     return `“${file.name}” importado — ${itens.length} itens${temCusto ? " (com custo)" : ""}.`;
@@ -7922,11 +7995,11 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                                 )}
                               </div>
                             ) : (
-                              <Button variant="ghost" size="sm" type="button" className="text-warning" disabled={!podeEditar}
+                              <BotaoComMotivo variant="ghost" size="sm" type="button" className="text-warning" disabled={!podeEditar}
                                 title={podeEditar ? "Marcar que o cliente aprovou este produto" : MODO_LEITURA_DICA}
                                 onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                 o cliente segurou · aprovar
-                              </Button>
+                              </BotaoComMotivo>
                             )}
                           </TableCell>
                         </TableRow>
@@ -8328,23 +8401,39 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                             {/* O aviso do cliente saiu daqui: ele virou a coluna
                                 "Cliente", ao lado. Dizer a mesma coisa duas vezes
                                 na mesma linha era o que engordava a lista. */}
-                            {x.pendencia && x.pendencia.tipo !== "cliente" && (
-                              <div className={`mt-1 flex flex-wrap items-center gap-1 text-xs ${x.it.alertaConferido ? "text-text-mute" : "text-alert"}`}>
-                                <AlertTriangle size={12} aria-hidden="true" />
-                                <span>{x.pendencia.texto}</span>
+                            {/* A CONFERÊNCIA TÉCNICA COMO TAREFA (23/09/2026): antes era
+                                uma frase laranja com um "conferi" em texto solto, que
+                                não parecia botão. Pendente, é um aviso do DS com o que
+                                verificar e a ação clara; conferida, vira um selo verde
+                                com quem conferiu e o "desfazer" discreto. */}
+                            {x.pendencia && x.pendencia.tipo !== "cliente" && (x.it.alertaConferido ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-mute">
+                                <Badge tone="success"><Check size={12} aria-hidden="true" /> Conferido{x.it.alertaConferido.por ? ` por ${nomeNaEquipe([], x.it.alertaConferido.por)}` : ""}</Badge>
+                                <span className="min-w-0" title={x.pendencia.texto}>{x.pendencia.texto}</span>
                                 {podeEditar && !x.liberado && (
                                   <Button variant="ghost" size="sm" type="button"
-                                    onClick={() => onConferir(x.catIdx, x.itemIdx, !x.it.alertaConferido)}>
-                                    {x.it.alertaConferido ? "desmarcar" : "conferi"}
+                                    onClick={() => onConferir(x.catIdx, x.itemIdx, false)}>
+                                    <RotateCcw size={14} aria-hidden="true" /> Desfazer
                                   </Button>
                                 )}
-                                {x.it.alertaConferido && (
-                                  <span className="text-xs italic text-text-mute">
-                                    conferido{x.it.alertaConferido.por ? ` por ${x.it.alertaConferido.por}` : ""}
-                                  </span>
-                                )}
                               </div>
-                            )}
+                            ) : (
+                              <Alert tone="warning" className="mt-2">
+                                <AlertTitle as="h4">Conferir antes de aprovar</AlertTitle>
+                                <AlertDescription>
+                                  <span className="flex flex-col items-start gap-2">
+                                    <span>{primeiraMaiusculaTexto(x.pendencia.texto)}</span>
+                                    {!x.liberado && (
+                                      <BotaoComMotivo variant="secondary" size="sm" type="button" disabled={!podeEditar}
+                                        title={podeEditar ? undefined : MODO_LEITURA_DICA}
+                                        onClick={() => onConferir(x.catIdx, x.itemIdx, true)}>
+                                        <Check size={14} aria-hidden="true" /> Marcar como conferido
+                                      </BotaoComMotivo>
+                                    )}
+                                  </span>
+                                </AlertDescription>
+                              </Alert>
+                            ))}
                           </TableCell>
                           <TableCell className="mono hidden text-center md:table-cell">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{x.it.un}</span></TableCell>
                           <TableCell className="mono hidden text-right tabular-nums md:table-cell">{x.it.custoUnitario != null ? fmtBRL(x.it.custoUnitario) : "—"}</TableCell>
@@ -8369,11 +8458,11 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 )}
                               </div>
                             ) : (
-                              <Button variant="outline" size="sm" disabled={!podeEditar || !onConcluir}
+                              <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar || !onConcluir}
                                 title={podeEditar ? "Marcar esta linha como concluída pelo executivo" : MODO_LEITURA_DICA}
                                 onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                 concluir
-                              </Button>
+                              </BotaoComMotivo>
                             )}
                           </TableCell>
 
@@ -8419,7 +8508,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 {/* A ordem continua (o executivo vem antes), mas o
                                     clique nao pede os dois: aprovar pra compra
                                     conclui o executivo junto, quando falta. */}
-                                <Button variant="outline" size="sm"
+                                <BotaoComMotivo variant="outline" size="sm"
                                   disabled={!podeEditar || !podeLiberar || !x.pode}
                                   title={!podeEditar ? MODO_LEITURA_DICA
                                     : !podeLiberar ? "Só um administrador libera a compra"
@@ -8428,7 +8517,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                     : "Liberar para compra — marca o executivo como concluído junto"}
                                   onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                   estimativa · liberar
-                                </Button>
+                                </BotaoComMotivo>
                                 {/* A excecao, no mesmo padrao do portao da assinatura que
                                     ja existe no Plano de Compras: bloqueia por padrao, mas
                                     quem tem autoridade libera dizendo por que — e fica
@@ -9174,12 +9263,16 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
   /* Os mesmos quatro cartoes (KpiMini) do resto da obra, na mesma grade de
      4 colunas e com a mesma altura — antes era uma faixa propria, com
      tamanhos de fonte e espacos que so' ela tinha. */
-  const movimento = (
-    <span className="flex flex-col gap-1 text-sm">
-      <span className="inline-flex items-center gap-1"><ArrowDownRight size={14} aria-hidden="true" /> retirado {fmtBRL(retirado)}{nExcluidos > 0 && ` · ${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"}`}</span>
-      <span className="inline-flex items-center gap-1"><ArrowUpRight size={14} aria-hidden="true" /> acrescido {fmtBRL(acrescido)}{nNovos > 0 && ` · ${nNovos} nov${nNovos > 1 ? "os" : "o"}`}</span>
-    </span>
-  );
+  /* O PADRÃO DOS CARTÕES (23/09/2026): número grande + uma linha que diz
+     o que ele significa, como os da Conf. Executivo. A Movimentação, que
+     era duas linhas pequenas no lugar do número, agora mostra o saldo das
+     mudanças em destaque e o detalhe (retirado, acrescido) embaixo. */
+  const saldoMov = acrescido - retirado;
+  const movimentoValor = `${saldoMov > 0 ? "+" : saldoMov < 0 ? "−" : ""}${fmtBRL(Math.abs(saldoMov))}`;
+  const movimentoDica = [
+    `−${fmtBRL(retirado)} retirado${nExcluidos > 0 ? ` (${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"})` : ""}`,
+    `+${fmtBRL(acrescido)} acrescido${nNovos > 0 ? ` (${nNovos} nov${nNovos > 1 ? "os" : "o"})` : ""}`,
+  ].join(" · ");
   const grade = "mb-4 grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4";
 
   // Sem CMV liberado não há teto, e portanto não há saldo. Mas o que a
@@ -9188,9 +9281,9 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
   if (!cmvLiberado || cmvLiberado <= 0) {
     return (
       <div className={grade} aria-label="Saldo do executivo">
-        <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)} />
-        <KpiMini className="h-full" label="CMV liberado" value="—" hint="ainda não liberado" />
-        <KpiMini className="col-span-2 h-full" label="Movimentação" value={movimento} />
+        <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)} hint="soma dos itens da planilha executivo" />
+        <KpiMini className="h-full" label="CMV liberado" value="—" hint="ainda não liberado — sem teto para comparar" />
+        <KpiMini className="h-full sm:col-span-2" label="Movimentação" value={movimentoValor} hint={movimentoDica} />
       </div>
     );
   }
@@ -9200,12 +9293,14 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
 
   return (
     <div className={grade} aria-label="Saldo do executivo">
-      <KpiMini className="h-full" label="CMV liberado" value={fmtBRL(cmvLiberado)} />
-      <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)} />
+      <KpiMini className="h-full" label="CMV liberado" value={fmtBRL(cmvLiberado)} hint="o teto de custo da obra" />
+      <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)}
+        hint={`${Math.round((atual / cmvLiberado) * 100)}% do CMV liberado`} />
       <KpiMini className="h-full" tone={estourou ? "danger" : "success"}
         label={`${estourou ? "Acima do CMV" : "Ainda cabe"}${recuperado ? " · recalculado" : ""}`}
-        value={`${estourou ? "−" : ""}${fmtBRL(Math.abs(sobra))}`} />
-      <KpiMini className="h-full" label="Movimentação" value={movimento} />
+        value={`${estourou ? "−" : ""}${fmtBRL(Math.abs(sobra))}`}
+        hint={estourou ? "passou do teto — retire itens ou peça liberação acima do CMV" : "o que ainda dá para acrescentar sem passar do teto"} />
+      <KpiMini className="h-full" label="Movimentação" value={movimentoValor} hint={movimentoDica} />
     </div>
   );
 }
@@ -9478,7 +9573,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     // O que se perde só entra na pergunta quando há planilha E há o que perder.
     const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "planilha_executivo",
       perda: temExecutivo && trocaCustaCaro ? frasesDoQueSePerde(perdas) : null });
-    onImportPlanilhaExecutivo(itens);
+    onImportPlanilhaExecutivo(itens, { substituirTudo: resumo.substituirTudo });
     onRegistrarImportacao?.("planilha_executivo", file, resumo);
     return `“${file.name}” importado — ${itens.length} itens.`;
   }
@@ -9506,7 +9601,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     { rotulo: "Custo total", classe: "w-24 text-center" },
     { rotulo: "Vendido (criativo)", classe: "w-24 border-l-2 border-line-2 text-center" },
     { rotulo: "Diferença", classe: "w-24 text-center" },
-    { rotulo: "", classe: "w-12" },
+    { rotulo: "Ações", classe: "sticky right-0 z-10 w-28 border-l border-line-1 bg-surface-2 text-right" },
   ];
 
   return (
@@ -9696,68 +9791,49 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                             : "";
                           const linha = (
                             <TableRow key={it.codigo || i} className={`group ${fundo} ${apagado ? "text-text-mute" : ""}`}>
-                              {/* O "+" mora aqui, na coluna congelada.
-                                  Ele estava na ÚLTIMA das 15 colunas, e a tabela
-                                  rola na horizontal — pra achar o botão era
-                                  preciso passar por dez colunas. Na primeira, ele
-                                  acompanha a rolagem e está sempre à vista. */}
+                              {/* A coluna Item mostra SÓ o código (23/09/2026): os
+                                  botões dividiam os 80px com ele e o "⇆" ficava
+                                  cortado. Eles moram agora na coluna Ações. */}
                               <TableCell className={`sticky left-0 z-10 whitespace-nowrap align-middle ${fundo}`}>
-                                <div className="flex items-center justify-between gap-1">
-                                  <span className={`mono text-text-mute ${corte}`}>{it.codigo || "—"}</span>
-                                  {!congeladoDaTela && !it.excluido && (
-                                    <span className="inline-flex">
-                                      <BotaoIcone rotulo={`Inserir item abaixo do ${it.codigo || "item"}`} variant="ghost" className="h-7 w-7"
-                                        onClick={() => setBuscandoEm({ verba: c.num, depois: i })}>
-                                        <Plus size={14} aria-hidden="true" />
-                                      </BotaoIcone>
-                                      {/* Substituir: exclui este e encaixa o escolhido
-                                          logo abaixo, ligado a ele. Linha travada
-                                          (RN-002) não se substitui. */}
-                                      {!travada && <BotaoIcone rotulo={`Substituir ${it.codigo || "este item"} por outro`} variant="ghost" className="h-7 w-7"
-                                        onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}>
-                                        <ArrowLeftRight size={14} aria-hidden="true" />
-                                      </BotaoIcone>}
-                                    </span>
-                                  )}
-                                </div>
+                                <span className={`mono text-text-mute ${corte}`}>{it.codigo || "—"}</span>
                               </TableCell>
                               <TableCell className={`sticky left-20 z-10 wrap-anywhere align-middle ${fundo} ${barra} ${saindo ? "line-through" : ""}`}>
                                 <CelulaTexto texto={it.desc} congelado={congelado} coord={cel(0)} onNavegar={nav}
                                   onEditar={(v) => onEditarItem(c.num, i, { desc: v })}
                                   onVerTudo={(t) => setVerTexto({ rotulo: "Descrição", texto: t })} />
-                                {it.excluido && !it.substituidoPorDesc && <Badge tone="danger" className="ml-2">removido</Badge>}
-                                {/* O par da substituição. Cada lado aponta pro outro,
-                                    então a linha se explica sem precisar procurar.
-                                    As etiquetas ficam curtas: repetir a descrição
-                                    inteira do outro lado dobrava o texto da linha
-                                    justamente onde já havia texto demais. */}
-                                {it.substituidoPorDesc && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge tone="purple" className="ml-2 cursor-help"><ArrowDown size={14} aria-hidden="true" /> trocado</Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-xs whitespace-normal">Substituído por: {it.substituidoPorDesc}</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {it.substituiDesc && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge tone="purple" className="ml-2 cursor-help"><CornerDownRight size={14} aria-hidden="true" /> entrou no lugar</Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-xs whitespace-normal">Entrou no lugar de: {it.substituiDesc}</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {travada && !it.excluido && (
-                                  <Badge tone="neutral" className="ml-2" title="Aprovado para compra: não se edita, remove nem substitui aqui. Para mexer, desfaça a aprovação na Conferência do executivo.">
-                                    <Lock size={12} aria-hidden="true" /> aprovado p/ compra
-                                  </Badge>
-                                )}
-                                {it.ehTitulo && <Badge tone="neutral" className="ml-2">N/A — título, não entra na conferência</Badge>}
-                                {/* "alterado no executivo" saiu daqui: a barra amarela
-                                    na lateral da linha já diz isso, e a etiqueta
-                                    aparecia em quase toda linha — repetida assim, ela
-                                    parava de informar e só ocupava espaço. */}
-                                {it.precoNaoRevisado && <Badge tone="danger" className="ml-2"><AlertTriangle size={14} aria-hidden="true" /> preço não revisado</Badge>}
+                                {/* OS ESTADOS DO ITEM, numa linha própria embaixo da
+                                    descrição e com a cor do que significam (23/09/2026):
+                                    aprovado verde, removido vermelho, troca roxa, preço
+                                    a revisar amarelo, título cinza. Antes eles entravam
+                                    no meio do texto e o aprovado era cinza como
+                                    informação comum. A barra lateral continua. */}
+                                {(() => {
+                                  const estados = [];
+                                  if (travada && !it.excluido) estados.push(
+                                    <Badge key="aprovado" tone="success" title="Aprovado para compra: não se edita, remove nem substitui aqui. Para mexer, desfaça a aprovação na Conferência do executivo.">
+                                      <Lock size={12} aria-hidden="true" /> aprovado p/ compra
+                                    </Badge>);
+                                  if (it.excluido && !it.substituidoPorDesc) estados.push(<Badge key="removido" tone="danger"><X size={12} aria-hidden="true" /> removido</Badge>);
+                                  /* O par da substituição. Cada lado aponta pro outro,
+                                     então a linha se explica sem precisar procurar. */
+                                  if (it.substituidoPorDesc) estados.push(
+                                    <Tooltip key="trocado">
+                                      <TooltipTrigger asChild>
+                                        <Badge tone="purple" className="cursor-help"><ArrowDown size={12} aria-hidden="true" /> trocado</Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs whitespace-normal">Substituído por: {it.substituidoPorDesc}</TooltipContent>
+                                    </Tooltip>);
+                                  if (it.substituiDesc) estados.push(
+                                    <Tooltip key="entrou">
+                                      <TooltipTrigger asChild>
+                                        <Badge tone="purple" className="cursor-help"><CornerDownRight size={12} aria-hidden="true" /> entrou no lugar</Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs whitespace-normal">Entrou no lugar de: {it.substituiDesc}</TooltipContent>
+                                    </Tooltip>);
+                                  if (it.precoNaoRevisado) estados.push(<Badge key="preco" tone="warning"><AlertTriangle size={12} aria-hidden="true" /> preço não revisado</Badge>);
+                                  if (it.ehTitulo) estados.push(<Badge key="titulo" tone="neutral">título · não entra na conferência</Badge>);
+                                  return estados.length ? <div className="mt-1 flex flex-wrap gap-1">{estados}</div> : null;
+                                })()}
                                 {/* Só no hover: em trinta linhas seguidas, trinta
                                     links iguais viram textura, não ação. */}
                                 {it.precoNaoRevisado && !congelado && (
@@ -9799,17 +9875,47 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                   return <span className={d > 0 ? "text-danger" : "text-success"}>{d > 0 ? "+" : ""}{fmtBRL(d)}</span>;
                                 })()}
                               </TableCell>
-                              <TableCell className="overflow-visible align-middle text-center">
-                                {!congelado && (
-                                      <BotaoIcone variant="ghost" className="h-7 w-7"
-                                        rotulo={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}
-                                        onClick={() => (it.excluido
-                                          ? onEditarItem(c.num, i, { excluido: false })
-                                          : setRemovendo(`${c.num}:${i}`))}
-                                      >
-                                        {it.excluido ? <RotateCcw size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
-                                      </BotaoIcone>
-                                )}
+                              {/* AÇÕES, a última coluna, presa à direita (23/09/2026):
+                                  inserir abaixo, substituir e remover/trazer de volta
+                                  ficam juntos e sempre à vista ao rolar para o lado.
+                                  Na linha travada (RN-002) o "+" continua (é item
+                                  novo); substituir e remover aparecem bloqueados,
+                                  com o motivo, em vez de sumir. */}
+                              <TableCell className={`sticky right-0 z-10 whitespace-nowrap border-l border-line-1 align-middle ${fundo}`}>
+                                {!congeladoDaTela && (() => {
+                                  const motivoTrava = "Aprovado para compra: desfaça a aprovação na Conferência do executivo para mexer";
+                                  const bloqueado = { "aria-disabled": true, className: "h-7 w-7 cursor-not-allowed opacity-50", onClick: (e) => e.preventDefault() };
+                                  return (
+                                    <div className="flex items-center justify-end gap-1">
+                                      {!it.excluido && (
+                                        <BotaoIcone rotulo={`Inserir item abaixo do ${it.codigo || "item"}`} variant="ghost" className="h-7 w-7"
+                                          onClick={() => setBuscandoEm({ verba: c.num, depois: i })}>
+                                          <Plus size={14} aria-hidden="true" />
+                                        </BotaoIcone>
+                                      )}
+                                      {/* Substituir: exclui este e encaixa o escolhido
+                                          logo abaixo, ligado a ele. */}
+                                      {!it.excluido && (travada
+                                        ? <BotaoIcone rotulo={motivoTrava} variant="ghost" {...bloqueado}><ArrowLeftRight size={14} aria-hidden="true" /></BotaoIcone>
+                                        : <BotaoIcone rotulo={`Substituir ${it.codigo || "este item"} por outro`} variant="ghost" className="h-7 w-7"
+                                            onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}>
+                                            <ArrowLeftRight size={14} aria-hidden="true" />
+                                          </BotaoIcone>)}
+                                      {travada
+                                        ? <BotaoIcone rotulo={motivoTrava} variant="ghost" {...bloqueado}>{it.excluido ? <RotateCcw size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}</BotaoIcone>
+                                        : (
+                                          <BotaoIcone variant="ghost" className="h-7 w-7"
+                                            rotulo={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}
+                                            onClick={() => (it.excluido
+                                              ? onEditarItem(c.num, i, { excluido: false })
+                                              : setRemovendo(`${c.num}:${i}`))}
+                                          >
+                                            {it.excluido ? <RotateCcw size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
+                                          </BotaoIcone>
+                                        )}
+                                    </div>
+                                  );
+                                })()}
                               </TableCell>
                             </TableRow>
                           );
@@ -11735,6 +11841,7 @@ function podeMudarSolicitado(it) {
    grava é o salvamento automático, e ele só roda pra quem está com a trava.
    Em modo leitura os botões travam com esta dica (antes a marca aparecia
    na tela e sumia no F5). */
+const primeiraMaiusculaTexto = (t) => (t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : t);
 const MODO_LEITURA_DICA = "modo leitura: habilite a edição da obra para mudar";
 
 /* GERADOR DE CÓDIGOS SIENGE — avulso, sem obra e sem gravar nada.
@@ -12411,30 +12518,25 @@ function AssociacaoSienge({ item, detalheItem, onHabilitar, editandoPor, ...esco
     : null;
 
   return (
-    <div className="flex flex-col gap-2 text-sm">
+    /* O INSUMO NUMA LINHA (23/09/2026): código e nome do insumo mãe com um
+       selo pequeno do detalhe (existente ou novo) — e é o próprio texto que
+       abre a revisão. Antes eram três linhas: o insumo, o selo e um botão
+       "Revisar associação" separado. */
+    <div className="text-sm">
       {mae ? (
-        <div className="flex items-start gap-2">
+        <Button variant="ghost" size="sm" type="button" onClick={() => setAberto(true)}
+          className="-ml-2 h-auto max-w-full justify-start gap-2 px-2 py-1 text-left font-normal whitespace-normal"
+          aria-label={`${somenteLeitura ? "Ver associação" : "Revisar associação"}: ${mae.codigo} ${mae.nome}`}
+          title={`${mae.codigo} ${mae.nome} — ${variante ? `usa detalhe existente: ${variante}` : "cadastra detalhe novo"}`}>
           <span className="mono shrink-0 text-xs text-text-mute">{mae.codigo}</span>
-          <span className="line-clamp-2 min-w-0 flex-1 text-text">{mae.nome}</span>
-        </div>
-      ) : (
-        <span><Badge tone="warning">sem insumo mãe</Badge></span>
-      )}
-
-      {mae && (variante ? (
-        <div className="flex flex-col gap-1">
-          <span><Badge tone="success">usa detalhe existente</Badge></span>
-          <span className="line-clamp-2 text-xs text-text-soft" title={variante}>{variante}</span>
-        </div>
-      ) : (
-        <span><Badge tone="neutral">cadastra detalhe novo</Badge></span>
-      ))}
-
-      <span>
-        <Button variant="outline" size="sm" onClick={() => setAberto(true)}>
-          {somenteLeitura ? "Ver associação" : mae ? "Revisar associação" : "Escolher insumo"}
+          <span className="line-clamp-1 min-w-0 text-text">{mae.nome}</span>
+          <Badge tone={variante ? "success" : "neutral"} className="shrink-0">{variante ? "detalhe existente" : "detalhe novo"}</Badge>
         </Button>
-      </span>
+      ) : (
+        <Button variant="outline" size="sm" type="button" onClick={() => setAberto(true)}>
+          <AlertTriangle size={14} aria-hidden="true" /> {somenteLeitura ? "sem insumo mãe" : "Escolher insumo — sem insumo mãe"}
+        </Button>
+      )}
 
       <Sheet open={aberto} onOpenChange={setAberto}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
@@ -13179,14 +13281,14 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
             tela mostrando tres linhas enquanto o pedido leva sessenta e' a
             pagina afirmando duas coisas. */}
-        <Button className="h-10" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+        <BotaoComMotivo className="h-10" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
           title={buscando
             ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
             : !fornecedor || fornecedor === SEM_FORNECEDOR
             ? "Escolha um fornecedor pra gerar o pedido"
             : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
           <Printer size={16} aria-hidden="true" /> Pedido de orçamento
-        </Button>
+        </BotaoComMotivo>
       </div>
     </div>
   );
@@ -13212,16 +13314,26 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
           <TabsList variant="pill" className="h-auto w-max min-w-full items-stretch" aria-label="Etapas da compra">
             {etapas.map((e, i) => (
               <React.Fragment key={e.id}>
-                <TabsTrigger value={e.id} className="h-auto min-w-24 flex-1 basis-0 flex-col items-center justify-start gap-1 px-4 py-2 whitespace-nowrap">
-                  {e.canal ? <TagCanal id={e.canal} /> : <span className="invisible" aria-hidden="true"><TagCanal id="sienge" /></span>}
+                {/* O FUNIL MAIS LEGÍVEL (23/09/2026):
+                   - Tudo e Sem canal ganham ícone no lugar da etiqueta
+                     invisível, e a linha fica com o mesmo ritmo;
+                   - o valor sai por extenso em todas (antes "R$ 3mil" ao lado
+                     de "R$ 349,02" — dois formatos na mesma régua);
+                   - canal sem nenhum produto fica apagado: o olho vai para
+                     onde há o que fazer;
+                   - a linha "N de M comprados" guarda o lugar em todas, para
+                     os estágios terem a mesma altura. */}
+                <TabsTrigger value={e.id} className={cn("h-auto min-w-28 flex-1 basis-0 flex-col items-center justify-start gap-1 px-4 py-2 whitespace-nowrap",
+                  e.n === 0 && "opacity-60 data-[state=active]:opacity-100")}>
+                  {e.canal ? <TagCanal id={e.canal} />
+                    : <span className="flex h-6 items-center" aria-hidden="true">{e.id === "todos" ? <Layers size={16} /> : <CircleDashed size={16} />}</span>}
                   <span className="text-lg font-semibold leading-none tabular-nums">{e.n}</span>
                   <span className="text-xs">{e.rot}</span>
-                  <span className="mono text-xs opacity-80">{fmtCompactBRL(e.v)}</span>
-                  {e.canal && e.n > 0 && (
-                    <span className={`flex items-center gap-1 text-xs ${e.feitos === e.n ? "text-success" : "opacity-80"}`}>
-                      {e.feitos === e.n ? <><Check size={12} aria-hidden="true" /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
-                    </span>
-                  )}
+                  <span className="mono text-xs opacity-80">{fmtBRL(e.v)}</span>
+                  <span className={`flex items-center gap-1 text-xs ${e.n > 0 && e.feitos === e.n ? "text-success" : "opacity-80"}`}>
+                    {!e.canal || e.n === 0 ? <span className="invisible">—</span>
+                      : e.feitos === e.n ? <><Check size={12} aria-hidden="true" /> tudo comprado</> : `${e.feitos} de ${e.n} comprados`}
+                  </span>
                 </TabsTrigger>
                 {i === 1 && <ChevronRight size={16} className="shrink-0 self-center text-text-mute" aria-hidden="true" />}
               </React.Fragment>
@@ -13230,24 +13342,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         </div>
       </Tabs>
 
-      {/* Em modo leitura nada daqui grava: o salvamento automático só roda
-          pra quem está com a edição da obra. */}
-      {!podeEditar && (
-        <Alert tone="info">
-          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <span className="min-w-0 flex-1">
-              {editandoPor
-                ? <><b>{editandoPor}</b> está editando esta obra. Até terminar, solicitado, comprado, canal e insumo ficam só para consulta.</>
-                : onHabilitar
-                  ? "Modo leitura: para marcar solicitado, comprado, canal ou insumo, habilite a edição da obra."
-                  : "Modo leitura: o seu perfil consulta as Compras, sem marcar."}
-            </span>
-            {onHabilitar && !editandoPor && (
-              <Button size="sm" onClick={onHabilitar} className="shrink-0"><Lock size={14} aria-hidden="true" /> Habilitar edição</Button>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* O aviso de modo leitura que morava aqui saiu (23/09/2026): a faixa
+          da edição, fixa no topo, já diz o estado, quem está editando e
+          oferece o Habilitar — repetido aqui era ruído. */}
 
       {etapa === "sienge" && (
         <Alert tone="info">
@@ -13382,7 +13479,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         <EmptyState icon={<Search size={26} aria-hidden="true" />} title={`Nada encontrado para "${busca.trim()}" nesta etapa.`} />
       )}
       {porVerba.length > 0 && naTelaTudo.length > 0 && (
-        <Card>
+        /* Mesma moldura do Executivo e do Plano (23/09/2026): card sem
+           respiro interno, verbas encostadas nas bordas e a tabela da verba
+           branca, sem a caixa cinza arredondada dentro do card. */
+        <Card className="p-0">
           {porVerba.map((g) => {
             /* O que a busca deixa aparecer NESTE grupo. Tudo o que vem depois —
                `nItens`, `nComprados`, `g.total`, os auxiliares e o template do
@@ -13490,10 +13590,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                         <PackageSearch size={14} aria-hidden="true" /> {associando === g.num ? "Associando…" : "Associar insumos"}
                       </Button>
                     ))}
-                    <div className="w-32 shrink-0">
-                      <div className="label-mono text-center">Material</div>
-                      <div className="mono text-right text-sm font-semibold tabular-nums">{fmtBRL(g.total)}</div>
-                    </div>
+                    {/* Rótulo na frente do valor, numa linha, como no Plano. */}
+                    <span className="mono w-40 shrink-0 text-right text-sm font-semibold tabular-nums text-text">
+                      <span className="label-mono mr-1 font-normal text-text-mute">MAT</span>{fmtBRL(g.total)}
+                    </span>
                   </>
                 }
                 /* A OBSERVACAO DA VERBA fica embaixo do nome, FORA do botao
@@ -13504,8 +13604,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                     usuario={usuario} souAdmin={souAdmin} ondeFica="verba"
                     onAdicionar={(t) => adicionarObs(g.num, null, t)} onApagar={apagarObs} />
                 }>
-                <div className="overflow-x-auto border-t border-line-1">
-                  <Table>
+                <div className="tabela-da-verba border-t border-line-1">
+                  <Table className="w-full bg-surface-1">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-8" />
@@ -13516,8 +13616,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                         {/* Na etapa Sienge o canal é sempre Sienge: a coluna dá lugar ao
                             status da solicitação, que é o passo antes da compra. */}
                         {!noSienge && <TableHead className="w-28 text-center">Canal</TableHead>}
-                        {noSienge && <TableHead className="w-32 text-center">Status solicitado</TableHead>}
-                        <TableHead className="w-28 text-center">{noSienge ? "Status comprado" : "Status"}</TableHead>
+                        {noSienge && <TableHead className="w-32 text-center">Solicitado</TableHead>}
+                        <TableHead className="w-36 text-center">Comprado</TableHead>
                         {noSienge && doSienge && <TableHead className="w-32 text-center">Lançado Sienge</TableHead>}
                         {/* A mae virou a primeira linha do detalhe: eram
                             duas colunas contando a mesma historia, e a
@@ -13824,10 +13924,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 dos selecionados — o mesmo definirCanal de antes. */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" disabled={!podeEditar}
+                <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar}
                   title={podeEditar ? "Define por onde comprar os selecionados" : `Em ${MODO_LEITURA_DICA}`}>
                   <ShoppingCart size={14} aria-hidden="true" /> Definir canal <ChevronDown size={14} aria-hidden="true" />
-                </Button>
+                </BotaoComMotivo>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Comprar os selecionados por</DropdownMenuLabel>
@@ -13842,8 +13942,46 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             </DropdownMenu>
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
-            {selecionados.some((r) => r.it.canalCompra) && (
-              <Button variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
+            {/* MARCAR num menu só (23/09/2026): comprado e solicitado eram dois
+                botões iguais lado a lado; agora a barra fica numa linha e cada
+                marcação diz o que faz. As regras de cada uma são as mesmas. */}
+            {(etapa === "sienge" || selecionados.some((r) => r.it.canalCompra)) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar} title={podeEditar ? undefined : `Em ${MODO_LEITURA_DICA}`}>
+                    <Check size={14} aria-hidden="true" /> Marcar <ChevronDown size={14} aria-hidden="true" />
+                  </BotaoComMotivo>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Marcar os selecionados como</DropdownMenuLabel>
+                  {etapa === "sienge" && (
+                    <DropdownMenuItem onSelect={async () => {
+                const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
+                // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
+                const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
+                if (vao.length && !(await confirmar(desmarcar ? {
+                  titulo: `Desmarcar ${vao.length} ${vao.length === 1 ? "item solicitado" : "itens solicitados"}?`,
+                  mensagem: "Eles voltam a não solicitados no Sienge e a data da solicitação é apagada. Nada muda no Sienge.",
+                  confirmar: `Desmarcar ${vao.length}`,
+                } : {
+                  titulo: `Marcar ${vao.length} ${vao.length === 1 ? "item" : "itens"} como solicitado?`,
+                  mensagem: "Fica registrado que já foram solicitados no Sienge, com a data de hoje. Nada é enviado ao Sienge e dá para desmarcar depois.",
+                  confirmar: `Marcar ${vao.length}`, perigo: false,
+                }))) return;
+                vao.forEach((r) => mudar(r.catIdx, r.itemIdx, {
+                  solicitado: !desmarcar, solicitadoEm: desmarcar ? null : new Date().toISOString(),
+                }));
+                const presos = desmarcar ? selecionados.length - vao.length : 0;
+                if (presos > 0) await mensagem({
+                  titulo: "Nem tudo foi desmarcado",
+                  mensagem: `${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`,
+                });
+                    }}>
+                      {selecionados.every((r) => estaSolicitado(r.it)) ? "Não solicitado no Sienge" : "Solicitado no Sienge"}
+                    </DropdownMenuItem>
+                  )}
+                  {selecionados.some((r) => r.it.canalCompra) && (
+                    <DropdownMenuItem onSelect={async () => {
                 const comCanal = selecionados.filter((r) => r.it.canalCompra);
                 const desmarcar = comCanal.every((r) => r.it.comprado);
                 // Marcar só mexe em quem ainda não foi comprado (a data de quem já
@@ -13869,68 +14007,52 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   mensagem: `${faltam} ${faltam === 1 ? "item do Sienge ainda não foi solicitado" : "itens do Sienge ainda não foram solicitados"}: marque como solicitado (etapa Sienge) antes de comprado.`,
                 });
                 setSel(new Set());
-              }} title={podeEditar ? "Marca os selecionados que já têm canal — entra no total do Dashboard. No Sienge, só o que já foi solicitado." : `Em ${MODO_LEITURA_DICA}`}>
-                <Check size={14} aria-hidden="true" /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
-                  ? "Desmarcar comprado" : "Marcar comprado"}
-              </Button>
-            )}
-            {etapa === "sienge" && (
-              <Button variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
-                const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
-                // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
-                const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
-                if (vao.length && !(await confirmar(desmarcar ? {
-                  titulo: `Desmarcar ${vao.length} ${vao.length === 1 ? "item solicitado" : "itens solicitados"}?`,
-                  mensagem: "Eles voltam a não solicitados no Sienge e a data da solicitação é apagada. Nada muda no Sienge.",
-                  confirmar: `Desmarcar ${vao.length}`,
-                } : {
-                  titulo: `Marcar ${vao.length} ${vao.length === 1 ? "item" : "itens"} como solicitado?`,
-                  mensagem: "Fica registrado que já foram solicitados no Sienge, com a data de hoje. Nada é enviado ao Sienge e dá para desmarcar depois.",
-                  confirmar: `Marcar ${vao.length}`, perigo: false,
-                }))) return;
-                vao.forEach((r) => mudar(r.catIdx, r.itemIdx, {
-                  solicitado: !desmarcar, solicitadoEm: desmarcar ? null : new Date().toISOString(),
-                }));
-                const presos = desmarcar ? selecionados.length - vao.length : 0;
-                if (presos > 0) await mensagem({
-                  titulo: "Nem tudo foi desmarcado",
-                  mensagem: `${presos} ${presos === 1 ? "item já está comprado e continua" : "itens já estão comprados e continuam"} solicitado: desmarque o comprado antes.`,
-                });
-              }} title={podeEditar ? "Marca os selecionados como já solicitados no Sienge" : `Em ${MODO_LEITURA_DICA}`}>
-                <Check size={14} aria-hidden="true" /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
-              </Button>
+                    }}>
+                      {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado) ? "Não comprado" : "Comprado (entra no Dashboard)"}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {etapa === "sienge" && baseSienge && (
-              <Button variant="outline" size="sm" onClick={associarSelecionados} disabled={!podeEditar}
+              <BotaoComMotivo variant="outline" size="sm" onClick={associarSelecionados} disabled={!podeEditar}
                 title={podeEditar ? "Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão" : `Em ${MODO_LEITURA_DICA}`}>
                 <PackageSearch size={14} aria-hidden="true" /> Associar {selecionados.length}
-              </Button>
+              </BotaoComMotivo>
             )}
             <Separator orientation="vertical" className="hidden h-6 sm:block" />
             {/* O pedido sai de qualquer canal — inclusive de quem ainda
                 nao tem um: as vezes a lista e pra pedir cotacao antes de
                 decidir por onde comprar. */}
-            <Button variant="outline" size="sm" onClick={() => {
-              setPedido({ itens: selecionados });
-              setTimeout(() => window.print(), 300);
-            }} title="Abre a impressão do navegador — escolha Salvar como PDF">
-              <FileText size={14} aria-hidden="true" /> PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => baixarPedidoExcel(
-              obra,
-              etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
-              selecionados, usuario)
-            } title="Baixa a planilha do pedido — leva o valor, porque é uso interno">
-              <Download size={14} aria-hidden="true" /> Excel
-            </Button>
-            {etapa === "sienge" && (
-              <Button variant="outline" size="sm"
-                onClick={() => baixarResumoCadastroSienge(obra,
-                  resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}
-                title="Excel pra quem lança o pedido no Sienge: insumo, detalhe, códigos e quantidade — iguais somam numa linha">
-                <Download size={14} aria-hidden="true" /> Resumo p/ cadastro
-              </Button>
-            )}
+            {/* EXPORTAR num menu só (23/09/2026): PDF, Excel e Resumo eram três
+                botões que ninguém usa ao mesmo tempo. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Download size={14} aria-hidden="true" /> Exportar <ChevronDown size={14} aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => {
+                  setPedido({ itens: selecionados });
+                  setTimeout(() => window.print(), 300);
+                }}>
+                  <FileText size={14} aria-hidden="true" /> PDF do pedido (impressão)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => baixarPedidoExcel(
+                  obra,
+                  etapa === "todos" || etapa === "sem_canal" ? selecionados[0]?.it.canalCompra : etapa,
+                  selecionados, usuario)}>
+                  <Download size={14} aria-hidden="true" /> Excel do pedido (com valor)
+                </DropdownMenuItem>
+                {etapa === "sienge" && (
+                  <DropdownMenuItem onSelect={() => baixarResumoCadastroSienge(obra,
+                    resumoCadastroSienge(selecionados, casamentos, grupos, auxiliaresDoGrupo(selecionados, obra.codigo)))}>
+                    <Download size={14} aria-hidden="true" /> Resumo para cadastro no Sienge
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Separator orientation="vertical" className="hidden h-6 sm:block" />
             <Button {...(etapa === "sienge" ? { variant: "outline" } : {})} size="sm" onClick={solicitarNoPipefy}
               title="Copia a lista dos selecionados e abre a solicitação de compra no Pipefy">
@@ -13945,7 +14067,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 funcionalidade depende de um cadastro procura um botão que
                 não está em lugar nenhum, e conclui que não foi entregue. */}
             {etapa === "sienge" && (
-              <Button size="sm"
+              <BotaoComMotivo size="sm"
                 disabled={!podeEditar || !eapSienge?.versao}
                 onClick={() => setSolicitacao(selecionados.map((r) => {
                   // A situação do insumo é resolvida aqui, com a base na
@@ -13978,7 +14100,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                       : "falta a EAP"
                   }</span>
                 )}
-              </Button>
+              </BotaoComMotivo>
             )}
           </div>
           </CardContent>
@@ -14382,7 +14504,9 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
     setMapa((m) => { const n = { ...m }; if (codigo) n[verbaNum] = codigo; else delete n[verbaNum]; return n; });
     setErroMapa(null);
     try {
-      await definirMapaVerba(eap.versao.id, verbaNum, codigo, usuario);
+      // O registro precisa saber que o gesto veio de dentro desta obra,
+      // e não da tela EAP Sienge — o mapa é o mesmo.
+      await definirMapaVerba(eap.versao.id, verbaNum, codigo, { obraCodigo: obra.codigo });
     } catch (e) {
       setMapa(antes); // o cadastro recusou: a tela não pode dizer o contrário
       setErroMapa(e.message || String(e));
@@ -14662,10 +14786,10 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                               </TableCell>
                               <TableCell>
                                 <div className="flex justify-center gap-1">
-                                  <Button variant="outline" size="sm" disabled={enviando}
-                                    onClick={() => reenviar([r])} title="Reenviar só este item">
+                                  <BotaoComMotivo variant="outline" size="sm" disabled={enviando}
+                                    onClick={() => reenviar([r])} title={enviando ? "há um envio em andamento — espere terminar" : "Reenviar só este item"}>
                                     Reenviar
-                                  </Button>
+                                  </BotaoComMotivo>
                                   <BotaoIcone rotulo="Tirar do envio — continua pendente nas Compras" variant="outline" disabled={enviando}
  onClick={() => descartar(id)}
  >
@@ -14919,12 +15043,12 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                   : `${itens.length} ${itens.length === 1 ? "item" : "itens"} · ${fmtBRL(total)}`}
               </span>
               <Button variant="outline" onClick={onFechar} disabled={enviando}>Cancelar</Button>
-              <Button
+              <BotaoComMotivo
                 disabled={enviando || !itens.length || !unidadeValida || insumosInvalidos.length > 0}
                 title={insumosInvalidos.length ? "Há item sem código de insumo" : undefined}
                 onClick={() => enviar()}>
                 {enviando ? "Enviando…" : `Enviar ao Sienge`}
-              </Button>
+              </BotaoComMotivo>
             </>
           )}
         </DialogFooter>
@@ -15198,8 +15322,13 @@ function FormTroca({ row, equipe = [], executivo, onRegistrar, onFechar }) {
  * embaixo do nome; no item, na propria linha. Enter salva (Shift+Enter quebra
  * a linha), como o campo de uma linha que havia antes.
  */
-function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = false, ondeFica = "verba", semTabela = false }) {
-  const [escrevendo, setEscrevendo] = useState(false);
+function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = false, ondeFica = "verba", semTabela = false,
+  escrevendo: escrevendoFora, onEscrevendo, semBotao = false }) {
+  /* `escrevendo`/`onEscrevendo`/`semBotao`: quem abre o formulário é outro
+     controle (o menu ⋯ da linha de Compras) — o "+ observação interna" some. */
+  const [escrevendoAqui, setEscrevendoAqui] = useState(false);
+  const escrevendo = escrevendoFora ?? escrevendoAqui;
+  const setEscrevendo = onEscrevendo || setEscrevendoAqui;
   const [texto, setTexto] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
@@ -15224,6 +15353,7 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
   };
 
   if (semTabela && !lista.length) return null;
+  if (semBotao && !escrevendo && !lista.length) return null;
 
   return (
     <div className={cn("flex flex-col gap-1", ondeFica === "verba" ? "px-4 pb-3 pl-10" : "mt-1")} onClick={(e) => e.stopPropagation()}>
@@ -15260,7 +15390,7 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
           </div>
         </form>
       ) : (
-        onAdicionar && (
+        onAdicionar && !semBotao && (
           <Button variant="ghost" size="sm" type="button" className="self-start" onClick={() => setEscrevendo(true)}
             title={ondeFica === "item" ? "Deixar uma observação interna neste produto" : "Deixar uma observação interna nesta verba"}>
             <Plus size={14} aria-hidden="true" /> observação interna
@@ -15287,6 +15417,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
     : it.solicitado ? `${quando("Solicitado", it.solicitadoEm)} — clique pra desfazer`
     : "Marcar como solicitado no Sienge";
   const alternarSolicitado = () => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() });
+  const [escrevendoObs, setEscrevendoObs] = useState(false);
 
   // O produto que foi trocado: riscado, em cinza, sem ação nenhuma.
   if (it.troca) {
@@ -15330,47 +15461,73 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         <Checkbox checked={!!selecionado} onCheckedChange={onSelecionar} aria-label="Selecionar produto" />
       </TableCell>
       <TableCell className="mono text-xs text-text-mute">{codigoVisivel(it)}</TableCell>
+      {/* A LINHA COMPACTA (23/09/2026): descrição numa linha (inteira na
+          dica), os dados do produto numa linha cinza embaixo e as ações
+          raras (trocar, observação) no menu ⋯ — a linha caiu para menos da
+          metade da altura e cabem o dobro de produtos na tela. */}
       <TableCell>
-        <div className="text-sm font-semibold text-text">{it.desc}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          {it.aditivo && (
-            <Badge tone="purple" title={it.descCompleta ? `Texto do cliente: ${it.descCompleta}` : undefined}>
-              <FileText size={12} aria-hidden="true" /> aditivo {it.aditivo}
-            </Badge>
-          )}
-          {it.ambiente && <span className="text-xs text-text-mute">{it.ambiente}</span>}
-          {/* Quem vende. Na planilha do Executivo a coluna se chama
-              Fornecedor e vira `marca` no item; importado de PDF ela vem vazia. */}
-          {it.marca
-            ? <Badge tone="neutral" title={it.marca}>Fornecedor: {nomeDoFornecedor(it)}</Badge>
-            : <span className="text-xs text-text-mute">sem fornecedor</span>}
-          {troca?.tipo === "nova" && (
-            <span className="inline-flex items-center gap-1 text-xs text-text-mute">
-              troca de {troca.de}{troca.dif != null && Math.abs(troca.dif) >= 0.005
-                ? ` · ${troca.dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(troca.dif))}` : ""}
-              {podeEditar && !it.comprado && onDesfazerTroca && (
-                <Button variant="ghost" size="sm" type="button" onClick={onDesfazerTroca}>desfazer</Button>
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="line-clamp-1 text-sm font-semibold text-text" title={it.desc}>{it.desc}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-mute">
+              {it.aditivo && (
+                <Badge tone="purple" title={it.descCompleta ? `Texto do cliente: ${it.descCompleta}` : undefined}>
+                  <FileText size={12} aria-hidden="true" /> aditivo {it.aditivo}
+                </Badge>
               )}
-            </span>
-          )}
-          {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
-            <Button variant="ghost" size="sm" type="button" onClick={onAbrirTroca} title="Trocar por outro produto (aprovado com o executivo da obra)">
-              <ArrowLeftRight size={14} aria-hidden="true" /> trocar
-            </Button>
+              {/* Quem vende: na planilha do Executivo a coluna Fornecedor vira
+                  `marca` no item; a especificação separa peças de mesmo nome. */}
+              <span className="min-w-0" title={[it.ambiente, it.marca, it.especificacao].filter(Boolean).join(" · ")}>
+                {[it.ambiente, it.marca ? nomeDoFornecedor(it) : "sem fornecedor", it.especificacao].filter(Boolean).join(" · ")}
+              </span>
+              {obs.length > 0 && !escrevendoObs && (
+                <span className="inline-flex items-center gap-1 text-obs"><MessageSquare size={12} aria-hidden="true" /> {obs.length}</span>
+              )}
+            </div>
+            {troca?.tipo === "nova" && (
+              <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-text-mute">
+                troca de {troca.de}{troca.dif != null && Math.abs(troca.dif) >= 0.005
+                  ? ` · ${troca.dif > 0 ? "+" : "−"}${fmtBRL(Math.abs(troca.dif))}` : ""}
+                {" · "}{qtdFmt} {it.un} × {fmtBRL(it.custoMaterial ?? (qtdLinha > 0 ? material / qtdLinha : 0))}
+              </div>
+            )}
+          </div>
+          {/* Ações raras da linha, num menu: trocar o produto, deixar uma
+              observação e desfazer a troca. */}
+          {(podeEditar || onAdicionarObs) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" type="button" className="h-7 w-7 shrink-0 text-text-mute" aria-label={`Mais ações — ${it.desc}`}>
+                  <MoreHorizontal size={16} aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {onAdicionarObs && (
+                  <DropdownMenuItem onSelect={() => setEscrevendoObs(true)}>
+                    <MessageSquare size={14} aria-hidden="true" /> Observação interna
+                  </DropdownMenuItem>
+                )}
+                {!troca && podeEditar && !it.comprado && onAbrirTroca && !trocando && (
+                  <DropdownMenuItem onSelect={onAbrirTroca}>
+                    <ArrowLeftRight size={14} aria-hidden="true" /> Trocar por outro produto
+                  </DropdownMenuItem>
+                )}
+                {troca?.tipo === "nova" && podeEditar && !it.comprado && onDesfazerTroca && (
+                  <DropdownMenuItem onSelect={onDesfazerTroca}>
+                    <Undo2 size={14} aria-hidden="true" /> Desfazer a troca
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
-        {troca?.tipo === "nova" && (
-          <div className="mt-1 text-xs text-text-mute">
-            {qtdFmt} {it.un} × {fmtBRL(it.custoMaterial ?? (qtdLinha > 0 ? material / qtdLinha : 0))}
-          </div>
-        )}
-        {/* A especificacao distingue duas pecas de mesmo nome — sem ela,
-            "Cuba de apoio" e todas as cubas de apoio que existem. */}
-        {it.especificacao && <div className="mt-1 text-xs text-text-mute">{it.especificacao}</div>}
         {/* A OBSERVACAO DO PRODUTO, na propria linha — e' aqui que quem vai
-            comprar esta' olhando. */}
-        <Observacoes lista={obs} semTabela={obsSemTabela} usuario={usuario} souAdmin={souAdmin}
-          ondeFica="item" onAdicionar={onAdicionarObs} onApagar={onApagarObs} />
+            comprar esta' olhando. Abre pelo menu ⋯. */}
+        {(escrevendoObs || obs.length > 0) && (
+          <Observacoes lista={obs} semTabela={obsSemTabela} usuario={usuario} souAdmin={souAdmin}
+            ondeFica="item" onAdicionar={onAdicionarObs} onApagar={onApagarObs}
+            semBotao escrevendo={escrevendoObs} onEscrevendo={setEscrevendoObs} />
+        )}
       </TableCell>
       <TableCell className="mono text-center tabular-nums">{it.qtdExecutivo ?? it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{it.un}</span></TableCell>
       <TableCell className="mono text-right tabular-nums">{fmtBRL(material)}</TableCell>
@@ -15381,7 +15538,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       )}
       {noSienge && (
         <TableCell className="text-center">
-          <EstadoAcao feito={estaSolicitado(it)} rotuloFeito="solicitado" acao="solicitar"
+          <EstadoAcao rotuloItem={`${codigoVisivel(it)} ${it.desc}`} feito={estaSolicitado(it)} rotuloFeito="solicitado" acao="solicitar"
             disabled={!podeEditar || !podeMudarSolicitado(it)}
             onClick={alternarSolicitado} title={tituloSolicitado} />
         </TableCell>
@@ -15396,11 +15553,11 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               (pedido de 15/09/2026). A regra é a mesma: primeiro solicitado,
               depois comprado. */}
           {!noSienge && it.canalCompra === "sienge" && (
-            <EstadoAcao feito={estaSolicitado(it)} rotuloFeito="solicitado" rotuloPendente="não solicitado" acao="solicitar"
+            <EstadoAcao rotuloItem={`${codigoVisivel(it)} ${it.desc}`} feito={estaSolicitado(it)} rotuloFeito="solicitado" rotuloPendente="não solicitado" acao="solicitar"
               disabled={!podeEditar || !podeMudarSolicitado(it)}
               onClick={alternarSolicitado} title={tituloSolicitado} />
           )}
-          <EstadoAcao feito={!!it.comprado} rotuloFeito="comprado" acao="marcar comprado"
+          <EstadoAcao rotuloItem={`${codigoVisivel(it)} ${it.desc}`} feito={!!it.comprado} rotuloFeito="comprado" acao="marcar comprado"
             disabled={!podeEditar || (!it.comprado && !podeMarcarComprado(it))}
             onClick={() => onItemChange({ comprado: !it.comprado, compradoEm: it.comprado ? null : new Date().toISOString() })}
             title={!podeEditar ? `${it.comprado ? quando("Comprado", it.compradoEm) : "Pendente"} — ${MODO_LEITURA_DICA}`
@@ -15833,11 +15990,11 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
             {/* Vencimento cai sempre na sexta: a casa paga fornecedor
                 nesse dia, e data no meio da semana volta pro financeiro
                 pra ser remarcada. */}
-            <Button disabled={!escopo.venc1}
+            <BotaoComMotivo disabled={!escopo.venc1}
               onClick={() => onMudar({ parcelas: sugerirDatas(escopo.parcelas, escopo.venc1, escopo.intervalo) })}
               title={escopo.venc1 ? "Preenche os vencimentos de tantos em tantos dias, sempre numa sexta" : "Informe o 1º vencimento primeiro"}>
               <Clock size={13} /> Sugerir datas
-            </Button>
+            </BotaoComMotivo>
           </div>
         </div>
       )}
@@ -20245,7 +20402,7 @@ function arvoreDaEap(itens) {
   return raizes;
 }
 
-function EapSiengeView({ usuario }) {
+function EapSiengeView({ usuario, souAdmin = false }) {
   const [versoes, setVersoes] = useState([]);
   const [versaoId, setVersaoId] = useState(null);
   const [itens, setItens] = useState([]);
@@ -20257,6 +20414,11 @@ function EapSiengeView({ usuario }) {
   const [salvando, setSalvando] = useState(false);
   const [busca, setBusca] = useState("");
   const [abertos, setAbertos] = useState(() => new Set());
+  // Excluir versão é em dois tempos, na própria linha: o primeiro clique
+  // arma, o segundo confirma. Some ao trocar de versão.
+  const [excluindo, setExcluindo] = useState(false);
+  // Sobe a cada gesto gravado: é o que faz o registro se atualizar sozinho.
+  const [gestos, setGestos] = useState(0);
   const inputRef = useRef(null);
 
   const versao = versoes.find((v) => v.id === versaoId) || null;
@@ -20344,7 +20506,8 @@ function EapSiengeView({ usuario }) {
     const antes = mapa;
     setMapa((m) => { const n = { ...m }; if (codigo) n[verbaNum] = codigo; else delete n[verbaNum]; return n; });
     try {
-      await definirMapaVerba(versaoId, verbaNum, codigo, usuario);
+      await definirMapaVerba(versaoId, verbaNum, codigo);
+      setGestos((n) => n + 1);
     } catch (e) {
       setMapa(antes); // o banco recusou: a tela não pode ficar dizendo o contrário
       setErro(e.message || String(e));
@@ -20355,7 +20518,21 @@ function EapSiengeView({ usuario }) {
     try {
       await definirVersaoPadrao(versaoId);
       await recarregarVersoes(versaoId);
+      setGestos((n) => n + 1);
     } catch (e) { setErro(e.message || String(e)); }
+  }
+
+  /* Excluir a versão aberta. Nunca a padrão — é com ela que as solicitações
+     de compra saem; o servidor recusa e o botão nem aparece. */
+  async function excluirVersao() {
+    setErro(null);
+    try {
+      await excluirVersaoEap(versaoId);
+      setExcluindo(false);
+      setAviso("Versão excluída. O registro guarda o que ela tinha.");
+      await recarregarVersoes();
+      setGestos((n) => n + 1);
+    } catch (e) { setExcluindo(false); setErro(e.message || String(e)); }
   }
 
   const semFolha = verbas.filter((v) => !mapa[v.num]);
@@ -20445,6 +20622,21 @@ function EapSiengeView({ usuario }) {
                 onChange={(v) => setVersaoId(Number(v))} compacto className="w-full sm:w-96" />
               {versao && !versao.padrao && (
                 <Button variant="outline" size="sm" onClick={tornarPadrao}>Tornar padrão</Button>
+              )}
+              {souAdmin && versao && !versao.padrao && (
+                excluindo ? (
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setExcluindo(false)}>Cancelar</Button>
+                    <Button variant="danger" size="sm" onClick={excluirVersao}>
+                      <Trash2 size={14} aria-hidden="true" /> Confirmar exclusão
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={() => setExcluindo(true)}
+                    title="A versão padrão não pode ser excluída — é com ela que as solicitações saem">
+                    <Trash2 size={14} aria-hidden="true" /> Excluir versão
+                  </Button>
+                )
               )}
             </div>
           )}
@@ -20553,8 +20745,147 @@ function EapSiengeView({ usuario }) {
           </div>
         </Card>
       )}
+
+      {souAdmin && <RegistroDoEap gestos={gestos} />}
     </>
   );
+}
+
+/* O registro do EAP — quem mexeu, do mais novo pro mais antigo.
+
+   Existe porque o cadastro guardava só o ESTADO de hoje: trocar a folha de
+   uma verba apagava o autor anterior, desligar a verba apagava a linha, e
+   "Tornar padrão" — que decide a EAP com que TODA solicitação de compra sai
+   — não deixava carimbo nenhum.
+
+   Só administrador vê (a barreira de verdade é o RLS da tabela e a rota;
+   aqui a tela só evita pedir o que vai voltar 403). */
+function RegistroDoEap({ gestos }) {
+  const [eventos, setEventos] = useState([]);
+  const [semTabela, setSemTabela] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [tudo, setTudo] = useState(false);
+
+  const QUANTOS = 12;
+
+  useEffect(() => {
+    let vivo = true;
+    setCarregando(true);
+    (async () => {
+      try {
+        const r = await listarEventosEap();
+        if (!vivo) return;
+        setEventos(r.eventos || []);
+        setSemTabela(!!r.semTabela);
+        setErro(null);
+      } catch (e) {
+        if (vivo) setErro(e.message || String(e));
+      } finally {
+        if (vivo) setCarregando(false);
+      }
+    })();
+    return () => { vivo = false; };
+  }, [gestos]);
+
+  const visiveis = tudo ? eventos : eventos.slice(0, QUANTOS);
+
+  return (
+    <Card className="p-0">
+      <CardHeader className="px-4 pt-4">
+        <div className="min-w-0">
+          <CardTitle>Quem mexeu</CardTitle>
+          <CardDescription>
+            Cada importação, cada "tornar padrão" e cada verba ligada, trocada ou desligada — aqui
+            e dentro das obras. Só administrador vê, e nada aqui se edita nem se apaga.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <div className="px-4 pb-4">
+        {carregando ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : erro ? (
+          <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>
+        ) : semTabela ? (
+          <Alert tone="warning">
+            <AlertDescription>
+              O registro ainda não existe no banco — falta rodar <span className="mono">supabase/sienge-eap-evento.sql</span>.
+              O cadastro funciona normalmente; só o rastro não grava.
+            </AlertDescription>
+          </Alert>
+        ) : !eventos.length ? (
+          <p className="text-sm text-text-mute">Nada registrado ainda — o registro começa no próximo gesto.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-44">Quando</TableHead>
+                  <TableHead className="w-64">Quem</TableHead>
+                  <TableHead>O que fez</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visiveis.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell className="text-xs text-text-mute">
+                      {e.criado_em ? new Date(e.criado_em).toLocaleString("pt-BR") : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-text">{e.autor}</TableCell>
+                    <TableCell className="text-sm text-text">
+                      <div className="flex flex-col items-start gap-1">
+                        {fraseDoEvento(e)}
+                        {e.obra_codigo && <Badge tone="neutral">na obra {e.obra_codigo}</Badge>}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {eventos.length > QUANTOS && (
+              <div className="pt-3">
+                <Button variant="outline" size="sm" onClick={() => setTudo((v) => !v)}>
+                  {tudo ? "Mostrar menos" : `Mostrar todos (${eventos.length})`}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* O gesto em português. A linha do registro guarda os fatos (o código que
+   saiu, o que entrou); a frase é só leitura. */
+function fraseDoEvento(e) {
+  const versao = e.versao_nome || (e.versao_id ? `versão ${e.versao_id}` : "a versão");
+  const d = e.detalhe || {};
+  switch (e.acao) {
+    case "importou": {
+      const orfaos = Array.isArray(d.orfaos) ? d.orfaos : [];
+      return `Importou ${versao} — ${d.nItens ?? "?"} itens, ${d.nFolhas ?? "?"} apropriáveis`
+        + (d.herdadas ? `, ${d.herdadas} verbas herdadas` : "")
+        + (orfaos.length ? `, ${orfaos.length} sem ligação (${orfaos.join(", ")})` : "");
+    }
+    case "tornou_padrao":
+      return `Tornou padrão ${versao} — é com ela que as solicitações passam a sair`;
+    case "ligou":
+      return `Ligou a verba ${e.verba_num} a ${e.codigo}`;
+    case "trocou":
+      return `Trocou a verba ${e.verba_num} de ${e.codigo_anterior} para ${e.codigo}`;
+    case "desligou":
+      return `Desligou a verba ${e.verba_num} (era ${e.codigo_anterior})`;
+    case "excluiu":
+      return `Excluiu ${versao}`
+        + (d.nItens != null ? ` — ${d.nItens} itens e ${d.nVerbasLigadas ?? 0} verbas ligadas foram junto` : "");
+    default:
+      return e.acao;
+  }
 }
 
 function BancoPrecosView({ usuario }) {
@@ -21080,21 +21411,23 @@ function ArquivoView({ obras, onReabrir, salvando }) {
 //
 // A trava expira sozinha por inatividade. Sem esse prazo, alguém que
 // fechasse o navegador no meio deixaria a obra travada para sempre.
-/* Uma barra só, no topo, com as duas decisões da etapa.
+/* A FAIXA DA EDIÇÃO (23/09/2026): uma linha só, fixa no topo ao rolar,
+   logo abaixo das abas da obra.
 
-   Antes eram dois blocos distantes: o estado da edição em cima e o
-   "Concluir etapa" lá no fim da página, depois de trinta e duas verbas —
-   quem quisesse avançar tinha que rolar até o fim pra descobrir que o
-   botão existia. E são a mesma pergunta: "posso mexer?" e "já terminei?".
+   Antes o estado da edição, o selo da gravação e o "Habilitar/Finalizar"
+   dividiam o canto do cabeçalho com Apresentação e Concluir obra — muitos
+   selos juntos — e sumiam ao rolar: no meio da tabela do Executivo ninguém
+   sabia se o que fez já estava salvo. Agora respondem juntos, sempre à
+   vista, à mesma pergunta: "posso mexer, e o que fiz está guardado?".
 
-   Minimalista de propósito: o estado é um ponto colorido e uma palavra;
-   as ações são texto. O único botão cheio é o de avançar, porque é a
-   única coisa aqui que empurra a obra pra frente. */
-function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar }) {
-
-  let estado;
+   Um selo só (o estado); a gravação é texto com ícone, e só ganha cor forte
+   quando pede ação; o botão que alterna a edição fica na ponta direita. */
+function FaixaDaEdicao({ inicio, fim, edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar }) {
+  let selo = null;
+  let explica = null;
+  let acao = null;
   if (carregando) {
-    estado = <span className="flex items-center gap-2 text-sm text-text-mute"><Badge tone="neutral">Carregando…</Badge></span>;
+    selo = <Badge tone="neutral"><Loader2 size={12} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> Carregando a obra…</Badge>;
   } else if (falhouCarregar) {
     /* O CONTEUDO NAO CHEGOU — E POR ISSO NINGUEM EDITA.
      *
@@ -21103,68 +21436,59 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
      * item nenhum. Um clique e qualquer alteracao depois, o salvamento
      * automatico gravava esse esqueleto por cima da obra inteira.
      *
-     * A frase diz o que fazer, porque quem esta' na tela nao tem como saber
-     * que a obra que ele ve' nao e' a obra que esta' no banco. Ela mandava
-     * dar F5 — o que levaria junto o que OUTRAS obras ainda nao gravaram.
-     * Agora a saida e' tentar carregar de novo aqui mesmo. */
-    estado = (
-      <span className="flex flex-wrap items-center gap-2 text-sm text-danger">
-        <AlertTriangle size={16} aria-hidden="true" /> Não consegui carregar esta obra. A edição fica fechada até ela carregar.
-        {onTentarCarregar && (
-          <Button variant="outline" onClick={onTentarCarregar}>
-            <RotateCcw size={16} aria-hidden="true" /> Tentar de novo
-          </Button>
-        )}
-      </span>
+     * A saida e' tentar carregar de novo aqui mesmo — F5 levaria junto o que
+     * OUTRAS obras ainda nao gravaram. */
+    selo = <Badge tone="danger"><AlertTriangle size={12} aria-hidden="true" /> Não consegui carregar esta obra</Badge>;
+    explica = "A edição fica fechada até ela carregar.";
+    acao = onTentarCarregar && (
+      <Button variant="outline" size="sm" onClick={onTentarCarregar}>
+        <RotateCcw size={14} aria-hidden="true" /> Tentar de novo
+      </Button>
     );
   } else if (edicao.por) {
     const desde = edicao.desde ? new Date(edicao.desde).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
-    estado = (
-      <span className="flex items-center gap-2 text-sm" title={`Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração`}>
-        <Badge tone="warning"><Lock size={12} aria-hidden="true" /> Em edição por outra pessoa</Badge>
-        <span className="text-text-soft"><span className="text-text">{edicao.por}</span> está editando{desde ? ` desde ${desde}` : ""}</span>
-      </span>
-    );
+    selo = <Badge tone="warning"><Lock size={12} aria-hidden="true" /> {edicao.por} está editando{desde ? ` desde ${desde}` : ""}</Badge>;
+    explica = `Você vê tudo, mas só altera quando a edição for liberada. Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração.`;
   } else if (edicao.minha) {
-    estado = (
-      <span className="flex flex-wrap items-center gap-2 text-sm">
-        {/* Amarelo e com o que se edita (pedido de 23/09/2026): "Editando",
-            azul, passava por mais um rótulo da página. Editar a obra é
-            estado que pede atenção — o que se muda aqui grava na obra. O
-            lápis separa do "Em edição por outra pessoa", que tem cadeado. */}
-        <Badge tone="warning"><Pencil size={12} aria-hidden="true" /> Você está editando esta obra</Badge>
-        {/* "salvo" só quando o banco aceitou. Enquanto não, a barra diz o que
-            está acontecendo — inclusive a próxima tentativa, quando falhou. */}
-        <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />
-        <Button variant="outline" onClick={onFinalizar}>
-          <Check size={16} aria-hidden="true" /> Finalizar edição
-        </Button>
-      </span>
+    /* Amarelo e com lápis: editar a obra pede atenção — o que se muda aqui
+       grava na obra. O cadeado fica para a edição de outra pessoa. */
+    selo = <Badge tone="warning"><Pencil size={12} aria-hidden="true" /> Você está editando</Badge>;
+    acao = (
+      <Button variant="outline" size="sm" onClick={onFinalizar}>
+        <Check size={14} aria-hidden="true" /> Finalizar edição
+      </Button>
     );
   } else {
-    /* Em modo leitura a situação da gravação continua à vista: quem acabou
-       de finalizar vê o "salvando…" virar "salvo" — ou o aviso, se não. Com
-       conflito em aberto, habilitar de novo espera a pessoa decidir. */
-    estado = (
-      <span className="flex flex-wrap items-center gap-2 text-sm">
-        {/* Visível e explicado (pedido de 23/09/2026): cinza, "Modo leitura"
-            sumia no cabeçalho, e quem tentava mexer não entendia por que nada
-            respondia. Azul da marca com o olho: amarelo é de edição (a sua e
-            a de outra pessoa), e ler não pede alerta, pede ser notado. */}
-        <Badge tone="brand"><Eye size={12} aria-hidden="true" /> Modo leitura · só consulta</Badge>
-        <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />
-        {gravacao?.estado !== "conflito" && (
-          <Button variant="outline" onClick={onHabilitar}>
-            <Pencil size={16} aria-hidden="true" /> Habilitar edição
-          </Button>
-        )}
-      </span>
+    /* Em modo leitura a gravação continua à vista: quem acabou de finalizar
+       vê o "salvando…" virar "salvo" — ou o aviso, se não. Com conflito em
+       aberto, habilitar de novo espera a pessoa decidir. */
+    selo = <Badge tone="brand"><Eye size={12} aria-hidden="true" /> Modo leitura</Badge>;
+    explica = "Habilite a edição para alterar a obra.";
+    acao = gravacao?.estado !== "conflito" && (
+      <Button size="sm" onClick={onHabilitar}>
+        <Pencil size={14} aria-hidden="true" /> Habilitar edição
+      </Button>
     );
   }
+  const podeMostrarGravacao = !carregando && !falhouCarregar;
 
   return (
-    <div className="naoimprime flex flex-wrap items-center justify-end gap-2">
-      {estado}
+    <div className="faixa-da-edicao naoimprime rolagem-discreta flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b border-line-1 bg-surface-1">
+      {inicio && <span className="flex shrink-0 items-center border-r border-line-1">{inicio}</span>}
+      <span className="flex shrink-0 items-center gap-3 text-sm">
+        {selo}
+        {explica && <span className="hidden text-text-soft lg:inline">{explica}</span>}
+      </span>
+      {/* Editando e sem nada gravado ainda: a faixa diz como a gravação
+          funciona, para ninguém procurar um botão de salvar. */}
+      {podeMostrarGravacao && (gravacao || edicao.minha) && (
+        <span className="flex shrink-0 items-center gap-3 border-l border-line-1 pl-3">
+          {gravacao
+            ? <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} discreta />
+            : <span className="flex items-center gap-1 text-sm text-text-mute"><CheckCircle2 size={14} aria-hidden="true" /> Cada alteração salva sozinha</span>}
+        </span>
+      )}
+      {(acao || fim) && <span className="ml-auto flex shrink-0 items-center gap-2">{acao}{fim}</span>}
     </div>
   );
 }
@@ -21218,7 +21542,10 @@ function PageShell({ description, actions, className, toolbar, toolbarSecondary,
       /* Alinhadas pelo TOPO: as ações da tela costumam ser uma coluna (o
          botão e, embaixo, o aviso de modo leitura); centralizado, o botão
          de tela cheia ficava no meio dessa coluna, fora da linha. */
-      actions={actions ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}</div> : undefined}
+      /* Com ações próprias (o importador), a ação da etapa vai dentro da
+         linha delas (ver ImportButton); sem ações, ela ocupa o lugar. */
+      actions={actions ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}{aba.botaoDaEtapa}</div>
+        : <div className="flex flex-wrap items-start justify-end gap-2">{aba.acaoDaEtapa}{aba.botaoDaEtapa}</div>}
       /* O MESMO ESQUELETO EM TODAS AS ABAS (23/09/2026): cabeçalho → avisos
          → filtros e cards → tabelas, com o mesmo espaço pequeno entre eles.
          Os filtros saem da barra do PageShell (que ficava ACIMA dos avisos)
@@ -21260,7 +21587,11 @@ const TELAS_DE_OPERACAO = new Set(["vendido_planilha", "executivo", "executivo_c
 /* Etapas que acompanham a obra inteira e não se concluem. */
 const ETAPAS_CONTINUAS = new Set(["diario"]);
 
-function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [] }) {
+function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [], parte = "estado" }) {
+  /* TODOS OS BOTÕES JUNTOS (23/09/2026): o Concluir/Reabrir saiu da linha
+     do selo e foi para a fila de ações do cabeçalho, ao lado de
+     Apresentação e Importar. `parte="estado"` desenha o selo e quem
+     concluiu (abaixo do título); `parte="botao"`, só o botão (nas ações). */
   /* Mesmo estado em TODAS as abas da esteira (pedido de 23/09/2026: "para
      ficarem uniformes"), abaixo do título da tela — e as ações da ETAPA
      (Concluir, Reabrir) na mesma linha dele, pequenas. O canto direito do
@@ -21274,29 +21605,14 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
   // O que ainda impede concluir (hoje só a Conf. Executivo tem trava).
   const bloqueio = useMemo(() => (feita ? null : bloqueioDaEtapa(etapaId, obra)), [feita, etapaId, obra]);
 
-  if (ETAPAS_CONTINUAS.has(etapaId)) {
-    return (
-      <span className="naoimprime mt-2 flex flex-wrap items-center gap-2" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
-        <Badge tone="neutral">Etapa contínua</Badge>
-        <span className="text-xs text-text-mute">Acompanha a obra inteira, não se conclui.</span>
-      </span>
-    );
-  }
-  return (
-    <span className="naoimprime mt-2 flex flex-wrap items-center gap-2" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
-      <span className="flex flex-wrap items-center gap-2">
-        {feita ? (
-          <>
-            <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Etapa concluída</Badge>
-            <span className="text-xs text-text-mute">
-              {porQuem && <>por {nomeNaEquipe(equipe, porQuem)}</>}
-              {/* Data E hora (pedido de 23/09/2026): o registro sempre
-                  guardou o instante inteiro, a tela é que mostrava só o dia. */}
-              {em && <> · {new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</>}
-              {O_QUE_O_ATO_ABRIU[etapaId] && <> · {O_QUE_O_ATO_ABRIU[etapaId]}</>}
-            </span>
+  if (parte === "botao") {
+    if (ETAPAS_CONTINUAS.has(etapaId)) return null;
+    return feita ? (<>
             {temBotao && !congelado && (
-              <Button variant="ghost" size="sm" onClick={async () => {
+              /* Contorno da marca (secondary), não ghost (23/09/2026): ghost
+                 lia como texto solto ao lado do selo, e Reabrir é ação. Mesmo
+                 tamanho dos outros botões da fila de ações. */
+              <Button variant="secondary" onClick={async () => {
                 if (await confirmar({
                   titulo: `Reabrir a etapa "${nomeDaEtapa(etapaId)}"?`,
                   mensagem: "O registro de quem concluiu e quando é apagado e a etapa volta a pendente. Dá para concluir de novo depois.",
@@ -21304,27 +21620,87 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
                 })) onReabrirEtapa(etapaId);
               }}><RotateCcw size={14} aria-hidden="true" /> Reabrir etapa</Button>
             )}
+    </>) : (<>
+            {temBotao && (() => {
+              /* POR QUE NÃO DÁ PARA CONCLUIR (23/09/2026): o `title` do botão
+                 desabilitado quase nunca aparecia (o navegador não dispara
+                 hover em botão desabilitado). Agora os motivos, todos, vão
+                 num Tooltip do DS preso a um invólucro que recebe o hover e o
+                 foco — e o botão ganha o cadeado quando está travado. */
+              const motivos = [
+                bloqueio && `${bloqueio}: marque "conferi" nos alertas técnicos (card "Falta conferir").`,
+                obra.comprasLiberadas && "O Plano de Compras já foi liberado e congelou esta etapa.",
+                !obra.comprasLiberadas && !podeEditar && "A obra está em modo leitura: habilite a edição na faixa do topo.",
+              ].filter(Boolean);
+              const travado = motivos.length > 0;
+              const botao = (
+                /* Azul cheio (variante default): só as cores que o DS já tem
+                   (decisão de 23/09/2026 — sem variante verde). */
+                <BotaoComMotivo disabled={travado} onClick={async () => {
+                  if (await confirmar({
+                    titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
+                    mensagem: "Fica registrado no seu nome, com a data e a hora de agora, e a próxima etapa é liberada. Dá para reabrir depois.",
+                    confirmar: "Concluir etapa", perigo: false,
+                  })) onConcluir(etapaId);
+                }} title={travado ? undefined : "Marca esta etapa como cumprida e libera a próxima"}>
+                  {travado ? <Lock size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />} Concluir etapa
+                </BotaoComMotivo>
+              );
+              if (!travado) return botao;
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0} className="inline-flex cursor-help rounded-lg"
+                      aria-label={`Concluir etapa indisponível. ${motivos.join(" ")}`}>{botao}</span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs whitespace-normal">
+                    <span className="flex flex-col gap-1">
+                      <b>Por que não dá para concluir</b>
+                      {motivos.map((m) => <span key={m}>• {m}</span>)}
+                    </span>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })()}
+    </>);
+  }
+  if (ETAPAS_CONTINUAS.has(etapaId)) {
+    return (
+      <span className="naoimprime mt-2 flex min-w-0 items-center gap-2 [&>*:first-child]:shrink-0" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
+        <Badge tone="neutral"><RefreshCw size={12} aria-hidden="true" /> Etapa contínua</Badge>
+        <span className="min-w-0 truncate text-xs text-text-mute">Acompanha a obra inteira, não se conclui.</span>
+      </span>
+    );
+  }
+  return (
+    /* Sempre numa linha só (23/09/2026): o selo não encolhe e o texto de
+       quem concluiu é cortado com "…" quando falta espaço — inteiro na dica. */
+    <span className="naoimprime mt-2 flex min-w-0 items-center gap-2" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
+      <span className="flex min-w-0 flex-nowrap items-center gap-2 [&>*:first-child]:shrink-0">
+        {feita ? (
+          <>
+            <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Etapa concluída</Badge>
+            <span className="min-w-0 truncate text-xs text-text-mute"
+              title={[porQuem && `por ${nomeNaEquipe(equipe, porQuem)}`, em && new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }), O_QUE_O_ATO_ABRIU[etapaId]].filter(Boolean).join(" · ")}>
+              {porQuem && <>por {nomeNaEquipe(equipe, porQuem)}</>}
+              {/* Data E hora (pedido de 23/09/2026): o registro sempre
+                  guardou o instante inteiro, a tela é que mostrava só o dia. */}
+              {em && <> · {new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</>}
+              {O_QUE_O_ATO_ABRIU[etapaId] && <> · {O_QUE_O_ATO_ABRIU[etapaId]}</>}
+            </span>
+
           </>
         ) : (
           <>
-            <Badge tone="neutral">Etapa pendente</Badge>
-            {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
-            {!temBotao && ato && <span className="text-xs text-text-mute">{ato}</span>}
-            {temBotao && (
-              /* Azul cheio (variante default): só as cores que o DS já tem
-                 (decisão de 23/09/2026 — sem variante verde). */
-              <Button size="sm" disabled={congelado || !!bloqueio} onClick={async () => {
-                if (await confirmar({
-                  titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
-                  mensagem: "Fica registrado no seu nome, com a data e a hora de agora, e a próxima etapa é liberada. Dá para reabrir depois.",
-                  confirmar: "Concluir etapa", perigo: false,
-                })) onConcluir(etapaId);
-              }}
-                title={bloqueio ? "Aprove as pendências para concluir"
-                  : congelado ? "Habilite a edição da obra para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
-                <Play size={14} aria-hidden="true" /> Concluir etapa
-              </Button>
-            )}
+            {/* Padrão dos selos de etapa (23/09/2026): cor e ícone por estado —
+                concluída verde com check, pendente vermelha com relógio,
+                contínua neutra com o ciclo. */}
+            <Badge tone="danger"><Clock size={12} aria-hidden="true" /> Etapa pendente</Badge>
+            {/* O "falta conferir N produtos" não se repete aqui (23/09/2026): o
+                card "Falta conferir" da tela já mostra o número. O motivo do
+                botão travado fica na dica dele. */}
+            {!temBotao && ato && <span className="min-w-0 truncate text-xs text-text-mute" title={ato}>{ato}</span>}
+
           </>
         )}
       </span>
@@ -21450,7 +21826,7 @@ export default function App() {
    *
    * Codigo, e nao um booleano: o app troca de obra sem recarregar a pagina, e
    * uma falha na 2450 nao pode trancar a 2498. Enquanto ele apontar pra obra
-   * aberta, a edicao fica fechada — ver a BarraEtapa. */
+   * aberta, a edicao fica fechada — ver a FaixaDaEdicao. */
   const [falhaAoCarregar, setFalhaAoCarregar] = useState(null);
   /* O filtro que a Conf. Executivo deve abrir mostrando, quando alguem chega
      nela por um atalho. Vale uma vez: a tela avisa que usou e isto volta a
@@ -22827,7 +23203,7 @@ export default function App() {
 
   // Vendido Contrato (PDF): atualiza o valor por verba + os itens
   // (descrição/ambiente/quantidade — sem valor, o contrato é fechado por verba).
-  function importVendidoContrato(valores, itens) {
+  function importVendidoContrato(valores, itens, { substituirTudo = false } = {}) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const porVerba = {};
@@ -22847,6 +23223,13 @@ export default function App() {
         const patch = {};
         if (valores[c.num] != null) patch.vendido = valores[c.num];
         if (porVerba[c.num]) patch.itensContrato = porVerba[c.num];
+        /* Substituir tudo (RN-029): a verba que o arquivo não tocou — nem
+           com item, nem com valor — sai zerada, igual ao que "Limpar o
+           Vendido Contrato" faz, porque o arquivo passa a ser o documento. */
+        if (substituirTudo && valores[c.num] == null && !porVerba[c.num]) {
+          if ((c.itensContrato || []).length) patch.itensContrato = [];
+          if (c.vendido) patch.vendido = 0;
+        }
         return Object.keys(patch).length ? { ...c, ...patch } : c;
       });
       const valorVendido = categorias.reduce((a, c) => a + (c.vendido || 0), 0);
@@ -22919,10 +23302,10 @@ export default function App() {
     }));
   }
 
-  function importVendidoPlanilha(itens) {
+  function importVendidoPlanilha(itens, { substituirTudo = false } = {}) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
-      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilha");
+      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilha", { substituirTudo });
       return { ...o, categorias };
     }));
   }
@@ -23288,15 +23671,20 @@ export default function App() {
   // Planilha Executivo: mesma origem populando dois formatos — o
   // "simples" (itensPlanilhaExecutivo, pro depara e a própria tela) e o
   // "rico" (itens, que já alimenta Comparativo/Compras/Contratos).
-  function importPlanilhaExecutivo(itens) {
+  function importPlanilhaExecutivo(itens, { substituirTudo = false } = {}) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       // Enriquece antes de distribuir: a comparação com o criativo depende
       // da verba de destino, que é a mesma em que o item vai cair.
       const porVerba = {};
       (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
-      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilhaExecutivo").map((c) => {
-        if (!porVerba[c.num]) return c;
+      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilhaExecutivo", { substituirTudo }).map((c) => {
+        if (!porVerba[c.num]) {
+          // Substituir tudo (RN-029): a Planilha Executivo alimenta os DOIS
+          // formatos, então a verba que não veio perde os dois — é o mesmo
+          // par que "Limpar o Executivo" apaga.
+          return substituirTudo && (c.itens || []).length ? { ...c, itens: [] } : c;
+        }
         // Guarda o item INTEIRO. Antes essa lista era montada campo a
         // campo, e ficou congelada no tempo: quando as colunas de
         // material e mão de obra passaram a existir, elas não entraram
@@ -24775,6 +25163,9 @@ export default function App() {
         .tag-canal[data-canal="cortinas"] { color: var(--alert); background: var(--alert-soft); }
         .tag-canal[data-canal="gc"] { color: var(--indigo); background: var(--indigo-soft); }
         .tag-canal[data-canal="estoque"] { color: var(--mod-settings); background: color-mix(in srgb, var(--mod-settings) 14%, transparent); }
+        /* Na aba ativa do funil (fundo da marca) a etiqueta ganha fundo claro:
+           o tom suave dela sumia sobre o azul. */
+        [role="tab"][data-state="active"] .tag-canal { background: var(--bg); }
         .pill { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
         .pill-ok { background: var(--green-bg); color: var(--green); }
         .pill-contratos { background: var(--panel); color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
@@ -25677,7 +26068,7 @@ export default function App() {
           ) : modulo === "eap" ? (
           <>
           <PageShell crumb="Integração Sienge" title="EAP Sienge" description="Onde cada produto é apropriado no orçamento — o que a solicitação de compra exige." contentClassName="flex flex-col gap-6">
-            <EapSiengeView usuario={usuario} />
+            <EapSiengeView usuario={usuario} souAdmin={souAdmin} />
           </PageShell>
           </>
           ) : modulo === "a_contratar" ? (
@@ -25702,22 +26093,7 @@ export default function App() {
               e DetailHero (quem e' a obra). Concluir a obra e' ato de fim de
               tudo e mora so' no Dashboard dela; a Apresentacao, so' no
               Executivo — cada acao onde ela faz sentido. */}
-          {emTelaCheia ? (
-            /* A barra da tela cheia: onde se está e como sair. */
-            /* Sem caixa, no fundo da página (23/09/2026): a faixa branca
-               solta parecia outro componente. A obra vem pequena, como o
-               breadcrumb; a tela, em destaque; o sair, do tamanho dos outros
-               botões. */
-            <div className="naoimprime flex items-center justify-between gap-4 pb-2">
-              <span className="flex min-w-0 flex-col">
-                <span className="label-mono truncate text-text-mute">{obra.codigo} · {obra.nome}</span>
-                <span className="truncate text-lg font-semibold text-text">{nomeDaEtapa(tab)}</span>
-              </span>
-              <Button variant="outline" onClick={() => setTelaCheia(false)}>
-                <Minimize2 size={16} aria-hidden="true" /> Sair da tela cheia <Kbd>Esc</Kbd>
-              </Button>
-            </div>
-          ) : (() => {
+          {emTelaCheia ? null : (() => {
             const tailor = obra.tailorMade ?? registro.get(String(obra.codigo))?.tailor_made ?? null;
             const executivo = obra.responsavelExecutivo ?? registro.get(String(obra.codigo))?.responsavel_executivo ?? null;
             const squad = obra.squad || "Sem squad";
@@ -25747,7 +26123,14 @@ export default function App() {
                         primeiro (e' dela que sai todo prazo) com o selo do
                         prazo na cor do risco; cada papel com as iniciais, e a
                         vaga vazia escrita como lacuna. */}
-                    <span className="mt-2 grid w-full grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                    {/* Fluido (23/09/2026): colunas de largura igual cortavam o
+                        nome ("Allysson Pere…") e sobrava vazio ao lado de "sem
+                        data". Cada bloco mede pelo conteúdo e quebra linha
+                        quando falta espaço. */}
+                    {/* Numa linha só (23/09/2026): não quebra; com pouco espaço
+                        os nomes encolhem com "…" (o nome inteiro está no
+                        seletor), e a entrega nunca encolhe. */}
+                    <span className="equipe-da-obra mt-2 flex w-full flex-nowrap justify-between gap-x-6 [&>*:first-child]:shrink-0">
                       <span className="flex min-w-0 flex-col gap-1">
                         <span className="label-mono text-text-mute">Entrega</span>
                         {obra.dataEntrega ? (() => {
@@ -25776,16 +26159,6 @@ export default function App() {
                 )}
                 actions={(
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <BarraEtapa
-                      edicao={{ ...edicao, por: edicao.por && nomeNaEquipe(pessoas, edicao.por) }} gravacao={gravacaoDaObra} carregando={carregandoDados}
-                      falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
-                      onTentarCarregar={() => setCargaPedida((n) => n + 1)}
-                      onTentarGravar={() => filaDaObra(obra.codigo).tentarAgora()}
-                      onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
-                    {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
-                      && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
-                      <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
-                    )}
                     {grupo === "dashboard" && (
                       <Button variant="ghost" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
                         {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={16} aria-hidden="true" /> Concluir obra</>}
@@ -25796,10 +26169,30 @@ export default function App() {
                 toolbar={<TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />}>
                 <></>
               </PageShell>
-              <div className="espaco-da-obra h-6" aria-hidden="true" />
               </>
             );
           })()}
+          {/* Em tela cheia a faixa é a única barra (23/09/2026): onde se está
+              (obra e etapa) à esquerda, a edição no meio e, na ponta, o sair —
+              antes eram duas barras empilhadas dizendo coisas vizinhas. */}
+          <FaixaDaEdicao
+            inicio={emTelaCheia ? (
+              <span className="flex min-w-0 shrink-0 flex-col pr-3">
+                <span className="label-mono truncate text-text-mute">{obra.codigo} · {obra.nome}</span>
+                <span className="truncate text-base font-semibold text-text">{nomeDaEtapa(tab)}</span>
+              </span>
+            ) : null}
+            fim={emTelaCheia ? (
+              <Button variant="ghost" size="sm" onClick={() => setTelaCheia(false)}>
+                <Minimize2 size={14} aria-hidden="true" /> Sair da tela cheia <Kbd>Esc</Kbd>
+              </Button>
+            ) : null}
+            edicao={{ ...edicao, por: edicao.por && nomeNaEquipe(pessoas, edicao.por) }} gravacao={gravacaoDaObra} carregando={carregandoDados}
+            falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
+            onTentarCarregar={() => setCargaPedida((n) => n + 1)}
+            onTentarGravar={() => filaDaObra(obra.codigo).tentarAgora()}
+            onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
+          {!emTelaCheia && <div className="espaco-da-obra h-6" aria-hidden="true" />}
           {apresAberta && (produtosApres ? (
             <Apresentacao usuario={usuario} produtos={produtosApres} obraInicial={obra.codigo}
               obras={obrasAtivas.some((o) => String(o.codigo) === String(obra.codigo)) ? obrasAtivas : [obra, ...obrasAtivas]}
@@ -25834,8 +26227,15 @@ export default function App() {
           <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? {
             estado: <EtapaDaAba etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
               onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
+            botaoDaEtapa: <EtapaDaAba parte="botao" etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
+              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
             onTelaCheia: podeTelaCheia ? () => setTelaCheia(true) : null,
             telaCheia: emTelaCheia,
+            /* A Apresentação é da ETAPA (Executivo e Conf. Executivo), não da
+               obra: mora nas ações do cabeçalho da etapa (23/09/2026). */
+            acaoDaEtapa: grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
+              && (migracaoPendente || podeVerModulo(eu, "catalogo"))
+              ? <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} /> : null,
           } : null}>
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}

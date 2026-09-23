@@ -4,7 +4,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Tabs, TabsList, TabsTrigger, Textarea, Toggle, ToggleGroup, ToggleGroupItem,
 } from "@group-ws/ws-ui";
-import { BotaoIcone } from "./lib/ui.jsx";
+import { BotaoIcone, BotaoComMotivo } from "./lib/ui.jsx";
 import { confirmar } from "./lib/confirmar.jsx";
 import {
   X, Plus, Trash2, Upload, Save, FileDown, Image as ImageIcon,
@@ -400,15 +400,15 @@ export default function Apresentacao({ usuario, obras, produtos, onFechar, obraI
       <Button variant="outline" size="sm" disabled={!doc || salvando} onClick={salvar}>
         <Save size={16} /> Salvar agora
       </Button>
-      <Button variant="outline" size="sm" disabled={!conf.pronto || !!gerandoPptx} onClick={gerarPowerPoint}
+      <BotaoComMotivo variant="outline" size="sm" disabled={!conf.pronto || !!gerandoPptx} onClick={gerarPowerPoint}
         title={conf.pronto ? "Baixa um .pptx editável — texto e imagem soltos, pra mexer no PowerPoint"
           : "Todo ambiente precisa de nome e de imagem"}>
         <FileDown size={16} /> {gerandoPptx || "Baixar .pptx"}
-      </Button>
-      <Button size="sm" disabled={!conf.pronto || !!gerando} onClick={gerar}
+      </BotaoComMotivo>
+      <BotaoComMotivo size="sm" disabled={!conf.pronto || !!gerando} onClick={gerar}
         title={conf.pronto ? "" : "Todo ambiente precisa de nome e de imagem"}>
         <FileDown size={16} /> {gerando || "Gerar PDF"}
-      </Button>
+      </BotaoComMotivo>
       <BotaoIcone rotulo="Fechar apresentação" variant="ghost" onClick={fechar}>
         <X size={16} />
       </BotaoIcone>

@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Badge, Button, Collapsible, CollapsibleTrigger, CollapsibleContent, KpiMini, Label, Progress, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
   DateField, Popover, PopoverTrigger, PopoverContent, Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@group-ws/ws-ui";
-import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown, Info } from "lucide-react";
+import { Building2, Check, ChevronDown, ChevronRight, ChevronsUpDown, Info, Undo2 } from "lucide-react";
 
 /* CAMPO DE DATA DO DS, controlado.
 
@@ -112,6 +112,35 @@ export function DicaInfo({ rotulo = "Saiba mais", lado = "top", children }) {
     </Tooltip>
   );
 }
+
+/* BOTÃO TRAVADO DIZ POR QUÊ (23/09/2026).
+
+   O motivo de um botão desabilitado morava no `title` — e o navegador não
+   mostra `title` de botão desabilitado (ele não recebe o hover). Este botão
+   é o Button do DS com uma diferença: desabilitado e com `title`, o texto
+   vira um Tooltip do DS preso a um invólucro que recebe hover e foco, com o
+   cadeado de "por que não dá". Habilitado, é o Button de sempre. */
+export const BotaoComMotivo = React.forwardRef(function BotaoComMotivo({ disabled, title, children, ...props }, ref) {
+  if (!disabled || !title) {
+    return <Button ref={ref} disabled={disabled} title={title || undefined} {...props}>{children}</Button>;
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="inline-flex cursor-help rounded-lg" aria-label={`Indisponível: ${title}`}>
+          <Button ref={ref} disabled {...props}>{children}</Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs whitespace-normal text-left normal-case tracking-normal">
+        <span className="flex flex-col gap-1">
+          <b>Por que não dá</b>
+          <span>{primeiraMaiuscula(title)}</span>
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+});
+const primeiraMaiuscula = (t) => (typeof t === "string" && t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
 /* ESCOLHER UMA PESSOA, com busca (padrao Combobox do DS: Popover +
    Command). Com 40 nomes, uma lista sem busca obrigava a rolar ate' achar;
@@ -265,16 +294,33 @@ export function KpiBotao({ ativo, onClick, label, value, hint, tone = "neutral",
    Substitui o `.pill-btn`, que era selo e botao ao mesmo tempo. `disabled`
    trava so' a acao (modo leitura, pre-requisito nao cumprido); o selo
    continua contando o estado. */
-export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", acao, desfazer = "desfazer", disabled, onClick, title, tone = "success", className = "" }) {
+export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", acao, desfazer = "desfazer", disabled, onClick, title, tone = "success", className = "", rotuloItem }) {
+  /* O ESTADO VIRA AÇÃO (23/09/2026): antes era um selo "pendente" com a
+     ação em texto solto embaixo, que não parecia botão. Agora, pendente,
+     é o próprio botão com a ação ("Solicitar"); feito, é o selo verde com
+     o ✓ e um desfazer pequeno ao lado. `rotuloPendente` fica para quem
+     não pode agir (o selo continua dizendo o estado). */
+  const acaoMaiuscula = acao ? acao.charAt(0).toUpperCase() + acao.slice(1) : acao;
+  if (feito) {
+    return (
+      <span className={`inline-flex items-center gap-1 ${className}`}>
+        <Badge tone={tone} title={title}><Check size={12} aria-hidden="true" />{rotuloFeito}</Badge>
+        {!disabled && (
+          <Button variant="ghost" size="icon" type="button" className="h-6 w-6 text-text-mute"
+            onClick={onClick} title={title} aria-label={`${desfazer}${rotuloItem ? ` — ${rotuloItem}` : ""}`}>
+            <Undo2 size={12} aria-hidden="true" />
+          </Button>
+        )}
+      </span>
+    );
+  }
   return (
-    <div className={`inline-flex flex-col items-center gap-1 ${className}`}>
-      <Badge tone={feito ? tone : "neutral"} title={title}>
-        {feito && <Check size={12} />}{feito ? rotuloFeito : rotuloPendente}
-      </Badge>
-      <Button variant="ghost" size="sm" type="button" disabled={disabled} onClick={onClick} title={title}>
-        {feito ? desfazer : acao}
-      </Button>
-    </div>
+    <span className={`inline-flex ${className}`}>
+      <BotaoComMotivo variant="outline" size="sm" type="button" disabled={disabled} onClick={onClick} title={title}
+        aria-label={rotuloItem ? `${acaoMaiuscula} — ${rotuloItem}` : undefined}>
+        {acaoMaiuscula}
+      </BotaoComMotivo>
+    </span>
   );
 }
 

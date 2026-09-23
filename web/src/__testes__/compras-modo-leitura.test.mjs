@@ -56,9 +56,12 @@ conf("insumo do Sienge fica só pra consulta", linha.includes("somenteLeitura={!
 /* O canal do lote virou UM menu "Definir canal" (22/09/2026; antes um
    ToggleGroup, e antes disso cinco botoes): marcar comprado, marcar
    solicitado, associar e o gatilho do menu — quatro travas, e a do canal
-   tem que estar no botao que abre o menu. */
-conf("canal e marcações em massa travam", (compras.match(/disabled=\{!podeEditar\}/g) || []).length >= 4
-  && /<DropdownMenuTrigger asChild>\s*<Button variant="outline" size="sm" disabled=\{!podeEditar\}/.test(compras));
+   tem que estar no botao que abre o menu. Em 23/09/2026 comprado e
+   solicitado viraram o menu "Marcar": a trava mora no gatilho dele, como
+   no canal — são dois menus travados e o Associar. */
+conf("canal e marcações em massa travam",
+  (compras.match(/<DropdownMenuTrigger asChild>\s*<(?:Button|BotaoComMotivo) variant="outline" size="sm" disabled=\{!podeEditar\}/g) || []).length >= 2
+  && /onClick=\{associarSelecionados\} disabled=\{!podeEditar\}/.test(compras));
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

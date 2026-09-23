@@ -44,20 +44,35 @@ const horaDe = (em) => {
   return Number.isFinite(d.getTime()) ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
 };
 
-export function SituacaoDaGravacao({ situacao, onTentarAgora }) {
+/* Na faixa da edição (`discreta`) a gravação é texto com ícone, sem selo:
+   ao lado do selo do estado, um segundo selo era "muitos selos juntos". Só
+   recusa e conflito continuam selo, porque só elas pedem uma decisão. */
+const TOM_DO_TEXTO = {
+  pendente: "text-text-mute", salvando: "text-text-soft", salvo: "text-text-soft", erro: "text-warning",
+};
+const COR_DO_ICONE = {
+  pendente: "text-text-mute", salvando: "text-brand", salvo: "text-success", erro: "text-warning",
+};
+
+export function SituacaoDaGravacao({ situacao, onTentarAgora, discreta = false }) {
   const agora = useAgora(situacao?.estado === "erro");
   const resumo = resumoDaGravacao(situacao, agora);
   if (!resumo) return null;
-  const selo = SELO_DO_ESTADO[situacao?.estado] || { tom: "neutral", Icone: Clock };
-  const hora = situacao?.estado === "salvo" ? horaDe(situacao.em) : null;
+  const estado = situacao?.estado;
+  const selo = SELO_DO_ESTADO[estado] || { tom: "neutral", Icone: Clock };
+  const hora = estado === "salvo" ? horaDe(situacao.em) : null;
   const texto = hora ? `Salvo às ${hora}` : primeiraMaiuscula(resumo.texto);
+  const icone = <selo.Icone size={discreta ? 14 : 12} aria-hidden="true"
+    className={[selo.gira && "animate-spin motion-reduce:animate-none", discreta && (COR_DO_ICONE[estado] || "text-text-mute")].filter(Boolean).join(" ") || undefined} />;
+  const comoTexto = discreta && estado in TOM_DO_TEXTO;
   return (
     <span className="flex items-center gap-2">
       <span role="status" aria-live="polite">
-        <Badge tone={selo.tom}>
-          <selo.Icone size={12} aria-hidden="true" className={selo.gira ? "animate-spin motion-reduce:animate-none" : undefined} />
-          {texto}
-        </Badge>
+        {comoTexto ? (
+          <span className={`flex items-center gap-1 text-sm ${TOM_DO_TEXTO[estado]}`}>{icone}{texto}</span>
+        ) : (
+          <Badge tone={selo.tom}>{icone}{texto}</Badge>
+        )}
       </span>
       {situacao?.estado === "erro" && onTentarAgora && (
         <Button size="sm" variant="ghost" onClick={onTentarAgora}>

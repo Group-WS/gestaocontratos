@@ -9,6 +9,20 @@
  * POST /api/eap/versoes/:id/herdar    { herdarDe } -> { orfaos } (copia o mapa da anterior)
  * PUT  /api/eap/versoes/:id/padrao                 -> { id, padrao } (desmarca a anterior, marca esta)
  * PUT  /api/eap/mapa                  { versaoId, verbaNum, codigo } -> liga/desliga uma verba
+ * POST /api/eap/versoes/:id/registro  { nItens, nFolhas, herdadas, orfaos } -> fecha o registro da importacao
+ * DELETE /api/eap/versoes/:id                      -> exclui uma versao (so' administrador, nunca a padrao)
+ * GET  /api/eap/eventos               -> o registro de quem mexeu (so' administrador)
+ *
+ * QUEM MEXEU (23/09/2026). O cadastro guardava so' o estado de hoje: trocar
+ * a folha de uma verba apagava o autor anterior, desligar a verba apagava a
+ * linha, e "Tornar padrao" — que decide a EAP com que toda solicitacao sai —
+ * nao deixava carimbo. Agora cada gesto tambem vira uma linha em
+ * `sienge_eap_evento` (supabase/sienge-eap-evento.sql), que so' cresce e so'
+ * administrador le'.
+ *
+ * O registro nunca derruba o gesto: a gravacao principal ja' aconteceu, e
+ * uma falha ao registrar volta na resposta como `registro: "falhou"` (e no
+ * log do servidor), em vez de virar erro pra quem clicou.
  *
  * Antes o navegador falava com estas tabelas direto (VH-02). O caminho
  * mudou — navegador -> API -> banco —, o que acontece nao: sao os mesmos
@@ -31,7 +45,7 @@
  */
 
 const express = require("express");
-const { exigirLogin, exigirMembro } = require("../auth.js");
+const { exigirLogin, exigirMembro, exigirAdministrador } = require("../auth.js");
 const { zValidator, z } = require("../validacao.js");
 const { erroDoBanco } = require("../erroDoBanco.js");
 
@@ -75,6 +89,64 @@ const corpoDoMapa = z.object({
   // Nulo e' "desliga esta verba" — o front ja' manda nulo no lugar de "".
   codigo: z.string().min(1).max(200).nullish(),
 }).strict();
+
+/* De onde veio o gesto: nulo e' a tela /eap, preenchido e' o envio da
+   solicitacao de compra dentro daquela obra. */
+const codigoDeObra = z.string().trim().min(1).max(40).regex(/^[0-9A-Za-z._-]+$/);
+
+const corpoDoMapaComOrigem = corpoDoMapa.extend({ obraCodigo: codigoDeObra.nullish() });
+
+const corpoDoRegistro = z.object({
+  nItens: z.number().int().nonnegative(),
+  nFolhas: z.number().int().nonnegative(),
+  herdadas: z.number().int().nonnegative().default(0),
+  orfaos: z.array(z.string().max(200)).max(200).default([]),
+  herdouDe: idDeVersao.nullish(),
+}).strict();
+
+const semTabela = (erro) => erro?.code === "42P01" || erro?.code === "PGRST205";
+
+/* Quantos eventos o painel pede de uma vez (SQL-33). */
+const LIMITE_DE_EVENTOS = 100;
+const COLUNAS_DO_EVENTO =
+  "id, acao, versao_id, versao_nome, verba_num, codigo, codigo_anterior, obra_codigo, detalhe, autor, criado_em";
+
+/**
+ * Uma linha no registro. NUNCA derruba o gesto que a chamou: o que
+ * importava ja' foi gravado, e perder o rastro nao pode virar erro na cara
+ * de quem clicou. Devolve `true` se registrou.
+ *
+ * O autor vem do LOGIN, nunca do pedido (SEG-13) — o `with check` do banco
+ * recusa assinar por outro.
+ */
+async function registrar(req, linha) {
+  const { error } = await req.supabase.from("sienge_eap_evento").insert({
+    acao: linha.acao,
+    versao_id: linha.versaoId ?? null,
+    versao_nome: linha.versaoNome ?? null,
+    verba_num: linha.verbaNum ?? null,
+    codigo: linha.codigo ?? null,
+    codigo_anterior: linha.codigoAnterior ?? null,
+    obra_codigo: linha.obraCodigo ?? null,
+    detalhe: linha.detalhe ?? null,
+    autor: req.usuario.email,
+  });
+  if (!error) return true;
+  console.error(JSON.stringify({
+    level: "error",
+    event: semTabela(error) ? "eap_registro_sem_tabela" : "eap_registro_falhou",
+    acao: linha.acao,
+    codigo: error.code || null,
+  }));
+  return false;
+}
+
+/** O nome da versao, congelado na linha do registro. */
+async function nomeDaVersao(req, versaoId) {
+  const { data } = await req.supabase
+    .from("sienge_eap_versao").select("nome").eq("id", versaoId).maybeSingle();
+  return data?.nome ?? null;
+}
 
 const rotas = express.Router();
 rotas.use(exigirLogin, exigirMembro);
@@ -238,25 +310,150 @@ rotas.put("/api/eap/versoes/:id/padrao",
     const { error } = await req.supabase
       .from("sienge_eap_versao").update({ padrao: true }).eq("id", versaoId);
     if (error) return erroDoBanco(res, error);
-    res.json({ id: versaoId, padrao: true });
+
+    const registrou = await registrar(req, {
+      acao: "tornou_padrao",
+      versaoId,
+      versaoNome: await nomeDaVersao(req, versaoId),
+    });
+    res.json({ id: versaoId, padrao: true, registro: registrou ? "ok" : "falhou" });
   });
 
 /** Liga (ou desliga, com `codigo` nulo) uma verba do GC a uma folha da EAP. */
 rotas.put("/api/eap/mapa",
-  zValidator("json", corpoDoMapa),
+  zValidator("json", corpoDoMapaComOrigem),
   async (req, res) => {
-    const { versaoId, verbaNum, codigo } = req.valido.json;
+    const { versaoId, verbaNum, codigo, obraCodigo } = req.valido.json;
+
+    /* O que a verba apontava ANTES — lido antes de escrever, porque e' isso
+       que faz a diferenca entre "ligou" e "trocou", e e' a unica chance de
+       guardar o codigo que sai. */
+    const { data: antes } = await req.supabase
+      .from("sienge_eap_mapa").select("codigo")
+      .eq("versao_id", versaoId).eq("verba_num", verbaNum).maybeSingle();
+    const codigoAnterior = antes?.codigo ?? null;
+
+    const comum = { versaoId, verbaNum, codigoAnterior, obraCodigo: obraCodigo ?? null };
+
     if (!codigo) {
       const { error } = await req.supabase
         .from("sienge_eap_mapa").delete().eq("versao_id", versaoId).eq("verba_num", verbaNum);
       if (error) return erroDoBanco(res, error);
-      return res.json({ versaoId, verbaNum, codigo: null });
+      // Desligar o que ja' estava desligado nao e' gesto: nao vira linha.
+      const registrou = codigoAnterior
+        ? await registrar(req, { ...comum, acao: "desligou", codigo: null })
+        : true;
+      return res.json({ versaoId, verbaNum, codigo: null, registro: registrou ? "ok" : "falhou" });
     }
+
     const { error } = await req.supabase.from("sienge_eap_mapa").upsert({
       versao_id: versaoId, verba_num: verbaNum, codigo, definido_por: req.usuario.email, definido_em: new Date().toISOString(),
     }, { onConflict: "versao_id,verba_num" });
     if (error) return erroDoBanco(res, error);
-    res.json({ versaoId, verbaNum, codigo });
+
+    const registrou = codigoAnterior === codigo
+      ? true // reconfirmar a mesma folha nao muda nada
+      : await registrar(req, { ...comum, acao: codigoAnterior ? "trocou" : "ligou", codigo });
+    res.json({ versaoId, verbaNum, codigo, registro: registrou ? "ok" : "falhou" });
   });
+
+/**
+ * A ultima chamada da importacao: fecha o registro com os numeros do que
+ * entrou (itens, folhas, verbas herdadas e as que ficaram orfas).
+ *
+ * Uma linha so' por importacao, de proposito: 35 linhas de heranca
+ * afogariam o painel. As orfas vao no detalhe porque sao o que alguem
+ * precisa refazer.
+ *
+ * Os numeros descrevem o ARQUIVO, e vem do navegador, que o leu; o AUTOR
+ * vem do login (SEG-13).
+ */
+rotas.post("/api/eap/versoes/:id/registro",
+  zValidator("param", paramVersao),
+  zValidator("json", corpoDoRegistro),
+  async (req, res) => {
+    const versaoId = req.valido.param.id;
+    const r = req.valido.json;
+    const registrou = await registrar(req, {
+      acao: "importou",
+      versaoId,
+      versaoNome: await nomeDaVersao(req, versaoId),
+      detalhe: {
+        nItens: r.nItens,
+        nFolhas: r.nFolhas,
+        herdadas: r.herdadas,
+        orfaos: r.orfaos,
+        herdouDe: r.herdouDe ?? null,
+      },
+    });
+    res.json({ registro: registrou ? "ok" : "falhou" });
+  });
+
+/**
+ * Excluir uma versao da EAP.
+ *
+ * So' administrador, e NUNCA a padrao: a padrao e' a EAP com que toda
+ * solicitacao de compra sai, e apagar a de baixo do pe' de quem esta
+ * enviando seria o pior jeito de descobrir isso. Pra trocar, torne outra
+ * padrao antes.
+ *
+ * Os itens e o mapa vao junto (o `on delete cascade` da tabela). O registro
+ * NAO vai — ele nao tem FK pra versao, de proposito: e' a unica memoria do
+ * que existia. Por isso a linha da exclusao e' gravada ANTES do delete,
+ * com o nome da versao e o que ia junto.
+ */
+rotas.delete("/api/eap/versoes/:id",
+  exigirAdministrador,
+  zValidator("param", paramVersao),
+  async (req, res) => {
+    const versaoId = req.valido.param.id;
+
+    const { data: versao, error: erroVersao } = await req.supabase
+      .from("sienge_eap_versao").select("id, nome, padrao").eq("id", versaoId).maybeSingle();
+    if (erroVersao) return erroDoBanco(res, erroVersao);
+    if (!versao) return res.status(404).json({ erro: "Versão não encontrada." });
+    if (versao.padrao) {
+      return res.status(409).json({
+        erro: "Esta é a versão padrão — é com ela que as solicitações de compra saem. Torne outra padrão antes de excluir.",
+      });
+    }
+
+    const [{ count: nItens }, { count: nMapa }] = await Promise.all([
+      req.supabase.from("sienge_eap_item").select("codigo", { count: "exact", head: true }).eq("versao_id", versaoId),
+      req.supabase.from("sienge_eap_mapa").select("verba_num", { count: "exact", head: true }).eq("versao_id", versaoId),
+    ]);
+
+    const registrou = await registrar(req, {
+      acao: "excluiu",
+      versaoId,
+      versaoNome: versao.nome,
+      detalhe: { nItens: nItens ?? null, nVerbasLigadas: nMapa ?? null },
+    });
+
+    const { error } = await req.supabase.from("sienge_eap_versao").delete().eq("id", versaoId);
+    if (error) return erroDoBanco(res, error);
+    res.json({ id: versaoId, excluida: true, registro: registrou ? "ok" : "falhou" });
+  });
+
+/**
+ * O registro: quem mexeu no EAP, do mais novo pro mais antigo.
+ *
+ * So' administrador — a barreira de verdade e' o RLS da tabela; aqui a
+ * rota responde 403 em vez de devolver lista vazia. Tabela ainda nao
+ * criada devolve lista vazia com `semTabela`, pra tela dizer o que falta
+ * em vez de quebrar.
+ */
+rotas.get("/api/eap/eventos", exigirAdministrador, async (req, res) => {
+  const { data, error } = await req.supabase
+    .from("sienge_eap_evento")
+    .select(COLUNAS_DO_EVENTO)
+    .order("criado_em", { ascending: false })
+    .limit(LIMITE_DE_EVENTOS);
+  if (error) {
+    if (semTabela(error)) return res.json({ semTabela: true, eventos: [] });
+    return erroDoBanco(res, error);
+  }
+  res.json({ eventos: data || [] });
+});
 
 module.exports = { rotasDeEap: rotas };

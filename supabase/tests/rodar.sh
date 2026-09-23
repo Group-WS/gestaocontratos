@@ -82,6 +82,9 @@ aplicar "$SQL/salvar-aditivo-apresentacao.sql"
 aplicar "$SQL/obra-importacao.sql"
 aplicar "$SQL/obra-arquivo-evento.sql"
 
+# 10. O registro do EAP Sienge (usa meu_perfil() e sou_admin() do bloco 6).
+aplicar "$SQL/sienge-eap-evento.sql"
+
 # Os testes. `finish(true)` faz o pgTAP levantar erro quando algo falha,
 # e o ON_ERROR_STOP transforma isso no codigo de saida que o CI enxerga.
 falhou=0

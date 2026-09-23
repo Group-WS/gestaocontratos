@@ -513,8 +513,8 @@ conf("... com o texto inteiro no title", src.includes(`title={x.it.desc}>{x.it.d
    (18/09/2026): eu tinha cortado a frase com reticências para ganhar altura,
    mas ela é a razão da linha existir — diz o que conferir. Quem cede é a
    altura. */
-conf("o alerta aparece inteiro", src.includes('<div className={`mt-1 flex flex-wrap items-center gap-1 text-xs ${x.it.alertaConferido ? "text-text-mute" : "text-alert"}`}>'), true);
-conf("... e o conferi vem no fim", src.indexOf("<span>{x.pendencia.texto}</span>") < src.indexOf('{x.it.alertaConferido ? "desmarcar" : "conferi"}'), true);
+conf("o alerta aparece inteiro", src.includes("<span>{primeiraMaiusculaTexto(x.pendencia.texto)}</span>") && !/truncate[^"]*" title=\{x\.pendencia\.texto\}/.test(src), true);
+conf("... e o conferi vem no fim", src.indexOf("<span>{primeiraMaiusculaTexto(x.pendencia.texto)}</span>") < src.indexOf("Marcar como conferido"), true);
 
 /* ---- A CORREÇÃO DELA: DUAS COLUNAS, E SÓ (18/09/2026) ----
    "o fluxo correto é: Concuído Executivo / Aprovado para Compra / e só. o
