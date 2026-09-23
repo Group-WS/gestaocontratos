@@ -7,7 +7,7 @@
  * serve se contar a verdade — este teste prova que o resumo diz exatamente
  * o que `aplicarItensNasVerbas` vai fazer.
  */
-import { resumoDaImportacao, linhasDoAviso, formatoDoArquivo } from "../lib/importacaoResumo.js";
+import { resumoDaImportacao, linhasDoAviso, formatoDoArquivo, ROTULO_SUBSTITUIR_TUDO } from "../lib/importacaoResumo.js";
 
 let f = 0;
 const conf = (n, o, e) => {
@@ -66,6 +66,16 @@ const muitas = resumoDaImportacao(
 conf("lista longa corta e diz quantas faltam", /e mais 4\.$/.test(linhasDoAviso(muitas).at(-1)), true);
 const tudo = resumoDaImportacao(CATS.slice(0, 2), [item("02"), item("05")], "itensPlanilha");
 conf("quando nada fica, diz isso", linhasDoAviso(tudo)[2], "Nenhuma verba fica com dado da importação anterior.");
+
+/* ---- 5b. O mesmo aviso quando a pessoa escolhe substituir tudo (RN-029) ---- */
+const substituindo = linhasDoAviso(r, { substituirTudo: true });
+conf("substituir tudo não muda o que chega nem o que é trocado",
+  [substituindo[0], substituindo[1]], [linhas[0], linhas[1]]);
+conf("substituir tudo diz que as ausentes são apagadas",
+  substituindo[2], "Serão apagadas 3 verbas que não vieram no arquivo (4 itens da importação anterior): 05 Elétrica, 07 Incêndio, AUTOMAÇÃO X.");
+conf("sem verba ausente, o texto é o mesmo dos dois jeitos",
+  linhasDoAviso(tudo, { substituirTudo: true })[2], linhasDoAviso(tudo)[2]);
+conf("o rótulo da opção existe e fala em apagar", /apagar/i.test(ROTULO_SUBSTITUIR_TUDO), true);
 
 /* ---- 6. Formato ---- */
 conf("extensão do arquivo", [formatoDoArquivo("Planilha Final.XLSX"), formatoDoArquivo("contrato.pdf"), formatoDoArquivo("sem")], ["xlsx", "pdf", null]);

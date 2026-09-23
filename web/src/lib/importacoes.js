@@ -19,7 +19,7 @@ import { apiJson } from "./api";
  *     (web/api/_lib/rotas/importacoes.js -> supabase/obra-importacao.sql).
  */
 
-export { DOCUMENTOS, resumoDaImportacao, linhasDoAviso, formatoDoArquivo } from "./importacaoResumo.js";
+export { DOCUMENTOS, resumoDaImportacao, linhasDoAviso, formatoDoArquivo, ROTULO_SUBSTITUIR_TUDO } from "./importacaoResumo.js";
 
 /**
  * As importacoes da obra, da mais nova pra mais antiga.
@@ -43,8 +43,12 @@ export async function registrarImportacao(obraCodigo, { documento, arquivo, resu
       arquivoNome: String(arquivo?.name || "arquivo").slice(0, 255),
       arquivoTamanho: Number.isFinite(arquivo?.size) ? arquivo.size : null,
       nItens: resumo.nItens,
-      verbasTrocadas: resumo.trocadas.map((v) => String(v.num)).slice(0, 200),
-      verbasMantidas: resumo.mantidas.map((v) => String(v.num)).slice(0, 200),
+      /* Substituir tudo (RN-029): as verbas que nao vieram no arquivo foram
+         APAGADAS, nao mantidas — entram no registro como trocadas, que e' o
+         que de fato aconteceu com elas. */
+      verbasTrocadas: (resumo.substituirTudo ? [...resumo.trocadas, ...resumo.mantidas] : resumo.trocadas)
+        .map((v) => String(v.num)).slice(0, 200),
+      verbasMantidas: (resumo.substituirTudo ? [] : resumo.mantidas).map((v) => String(v.num)).slice(0, 200),
     },
   });
 }

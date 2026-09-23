@@ -124,13 +124,21 @@ const exec = src.slice(i0, src.indexOf("\nfunction ", i0 + 10));
 const importar = exec.slice(exec.indexOf("async function aoImportar(file)"));
 conf("o aviso é perguntado antes de aplicar o arquivo",
   importar.indexOf("await confirmarImportacao(") > -1
-  && importar.indexOf("await confirmarImportacao(") < importar.indexOf("onImportPlanilhaExecutivo(itens)"), true);
+  && importar.indexOf("await confirmarImportacao(") < importar.indexOf("onImportPlanilhaExecutivo(itens,"), true);
 conf("... numa pergunta só (o aviso de antes da leitura saiu)", src.includes("avisoAntesDeTrocar"), false);
 conf("... e 'cancelar' não deixa nada acontecer",
-  src.includes("if (!ok) {\n      const desistiu = new Error(\"Importação cancelada.\");"), true);
+  src.includes("if (!resposta) {\n      const desistiu = new Error(\"Importação cancelada.\");"), true);
 conf("o que se perde só entra quando há planilha E há o que perder",
   exec.includes("perda: temExecutivo && trocaCustaCaro ? frasesDoQueSePerde(perdas) : null"), true);
-conf("com perda, a pergunta é de perigo", src.includes("confirmar: temPerda ? \"Trocar mesmo assim\" : \"Importar\","), true);
+conf("com perda, a pergunta é de perigo",
+  src.includes('confirmar: (marcada) => (marcada ? "Substituir tudo" : (temPerda ? "Trocar mesmo assim" : "Importar")),')
+  && src.includes("perigo: (marcada) => marcada || temPerda,"), true);
+/* Substituir o documento inteiro (RN-029, 23/09/2026) é uma OPÇÃO da mesma
+   pergunta, nunca o padrão: desmarcada, a importação troca só o que veio. */
+conf("substituir tudo é opção da pergunta, não o padrão",
+  src.includes("opcao: { rotulo: ROTULO_SUBSTITUIR_TUDO }") && !src.includes("opcao: { rotulo: ROTULO_SUBSTITUIR_TUDO, inicial"), true);
+conf("... e a escolha chega em quem aplica",
+  src.includes("onImportPlanilhaExecutivo(itens, { substituirTudo: resumo.substituirTudo })"), true);
 conf("o aviso diz que se apaga nas verbas trocadas", src.includes("Nas verbas trocadas, isso é apagado."), true);
 conf("... que o que vem novo entra zerado", src.includes("O que o arquivo novo trouxer entra zerado"), true);
 conf("... e que dá para voltar atrás", src.includes("O histórico de versões guarda o estado de agora"), true);
