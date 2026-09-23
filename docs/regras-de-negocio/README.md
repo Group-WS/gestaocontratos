@@ -20,3 +20,4 @@ Padrão completo: `.quality/regras/02-regras-de-negocio.md`.
 | ID | Regra | Status | Contexto |
 |---|---|---|---|
 | [RN-001](RN-001-liberacao-de-compra.md) | Só o administrador libera a compra | proposta | Conferência do Executivo · Plano de compras |
+| [RN-002](RN-002-item-aprovado-no-executivo.md) | Item aprovado para compra não se edita nem se remove no Executivo | proposta | Executivo · Conferência do Executivo |

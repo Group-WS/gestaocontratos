@@ -98,19 +98,20 @@ conf("nada a perder: nenhuma linha",
    é essa troca que faz a trava voltar a proteger alguma coisa. */
 conf("a trava olha os aprovados, não a chave antiga",
   src.includes("const trocaCustaCaro = perdas.liberados > 0;"), true);
-conf("... e só o administrador passa",
-  src.includes("const trocaTravada = congelado || (trocaCustaCaro && !souAdmin);"), true);
+// RN-002 (ADR-006, 23/09/2026): nem o administrador passa mais.
+conf("... e ninguém passa, nem o administrador",
+  src.includes("const trocaTravada = congelado || trocaCustaCaro;"), true);
 conf("... na troca da planilha",
   src.includes('<ImportButton congelado={trocaTravada} label={temExecutivo ? "Substituir Planilha Executivo"'), true);
 // A trava de admin é só da troca: as células seguem editáveis para quem
 // está com a edição (pedido de 23/09 — "volta como era antes").
 conf("editar célula não exige admin",
   src.includes("const congelado = obra.comprasLiberadas || !podeEditar;\n"), true);
-conf("a tela diz que é permissão, não modo leitura",
-  src.includes("só um <b>administrador</b> pode fazer isso."), true);
+conf("a tela diz o caminho: desfazer as aprovações antes",
+  src.includes("desfaça as aprovações na Conferência do executivo antes."), true);
 conf("... dizendo quantas aprovações estão em jogo",
   src.includes("{perdas.liberados} {perdas.liberados === 1 ? \"item aprovado\" : \"itens aprovados\"} para compra"), true);
-conf("o Executivo recebe quem é admin", src.includes("podeEditar={edicao.minha} souAdmin={souAdmin} />"), true);
+conf("o Executivo não depende mais de quem é admin", /<ExecutivoView[^\n]*souAdmin/.test(src), false);
 
 /* ============================================================
    3. O AVISO — uma pergunta só, e ANTES de aplicar o arquivo

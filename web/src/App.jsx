@@ -76,6 +76,7 @@ import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compra
 import { LogoGroupWS } from "./marca.jsx";
 import iconeSienge from "./assets/icone-sienge.svg";
 import { podeLiberarCompra } from "./regras/liberacaoDeCompra.js";
+import { linhaDoExecutivoTravada } from "./regras/itemAprovadoNoExecutivo.js";
 import { usePreferencia, esquecerPreferencias } from "./lib/preferencias.js";
 import { clearBrowserData } from "./lib/armazenamento.js";
 // Papel dos documentos impressos (escopo, aditivo, relatório): cores fixas de
@@ -9384,7 +9385,7 @@ function frasesDoQueSePerde(r) {
   ].filter(Boolean);
 }
 
-function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar, souAdmin = false, onRegistrarImportacao }) {
+function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar, onRegistrarImportacao }) {
   // Qual linha esta' com o campo de justificativa aberto (ADR-005 fatia 3).
   const [removendo, setRemovendo] = useState(null);
 
@@ -9401,12 +9402,14 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
    */
   const perdas = useMemo(() => resumoDoQueSePerde(obra), [obra]);
   const trocaCustaCaro = perdas.liberados > 0;
-  // A trava "so' admin" vale para TROCAR o Executivo inteiro (substituir a
-  // planilha, puxar o criativo de novo). Editar celula a celula continua
-  // como antes de 19/09: quem esta' com a edicao edita, e mexer num item
-  // liberado derruba a aprovacao dele (CAMPOS_QUE_DERRUBAM_APROVACAO).
-  const congelado = obra.comprasLiberadas || !podeEditar;
-  const trocaTravada = congelado || (trocaCustaCaro && !souAdmin);
+  /* RN-002 (ADR-006, 23/09/2026): com item aprovado ou andando na compra,
+     ninguem troca o Executivo inteiro (substituir a planilha, puxar o
+     criativo de novo) — nem o admin, que antes podia. A troca levaria as
+     linhas travadas junto; desfaz-se a aprovacao antes. Cada linha travada
+     tambem fica so' para consulta (ver `travada` na tabela). */
+  const congeladoDaTela = obra.comprasLiberadas || !podeEditar;
+  const congelado = congeladoDaTela;
+  const trocaTravada = congelado || trocaCustaCaro;
   // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
   // quando a obra foi liberada antes de o app aprender a salvar.
   const cmv = useMemo(() => cmvDaObra(obra), [obra]);
@@ -9520,8 +9523,8 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             /* O motivo especifico ganha da mensagem generica: quem chega aqui
                com compra aprovada precisa saber que e' permissao, e nao modo
                leitura nem etapa congelada. */
-            motivoCongelado={trocaCustaCaro && !souAdmin && podeEditar && !obra.comprasLiberadas
-              ? <>Esta obra já tem <b>{perdas.liberados} {perdas.liberados === 1 ? "item aprovado" : "itens aprovados"} para compra</b>. Trocar a planilha apagaria essas aprovações — só um <b>administrador</b> pode fazer isso.</>
+            motivoCongelado={trocaCustaCaro && podeEditar && !obra.comprasLiberadas
+              ? <>Esta obra já tem <b>{perdas.liberados} {perdas.liberados === 1 ? "item aprovado" : "itens aprovados"} para compra</b>. Item aprovado não se troca no Executivo: para substituir a planilha, desfaça as aprovações na Conferência do executivo antes.</>
               : null}
             dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
             onFile={aoImportar} />
@@ -9661,6 +9664,12 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                              tela e sem ninguem perceber ate' conferir a
                              planilha. */
                           if (buscando && !casaItem(it, c, busca)) return null;
+                          /* RN-002 (ADR-006): linha aprovada para compra na
+                             Conf. Executivo — ou já andando na compra — não se
+                             edita, remove nem substitui, nem pelo admin. Só o
+                             "+" (item novo abaixo) continua. */
+                          const travada = linhaDoExecutivoTravada(it, c.itens, chaveDescricao);
+                          const congelado = congeladoDaTela || travada;
                           const editar = (campo) => (novo) => onEditarItem(c.num, i, { [campo]: novo });
                           // Coordenada da célula na planilha: linha da lista + posição
                           // visual da coluna. É o que Tab e Enter seguem.
@@ -9695,18 +9704,19 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                               <TableCell className={`sticky left-0 z-10 whitespace-nowrap align-middle ${fundo}`}>
                                 <div className="flex items-center justify-between gap-1">
                                   <span className={`mono text-text-mute ${corte}`}>{it.codigo || "—"}</span>
-                                  {!congelado && !it.excluido && (
+                                  {!congeladoDaTela && !it.excluido && (
                                     <span className="inline-flex">
                                       <BotaoIcone rotulo={`Inserir item abaixo do ${it.codigo || "item"}`} variant="ghost" className="h-7 w-7"
                                         onClick={() => setBuscandoEm({ verba: c.num, depois: i })}>
                                         <Plus size={14} aria-hidden="true" />
                                       </BotaoIcone>
                                       {/* Substituir: exclui este e encaixa o escolhido
-                                          logo abaixo, ligado a ele. */}
-                                      <BotaoIcone rotulo={`Substituir ${it.codigo || "este item"} por outro`} variant="ghost" className="h-7 w-7"
+                                          logo abaixo, ligado a ele. Linha travada
+                                          (RN-002) não se substitui. */}
+                                      {!travada && <BotaoIcone rotulo={`Substituir ${it.codigo || "este item"} por outro`} variant="ghost" className="h-7 w-7"
                                         onClick={() => setBuscandoEm({ verba: c.num, depois: i, substituindo: i })}>
                                         <ArrowLeftRight size={14} aria-hidden="true" />
-                                      </BotaoIcone>
+                                      </BotaoIcone>}
                                     </span>
                                   )}
                                 </div>
@@ -9737,6 +9747,11 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                     <TooltipContent className="max-w-xs whitespace-normal">Entrou no lugar de: {it.substituiDesc}</TooltipContent>
                                   </Tooltip>
                                 )}
+                                {travada && !it.excluido && (
+                                  <Badge tone="neutral" className="ml-2" title="Aprovado para compra: não se edita, remove nem substitui aqui. Para mexer, desfaça a aprovação na Conferência do executivo.">
+                                    <Lock size={12} aria-hidden="true" /> aprovado p/ compra
+                                  </Badge>
+                                )}
                                 {it.ehTitulo && <Badge tone="neutral" className="ml-2">N/A — título, não entra na conferência</Badge>}
                                 {/* "alterado no executivo" saiu daqui: a barra amarela
                                     na lateral da linha já diz isso, e a etiqueta
@@ -9745,7 +9760,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                                 {it.precoNaoRevisado && <Badge tone="danger" className="ml-2"><AlertTriangle size={14} aria-hidden="true" /> preço não revisado</Badge>}
                                 {/* Só no hover: em trinta linhas seguidas, trinta
                                     links iguais viram textura, não ação. */}
-                                {it.precoNaoRevisado && !obra.comprasLiberadas && (
+                                {it.precoNaoRevisado && !congelado && (
                                   <span className="block opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                                     <SugestoesPreco descricao={it.desc} onUsar={(v) => onEditarItem(c.num, i, { custoMaterial: v })} />
                                   </span>
@@ -25802,7 +25817,7 @@ export default function App() {
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} podeEditar={edicao.minha} />}
           {tab === "executivo" && ((obra.deparaAprovado || obra.executivoLiberadoDireto)
-            ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onRegistrarImportacao={registrarImportacaoDaObra} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} souAdmin={souAdmin} />
+            ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onRegistrarImportacao={registrarImportacaoDaObra} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} podeLiberar={podeLiberar} onConcluirExecutivo={concluirItensExecutivo}
