@@ -19,7 +19,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, History,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -31,6 +31,7 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
   PAPEIS_DA_OBRA, obraDaPessoa, equipeDaObra } from "./lib/pessoas";
 import { listarVersoes, restaurarVersao } from "./lib/versoesObra";
 import { listarComentarios, criarComentario, apagarComentario } from "./lib/comentarios";
+import { DOCUMENTOS, resumoDaImportacao, linhasDoAviso, listarImportacoes, registrarImportacao } from "./lib/importacoes.js";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
@@ -5061,8 +5062,56 @@ function extrairItensDaPlanilha(linhas) {
 
 // Um botão de importar reutilizável (Contrato PDF / Planilha Excel),
 // cada um com seu próprio arquivo aceito e sua própria mensagem.
+/* ANTES DE APLICAR UM ARQUIVO LIDO, DIZER O QUE ELE VAI FAZER (23/09/2026).
+
+   Importar troca SÓ as verbas que vieram no arquivo; as outras ficam com a
+   importação anterior — decisão de 23/09/2026: manter e avisar. Sem o
+   aviso, reimportar uma planilha que não trazia uma verba deixava o dado
+   antigo lá, calado, misturado com o novo.
+
+   A primeira importação não pergunta nada: não há o que perder. Da segunda
+   em diante, a pessoa lê o que será trocado e o que fica, e decide.
+   Cancelar lança um erro marcado `cancelado`, que o ImportButton engole —
+   desistir não é falha de leitura. */
+async function confirmarImportacao({ arquivo, categorias, itens, documento, numsExtras = [] }) {
+  const resumo = resumoDaImportacao(categorias, itens, DOCUMENTOS[documento].campo, numsExtras);
+  if (resumo.haviaConteudo) {
+    const ok = await confirmar({
+      titulo: `Importar “${arquivo.name}”?`,
+      mensagem: linhasDoAviso(resumo).map((linha, i) => (
+        <React.Fragment key={i}>{i > 0 && <><br /><br /></>}{linha}</React.Fragment>
+      )),
+      confirmar: "Importar", perigo: false,
+    });
+    if (!ok) {
+      const desistiu = new Error("Importação cancelada.");
+      desistiu.cancelado = true;
+      throw desistiu;
+    }
+  }
+  return resumo;
+}
+
+/* A última importação deste documento: arquivo, quem e quando. É o rastro
+   que responde "de onde veio esse valor?" sem abrir o histórico. */
+function UltimaImportacao({ ultima }) {
+  if (!ultima) return null;
+  const quando = new Date(ultima.criado_em);
+  const data = Number.isNaN(quando.getTime()) ? "" : quando.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return (
+    <p className="flex items-start gap-2 text-xs text-text-mute sm:justify-end sm:text-right">
+      <History size={14} className="mt-px shrink-0" aria-hidden="true" />
+      <span>
+        Última importação: <span className="text-text-soft">{ultima.arquivo_nome}</span>
+        {ultima.autorNome ? <> · {ultima.autorNome}</> : null}
+        {data ? <> · {data}</> : null}
+      </span>
+    </p>
+  );
+}
+
 function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada,
-                       motivoCongelado, avisoAntesDeTrocar }) {
+                       motivoCongelado, avisoAntesDeTrocar, ultima = null }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
   const [ok, setOk] = useState(null);
@@ -5095,6 +5144,8 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
       const msg = await onFile(file);
       setOk(msg);
     } catch (err) {
+      // Desistir no aviso da troca não é falha de leitura.
+      if (err?.cancelado) return;
       setErro("Não consegui ler o arquivo: " + err.message);
     } finally {
       setCarregando(false);
@@ -5183,6 +5234,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             : "Modo leitura — habilite a edição desta obra para importar ou remover.")}</span>
         </p>
       ) : null}
+      <UltimaImportacao ultima={ultima} />
       {ok && <Alert tone="success"><AlertDescription>{ok}</AlertDescription></Alert>}
       {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
     </div>
@@ -5388,7 +5440,7 @@ function derivadosDasCategorias(categorias, obra) {
    só com descrição/ambiente/quantidade (nunca valor por item). Fica
    separado da Planilha de propósito — depois os dois vão ser
    conferidos um contra o outro. */
-function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEditarItem, podeEditar }) {
+function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEditarItem, podeEditar, ultimaImportacao = null, onRegistrarImportacao }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [filtroVenda, setFiltroVenda] = useState("todos");
@@ -5421,7 +5473,11 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
     if (n === 0 && itens.length === 0) {
       throw new Error("Não encontrei verbas nem itens neste PDF. Me manda o arquivo que eu ajusto o leitor.");
     }
+    // O contrato toca tambem as verbas em que so' leu valor, sem item.
+    const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens,
+      documento: "vendido_contrato", numsExtras: Object.keys(valores || {}) });
     onImportContrato(valores, itens);
+    onRegistrarImportacao?.("vendido_contrato", file, resumo);
 
     // Presta contas da leitura. O que o leitor NÃO conseguiu ler precisa
     // aparecer aqui, não semanas depois na conferência: um item perdido no
@@ -5474,6 +5530,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
               onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
               temConteudo={obra.categorias.some((c) => (c.itensContrato || []).length)}
               dica={<>Suba o <b>Vendido Contrato</b> — o PDF da proposta, exatamente como ele é hoje. Traz só <b>descrição e quantidade</b> (o contrato é fechado por verba, sem valor por item).</>}
+              ultima={ultimaImportacao}
               onFile={aoImportar} />
           </div>
         )}
@@ -5611,7 +5668,7 @@ function AvisoPDFPobre({ itens }) {
    Documento mais elaborado (Excel ou PDF), com marca e custo por item.
    Não mexe no valor por verba (esse é do Contrato) — mostra o total dos
    itens da própria planilha, pra depois conferir contra o Contrato. */
-function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, podeEditar }) {
+function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, podeEditar, ultimaImportacao = null, onRegistrarImportacao }) {
   const congelado = obra.comprasLiberadas || !podeEditar;
   const [abertos, toggle] = useAbertos();
   const [verTexto, setVerTexto] = useState(null);
@@ -5651,7 +5708,9 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
         ? "Não encontrei itens com quantidade nesse PDF. Me manda o arquivo que eu calibro o leitor."
         : "Não encontrei colunas de Descrição + Marca/Custo nessa planilha. Me manda o arquivo que eu calibro o leitor pro seu layout.");
     }
+    const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "vendido_planilha" });
     onImportPlanilha(itens);
+    onRegistrarImportacao?.("vendido_planilha", file, resumo);
     const temCusto = itens.some((it) => it.custo != null);
     return `“${file.name}” importado — ${itens.length} itens${temCusto ? " (com custo)" : ""}.`;
   }
@@ -5669,6 +5728,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
             temConteudo={obra.categorias.some((c) => (c.itensPlanilha || []).length)}
             dica={<>Suba o <b>Vendido Planilha</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e o valor total; fornecedor, ambiente, especificação e a separação material/mão de obra existem como coluna e não sobrevivem à conversão.</>}
+            ultima={ultimaImportacao}
             onFile={aoImportar} />
         )}
         toolbar={(
@@ -9257,7 +9317,7 @@ function frasesDoQueSePerde(r) {
   ].filter(Boolean);
 }
 
-function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar, souAdmin = false }) {
+function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicionarItem, onPuxarDoCriativo, onIrParaDepara, onLimparExecutivo, onReabrir, podeEditar, souAdmin = false, ultimaImportacao = null, onRegistrarImportacao }) {
   // Qual linha esta' com o campo de justificativa aberto (ADR-005 fatia 3).
   const [removendo, setRemovendo] = useState(null);
 
@@ -9345,7 +9405,9 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     // pode não ser a certa pra esta importação.
     const { itens } = ehPDF ? await lerExecutivoPDF(file) : await lerPlanilhaExcel(file, { preferirAba: /execut/i });
     if (itens.length === 0) throw new Error("Não encontrei itens nesse arquivo. Me manda ele que eu calibro o leitor.");
+    const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "planilha_executivo" });
     onImportPlanilhaExecutivo(itens);
+    onRegistrarImportacao?.("planilha_executivo", file, resumo);
     return `“${file.name}” importado — ${itens.length} itens.`;
   }
 
@@ -9404,6 +9466,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
                 + "O histórico de versões guarda o estado de agora, então dá para voltar atrás.";
             } : null}
             dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
+            ultima={ultimaImportacao}
             onFile={aoImportar} />
         )}
         toolbar={(
@@ -21735,6 +21798,42 @@ export default function App() {
   }
 
   const obra = obras.find((o) => o.id === selectedId);
+
+  /* O REGISTRO DAS IMPORTACOES DA OBRA ABERTA (23/09/2026): arquivo, quem e
+     quando, em supabase/obra-importacao.sql. Lido ao abrir a obra, e
+     acrescido na hora em que alguem importa — a tela nao espera o banco
+     pra mostrar o que acabou de acontecer. */
+  const [importacoes, setImportacoes] = useState({ codigo: null, lista: [] });
+  const codigoAberto = obra?.codigo != null ? String(obra.codigo) : null;
+  useEffect(() => {
+    if (!codigoAberto) return undefined;
+    let viva = true;
+    listarImportacoes(codigoAberto)
+      .then((r) => { if (viva) setImportacoes({ codigo: codigoAberto, lista: r?.importacoes || [] }); })
+      // Sem o registro a obra funciona igual: so' some a linha "Última importação".
+      .catch(() => { if (viva) setImportacoes({ codigo: codigoAberto, lista: [] }); });
+    return () => { viva = false; };
+  }, [codigoAberto]);
+
+  function ultimaImportacao(documento) {
+    if (importacoes.codigo !== codigoAberto) return null;
+    const linha = importacoes.lista.find((i) => i.documento === documento);
+    return linha ? { ...linha, autorNome: nomeNaEquipe(pessoas, linha.autor) } : null;
+  }
+
+  /* Registrar NAO bloqueia a importacao: o arquivo ja' foi aplicado quando
+     isto roda. Se o registro falhar (SQL ainda nao rodou, rede), a pessoa
+     fica sabendo por um aviso, e o trabalho dela segue. */
+  async function registrarImportacaoDaObra(documento, arquivo, resumo) {
+    const codigo = codigoAberto;
+    if (!codigo) return;
+    try {
+      const linha = await registrarImportacao(codigo, { documento, arquivo, resumo });
+      if (linha) setImportacoes((prev) => (prev.codigo === codigo ? { codigo, lista: [linha, ...prev.lista] } : prev));
+    } catch (e) {
+      avisar.erro("A importação foi aplicada, mas o registro dela não foi gravado.", e?.message);
+    }
+  }
   /* A obra COM os itens do aditivo aprovado dentro das verbas.
 
      Pedido dela em 17/09/2026: o aditivo "deve seguir todo o fluxo e ser
@@ -25369,11 +25468,11 @@ export default function App() {
           </>}
 
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
-          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
-          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
+          {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} ultimaImportacao={ultimaImportacao("vendido_contrato")} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
+          {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} ultimaImportacao={ultimaImportacao("vendido_planilha")} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
           {tab === "vendido_conferencia" && <DeparaContratoPlanilhaView obra={obra} onAprovar={aprovarDepara} podeEditar={edicao.minha} />}
           {tab === "executivo" && ((obra.deparaAprovado || obra.executivoLiberadoDireto)
-            ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} souAdmin={souAdmin} />
+            ? <ExecutivoView obra={obra} onImportPlanilhaExecutivo={importPlanilhaExecutivo} ultimaImportacao={ultimaImportacao("planilha_executivo")} onRegistrarImportacao={registrarImportacaoDaObra} onEditarItem={editarItemExecutivo} onAdicionarItem={adicionarItemExecutivo} onPuxarDoCriativo={puxarDoCriativo} onIrParaDepara={() => handleTabChange("vendido_conferencia")} onLimparExecutivo={() => limparImportacao(["itensPlanilhaExecutivo", "itens"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} souAdmin={souAdmin} />
             : <FaseBloqueada onIrParaDepara={() => handleTabChange("vendido_conferencia")}
                 onComecarSemDepara={(edicao.minha && obra.semDetalhe) ? comecarExecutivoSemDepara : undefined} />)}
           {tab === "executivo_conferencia" && (obra.deparaAprovado ? <ExecutivoConferenciaView obra={obraComAditivos} onEditarPlanilhaExecutivo={editarItemPlanilhaExecutivo} onAprovarLinha={aprovarLinhaConferencia} podeEditar={edicao.minha} onLiberarCompra={liberarItensParaCompra} onConferirAlerta={conferirAlertaDoItem} onConferirAlertaEmVarios={conferirAlertasEmVarios} onLiberarSemCliente={liberarSemAprovacaoDoCliente} podeLiberar={podeLiberar} onConcluirExecutivo={concluirItensExecutivo}

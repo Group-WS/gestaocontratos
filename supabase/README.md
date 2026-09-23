@@ -117,6 +117,18 @@ bloco 5, e de novo **sempre** que o bloco 5 rodar.
 > **antes** do deploy, porque o app novo grava pela API.
 > Teste: `tests/13-aditivo-apresentacao.sql`.
 
+**9. O registro das importações (23/09/2026)**
+`obra-importacao.sql` — depois do bloco 6.
+
+> Cria `obra_importacao`: uma linha por arquivo importado (Vendido
+> Contrato, Vendido Planilha ou Planilha Executivo), com o nome do arquivo,
+> quem subiu, quando, quantos itens vieram e quais verbas foram trocadas ou
+> ficaram com a importação anterior. Só cresce: não há update nem delete.
+> Lê quem enxerga a obra; registra quem edita, em nome próprio. Não altera
+> dado nenhum, e o app no ar não usa a tabela — pode rodar antes ou depois
+> do deploy (sem ela, a importação funciona e só o registro não grava).
+> Teste: `tests/14-importacao.sql`.
+
 **Antes do bloco 6, confira se o bloco 5 rodou em produção.** Os
 comentários do `taylor-made.sql` indicam que o `rls-perfis.sql` pode nunca
 ter sido aplicado lá. Esta consulta mostra o que vale hoje:
