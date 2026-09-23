@@ -485,7 +485,7 @@ conf("a regra do que passa pela aprovação mora num lugar só",
   src.includes("const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo);"), true);
 conf("mão de obra também é aprovada", src.includes("falta_liberar: (x) => !x.titulo && !x.liberado,"), true);
 conf("e o dinheiro passa a ser o do item inteiro",
-  src.includes("compraveis(g).reduce((t, x) => t + x.valor, 0)"), true);
+  src.includes("compraveis.reduce((t, x) => t + x.valor, 0)"), true);
 conf("o cartão de cima usa essa regra",
   src.includes("contador: `${gruposParaLiberar.reduce((a, g) => a + compraveisDoGrupo(g).filter((x) => x.liberado).length, 0)}"), true);
 conf("e o placar da lista também", src.includes("const compraveis = compraveisDoGrupo;"), true);

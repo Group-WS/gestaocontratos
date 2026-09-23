@@ -6973,6 +6973,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
         ))}
       </div>
 
+      {telaExtra?.cabecalho}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <CampoBusca valor={busca} aoMudar={setBusca}
           /* O contador conta a lista generica. Com `telaExtra` (Conf. Executivo)
@@ -6992,6 +6993,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             <ToggleGroupItem key={ff.id} value={ff.id}>{ff.label} <Contador tom="neutral" className="ml-1">{ff.contador}</Contador></ToggleGroupItem>
           ))}
         </ToggleGroup>
+        <BotaoTelaCheia className="ml-auto" />
       </div>
 
       {/* TUDO NA MESMA TELA (pedido dela, 18/09/2026): "ai clicar no filtro
@@ -7962,6 +7964,21 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
    So' a linha de TITULO fica de fora: ela e' cabecalho de trecho, nao item. */
 const compraveisDoGrupo = (g) => (g.itens || []).filter((x) => !x.titulo);
 
+/* O dinheiro da liberação, da obra INTEIRA (nunca do recorte da busca): o
+   valor do item inteiro (material + MO) de cada linha comprável. Mora acima
+   da busca e dos filtros da Conf. Executivo (pedido de 23/09/2026). */
+function LiberadoParaCompra({ grupos }) {
+  const compraveis = (grupos || []).flatMap(compraveisDoGrupo);
+  if (!compraveis.length) return null;
+  const total = compraveis.reduce((t, x) => t + x.valor, 0);
+  const liberado = compraveis.reduce((t, x) => t + (x.liberado ? x.valor : 0), 0);
+  return (
+    <p className="mb-4 text-sm text-text-soft">
+      <span className="mono font-semibold tabular-nums text-text">{fmtBRL(liberado)}</span> de <span className="mono tabular-nums">{fmtBRL(total)}</span> liberados para compra
+    </p>
+  );
+}
+
 /* A PLANILHA DA CONFERENCIA (ADR-005, 18/09/2026).
 
    Era a lista de "Liberar para Compra", so' com o que se compra. Virou a
@@ -8045,11 +8062,6 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
      placar conta só o que se compra; senão ele diria "97 de 320" numa obra
      com 150 produtos compráveis. */
   const compraveis = compraveisDoGrupo;
-  /* Com a mao de obra dentro da aprovacao, o dinheiro da linha e' o do ITEM
-     INTEIRO (material + MO) — somar so' material diria R$ 0,00 numa verba de
-     servico que acabou de ser aprovada. */
-  const total = todosOsGrupos.reduce((a, g) => a + compraveis(g).reduce((t, x) => t + x.valor, 0), 0);
-  const liberado = todosOsGrupos.reduce((a, g) => a + compraveis(g).reduce((t, x) => t + (x.liberado ? x.valor : 0), 0), 0);
   const nItens = todosOsGrupos.reduce((a, g) => a + compraveis(g).length, 0);
   const nLiberados = todosOsGrupos.reduce((a, g) => a + compraveis(g).filter((x) => x.liberado).length, 0);
   const nConcluidos = todosOsGrupos.reduce((a, g) => a + g.itens.filter((x) => !x.titulo && x.it.concluidoExecutivo).length, 0);
@@ -8091,10 +8103,8 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
           frase pois ja tem um filtro em cima". O cartao "Falta conferir"
           conta o mesmo e leva ao mesmo lugar — duas portas pra mesma sala,
           uma delas em forma de paragrafo. */}
-      <p className="text-sm text-text-soft">
-        <span className="mono font-semibold tabular-nums text-text">{fmtBRL(liberado)}</span> de <span className="mono tabular-nums">{fmtBRL(total)}</span> liberados para compra
-      </p>
-
+      {/* O "R$ X de R$ Y liberados para compra" subiu para cima dos filtros
+          (23/09/2026): ver `LiberadoParaCompra`, no `cabecalho` da telaExtra. */}
       {sel.size > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-text">{sel.size} {sel.size === 1 ? "linha selecionada" : "linhas selecionadas"}</span>
@@ -8557,7 +8567,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
     {/* Mesmo cabecalho de tela das outras etapas (Vendido, Executivo,
         Plano, Compras): sem ele esta aba abria sem titulo, com uma faixa
         vazia entre as abas e o conteudo. */}
-    <PageShell title={`Conferência do executivo — ${obra.codigo}/00`}
+    <PageShell title={`Conferência do executivo — ${obra.codigo}/00`} telaCheiaNoConteudo
       description="O executivo conclui cada item e o administrador aprova para compra. Clique num cartão para filtrar a lista.">
     <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
       filtroInicial={filtroInicial} onFiltroUsado={onFiltroUsado}
@@ -8617,6 +8627,7 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
           },
         ],
         contador: "",
+        cabecalho: <LiberadoParaCompra grupos={gruposParaLiberar} />,
         render: (busca, filtro) => (
           <PlanilhaConferenciaView grupos={gruposParaLiberar} busca={busca} filtro={filtro} podeEditar={podeEditar} podeLiberar={podeLiberar}
             chavesES={chavesES}
@@ -21186,7 +21197,19 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
    depois da descrição. Fora das abas (cabeçalho da obra, módulos) não há
    contexto, e o PageShell é o do DS, sem nada a mais. */
 const EtapaDaAbaContexto = createContext(null);
-function PageShell({ description, actions, className, toolbar, toolbarSecondary, contentClassName, children, ...props }) {
+/* O botão de tela cheia, para a tela que monta os filtros no próprio
+   conteúdo (Conf. Executivo): ela o põe na ponta da linha dos filtros, e o
+   PageShell (com `telaCheiaNoConteudo`) não repete o dele numa linha só. */
+function BotaoTelaCheia({ className }) {
+  const aba = useContext(EtapaDaAbaContexto);
+  if (!aba?.onTelaCheia) return null;
+  return (
+    <Button variant="outline" className={className} aria-label="Abrir a tabela em tela cheia" title="Tela cheia" onClick={aba.onTelaCheia}>
+      <Maximize2 size={16} aria-hidden="true" />
+    </Button>
+  );
+}
+function PageShell({ description, actions, className, toolbar, toolbarSecondary, contentClassName, telaCheiaNoConteudo = false, children, ...props }) {
   const aba = useContext(EtapaDaAbaContexto);
   if (!aba) {
     return <PageShellDoDS {...props} className={className} description={description} actions={actions}
@@ -21198,11 +21221,7 @@ function PageShell({ description, actions, className, toolbar, toolbarSecondary,
      pelo CSS (.modo-foco), e a barra do App diz onde se está e como sair. */
   /* Button no tamanho padrão (38px), como os outros botões do cabeçalho;
      o de ícone do DS tem 36px e ficava fora da linha deles. */
-  const botao = aba.onTelaCheia && (
-    <Button variant="outline" aria-label="Abrir a tabela em tela cheia" title="Tela cheia" onClick={aba.onTelaCheia}>
-      <Maximize2 size={16} aria-hidden="true" />
-    </Button>
-  );
+  const botao = !telaCheiaNoConteudo && aba.onTelaCheia && <BotaoTelaCheia />;
   return (
     <PageShellDoDS {...props}
       className={cn(className, aba.telaCheia && "modo-foco")}
