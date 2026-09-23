@@ -21226,7 +21226,9 @@ function EtapaDaAba({ parte = "estado", etapaId, obra, podeEditar, onConcluir, o
             <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Etapa concluída</Badge>
             <span className="text-xs text-text-mute">
               {porQuem && <>por {nomeNaEquipe(equipe, porQuem)}</>}
-              {em && <> · {new Date(em).toLocaleDateString("pt-BR")}</>}
+              {/* Data E hora (pedido de 23/09/2026): o registro sempre
+                  guardou o instante inteiro, a tela é que mostrava só o dia. */}
+              {em && <> · {new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</>}
             </span>
           </>
         ) : (
