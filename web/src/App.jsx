@@ -16445,6 +16445,67 @@ function EscolherObra({ obras, numeroDe, onEscolher, aberto, onAbrir, children }
   );
 }
 
+/* Filtro de escolha múltipla (Popover + busca + caixas), no desenho do
+   FiltroObras. Nada marcado = todos. opcoes: [{ valor, rotulo, detalhe? }]. */
+function FiltroMulti({ icone: Icone, opcoes, escolhidas, onMudar, todos, singular, plural, busca: dicaBusca }) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const achadas = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    if (!t) return opcoes;
+    return opcoes.filter((o) => `${o.detalhe || ""} ${o.rotulo}`.toLowerCase().includes(t));
+  }, [opcoes, busca]);
+  const alternar = (v) => {
+    const n = new Set(escolhidas);
+    n.has(v) ? n.delete(v) : n.add(v);
+    onMudar(n);
+  };
+  const rotulo = escolhidas.size === 0
+    ? todos
+    : escolhidas.size === 1
+      ? (opcoes.find((o) => escolhidas.has(o.valor))?.rotulo || `1 ${singular}`)
+      : `${escolhidas.size} ${plural}`;
+
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger asChild>
+        <Button variant={escolhidas.size ? "secondary" : "outline"} className="h-10 w-full sm:w-auto" aria-label={`Filtrar ${plural}: ${rotulo}`}>
+          {Icone && <Icone size={16} aria-hidden="true" />}
+          <span className="max-w-60 truncate">{rotulo}</span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-3">
+        <div className="flex flex-col gap-2">
+          <Input icon={<Search size={16} />} autoFocus value={busca} aria-label={`Buscar ${singular}`}
+            placeholder={dicaBusca} onChange={(e) => setBusca(e.target.value)} />
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" size="sm" onClick={() => onMudar(new Set())} disabled={escolhidas.size === 0}>Todos</Button>
+            <Button variant="ghost" size="sm" onClick={() => onMudar(new Set([...escolhidas, ...achadas.map((o) => o.valor)]))}
+              disabled={!busca.trim() || achadas.length === 0}>
+              Marcar os {achadas.length} encontrados
+            </Button>
+          </div>
+          <div className="max-h-64 overflow-y-auto" role="group" aria-label={plural}>
+            {achadas.length === 0 && <p className="px-2 py-1 text-sm text-text-mute">Nada encontrado.</p>}
+            {achadas.map((o) => {
+              const marcada = escolhidas.has(o.valor);
+              return (
+                <label key={o.valor} title={o.rotulo}
+                  className={cn("flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-brand-soft", marcada && "text-brand")}>
+                  <Checkbox checked={marcada} onCheckedChange={() => alternar(o.valor)} aria-label={o.rotulo} />
+                  {o.detalhe && <span className="mono text-text-mute">{o.detalhe}</span>}
+                  <span className="min-w-0 flex-1 truncate">{o.rotulo}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function FiltroObras({ obras, escolhidas, onMudar }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
@@ -16856,16 +16917,19 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
     compradores.mapa.forEach((c) => m.set(c.email, c.nome));
     return [...m.entries()].map(([email, nome]) => ({ email, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }, [compradores]);
-  const [filtro, setFiltro] = useState("");
+  const [filtroGrupos, setFiltroGrupos] = useState(() => new Set());
+  const [filtroCompradores, setFiltroCompradores] = useState(() => new Set());
   const [salvando, setSalvando] = useState(null);
   const [erro, setErro] = useState(null);
   const semTabela = !!compradores.faltaTabela;
-  const visiveis = grupos.filter((g) => !filtro
-    || (compradores.mapa.get(chaveDoGrupo(g.nome))?.email || SEM_COMPRADOR) === filtro);
-  /* O Select do DS nao aceita item com valor vazio: "" (todos / sem
-     comprador) vira uma sentinela so' na tela; o estado continua "". */
-  const TODOS = "__todos__";
-  const idFiltro = React.useId();
+  const visiveis = grupos.filter((g) => (!filtroGrupos.size || filtroGrupos.has(g.nome))
+    && (!filtroCompradores.size
+      || filtroCompradores.has(compradores.mapa.get(chaveDoGrupo(g.nome))?.email || SEM_COMPRADOR)));
+  const opcoesGrupos = useMemo(() => grupos.map((g) => ({ valor: g.nome, rotulo: g.nome, detalhe: g.num })), [grupos]);
+  const opcoesCompradores = useMemo(() => [
+    ...donos.map((c) => ({ valor: c.email, rotulo: c.nome })),
+    { valor: SEM_COMPRADOR, rotulo: "Sem comprador" },
+  ], [donos]);
 
   async function trocar(g, email) {
     const pessoa = email ? pessoas.find((p) => p.email === email) : null;
@@ -16892,18 +16956,12 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
             <CardTitle className="flex items-center gap-2"><Users size={16} className="shrink-0 text-text-mute" aria-hidden="true" /> Compradores por grupo de compra</CardTitle>
             {!podeEditar && <CardDescription>Só administrador troca o comprador de um grupo.</CardDescription>}
           </div>
-          {/* O valor ja' diz o campo ("Todos os compradores"): rotulo so' pro leitor de tela. */}
-          <Field className="w-full sm:w-64">
-            <Label htmlFor={idFiltro} className="sr-only">Comprador</Label>
-            <Select value={filtro || TODOS} onValueChange={(v) => setFiltro(v === TODOS ? "" : v)}>
-              <SelectTrigger id={idFiltro} aria-label="Filtrar por comprador"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TODOS}>Todos os compradores</SelectItem>
-                {donos.map((c) => <SelectItem key={c.email} value={c.email}>{c.nome}</SelectItem>)}
-                <SelectItem value={SEM_COMPRADOR}>Sem comprador</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <FiltroMulti icone={LayoutGrid} opcoes={opcoesGrupos} escolhidas={filtroGrupos} onMudar={setFiltroGrupos}
+              todos="Todos os grupos" singular="grupo" plural="grupos" busca="nome ou verba do grupo…" />
+            <FiltroMulti icone={Users} opcoes={opcoesCompradores} escolhidas={filtroCompradores} onMudar={setFiltroCompradores}
+              todos="Todos os compradores" singular="comprador" plural="compradores" busca="nome do comprador…" />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -16950,7 +17008,7 @@ function CompradoresView({ compradores, equipe, podeEditar, usuario, onMudou }) 
                 );
               })}
               {visiveis.length === 0 && (
-                <TableRow><TableCell colSpan={3} className="text-text-mute">Nenhum grupo com esse comprador.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={3} className="text-text-mute">Nenhum grupo com esses filtros.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
