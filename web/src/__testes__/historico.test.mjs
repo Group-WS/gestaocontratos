@@ -96,6 +96,24 @@ conf("as Compras NÃO mostram a liberação", nasCompras.some((e) => e.tipo === 
 conf("etapa concluída aparece na conferência", naConferencia.some((e) => e.tipo === "etapa"), true);
 conf("etapa concluída aparece nas Compras", nasCompras.some((e) => e.tipo === "etapa"), true);
 
+/* ---- 4b. Os uploads (23/09/2026): o que subiu, quando, por quem ---- */
+const comUploads = M.historicoDerivado({ categorias: [] }, {
+  importacoes: [{ documento: "vendido_planilha", arquivo_nome: "planilha.xlsx", autor: "a@x.com",
+    criado_em: "2026-09-23T13:00:00Z", n_itens: 134, verbas_trocadas: ["02", "05"], verbas_mantidas: ["07"] }],
+  arquivos: [{ titulo: "Caderno de Marcenaria", nome: "marcenaria.pdf", em: "2026-09-22T10:00:00Z", por: "b@x.com" },
+    { titulo: "sem data", nome: "x.pdf", por: "c@x.com" }],
+});
+const imp = comUploads.find((e) => e.tipo === "importou");
+conf("a importação entra, com quem e quando", [imp?.por, imp?.em], ["a@x.com", "2026-09-23T13:00:00Z"]);
+conf("... dizendo o documento e o arquivo", imp?.item, "Vendido Planilha · planilha.xlsx");
+conf("... quantos itens e o que fez com as verbas", imp?.detalhe, "134 itens · trocou 2 verbas, manteve 1");
+conf("... na tela do documento", imp?.tela, "vendido_planilha");
+const anexo = comUploads.find((e) => e.tipo === "anexou");
+conf("o arquivo anexado entra, com título e nome", anexo?.item, "Caderno de Marcenaria · marcenaria.pdf");
+conf("... em Documentos", anexo?.tela, "arquivos");
+conf("arquivo sem data não entra", comUploads.filter((e) => e.tipo === "anexou").length, 1);
+conf("as frases existem", [M.FRASE_DO_EVENTO.importou, M.FRASE_DO_EVENTO.anexou], ["importou", "anexou"]);
+
 /* ---- 5. O que o histórico NÃO sabe, ele diz ----
    Papeleira tem canal e nenhum carimbo; Ralo está comprado e sem carimbo. */
 conf("conta os liberados sem registro", M.liberadosSemRegistro(obra), 2);

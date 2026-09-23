@@ -2976,6 +2976,23 @@ const TELA_DO_EVENTO = {
   editou: "executivo",
   /* Concluir etapa e' da esteira, nao de uma tela: aparece em todas. */
   etapa: null,
+  /* Arquivo anexado (caderno, contrato, anexo avulso) mora em Documentos. A
+     importacao de planilha tem tela propria, e a linha vai pra ela. */
+  anexou: "arquivos",
+};
+
+/* A tela e o nome de cada documento importado (obra_importacao.documento).
+   Ficam aqui, e nao em lib/importacoes.js, porque este trecho e' o modelo
+   puro que o teste do historico recorta e roda sozinho. */
+const TELA_DA_IMPORTACAO = {
+  vendido_contrato: "vendido_contrato",
+  vendido_planilha: "vendido_planilha",
+  planilha_executivo: "executivo",
+};
+const NOME_DA_IMPORTACAO = {
+  vendido_contrato: "Vendido Contrato",
+  vendido_planilha: "Vendido Planilha",
+  planilha_executivo: "Planilha Executivo",
 };
 
 /* O nome curto do item na linha do historico. Sem ele a frase fica "liberou
@@ -2997,7 +3014,7 @@ function itemDoHistorico(it, cat) {
    - QUEM comprou ou solicitou. Esses campos guardam so' a data.
    - O que foi DESFEITO. Desfazer apaga o carimbo, e o que foi apagado nao
      deixa rastro. E' por isso que existe a parte 2, o registro de verdade. */
-function historicoDerivado(obra) {
+function historicoDerivado(obra, { importacoes = [], arquivos = [] } = {}) {
   const fora = [];
   const anota = (ev) => { if (ev.em) fora.push({ ...ev, tela: ev.tela === undefined ? TELA_DO_EVENTO[ev.tipo] : ev.tela, origem: "carimbo" }); };
 
@@ -3027,6 +3044,32 @@ function historicoDerivado(obra) {
         detalhe: obra?.compraSemAssinaturaJust || null });
   Object.entries(obra?.etapasConcluidas || {}).forEach(([etapa, m]) => {
     anota({ tipo: "etapa", em: m?.em, por: m?.por, detalhe: etapa });
+  });
+
+  /* OS UPLOADS (pedido de 23/09/2026: "o que subiu, quando, por quem").
+
+     Importacao de planilha vem de obra_importacao, que so' cresce: toda
+     importacao fica, mesmo a que foi substituida depois. Os arquivos
+     anexados (cadernos, contrato, anexos avulsos) vem do que a obra guarda
+     hoje — o arquivo trocado ou removido nao deixa rastro aqui. `arquivos`
+     chega pronto de arquivosDaObra, que ja' tira o contrato de quem nao
+     pode abri-lo. */
+  (Array.isArray(importacoes) ? importacoes : []).forEach((imp) => {
+    const doc = NOME_DA_IMPORTACAO[imp.documento] || imp.documento;
+    const verbas = [
+      imp.verbas_trocadas?.length ? `trocou ${imp.verbas_trocadas.length} ${imp.verbas_trocadas.length === 1 ? "verba" : "verbas"}` : null,
+      imp.verbas_mantidas?.length ? `manteve ${imp.verbas_mantidas.length}` : null,
+    ].filter(Boolean).join(", ");
+    anota({
+      tipo: "importou", em: imp.criado_em, por: imp.autor,
+      item: `${doc} · ${imp.arquivo_nome}`,
+      detalhe: [`${imp.n_itens} ${imp.n_itens === 1 ? "item" : "itens"}`, verbas].filter(Boolean).join(" · "),
+      tela: TELA_DA_IMPORTACAO[imp.documento] ?? null,
+    });
+  });
+  (Array.isArray(arquivos) ? arquivos : []).forEach((a) => {
+    const nome = a.nome && a.nome !== a.titulo ? `${a.titulo} · ${a.nome}` : (a.titulo || a.nome);
+    anota({ tipo: "anexou", em: a.em, por: a.por, item: nome });
   });
 
   return fora.sort((a, b) => String(b.em).localeCompare(String(a.em)));
@@ -3066,6 +3109,8 @@ const FRASE_DO_EVENTO = {
   canal: "escolheu o canal de compra",
   editou: "editou",
   etapa: "concluiu a etapa",
+  importou: "importou",
+  anexou: "anexou",
 };
 
 /* OS CAMPOS QUE GRAVAM POR PATCH — ADR-004.
@@ -3321,11 +3366,14 @@ function VersoesDaObra({ obra, podeRestaurar }) {
    do lado. E diz o que NAO sabe: item que conta como liberado sem ninguem
    ter liberado aparece como "sem registro de quem" em vez de ficar calado —
    foi essa a pergunta que gerou o pedido. */
-function HistoricoDaObra({ obra, tela, podeRestaurar = false }) {
+function HistoricoDaObra({ obra, tela, podeRestaurar = false, importacoes = [], souAdmin = false }) {
   const [aberto, setAberto] = useState(false);
   const [tudo, setTudo] = useState(false);
   const [maisLinhas, setMaisLinhas] = useState(false);
-  const eventos = useMemo(() => historicoDerivado(obra), [obra]);
+  const eventos = useMemo(
+    () => historicoDerivado(obra, { importacoes, arquivos: obra ? arquivosDaObra(obra, { souAdmin }) : [] }),
+    [obra, importacoes, souAdmin]
+  );
   const daTela = useMemo(() => (tudo ? eventos : historicoDaTela(eventos, tela)), [eventos, tela, tudo]);
   const semRegistro = useMemo(() => liberadosSemRegistro(obra), [obra]);
   const mostrarNota = semRegistro > 0 && (tudo || tela === "executivo_conferencia" || tela === "compras" || tela === "comparativo");
@@ -25636,6 +25684,7 @@ export default function App() {
           </EtapaDaAbaContexto.Provider>
           {/* O historico fecha a pagina, em qualquer tela da obra. */}
           <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"}
+            importacoes={importacoes.codigo === codigoAberto ? importacoes.lista : []} souAdmin={souAdmin}
             podeRestaurar={podeGerenciarPessoas(eu, pessoas)} />
           </>
           )}
