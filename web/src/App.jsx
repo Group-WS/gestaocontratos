@@ -13456,7 +13456,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         <EmptyState icon={<Search size={26} aria-hidden="true" />} title={`Nada encontrado para "${busca.trim()}" nesta etapa.`} />
       )}
       {porVerba.length > 0 && naTelaTudo.length > 0 && (
-        <Card>
+        /* Mesma moldura do Executivo e do Plano (23/09/2026): card sem
+           respiro interno, verbas encostadas nas bordas e a tabela da verba
+           branca, sem a caixa cinza arredondada dentro do card. */
+        <Card className="p-0">
           {porVerba.map((g) => {
             /* O que a busca deixa aparecer NESTE grupo. Tudo o que vem depois —
                `nItens`, `nComprados`, `g.total`, os auxiliares e o template do
@@ -13564,10 +13567,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                         <PackageSearch size={14} aria-hidden="true" /> {associando === g.num ? "Associando…" : "Associar insumos"}
                       </Button>
                     ))}
-                    <div className="w-32 shrink-0">
-                      <div className="label-mono text-center">Material</div>
-                      <div className="mono text-right text-sm font-semibold tabular-nums">{fmtBRL(g.total)}</div>
-                    </div>
+                    {/* Rótulo na frente do valor, numa linha, como no Plano. */}
+                    <span className="mono w-40 shrink-0 text-right text-sm font-semibold tabular-nums text-text">
+                      <span className="label-mono mr-1 font-normal text-text-mute">MAT</span>{fmtBRL(g.total)}
+                    </span>
                   </>
                 }
                 /* A OBSERVACAO DA VERBA fica embaixo do nome, FORA do botao
@@ -13578,8 +13581,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                     usuario={usuario} souAdmin={souAdmin} ondeFica="verba"
                     onAdicionar={(t) => adicionarObs(g.num, null, t)} onApagar={apagarObs} />
                 }>
-                <div className="overflow-x-auto border-t border-line-1">
-                  <Table>
+                <div className="tabela-da-verba border-t border-line-1">
+                  <Table className="w-full bg-surface-1">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-8" />
