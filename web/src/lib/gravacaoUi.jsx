@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Alert, AlertTitle, AlertDescription, Button, cn } from "@group-ws/ws-ui";
-import { RotateCcw, RefreshCw, ArrowRight } from "lucide-react";
+import { Alert, AlertTitle, AlertDescription, Badge, Button } from "@group-ws/ws-ui";
+import { RotateCcw, RefreshCw, ArrowRight, Clock, Loader2, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import { resumoDaGravacao, avisoDaGravacao } from "./gravacaoObra";
 
 /* O QUE A TELA DIZ SOBRE A GRAVAÇÃO DA OBRA.
@@ -26,15 +26,39 @@ function useAgora(ativo) {
   return agora;
 }
 
-const TOM_DO_TEXTO = { mute: "text-text-mute", warning: "text-warning", danger: "text-danger" };
+/* O SELO DA GRAVAÇÃO (23/09/2026): a palavra cinza ("salvo", "salvando…")
+   passava despercebida, e quem editava não sabia se o que fez já estava
+   guardado. Agora é um Badge do DS com ícone e cor por estado — e o "salvo"
+   diz a hora. O texto continua vindo de resumoDaGravacao (testado). */
+const SELO_DO_ESTADO = {
+  pendente: { tom: "neutral", Icone: Clock },
+  salvando: { tom: "brand", Icone: Loader2, gira: true },
+  salvo: { tom: "success", Icone: CheckCircle2 },
+  erro: { tom: "warning", Icone: AlertTriangle },
+  recusado: { tom: "danger", Icone: XCircle },
+  conflito: { tom: "danger", Icone: XCircle },
+};
+const primeiraMaiuscula = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+const horaDe = (em) => {
+  const d = new Date(em);
+  return Number.isFinite(d.getTime()) ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
+};
 
 export function SituacaoDaGravacao({ situacao, onTentarAgora }) {
   const agora = useAgora(situacao?.estado === "erro");
   const resumo = resumoDaGravacao(situacao, agora);
   if (!resumo) return null;
+  const selo = SELO_DO_ESTADO[situacao?.estado] || { tom: "neutral", Icone: Clock };
+  const hora = situacao?.estado === "salvo" ? horaDe(situacao.em) : null;
+  const texto = hora ? `Salvo às ${hora}` : primeiraMaiuscula(resumo.texto);
   return (
     <span className="flex items-center gap-2">
-      <span className={cn("text-xs", TOM_DO_TEXTO[resumo.tom])} role="status">{resumo.texto}</span>
+      <span role="status" aria-live="polite">
+        <Badge tone={selo.tom}>
+          <selo.Icone size={12} aria-hidden="true" className={selo.gira ? "animate-spin motion-reduce:animate-none" : undefined} />
+          {texto}
+        </Badge>
+      </span>
       {situacao?.estado === "erro" && onTentarAgora && (
         <Button size="sm" variant="ghost" onClick={onTentarAgora}>
           <RotateCcw size={14} aria-hidden="true" /> Tentar agora

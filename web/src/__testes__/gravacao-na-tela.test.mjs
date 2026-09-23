@@ -133,7 +133,11 @@ conf("... com a saída de recarregar a obra (sempre perguntando antes)", /async 
 conf("a barra da obra mostra a situação da gravação", app.includes("<SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />"), true);
 conf("... também em modo leitura (quem acabou de finalizar vê o 'salvo')", (app.match(/<SituacaoDaGravacao situacao=\{gravacao\}/g) || []).length, 2);
 conf("a contagem da nova tentativa anda sozinha", ui.includes("const t = setInterval(() => setAgora(Date.now()), 1000);"), true);
-conf("os avisos usam o Alert do design system", ui.includes('import { Alert, AlertTitle, AlertDescription, Button, cn } from "@group-ws/ws-ui";'), true);
+conf("os avisos usam o Alert do design system", /import \{ Alert, AlertTitle, AlertDescription,[^}]*\} from "@group-ws\/ws-ui";/.test(ui), true);
+/* O estado da barra é um selo do DS com ícone e cor (23/09/2026), e o
+   "salvo" diz a hora. */
+conf("a situação da barra é um Badge do DS", ui.includes("<Badge tone={selo.tom}>"), true);
+conf("... e o salvo diz a hora", ui.includes("hora ? `Salvo às ${hora}`"), true);
 conf("o erro de gravação não vai mais para o aviso genérico", /setErroBanco\(`Não consegui salvar/.test(app), false);
 const gravacaoNoCodigo = semComentarios(entre(app, "/* ---------- A GRAVAÇÃO DA OBRA ----------", "/* A FILA DE PATCHES"));
 conf("nenhuma mensagem da gravação manda dar F5", /F5|[Rr]ecarregue a página/.test(gravacaoNoCodigo), false);
