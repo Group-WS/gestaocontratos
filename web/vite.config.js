@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { viteSingleFile } from "vite-plugin-singlefile";
 import tailwindcss from "@tailwindcss/vite";
+import { readFileSync } from "node:fs";
 
 // Build normal (`npm run build`) gera arquivos separados (JS/CSS com
 // cache) — é o que a Vercel/qualquer host de verdade deve usar. O modo
@@ -10,6 +11,16 @@ import tailwindcss from "@tailwindcss/vite";
 // mandar por fora, não pra hospedar.
 const standalone = process.env.STANDALONE === "1";
 
+// Porta em que o proxy do Monday subiu (ele pula para a próxima se a 3001
+// estiver ocupada e grava a escolhida em monday-proxy/.porta).
+function portaDoProxy() {
+  try {
+    return readFileSync(new URL("../monday-proxy/.porta", import.meta.url), "utf8").trim() || "3001";
+  } catch {
+    return "3001";
+  }
+}
+
 export default defineConfig({
   // tailwindcss(): gera as classes dos componentes do @group-ws/ws-ui (o
   // preset.css do pacote aponta o bundle) e as classes utilitárias das telas.
@@ -17,6 +28,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), ...(standalone ? [viteSingleFile()] : [])],
   server: {
     port: 5173,
+    // Se a 5173 estiver em uso, o Vite sobe na próxima livre.
+    strictPort: false,
     // Só os túneis que o time usa (*.loca.lt / *.trycloudflare.com), e não
     // qualquer host: `true` deixava qualquer domínio apontado pra esta
     // máquina (DNS rebinding) falar com o servidor de desenvolvimento — e
@@ -26,7 +39,7 @@ export default defineConfig({
     // encaminhadas para o proxy do Monday (rodando em outra porta),
     // assim o frontend nunca precisa saber a URL completa do backend.
     proxy: {
-      "/api": "http://localhost:3001",
+      "/api": `http://localhost:${portaDoProxy()}`,
     },
   },
 });

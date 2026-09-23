@@ -45,14 +45,14 @@ direto com `api.monday.com`.
 cd monday-proxy
 cp .env.example .env   # cole o token do Monday aqui, nunca no código
 npm install
-npm start                # sobe em http://localhost:3001
+npm start                # sobe em http://localhost:3001 (ou a próxima livre)
 ```
 
 **Frontend:**
 ```bash
 cd web
 npm install
-npm run dev               # sobe em http://localhost:5173
+npm run dev               # sobe em http://localhost:5173 (ou a próxima livre)
 ```
 
 Chamadas do frontend para `/api/...` são redirecionadas automaticamente

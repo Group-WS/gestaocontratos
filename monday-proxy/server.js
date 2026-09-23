@@ -36,5 +36,28 @@ if (!process.env.MONDAY_API_TOKEN) {
   );
 }
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Proxy do Monday rodando em http://localhost:${PORT}`));
+// Se a porta estiver em uso, tenta a próxima (até 20). A porta escolhida vai
+// para .porta, que o vite.config.js lê para apontar o proxy /api.
+const PORTA_INICIAL = Number(process.env.PORT) || 3001;
+const ARQUIVO_PORTA = path.join(__dirname, ".porta");
+
+function ouvir(porta, tentativas = 20) {
+  const server = app.listen(porta, () => {
+    fs.writeFileSync(ARQUIVO_PORTA, String(porta));
+    console.log(`Proxy do Monday rodando em http://localhost:${porta}`);
+  });
+  server.on("error", (erro) => {
+    if (erro.code === "EADDRINUSE" && tentativas > 1) {
+      console.warn(`Porta ${porta} em uso, tentando ${porta + 1}...`);
+      ouvir(porta + 1, tentativas - 1);
+    } else {
+      throw erro;
+    }
+  });
+}
+
+const limparPorta = () => fs.rmSync(ARQUIVO_PORTA, { force: true });
+process.on("exit", limparPorta);
+for (const sinal of ["SIGINT", "SIGTERM"]) process.on(sinal, () => process.exit(0));
+
+ouvir(PORTA_INICIAL);
