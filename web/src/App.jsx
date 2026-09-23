@@ -7309,11 +7309,16 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
 
   return (
     <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
+      {/* Liberado, o aviso abre a tela (23/09/2026): é o estado dela, e no pé
+          da página só era visto por quem rolasse até o fim. Ainda por
+          liberar, o cartão fica embaixo — ele vem depois de conferir. */}
+      {obra.deparaAprovado && (
+        <Alert tone="success"><AlertDescription>CMV liberado — Executivo e etapas seguintes abertos.</AlertDescription></Alert>
+      )}
+
       <ResumoCMV linhas={linhas} categorias={obra.categorias} />
 
-      {obra.deparaAprovado ? (
-        <Alert tone="success"><AlertDescription>CMV liberado — Executivo e etapas seguintes abertos.</AlertDescription></Alert>
-      ) : (
+      {!obra.deparaAprovado && (
         <Card>
           <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-2 text-sm">
