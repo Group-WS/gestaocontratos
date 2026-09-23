@@ -4348,7 +4348,17 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
   const limparFiltros = () => { setBusca(""); setItemFilter("todos"); setTipoFilter("todos"); };
 
   return (
-    <PageShell title="Plano de Compras"
+    /* O que o plano faz mora no ⓘ do título (23/09/2026): era um Alert azul
+       fixo que toda visita repetia. O congelamento, quando já aconteceu,
+       continua como aviso — aí é estado, não explicação. */
+    <PageShell title={(
+      <span className="inline-flex items-center gap-2">
+        Plano de Compras
+        <DicaInfo rotulo="O que é o Plano de Compras">
+          Este é o plano que libera compras e contratações. Ao liberar, as etapas anteriores são congeladas e não podem mais ser alteradas.
+        </DicaInfo>
+      </span>
+    )}
       description="O que a obra vai comprar e contratar, verba a verba — e com que dinheiro."
       contentClassName="flex flex-col gap-6"
       actions={(
@@ -4415,13 +4425,9 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
           </Toggle>
         </div>
       )}>
-      {obra.comprasLiberadas ? (
+      {obra.comprasLiberadas && (
         <Alert tone="success">
           <AlertDescription>Plano de Compras liberado — as etapas anteriores estão congeladas.</AlertDescription>
-        </Alert>
-      ) : (
-        <Alert tone="info">
-          <AlertDescription>Este é o plano que libera compras e contratações. Ao liberar, <b>as etapas anteriores são congeladas</b> e não podem mais ser alteradas.</AlertDescription>
         </Alert>
       )}
 
@@ -5207,6 +5213,7 @@ async function confirmarImportacao({ arquivo, categorias, itens, documento, nums
 
 function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada,
                        motivoCongelado }) {
+  const acaoDaEtapa = useContext(EtapaDaAbaContexto)?.acaoDaEtapa ?? null;
   const inputRef = useRef(null);
   const [carregando, setCarregando] = useState(false);
 
@@ -5243,8 +5250,14 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
      mede pelo conteúdo — sem teto, a dica pedia a largura da frase inteira
      e a página rolava de lado a 375px. */
   return (
-    <div className="flex w-full max-w-xs flex-col gap-2 sm:w-auto sm:max-w-md">
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+    /* Os botões numa linha só (23/09/2026): o teto de largura fica nos
+       textos (aviso e retorno), não na fila — com a Apresentação ao lado,
+       o teto do bloco inteiro empurrava o importar para a linha de baixo. */
+    <div className="flex w-full max-w-xs flex-col gap-2 sm:w-auto sm:max-w-none sm:items-end">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:justify-end">
+        {/* A ação da etapa (Apresentação) entra na MESMA linha dos botões
+            de importar, alinhada com eles; o aviso fica embaixo dos dois. */}
+        {acaoDaEtapa}
         {/* Subir o arquivo errado tem que ter volta. Sem isto, o unico
             jeito de desfazer era subir outro por cima — e se o certo
             ainda nao existisse, a obra ficava com dado errado. */}
@@ -5304,7 +5317,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
           (padrão de 22/09/2026): fora do hover ela era ruído para quem já
           sabia, e nem por isso ficava mais clara pra quem não sabia. */}
       {congelado ? (
-        <p className="flex items-start gap-2 text-xs text-text-soft">
+        <p className="flex items-start gap-2 text-xs text-text-soft sm:max-w-md">
           <Lock size={14} className="mt-px shrink-0" />
           {/* Dizer "está congelada" sem dizer como sair é beco sem saída:
               o botão de reabrir mora em OUTRA aba, e quem chega aqui pra
@@ -21298,7 +21311,7 @@ function ArquivoView({ obras, onReabrir, salvando }) {
 
    Um selo só (o estado); a gravação é texto com ícone, e só ganha cor forte
    quando pede ação; o botão que alterna a edição fica na ponta direita. */
-function FaixaDaEdicao({ edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar }) {
+function FaixaDaEdicao({ inicio, fim, edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar }) {
   let selo = null;
   let explica = null;
   let acao = null;
@@ -21350,6 +21363,7 @@ function FaixaDaEdicao({ edicao, gravacao, carregando, falhouCarregar, onTentarC
 
   return (
     <div className="faixa-da-edicao naoimprime rolagem-discreta flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b border-line-1 bg-surface-1">
+      {inicio && <span className="flex shrink-0 items-center border-r border-line-1">{inicio}</span>}
       <span className="flex shrink-0 items-center gap-3 text-sm">
         {selo}
         {explica && <span className="hidden text-text-soft lg:inline">{explica}</span>}
@@ -21363,7 +21377,7 @@ function FaixaDaEdicao({ edicao, gravacao, carregando, falhouCarregar, onTentarC
             : <span className="flex items-center gap-1 text-sm text-text-mute"><CheckCircle2 size={14} aria-hidden="true" /> Cada alteração salva sozinha</span>}
         </span>
       )}
-      {acao && <span className="ml-auto flex shrink-0 items-center">{acao}</span>}
+      {(acao || fim) && <span className="ml-auto flex shrink-0 items-center gap-2">{acao}{fim}</span>}
     </div>
   );
 }
@@ -21417,7 +21431,10 @@ function PageShell({ description, actions, className, toolbar, toolbarSecondary,
       /* Alinhadas pelo TOPO: as ações da tela costumam ser uma coluna (o
          botão e, embaixo, o aviso de modo leitura); centralizado, o botão
          de tela cheia ficava no meio dessa coluna, fora da linha. */
-      actions={actions ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}</div> : undefined}
+      /* Com ações próprias (o importador), a ação da etapa vai dentro da
+         linha delas (ver ImportButton); sem ações, ela ocupa o lugar. */
+      actions={actions ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}</div>
+        : aba.acaoDaEtapa ? <div className="flex flex-wrap items-start justify-end gap-2">{aba.acaoDaEtapa}</div> : undefined}
       /* O MESMO ESQUELETO EM TODAS AS ABAS (23/09/2026): cabeçalho → avisos
          → filtros e cards → tabelas, com o mesmo espaço pequeno entre eles.
          Os filtros saem da barra do PageShell (que ficava ACIMA dos avisos)
@@ -21507,7 +21524,9 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
         ) : (
           <>
             <Badge tone="neutral">Etapa pendente</Badge>
-            {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
+            {/* O "falta conferir N produtos" não se repete aqui (23/09/2026): o
+                card "Falta conferir" da tela já mostra o número. O motivo do
+                botão travado fica na dica dele. */}
             {!temBotao && ato && <span className="text-xs text-text-mute">{ato}</span>}
             {temBotao && (
               /* Azul cheio (variante default): só as cores que o DS já tem
@@ -21519,7 +21538,7 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
                   confirmar: "Concluir etapa", perigo: false,
                 })) onConcluir(etapaId);
               }}
-                title={bloqueio ? "Aprove as pendências para concluir"
+                title={bloqueio ? `${bloqueio} — veja o card "Falta conferir"`
                   : congelado ? "Habilite a edição da obra para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
                 <Play size={14} aria-hidden="true" /> Concluir etapa
               </Button>
@@ -25913,22 +25932,7 @@ export default function App() {
               e DetailHero (quem e' a obra). Concluir a obra e' ato de fim de
               tudo e mora so' no Dashboard dela; a Apresentacao, so' no
               Executivo — cada acao onde ela faz sentido. */}
-          {emTelaCheia ? (
-            /* A barra da tela cheia: onde se está e como sair. */
-            /* Sem caixa, no fundo da página (23/09/2026): a faixa branca
-               solta parecia outro componente. A obra vem pequena, como o
-               breadcrumb; a tela, em destaque; o sair, do tamanho dos outros
-               botões. */
-            <div className="naoimprime flex items-center justify-between gap-4 pb-2">
-              <span className="flex min-w-0 flex-col">
-                <span className="label-mono truncate text-text-mute">{obra.codigo} · {obra.nome}</span>
-                <span className="truncate text-lg font-semibold text-text">{nomeDaEtapa(tab)}</span>
-              </span>
-              <Button variant="outline" onClick={() => setTelaCheia(false)}>
-                <Minimize2 size={16} aria-hidden="true" /> Sair da tela cheia <Kbd>Esc</Kbd>
-              </Button>
-            </div>
-          ) : (() => {
+          {emTelaCheia ? null : (() => {
             const tailor = obra.tailorMade ?? registro.get(String(obra.codigo))?.tailor_made ?? null;
             const executivo = obra.responsavelExecutivo ?? registro.get(String(obra.codigo))?.responsavel_executivo ?? null;
             const squad = obra.squad || "Sem squad";
@@ -25987,10 +25991,6 @@ export default function App() {
                 )}
                 actions={(
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
-                      && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
-                      <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
-                    )}
                     {grupo === "dashboard" && (
                       <Button variant="ghost" disabled={salvandoObra === obra.id} onClick={() => marcarConcluida(obra)}>
                         {salvandoObra === obra.id ? "Concluindo…" : <><Archive size={16} aria-hidden="true" /> Concluir obra</>}
@@ -26004,7 +26004,21 @@ export default function App() {
               </>
             );
           })()}
+          {/* Em tela cheia a faixa é a única barra (23/09/2026): onde se está
+              (obra e etapa) à esquerda, a edição no meio e, na ponta, o sair —
+              antes eram duas barras empilhadas dizendo coisas vizinhas. */}
           <FaixaDaEdicao
+            inicio={emTelaCheia ? (
+              <span className="flex min-w-0 shrink-0 flex-col pr-3">
+                <span className="label-mono truncate text-text-mute">{obra.codigo} · {obra.nome}</span>
+                <span className="truncate text-base font-semibold text-text">{nomeDaEtapa(tab)}</span>
+              </span>
+            ) : null}
+            fim={emTelaCheia ? (
+              <Button variant="ghost" size="sm" onClick={() => setTelaCheia(false)}>
+                <Minimize2 size={14} aria-hidden="true" /> Sair da tela cheia <Kbd>Esc</Kbd>
+              </Button>
+            ) : null}
             edicao={{ ...edicao, por: edicao.por && nomeNaEquipe(pessoas, edicao.por) }} gravacao={gravacaoDaObra} carregando={carregandoDados}
             falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
             onTentarCarregar={() => setCargaPedida((n) => n + 1)}
@@ -26047,6 +26061,11 @@ export default function App() {
               onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
             onTelaCheia: podeTelaCheia ? () => setTelaCheia(true) : null,
             telaCheia: emTelaCheia,
+            /* A Apresentação é da ETAPA (Executivo e Conf. Executivo), não da
+               obra: mora nas ações do cabeçalho da etapa (23/09/2026). */
+            acaoDaEtapa: grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
+              && (migracaoPendente || podeVerModulo(eu, "catalogo"))
+              ? <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} /> : null,
           } : null}>
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}

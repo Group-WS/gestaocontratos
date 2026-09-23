@@ -625,12 +625,13 @@ header div:has(> [cmdk-input]) {
 }
 .main.em-tela-cheia > .faixa-da-edicao {
   top: 0;
-  margin: 0 0 1rem;
-  padding-inline: 0.75rem;
+  height: 3.75rem;
+  margin: -1rem -1rem 1rem;
+  padding-inline: 1rem;
 }
 .main:has(> .faixa-da-edicao) .conteudo-da-aba > .filtros-da-aba {
   top: 7rem;
 }
 .main.em-tela-cheia:has(> .faixa-da-edicao) .conteudo-da-aba > .filtros-da-aba {
-  top: 3.25rem;
+  top: 3.75rem;
 }
