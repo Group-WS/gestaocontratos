@@ -544,3 +544,37 @@ header div:has(> [cmdk-input]) {
   border-width: 0;
   border-radius: 0;
 }
+
+/* O MESMO ESQUELETO EM TODAS AS ABAS DA OBRA (23/09/2026).
+
+   Ordem pedida: cabeçalho → avisos → filtros e cards → tabelas, com espaço
+   pequeno e igual entre os blocos. Cada tela tinha o seu (gap-6, mb-4 a
+   mais nos cards do Executivo), e os filtros ficavam numa barra acima dos
+   avisos. O PageShell das abas marca o conteúdo com .conteudo-da-aba e põe
+   os filtros dentro dele (.filtros-da-aba); aqui:
+   - os avisos (Alert do DS, role="alert") vêm primeiro;
+   - os filtros logo depois, fixos no topo ao rolar, como era a barra;
+   - o resto (cards e tabelas) na ordem da tela;
+   - 16px entre todos, sem margem solta de nenhum bloco. */
+.conteudo-da-aba {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+.conteudo-da-aba > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.conteudo-da-aba > [role="alert"] {
+  order: -2;
+}
+.conteudo-da-aba > .filtros-da-aba {
+  order: -1;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  padding-block: 0.5rem;
+  margin-block: -0.5rem;
+}

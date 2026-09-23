@@ -21166,9 +21166,12 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
    depois da descrição. Fora das abas (cabeçalho da obra, módulos) não há
    contexto, e o PageShell é o do DS, sem nada a mais. */
 const EtapaDaAbaContexto = createContext(null);
-function PageShell({ description, actions, className, ...props }) {
+function PageShell({ description, actions, className, toolbar, toolbarSecondary, contentClassName, children, ...props }) {
   const aba = useContext(EtapaDaAbaContexto);
-  if (!aba) return <PageShellDoDS {...props} className={className} description={description} actions={actions} />;
+  if (!aba) {
+    return <PageShellDoDS {...props} className={className} description={description} actions={actions}
+      toolbar={toolbar} toolbarSecondary={toolbarSecondary} contentClassName={contentClassName}>{children}</PageShellDoDS>;
+  }
   /* TELA CHEIA (23/09/2026): as telas de operação têm um botão que esconde
      a moldura (menu, topo, cabeçalho da obra, abas e o título da tela) e
      deixa só a busca, os filtros e a lista. Em tela cheia o título some
@@ -21187,7 +21190,22 @@ function PageShell({ description, actions, className, ...props }) {
       /* Alinhadas pelo TOPO: as ações da tela costumam ser uma coluna (o
          botão e, embaixo, o aviso de modo leitura); centralizado, o botão
          de tela cheia ficava no meio dessa coluna, fora da linha. */
-      actions={actions || botao ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}{botao}</div> : undefined} />
+      actions={actions || botao ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}{botao}</div> : undefined}
+      /* O MESMO ESQUELETO EM TODAS AS ABAS (23/09/2026): cabeçalho → avisos
+         → filtros e cards → tabelas, com o mesmo espaço pequeno entre eles.
+         Os filtros saem da barra do PageShell (que ficava ACIMA dos avisos)
+         e entram no conteúdo; o CSS de .conteudo-da-aba põe os Alerts
+         primeiro, os filtros logo depois (fixos no topo ao rolar) e iguala
+         o espaço entre os blocos. */
+      contentClassName={cn(contentClassName, "conteudo-da-aba")}>
+      {(toolbar || toolbarSecondary) && (
+        <div className="filtros-da-aba flex flex-col gap-2">
+          {toolbar && <div className="flex flex-wrap items-center gap-3">{toolbar}</div>}
+          {toolbarSecondary && <div className="flex flex-wrap items-center gap-2">{toolbarSecondary}</div>}
+        </div>
+      )}
+      {children}
+    </PageShellDoDS>
   );
 }
 
