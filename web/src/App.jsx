@@ -14,12 +14,12 @@ import * as XLSX from "xlsx";
 import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
   Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
-  ArrowDownRight, Minus, Check, Link2, PackageSearch, Bell, Sparkles,
+  Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, Maximize2, Minimize2,
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Maximize2, Minimize2,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -70,7 +70,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
   Command, CommandInput, CommandList, CommandEmpty, CommandItem,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
-import { useMediaQuery, LARGO, Contador, Choice, CampoData, IconeSquad, SquadComIcone, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, DicaInfo, EscolhaEstado } from "./lib/ui.jsx";
+import { useMediaQuery, LARGO, Contador, Choice, CampoData, IconeSquad, SquadComIcone, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, DicaInfo, EscolhaEstado, BotaoComMotivo } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
 import { listarProdutos } from "./lib/catalogo";
 import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compradores";
@@ -3714,8 +3714,8 @@ function LinhaPlano({ item, cat, onAlocar, onSepararMO, onJuntarMO, onAprovar, p
       </TableCell>
       <TableCell className="text-center">
         {bloqueado
-          ? <Button size="sm" onClick={onAprovar} disabled={!podeEditar}
-              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={14} aria-hidden="true" /> Aprovar p/ compra</Button>
+          ? <BotaoComMotivo size="sm" onClick={onAprovar} disabled={!podeEditar}
+              title={podeEditar ? undefined : MODO_LEITURA_DICA}><Check size={14} aria-hidden="true" /> Aprovar p/ compra</BotaoComMotivo>
           : <DestinoCompra item={item} aloc={aloc} />}
       </TableCell>
     </TableRow>
@@ -4145,9 +4145,9 @@ function LiberacaoCompra({ obra, temItens, podeEditar, onLiberar }) {
      CMV, a justificativa, o nome de quem autorizou) abre num dialog. */
   return (
     <>
-      <Button disabled={!podeEditar} title={podeEditar ? undefined : MODO_LEITURA_DICA} onClick={() => setAberto(true)}>
+      <BotaoComMotivo disabled={!podeEditar} title={podeEditar ? undefined : MODO_LEITURA_DICA} onClick={() => setAberto(true)}>
         <ShieldCheck size={16} aria-hidden="true" /> Liberar compra
-      </Button>
+      </BotaoComMotivo>
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent size="md">
           <DialogHeader>
@@ -5282,7 +5282,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             leitura e na etapa congelada — e botao que some nao se procura,
             se conclui que nao existe. */}
         {onLimpar && temConteudo && (
-          <Button variant="outline" className="text-danger" disabled={carregando || congelado}
+          <BotaoComMotivo variant="outline" className="text-danger" disabled={carregando || congelado}
             title={congelado
               ? (compraLiberada
                   ? "O Plano de Compras já foi liberado e congelou esta etapa. Use \"Reabrir etapas\" antes de remover."
@@ -5296,7 +5296,7 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
             )) onLimpar();
           }}>
             <Trash2 size={16} /> Remover
-          </Button>
+          </BotaoComMotivo>
         )}
         {/* O ⓘ vai COLADO no botão que ele explica — antes ficava numa
             linha solta embaixo de tudo, sem dizer a qual dos botões se
@@ -7970,11 +7970,11 @@ function AprovacaoClienteItens({ grupos, obra, podeEditar, onAprovar }) {
                                 )}
                               </div>
                             ) : (
-                              <Button variant="ghost" size="sm" type="button" className="text-warning" disabled={!podeEditar}
+                              <BotaoComMotivo variant="ghost" size="sm" type="button" className="text-warning" disabled={!podeEditar}
                                 title={podeEditar ? "Marcar que o cliente aprovou este produto" : MODO_LEITURA_DICA}
                                 onClick={() => onAprovar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                 o cliente segurou · aprovar
-                              </Button>
+                              </BotaoComMotivo>
                             )}
                           </TableCell>
                         </TableRow>
@@ -8376,23 +8376,39 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                             {/* O aviso do cliente saiu daqui: ele virou a coluna
                                 "Cliente", ao lado. Dizer a mesma coisa duas vezes
                                 na mesma linha era o que engordava a lista. */}
-                            {x.pendencia && x.pendencia.tipo !== "cliente" && (
-                              <div className={`mt-1 flex flex-wrap items-center gap-1 text-xs ${x.it.alertaConferido ? "text-text-mute" : "text-alert"}`}>
-                                <AlertTriangle size={12} aria-hidden="true" />
-                                <span>{x.pendencia.texto}</span>
+                            {/* A CONFERÊNCIA TÉCNICA COMO TAREFA (23/09/2026): antes era
+                                uma frase laranja com um "conferi" em texto solto, que
+                                não parecia botão. Pendente, é um aviso do DS com o que
+                                verificar e a ação clara; conferida, vira um selo verde
+                                com quem conferiu e o "desfazer" discreto. */}
+                            {x.pendencia && x.pendencia.tipo !== "cliente" && (x.it.alertaConferido ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-mute">
+                                <Badge tone="success"><Check size={12} aria-hidden="true" /> Conferido{x.it.alertaConferido.por ? ` por ${nomeNaEquipe([], x.it.alertaConferido.por)}` : ""}</Badge>
+                                <span className="min-w-0" title={x.pendencia.texto}>{x.pendencia.texto}</span>
                                 {podeEditar && !x.liberado && (
                                   <Button variant="ghost" size="sm" type="button"
-                                    onClick={() => onConferir(x.catIdx, x.itemIdx, !x.it.alertaConferido)}>
-                                    {x.it.alertaConferido ? "desmarcar" : "conferi"}
+                                    onClick={() => onConferir(x.catIdx, x.itemIdx, false)}>
+                                    <RotateCcw size={14} aria-hidden="true" /> Desfazer
                                   </Button>
                                 )}
-                                {x.it.alertaConferido && (
-                                  <span className="text-xs italic text-text-mute">
-                                    conferido{x.it.alertaConferido.por ? ` por ${x.it.alertaConferido.por}` : ""}
-                                  </span>
-                                )}
                               </div>
-                            )}
+                            ) : (
+                              <Alert tone="warning" className="mt-2">
+                                <AlertTitle as="h4">Conferir antes de aprovar</AlertTitle>
+                                <AlertDescription>
+                                  <span className="flex flex-col items-start gap-2">
+                                    <span>{primeiraMaiusculaTexto(x.pendencia.texto)}</span>
+                                    {!x.liberado && (
+                                      <BotaoComMotivo variant="secondary" size="sm" type="button" disabled={!podeEditar}
+                                        title={podeEditar ? undefined : MODO_LEITURA_DICA}
+                                        onClick={() => onConferir(x.catIdx, x.itemIdx, true)}>
+                                        <Check size={14} aria-hidden="true" /> Marcar como conferido
+                                      </BotaoComMotivo>
+                                    )}
+                                  </span>
+                                </AlertDescription>
+                              </Alert>
+                            ))}
                           </TableCell>
                           <TableCell className="mono hidden text-center md:table-cell">{x.it.qtdExecutivo ?? x.it.qtdVendida ?? "—"} <span className="text-xs text-text-mute">{x.it.un}</span></TableCell>
                           <TableCell className="mono hidden text-right tabular-nums md:table-cell">{x.it.custoUnitario != null ? fmtBRL(x.it.custoUnitario) : "—"}</TableCell>
@@ -8417,11 +8433,11 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 )}
                               </div>
                             ) : (
-                              <Button variant="outline" size="sm" disabled={!podeEditar || !onConcluir}
+                              <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar || !onConcluir}
                                 title={podeEditar ? "Marcar esta linha como concluída pelo executivo" : MODO_LEITURA_DICA}
                                 onClick={() => onConcluir([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                 concluir
-                              </Button>
+                              </BotaoComMotivo>
                             )}
                           </TableCell>
 
@@ -8467,7 +8483,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                 {/* A ordem continua (o executivo vem antes), mas o
                                     clique nao pede os dois: aprovar pra compra
                                     conclui o executivo junto, quando falta. */}
-                                <Button variant="outline" size="sm"
+                                <BotaoComMotivo variant="outline" size="sm"
                                   disabled={!podeEditar || !podeLiberar || !x.pode}
                                   title={!podeEditar ? MODO_LEITURA_DICA
                                     : !podeLiberar ? "Só um administrador libera a compra"
@@ -8476,7 +8492,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                                     : "Liberar para compra — marca o executivo como concluído junto"}
                                   onClick={() => onLiberar([{ catIdx: x.catIdx, itemIdx: x.itemIdx }], true)}>
                                   estimativa · liberar
-                                </Button>
+                                </BotaoComMotivo>
                                 {/* A excecao, no mesmo padrao do portao da assinatura que
                                     ja existe no Plano de Compras: bloqueia por padrao, mas
                                     quem tem autoridade libera dizendo por que — e fica
@@ -9222,12 +9238,16 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
   /* Os mesmos quatro cartoes (KpiMini) do resto da obra, na mesma grade de
      4 colunas e com a mesma altura — antes era uma faixa propria, com
      tamanhos de fonte e espacos que so' ela tinha. */
-  const movimento = (
-    <span className="flex flex-col gap-1 text-sm">
-      <span className="inline-flex items-center gap-1"><ArrowDownRight size={14} aria-hidden="true" /> retirado {fmtBRL(retirado)}{nExcluidos > 0 && ` · ${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"}`}</span>
-      <span className="inline-flex items-center gap-1"><ArrowUpRight size={14} aria-hidden="true" /> acrescido {fmtBRL(acrescido)}{nNovos > 0 && ` · ${nNovos} nov${nNovos > 1 ? "os" : "o"}`}</span>
-    </span>
-  );
+  /* O PADRÃO DOS CARTÕES (23/09/2026): número grande + uma linha que diz
+     o que ele significa, como os da Conf. Executivo. A Movimentação, que
+     era duas linhas pequenas no lugar do número, agora mostra o saldo das
+     mudanças em destaque e o detalhe (retirado, acrescido) embaixo. */
+  const saldoMov = acrescido - retirado;
+  const movimentoValor = `${saldoMov > 0 ? "+" : saldoMov < 0 ? "−" : ""}${fmtBRL(Math.abs(saldoMov))}`;
+  const movimentoDica = [
+    `−${fmtBRL(retirado)} retirado${nExcluidos > 0 ? ` (${nExcluidos} exclu${nExcluidos > 1 ? "ídos" : "ído"})` : ""}`,
+    `+${fmtBRL(acrescido)} acrescido${nNovos > 0 ? ` (${nNovos} nov${nNovos > 1 ? "os" : "o"})` : ""}`,
+  ].join(" · ");
   const grade = "mb-4 grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4";
 
   // Sem CMV liberado não há teto, e portanto não há saldo. Mas o que a
@@ -9236,9 +9256,9 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
   if (!cmvLiberado || cmvLiberado <= 0) {
     return (
       <div className={grade} aria-label="Saldo do executivo">
-        <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)} />
-        <KpiMini className="h-full" label="CMV liberado" value="—" hint="ainda não liberado" />
-        <KpiMini className="col-span-2 h-full" label="Movimentação" value={movimento} />
+        <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)} hint="soma dos itens da planilha executivo" />
+        <KpiMini className="h-full" label="CMV liberado" value="—" hint="ainda não liberado — sem teto para comparar" />
+        <KpiMini className="h-full sm:col-span-2" label="Movimentação" value={movimentoValor} hint={movimentoDica} />
       </div>
     );
   }
@@ -9248,12 +9268,14 @@ function SaldoExecutivo({ categorias, cmvLiberado, recuperado }) {
 
   return (
     <div className={grade} aria-label="Saldo do executivo">
-      <KpiMini className="h-full" label="CMV liberado" value={fmtBRL(cmvLiberado)} />
-      <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)} />
+      <KpiMini className="h-full" label="CMV liberado" value={fmtBRL(cmvLiberado)} hint="o teto de custo da obra" />
+      <KpiMini className="h-full" label="Executivo hoje" value={fmtBRL(atual)}
+        hint={`${Math.round((atual / cmvLiberado) * 100)}% do CMV liberado`} />
       <KpiMini className="h-full" tone={estourou ? "danger" : "success"}
         label={`${estourou ? "Acima do CMV" : "Ainda cabe"}${recuperado ? " · recalculado" : ""}`}
-        value={`${estourou ? "−" : ""}${fmtBRL(Math.abs(sobra))}`} />
-      <KpiMini className="h-full" label="Movimentação" value={movimento} />
+        value={`${estourou ? "−" : ""}${fmtBRL(Math.abs(sobra))}`}
+        hint={estourou ? "passou do teto — retire itens ou peça liberação acima do CMV" : "o que ainda dá para acrescentar sem passar do teto"} />
+      <KpiMini className="h-full" label="Movimentação" value={movimentoValor} hint={movimentoDica} />
     </div>
   );
 }
@@ -11794,6 +11816,7 @@ function podeMudarSolicitado(it) {
    grava é o salvamento automático, e ele só roda pra quem está com a trava.
    Em modo leitura os botões travam com esta dica (antes a marca aparecia
    na tela e sumia no F5). */
+const primeiraMaiusculaTexto = (t) => (t ? String(t).charAt(0).toUpperCase() + String(t).slice(1) : t);
 const MODO_LEITURA_DICA = "modo leitura: habilite a edição da obra para mudar";
 
 /* GERADOR DE CÓDIGOS SIENGE — avulso, sem obra e sem gravar nada.
@@ -13238,14 +13261,14 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
             tela mostrando tres linhas enquanto o pedido leva sessenta e' a
             pagina afirmando duas coisas. */}
-        <Button className="h-10" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+        <BotaoComMotivo className="h-10" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
           title={buscando
             ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
             : !fornecedor || fornecedor === SEM_FORNECEDOR
             ? "Escolha um fornecedor pra gerar o pedido"
             : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
           <Printer size={16} aria-hidden="true" /> Pedido de orçamento
-        </Button>
+        </BotaoComMotivo>
       </div>
     </div>
   );
@@ -13868,10 +13891,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 dos selecionados — o mesmo definirCanal de antes. */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" disabled={!podeEditar}
+                <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar}
                   title={podeEditar ? "Define por onde comprar os selecionados" : `Em ${MODO_LEITURA_DICA}`}>
                   <ShoppingCart size={14} aria-hidden="true" /> Definir canal <ChevronDown size={14} aria-hidden="true" />
-                </Button>
+                </BotaoComMotivo>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Comprar os selecionados por</DropdownMenuLabel>
@@ -13887,7 +13910,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             {/* Concluir em massa nao tem risco de casar errado: e a
                 pessoa afirmando que comprou o que ela mesma selecionou. */}
             {selecionados.some((r) => r.it.canalCompra) && (
-              <Button variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
+              <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
                 const comCanal = selecionados.filter((r) => r.it.canalCompra);
                 const desmarcar = comCanal.every((r) => r.it.comprado);
                 // Marcar só mexe em quem ainda não foi comprado (a data de quem já
@@ -13916,10 +13939,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
               }} title={podeEditar ? "Marca os selecionados que já têm canal — entra no total do Dashboard. No Sienge, só o que já foi solicitado." : `Em ${MODO_LEITURA_DICA}`}>
                 <Check size={14} aria-hidden="true" /> {selecionados.filter((r) => r.it.canalCompra).every((r) => r.it.comprado)
                   ? "Desmarcar comprado" : "Marcar comprado"}
-              </Button>
+              </BotaoComMotivo>
             )}
             {etapa === "sienge" && (
-              <Button variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
+              <BotaoComMotivo variant="outline" size="sm" disabled={!podeEditar} onClick={async () => {
                 const desmarcar = selecionados.every((r) => estaSolicitado(r.it));
                 // Desmarcar não alcança o que já foi comprado: comprado pressupõe solicitado.
                 const vao = selecionados.filter((r) => (desmarcar ? podeMudarSolicitado(r.it) : !estaSolicitado(r.it)));
@@ -13942,13 +13965,13 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 });
               }} title={podeEditar ? "Marca os selecionados como já solicitados no Sienge" : `Em ${MODO_LEITURA_DICA}`}>
                 <Check size={14} aria-hidden="true" /> {selecionados.every((r) => estaSolicitado(r.it)) ? "Desmarcar solicitado" : "Marcar solicitado"}
-              </Button>
+              </BotaoComMotivo>
             )}
             {etapa === "sienge" && baseSienge && (
-              <Button variant="outline" size="sm" onClick={associarSelecionados} disabled={!podeEditar}
+              <BotaoComMotivo variant="outline" size="sm" onClick={associarSelecionados} disabled={!podeEditar}
                 title={podeEditar ? "Aceita a variante que bate inteiro; o que faltou palavra fica pra escolher à mão" : `Em ${MODO_LEITURA_DICA}`}>
                 <PackageSearch size={14} aria-hidden="true" /> Associar {selecionados.length}
-              </Button>
+              </BotaoComMotivo>
             )}
             <Separator orientation="vertical" className="hidden h-6 sm:block" />
             {/* O pedido sai de qualquer canal — inclusive de quem ainda
@@ -13989,7 +14012,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                 funcionalidade depende de um cadastro procura um botão que
                 não está em lugar nenhum, e conclui que não foi entregue. */}
             {etapa === "sienge" && (
-              <Button size="sm"
+              <BotaoComMotivo size="sm"
                 disabled={!podeEditar || !eapSienge?.versao}
                 onClick={() => setSolicitacao(selecionados.map((r) => {
                   // A situação do insumo é resolvida aqui, com a base na
@@ -14022,7 +14045,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                       : "falta a EAP"
                   }</span>
                 )}
-              </Button>
+              </BotaoComMotivo>
             )}
           </div>
           </CardContent>
@@ -14708,10 +14731,10 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                               </TableCell>
                               <TableCell>
                                 <div className="flex justify-center gap-1">
-                                  <Button variant="outline" size="sm" disabled={enviando}
-                                    onClick={() => reenviar([r])} title="Reenviar só este item">
+                                  <BotaoComMotivo variant="outline" size="sm" disabled={enviando}
+                                    onClick={() => reenviar([r])} title={enviando ? "há um envio em andamento — espere terminar" : "Reenviar só este item"}>
                                     Reenviar
-                                  </Button>
+                                  </BotaoComMotivo>
                                   <BotaoIcone rotulo="Tirar do envio — continua pendente nas Compras" variant="outline" disabled={enviando}
  onClick={() => descartar(id)}
  >
@@ -14965,12 +14988,12 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
                   : `${itens.length} ${itens.length === 1 ? "item" : "itens"} · ${fmtBRL(total)}`}
               </span>
               <Button variant="outline" onClick={onFechar} disabled={enviando}>Cancelar</Button>
-              <Button
+              <BotaoComMotivo
                 disabled={enviando || !itens.length || !unidadeValida || insumosInvalidos.length > 0}
                 title={insumosInvalidos.length ? "Há item sem código de insumo" : undefined}
                 onClick={() => enviar()}>
                 {enviando ? "Enviando…" : `Enviar ao Sienge`}
-              </Button>
+              </BotaoComMotivo>
             </>
           )}
         </DialogFooter>
@@ -15879,11 +15902,11 @@ function EscopoAberto({ escopo, obra, podeEditar, onMudar, onVoltar, onApagar })
             {/* Vencimento cai sempre na sexta: a casa paga fornecedor
                 nesse dia, e data no meio da semana volta pro financeiro
                 pra ser remarcada. */}
-            <Button disabled={!escopo.venc1}
+            <BotaoComMotivo disabled={!escopo.venc1}
               onClick={() => onMudar({ parcelas: sugerirDatas(escopo.parcelas, escopo.venc1, escopo.intervalo) })}
               title={escopo.venc1 ? "Preenche os vencimentos de tantos em tantos dias, sempre numa sexta" : "Informe o 1º vencimento primeiro"}>
               <Clock size={13} /> Sugerir datas
-            </Button>
+            </BotaoComMotivo>
           </div>
         </div>
       )}
@@ -21433,8 +21456,8 @@ function PageShell({ description, actions, className, toolbar, toolbarSecondary,
          de tela cheia ficava no meio dessa coluna, fora da linha. */
       /* Com ações próprias (o importador), a ação da etapa vai dentro da
          linha delas (ver ImportButton); sem ações, ela ocupa o lugar. */
-      actions={actions ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}</div>
-        : aba.acaoDaEtapa ? <div className="flex flex-wrap items-start justify-end gap-2">{aba.acaoDaEtapa}</div> : undefined}
+      actions={actions ? <div className="flex flex-wrap items-start justify-end gap-2">{actions}{aba.botaoDaEtapa}</div>
+        : <div className="flex flex-wrap items-start justify-end gap-2">{aba.acaoDaEtapa}{aba.botaoDaEtapa}</div>}
       /* O MESMO ESQUELETO EM TODAS AS ABAS (23/09/2026): cabeçalho → avisos
          → filtros e cards → tabelas, com o mesmo espaço pequeno entre eles.
          Os filtros saem da barra do PageShell (que ficava ACIMA dos avisos)
@@ -21476,7 +21499,11 @@ const TELAS_DE_OPERACAO = new Set(["vendido_planilha", "executivo", "executivo_c
 /* Etapas que acompanham a obra inteira e não se concluem. */
 const ETAPAS_CONTINUAS = new Set(["diario"]);
 
-function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [] }) {
+function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [], parte = "estado" }) {
+  /* TODOS OS BOTÕES JUNTOS (23/09/2026): o Concluir/Reabrir saiu da linha
+     do selo e foi para a fila de ações do cabeçalho, ao lado de
+     Apresentação e Importar. `parte="estado"` desenha o selo e quem
+     concluiu (abaixo do título); `parte="botao"`, só o botão (nas ações). */
   /* Mesmo estado em TODAS as abas da esteira (pedido de 23/09/2026: "para
      ficarem uniformes"), abaixo do título da tela — e as ações da ETAPA
      (Concluir, Reabrir) na mesma linha dele, pequenas. O canto direito do
@@ -21490,29 +21517,14 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
   // O que ainda impede concluir (hoje só a Conf. Executivo tem trava).
   const bloqueio = useMemo(() => (feita ? null : bloqueioDaEtapa(etapaId, obra)), [feita, etapaId, obra]);
 
-  if (ETAPAS_CONTINUAS.has(etapaId)) {
-    return (
-      <span className="naoimprime mt-2 flex flex-wrap items-center gap-2" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
-        <Badge tone="neutral">Etapa contínua</Badge>
-        <span className="text-xs text-text-mute">Acompanha a obra inteira, não se conclui.</span>
-      </span>
-    );
-  }
-  return (
-    <span className="naoimprime mt-2 flex flex-wrap items-center gap-2" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
-      <span className="flex flex-wrap items-center gap-2">
-        {feita ? (
-          <>
-            <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Etapa concluída</Badge>
-            <span className="text-xs text-text-mute">
-              {porQuem && <>por {nomeNaEquipe(equipe, porQuem)}</>}
-              {/* Data E hora (pedido de 23/09/2026): o registro sempre
-                  guardou o instante inteiro, a tela é que mostrava só o dia. */}
-              {em && <> · {new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</>}
-              {O_QUE_O_ATO_ABRIU[etapaId] && <> · {O_QUE_O_ATO_ABRIU[etapaId]}</>}
-            </span>
+  if (parte === "botao") {
+    if (ETAPAS_CONTINUAS.has(etapaId)) return null;
+    return feita ? (<>
             {temBotao && !congelado && (
-              <Button variant="ghost" size="sm" onClick={async () => {
+              /* Contorno da marca (secondary), não ghost (23/09/2026): ghost
+                 lia como texto solto ao lado do selo, e Reabrir é ação. Mesmo
+                 tamanho dos outros botões da fila de ações. */
+              <Button variant="secondary" onClick={async () => {
                 if (await confirmar({
                   titulo: `Reabrir a etapa "${nomeDaEtapa(etapaId)}"?`,
                   mensagem: "O registro de quem concluiu e quando é apagado e a etapa volta a pendente. Dá para concluir de novo depois.",
@@ -21520,29 +21532,87 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
                 })) onReabrirEtapa(etapaId);
               }}><RotateCcw size={14} aria-hidden="true" /> Reabrir etapa</Button>
             )}
+    </>) : (<>
+            {temBotao && (() => {
+              /* POR QUE NÃO DÁ PARA CONCLUIR (23/09/2026): o `title` do botão
+                 desabilitado quase nunca aparecia (o navegador não dispara
+                 hover em botão desabilitado). Agora os motivos, todos, vão
+                 num Tooltip do DS preso a um invólucro que recebe o hover e o
+                 foco — e o botão ganha o cadeado quando está travado. */
+              const motivos = [
+                bloqueio && `${bloqueio}: marque "conferi" nos alertas técnicos (card "Falta conferir").`,
+                obra.comprasLiberadas && "O Plano de Compras já foi liberado e congelou esta etapa.",
+                !obra.comprasLiberadas && !podeEditar && "A obra está em modo leitura: habilite a edição na faixa do topo.",
+              ].filter(Boolean);
+              const travado = motivos.length > 0;
+              const botao = (
+                /* Azul cheio (variante default): só as cores que o DS já tem
+                   (decisão de 23/09/2026 — sem variante verde). */
+                <BotaoComMotivo disabled={travado} onClick={async () => {
+                  if (await confirmar({
+                    titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
+                    mensagem: "Fica registrado no seu nome, com a data e a hora de agora, e a próxima etapa é liberada. Dá para reabrir depois.",
+                    confirmar: "Concluir etapa", perigo: false,
+                  })) onConcluir(etapaId);
+                }} title={travado ? undefined : "Marca esta etapa como cumprida e libera a próxima"}>
+                  {travado ? <Lock size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />} Concluir etapa
+                </BotaoComMotivo>
+              );
+              if (!travado) return botao;
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0} className="inline-flex cursor-help rounded-lg"
+                      aria-label={`Concluir etapa indisponível. ${motivos.join(" ")}`}>{botao}</span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs whitespace-normal">
+                    <span className="flex flex-col gap-1">
+                      <b>Por que não dá para concluir</b>
+                      {motivos.map((m) => <span key={m}>• {m}</span>)}
+                    </span>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })()}
+    </>);
+  }
+  if (ETAPAS_CONTINUAS.has(etapaId)) {
+    return (
+      <span className="naoimprime mt-2 flex min-w-0 items-center gap-2 [&>*:first-child]:shrink-0" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
+        <Badge tone="neutral"><RefreshCw size={12} aria-hidden="true" /> Etapa contínua</Badge>
+        <span className="min-w-0 truncate text-xs text-text-mute">Acompanha a obra inteira, não se conclui.</span>
+      </span>
+    );
+  }
+  return (
+    /* Sempre numa linha só (23/09/2026): o selo não encolhe e o texto de
+       quem concluiu é cortado com "…" quando falta espaço — inteiro na dica. */
+    <span className="naoimprime mt-2 flex min-w-0 items-center gap-2" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
+      <span className="flex min-w-0 flex-nowrap items-center gap-2 [&>*:first-child]:shrink-0">
+        {feita ? (
+          <>
+            <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Etapa concluída</Badge>
+            <span className="min-w-0 truncate text-xs text-text-mute"
+              title={[porQuem && `por ${nomeNaEquipe(equipe, porQuem)}`, em && new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }), O_QUE_O_ATO_ABRIU[etapaId]].filter(Boolean).join(" · ")}>
+              {porQuem && <>por {nomeNaEquipe(equipe, porQuem)}</>}
+              {/* Data E hora (pedido de 23/09/2026): o registro sempre
+                  guardou o instante inteiro, a tela é que mostrava só o dia. */}
+              {em && <> · {new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</>}
+              {O_QUE_O_ATO_ABRIU[etapaId] && <> · {O_QUE_O_ATO_ABRIU[etapaId]}</>}
+            </span>
+
           </>
         ) : (
           <>
-            <Badge tone="neutral">Etapa pendente</Badge>
+            {/* Padrão dos selos de etapa (23/09/2026): cor e ícone por estado —
+                concluída verde com check, pendente vermelha com relógio,
+                contínua neutra com o ciclo. */}
+            <Badge tone="danger"><Clock size={12} aria-hidden="true" /> Etapa pendente</Badge>
             {/* O "falta conferir N produtos" não se repete aqui (23/09/2026): o
                 card "Falta conferir" da tela já mostra o número. O motivo do
                 botão travado fica na dica dele. */}
-            {!temBotao && ato && <span className="text-xs text-text-mute">{ato}</span>}
-            {temBotao && (
-              /* Azul cheio (variante default): só as cores que o DS já tem
-                 (decisão de 23/09/2026 — sem variante verde). */
-              <Button size="sm" disabled={congelado || !!bloqueio} onClick={async () => {
-                if (await confirmar({
-                  titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
-                  mensagem: "Fica registrado no seu nome, com a data e a hora de agora, e a próxima etapa é liberada. Dá para reabrir depois.",
-                  confirmar: "Concluir etapa", perigo: false,
-                })) onConcluir(etapaId);
-              }}
-                title={bloqueio ? `${bloqueio} — veja o card "Falta conferir"`
-                  : congelado ? "Habilite a edição da obra para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
-                <Play size={14} aria-hidden="true" /> Concluir etapa
-              </Button>
-            )}
+            {!temBotao && ato && <span className="min-w-0 truncate text-xs text-text-mute" title={ato}>{ato}</span>}
+
           </>
         )}
       </span>
@@ -25962,7 +26032,11 @@ export default function App() {
                         primeiro (e' dela que sai todo prazo) com o selo do
                         prazo na cor do risco; cada papel com as iniciais, e a
                         vaga vazia escrita como lacuna. */}
-                    <span className="mt-2 grid w-full grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                    {/* Fluido (23/09/2026): colunas de largura igual cortavam o
+                        nome ("Allysson Pere…") e sobrava vazio ao lado de "sem
+                        data". Cada bloco mede pelo conteúdo e quebra linha
+                        quando falta espaço. */}
+                    <span className="mt-2 flex w-full flex-wrap gap-x-10 gap-y-3">
                       <span className="flex min-w-0 flex-col gap-1">
                         <span className="label-mono text-text-mute">Entrega</span>
                         {obra.dataEntrega ? (() => {
@@ -26058,6 +26132,8 @@ export default function App() {
 
           <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? {
             estado: <EtapaDaAba etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
+              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
+            botaoDaEtapa: <EtapaDaAba parte="botao" etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
               onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
             onTelaCheia: podeTelaCheia ? () => setTelaCheia(true) : null,
             telaCheia: emTelaCheia,

@@ -113,6 +113,35 @@ export function DicaInfo({ rotulo = "Saiba mais", lado = "top", children }) {
   );
 }
 
+/* BOTÃO TRAVADO DIZ POR QUÊ (23/09/2026).
+
+   O motivo de um botão desabilitado morava no `title` — e o navegador não
+   mostra `title` de botão desabilitado (ele não recebe o hover). Este botão
+   é o Button do DS com uma diferença: desabilitado e com `title`, o texto
+   vira um Tooltip do DS preso a um invólucro que recebe hover e foco, com o
+   cadeado de "por que não dá". Habilitado, é o Button de sempre. */
+export const BotaoComMotivo = React.forwardRef(function BotaoComMotivo({ disabled, title, children, ...props }, ref) {
+  if (!disabled || !title) {
+    return <Button ref={ref} disabled={disabled} title={title || undefined} {...props}>{children}</Button>;
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="inline-flex cursor-help rounded-lg" aria-label={`Indisponível: ${title}`}>
+          <Button ref={ref} disabled {...props}>{children}</Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs whitespace-normal text-left normal-case tracking-normal">
+        <span className="flex flex-col gap-1">
+          <b>Por que não dá</b>
+          <span>{primeiraMaiuscula(title)}</span>
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+});
+const primeiraMaiuscula = (t) => (typeof t === "string" && t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+
 /* ESCOLHER UMA PESSOA, com busca (padrao Combobox do DS: Popover +
    Command). Com 40 nomes, uma lista sem busca obrigava a rolar ate' achar;
    aqui se digita parte do nome ou do cargo. A lista abre POR CIMA da tela,
@@ -271,9 +300,9 @@ export function EstadoAcao({ feito, rotuloFeito, rotuloPendente = "pendente", ac
       <Badge tone={feito ? tone : "neutral"} title={title}>
         {feito && <Check size={12} />}{feito ? rotuloFeito : rotuloPendente}
       </Badge>
-      <Button variant="ghost" size="sm" type="button" disabled={disabled} onClick={onClick} title={title}>
+      <BotaoComMotivo variant="ghost" size="sm" type="button" disabled={disabled} onClick={onClick} title={title}>
         {feito ? desfazer : acao}
-      </Button>
+      </BotaoComMotivo>
     </div>
   );
 }

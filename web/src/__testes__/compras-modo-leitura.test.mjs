@@ -58,7 +58,7 @@ conf("insumo do Sienge fica só pra consulta", linha.includes("somenteLeitura={!
    solicitado, associar e o gatilho do menu — quatro travas, e a do canal
    tem que estar no botao que abre o menu. */
 conf("canal e marcações em massa travam", (compras.match(/disabled=\{!podeEditar\}/g) || []).length >= 4
-  && /<DropdownMenuTrigger asChild>\s*<Button variant="outline" size="sm" disabled=\{!podeEditar\}/.test(compras));
+  && /<DropdownMenuTrigger asChild>\s*<(?:Button|BotaoComMotivo) variant="outline" size="sm" disabled=\{!podeEditar\}/.test(compras));
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);
