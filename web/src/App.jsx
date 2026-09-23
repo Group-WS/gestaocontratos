@@ -21121,7 +21121,11 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
   } else if (edicao.minha) {
     estado = (
       <span className="flex flex-wrap items-center gap-2 text-sm">
-        <Badge tone="brand">Editando</Badge>
+        {/* Amarelo e com o que se edita (pedido de 23/09/2026): "Editando",
+            azul, passava por mais um rótulo da página. Editar a obra é
+            estado que pede atenção — o que se muda aqui grava na obra. O
+            lápis separa do "Em edição por outra pessoa", que tem cadeado. */}
+        <Badge tone="warning"><Pencil size={12} aria-hidden="true" /> Você está editando esta obra</Badge>
         {/* "salvo" só quando o banco aceitou. Enquanto não, a barra diz o que
             está acontecendo — inclusive a próxima tentativa, quando falhou. */}
         <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />
