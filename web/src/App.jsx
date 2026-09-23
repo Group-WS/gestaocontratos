@@ -20808,9 +20808,12 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
           </Tooltip>
         </TooltipProvider>
       ) : <span className="text-sm italic text-text-mute">Endereço não informado</span>}
+      {/* 24px, como os outros ícones de linha (o ⓘ): no tamanho padrão
+          (36px) ele esticava a linha do endereço e abria um vão entre o
+          nome da obra e o endereço (23/09/2026). */}
       {podeEditar && (
-        <BotaoIcone rotulo="Editar endereço" variant="ghost" onClick={() => { setValor(atual); setEditando(true); }}>
-          <Pencil size={16} aria-hidden="true" />
+        <BotaoIcone rotulo="Editar endereço" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => { setValor(atual); setEditando(true); }}>
+          <Pencil size={14} aria-hidden="true" />
         </BotaoIcone>
       )}
     </span>
