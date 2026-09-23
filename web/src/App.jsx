@@ -10313,7 +10313,7 @@ function nomeDaEtapa(id) {
 
 const MODULOS = [
   { id: "inicio", nome: "Início", sub: "o resumo de tudo", Icone: LayoutGrid },
-  { id: "novas", nome: "Novas obras", sub: "vindas do Monday", Icone: Sparkle },
+  { id: "novas", nome: "Vindas do Monday", sub: "obras para dar start", Icone: Sparkle },
   { id: "a_contratar", nome: "Gestão de compras e contratações", sub: "todas as obras", Icone: ClipboardList },
   { id: "aditivos", nome: "Aditivos", sub: "supressão e adição por obra", Icone: FileText },
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
@@ -10439,7 +10439,7 @@ const GRUPOS_DO_MENU = [
   { id: "referencia", rotulo: "Referência", ids: ["catalogo", "gerador", "precos", "eap"] },
 ];
 
-function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar, listaAberta = false, onListaAberta }) {
+function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasCount, arquivoCount, usuario, modulos = MODULOS, pendentesCount = 0, mostrarObras = true, travas = null, aberta = false, onFechar, listaAberta = false, onListaAberta, onNovaObra = null }) {
   /* Acima de lg a barra e' fixa ao lado do conteudo; abaixo, ela abre num
      Sheet pelo botao de menu do topo. Uma casca so' de cada vez. */
   const largo = useMediaQuery(LARGO);
@@ -10654,13 +10654,23 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
           ocupa o topo de nada.
 
           Com isto o painel le' na ordem da vida de uma obra: as que vao
-          comecar, as que estao em andamento, as que terminaram. */}
-      {novasNoPainel && novasCount > 0 && (
-        <Button variant="outline" size="sm" className={cn("mb-2 w-full justify-start gap-2 border-brand text-brand", modulo === "novas" && "bg-brand-soft")}
+          comecar, as que estao em andamento, as que terminaram.
+
+          "Nova obra" e' a acao primaria do painel (so' para quem edita), e
+          "Vindas do Monday" fica sempre: com a fila do Monday vazia ela sumia, e
+          junto sumia o unico caminho para cadastrar obra (23/09/2026). */}
+      {onNovaObra && (
+        <Button size="sm" className="mb-2 w-full justify-start gap-2" onClick={() => { onNovaObra(); onFechar?.(); }}>
+          <Plus size={16} aria-hidden="true" /> Nova obra
+        </Button>
+      )}
+      {novasNoPainel && (
+        <Button variant="ghost" size="sm" className={cn("mb-2 w-full justify-start gap-2", novasCount > 0 && "text-brand", modulo === "novas" && "bg-brand-soft")}
           onClick={() => irPara("novas")} title={novasNoPainel.sub}>
-          <novasNoPainel.Icone size={13} />
-          <span className="mono">{novasCount}</span>
-          <span>{novasCount === 1 ? "nova obra" : "novas obras"}</span>
+          <novasNoPainel.Icone size={16} aria-hidden="true" />
+          {/* O numero antes do rotulo: e' ele que faz reparar. */}
+          {novasCount > 0 && <Contador tom="brand">{novasCount}</Contador>}
+          <span>Vindas do Monday</span>
         </Button>
       )}
 
@@ -10684,7 +10694,7 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
         {obras.length === 0 && (
           <p className="px-2 py-3 text-xs text-text-mute">
             Nenhuma obra iniciada ainda.
-            {novasCount > 0 && <> Veja <Button variant="ghost" size="sm" onClick={() => irPara("novas")}>Novas obras</Button>.</>}
+            {novasCount > 0 && <> Veja <Button variant="ghost" size="sm" onClick={() => irPara("novas")}>Vindas do Monday</Button>.</>}
           </p>
         )}
         {obras.length > 0 && filtradas.length === 0 && <p className="px-2 py-3 text-xs text-text-mute">Nenhuma obra encontrada.</p>}
@@ -18859,7 +18869,7 @@ function passosCriticosAtrasados(o) {
   return { dias, passos };
 }
 
-function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, nPendentes = 0, onAbrirObra, onModulo, mapaDeObras = null, localizacaoCarregando = false }) {
+function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, nPendentes = 0, onAbrirObra, onModulo, mapaDeObras = null, localizacaoCarregando = false, onNovaObra = null }) {
   const r = useMemo(() => resumoGeral(obras), [obras]);
   const rows = useMemo(() => {
     const summaries = new Map(r.linhas.map((line) => [String(line.codigo), line]));
@@ -18938,7 +18948,8 @@ function InicioView({ obras, novas, carregando, erro, onRetry, memory, equipe, n
   /* "Abrir obra" da ficha do mapa: o id do mapa é o código da obra. */
   const abrirPeloCodigo = (codigo) => { const o = obras.find((x) => String(x.codigo) === String(codigo)); if (o) onAbrirObra(o.id); };
   return <DashboardPage title="Início" memory={memory} rows={rows} loading={carregando} error={erro} onRetry={onRetry} onOpen={onAbrirObra} extraAlerts={extraAlerts}
-    mapa={mapaDeObras} mapaCarregando={localizacaoCarregando} onAbrirCodigo={abrirPeloCodigo} />;
+    mapa={mapaDeObras} mapaCarregando={localizacaoCarregando} onAbrirCodigo={abrirPeloCodigo}
+    actions={onNovaObra ? <Button onClick={onNovaObra}><Plus size={16} aria-hidden="true" /> Nova obra</Button> : undefined} />;
 }
 
 /* ============================================================
@@ -20615,17 +20626,21 @@ function EnderecoDaObra({ obra, podeEditar, onSalvar }) {
   );
 }
 
-/* Cadastrar obra na mao.
+/* NOVA OBRA — cadastro na mao, numa janela (FormDialog, TELA-20).
 
    O Monday e' a fonte, mas ele nao e' a unica: obra que entrou fora do
    fluxo comercial, obra antiga que precisa ser conferida agora, obra de
    teste. Sem esta porta, a unica saida era criar o board la so pra ela
    aparecer aqui.
 
+   Antes era um card escondido dentro de "Novas obras", que so' aparecia no
+   menu com fila do Monday (pedido de 23/09/2026: "nao existe botao para
+   adicionar obra?"). Agora e' uma janela so', aberta do menu, do Inicio e
+   de Novas obras, e montada uma vez na raiz do app.
+
    Nome, centro de custo, squad, GC e endereço (pedido de 15/09/2026); o
    resto (cliente, valor vendido) a obra ganha quando os documentos subirem. */
-function CadastroManualObra({ aberto, onFechar, onCriar, salvando, jaExistem, equipe = [], usuario }) {
-  const setAberto = (v) => { if (!v) onFechar(); };
+function NovaObraDialog({ aberto, onFechar, onCriar, salvando, jaExistem, equipe = [], usuario, semBanco }) {
   const [nome, setNome] = useState("");
   const [codigo, setCodigo] = useState("");
   const [squad, setSquad] = useState(SQUADS[0].nome);
@@ -20633,76 +20648,106 @@ function CadastroManualObra({ aberto, onFechar, onCriar, salvando, jaExistem, eq
   const [gc, setGc] = useState(usuario || "");
   const [endereco, setEndereco] = useState("");
   const [erro, setErro] = useState(null);
+  const [tentou, setTentou] = useState(false);
 
   const cod = codigo.trim();
   /* Quatro digitos: o centro de custo E' o numero da obra, e ele vira o
      prefixo do aditivo ("2405/1") e a chave de tudo que e' guardado. */
   const codigoOk = /^\d{4}$/.test(cod);
   const repetido = codigoOk && jaExistem.has(cod);
-  const pode = nome.trim() && codigoOk && !repetido && !salvando;
+  const erroNome = tentou && !nome.trim() ? "Informe o nome da obra." : null;
+  const erroCodigo = repetido ? `Já existe uma obra com o centro de custo ${cod}.`
+    : (cod && !codigoOk) || (tentou && !cod) ? "Informe os 4 dígitos do centro de custo." : null;
+  const mexeu = !!(nome.trim() || cod || endereco.trim());
 
-  async function criar() {
+  function limpar() {
+    setNome(""); setCodigo(""); setEndereco(""); setSquad(SQUADS[0].nome); setGc(usuario || "");
+    setErro(null); setTentou(false);
+  }
+
+  // Sair sem salvar pergunta antes (TELA-25).
+  async function fechar() {
+    if (salvando) return;
+    if (mexeu && !(await confirmar({ titulo: "Descartar alterações?", mensagem: "O que foi digitado nesta obra nova se perde.",
+      confirmar: "Descartar", cancelar: "Continuar editando" }))) return;
+    limpar();
+    onFechar();
+  }
+
+  async function criar(e) {
+    e?.preventDefault();
+    setTentou(true);
     setErro(null);
+    if (!nome.trim()) { document.getElementById("nova-obra-nome")?.focus(); return; }
+    if (!codigoOk || repetido) { document.getElementById("nova-obra-cod")?.focus(); return; }
     try {
       await onCriar({ nome: nome.trim(), codigo: cod, squad, gc: gc.trim() || null, endereco: endereco.trim() });
-      setNome(""); setCodigo(""); setEndereco(""); setAberto(false);
-    } catch (e) {
-      setErro(e.message || String(e));
+      limpar();
+      onFechar();
+    } catch (err) {
+      // Falha mantem tudo o que foi digitado (TELA-24).
+      setErro(err.message || String(err));
     }
   }
 
-  if (!aberto) return null;
-
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <CardTitle>Cadastrar obra manualmente</CardTitle>
-        <BotaoIcone rotulo="Fechar" variant="ghost" onClick={() => setAberto(false)}><X size={16} aria-hidden="true" /></BotaoIcone>
-      </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-2">
-        <Field className="md:col-span-2">
-          <Label htmlFor="cad-obra-nome">Nome da obra</Label>
-          <Input id="cad-obra-nome" value={nome} placeholder="ex: Ed. Meraki, 602"
-            onChange={(e) => setNome(e.target.value)} />
-        </Field>
-        <Field className="md:col-span-2">
-          <Label htmlFor="cad-obra-end">Endereço</Label>
-          <Input id="cad-obra-end" value={endereco} placeholder="ex: Rua 3310, 31 - Centro - Balneário Camboriú - SC"
-            onChange={(e) => setEndereco(e.target.value)} />
-        </Field>
-        <Field>
-          <Label htmlFor="cad-obra-cod">Centro de custo</Label>
-          <Input id="cad-obra-cod" className="mono" value={codigo} placeholder="2510" inputMode="numeric" maxLength={4}
-            onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 4))} />
-          {cod && !codigoOk && <span className="text-xs text-danger">são 4 dígitos</span>}
-          {repetido && <span className="text-xs text-danger">já existe uma obra {cod}</span>}
-        </Field>
-        <Choice label="Squad" value={squad} onChange={setSquad}
-          opcoes={SQUADS.map((x) => ({ value: x.nome, label: x.nome }))} />
-        {/* E-mail, e nao nome: e' a identidade que o login da', e e' o
-            unico jeito de "minhas obras" saber quais sao as minhas. */}
-        <Field className="md:col-span-2">
-          <Label htmlFor="cad-obra-gc">GC responsável</Label>
-          <EscolhaPessoa id="cad-obra-gc" valor={gc} onChange={setGc} vazio="— definir depois —" rotulo="GC responsável"
-            pessoas={(equipe || []).filter((p) => p.ativo)} />
-        </Field>
-        {erro && <Alert tone="danger" className="md:col-span-2"><AlertDescription>{erro}</AlertDescription></Alert>}
-        <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-          <Button size="sm" disabled={!pode} onClick={criar}>
-            {salvando ? "Criando…" : "Criar e abrir"}
-          </Button>
-          <span className="text-xs text-text-mute">
-            Ela nasce ativa e vazia — cliente e valor vendido entram quando os documentos subirem.
-          </span>
-        </div>
-      </CardContent>
-    </Card>
+    <Dialog open={aberto} onOpenChange={(v) => { if (!v) fechar(); }}>
+      <DialogContent>
+        <form onSubmit={criar} noValidate className="contents">
+          <DialogHeader>
+            <DialogTitle>Nova obra</DialogTitle>
+            <DialogDescription>
+              Para obra que não veio do Monday. Ela nasce ativa e vazia: cliente e valor vendido entram quando os documentos subirem.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="grid gap-4">
+            {semBanco && (
+              <Alert tone="warning"><AlertDescription>Banco de dados não configurado neste ambiente: a obra não será gravada.</AlertDescription></Alert>
+            )}
+            {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
+            <Field>
+              <Label htmlFor="nova-obra-nome" required>Nome da obra</Label>
+              <Input id="nova-obra-nome" autoFocus value={nome} placeholder="ex: Ed. Meraki, 602" aria-invalid={!!erroNome}
+                onChange={(e) => setNome(e.target.value)} />
+              {erroNome && <FieldHint state="error">{erroNome}</FieldHint>}
+            </Field>
+            <Field>
+              <Label htmlFor="nova-obra-cod" required>Centro de custo</Label>
+              <Input id="nova-obra-cod" className="mono" value={codigo} placeholder="2510" inputMode="numeric" maxLength={4} aria-invalid={!!erroCodigo}
+                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+              {erroCodigo
+                ? <FieldHint state="error">{erroCodigo}</FieldHint>
+                : <FieldHint>4 dígitos. Vira o número da obra e o prefixo dos aditivos.</FieldHint>}
+            </Field>
+            <Field>
+              <Label htmlFor="nova-obra-end">Endereço</Label>
+              <Input id="nova-obra-end" value={endereco} placeholder="ex: Rua 3310, 31 - Centro - Balneário Camboriú - SC"
+                onChange={(e) => setEndereco(e.target.value)} />
+            </Field>
+            <Choice label="Squad" value={squad} onChange={setSquad}
+              opcoes={SQUADS.map((x) => ({ value: x.nome, label: x.nome }))} />
+            {/* E-mail, e nao nome: e' a identidade que o login da', e e' o
+                unico jeito de "minhas obras" saber quais sao as minhas. */}
+            <Field>
+              <Label htmlFor="nova-obra-gc">GC responsável</Label>
+              <EscolhaPessoa id="nova-obra-gc" valor={gc} onChange={setGc} vazio="— definir depois —" rotulo="GC responsável"
+                pessoas={(equipe || []).filter((p) => p.ativo)} />
+            </Field>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={fechar} disabled={salvando}>Cancelar</Button>
+            <Button type="submit" disabled={salvando || semBanco}>
+              {salvando ? "Criando…" : <><Plus size={16} aria-hidden="true" /> Criar obra</>}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, codigosUsados, equipe, usuario }) {
+function NovasObrasView({ obras, onStart, onNovaObra, salvando, semBanco }) {
   const [search, setSearch] = useState("");
-  const [cadAberto, setCadAberto] = useState(false);
   const q = search.trim().toLowerCase();
   const filtradas = obras.filter((o) => !q || `${o.nome} ${o.codigo} ${o.squad}`.toLowerCase().includes(q));
 
@@ -20711,12 +20756,12 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
   const nomes = Object.keys(grupos).sort();
 
   return (
-    <PageShell crumb="Do Monday" title="Novas obras"
+    <PageShell crumb="Obras" title="Vindas do Monday"
       description={`Obras que ainda não foram iniciadas aqui · ${obras.length}`}
       contentClassName="flex flex-col gap-6"
-      actions={!cadAberto ? (
-        <Button variant="outline" onClick={() => setCadAberto(true)}>
-          <Plus size={16} aria-hidden="true" /> Cadastrar obra manualmente
+      actions={onNovaObra ? (
+        <Button onClick={onNovaObra}>
+          <Plus size={16} aria-hidden="true" /> Nova obra
         </Button>
       ) : undefined}
       toolbar={obras.length > 0 ? (
@@ -20734,12 +20779,12 @@ function NovasObrasView({ obras, onStart, onCriarManual, salvando, semBanco, cod
         </Alert>
       )}
 
-      <CadastroManualObra aberto={cadAberto} onFechar={() => setCadAberto(false)} onCriar={onCriarManual} salvando={salvando === "manual"} jaExistem={codigosUsados}
-        equipe={equipe} usuario={usuario} />
-
       {obras.length === 0 && (
-        <EmptyState icon={<Sparkle size={24} />} title="Nenhuma obra nova"
-          description="Todas as obras do Monday já foram iniciadas ou concluídas aqui." />
+        <EmptyState icon={<Sparkle size={24} />} title="Nenhuma obra nova do Monday"
+          description={onNovaObra
+            ? "Todas já foram iniciadas. Obra que não está no Monday se cadastra à mão."
+            : "Todas as obras do Monday já foram iniciadas ou concluídas aqui."}
+          action={onNovaObra ? <Button onClick={onNovaObra}><Plus size={16} aria-hidden="true" /> Nova obra</Button> : undefined} />
       )}
 
       {obras.length > 0 && filtradas.length === 0 && (
@@ -22187,6 +22232,10 @@ export default function App() {
   /* O perfil manda na edicao antes da trava: o Mehoo consulta, e nem
      chega a disputar a obra com ninguem. */
   const perfilPermiteEditar = migracaoPendente || perfilEdita(eu);
+  // Nova obra: uma janela so', aberta do menu, do Inicio e de Novas obras.
+  // Quem cria e' quem edita — a rota POST /api/obras exige o mesmo.
+  const [novaObraAberta, setNovaObraAberta] = useState(false);
+  const abrirNovaObra = perfilPermiteEditar ? () => setNovaObraAberta(true) : null;
 
   async function habilitarEdicao() {
     if (!perfilPermiteEditar) return;
@@ -25009,6 +25058,10 @@ export default function App() {
         }
       `}</style>
 
+      <NovaObraDialog aberto={novaObraAberta} onFechar={() => setNovaObraAberta(false)} onCriar={criarObraManual}
+        salvando={salvandoObra === "manual"} semBanco={!supabaseConfigurado}
+        jaExistem={new Set(obras.map((o) => String(o.codigo)))} usuario={usuario} equipe={pessoas} />
+
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
       <div className="flex">
@@ -25017,7 +25070,7 @@ export default function App() {
           modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
           listaAberta={listaObrasAberta} onListaAberta={setListaObrasAberta}
-          novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas}
+          novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas} onNovaObra={abrirNovaObra}
           onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -25079,7 +25132,7 @@ export default function App() {
             erro={painelErro || erroBanco || avisoMonday} onRetry={() => { if (erroBanco || avisoMonday) window.location.reload(); else setPainelRevisao((value) => value + 1); }}
             usuario={usuario} equipe={pessoas} nPendentes={nPendentes}
             dadosLocalizacao={dadosLocalizacao} localizacaoCarregando={siengeCarregando}
-            mapaDeObras={mapaDeObras}
+            mapaDeObras={mapaDeObras} onNovaObra={abrirNovaObra}
             onToggleLocalizacao={alternarStatusLocalizacao}
             onAbrirObra={(id, destino = null) => { setSelectedId(id); setModulo("comparativo"); setGrupo(destino ? grupoDaEtapa(destino) : "dashboard"); setTab(destino); }}
             onModulo={setModulo} />
@@ -25087,9 +25140,8 @@ export default function App() {
           ) : modulo === "novas" ? (
           <>
           {/* Título, contagem e busca ficam no PageShell da própria tela. */}
-          <NovasObrasView obras={obrasNovas} onStart={darStart} onCriarManual={criarObraManual}
-            salvando={salvandoObra} semBanco={!supabaseConfigurado}
-            codigosUsados={new Set(obras.map((o) => String(o.codigo)))} usuario={usuario} equipe={pessoas} />
+          <NovasObrasView obras={obrasNovas} onStart={darStart} onNovaObra={abrirNovaObra}
+            salvando={salvandoObra} semBanco={!supabaseConfigurado} />
           </>
           ) : modulo === "arquivo" ? (
           <>
@@ -25172,7 +25224,7 @@ export default function App() {
                 : obrasAtivas.length > 0
                 ? <>Escolha uma obra na <Button variant="ghost" size="sm" onClick={() => setListaObrasAberta(true)}>lista de obras</Button>.</>
                 : obrasNovas.length > 0
-                ? <>Nenhuma obra iniciada ainda. Comece em <Button variant="ghost" size="sm" onClick={() => setModulo("novas")}>Novas obras</Button>.</>
+                ? <>Nenhuma obra iniciada ainda. Comece em <Button variant="ghost" size="sm" onClick={() => setModulo("novas")}>Vindas do Monday</Button>{abrirNovaObra && <> ou em <Button variant="ghost" size="sm" onClick={abrirNovaObra}>Nova obra</Button></>}.</>
                 : "Nenhuma obra encontrada."}
             </div>
           ) : (
