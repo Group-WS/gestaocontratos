@@ -21165,19 +21165,9 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
    depois da descrição. Fora das abas (cabeçalho da obra, módulos) não há
    contexto, e o PageShell é o do DS, sem nada a mais. */
 const EtapaDaAbaContexto = createContext(null);
-function PageShell({ description, actions, ...props }) {
+function PageShell({ description, ...props }) {
   const etapa = useContext(EtapaDaAbaContexto);
-  if (!etapa) return <PageShellDoDS {...props} description={description} actions={actions} />;
-  return (
-    <PageShellDoDS {...props}
-      description={<>{description}{etapa.estado}</>}
-      /* A ação da etapa fecha a fila, na ponta direita: ela é o último passo.
-         Alinhadas pelo TOPO: as ações da tela costumam ser uma coluna (o
-         botão e, embaixo, o aviso de modo leitura ou a última importação);
-         centralizado, o Concluir ficava no meio dessa coluna, fora da
-         linha dos outros botões. */
-      actions={<div className="flex flex-wrap items-start justify-end gap-2">{actions}{etapa.acao}</div>} />
-  );
+  return <PageShellDoDS {...props} description={etapa ? <>{description}{etapa}</> : description} />;
 }
 
 /* Etapas que se concluem por um ATO PRÓPRIO da tela, e não pelo botão
@@ -21190,11 +21180,12 @@ const ATO_QUE_CONCLUI = {
 /* Etapas que acompanham a obra inteira e não se concluem. */
 const ETAPAS_CONTINUAS = new Set(["diario"]);
 
-function EtapaDaAba({ parte = "estado", etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [] }) {
+function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [] }) {
   /* Mesmo estado em TODAS as abas da esteira (pedido de 23/09/2026: "para
-     ficarem uniformes"), em duas partes: o ESTADO vai abaixo do título da
-     tela e a AÇÃO (Concluir/Reabrir) vai com as outras ações, à direita
-     ("botões de ação sempre ao lado direito", 23/09/2026). */
+     ficarem uniformes"), abaixo do título da tela — e as ações da ETAPA
+     (Concluir, Reabrir) na mesma linha dele, pequenas. O canto direito do
+     cabeçalho fica só com as ações da tela (importar, nova solicitação):
+     "todos os botões referentes à etapa na segunda linha" (23/09/2026). */
   const temBotao = ETAPAS_COM_CONCLUSAO.has(etapaId);
   const ato = ATO_QUE_CONCLUI[etapaId] || null;
   const feita = etapaConcluida(etapaId, obra);
@@ -21202,27 +21193,6 @@ function EtapaDaAba({ parte = "estado", etapaId, obra, podeEditar, onConcluir, o
   const congelado = obra.comprasLiberadas || !podeEditar;
   // O que ainda impede concluir (hoje só a Conf. Executivo tem trava).
   const bloqueio = useMemo(() => (feita ? null : bloqueioDaEtapa(etapaId, obra)), [feita, etapaId, obra]);
-
-  if (parte === "acao") {
-    if (!temBotao || ETAPAS_CONTINUAS.has(etapaId)) return null;
-    /* Concluída, a ação (Reabrir) mora junto do estado, e não aqui: é
-       secundária e só faz sentido lida ao lado de "Etapa concluída". */
-    if (feita) return null;
-    /* Contorno, e não primário: o cabeçalho da tela já tem a sua ação
-       primária (importar, nova solicitação), e só cabe uma (TELA-10). */
-    return (
-      <Button variant="outline" disabled={congelado || !!bloqueio} onClick={async () => {
-        if (await confirmar({
-          titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
-          mensagem: "Fica registrado no seu nome, com a data de hoje, e a próxima etapa é liberada. Dá para reabrir depois.",
-          confirmar: "Concluir etapa", perigo: false,
-        })) onConcluir(etapaId);
-      }}
-        title={bloqueio ? "Aprove as pendências para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
-        <Play size={16} aria-hidden="true" /> Concluir etapa
-      </Button>
-    );
-  }
 
   if (ETAPAS_CONTINUAS.has(etapaId)) {
     return (
@@ -21259,6 +21229,19 @@ function EtapaDaAba({ parte = "estado", etapaId, obra, podeEditar, onConcluir, o
             <Badge tone="neutral">Etapa pendente</Badge>
             {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
             {!temBotao && ato && <span className="text-xs text-text-mute">{ato}</span>}
+            {temBotao && (
+              <Button variant="outline" size="sm" disabled={congelado || !!bloqueio} onClick={async () => {
+                if (await confirmar({
+                  titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
+                  mensagem: "Fica registrado no seu nome, com a data e a hora de agora, e a próxima etapa é liberada. Dá para reabrir depois.",
+                  confirmar: "Concluir etapa", perigo: false,
+                })) onConcluir(etapaId);
+              }}
+                title={bloqueio ? "Aprove as pendências para concluir"
+                  : congelado ? "Habilite a edição da obra para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
+                <Play size={14} aria-hidden="true" /> Concluir etapa
+              </Button>
+            )}
           </>
         )}
       </span>
@@ -25718,12 +25701,10 @@ export default function App() {
             equipe={pessoas} />
           </>}
 
-          <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? {
-            estado: <EtapaDaAba parte="estado" etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
-              onReabrirEtapa={reabrirEtapa} />,
-            acao: <EtapaDaAba parte="acao" etapaId={tab} obra={obra} podeEditar={edicao.minha}
-              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
-          } : null}>
+          <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? (
+            <EtapaDaAba etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
+              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
+          ) : null}>
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
