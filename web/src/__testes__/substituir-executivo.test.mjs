@@ -113,19 +113,24 @@ conf("... dizendo quantas aprovações estão em jogo",
 conf("o Executivo recebe quem é admin", src.includes("podeEditar={edicao.minha} souAdmin={souAdmin} />"), true);
 
 /* ============================================================
-   3. O AVISO — e ele vem ANTES de ler o arquivo
+   3. O AVISO — uma pergunta só, e ANTES de aplicar o arquivo
    ============================================================ */
-/* Se o aviso viesse depois do `onFile`, a planilha já teria entrado quando a
-   pergunta aparecesse. */
-const i0 = src.indexOf("function ImportButton({");
-const escolher = src.slice(i0, src.indexOf("return (", i0));
+/* Até 23/09/2026 eram duas perguntas seguidas (o que se perde, antes de
+   ler; o resumo das verbas, depois). Juntas numa só: as duas acontecem
+   antes de APLICAR — se viessem depois, a planilha já teria entrado. */
+const i0 = src.indexOf("function ExecutivoView(");
+const exec = src.slice(i0, src.indexOf("\nfunction ", i0 + 10));
+const importar = exec.slice(exec.indexOf("async function aoImportar(file)"));
 conf("o aviso é perguntado antes de aplicar o arquivo",
-  escolher.indexOf("avisoAntesDeTrocar") < escolher.indexOf("await onFile(file)"), true);
+  importar.indexOf("await confirmarImportacao(") > -1
+  && importar.indexOf("await confirmarImportacao(") < importar.indexOf("onImportPlanilhaExecutivo(itens)"), true);
+conf("... numa pergunta só (o aviso de antes da leitura saiu)", src.includes("avisoAntesDeTrocar"), false);
 conf("... e 'cancelar' não deixa nada acontecer",
-  escolher.includes("if (aviso && !(await confirmar({ titulo: \"Trocar o documento?\", mensagem: aviso, confirmar: \"Trocar mesmo assim\" }))) return;"), true);
-conf("o aviso só aparece quando há planilha E há o que perder",
-  src.includes("avisoAntesDeTrocar={temExecutivo && trocaCustaCaro ?"), true);
-conf("o aviso diz que a lista é TROCADA", src.includes("A lista de itens é TROCADA pela do arquivo novo"), true);
+  src.includes("if (!ok) {\n      const desistiu = new Error(\"Importação cancelada.\");"), true);
+conf("o que se perde só entra quando há planilha E há o que perder",
+  exec.includes("perda: temExecutivo && trocaCustaCaro ? frasesDoQueSePerde(perdas) : null"), true);
+conf("com perda, a pergunta é de perigo", src.includes("confirmar: temPerda ? \"Trocar mesmo assim\" : \"Importar\","), true);
+conf("o aviso diz que se apaga nas verbas trocadas", src.includes("Nas verbas trocadas, isso é apagado."), true);
 conf("... que o que vem novo entra zerado", src.includes("O que o arquivo novo trouxer entra zerado"), true);
 conf("... e que dá para voltar atrás", src.includes("O histórico de versões guarda o estado de agora"), true);
 

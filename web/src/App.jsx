@@ -5073,15 +5073,38 @@ function extrairItensDaPlanilha(linhas) {
    em diante, a pessoa lê o que será trocado e o que fica, e decide.
    Cancelar lança um erro marcado `cancelado`, que o ImportButton engole —
    desistir não é falha de leitura. */
-async function confirmarImportacao({ arquivo, categorias, itens, documento, numsExtras = [] }) {
+/* O QUE A TROCA VAI CUSTAR, NA MESMA PERGUNTA (23/09/2026).
+
+   Substituir a Planilha Executivo leva, nas verbas trocadas, o que mora nos
+   itens: aprovação pra compra, solicitação ao Sienge, canal, alocação,
+   trocas de produto e remoções com justificativa. Medido em 19/09/2026: a
+   2469 tinha 230 aprovações, 132 solicitações e 5 compras, e nada impedia
+   a troca — por isso a permissão (só admin) e este aviso andam juntos.
+
+   Até 23/09 eram DUAS perguntas seguidas: essa, antes de ler o arquivo, e
+   o resumo das verbas, depois. Agora é uma: as duas acontecem antes de
+   APLICAR, e a pessoa lê num lugar só o que muda e o que se perde.
+   `perda`: as frases de frasesDoQueSePerde, quando há o que perder. */
+async function confirmarImportacao({ arquivo, categorias, itens, documento, numsExtras = [], perda = null }) {
   const resumo = resumoDaImportacao(categorias, itens, DOCUMENTOS[documento].campo, numsExtras);
-  if (resumo.haviaConteudo) {
+  const temPerda = Array.isArray(perda) && perda.length > 0;
+  if (resumo.haviaConteudo || temPerda) {
+    const blocos = linhasDoAviso(resumo).map((linha) => [linha]);
+    if (temPerda) {
+      blocos.push(["Hoje esta obra tem:", ...perda.map((l) => `· ${l}`), "Nas verbas trocadas, isso é apagado."]);
+      blocos.push(["O que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra e sem a ligação com o Sienge."]);
+      blocos.push(["O histórico de versões guarda o estado de agora, então dá para voltar atrás."]);
+    }
     const ok = await confirmar({
-      titulo: `Importar “${arquivo.name}”?`,
-      mensagem: linhasDoAviso(resumo).map((linha, i) => (
-        <React.Fragment key={i}>{i > 0 && <><br /><br /></>}{linha}</React.Fragment>
+      titulo: temPerda ? "Substituir a Planilha Executivo?" : `Importar “${arquivo.name}”?`,
+      mensagem: blocos.map((linhas, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <><br /><br /></>}
+          {linhas.map((l, j) => <React.Fragment key={j}>{j > 0 && <br />}{l}</React.Fragment>)}
+        </React.Fragment>
       )),
-      confirmar: "Importar", perigo: false,
+      confirmar: temPerda ? "Trocar mesmo assim" : "Importar",
+      perigo: temPerda,
     });
     if (!ok) {
       const desistiu = new Error("Importação cancelada.");
@@ -5111,7 +5134,7 @@ function UltimaImportacao({ ultima }) {
 }
 
 function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada,
-                       motivoCongelado, avisoAntesDeTrocar, ultima = null }) {
+                       motivoCongelado, ultima = null }) {
   const inputRef = useRef(null);
   const [erro, setErro] = useState(null);
   const [ok, setOk] = useState(null);
@@ -5121,23 +5144,6 @@ function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temCon
     const file = e.target.files && e.target.files[0];
     e.target.value = ""; // permite subir o MESMO arquivo de novo
     if (!file) return;
-
-    /* O QUE ESTA TROCA VAI CUSTAR, ANTES DE ELA ACONTECER.
-     *
-     * Substituir a Planilha Executivo nao acrescenta: ela TROCA a lista
-     * `itens` inteira pelo que veio do arquivo — e e' nessa lista que moram
-     * a aprovacao pra compra, o concluido executivo, o comprado, a
-     * solicitacao ao Sienge, o canal, a alocacao MAT/MO, as trocas de
-     * produto e as remocoes com justificativa. Nada disso e' comparado:
-     * e' trocado.
-     *
-     * Medido em 19/09/2026: a 2469 tinha 230 aprovacoes, 132 solicitacoes
-     * ao Sienge e 5 compras, e nada impedia a troca. So' trancar pra
-     * administrador mudaria QUEM aperta o botao; o estrago seguiria igual
-     * e silencioso. Por isso a permissao e o aviso andam juntos — pedido
-     * dela em 19/09/2026. */
-    const aviso = avisoAntesDeTrocar ? avisoAntesDeTrocar() : null;
-    if (aviso && !(await confirmar({ titulo: "Trocar o documento?", mensagem: aviso, confirmar: "Trocar mesmo assim" }))) return;
 
     setErro(null); setOk(null); setCarregando(true);
     try {
@@ -9405,7 +9411,9 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     // pode não ser a certa pra esta importação.
     const { itens } = ehPDF ? await lerExecutivoPDF(file) : await lerPlanilhaExcel(file, { preferirAba: /execut/i });
     if (itens.length === 0) throw new Error("Não encontrei itens nesse arquivo. Me manda ele que eu calibro o leitor.");
-    const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "planilha_executivo" });
+    // O que se perde só entra na pergunta quando há planilha E há o que perder.
+    const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "planilha_executivo",
+      perda: temExecutivo && trocaCustaCaro ? frasesDoQueSePerde(perdas) : null });
     onImportPlanilhaExecutivo(itens);
     onRegistrarImportacao?.("planilha_executivo", file, resumo);
     return `“${file.name}” importado — ${itens.length} itens.`;
@@ -9454,17 +9462,6 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             motivoCongelado={trocaCustaCaro && !souAdmin && podeEditar && !obra.comprasLiberadas
               ? <>Esta obra já tem <b>{perdas.liberados} {perdas.liberados === 1 ? "item aprovado" : "itens aprovados"} para compra</b>. Trocar a planilha apagaria essas aprovações — só um <b>administrador</b> pode fazer isso.</>
               : null}
-            /* O aviso com os numeros: so' aparece quando ha' o que perder, e
-               lista apenas o que esta obra tem de verdade. */
-            avisoAntesDeTrocar={temExecutivo && trocaCustaCaro ? () => {
-              const linhas = frasesDoQueSePerde(perdas);
-              return "SUBSTITUIR A PLANILHA EXECUTIVO?\n\n"
-                + "A lista de itens é TROCADA pela do arquivo novo. Isto apaga, nesta obra:\n\n"
-                + linhas.map((l) => `  · ${l}`).join("\n")
-                + "\n\nO que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra"
-                + " e sem a ligação com o Sienge.\n\n"
-                + "O histórico de versões guarda o estado de agora, então dá para voltar atrás.";
-            } : null}
             dica={<>Suba a <b>Planilha Executivo</b> — de preferência o <b>Excel</b>. Do PDF só saem descrição, quantidade e valor total; fornecedor, ambiente, especificação e a separação material/mão de obra são colunas e não sobrevivem à conversão.</>}
             ultima={ultimaImportacao}
             onFile={aoImportar} />
