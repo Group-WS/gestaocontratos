@@ -31,7 +31,7 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
   PAPEIS_DA_OBRA, obraDaPessoa, equipeDaObra } from "./lib/pessoas";
 import { listarVersoes, restaurarVersao } from "./lib/versoesObra";
 import { listarComentarios, criarComentario, apagarComentario } from "./lib/comentarios";
-import { DOCUMENTOS, resumoDaImportacao, linhasDoAviso, listarImportacoes, registrarImportacao } from "./lib/importacoes.js";
+import { DOCUMENTOS, resumoDaImportacao, linhasDoAviso, ROTULO_SUBSTITUIR_TUDO, listarImportacoes, registrarImportacao } from "./lib/importacoes.js";
 import { listarEventosDeArquivo, registrarEventoDeArquivo } from "./lib/arquivoEventos.js";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
@@ -5160,30 +5160,48 @@ async function confirmarImportacao({ arquivo, categorias, itens, documento, nums
   const resumo = resumoDaImportacao(categorias, itens, DOCUMENTOS[documento].campo, numsExtras);
   const temPerda = Array.isArray(perda) && perda.length > 0;
   if (resumo.haviaConteudo || temPerda) {
-    const blocos = linhasDoAviso(resumo).map((linha) => [linha]);
+    const blocosExtras = [];
     if (temPerda) {
-      blocos.push(["Hoje esta obra tem:", ...perda.map((l) => `· ${l}`), "Nas verbas trocadas, isso é apagado."]);
-      blocos.push(["O que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra e sem a ligação com o Sienge."]);
-      blocos.push(["O histórico de versões guarda o estado de agora, então dá para voltar atrás."]);
+      blocosExtras.push(["Hoje esta obra tem:", ...perda.map((l) => `· ${l}`), "Nas verbas trocadas, isso é apagado."]);
+      blocosExtras.push(["O que o arquivo novo trouxer entra zerado: sem aprovação, sem canal de compra e sem a ligação com o Sienge."]);
+      blocosExtras.push(["O histórico de versões guarda o estado de agora, então dá para voltar atrás."]);
     }
-    const ok = await confirmar({
-      titulo: temPerda ? "Substituir a Planilha Executivo?" : `Importar “${arquivo.name}”?`,
-      mensagem: blocos.map((linhas, i) => (
+    const texto = (substituirTudo) => {
+      const blocos = [...linhasDoAviso(resumo, { substituirTudo }).map((linha) => [linha]), ...blocosExtras];
+      return blocos.map((linhas, i) => (
         <React.Fragment key={i}>
           {i > 0 && <><br /><br /></>}
           {linhas.map((l, j) => <React.Fragment key={j}>{j > 0 && <br />}{l}</React.Fragment>)}
         </React.Fragment>
-      )),
-      confirmar: temPerda ? "Trocar mesmo assim" : "Importar",
-      perigo: temPerda,
+      ));
+    };
+    /* A ESCOLHA DE SUBSTITUIR TUDO MORA NA PRÓPRIA PERGUNTA (23/09/2026).
+
+       O padrão continua sendo "manter e avisar" (RN-029): o arquivo troca
+       só as verbas que trouxe. Mas quem tem o documento inteiro na mão
+       precisava de um jeito de dizer isso — antes, a única saída era
+       limpar o documento e importar de novo, dois passos e um estado
+       vazio no meio. A opção nasce desmarcada e, marcada, muda o texto e
+       o botão: apagar o que a importação anterior deixou é destrutivo e
+       precisa estar escrito antes do clique. */
+    const resposta = await confirmar({
+      titulo: (marcada) => {
+        if (marcada) return `Substituir todo o ${DOCUMENTOS[documento].rotulo}?`;
+        return temPerda ? "Substituir a Planilha Executivo?" : `Importar “${arquivo.name}”?`;
+      },
+      mensagem: (marcada) => texto(marcada),
+      confirmar: (marcada) => (marcada ? "Substituir tudo" : (temPerda ? "Trocar mesmo assim" : "Importar")),
+      perigo: (marcada) => marcada || temPerda,
+      opcao: { rotulo: ROTULO_SUBSTITUIR_TUDO },
     });
-    if (!ok) {
+    if (!resposta) {
       const desistiu = new Error("Importação cancelada.");
       desistiu.cancelado = true;
       throw desistiu;
     }
+    return { ...resumo, substituirTudo: Boolean(resposta.marcada) };
   }
-  return resumo;
+  return { ...resumo, substituirTudo: false };
 }
 
 function ImportButton({ label, accept, dica, onFile, congelado, onLimpar, temConteudo, oQueLimpa, onReabrir, compraLiberada,
@@ -5372,7 +5390,15 @@ const FILTROS_VENDA = [
    então nunca chegava aqui — o total da planilha vinha menor que o do
    arquivo, calado. A regra da empresa é o contrário: o que não está no
    padrão é acrescido no final. */
-function aplicarItensNasVerbas(categorias, itens, campo) {
+/* `substituirTudo` (RN-029, 23/09/2026): a pessoa marcou na pergunta que o
+   arquivo é o documento inteiro. Aí a verba que NÃO veio no arquivo perde o
+   que tinha neste campo, em vez de ficar como estava. Só este campo: a mesma
+   verba pode ter itens de outro documento, e eles não são da conta desta
+   importação. */
+const CAMPOS_DE_ITENS = ["itens", "itensContrato", "itensPlanilha", "itensPlanilhaExecutivo"];
+const semNenhumItem = (c) => CAMPOS_DE_ITENS.every((k) => !(c[k] || []).length);
+
+function aplicarItensNasVerbas(categorias, itens, campo, { substituirTudo = false } = {}) {
   const padrao = {};
   const fora = new Map();
   (itens || []).forEach((it) => {
@@ -5387,7 +5413,11 @@ function aplicarItensNasVerbas(categorias, itens, campo) {
 
   const base = categorias
     .filter((c) => !c.foraDaEapPadrao)
-    .map((c) => (padrao[c.num] ? { ...c, [campo]: padrao[c.num] } : c));
+    .map((c) => {
+      if (padrao[c.num]) return { ...c, [campo]: padrao[c.num] };
+      if (substituirTudo && (c[campo] || []).length) return { ...c, [campo]: [] };
+      return c;
+    });
 
   // grupos fora do padrão que já existiam de outra importação continuam
   const jaFora = categorias.filter((c) => c.foraDaEapPadrao);
@@ -5407,7 +5437,11 @@ function aplicarItensNasVerbas(categorias, itens, campo) {
   jaFora.forEach((c) => {
     if (fora.has(c.nome)) return;
     if (verbaPorNome(c.nome)) return;
-    extras.push(c);
+    if (!substituirTudo) { extras.push(c); return; }
+    // Substituindo tudo: o grupo fora do padrão perde os itens deste
+    // documento e só continua existindo se ainda tiver os de outro.
+    const limpo = { ...c, [campo]: [] };
+    if (!semNenhumItem(limpo)) extras.push(limpo);
   });
 
   return [...base, ...extras];
@@ -5538,7 +5572,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
     // O contrato toca tambem as verbas em que so' leu valor, sem item.
     const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens,
       documento: "vendido_contrato", numsExtras: Object.keys(valores || {}) });
-    onImportContrato(valores, itens);
+    onImportContrato(valores, itens, { substituirTudo: resumo.substituirTudo });
     onRegistrarImportacao?.("vendido_contrato", file, resumo);
 
     // Presta contas da leitura. O que o leitor NÃO conseguiu ler precisa
@@ -5770,7 +5804,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
         : "Não encontrei colunas de Descrição + Marca/Custo nessa planilha. Me manda o arquivo que eu calibro o leitor pro seu layout.");
     }
     const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "vendido_planilha" });
-    onImportPlanilha(itens);
+    onImportPlanilha(itens, { substituirTudo: resumo.substituirTudo });
     onRegistrarImportacao?.("vendido_planilha", file, resumo);
     const temCusto = itens.some((it) => it.custo != null);
     return `“${file.name}” importado — ${itens.length} itens${temCusto ? " (com custo)" : ""}.`;
@@ -9478,7 +9512,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     // O que se perde só entra na pergunta quando há planilha E há o que perder.
     const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "planilha_executivo",
       perda: temExecutivo && trocaCustaCaro ? frasesDoQueSePerde(perdas) : null });
-    onImportPlanilhaExecutivo(itens);
+    onImportPlanilhaExecutivo(itens, { substituirTudo: resumo.substituirTudo });
     onRegistrarImportacao?.("planilha_executivo", file, resumo);
     return `“${file.name}” importado — ${itens.length} itens.`;
   }
@@ -22827,7 +22861,7 @@ export default function App() {
 
   // Vendido Contrato (PDF): atualiza o valor por verba + os itens
   // (descrição/ambiente/quantidade — sem valor, o contrato é fechado por verba).
-  function importVendidoContrato(valores, itens) {
+  function importVendidoContrato(valores, itens, { substituirTudo = false } = {}) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       const porVerba = {};
@@ -22847,6 +22881,13 @@ export default function App() {
         const patch = {};
         if (valores[c.num] != null) patch.vendido = valores[c.num];
         if (porVerba[c.num]) patch.itensContrato = porVerba[c.num];
+        /* Substituir tudo (RN-029): a verba que o arquivo não tocou — nem
+           com item, nem com valor — sai zerada, igual ao que "Limpar o
+           Vendido Contrato" faz, porque o arquivo passa a ser o documento. */
+        if (substituirTudo && valores[c.num] == null && !porVerba[c.num]) {
+          if ((c.itensContrato || []).length) patch.itensContrato = [];
+          if (c.vendido) patch.vendido = 0;
+        }
         return Object.keys(patch).length ? { ...c, ...patch } : c;
       });
       const valorVendido = categorias.reduce((a, c) => a + (c.vendido || 0), 0);
@@ -22919,10 +22960,10 @@ export default function App() {
     }));
   }
 
-  function importVendidoPlanilha(itens) {
+  function importVendidoPlanilha(itens, { substituirTudo = false } = {}) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
-      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilha");
+      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilha", { substituirTudo });
       return { ...o, categorias };
     }));
   }
@@ -23288,15 +23329,20 @@ export default function App() {
   // Planilha Executivo: mesma origem populando dois formatos — o
   // "simples" (itensPlanilhaExecutivo, pro depara e a própria tela) e o
   // "rico" (itens, que já alimenta Comparativo/Compras/Contratos).
-  function importPlanilhaExecutivo(itens) {
+  function importPlanilhaExecutivo(itens, { substituirTudo = false } = {}) {
     setObras((prev) => prev.map((o) => {
       if (o.id !== selectedId) return o;
       // Enriquece antes de distribuir: a comparação com o criativo depende
       // da verba de destino, que é a mesma em que o item vai cair.
       const porVerba = {};
       (itens || []).forEach((it) => { (porVerba[it.num] = porVerba[it.num] || []).push(it); });
-      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilhaExecutivo").map((c) => {
-        if (!porVerba[c.num]) return c;
+      const categorias = aplicarItensNasVerbas(o.categorias, itens, "itensPlanilhaExecutivo", { substituirTudo }).map((c) => {
+        if (!porVerba[c.num]) {
+          // Substituir tudo (RN-029): a Planilha Executivo alimenta os DOIS
+          // formatos, então a verba que não veio perde os dois — é o mesmo
+          // par que "Limpar o Executivo" apaga.
+          return substituirTudo && (c.itens || []).length ? { ...c, itens: [] } : c;
+        }
         // Guarda o item INTEIRO. Antes essa lista era montada campo a
         // campo, e ficou congelada no tempo: quando as colunas de
         // material e mão de obra passaram a existir, elas não entraram

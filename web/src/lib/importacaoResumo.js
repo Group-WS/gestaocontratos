@@ -89,8 +89,13 @@ const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 /**
  * O texto do aviso, em linhas (a tela junta com quebra). So' faz sentido
  * quando `resumo.haviaConteudo`: a primeira importacao nao tem o que avisar.
+ *
+ * `substituirTudo` (23/09/2026, RN-029): a pessoa marcou, na propria
+ * pergunta, que o arquivo passa a ser o documento INTEIRO — as verbas que
+ * nao vieram nele sao apagadas em vez de mantidas. O padrao continua
+ * sendo manter; o texto muda para dizer o que sera' apagado.
  */
-export function linhasDoAviso(resumo) {
+export function linhasDoAviso(resumo, { substituirTudo = false } = {}) {
   const { trocadas, mantidas, nItens, itensAntes } = resumo;
   const linhas = [
     `O arquivo traz ${plural(nItens, "item", "itens")}. Hoje a obra tem ${plural(itensAntes, "item", "itens")} deste documento.`,
@@ -100,15 +105,20 @@ export function linhasDoAviso(resumo) {
   }
   if (mantidas.length) {
     const nMantidos = mantidas.reduce((a, v) => a + v.itens, 0);
-    linhas.push(
-      `Ficam como estão ${plural(mantidas.length, "verba", "verbas")} que não vieram no arquivo ` +
-      `(${plural(nMantidos, "item", "itens")} da importação anterior): ${listaCurta(mantidas)}.`,
-    );
+    linhas.push(substituirTudo
+      ? `Serão apagadas ${plural(mantidas.length, "verba", "verbas")} que não vieram no arquivo ` +
+        `(${plural(nMantidos, "item", "itens")} da importação anterior): ${listaCurta(mantidas)}.`
+      : `Ficam como estão ${plural(mantidas.length, "verba", "verbas")} que não vieram no arquivo ` +
+        `(${plural(nMantidos, "item", "itens")} da importação anterior): ${listaCurta(mantidas)}.`);
   } else {
     linhas.push("Nenhuma verba fica com dado da importação anterior.");
   }
   return linhas;
 }
+
+/** O rotulo da opcao de trocar o documento inteiro, na propria pergunta. */
+export const ROTULO_SUBSTITUIR_TUDO =
+  "Apagar também as verbas que não vieram no arquivo (substituir o documento inteiro)";
 
 /** A extensao do arquivo, em minusculas ("xlsx", "pdf"). */
 export function formatoDoArquivo(nome) {
