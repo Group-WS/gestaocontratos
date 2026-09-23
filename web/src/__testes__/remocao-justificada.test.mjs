@@ -27,7 +27,8 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
 
 /* ---- 1. O botão abre o campo, não exclui ---- */
 conf("o botão de remover abre a justificativa",
-  src.includes("onClick={() => (it.excluido\n                                          ? onEditarItem(c.num, i, { excluido: false })\n                                          : setRemovendo(`${c.num}:${i}`))}"), true);
+  // Sem depender da indentação: o que importa é o que o clique faz.
+  src.replace(/\s+/g, " ").includes("onClick={() => (it.excluido ? onEditarItem(c.num, i, { excluido: false }) : setRemovendo(`${c.num}:${i}`))}"), true);
 conf("e a dica diz que vai pedir motivo",
   src.includes('rotulo={it.excluido ? "Trazer de volta" : "Remover do executivo (pede justificativa)"}'), true);
 conf("o campo abre embaixo da linha que vai sair", src.includes(`<TableRow className="bg-danger/10 hover:bg-danger/10">`), true);
