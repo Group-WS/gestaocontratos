@@ -21277,7 +21277,10 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
             {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
             {!temBotao && ato && <span className="text-xs text-text-mute">{ato}</span>}
             {temBotao && (
-              <Button variant="outline" size="sm" disabled={congelado || !!bloqueio} onClick={async () => {
+              /* Azul cheio (variante default) enquanto o DS não tem a
+                 variante verde: pedida em 23/09/2026 (Group-WS/groupws-design-system#1)
+                 (variant="success"). Quando chegar, troca aqui. */
+              <Button size="sm" disabled={congelado || !!bloqueio} onClick={async () => {
                 if (await confirmar({
                   titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
                   mensagem: "Fica registrado no seu nome, com a data e a hora de agora, e a próxima etapa é liberada. Dá para reabrir depois.",
