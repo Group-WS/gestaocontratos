@@ -223,7 +223,7 @@ test("versão desatualizada é recusada: nada é gravado por cima, e a tela avis
 
   // Ana escreve e a gravação sai sozinha.
   await campoDescricao(ana).fill("Vidro temperado, pedido da Ana");
-  await expect(barra(ana).filter({ hasText: /^salvo$/ })).toBeVisible();
+  await expect(barra(ana).filter({ hasText: /^Salvo às \d{2}:\d{2}$/ })).toBeVisible();
   expect(banco.linha.descricao).toBe("Vidro temperado, pedido da Ana");
   const versaoDaAna = banco.linha.versao;
 
@@ -249,7 +249,7 @@ test("versão desatualizada é recusada: nada é gravado por cima, e a tela avis
 
   // Daí em diante, o Bruno grava normalmente — a partir da versão da Ana.
   await campoDescricao(bruno).fill("Agora sim, o texto do Bruno");
-  await expect(barra(bruno).filter({ hasText: /^salvo$/ })).toBeVisible();
+  await expect(barra(bruno).filter({ hasText: /^Salvo às \d{2}:\d{2}$/ })).toBeVisible();
   expect(banco.linha.descricao).toBe("Agora sim, o texto do Bruno");
   expect(banco.linha.versao).toBe(versaoDaAna + 1);
 });
@@ -280,10 +280,10 @@ test("gravação que falha tenta de novo sozinha", { tag: "@gravacao" }, async (
 
   banco.falharProximas = 1;
   await campoDescricao(ana).fill("Escrito com o servidor fora");
-  await expect(barra(ana).filter({ hasText: /não salvo — nova tentativa em \d+ s/ })).toBeVisible();
+  await expect(barra(ana).filter({ hasText: /não salvo — nova tentativa em \d+ s/i })).toBeVisible();
   expect(banco.linha.descricao).toBe("Aditivo das duas sessões");
 
   // A nova tentativa sai sozinha e grava.
-  await expect(barra(ana).filter({ hasText: /^salvo$/ })).toBeVisible({ timeout: 15_000 });
+  await expect(barra(ana).filter({ hasText: /^Salvo às \d{2}:\d{2}$/ })).toBeVisible({ timeout: 15_000 });
   expect(banco.linha.descricao).toBe("Escrito com o servidor fora");
 });

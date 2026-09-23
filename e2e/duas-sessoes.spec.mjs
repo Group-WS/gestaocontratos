@@ -234,12 +234,12 @@ test("a trava vale entre as duas sessões: quem chega depois não edita", { tag:
   const bruno = await entrar(browser, BRUNO, banco);
 
   await ana.getByRole("button", { name: "Habilitar edição" }).click();
-  await expect(ana.getByText("Editando")).toBeVisible();
+  await expect(ana.getByText("Você está editando")).toBeVisible();
   await expect.poll(() => banco.linha.editando_por).toBe(ANA.email);
 
   await bruno.getByRole("button", { name: "Habilitar edição" }).click();
-  await expect(bruno.getByText("Em edição por outra pessoa")).toBeVisible();
-  await expect(bruno.getByText(`${ANA.email}`, { exact: true })).toBeVisible();
+  // A faixa da edição (23/09/2026) diz quem está com a obra num selo só.
+  await expect(bruno.getByText(`${ANA.nome} está editando`)).toBeVisible();
   // O campo de data continua fechado para quem não está com a obra.
   await expect(bruno.getByRole("button", { name: /dd\/mm\/aaaa/ })).toBeDisabled();
   expect(banco.linha.editando_por).toBe(ANA.email);
@@ -254,7 +254,7 @@ test("quem habilita a edição depois edita a obra como está no banco, e não a
   // Ana edita e sai.
   await ana.getByRole("button", { name: "Habilitar edição" }).click();
   await escolherEntrega(ana, 15);
-  await expect(barra(ana).filter({ hasText: /^salvo$/ })).toBeVisible();
+  await expect(barra(ana).filter({ hasText: /^Salvo às \d{2}:\d{2}$/ })).toBeVisible();
   const dataDaAna = `${mesAtual()}-15`;
   expect(banco.linha.data_entrega).toBe(dataDaAna);
   const versaoDaAna = banco.linha.versao;
@@ -266,12 +266,12 @@ test("quem habilita a edição depois edita a obra como está no banco, e não a
 
   // Bruno habilita: a obra vem do banco como está AGORA, com a data da Ana.
   await bruno.getByRole("button", { name: "Habilitar edição" }).click();
-  await expect(bruno.getByText("Editando")).toBeVisible();
+  await expect(bruno.getByText("Você está editando")).toBeVisible();
   await expect(bruno.getByRole("button", { name: naTela(dataDaAna) })).toBeVisible();
 
   // E a gravação do Bruno parte da versão da Ana — nada do que ela fez se perde.
   await escolherEntrega(bruno, 20);
-  await expect(barra(bruno).filter({ hasText: /^salvo$/ })).toBeVisible();
+  await expect(barra(bruno).filter({ hasText: /^Salvo às \d{2}:\d{2}$/ })).toBeVisible();
   const doBruno = banco.gravacoes.filter((g) => g.quem === BRUNO.email);
   expect(doBruno.every((g) => g.versao >= versaoDaAna)).toBe(true);
   expect(doBruno.every((g) => g.status === 200)).toBe(true);
@@ -282,7 +282,7 @@ test("versão desatualizada é recusada: nada é gravado por cima, e a tela avis
   const banco = novoBanco();
   const ana = await entrar(browser, ANA, banco);
   await ana.getByRole("button", { name: "Habilitar edição" }).click();
-  await expect(ana.getByText("Editando")).toBeVisible();
+  await expect(ana.getByText("Você está editando")).toBeVisible();
 
   // Enquanto isso, a obra muda por fora (uma restauração, o SQL Editor).
   const dataDeFora = `${mesAtual()}-10`;
@@ -312,11 +312,11 @@ test("gravação que falha tenta de novo sozinha, e fechar a aba antes pergunta"
   const banco = novoBanco();
   const ana = await entrar(browser, ANA, banco);
   await ana.getByRole("button", { name: "Habilitar edição" }).click();
-  await expect(ana.getByText("Editando")).toBeVisible();
+  await expect(ana.getByText("Você está editando")).toBeVisible();
 
   banco.falharProximas = 1;
   await escolherEntrega(ana, 12);
-  await expect(barra(ana).filter({ hasText: /não salvo — nova tentativa em \d+ s/ })).toBeVisible();
+  await expect(barra(ana).filter({ hasText: /não salvo — nova tentativa em \d+ s/i })).toBeVisible();
   expect(banco.linha.data_entrega).toBe(null);
 
   // Com trabalho por gravar, fechar a aba faz o navegador perguntar.
@@ -326,6 +326,6 @@ test("gravação que falha tenta de novo sozinha, e fechar a aba antes pergunta"
   await expect.poll(() => perguntou).toBe("beforeunload");
 
   // A pessoa ficou; a nova tentativa sai sozinha e grava.
-  await expect(barra(ana).filter({ hasText: /^salvo$/ })).toBeVisible({ timeout: 10_000 });
+  await expect(barra(ana).filter({ hasText: /^Salvo às \d{2}:\d{2}$/ })).toBeVisible({ timeout: 10_000 });
   expect(banco.linha.data_entrega).toBe(`${mesAtual()}-12`);
 });
