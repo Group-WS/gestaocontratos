@@ -11230,8 +11230,13 @@ function TabBar({ tab, onChange, obra, grupo, onGrupo }) {
   return (
     <div className="naoimprime w-full space-y-3">
       <Tabs value={grupo} onValueChange={onGrupo} activationMode="manual">
-        <div className="rolagem-discreta overflow-x-auto">
-          <TabsList variant="underline" className="w-max min-w-full" aria-label="Áreas da obra">
+        {/* A linha das abas vai de ponta a ponta do cabeçalho (23/09/2026):
+            ainda é a página principal, e terminar 24px antes das bordas a
+            fazia parecer um bloco à parte. A faixa avança o recuo da barra
+            (-mx-6) e a lista o devolve por dentro (px-6), para as abas
+            ficarem no lugar. */}
+        <div className="rolagem-discreta -mx-6 overflow-x-auto">
+          <TabsList variant="underline" className="w-max min-w-full px-6" aria-label="Áreas da obra">
             {GRUPOS_OBRA.map((g) => {
               const Icon = g.icon;
               const lista = ETAPAS_POR_GRUPO[g.id];
