@@ -25312,7 +25312,7 @@ export default function App() {
                 actions={(
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <BarraEtapa
-                      edicao={edicao} gravacao={gravacaoDaObra} carregando={carregandoDados}
+                      edicao={{ ...edicao, por: edicao.por && nomeNaEquipe(pessoas, edicao.por) }} gravacao={gravacaoDaObra} carregando={carregandoDados}
                       falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
                       onTentarCarregar={() => setCargaPedida((n) => n + 1)}
                       onTentarGravar={() => filaDaObra(obra.codigo).tentarAgora()}
@@ -25396,7 +25396,7 @@ export default function App() {
             <ComparativoView obra={obra} onCompraAditivo={atualizarCompraDeAditivo} expandedCats={expandedCats} toggleCat={toggleCat} updateItem={updateItem} itemFilter={itemFilter} setItemFilter={setItemFilter} tipoFilter={tipoFilter} setTipoFilter={setTipoFilter} onLiberar={liberarCompras} onReabrir={reabrirCompras} onCriarAvulsa={criarCompraAvulsa} onSepararMO={separarMaoDeObra} onJuntarMO={juntarMaoDeObra} onSepararGrupo={separarMOdoGrupo} onAlocar={definirAlocacao} onIrParaDashboard={() => { setGrupo("dashboard"); setTab(null); }} podeEditar={edicao.minha} />
           )}
           {tab === "compras" && <ComprasView obra={obra} onItemChange={updateItem} onCompraAditivo={atualizarCompraDeAditivo} usuario={usuario}
-            podeEditar={edicao.minha} onHabilitar={perfilPermiteEditar ? habilitarEdicao : undefined} editandoPor={edicao.por}
+            podeEditar={edicao.minha} onHabilitar={perfilPermiteEditar ? habilitarEdicao : undefined} editandoPor={edicao.por && nomeNaEquipe(pessoas, edicao.por)}
             onTrocar={trocarProduto} onDesfazerTroca={desfazerTroca} equipe={pessoas} souAdmin={souAdmin} />}
           {grupo === "arquivos" && (
             <ArquivosObraView obra={obra} usuario={usuario} podeEditar={edicao.minha} souAdmin={souAdmin}
