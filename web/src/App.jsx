@@ -9268,7 +9268,12 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
    */
   const perdas = useMemo(() => resumoDoQueSePerde(obra), [obra]);
   const trocaCustaCaro = perdas.liberados > 0;
-  const congelado = obra.comprasLiberadas || !podeEditar || (trocaCustaCaro && !souAdmin);
+  // A trava "so' admin" vale para TROCAR o Executivo inteiro (substituir a
+  // planilha, puxar o criativo de novo). Editar celula a celula continua
+  // como antes de 19/09: quem esta' com a edicao edita, e mexer num item
+  // liberado derruba a aprovacao dele (CAMPOS_QUE_DERRUBAM_APROVACAO).
+  const congelado = obra.comprasLiberadas || !podeEditar;
+  const trocaTravada = congelado || (trocaCustaCaro && !souAdmin);
   // Resolve o CMV uma vez: gravado quando existe, recalculado do depara
   // quando a obra foi liberada antes de o app aprender a salvar.
   const cmv = useMemo(() => cmvDaObra(obra), [obra]);
@@ -9372,7 +9377,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
         description="Descrição, quantidade e valores por item, conforme a planilha. Clique na verba pra expandir."
         contentClassName="flex flex-col gap-6"
         actions={(
-          <ImportButton congelado={congelado} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
+          <ImportButton congelado={trocaTravada} label={temExecutivo ? "Substituir Planilha Executivo" : "Importar Planilha Executivo"} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv"
             onLimpar={onLimparExecutivo} oQueLimpa="os itens da Planilha Executivo"
             onReabrir={onReabrir} compraLiberada={obra.comprasLiberadas}
             /* O motivo especifico ganha da mensagem generica: quem chega aqui
@@ -9414,7 +9419,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
           </div>
         )}>
 
-        {temBase && !congelado && (
+        {temBase && !trocaTravada && (
           <Alert tone="info">
             <AlertTitle>Planilha do criativo</AlertTitle>
             <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -99,7 +99,13 @@ conf("nada a perder: nenhuma linha",
 conf("a trava olha os aprovados, não a chave antiga",
   src.includes("const trocaCustaCaro = perdas.liberados > 0;"), true);
 conf("... e só o administrador passa",
-  src.includes("const congelado = obra.comprasLiberadas || !podeEditar || (trocaCustaCaro && !souAdmin);"), true);
+  src.includes("const trocaTravada = congelado || (trocaCustaCaro && !souAdmin);"), true);
+conf("... na troca da planilha",
+  src.includes('<ImportButton congelado={trocaTravada} label={temExecutivo ? "Substituir Planilha Executivo"'), true);
+// A trava de admin é só da troca: as células seguem editáveis para quem
+// está com a edição (pedido de 23/09 — "volta como era antes").
+conf("editar célula não exige admin",
+  src.includes("const congelado = obra.comprasLiberadas || !podeEditar;\n"), true);
 conf("a tela diz que é permissão, não modo leitura",
   src.includes("só um <b>administrador</b> pode fazer isso."), true);
 conf("... dizendo quantas aprovações estão em jogo",
