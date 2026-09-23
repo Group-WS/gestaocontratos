@@ -20949,17 +20949,7 @@ function ArquivoView({ obras, onReabrir, salvando }) {
    Minimalista de propósito: o estado é um ponto colorido e uma palavra;
    as ações são texto. O único botão cheio é o de avançar, porque é a
    única coisa aqui que empurra a obra pra frente. */
-function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar,
-                      etapaId, obra, onConcluir, onReabrirEtapa }) {
-  const mostraEtapa = !!etapaId && !!onConcluir;
-  const feita = mostraEtapa && etapaConcluida(etapaId, obra);
-  const { por: porQuem, em } = mostraEtapa ? quemConcluiu(etapaId, obra) : {};
-  const congelado = obra.comprasLiberadas || !edicao.minha;
-  // O que ainda impede concluir (hoje só a Conf. Executivo tem trava).
-  const bloqueio = useMemo(
-    () => (mostraEtapa && !feita ? bloqueioDaEtapa(etapaId, obra) : null),
-    [mostraEtapa, feita, etapaId, obra]
-  );
+function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar }) {
 
   let estado;
   if (carregando) {
@@ -21026,26 +21016,55 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
   return (
     <div className="naoimprime flex flex-wrap items-center justify-end gap-2">
       {estado}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {mostraEtapa && (feita ? (
+    </div>
+  );
+}
+
+/* A ETAPA DENTRO DA ABA, E NAO NO CABECALHO (23/09/2026).
+
+   "Etapa concluída" e "Concluir etapa" moravam no cabeçalho da obra, ao
+   lado do "Editando" e do "Finalizar edição". O cabeçalho é da OBRA; a
+   etapa é da ABA aberta — misturados, o selo parecia dizer que a obra
+   estava concluída. Agora a etapa abre o conteúdo da aba, logo abaixo das
+   abas, e o cabeçalho fica só com a edição da obra. */
+function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [] }) {
+  const feita = etapaConcluida(etapaId, obra);
+  const { por: porQuem, em } = quemConcluiu(etapaId, obra);
+  const congelado = obra.comprasLiberadas || !podeEditar;
+  // O que ainda impede concluir (hoje só a Conf. Executivo tem trava).
+  const bloqueio = useMemo(() => (feita ? null : bloqueioDaEtapa(etapaId, obra)), [feita, etapaId, obra]);
+
+  return (
+    <div className="naoimprime flex flex-wrap items-center justify-between gap-2 border-b border-line-1 pb-3" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
+      <span className="flex flex-wrap items-center gap-2">
+        {feita ? (
           <>
             <Badge tone="success"><CheckCircle2 size={12} aria-hidden="true" /> Etapa concluída</Badge>
             <span className="text-xs text-text-mute">
-              {porQuem && <>por {porQuem}</>}
+              {porQuem && <>por {nomeNaEquipe(equipe, porQuem)}</>}
               {em && <> · {new Date(em).toLocaleDateString("pt-BR")}</>}
             </span>
-            {!congelado && <Button variant="ghost" onClick={async () => {
+          </>
+        ) : (
+          <>
+            <Badge tone="neutral">Etapa pendente</Badge>
+            {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
+          </>
+        )}
+      </span>
+      <span className="flex flex-wrap items-center gap-2">
+        {feita ? (
+          !congelado && (
+            <Button variant="ghost" onClick={async () => {
               if (await confirmar({
                 titulo: `Reabrir a etapa "${nomeDaEtapa(etapaId)}"?`,
                 mensagem: "O registro de quem concluiu e quando é apagado e a etapa volta a pendente. Dá para concluir de novo depois.",
                 confirmar: "Reabrir etapa", perigo: false,
               })) onReabrirEtapa(etapaId);
-            }}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>}
-          </>
+            }}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>
+          )
         ) : (
-          <>
-            {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
-            <Button disabled={congelado || !!bloqueio} onClick={async () => {
+          <Button disabled={congelado || !!bloqueio} onClick={async () => {
               if (await confirmar({
                 titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
                 mensagem: "Fica registrado no seu nome, com a data de hoje, e a próxima etapa é liberada. Dá para reabrir depois.",
@@ -21054,10 +21073,9 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
             }}
               title={bloqueio ? "Aprove as pendências para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
               <Play size={16} aria-hidden="true" /> Concluir etapa
-            </Button>
-          </>
-        ))}
-      </div>
+          </Button>
+        )}
+      </span>
     </div>
   );
 }
@@ -25412,9 +25430,7 @@ export default function App() {
                       falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
                       onTentarCarregar={() => setCargaPedida((n) => n + 1)}
                       onTentarGravar={() => filaDaObra(obra.codigo).tentarAgora()}
-                      onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao}
-                      etapaId={ETAPAS_COM_CONCLUSAO.has(tab) ? tab : null} obra={obra}
-                      onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
+                      onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
                     {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
                       && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
                       <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
@@ -25464,6 +25480,10 @@ export default function App() {
             equipe={pessoas} />
           </>}
 
+          {ETAPAS_COM_CONCLUSAO.has(tab) && (
+            <EtapaDaAba etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
+              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
+          )}
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} ultimaImportacao={ultimaImportacao("vendido_contrato")} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} ultimaImportacao={ultimaImportacao("vendido_planilha")} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
