@@ -21101,8 +21101,12 @@ function PageShell({ description, actions, ...props }) {
   return (
     <PageShellDoDS {...props}
       description={<>{description}{etapa.estado}</>}
-      // A ação da etapa fecha a fila, na ponta direita: ela é o último passo.
-      actions={actions || etapa.acao ? <>{actions}{etapa.acao}</> : undefined} />
+      /* A ação da etapa fecha a fila, na ponta direita: ela é o último passo.
+         Alinhadas pelo TOPO: as ações da tela costumam ser uma coluna (o
+         botão e, embaixo, o aviso de modo leitura ou a última importação);
+         centralizado, o Concluir ficava no meio dessa coluna, fora da
+         linha dos outros botões. */
+      actions={<div className="flex flex-wrap items-start justify-end gap-2">{actions}{etapa.acao}</div>} />
   );
 }
 
