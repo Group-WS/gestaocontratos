@@ -5888,7 +5888,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             );
           })}
 
-          <div className="flex items-center justify-between border-t-2 border-line-3 px-4 py-3">
+          <div className="flex items-center justify-between border-t border-line-1 px-4 py-3">
             <span className="text-sm font-semibold text-text">Total da planilha</span>
             <span className="mono w-32 shrink-0 text-right text-sm font-semibold tabular-nums">{fmtBRL(totalPlanilha)}</span>
           </div>
@@ -9880,7 +9880,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             );
           })}
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t-2 border-line-3 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line-1 px-4 py-3">
             <span className="text-sm font-semibold text-text">Total da planilha executivo</span>
             <span className="flex flex-wrap items-baseline justify-end gap-4">
               <span className="mono text-xs tabular-nums text-text-mute">
@@ -25532,7 +25532,7 @@ export default function App() {
               setSelectedId(alvo.id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo");
             }} />
         </div>
-        <main className="main w-full min-w-0 flex-1">
+        <main className={cn("main w-full min-w-0 flex-1", emTelaCheia && "em-tela-cheia")}>
           {/* Enquanto nao se sabe quem entrou, nenhuma tela: sem isto a
               Mehoo via o Inicio piscar antes de cair no painel dela. */}
           {supabaseConfigurado && pessoasCarregando && !migracaoPendente ? (
@@ -25651,14 +25651,17 @@ export default function App() {
               Executivo — cada acao onde ela faz sentido. */}
           {emTelaCheia ? (
             /* A barra da tela cheia: onde se está e como sair. */
-            <div className="naoimprime flex items-center justify-between gap-2 border-b border-line-1 bg-surface-1 px-4 py-2">
-              <span className="min-w-0 truncate text-sm">
-                <span className="mono text-text-mute">{obra.codigo}</span>
-                <span className="text-text-mute"> · {obra.nome} · </span>
-                <b className="text-text">{nomeDaEtapa(tab)}</b>
+            /* Sem caixa, no fundo da página (23/09/2026): a faixa branca
+               solta parecia outro componente. A obra vem pequena, como o
+               breadcrumb; a tela, em destaque; o sair, do tamanho dos outros
+               botões. */
+            <div className="naoimprime flex items-center justify-between gap-4 pb-2">
+              <span className="flex min-w-0 flex-col">
+                <span className="label-mono truncate text-text-mute">{obra.codigo} · {obra.nome}</span>
+                <span className="truncate text-lg font-semibold text-text">{nomeDaEtapa(tab)}</span>
               </span>
-              <Button variant="outline" size="sm" onClick={() => setTelaCheia(false)}>
-                <Minimize2 size={14} aria-hidden="true" /> Sair da tela cheia <Kbd>Esc</Kbd>
+              <Button variant="outline" onClick={() => setTelaCheia(false)}>
+                <Minimize2 size={16} aria-hidden="true" /> Sair da tela cheia <Kbd>Esc</Kbd>
               </Button>
             </div>
           ) : (() => {

@@ -578,3 +578,20 @@ header div:has(> [cmdk-input]) {
   padding-block: 0.5rem;
   margin-block: -0.5rem;
 }
+
+/* TELA CHEIA COM MARGEM EXTERNA MÍNIMA (23/09/2026).
+
+   Em tela cheia o <main> perde o respiro de página (32px) e fica com 16px
+   em volta de tudo; o PageShell deixa de compensar esse respiro com margem
+   negativa, e o conteúdo dele deixa de recuar 24px dos lados. Assim a barra
+   da tela cheia, os filtros e a lista ocupam a mesma largura. */
+.main.em-tela-cheia {
+  padding: 1rem;
+}
+.main.em-tela-cheia > .modo-foco {
+  margin: 0;
+}
+.main.em-tela-cheia > .modo-foco > .conteudo-da-aba {
+  padding-inline: 0;
+  padding-bottom: 0;
+}
