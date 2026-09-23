@@ -1,5 +1,5 @@
 import DashboardPage from "./features/dashboard/DashboardPage.jsx";
-import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 
 /* O "ver como" (so' em npm run dev): ?verComo=mehoo no endereco. Lido
@@ -62,7 +62,7 @@ import {
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   TkwsHeader, Avatar as AvatarDS, AvatarFallback, AvatarImage, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
-  Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell, Skeleton,
+  Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell as PageShellDoDS, Skeleton,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard, RadioGroupItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
@@ -21085,15 +21085,53 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
    etapa é da ABA aberta — misturados, o selo parecia dizer que a obra
    estava concluída. Agora a etapa abre o conteúdo da aba, logo abaixo das
    abas, e o cabeçalho fica só com a edição da obra. */
+/* O ESTADO DA ETAPA, LOGO ABAIXO DO TÍTULO DA TELA DA ABA (23/09/2026).
+
+   Primeiro ele morou no cabeçalho da obra (parecia falar da obra), depois
+   numa faixa entre as abas e a tela. O pedido final: embaixo do título da
+   tela, onde a pessoa lê o que está vendo. As telas das abas somam uns
+   onze PageShell; em vez de repetir a faixa em cada um, o App envolve a
+   área das abas neste contexto e o PageShell daqui acrescenta o estado
+   depois da descrição. Fora das abas (cabeçalho da obra, módulos) não há
+   contexto, e o PageShell é o do DS, sem nada a mais. */
+const EtapaDaAbaContexto = createContext(null);
+function PageShell({ description, ...props }) {
+  const etapa = useContext(EtapaDaAbaContexto);
+  return <PageShellDoDS {...props} description={etapa ? <>{description}{etapa}</> : description} />;
+}
+
+/* Etapas que se concluem por um ATO PRÓPRIO da tela, e não pelo botão
+   genérico (ver ETAPAS_COM_CONCLUSAO): a faixa mostra o estado e diz qual
+   é o ato, sem oferecer um segundo botão para o mesmo fato. */
+const ATO_QUE_CONCLUI = {
+  vendido_conferencia: "Conclui ao liberar o CMV, nesta tela.",
+  comparativo: "Conclui ao liberar o Plano de Compras, nesta tela.",
+};
+/* Etapas que acompanham a obra inteira e não se concluem. */
+const ETAPAS_CONTINUAS = new Set(["diario"]);
+
 function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [] }) {
+  /* Mesma faixa em TODAS as abas da esteira (pedido de 23/09/2026: "para
+     ficarem uniformes"). O que muda é só o lado direito: botão genérico,
+     o ato próprio da tela, ou nada. */
+  const temBotao = ETAPAS_COM_CONCLUSAO.has(etapaId);
+  const ato = ATO_QUE_CONCLUI[etapaId] || null;
   const feita = etapaConcluida(etapaId, obra);
   const { por: porQuem, em } = quemConcluiu(etapaId, obra);
   const congelado = obra.comprasLiberadas || !podeEditar;
   // O que ainda impede concluir (hoje só a Conf. Executivo tem trava).
   const bloqueio = useMemo(() => (feita ? null : bloqueioDaEtapa(etapaId, obra)), [feita, etapaId, obra]);
 
+  if (ETAPAS_CONTINUAS.has(etapaId)) {
+    return (
+      <span className="naoimprime mt-2 flex flex-wrap items-center gap-2" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
+        <Badge tone="neutral">Etapa contínua</Badge>
+        <span className="text-xs text-text-mute">Acompanha a obra inteira, não se conclui.</span>
+      </span>
+    );
+  }
   return (
-    <div className="naoimprime flex flex-wrap items-center justify-between gap-2 border-b border-line-1 pb-3" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
+    <span className="naoimprime mt-2 flex flex-wrap items-center gap-2" aria-label={`Etapa ${nomeDaEtapa(etapaId)}`}>
       <span className="flex flex-wrap items-center gap-2">
         {feita ? (
           <>
@@ -21107,10 +21145,11 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
           <>
             <Badge tone="neutral">Etapa pendente</Badge>
             {bloqueio && <span className="flex items-center gap-1 text-xs text-warning"><AlertTriangle size={14} aria-hidden="true" /> {bloqueio}</span>}
+            {!temBotao && ato && <span className="text-xs text-text-mute">{ato}</span>}
           </>
         )}
       </span>
-      <span className="flex flex-wrap items-center gap-2">
+      {temBotao && <span className="flex flex-wrap items-center gap-2">
         {feita ? (
           !congelado && (
             <Button variant="ghost" onClick={async () => {
@@ -21133,8 +21172,8 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
               <Play size={16} aria-hidden="true" /> Concluir etapa
           </Button>
         )}
-      </span>
-    </div>
+      </span>}
+    </span>
   );
 }
 
@@ -25538,10 +25577,10 @@ export default function App() {
             equipe={pessoas} />
           </>}
 
-          {ETAPAS_COM_CONCLUSAO.has(tab) && (
+          <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? (
             <EtapaDaAba etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
               onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
-          )}
+          ) : null}>
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} ultimaImportacao={ultimaImportacao("vendido_contrato")} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} ultimaImportacao={ultimaImportacao("vendido_planilha")} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
@@ -25577,6 +25616,7 @@ export default function App() {
               onArquivos={trocarArquivosDaObra} />
           )}
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}
+          </EtapaDaAbaContexto.Provider>
           {/* O historico fecha a pagina, em qualquer tela da obra. */}
           <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"}
             podeRestaurar={podeGerenciarPessoas(eu, pessoas)} />
