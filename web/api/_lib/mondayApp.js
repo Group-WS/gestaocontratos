@@ -112,6 +112,7 @@ const { rotasDeEap } = require("./rotas/eap.js");
 const { rotasDeArquivos } = require("./rotas/arquivos.js");
 const { rotasDeComentarios } = require("./rotas/comentarios.js");
 const { rotasDeImportacoes } = require("./rotas/importacoes.js");
+const { rotasDeArquivoEventos } = require("./rotas/arquivoEventos.js");
 const { rotasDeCadastros } = require("./rotas/cadastros.js");
 const { rotasDeSiengeBanco } = require("./rotas/siengeBanco.js");
 
@@ -131,6 +132,7 @@ app.use(rotasDeEap);
 app.use(rotasDeArquivos);
 app.use(rotasDeComentarios);
 app.use(rotasDeImportacoes);
+app.use(rotasDeArquivoEventos);
 app.use(rotasDeCadastros);
 app.use(rotasDeSiengeBanco);
 

@@ -32,6 +32,7 @@ import { listarPessoas, salvarPessoa, excluirPessoa, garantirPessoa, nomeDoEmail
 import { listarVersoes, restaurarVersao } from "./lib/versoesObra";
 import { listarComentarios, criarComentario, apagarComentario } from "./lib/comentarios";
 import { DOCUMENTOS, resumoDaImportacao, linhasDoAviso, listarImportacoes, registrarImportacao } from "./lib/importacoes.js";
+import { listarEventosDeArquivo, registrarEventoDeArquivo } from "./lib/arquivoEventos.js";
 import { mensagemDoDia } from "./lib/mensagemDoDia";
 import { STATUS_ADITIVO, CONDICOES_PADRAO, novoItem, novoGrupo, novoDocumento,
   parseNum as parseNumAd, totalItem, totalGrupo, totalSecao, totaisDoDocumento,
@@ -2979,6 +2980,8 @@ const TELA_DO_EVENTO = {
   /* Arquivo anexado (caderno, contrato, anexo avulso) mora em Documentos. A
      importacao de planilha tem tela propria, e a linha vai pra ela. */
   anexou: "arquivos",
+  trocou_arquivo: "arquivos",
+  removeu_arquivo: "arquivos",
 };
 
 /* A tela e o nome de cada documento importado (obra_importacao.documento).
@@ -3014,7 +3017,7 @@ function itemDoHistorico(it, cat) {
    - QUEM comprou ou solicitou. Esses campos guardam so' a data.
    - O que foi DESFEITO. Desfazer apaga o carimbo, e o que foi apagado nao
      deixa rastro. E' por isso que existe a parte 2, o registro de verdade. */
-function historicoDerivado(obra, { importacoes = [], arquivos = [] } = {}) {
+function historicoDerivado(obra, { importacoes = [], arquivos = [], eventosDeArquivo = [] } = {}) {
   const fora = [];
   const anota = (ev) => { if (ev.em) fora.push({ ...ev, tela: ev.tela === undefined ? TELA_DO_EVENTO[ev.tipo] : ev.tela, origem: "carimbo" }); };
 
@@ -3067,9 +3070,25 @@ function historicoDerivado(obra, { importacoes = [], arquivos = [] } = {}) {
       tela: TELA_DA_IMPORTACAO[imp.documento] ?? null,
     });
   });
+  /* Desde 23/09/2026 cada anexar, trocar e remover vira linha em
+     obra_arquivo_evento — inclusive o que ja' nao existe mais. O arquivo
+     de antes disso so' e' conhecido pelo que a obra guarda hoje: entra
+     como "anexou", a menos que um evento ja' fale dele (mesmo caminho no
+     Storage), pra nao aparecer duas vezes. */
+  const nomeDoArquivo = (titulo, nome) => (nome && nome !== titulo ? `${titulo} · ${nome}` : (titulo || nome));
+  const eventos = Array.isArray(eventosDeArquivo) ? eventosDeArquivo : [];
+  const tipoDoEvento = { anexou: "anexou", trocou: "trocou_arquivo", removeu: "removeu_arquivo" };
+  eventos.forEach((ev) => {
+    anota({
+      tipo: tipoDoEvento[ev.acao] || "anexou", em: ev.criado_em, por: ev.autor,
+      item: nomeDoArquivo(ev.titulo, ev.arquivo_nome),
+      detalhe: ev.acao === "trocou" && ev.arquivo_anterior ? `no lugar de ${ev.arquivo_anterior}` : null,
+    });
+  });
+  const jaRegistrados = new Set(eventos.map((ev) => ev.caminho).filter(Boolean));
   (Array.isArray(arquivos) ? arquivos : []).forEach((a) => {
-    const nome = a.nome && a.nome !== a.titulo ? `${a.titulo} · ${a.nome}` : (a.titulo || a.nome);
-    anota({ tipo: "anexou", em: a.em, por: a.por, item: nome });
+    if (a.caminho && jaRegistrados.has(a.caminho)) return;
+    anota({ tipo: "anexou", em: a.em, por: a.por, item: nomeDoArquivo(a.titulo, a.nome) });
   });
 
   return fora.sort((a, b) => String(b.em).localeCompare(String(a.em)));
@@ -3111,6 +3130,8 @@ const FRASE_DO_EVENTO = {
   etapa: "concluiu a etapa",
   importou: "importou",
   anexou: "anexou",
+  trocou_arquivo: "trocou o arquivo",
+  removeu_arquivo: "removeu o arquivo",
 };
 
 /* OS CAMPOS QUE GRAVAM POR PATCH — ADR-004.
@@ -3366,13 +3387,13 @@ function VersoesDaObra({ obra, podeRestaurar }) {
    do lado. E diz o que NAO sabe: item que conta como liberado sem ninguem
    ter liberado aparece como "sem registro de quem" em vez de ficar calado —
    foi essa a pergunta que gerou o pedido. */
-function HistoricoDaObra({ obra, tela, podeRestaurar = false, importacoes = [], souAdmin = false }) {
+function HistoricoDaObra({ obra, tela, podeRestaurar = false, importacoes = [], eventosDeArquivo = [], souAdmin = false }) {
   const [aberto, setAberto] = useState(false);
   const [tudo, setTudo] = useState(false);
   const [maisLinhas, setMaisLinhas] = useState(false);
   const eventos = useMemo(
-    () => historicoDerivado(obra, { importacoes, arquivos: obra ? arquivosDaObra(obra, { souAdmin }) : [] }),
-    [obra, importacoes, souAdmin]
+    () => historicoDerivado(obra, { importacoes, eventosDeArquivo, arquivos: obra ? arquivosDaObra(obra, { souAdmin }) : [] }),
+    [obra, importacoes, eventosDeArquivo, souAdmin]
   );
   const daTela = useMemo(() => (tudo ? eventos : historicoDaTela(eventos, tela)), [eventos, tela, tudo]);
   const semRegistro = useMemo(() => liberadosSemRegistro(obra), [obra]);
@@ -9221,6 +9242,13 @@ const CADERNO_CONTRATO = { chave: "contrato", titulo: "Contrato", sub: "Contrato
    ser montada no editor do app ou feita fora e só anexada aqui. Fica fora
    de CADERNOS_EXECUTIVO pelo mesmo motivo do contrato: aquela lista também
    vai pro painel da Mehoo. */
+/* O nome de cada arquivo fixo da obra pela chave — o registro no
+   histórico diz "Caderno de Marcenaria", não "marcenaria". */
+function tituloDoCaderno(chave) {
+  if (chave === "contrato") return "Contrato";
+  if (chave === "apresentacao") return "Apresentação de Especificações";
+  return CADERNOS_EXECUTIVO.find((c) => c.chave === chave)?.titulo || chave;
+}
 const CADERNO_APRESENTACAO = { chave: "apresentacao", titulo: "Apresentação de Especificações", sub: "O PDF da apresentação enviada ao cliente." };
 const cadernoPorChave = (chave) => CADERNOS_EXECUTIVO.find((c) => c.chave === chave);
 
@@ -22012,6 +22040,31 @@ export default function App() {
       avisar.erro("A importação foi aplicada, mas o registro dela não foi gravado.", e?.message);
     }
   }
+
+  /* O REGISTRO DOS ARQUIVOS DA OBRA ABERTA (23/09/2026): quem anexou, trocou
+     ou removeu qual arquivo, em supabase/obra-arquivo-evento.sql. Mesmo
+     caminho do registro de importacoes: lido ao abrir a obra, acrescido na
+     hora, e sem bloquear nada se falhar. */
+  const [eventosDeArquivo, setEventosDeArquivo] = useState({ codigo: null, lista: [] });
+  useEffect(() => {
+    if (!codigoAberto) return undefined;
+    let viva = true;
+    listarEventosDeArquivo(codigoAberto)
+      .then((r) => { if (viva) setEventosDeArquivo({ codigo: codigoAberto, lista: r?.eventos || [] }); })
+      .catch(() => { if (viva) setEventosDeArquivo({ codigo: codigoAberto, lista: [] }); });
+    return () => { viva = false; };
+  }, [codigoAberto]);
+
+  async function registrarArquivoDaObra(evento) {
+    const codigo = codigoAberto;
+    if (!codigo || !evento?.arquivoNome) return;
+    try {
+      const linha = await registrarEventoDeArquivo(codigo, evento);
+      if (linha) setEventosDeArquivo((prev) => (prev.codigo === codigo ? { codigo, lista: [linha, ...prev.lista] } : prev));
+    } catch (e) {
+      avisar.erro("O arquivo foi salvo, mas o registro dele no histórico não foi gravado.", e?.message);
+    }
+  }
   /* A obra COM os itens do aditivo aprovado dentro das verbas.
 
      Pedido dela em 17/09/2026: o aditivo "deve seguir todo o fluxo e ser
@@ -23131,10 +23184,30 @@ export default function App() {
   // Os cadernos ficam guardados por chave ("especificacao", "marcenaria",
   // "projeto") — só arquivo pra consulta, nada é lido deles.
   function trocarArquivosDaObra(lista) {
+    /* Quem chama manda a lista INTEIRA de anexos avulsos (anexar acrescenta
+       um, excluir tira um). O que entrou e o que saiu vem da comparação com
+       a lista de antes — e vira registro no histórico. */
+    const antes = obra ? avulsosDaObra(obra) : [];
+    const ids = (l) => new Set((l || []).map((a) => a.id));
+    const idsAntes = ids(antes);
+    const idsDepois = ids(lista);
+    (lista || []).filter((a) => !idsAntes.has(a.id)).forEach((a) => registrarArquivoDaObra({
+      acao: "anexou", tipo: "avulso", titulo: a.titulo, arquivoNome: a.nome, caminho: a.caminho,
+    }));
+    antes.filter((a) => !idsDepois.has(a.id)).forEach((a) => registrarArquivoDaObra({
+      acao: "removeu", tipo: "avulso", titulo: a.titulo, arquivoNome: a.nome, caminho: a.caminho,
+    }));
     setObras((prev) => prev.map((o) => (o.id === selectedId ? { ...o, arquivos: lista } : o)));
   }
 
   function importCaderno(chave, info, caminhoAnterior) {
+    const anterior = obra?.cadernos?.[chave] || null;
+    if (info?.caminho) {
+      registrarArquivoDaObra({
+        acao: anterior ? "trocou" : "anexou", tipo: chave, titulo: tituloDoCaderno(chave),
+        arquivoNome: info.nome, arquivoAnterior: anterior?.nome || null, caminho: info.caminho,
+      });
+    }
     setObras((prev) => prev.map((o) => (
       o.id === selectedId ? { ...o, cadernos: { ...(o.cadernos || {}), [chave]: info } } : o
     )));
@@ -23562,6 +23635,13 @@ export default function App() {
      O documento já subiu pro Storage antes de chegar aqui: `arq` é o que
      ficou guardado dele (nome + caminho), não o File do navegador. */
   function registrarAssinaturaCliente({ data, obs, arq }) {
+    if (arq?.nome) {
+      const anterior = obra?.clienteAssinaturaArq || null;
+      registrarArquivoDaObra({
+        acao: anterior ? "trocou" : "anexou", tipo: "assinatura", titulo: "Aprovação assinada pelo cliente",
+        arquivoNome: arq.nome, arquivoAnterior: anterior?.nome || null, caminho: arq.caminho || null,
+      });
+    }
     enfileirarMarcas({
       clienteAssinouEm: data, clienteAssinaturaPor: usuario,
       clienteAssinaturaObs: obs || null, clienteAssinaturaArq: arq || null,
@@ -23577,6 +23657,12 @@ export default function App() {
 
   function removerAssinaturaCliente() {
     const arq = obras.find((o) => o.id === selectedId)?.clienteAssinaturaArq;
+    if (arq?.nome) {
+      registrarArquivoDaObra({
+        acao: "removeu", tipo: "assinatura", titulo: "Aprovação assinada pelo cliente",
+        arquivoNome: arq.nome, caminho: arq.caminho || null,
+      });
+    }
     enfileirarMarcas({
       clienteAssinouEm: null, clienteAssinaturaPor: null,
       clienteAssinaturaObs: null, clienteAssinaturaArq: null,
@@ -25686,7 +25772,8 @@ export default function App() {
           </EtapaDaAbaContexto.Provider>
           {/* O historico fecha a pagina, em qualquer tela da obra. */}
           <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"}
-            importacoes={importacoes.codigo === codigoAberto ? importacoes.lista : []} souAdmin={souAdmin}
+            importacoes={importacoes.codigo === codigoAberto ? importacoes.lista : []}
+            eventosDeArquivo={eventosDeArquivo.codigo === codigoAberto ? eventosDeArquivo.lista : []} souAdmin={souAdmin}
             podeRestaurar={podeGerenciarPessoas(eu, pessoas)} />
           </>
           )}

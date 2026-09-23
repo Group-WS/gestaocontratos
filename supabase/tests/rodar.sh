@@ -80,6 +80,7 @@ aplicar "$SQL/salvar-aditivo-apresentacao.sql"
 
 # 9. O registro das importacoes (usa meu_perfil() e minhas_obras() do bloco 6).
 aplicar "$SQL/obra-importacao.sql"
+aplicar "$SQL/obra-arquivo-evento.sql"
 
 # Os testes. `finish(true)` faz o pgTAP levantar erro quando algo falha,
 # e o ON_ERROR_STOP transforma isso no codigo de saida que o CI enxerga.

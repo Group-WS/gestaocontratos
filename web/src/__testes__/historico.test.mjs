@@ -114,6 +114,25 @@ conf("... em Documentos", anexo?.tela, "arquivos");
 conf("arquivo sem data não entra", comUploads.filter((e) => e.tipo === "anexou").length, 1);
 conf("as frases existem", [M.FRASE_DO_EVENTO.importou, M.FRASE_DO_EVENTO.anexou], ["importou", "anexou"]);
 
+/* ---- 4c. Trocar e remover arquivo (obra_arquivo_evento, 23/09/2026) ---- */
+const comEventos = M.historicoDerivado({ categorias: [] }, {
+  eventosDeArquivo: [
+    { acao: "trocou", titulo: "Caderno de Marcenaria", arquivo_nome: "marc-v2.pdf", arquivo_anterior: "marc.pdf",
+      caminho: "9/marcenaria/v2.pdf", autor: "a@x.com", criado_em: "2026-09-23T14:00:00Z" },
+    { acao: "removeu", titulo: "Planta", arquivo_nome: "planta.pdf", caminho: "9/avulso/p.pdf", autor: "b@x.com", criado_em: "2026-09-23T15:00:00Z" },
+  ],
+  arquivos: [
+    { titulo: "Caderno de Marcenaria", nome: "marc-v2.pdf", caminho: "9/marcenaria/v2.pdf", em: "2026-09-23T14:00:00Z", por: "a@x.com" },
+    { titulo: "Antigo", nome: "antigo.pdf", caminho: "9/avulso/antigo.pdf", em: "2026-09-01T10:00:00Z", por: "c@x.com" },
+  ],
+});
+const troca = comEventos.find((e) => e.tipo === "trocou_arquivo");
+conf("a troca entra, dizendo o que saiu", [troca?.item, troca?.detalhe], ["Caderno de Marcenaria · marc-v2.pdf", "no lugar de marc.pdf"]);
+conf("a remoção entra, mesmo sem o arquivo existir mais", comEventos.some((e) => e.tipo === "removeu_arquivo" && e.por === "b@x.com"), true);
+conf("arquivo com evento não aparece de novo pelo estado", comEventos.filter((e) => /marc-v2/.test(e.item || "")).length, 1);
+conf("arquivo anterior à tabela ainda aparece", comEventos.some((e) => e.tipo === "anexou" && /antigo\.pdf/.test(e.item)), true);
+conf("... tudo em Documentos", [...new Set(comEventos.map((e) => e.tela))], ["arquivos"]);
+
 /* ---- 5. O que o histórico NÃO sabe, ele diz ----
    Papeleira tem canal e nenhum carimbo; Ralo está comprado e sem carimbo. */
 conf("conta os liberados sem registro", M.liberadosSemRegistro(obra), 2);

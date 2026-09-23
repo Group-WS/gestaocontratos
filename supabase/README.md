@@ -129,6 +129,15 @@ bloco 5, e de novo **sempre** que o bloco 5 rodar.
 > do deploy (sem ela, a importação funciona e só o registro não grava).
 > Teste: `tests/14-importacao.sql`.
 
+`obra-arquivo-evento.sql` — depois do bloco 6, junto do anterior.
+
+> Cria `obra_arquivo_evento`: quem anexou, trocou ou removeu qual arquivo
+> da obra (cadernos, contrato, apresentação, aprovação assinada, anexos
+> avulsos) e quando. Só cresce. O evento do contrato só é lido e gravado por
+> administrador, como o arquivo dele. Não altera dado nenhum; sem ele, os
+> arquivos funcionam e só o registro não grava.
+> Teste: `tests/15-arquivo-evento.sql`.
+
 **Antes do bloco 6, confira se o bloco 5 rodou em produção.** Os
 comentários do `taylor-made.sql` indicam que o `rls-perfis.sql` pode nunca
 ter sido aplicado lá. Esta consulta mostra o que vale hoje:
