@@ -4457,7 +4457,7 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       )}
 
       {grupos.length > 0 && (
-      <Card>
+      <Card className="p-0">
       {grupos.map(({ cat, itens }) => (
         <GrupoPlano key={cat.num + cat.nome} cat={cat} itens={itens} podeEditar={podeEditar}
           /* Com busca ligada a verba abre sozinha: procurar e ainda ter que
@@ -5605,7 +5605,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
           </div>
         )}>
 
-        <Card>
+        <Card className="p-0">
           {verbas.map((c) => {
             const itens = c.itensContrato || [];
             const temItens = itens.length > 0;
@@ -5805,7 +5805,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
 
         <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilha || [])} />
 
-        <Card>
+        <Card className="p-0">
           {verbas.map((c) => {
             const itens = c.itensPlanilha || [];
             /* O que a busca deixa na tela. O `subtotal` abaixo continua
@@ -7025,7 +7025,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
             <EmptyState icon={<Search size={26} />} title="Nenhuma linha com esse termo"
               description={`Nada encontrado para "${busca.trim()}"${filtro === "todos" ? "" : " dentro do filtro escolhido"}.`} />
           )}
-          <Card>
+          <Card className="p-0">
             {grupos.map((g) => {
               const { num, nome, itens } = g;
               /* Com busca ligada a verba abre sozinha: procurar e ainda ter
@@ -8121,7 +8121,7 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
         <EmptyState icon={<Search size={26} />} title="Nenhum resultado para os filtros aplicados"
           description={busca.trim() ? `Nada encontrado para "${busca.trim()}".` : "Nada neste filtro."} />
       )}
-      <Card>
+      <Card className="p-0">
         {grupos.map((g) => {
           // Filtrando, a verba abre sozinha: procurar e ainda ter que clicar
           // em cada verba não é procurar.
@@ -9571,7 +9571,7 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
 
         <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilhaExecutivo || [])} />
 
-        <Card>
+        <Card className="p-0">
           {verbas.map((c) => {
             const itens = c.itensPlanilhaExecutivo || [];
             /* Quantos itens desta verba casam com a busca. A LISTA NAO E'
@@ -21197,17 +21197,9 @@ function EtapaDaAba({ parte = "estado", etapaId, obra, podeEditar, onConcluir, o
 
   if (parte === "acao") {
     if (!temBotao || ETAPAS_CONTINUAS.has(etapaId)) return null;
-    if (feita) {
-      return congelado ? null : (
-        <Button variant="ghost" onClick={async () => {
-          if (await confirmar({
-            titulo: `Reabrir a etapa "${nomeDaEtapa(etapaId)}"?`,
-            mensagem: "O registro de quem concluiu e quando é apagado e a etapa volta a pendente. Dá para concluir de novo depois.",
-            confirmar: "Reabrir etapa", perigo: false,
-          })) onReabrirEtapa(etapaId);
-        }}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>
-      );
-    }
+    /* Concluída, a ação (Reabrir) mora junto do estado, e não aqui: é
+       secundária e só faz sentido lida ao lado de "Etapa concluída". */
+    if (feita) return null;
     /* Contorno, e não primário: o cabeçalho da tela já tem a sua ação
        primária (importar, nova solicitação), e só cabe uma (TELA-10). */
     return (
@@ -21244,6 +21236,15 @@ function EtapaDaAba({ parte = "estado", etapaId, obra, podeEditar, onConcluir, o
                   guardou o instante inteiro, a tela é que mostrava só o dia. */}
               {em && <> · {new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</>}
             </span>
+            {temBotao && !congelado && (
+              <Button variant="ghost" size="sm" onClick={async () => {
+                if (await confirmar({
+                  titulo: `Reabrir a etapa "${nomeDaEtapa(etapaId)}"?`,
+                  mensagem: "O registro de quem concluiu e quando é apagado e a etapa volta a pendente. Dá para concluir de novo depois.",
+                  confirmar: "Reabrir etapa", perigo: false,
+                })) onReabrirEtapa(etapaId);
+              }}><RotateCcw size={14} aria-hidden="true" /> Reabrir etapa</Button>
+            )}
           </>
         ) : (
           <>
@@ -25710,7 +25711,8 @@ export default function App() {
           </>}
 
           <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? {
-            estado: <EtapaDaAba parte="estado" etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas} />,
+            estado: <EtapaDaAba parte="estado" etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
+              onReabrirEtapa={reabrirEtapa} />,
             acao: <EtapaDaAba parte="acao" etapaId={tab} obra={obra} podeEditar={edicao.minha}
               onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
           } : null}>
