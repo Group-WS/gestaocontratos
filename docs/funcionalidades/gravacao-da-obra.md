@@ -48,7 +48,7 @@ e o que fazer. Nenhuma gravação apaga o trabalho de outra pessoa em silêncio.
 
 | Tela / bloco | Arquétipo | Rota ou aba | Componente |
 |---|---|---|---|
-| Barra da obra (situação da gravação, habilitar/finalizar) | detalhe | `/obra/:codigo` | `BarraEtapa` (`web/src/App.jsx:21104`), `SituacaoDaGravacao` (`web/src/lib/gravacaoUi.jsx`) |
+| Faixa da edição (situação da gravação, habilitar/finalizar) | detalhe | `/obra/:codigo` | `FaixaDaEdicao` (`web/src/App.jsx`), `SituacaoDaGravacao` (`web/src/lib/gravacaoUi.jsx`) |
 | Avisos da gravação (qualquer tela) | aviso global | — | `AvisosDeGravacao` (`web/src/lib/gravacaoUi.jsx`), montado em `web/src/App.jsx:25570` |
 | Versões guardadas (restaurar) | detalhe (lista) | pé da página da obra | `VersoesDaObra` (`web/src/App.jsx:3248`) |
 

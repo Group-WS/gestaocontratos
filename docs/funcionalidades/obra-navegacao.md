@@ -30,8 +30,9 @@ nada acontece (`habilitarEdicao` sai na primeira linha, `web/src/App.jsx:22656`)
    "Carregando…". Se não conseguir, a barra diz "Não consegui carregar esta obra. A edição fica
    fechada até ela carregar." e oferece **Tentar de novo**, sem recarregar a página.
 3. O cabeçalho mostra o código e o nome, o endereço, a entrega (com selo "em N dias" / "N dias
-   atrasada"), o GC, a Taylor Made e o Executivo, e à direita a barra de edição
-   (`BarraEtapa`, `web/src/App.jsx:21104`) e, só na Visão geral, **Concluir obra**.
+   atrasada"), o GC, a Taylor Made e o Executivo, e à direita, só na Visão geral, **Concluir
+   obra**. Logo abaixo das abas, a faixa da edição (`FaixaDaEdicao`, `web/src/App.jsx`), fixa
+   no topo ao rolar: estado da edição, situação da gravação e o botão Habilitar/Finalizar edição.
 4. A pessoa escolhe um grupo (`GRUPOS_OBRA`, `web/src/App.jsx:11140`):
 
    | Grupo | O que tem |
@@ -120,7 +121,7 @@ achar, abre a lista de obras para a pessoa escolher.
 | Tela / bloco | Arquétipo | Rota ou aba | Componente |
 |---|---|---|---|
 | Cabeçalho da obra (breadcrumb, fatos, ações) | detalhe | `/obra/:codigo` | `PageShell` em `web/src/App.jsx:25725`–`25792` |
-| Barra de edição | detalhe (ação) | cabeçalho | `BarraEtapa` (`web/src/App.jsx:21104`) |
+| Barra de edição | detalhe (ação) | cabeçalho | `FaixaDaEdicao` (`web/src/App.jsx`) |
 | Grupos e esteira de etapas | navegação | cabeçalho (toolbar) | `TabBar` (`web/src/App.jsx:11251`) |
 | Estado da etapa (Concluir / Reabrir) | detalhe (ação) | abaixo do título de cada aba | `EtapaDaAba` (`web/src/App.jsx:21274`), via `EtapaDaAbaContexto` |
 | Tela cheia | detalhe | telas de operação | barra em `web/src/App.jsx:25699` |
@@ -209,7 +210,7 @@ das Compras.
 
 ## Código
 
-- `web/src/App.jsx` — `GRUPOS_OBRA` e esteira (`11140`–`11321`), `BarraEtapa` (`21104`), `EtapaDaAba` (`21274`), `habilitarEdicao`/`finalizarEdicao` (`22655`/`22692`), efeitos da trava (`22512`–`22644`), `concluirEtapa`/`reabrirEtapa` (`23749`/`23767`), endereço da tela (`10364`–`10466`), render da obra (`25694`–`25882`)
+- `web/src/App.jsx` — `GRUPOS_OBRA` e esteira (`11140`–`11321`), `FaixaDaEdicao`, `EtapaDaAba` (`21274`), `habilitarEdicao`/`finalizarEdicao` (`22655`/`22692`), efeitos da trava (`22512`–`22644`), `concluirEtapa`/`reabrirEtapa` (`23749`/`23767`), endereço da tela (`10364`–`10466`), render da obra (`25694`–`25882`)
 - `web/src/lib/dadosObra.js` — `pegarEdicao`, `liberarEdicao`, `travaViva`, `MINUTOS_ATE_TRAVA_EXPIRAR`
 - `web/api/_lib/rotas/obraConteudo.js`, `web/api/_lib/rotas/obraDados.js`, `web/api/_lib/auth.js`
 - Testes: `web/src/__testes__/rotas.test.mjs`, `trava-conf-executivo.test.mjs`, `trava-vencida.test.mjs`, `gravacao-na-tela.test.mjs`, `e2e/duas-sessoes.spec.mjs`

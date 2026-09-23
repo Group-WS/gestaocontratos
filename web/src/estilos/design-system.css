@@ -602,3 +602,35 @@ header div:has(> [cmdk-input]) {
   padding-inline: 0;
   padding-bottom: 0;
 }
+
+/* A FAIXA DA EDIÇÃO (23/09/2026): estado da edição, gravação e o botão
+   que alterna a edição, numa linha fixa logo abaixo do topo do app (60px,
+   o h-15 da TopBar). Full-bleed como o cabeçalho da obra, colada embaixo
+   dele (o cabeçalho zera a margem de baixo com !mb-0). Os filtros das abas, também fixos ao rolar, param
+   logo abaixo dela em vez de passar por baixo. Em tela cheia não há TopBar
+   nem margem negativa: a faixa encosta no topo. */
+.main > .faixa-da-edicao {
+  position: sticky;
+  top: 3.75rem;
+  z-index: 15;
+  height: 3.25rem;
+  margin: 0 -1rem;
+  padding-inline: 1rem;
+}
+@media (min-width: 768px) {
+  .main > .faixa-da-edicao {
+    margin-inline: -2rem;
+    padding-inline: 1.5rem;
+  }
+}
+.main.em-tela-cheia > .faixa-da-edicao {
+  top: 0;
+  margin: 0 0 1rem;
+  padding-inline: 0.75rem;
+}
+.main:has(> .faixa-da-edicao) .conteudo-da-aba > .filtros-da-aba {
+  top: 7rem;
+}
+.main.em-tela-cheia:has(> .faixa-da-edicao) .conteudo-da-aba > .filtros-da-aba {
+  top: 3.25rem;
+}

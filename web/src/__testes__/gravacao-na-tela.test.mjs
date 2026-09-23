@@ -130,8 +130,10 @@ conf("... com os botões do catálogo de mensagens", saida.includes('confirmar: 
 /* ---------- 5. a tela diz o que acontece, sem mandar dar F5 ---------- */
 conf("o aviso da gravação aparece em qualquer tela", app.includes("<AvisosDeGravacao gravacoes={gravacoes}"), true);
 conf("... com a saída de recarregar a obra (sempre perguntando antes)", /async function recarregarObra\(codigo\) \{[\s\S]*titulo: "Recarregar a obra\?"/.test(app), true);
-conf("a barra da obra mostra a situação da gravação", app.includes("<SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />"), true);
-conf("... também em modo leitura (quem acabou de finalizar vê o 'salvo')", (app.match(/<SituacaoDaGravacao situacao=\{gravacao\}/g) || []).length, 2);
+conf("a faixa da edição mostra a situação da gravação", app.includes("<SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} discreta />"), true);
+/* Um lugar só na faixa, fora dos ramos do estado: vale para quem edita e
+   para o modo leitura (quem acabou de finalizar vê o 'salvo'). */
+conf("... também em modo leitura (quem acabou de finalizar vê o 'salvo')", app.includes("{podeMostrarGravacao && (gravacao || edicao.minha) && ("), true);
 conf("a contagem da nova tentativa anda sozinha", ui.includes("const t = setInterval(() => setAgora(Date.now()), 1000);"), true);
 conf("os avisos usam o Alert do design system", /import \{ Alert, AlertTitle, AlertDescription,[^}]*\} from "@group-ws\/ws-ui";/.test(ui), true);
 /* O estado da barra é um selo do DS com ícone e cor (23/09/2026), e o

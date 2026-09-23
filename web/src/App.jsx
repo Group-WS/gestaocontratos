@@ -19,7 +19,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Maximize2, Minimize2,
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, Maximize2, Minimize2,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -13276,24 +13276,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         </div>
       </Tabs>
 
-      {/* Em modo leitura nada daqui grava: o salvamento automático só roda
-          pra quem está com a edição da obra. */}
-      {!podeEditar && (
-        <Alert tone="info">
-          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <span className="min-w-0 flex-1">
-              {editandoPor
-                ? <><b>{editandoPor}</b> está editando esta obra. Até terminar, solicitado, comprado, canal e insumo ficam só para consulta.</>
-                : onHabilitar
-                  ? "Modo leitura: para marcar solicitado, comprado, canal ou insumo, habilite a edição da obra."
-                  : "Modo leitura: o seu perfil consulta as Compras, sem marcar."}
-            </span>
-            {onHabilitar && !editandoPor && (
-              <Button size="sm" onClick={onHabilitar} className="shrink-0"><Lock size={14} aria-hidden="true" /> Habilitar edição</Button>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* O aviso de modo leitura que morava aqui saiu (23/09/2026): a faixa
+          da edição, fixa no topo, já diz o estado, quem está editando e
+          oferece o Habilitar — repetido aqui era ruído. */}
 
       {etapa === "sienge" && (
         <Alert tone="info">
@@ -21302,21 +21287,23 @@ function ArquivoView({ obras, onReabrir, salvando }) {
 //
 // A trava expira sozinha por inatividade. Sem esse prazo, alguém que
 // fechasse o navegador no meio deixaria a obra travada para sempre.
-/* Uma barra só, no topo, com as duas decisões da etapa.
+/* A FAIXA DA EDIÇÃO (23/09/2026): uma linha só, fixa no topo ao rolar,
+   logo abaixo das abas da obra.
 
-   Antes eram dois blocos distantes: o estado da edição em cima e o
-   "Concluir etapa" lá no fim da página, depois de trinta e duas verbas —
-   quem quisesse avançar tinha que rolar até o fim pra descobrir que o
-   botão existia. E são a mesma pergunta: "posso mexer?" e "já terminei?".
+   Antes o estado da edição, o selo da gravação e o "Habilitar/Finalizar"
+   dividiam o canto do cabeçalho com Apresentação e Concluir obra — muitos
+   selos juntos — e sumiam ao rolar: no meio da tabela do Executivo ninguém
+   sabia se o que fez já estava salvo. Agora respondem juntos, sempre à
+   vista, à mesma pergunta: "posso mexer, e o que fiz está guardado?".
 
-   Minimalista de propósito: o estado é um ponto colorido e uma palavra;
-   as ações são texto. O único botão cheio é o de avançar, porque é a
-   única coisa aqui que empurra a obra pra frente. */
-function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar }) {
-
-  let estado;
+   Um selo só (o estado); a gravação é texto com ícone, e só ganha cor forte
+   quando pede ação; o botão que alterna a edição fica na ponta direita. */
+function FaixaDaEdicao({ edicao, gravacao, carregando, falhouCarregar, onTentarCarregar, onTentarGravar, onHabilitar, onFinalizar }) {
+  let selo = null;
+  let explica = null;
+  let acao = null;
   if (carregando) {
-    estado = <span className="flex items-center gap-2 text-sm text-text-mute"><Badge tone="neutral">Carregando…</Badge></span>;
+    selo = <Badge tone="neutral"><Loader2 size={12} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> Carregando a obra…</Badge>;
   } else if (falhouCarregar) {
     /* O CONTEUDO NAO CHEGOU — E POR ISSO NINGUEM EDITA.
      *
@@ -21325,68 +21312,58 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
      * item nenhum. Um clique e qualquer alteracao depois, o salvamento
      * automatico gravava esse esqueleto por cima da obra inteira.
      *
-     * A frase diz o que fazer, porque quem esta' na tela nao tem como saber
-     * que a obra que ele ve' nao e' a obra que esta' no banco. Ela mandava
-     * dar F5 — o que levaria junto o que OUTRAS obras ainda nao gravaram.
-     * Agora a saida e' tentar carregar de novo aqui mesmo. */
-    estado = (
-      <span className="flex flex-wrap items-center gap-2 text-sm text-danger">
-        <AlertTriangle size={16} aria-hidden="true" /> Não consegui carregar esta obra. A edição fica fechada até ela carregar.
-        {onTentarCarregar && (
-          <Button variant="outline" onClick={onTentarCarregar}>
-            <RotateCcw size={16} aria-hidden="true" /> Tentar de novo
-          </Button>
-        )}
-      </span>
+     * A saida e' tentar carregar de novo aqui mesmo — F5 levaria junto o que
+     * OUTRAS obras ainda nao gravaram. */
+    selo = <Badge tone="danger"><AlertTriangle size={12} aria-hidden="true" /> Não consegui carregar esta obra</Badge>;
+    explica = "A edição fica fechada até ela carregar.";
+    acao = onTentarCarregar && (
+      <Button variant="outline" size="sm" onClick={onTentarCarregar}>
+        <RotateCcw size={14} aria-hidden="true" /> Tentar de novo
+      </Button>
     );
   } else if (edicao.por) {
     const desde = edicao.desde ? new Date(edicao.desde).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
-    estado = (
-      <span className="flex items-center gap-2 text-sm" title={`Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração`}>
-        <Badge tone="warning"><Lock size={12} aria-hidden="true" /> Em edição por outra pessoa</Badge>
-        <span className="text-text-soft"><span className="text-text">{edicao.por}</span> está editando{desde ? ` desde ${desde}` : ""}</span>
-      </span>
-    );
+    selo = <Badge tone="warning"><Lock size={12} aria-hidden="true" /> {edicao.por} está editando{desde ? ` desde ${desde}` : ""}</Badge>;
+    explica = `Você vê tudo, mas só altera quando a edição for liberada. Libera sozinho após ${MINUTOS_ATE_TRAVA_EXPIRAR} min sem alteração.`;
   } else if (edicao.minha) {
-    estado = (
-      <span className="flex flex-wrap items-center gap-2 text-sm">
-        {/* Amarelo e com o que se edita (pedido de 23/09/2026): "Editando",
-            azul, passava por mais um rótulo da página. Editar a obra é
-            estado que pede atenção — o que se muda aqui grava na obra. O
-            lápis separa do "Em edição por outra pessoa", que tem cadeado. */}
-        <Badge tone="warning"><Pencil size={12} aria-hidden="true" /> Você está editando esta obra</Badge>
-        {/* "salvo" só quando o banco aceitou. Enquanto não, a barra diz o que
-            está acontecendo — inclusive a próxima tentativa, quando falhou. */}
-        <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />
-        <Button variant="outline" onClick={onFinalizar}>
-          <Check size={16} aria-hidden="true" /> Finalizar edição
-        </Button>
-      </span>
+    /* Amarelo e com lápis: editar a obra pede atenção — o que se muda aqui
+       grava na obra. O cadeado fica para a edição de outra pessoa. */
+    selo = <Badge tone="warning"><Pencil size={12} aria-hidden="true" /> Você está editando</Badge>;
+    acao = (
+      <Button variant="outline" size="sm" onClick={onFinalizar}>
+        <Check size={14} aria-hidden="true" /> Finalizar edição
+      </Button>
     );
   } else {
-    /* Em modo leitura a situação da gravação continua à vista: quem acabou
-       de finalizar vê o "salvando…" virar "salvo" — ou o aviso, se não. Com
-       conflito em aberto, habilitar de novo espera a pessoa decidir. */
-    estado = (
-      <span className="flex flex-wrap items-center gap-2 text-sm">
-        {/* Visível e explicado (pedido de 23/09/2026): cinza, "Modo leitura"
-            sumia no cabeçalho, e quem tentava mexer não entendia por que nada
-            respondia. Azul da marca com o olho: amarelo é de edição (a sua e
-            a de outra pessoa), e ler não pede alerta, pede ser notado. */}
-        <Badge tone="brand"><Eye size={12} aria-hidden="true" /> Modo leitura · só consulta</Badge>
-        <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} />
-        {gravacao?.estado !== "conflito" && (
-          <Button variant="outline" onClick={onHabilitar}>
-            <Pencil size={16} aria-hidden="true" /> Habilitar edição
-          </Button>
-        )}
-      </span>
+    /* Em modo leitura a gravação continua à vista: quem acabou de finalizar
+       vê o "salvando…" virar "salvo" — ou o aviso, se não. Com conflito em
+       aberto, habilitar de novo espera a pessoa decidir. */
+    selo = <Badge tone="brand"><Eye size={12} aria-hidden="true" /> Modo leitura</Badge>;
+    explica = "Habilite a edição para alterar a obra.";
+    acao = gravacao?.estado !== "conflito" && (
+      <Button size="sm" onClick={onHabilitar}>
+        <Pencil size={14} aria-hidden="true" /> Habilitar edição
+      </Button>
     );
   }
+  const podeMostrarGravacao = !carregando && !falhouCarregar;
 
   return (
-    <div className="naoimprime flex flex-wrap items-center justify-end gap-2">
-      {estado}
+    <div className="faixa-da-edicao naoimprime rolagem-discreta flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b border-line-1 bg-surface-1">
+      <span className="flex shrink-0 items-center gap-3 text-sm">
+        {selo}
+        {explica && <span className="hidden text-text-soft lg:inline">{explica}</span>}
+      </span>
+      {/* Editando e sem nada gravado ainda: a faixa diz como a gravação
+          funciona, para ninguém procurar um botão de salvar. */}
+      {podeMostrarGravacao && (gravacao || edicao.minha) && (
+        <span className="flex shrink-0 items-center gap-3 border-l border-line-1 pl-3">
+          {gravacao
+            ? <SituacaoDaGravacao situacao={gravacao} onTentarAgora={onTentarGravar} discreta />
+            : <span className="flex items-center gap-1 text-sm text-text-mute"><CheckCircle2 size={14} aria-hidden="true" /> Cada alteração salva sozinha</span>}
+        </span>
+      )}
+      {acao && <span className="ml-auto flex shrink-0 items-center">{acao}</span>}
     </div>
   );
 }
@@ -21672,7 +21649,7 @@ export default function App() {
    *
    * Codigo, e nao um booleano: o app troca de obra sem recarregar a pagina, e
    * uma falha na 2450 nao pode trancar a 2498. Enquanto ele apontar pra obra
-   * aberta, a edicao fica fechada — ver a BarraEtapa. */
+   * aberta, a edicao fica fechada — ver a FaixaDaEdicao. */
   const [falhaAoCarregar, setFalhaAoCarregar] = useState(null);
   /* O filtro que a Conf. Executivo deve abrir mostrando, quando alguem chega
      nela por um atalho. Vale uma vez: a tela avisa que usou e isto volta a
@@ -26010,12 +25987,6 @@ export default function App() {
                 )}
                 actions={(
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <BarraEtapa
-                      edicao={{ ...edicao, por: edicao.por && nomeNaEquipe(pessoas, edicao.por) }} gravacao={gravacaoDaObra} carregando={carregandoDados}
-                      falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
-                      onTentarCarregar={() => setCargaPedida((n) => n + 1)}
-                      onTentarGravar={() => filaDaObra(obra.codigo).tentarAgora()}
-                      onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
                     {grupo === "planejamento" && (tab === "executivo" || tab === "executivo_conferencia")
                       && (migracaoPendente || podeVerModulo(eu, "catalogo")) && (
                       <BotaoApresentacao onAbrir={abrirApresentacao} arquivo={obra.cadernos?.apresentacao} />
@@ -26030,10 +26001,16 @@ export default function App() {
                 toolbar={<TabBar tab={tab} onChange={handleTabChange} obra={obra} grupo={grupo} onGrupo={handleGrupoChange} />}>
                 <></>
               </PageShell>
-              <div className="espaco-da-obra h-6" aria-hidden="true" />
               </>
             );
           })()}
+          <FaixaDaEdicao
+            edicao={{ ...edicao, por: edicao.por && nomeNaEquipe(pessoas, edicao.por) }} gravacao={gravacaoDaObra} carregando={carregandoDados}
+            falhouCarregar={String(falhaAoCarregar || "") === String(obra.codigo)}
+            onTentarCarregar={() => setCargaPedida((n) => n + 1)}
+            onTentarGravar={() => filaDaObra(obra.codigo).tentarAgora()}
+            onHabilitar={habilitarEdicao} onFinalizar={finalizarEdicao} />
+          {!emTelaCheia && <div className="espaco-da-obra h-6" aria-hidden="true" />}
           {apresAberta && (produtosApres ? (
             <Apresentacao usuario={usuario} produtos={produtosApres} obraInicial={obra.codigo}
               obras={obrasAtivas.some((o) => String(o.codigo) === String(obra.codigo)) ? obrasAtivas : [obra, ...obrasAtivas]}

@@ -16,8 +16,8 @@ associar o insumo do ERP e **criar a solicitação de compra direto no Sienge**,
 | taylor (nas suas obras) | consulta; pode escrever observação interna (a rota de observação só exige ver a obra) | tela; `web/api/_lib/rotas/comentarios.js:85` |
 | mehoo, canal | não abrem obra — veem os itens do seu canal no painel (ver `painel-por-canal.md`) | tela |
 
-Em modo leitura a tela avisa ("Modo leitura: para marcar solicitado, comprado, canal ou insumo,
-habilite a edição da obra") e oferece **Habilitar edição** quando o perfil permite.
+Em modo leitura, quem avisa é a faixa da edição da obra (fixa no topo): ela mostra o estado,
+quem está editando e oferece **Habilitar edição** quando o perfil permite.
 
 ## Fluxo
 

@@ -22,7 +22,7 @@
  *      uma leitura extra feita pelo navegador, com uma janela entre conferir
  *      e gravar. O comportamento é provado contra o banco de verdade em
  *      supabase/tests/12-salvar-obra.sql; aqui fica o desenho.
- *   2. A BarraEtapa não oferece edição numa obra que não carregou.
+ *   2. A FaixaDaEdicao não oferece edição numa obra que não carregou.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -90,11 +90,11 @@ conf("a barra recebe a falha desta obra, não de qualquer uma",
 
 /* E o aviso tem que vir ANTES do ramo que oferece "habilitar edição" — é o
    ramo final do if, quem chegar lá ganha o botão. */
-const barra = app.slice(app.indexOf("function BarraEtapa({"), app.indexOf("function BarraEtapa({") + 6000);
+const barra = app.slice(app.indexOf("function FaixaDaEdicao({"), app.indexOf("function FaixaDaEdicao({") + 6000);
 conf("o aviso de falha existe na barra", barra.includes("} else if (falhouCarregar) {"), true);
 conf("... antes do botão de habilitar",
   barra.indexOf("} else if (falhouCarregar) {") < barra.indexOf("onClick={onHabilitar}"), true);
-conf("... e diz o que acontece", barra.includes("Não consegui carregar esta obra. A edição fica fechada até ela carregar."), true);
+conf("... e diz o que acontece", barra.includes("Não consegui carregar esta obra") && barra.includes("A edição fica fechada até ela carregar."), true);
 /* A saída era "recarregue a página (F5)". Agora é tentar carregar de novo
    aqui mesmo: recarregar a página levaria junto o que outras obras desta
    aba ainda não gravaram. */
