@@ -21095,9 +21095,15 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
    depois da descrição. Fora das abas (cabeçalho da obra, módulos) não há
    contexto, e o PageShell é o do DS, sem nada a mais. */
 const EtapaDaAbaContexto = createContext(null);
-function PageShell({ description, ...props }) {
+function PageShell({ description, actions, ...props }) {
   const etapa = useContext(EtapaDaAbaContexto);
-  return <PageShellDoDS {...props} description={etapa ? <>{description}{etapa}</> : description} />;
+  if (!etapa) return <PageShellDoDS {...props} description={description} actions={actions} />;
+  return (
+    <PageShellDoDS {...props}
+      description={<>{description}{etapa.estado}</>}
+      // A ação da etapa fecha a fila, na ponta direita: ela é o último passo.
+      actions={actions || etapa.acao ? <>{actions}{etapa.acao}</> : undefined} />
+  );
 }
 
 /* Etapas que se concluem por um ATO PRÓPRIO da tela, e não pelo botão
@@ -21110,10 +21116,11 @@ const ATO_QUE_CONCLUI = {
 /* Etapas que acompanham a obra inteira e não se concluem. */
 const ETAPAS_CONTINUAS = new Set(["diario"]);
 
-function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [] }) {
-  /* Mesma faixa em TODAS as abas da esteira (pedido de 23/09/2026: "para
-     ficarem uniformes"). O que muda é só o lado direito: botão genérico,
-     o ato próprio da tela, ou nada. */
+function EtapaDaAba({ parte = "estado", etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equipe = [] }) {
+  /* Mesmo estado em TODAS as abas da esteira (pedido de 23/09/2026: "para
+     ficarem uniformes"), em duas partes: o ESTADO vai abaixo do título da
+     tela e a AÇÃO (Concluir/Reabrir) vai com as outras ações, à direita
+     ("botões de ação sempre ao lado direito", 23/09/2026). */
   const temBotao = ETAPAS_COM_CONCLUSAO.has(etapaId);
   const ato = ATO_QUE_CONCLUI[etapaId] || null;
   const feita = etapaConcluida(etapaId, obra);
@@ -21121,6 +21128,35 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
   const congelado = obra.comprasLiberadas || !podeEditar;
   // O que ainda impede concluir (hoje só a Conf. Executivo tem trava).
   const bloqueio = useMemo(() => (feita ? null : bloqueioDaEtapa(etapaId, obra)), [feita, etapaId, obra]);
+
+  if (parte === "acao") {
+    if (!temBotao || ETAPAS_CONTINUAS.has(etapaId)) return null;
+    if (feita) {
+      return congelado ? null : (
+        <Button variant="ghost" onClick={async () => {
+          if (await confirmar({
+            titulo: `Reabrir a etapa "${nomeDaEtapa(etapaId)}"?`,
+            mensagem: "O registro de quem concluiu e quando é apagado e a etapa volta a pendente. Dá para concluir de novo depois.",
+            confirmar: "Reabrir etapa", perigo: false,
+          })) onReabrirEtapa(etapaId);
+        }}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>
+      );
+    }
+    /* Contorno, e não primário: o cabeçalho da tela já tem a sua ação
+       primária (importar, nova solicitação), e só cabe uma (TELA-10). */
+    return (
+      <Button variant="outline" disabled={congelado || !!bloqueio} onClick={async () => {
+        if (await confirmar({
+          titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
+          mensagem: "Fica registrado no seu nome, com a data de hoje, e a próxima etapa é liberada. Dá para reabrir depois.",
+          confirmar: "Concluir etapa", perigo: false,
+        })) onConcluir(etapaId);
+      }}
+        title={bloqueio ? "Aprove as pendências para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
+        <Play size={16} aria-hidden="true" /> Concluir etapa
+      </Button>
+    );
+  }
 
   if (ETAPAS_CONTINUAS.has(etapaId)) {
     return (
@@ -21149,30 +21185,6 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
           </>
         )}
       </span>
-      {temBotao && <span className="flex flex-wrap items-center gap-2">
-        {feita ? (
-          !congelado && (
-            <Button variant="ghost" onClick={async () => {
-              if (await confirmar({
-                titulo: `Reabrir a etapa "${nomeDaEtapa(etapaId)}"?`,
-                mensagem: "O registro de quem concluiu e quando é apagado e a etapa volta a pendente. Dá para concluir de novo depois.",
-                confirmar: "Reabrir etapa", perigo: false,
-              })) onReabrirEtapa(etapaId);
-            }}><RotateCcw size={16} aria-hidden="true" /> Reabrir etapa</Button>
-          )
-        ) : (
-          <Button disabled={congelado || !!bloqueio} onClick={async () => {
-              if (await confirmar({
-                titulo: `Concluir a etapa "${nomeDaEtapa(etapaId)}"?`,
-                mensagem: "Fica registrado no seu nome, com a data de hoje, e a próxima etapa é liberada. Dá para reabrir depois.",
-                confirmar: "Concluir etapa", perigo: false,
-              })) onConcluir(etapaId);
-            }}
-              title={bloqueio ? "Aprove as pendências para concluir" : "Marca esta etapa como cumprida e libera a próxima"}>
-              <Play size={16} aria-hidden="true" /> Concluir etapa
-          </Button>
-        )}
-      </span>}
     </span>
   );
 }
@@ -25577,10 +25589,11 @@ export default function App() {
             equipe={pessoas} />
           </>}
 
-          <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? (
-            <EtapaDaAba etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
-              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
-          ) : null}>
+          <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? {
+            estado: <EtapaDaAba parte="estado" etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas} />,
+            acao: <EtapaDaAba parte="acao" etapaId={tab} obra={obra} podeEditar={edicao.minha}
+              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
+          } : null}>
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} ultimaImportacao={ultimaImportacao("vendido_contrato")} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} ultimaImportacao={ultimaImportacao("vendido_planilha")} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
