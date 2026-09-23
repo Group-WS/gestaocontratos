@@ -26,7 +26,7 @@ npm install
 npm start
 ```
 
-Servidor sobe em `http://localhost:3001`.
+Servidor sobe em `http://localhost:3001`; se a porta estiver em uso, tenta a próxima (a escolhida fica em `.porta` e o Vite a usa). Suba o proxy antes do `npm run dev`.
 
 ## Passo 3 — descobrir o board e as colunas certas
 
