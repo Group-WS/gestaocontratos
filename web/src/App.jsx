@@ -7309,13 +7309,10 @@ function DeparaContratoPlanilhaView({ obra, onAprovar, podeEditar }) {
 
   return (
     <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6">
-      {/* Liberado, o aviso abre a tela (23/09/2026): é o estado dela, e no pé
-          da página só era visto por quem rolasse até o fim. Ainda por
-          liberar, o cartão fica embaixo — ele vem depois de conferir. */}
-      {obra.deparaAprovado && (
-        <Alert tone="success"><AlertDescription>CMV liberado — Executivo e etapas seguintes abertos.</AlertDescription></Alert>
-      )}
-
+      {/* Liberado, o estado mora na linha da etapa, abaixo do título ("Etapa
+          concluída · por … · CMV liberado…"): o card verde repetia a mesma
+          coisa ocupando uma faixa inteira (23/09/2026). Ainda por liberar,
+          o cartão de liberar fica embaixo — ele vem depois de conferir. */}
       <ResumoCMV linhas={linhas} categorias={obra.categorias} />
 
       {!obra.deparaAprovado && (
@@ -21177,6 +21174,11 @@ const ATO_QUE_CONCLUI = {
   vendido_conferencia: "Conclui ao liberar o CMV, nesta tela.",
   comparativo: "Conclui ao liberar o Plano de Compras, nesta tela.",
 };
+/* O que a etapa concluída por ato próprio abriu — dito na linha do estado,
+   no lugar de um aviso à parte na tela. */
+const O_QUE_O_ATO_ABRIU = {
+  vendido_conferencia: "CMV liberado — Executivo e etapas seguintes abertos.",
+};
 /* Etapas que acompanham a obra inteira e não se concluem. */
 const ETAPAS_CONTINUAS = new Set(["diario"]);
 
@@ -21213,6 +21215,7 @@ function EtapaDaAba({ etapaId, obra, podeEditar, onConcluir, onReabrirEtapa, equ
               {/* Data E hora (pedido de 23/09/2026): o registro sempre
                   guardou o instante inteiro, a tela é que mostrava só o dia. */}
               {em && <> · {new Date(em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</>}
+              {O_QUE_O_ATO_ABRIU[etapaId] && <> · {O_QUE_O_ATO_ABRIU[etapaId]}</>}
             </span>
             {temBotao && !congelado && (
               <Button variant="ghost" size="sm" onClick={async () => {
