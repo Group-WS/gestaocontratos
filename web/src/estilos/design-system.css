@@ -523,3 +523,13 @@
 header div:has(> [cmdk-input]) {
   border-bottom-color: transparent !important;
 }
+
+/* TELA CHEIA DAS TELAS DE OPERAÇÃO (23/09/2026).
+
+   Em tela cheia o App deixa de desenhar o menu, o topo e o cabeçalho da
+   obra; aqui some o bloco de título da tela (título, descrição, estado da
+   etapa e ações), e ficam a barra de busca e filtros (sticky) e a lista.
+   A barra da tela cheia, desenhada pelo App, diz onde se está e como sair. */
+.modo-foco > .border-b:first-child {
+  display: none;
+}

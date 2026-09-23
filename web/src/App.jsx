@@ -19,7 +19,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye,
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Maximize2, Minimize2,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -21166,9 +21166,24 @@ function BarraEtapa({ edicao, gravacao, carregando, falhouCarregar, onTentarCarr
    depois da descrição. Fora das abas (cabeçalho da obra, módulos) não há
    contexto, e o PageShell é o do DS, sem nada a mais. */
 const EtapaDaAbaContexto = createContext(null);
-function PageShell({ description, ...props }) {
-  const etapa = useContext(EtapaDaAbaContexto);
-  return <PageShellDoDS {...props} description={etapa ? <>{description}{etapa}</> : description} />;
+function PageShell({ description, actions, className, ...props }) {
+  const aba = useContext(EtapaDaAbaContexto);
+  if (!aba) return <PageShellDoDS {...props} className={className} description={description} actions={actions} />;
+  /* TELA CHEIA (23/09/2026): as telas de operação têm um botão que esconde
+     a moldura (menu, topo, cabeçalho da obra, abas e o título da tela) e
+     deixa só a busca, os filtros e a lista. Em tela cheia o título some
+     pelo CSS (.modo-foco), e a barra do App diz onde se está e como sair. */
+  const botao = aba.onTelaCheia && (
+    <BotaoIcone rotulo="Abrir a tabela em tela cheia" variant="outline" onClick={aba.onTelaCheia}>
+      <Maximize2 size={16} aria-hidden="true" />
+    </BotaoIcone>
+  );
+  return (
+    <PageShellDoDS {...props}
+      className={cn(className, aba.telaCheia && "modo-foco")}
+      description={aba.estado ? <>{description}{aba.estado}</> : description}
+      actions={actions || botao ? <>{actions}{botao}</> : undefined} />
+  );
 }
 
 /* Etapas que se concluem por um ATO PRÓPRIO da tela, e não pelo botão
@@ -21183,6 +21198,8 @@ const ATO_QUE_CONCLUI = {
 const O_QUE_O_ATO_ABRIU = {
   vendido_conferencia: "CMV liberado — Executivo e etapas seguintes abertos.",
 };
+/* As telas de operação: tabelas largas, que ganham o botão de tela cheia. */
+const TELAS_DE_OPERACAO = new Set(["vendido_planilha", "executivo", "executivo_conferencia", "comparativo", "compras", "contratos"]);
 /* Etapas que acompanham a obra inteira e não se concluem. */
 const ETAPAS_CONTINUAS = new Set(["diario"]);
 
@@ -23691,6 +23708,21 @@ export default function App() {
 
   function handleTabChange(t) { setTab(t); setItemFilter("todos"); setTipoFilter("todos"); }
 
+  /* TELA CHEIA DAS TELAS DE OPERAÇÃO (23/09/2026, decisões do dev: modo foco
+     no app, com busca e filtros, em todas as telas de operação). Sai com
+     Esc, com o botão da barra, ou trocando de obra ou de tela. */
+  const [telaCheia, setTelaCheia] = useState(false);
+  const podeTelaCheia = modulo === "comparativo" && !!obra && TELAS_DE_OPERACAO.has(tab);
+  const emTelaCheia = telaCheia && podeTelaCheia;
+  useEffect(() => { setTelaCheia(false); }, [tab, selectedId, modulo]);
+  useEffect(() => {
+    if (!emTelaCheia) return undefined;
+    // Esc fecha — mas não quando um diálogo aberto já está usando o Esc.
+    const tecla = (e) => { if (e.key === "Escape" && !document.querySelector('[role="dialog"]')) setTelaCheia(false); };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [emTelaCheia]);
+
   /* Trocar de grupo leva pra primeira etapa DELE, nao pra lugar nenhum.
      Clicar em "Planejamento" e ficar olhando pra tela vazia obrigaria um
      segundo clique sempre. O Dashboard e a excecao: ele proprio e a tela. */
@@ -25426,21 +25458,21 @@ export default function App() {
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
       <div className="flex">
-        <Sidebar onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))}
+        {!emTelaCheia && <Sidebar onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))}
           obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           modulos={modulosVisiveis} pendentesCount={nPendentes}
           mostrarObras={migracaoPendente || podeAbrirObras(eu)}
           listaAberta={listaObrasAberta} onListaAberta={setListaObrasAberta}
           novasCount={obrasNovas.length} arquivoCount={obrasConcluidas.length} travas={travas} onNovaObra={abrirNovaObra}
-          onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />
+          onSelect={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }} />}
 
         <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar onMenu={() => setMenuAberto(true)} onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} usuario={usuario}
+        {!emTelaCheia && <TopBar onMenu={() => setMenuAberto(true)} onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))} usuario={usuario}
           equipe={pessoas} onSair={sairDaConta} onTrocarFoto={trocarMinhaFoto}
           modulos={modulosVisiveis} obras={migracaoPendente || podeAbrirObras(eu) ? obrasAtivas : []} onModulo={setModulo}
           onObra={(id) => { setSelectedId(id); setItemFilter("todos"); setTipoFilter("todos"); setTab(null); setModulo("comparativo"); }}
           naObra={modulo === "comparativo" && (migracaoPendente || podeAbrirObras(eu))}
-          listaAberta={listaObrasAberta} onListaAberta={setListaObrasAberta} />
+          listaAberta={listaObrasAberta} onListaAberta={setListaObrasAberta} />}
         {/* As abas de planilha usam a tela inteira: são 13 colunas e não
             cabem na largura de leitura que serve pro resto do app. */}
         {/* Sem padding proprio: as margens da pagina sao do PageShell de cada tela. */}
@@ -25594,7 +25626,19 @@ export default function App() {
               e DetailHero (quem e' a obra). Concluir a obra e' ato de fim de
               tudo e mora so' no Dashboard dela; a Apresentacao, so' no
               Executivo — cada acao onde ela faz sentido. */}
-          {(() => {
+          {emTelaCheia ? (
+            /* A barra da tela cheia: onde se está e como sair. */
+            <div className="naoimprime flex items-center justify-between gap-2 border-b border-line-1 bg-surface-1 px-4 py-2">
+              <span className="min-w-0 truncate text-sm">
+                <span className="mono text-text-mute">{obra.codigo}</span>
+                <span className="text-text-mute"> · {obra.nome} · </span>
+                <b className="text-text">{nomeDaEtapa(tab)}</b>
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setTelaCheia(false)}>
+                <Minimize2 size={14} aria-hidden="true" /> Sair da tela cheia <Kbd>Esc</Kbd>
+              </Button>
+            </div>
+          ) : (() => {
             const tailor = obra.tailorMade ?? registro.get(String(obra.codigo))?.tailor_made ?? null;
             const executivo = obra.responsavelExecutivo ?? registro.get(String(obra.codigo))?.responsavel_executivo ?? null;
             const squad = obra.squad || "Sem squad";
@@ -25708,10 +25752,12 @@ export default function App() {
             equipe={pessoas} />
           </>}
 
-          <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? (
-            <EtapaDaAba etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
-              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />
-          ) : null}>
+          <EtapaDaAbaContexto.Provider value={ETAPAS_POR_GRUPO[grupo]?.some((e) => e.id === tab) ? {
+            estado: <EtapaDaAba etapaId={tab} obra={obra} podeEditar={edicao.minha} equipe={pessoas}
+              onConcluir={concluirEtapa} onReabrirEtapa={reabrirEtapa} />,
+            onTelaCheia: podeTelaCheia ? () => setTelaCheia(true) : null,
+            telaCheia: emTelaCheia,
+          } : null}>
           {tab === null && ETAPAS_POR_GRUPO[grupo] && <div className="escolha-aba">Escolha uma etapa acima para começar.</div>}
           {tab === "vendido_contrato" && <VendidoContratoView obra={obra} onImportContrato={importVendidoContrato} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensContrato"])} onReabrir={reabrirCompras} onEditarItem={editarItemContrato} podeEditar={edicao.minha} />}
           {tab === "vendido_planilha" && <VendidoPlanilhaView obra={obra} onImportPlanilha={importVendidoPlanilha} onRegistrarImportacao={registrarImportacaoDaObra} onLimpar={() => limparImportacao(["itensPlanilha"])} onReabrir={reabrirCompras} podeEditar={edicao.minha} />}
@@ -25749,10 +25795,10 @@ export default function App() {
           {tab === "contratos" && <DashboardMO obra={obra} onItemChange={updateItem} onCriarSolicitacao={criarSolicitacaoContrato} onCriarEscopo={criarEscopo} onMudarEscopo={mudarEscopo} onApagarEscopo={apagarEscopo} podeEditar={edicao.minha} />}
           </EtapaDaAbaContexto.Provider>
           {/* O historico fecha a pagina, em qualquer tela da obra. */}
-          <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"}
+          {!emTelaCheia && <HistoricoDaObra obra={obra} tela={grupo === "arquivos" ? "arquivos" : tab || "dashboard"}
             importacoes={importacoes.codigo === codigoAberto ? importacoes.lista : []}
             eventosDeArquivo={eventosDeArquivo.codigo === codigoAberto ? eventosDeArquivo.lista : []} souAdmin={souAdmin}
-            podeRestaurar={podeGerenciarPessoas(eu, pessoas)} />
+            podeRestaurar={podeGerenciarPessoas(eu, pessoas)} />}
           </>
           )}
         </main>
