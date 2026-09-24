@@ -1,6 +1,6 @@
 # ADR-008 — Cadastro de Insumos, do relatório do Sienge
 
-Gestão de Obras TKWS · 23/09/2026 · **Em decisão com o dev — itens 1 a 4 fechados**
+Gestão de Obras TKWS · 23/09/2026 · **Decidido pelo dev, item a item — aguardando revisão para implementar**
 
 ---
 
@@ -97,6 +97,50 @@ Gestão de Obras TKWS · 23/09/2026 · **Em decisão com o dev — itens 1 a 4 f
 | Quem enxerga | **Só quem administra**, na mesma regra da Equipe e acessos: quem não administra não vê o item no menu nem alcança a rota. A escrita é garantida no banco por `public.admin_do_time()`, como nos outros cadastros da empresa. |
 | A importação antiga do Banco de Preços | **Fica**, para o formato antigo, **com um aviso apontando o caminho novo**. |
 
+### Item 7 · O fluxo da tela
+
+| Pergunta | Resposta |
+|---|---|
+| O caminho | Enviar o arquivo → a API valida o modelo e monta a prévia → o admin escolhe o caminho (apagar, ou manter e só incluir os novos) → confirma → a importação grava → resultado e registro no histórico. |
+| O que a prévia lista, além dos números | **Os que vão sair** (no caminho apagar), **os conflitos** entre a edição à mão e o relatório, **as linhas deixadas de fora** (com o número da linha do Excel) e **os pares que só diferem por espaço**. |
+| Relatório com muito menos códigos que o cadastro | **Só destacado na prévia**; a confirmação normal basta. |
+| Falha no meio da gravação | **Fica o que entrou**, com **retry manual**: um aviso fixo no topo diz que a última importação não terminou, com o botão para continuar. |
+| Ordem da gravação | **Gravar primeiro, apagar por último.** Se falhar no meio, o cadastro fica com registros a mais, nunca a menos. |
+| Histórico de importações | **Lista na própria tela**: quem importou, quando, a tabela, a data do relatório, o caminho escolhido e os números. |
+
+### Item 8 · Arquitetura e segurança
+
+| Pergunta | Resposta |
+|---|---|
+| Onde a planilha é lida | **Na API.** O navegador sobe o xlsx direto para o Storage, por endereço assinado pela API — o mesmo padrão dos cadernos e contratos, fora do limite de 4,5 MB do corpo da função. A API lê o arquivo de lá, valida o modelo e monta a prévia. O "continuar" relê o mesmo arquivo. |
+| O arquivo | **Guardado no Storage**, num balde próprio, junto do registro da importação. Ficam **os 12 últimos**; os mais antigos são apagados e o registro no histórico continua. |
+| A tabela | **`insumo_cadastro`**, com id próprio e unicidade em (código, descrição). Cada registro guarda a origem (relatório ou tela), que é o que deixa a importação não encostar no que nasceu na tela. |
+| Quem lê e escreve no banco | **O time lê, só o admin escreve** (`public.admin_do_time()`), como os outros cadastros da empresa — o que já deixa pronto para o Associar insumos ler no futuro. A tela continua só para quem administra (item 6). |
+| O que vale sem escolha, pelo padrão | Dado só pela rota em `web/api/_lib/rotas/`; front por `apiJson`; RLS em toda tabela; teste de acesso negado no banco; E2E `@login` e `@acesso-negado`. |
+
+### Item 9 · Regras de negócio
+
+Quatro regras viram ficha, **já vigentes** (o dev decidiu cada uma nesta conversa). A condição
+de cada uma mora em `web/src/regras`, com teste ao lado, e é chamada pela tela, pela rota e, onde
+cabe, pelo banco.
+
+| Regra | Onde vale |
+|---|---|
+| **Só o administrador mantém o cadastro de insumos** (criar, editar, apagar e importar) | Tela, rota e RLS |
+| **Insumo com solicitação enviada ao Sienge não se apaga** | Apagar pela tela e caminho "apagar" da importação |
+| **A importação só aceita o relatório da tabela ativa** (código e nome) | Validação do modelo, na API |
+| **Insumo em "vb" não entra no cadastro** | Leitura do relatório, na API |
+
+### Item 10 · A entrega
+
+| Pergunta | Resposta |
+|---|---|
+| Quando a implementação começa | **Depois que o dev revisar esta ADR** e liberar. |
+| Em partes ou tudo junto | **Tudo junto**: banco, regras, API e tela numa entrega só. |
+| Onde se trabalha | **Worktree separada**, numa branch nova saindo da `develop`, sem encostar nas mudanças abertas de outras sessões. |
+| O SQL | Vai como arquivo em `supabase/` (tabela, RLS, histórico e balde), para rodar em produção antes do deploy, como os outros. |
+| Documento de funcionalidade | **Não**: esta ADR e as fichas das regras bastam. |
+
 ## O que este arquivo produz com as regras acima
 
 | | |
@@ -108,13 +152,13 @@ Gestão de Obras TKWS · 23/09/2026 · **Em decisão com o dev — itens 1 a 4 f
 | **Entram no cadastro** | **13.758 registros, em 2.571 códigos** |
 | Avisos na prévia | 8 pares que só diferem por espaço |
 
-## Em aberto
+## Próximo passo
 
-Itens 7 a 10, ainda em conversa com o dev: o fluxo de envio, prévia, confirmação e histórico;
-arquitetura e segurança (rota, transação, RLS e testes); as fichas de regra de negócio; e o
-encaixe no gate.
+Revisão desta ADR pelo dev. Com ela liberada, a implementação segue o item 10.
 
 ## Histórico
 
 - 23/09/2026 — itens 1 a 4 decididos com o dev; ADR aberta para ser completada item a item.
 - 23/09/2026 — itens 5 (CRUD) e 6 (lugar e acesso) decididos.
+- 23/09/2026 — itens 7 (fluxo), 8 (arquitetura) e 9 (regras de negócio) decididos.
+- 23/09/2026 — item 10 (entrega) decidido; ADR completa, aguardando a revisão do dev.

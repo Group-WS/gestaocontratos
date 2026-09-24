@@ -46,7 +46,10 @@ const RESPOSTAS = {
 
 /* A linha que o `.maybeSingle()` devolve por tabela: e' assim que a rota
    descobre o nome da versao e o codigo que a verba tinha ANTES. */
+const SEM_PERMISSAO = { ativo: false };
+
 const UNICOS = {
+  eap_grupo: { num: "17", apelidos: ["paredeverde", "jardimvertical"] },
   sienge_eap_versao: { id: 77, nome: "EAP INICIAL", padrao: false },
   sienge_eap_mapa: { codigo: "04.000.000.000" },
 };
@@ -79,7 +82,11 @@ function consulta(tabela) {
   q.update = (campos) => ({
     eq: (coluna, valor) => {
       comandos.push({ tabela, op: "update", campos, filtro: [coluna, valor] });
-      return Promise.resolve({ data: null, error: null });
+      const p = Promise.resolve({ data: null, error: null });
+      // `.update(...).eq(...).select(...)` devolve as linhas gravadas; lista
+      // vazia e' o RLS recusando em silencio.
+      p.select = () => Promise.resolve({ data: SEM_PERMISSAO.ativo ? [] : [{ num: valor }], error: null });
+      return p;
     },
   });
   q.delete = () => {
@@ -147,6 +154,20 @@ const servidor = app.listen(0, async () => {
   const versao = await pedir("GET", "/api/eap/versoes/1");
   conf("uma versao devolve itens e mapa", [versao.status, versao.corpo.itens.length, versao.corpo.mapa.length], [200, 1, 2]);
   conf("id que nao e' numero nao chega ao banco", (await pedir("GET", "/api/eap/versoes/abc")).status, 400);
+
+  console.log("\n— apelido novo de verba —");
+  const ensinou = await pedir("PUT", "/api/eap/grupos/17/apelidos", { apelido: "paisagismo" });
+  conf("o nome do grupo vira apelido da verba", [ensinou.status, ensinou.corpo.apelidos], [200, ["paredeverde", "jardimvertical", "paisagismo"]]);
+  conf("grava so' na verba do caminho", ultimo("update", "eap_grupo").filtro, ["num", "17"]);
+  const antesRepetido = comandos.length;
+  conf("apelido que ja' existe nao grava de novo",
+    [(await pedir("PUT", "/api/eap/grupos/17/apelidos", { apelido: "paredeverde" })).status, comandos.slice(antesRepetido).some((c) => c.op === "update")],
+    [200, false]);
+  conf("apelido fora da forma comprimida e' recusado", (await pedir("PUT", "/api/eap/grupos/17/apelidos", { apelido: "Paisagismo" })).status, 400);
+  conf("verba que nao e' de dois digitos e' recusada", (await pedir("PUT", "/api/eap/grupos/abc/apelidos", { apelido: "paisagismo" })).status, 400);
+  SEM_PERMISSAO.ativo = true;
+  conf("o RLS recusando vira 403", (await pedir("PUT", "/api/eap/grupos/17/apelidos", { apelido: "jardim" })).status, 403);
+  SEM_PERMISSAO.ativo = false;
 
   console.log("\n— importacao —");
   const nova = await pedir("POST", "/api/eap/versoes", {

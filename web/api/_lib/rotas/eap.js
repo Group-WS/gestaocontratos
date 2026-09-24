@@ -2,6 +2,7 @@
  * EAP — a da casa (`eap_grupo`) e a do Sienge (`sienge_eap_*`).
  * -----------------------------------------------------------
  * GET  /api/eap/grupos                -> os grupos ativos da EAP DA CASA, na ordem
+ * PUT  /api/eap/grupos/:num/apelidos { apelido } -> ensina um nome de grupo a' verba
  * GET  /api/eap/versoes               -> as versoes da EAP do Sienge, da mais nova pra mais velha
  * GET  /api/eap/versoes/:id           -> { itens, mapa } de uma versao
  * POST /api/eap/versoes               { versao }   -> { id } (so' a linha da versao)
@@ -167,6 +168,47 @@ rotas.get("/api/eap/grupos", async (req, res) => {
   if (error) return erroDoBanco(res, error);
   res.json(data || []);
 });
+
+/**
+ * Ensina a EAP um nome de grupo que ela nao reconhecia (23/09/2026).
+ *
+ * Na importacao, o grupo do arquivo que nao casa com nenhuma verba aparece
+ * para a pessoa escolher a verba certa (RN-030). A escolha nao vale so'
+ * para aquela obra: o nome vira apelido da verba, e o proximo arquivo com
+ * o mesmo grupo ja' entra no lugar.
+ *
+ * O apelido chega COMPRIMIDO pela tela (sem acento, espaco, pontuacao nem
+ * o numero do grupo), que e' a forma com que o depara compara. Quem pode
+ * gravar e' o RLS de `eap_grupo` (master, admin, geral e gc, os mesmos que
+ * importam): a policy recusa em silencio, por isso a rota confere se a
+ * linha voltou.
+ */
+const paramDoGrupo = z.object({ num: z.string().regex(/^\d{2}$/) }).strict();
+const corpoDoApelido = z.object({ apelido: z.string().regex(/^[a-z0-9]{3,80}$/) }).strict();
+
+rotas.put("/api/eap/grupos/:num/apelidos",
+  zValidator("param", paramDoGrupo),
+  zValidator("json", corpoDoApelido),
+  async (req, res) => {
+    const { num } = req.valido.param;
+    const { apelido } = req.valido.json;
+    const { data: grupo, error: erroLeitura } = await req.supabase
+      .from("eap_grupo").select("num, apelidos").eq("num", num).maybeSingle();
+    if (erroLeitura) return erroDoBanco(res, erroLeitura);
+    if (!grupo) return res.status(404).json({ error: "Essa verba não existe na EAP." });
+
+    const apelidos = Array.isArray(grupo.apelidos) ? grupo.apelidos : [];
+    if (apelidos.includes(apelido)) return res.json({ num, apelidos });
+
+    const novos = [...apelidos, apelido];
+    const { data: gravou, error } = await req.supabase
+      .from("eap_grupo").update({ apelidos: novos }).eq("num", num).select("num");
+    if (error) return erroDoBanco(res, error);
+    if (!gravou || gravou.length === 0) {
+      return res.status(403).json({ error: "Você não tem acesso a esta área. Fale com o administrador da sua organização." });
+    }
+    res.json({ num, apelidos: novos });
+  });
 
 /* ---------- a EAP do Sienge ---------- */
 

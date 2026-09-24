@@ -50,3 +50,12 @@ export async function carregarEapDoBanco() {
   veioDoBanco = true;
   return { grupos: grupos.length, apelidos: Object.values(apelidos).flat().length, naoAnalisadas: Object.keys(naoAnalisadas).length };
 }
+
+/**
+ * Ensina a verba um nome de grupo que ela não reconhecia (RN-030): o
+ * apelido fica em `eap_grupo.apelidos`, e a EAP em uso é recarregada para
+ * valer já nesta sessão.
+ */
+export async function ensinarApelidoDaVerba(num, apelido) {
+  await apiJson(`/api/eap/grupos/${encodeURIComponent(num)}/apelidos`, { metodo: "PUT", corpo: { apelido } });
+}
