@@ -45,7 +45,8 @@ import { gerarRelatorioPdf } from "./lib/relatorioPdf.js";
 import { carregarPrestadores, salvarPrestador, excluirPrestador } from "./lib/maoDeObraPropria.js";
 import { subgrupoDe } from "./lib/catalogoModelo.js";
 import { listarSiengeObras, marcarStatusSienge } from "./lib/siengeObra.js";
-import { definirEapPadrao, eapAtual, carregarEapDoBanco } from "./lib/eap";
+import { definirEapPadrao, eapAtual, carregarEapDoBanco, ensinarApelidoDaVerba } from "./lib/eap";
+import { apelidoDoGrupo, gruposForaDoPadrao, aplicarEscolhaDeVerbas } from "./lib/gruposForaDaEap.js";
 // A EAP do SIENGE (apropriação do orçamento) — outra coisa da `lib/eap`
 // acima, que é a EAP da casa. Ver o cabeçalho de lib/eapApropriacao.js.
 import { parseEapSienge, folhasDaEap, sugerirFolha, ehMaterial } from "./lib/eapSienge.js";
@@ -55,7 +56,7 @@ import { montarSolicitacaoSienge, corpoDoEnvio, casarDetalhes } from "./lib/sien
 import { abrirEnvio, fecharEnvio, enviosPendentes, envioComMesmoConteudo, reconciliarEnvio,
   listarEnviosSienge, assinaturaDoEnvio, novaChaveIdempotencia } from "./lib/siengeSolicitacoes.js";
 import Catalogo from "./Catalogo";
-import { confirmar, mensagem, perguntar, avisar } from "./lib/confirmar.jsx";
+import { confirmar, mensagem, perguntar, avisar, escolherVerbas } from "./lib/confirmar.jsx";
 import {
   adaptObras, Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
   Sheet, SheetContent, SheetTitle, SheetHeader, SheetDescription, SheetFooter, Popover, PopoverTrigger, PopoverContent,
@@ -4599,10 +4600,23 @@ async function lerContratoPDF(file) {
   }
   const data = await res.json();
   const mapa = mapearVerbasPeloNome(data.verbas);
+  /* Grupo que a EAP não reconhece não usa o número do arquivo (23/09/2026).
+     Antes o item ficava com o número cru do contrato e caía na verba de
+     mesmo número do padrão, que é outra coisa ("15 PAISAGISMO" em Rodapés).
+     Agora viaja marcado como a planilha já fazia, e a importação pergunta
+     a verba (RN-030). O valor do grupo vai junto, pelo nome. */
+  const naoReconhecidas = new Map((data.verbas || []).filter((v) => !mapa[v.num]).map((v) => [v.num, v.nome]));
   const valores = {};
-  (data.verbas || []).forEach((v) => { if (v.valor != null) valores[mapa[v.num] || v.num] = v.valor; });
+  const valoresFora = {};
+  (data.verbas || []).forEach((v) => {
+    if (v.valor == null) return;
+    if (mapa[v.num]) valores[mapa[v.num]] = v.valor;
+    else valoresFora[v.nome] = v.valor;
+  });
   const itens = (data.itens || []).map((it) => ({
-    num: mapa[it.verba] || it.verba, codigo: it.codigo, desc: limparQtdColada(it.desc),
+    num: mapa[it.verba] || it.verba,
+    ...(naoReconhecidas.has(it.verba) ? { foraDoPadrao: true, grupoOriginal: naoReconhecidas.get(it.verba) } : {}),
+    codigo: it.codigo, desc: limparQtdColada(it.desc),
     qtdVendida: it.qtd, un: it.un, ambiente: it.ambiente,
     // veio colada na descrição: a separação é palpite, marca pra conferir
     qtdColada: !!it.qtdColada,
@@ -4610,8 +4624,7 @@ async function lerContratoPDF(file) {
     // aqui "não foi vendido" se resume a não ter quantidade
     ehTitulo: ehLinhaDeTitulo(it.qtd, null, null),
   }));
-  return { valores, itens, diagnostico: data.diagnostico, paginas: data.paginas,
-           gruposNaoReconhecidos: (data.verbas || []).filter((v) => !mapa[v.num]).map((v) => v.nome) };
+  return { valores, valoresFora, itens, diagnostico: data.diagnostico, paginas: data.paginas };
 }
 
 // Traduz a numeração do documento pra numeração da EAP, usando o nome de
@@ -4803,7 +4816,9 @@ function verbaDoCodigo(codigo) {
 // São radicais, não palavras inteiras — "climatiza" cobre climatização e
 // climatizacao; "persian" cobre persiana e persianas.
 const APELIDOS_CODIGO = {
-  "01": ["arquitetura", "engenharia", "projetoarquitetonico"],
+  // "projetopaisagismo" é mais longo que "paisagismo" (17) e ganha no
+  // desempate: o PROJETO de paisagismo é serviço de projeto, fica aqui.
+  "01": ["arquitetura", "engenharia", "projetoarquitetonico", "projetopaisagismo"],
   "02": ["servicoscomplementar", "complementar"],
   "03": ["civil", "alvenaria", "demolicao"],
   "04": ["impermeabiliza"],
@@ -4821,9 +4836,9 @@ const APELIDOS_CODIGO = {
   "14": ["papeldeparede", "papelparede"],
   "15": ["rodape", "boiserie"],
   "16": ["revestimentoespecial"],
-  // "paisagismo" saiu daqui: PROJETO PAISAGISMO é serviço de projeto
-  // (verba 01), não o jardim vertical construído.
-  "17": ["paredeverde", "jardimvertical"],
+  // O grupo PAISAGISMO é a 17 (no Sienge, 04.014 Paisagismo | Parede
+  // Verde | Plantas). PROJETO PAISAGISMO vai para a 01 pelo apelido longo.
+  "17": ["paredeverde", "jardimvertical", "paisagismo"],
   "18": ["pintura", "pintor"],
   "19": ["esquadria"],
   "20": ["climatiza", "exausta", "arcondicionado"],
@@ -5178,6 +5193,45 @@ function extrairItensDaPlanilha(linhas) {
    o resumo das verbas, depois. Agora é uma: as duas acontecem antes de
    APLICAR, e a pessoa lê num lugar só o que muda e o que se perde.
    `perda`: as frases de frasesDoQueSePerde, quando há o que perder. */
+/* GRUPO FORA DA EAP PASSA PELA PESSOA (RN-030, 23/09/2026).
+
+   Antes o grupo que a EAP não reconhecia ia calado para o fim da lista,
+   com um selo "fora do padrão". Agora a importação para, mostra cada um e
+   pede a verba — ou a decisão explícita de manter fora. A escolha vira
+   apelido da verba no banco: a próxima obra com o mesmo grupo não pergunta.
+
+   Gravar o apelido não segura a importação: se falhar, os itens entram na
+   verba escolhida do mesmo jeito e o retorno avisa que o nome não ficou
+   gravado. Cancelar desiste da importação inteira. */
+async function resolverGruposForaDaEap(itens) {
+  const grupos = gruposForaDoPadrao(itens);
+  if (!grupos.length) return { itens, escolhas: new Map(), naoGravados: [] };
+  const escolhas = await escolherVerbas({ grupos, verbas: eapPadrao() });
+  if (!escolhas) {
+    const desistiu = new Error("Importação cancelada.");
+    desistiu.cancelado = true;
+    throw desistiu;
+  }
+  const naoGravados = [];
+  let gravou = false;
+  for (const [nome, num] of escolhas) {
+    const apelido = apelidoDoGrupo(nome);
+    if (!num || !apelido) continue;
+    try {
+      await ensinarApelidoDaVerba(num, apelido);
+      gravou = true;
+    } catch {
+      naoGravados.push(nome);
+    }
+  }
+  if (gravou) await carregarEapDoBanco().catch(() => null);
+  return { itens: aplicarEscolhaDeVerbas(itens, escolhas), escolhas, naoGravados };
+}
+
+const avisoDosNaoGravados = (naoGravados) => (naoGravados.length
+  ? `\n\nA verba escolhida para ${naoGravados.join(", ")} valeu nesta importação, mas não ficou gravada na EAP. Da próxima vez o grupo será perguntado de novo.`
+  : "");
+
 async function confirmarImportacao({ arquivo, categorias, itens, documento, numsExtras = [], perda = null }) {
   const resumo = resumoDaImportacao(categorias, itens, DOCUMENTOS[documento].campo, numsExtras);
   const temPerda = Array.isArray(perda) && perda.length > 0;
@@ -5595,7 +5649,16 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
   };
 
   async function aoImportar(file) {
-    const { valores, itens, diagnostico, paginas, gruposNaoReconhecidos } = await lerContratoPDF(file);
+    const lido = await lerContratoPDF(file);
+    const { diagnostico, paginas } = lido;
+    const { itens, escolhas, naoGravados } = await resolverGruposForaDaEap(lido.itens);
+    // O valor do grupo acompanha a verba escolhida; mantido fora, fica de fora como o grupo.
+    const valores = { ...lido.valores };
+    Object.entries(lido.valoresFora || {}).forEach(([nome, valor]) => {
+      const num = escolhas.get(nome);
+      if (num) valores[num] = (valores[num] || 0) + valor;
+    });
+    const gruposMantidosFora = [...escolhas].filter(([, num]) => !num).map(([nome]) => nome);
     const n = Object.keys(valores).length;
     /* Contrato SEM valor por verba é normal, não é falha.
 
@@ -5630,7 +5693,7 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
     // unidades" onde eram 4. Estes itens precisam de conferência à mão.
     if ((d.qtdDuvidosa || []).length) alertas.push(`${d.qtdDuvidosa.length} com quantidade ilegível — preencher à mão (${d.qtdDuvidosa.slice(0, 6).join(", ")}${d.qtdDuvidosa.length > 6 ? "…" : ""})`);
     if ((d.suspeitas || []).length) alertas.push(`${d.suspeitas.length} suspeito${d.suspeitas.length > 1 ? "s" : ""} na releitura: ${d.suspeitas.slice(0, 3).map((x) => `${x.codigo} (${x.motivo})`).join("; ")}`);
-    if ((gruposNaoReconhecidos || []).length) alertas.push(`grupo fora do padrão: ${gruposNaoReconhecidos.join(", ")}`);
+    if (gruposMantidosFora.length) alertas.push(`grupo mantido fora do padrão: ${gruposMantidosFora.join(", ")}`);
 
     const verbasTxt = n === 0
       ? "sem valor por verba (contrato fechado)"
@@ -5643,11 +5706,12 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
     if ((d.qtdDuvidosa || []).length) {
       const cods = d.qtdDuvidosa;
       return `${base}\n\n⚠️ ${cods.length} ${cods.length === 1 ? "item veio" : "itens vieram"} com a quantidade colada na descrição no PDF — a separação é um palpite e pode estar errada. CONFIRA a quantidade destes: ${cods.join(", ")}. Dá pra corrigir clicando na célula.` +
-        (alertas.length > 1 ? `\n\nOutros pontos: ${alertas.filter((x) => !x.includes("colada")).join(" · ")}.` : "");
+        (alertas.length > 1 ? `\n\nOutros pontos: ${alertas.filter((x) => !x.includes("colada")).join(" · ")}.` : "") +
+        avisoDosNaoGravados(naoGravados);
     }
-    return alertas.length
+    return (alertas.length
       ? `${base} ATENÇÃO: ${alertas.join(" · ")}. Confira estes antes de seguir.`
-      : `${base} Todos os itens vieram com grupo e quantidade.`;
+      : `${base} Todos os itens vieram com grupo e quantidade.`) + avisoDosNaoGravados(naoGravados);
   }
 
   return (
@@ -5836,7 +5900,8 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
     const ehPDF = /\.pdf$/i.test(file.name);
     // Evita a aba do Executivo quando o mesmo .xlsm traz as duas — Vendido
     // Planilha e Executivo não são o mesmo documento, mesmo vindo juntos.
-    const { itens } = ehPDF ? await lerPlanilhaPDF(file) : await lerPlanilhaExcel(file, { evitarAba: /execut/i });
+    const lido = ehPDF ? await lerPlanilhaPDF(file) : await lerPlanilhaExcel(file, { evitarAba: /execut/i });
+    const { itens, naoGravados } = lido.itens.length ? await resolverGruposForaDaEap(lido.itens) : { itens: [], naoGravados: [] };
     if (itens.length === 0) {
       throw new Error(ehPDF
         ? "Não encontrei itens com quantidade nesse PDF. Me manda o arquivo que eu calibro o leitor."
@@ -5846,7 +5911,7 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
     onImportPlanilha(itens, { substituirTudo: resumo.substituirTudo });
     onRegistrarImportacao?.("vendido_planilha", file, resumo);
     const temCusto = itens.some((it) => it.custo != null);
-    return `“${file.name}” importado — ${itens.length} itens${temCusto ? " (com custo)" : ""}.`;
+    return `“${file.name}” importado — ${itens.length} itens${temCusto ? " (com custo)" : ""}.` + avisoDosNaoGravados(naoGravados);
   }
 
   return (
@@ -9568,14 +9633,15 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
     // Prefere a aba do Executivo quando o mesmo .xlsm traz Orçamentária E
     // Executivo juntas — senão a primeira que produzir itens ganha, e
     // pode não ser a certa pra esta importação.
-    const { itens } = ehPDF ? await lerExecutivoPDF(file) : await lerPlanilhaExcel(file, { preferirAba: /execut/i });
+    const lido = ehPDF ? await lerExecutivoPDF(file) : await lerPlanilhaExcel(file, { preferirAba: /execut/i });
+    const { itens, naoGravados } = lido.itens.length ? await resolverGruposForaDaEap(lido.itens) : { itens: [], naoGravados: [] };
     if (itens.length === 0) throw new Error("Não encontrei itens nesse arquivo. Me manda ele que eu calibro o leitor.");
     // O que se perde só entra na pergunta quando há planilha E há o que perder.
     const resumo = await confirmarImportacao({ arquivo: file, categorias: obra.categorias, itens, documento: "planilha_executivo",
       perda: temExecutivo && trocaCustaCaro ? frasesDoQueSePerde(perdas) : null });
     onImportPlanilhaExecutivo(itens, { substituirTudo: resumo.substituirTudo });
     onRegistrarImportacao?.("planilha_executivo", file, resumo);
-    return `“${file.name}” importado — ${itens.length} itens.`;
+    return `“${file.name}” importado — ${itens.length} itens.` + avisoDosNaoGravados(naoGravados);
   }
 
   /* Tom do movimento da verba (deltaVerba) → tom do Badge do DS. `leve` e

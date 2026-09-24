@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ConfirmDialog, MessageDialog, Dialog, DialogContent, DialogHeader, DialogTitle,
-  DialogDescription, DialogBody, DialogFooter, Button, Field, Label, Input, Checkbox } from "@group-ws/ws-ui";
+  DialogDescription, DialogBody, DialogFooter, Button, Field, Label, Input, Checkbox,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@group-ws/ws-ui";
 import { toast } from "sonner";
 
 /* API compartilhada pelas ações de remoção. O host apresenta uma confirmação
@@ -186,6 +187,90 @@ export function PerguntarHost() {
   if (!pedido) return null;
   return (
     <PerguntaDialog key={pedidos.length} pedido={pedido} onResponder={(resposta) => {
+      pedido.resolve(resposta);
+      setPedidos((fila) => fila.filter((item) => item !== pedido));
+    }} />
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Escolher a verba de cada grupo que a EAP não reconheceu (RN-030,
+   23/09/2026). Resolve com Map(nome do grupo -> num da verba | null) — null
+   é "manter fora do padrão" — ou null quando a pessoa cancela a importação.
+   Toda linha precisa de uma escolha: o grupo não passa calado.
+   --------------------------------------------------------------------------- */
+const MANTER_FORA = "fora";
+let abrirEscolha = null;
+
+export function escolherVerbas(opcoes) {
+  if (!abrirEscolha) return Promise.resolve(null);
+  return new Promise((resolve) => abrirEscolha({ ...opcoes, resolve }));
+}
+
+function EscolherVerbasDialog({ pedido, onResponder }) {
+  const [escolhas, setEscolhas] = useState({});
+  const idBase = React.useId();
+  const completo = pedido.grupos.every((g) => escolhas[g.nome]);
+  const enviar = (e) => {
+    e.preventDefault();
+    if (!completo) return;
+    onResponder(new Map(pedido.grupos.map((g) => [g.nome, escolhas[g.nome] === MANTER_FORA ? null : escolhas[g.nome]])));
+  };
+  const plural = pedido.grupos.length > 1;
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onResponder(null); }}>
+      <DialogContent size="md">
+        <form onSubmit={enviar}>
+          <DialogHeader>
+            <DialogTitle>{plural ? "Grupos fora da EAP" : "Grupo fora da EAP"}</DialogTitle>
+            <DialogDescription>
+              {plural ? "Estes grupos do arquivo não casam" : "Este grupo do arquivo não casa"} com nenhuma verba da EAP.
+              Escolha a verba de cada um. A escolha fica gravada na EAP, e o próximo arquivo com o mesmo nome já entra
+              na verba certa. Se o grupo não pertence a nenhuma, mantenha fora do padrão: ele vai para o fim da lista e
+              conta no CMV.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="flex flex-col gap-4">
+            {pedido.grupos.map((g, i) => (
+              <Field key={g.nome}>
+                <Label htmlFor={`${idBase}-${i}`} required>
+                  {g.nome} · {g.itens} {g.itens === 1 ? "item" : "itens"}
+                </Label>
+                <Select value={escolhas[g.nome] || ""} onValueChange={(v) => setEscolhas((a) => ({ ...a, [g.nome]: v }))}>
+                  <SelectTrigger id={`${idBase}-${i}`} className="w-full">
+                    <SelectValue placeholder="Escolha a verba" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={MANTER_FORA}>Manter fora do padrão</SelectItem>
+                    {pedido.verbas.map((v) => (
+                      <SelectItem key={v.num} value={v.num}>{v.num} · {v.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            ))}
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onResponder(null)}>Cancelar importação</Button>
+            <Button type="submit" disabled={!completo}>Continuar importação</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function EscolherVerbasHost() {
+  const [pedidos, setPedidos] = useState([]);
+  useEffect(() => {
+    const receber = (pedido) => setPedidos((fila) => [...fila, pedido]);
+    abrirEscolha = receber;
+    return () => { if (abrirEscolha === receber) abrirEscolha = null; };
+  }, []);
+  const pedido = pedidos[0];
+  if (!pedido) return null;
+  return (
+    <EscolherVerbasDialog key={pedidos.length} pedido={pedido} onResponder={(resposta) => {
       pedido.resolve(resposta);
       setPedidos((fila) => fila.filter((item) => item !== pedido));
     }} />

@@ -9,7 +9,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@group-ws/ws-ui";
 import App from "./App.jsx";
 import AuthGate from "./AuthGate.jsx";
-import { ConfirmarHost, MensagemHost, PerguntarHost } from "./lib/confirmar.jsx";
+import { ConfirmarHost, MensagemHost, PerguntarHost, EscolherVerbasHost } from "./lib/confirmar.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -24,6 +24,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <ConfirmarHost />
     <MensagemHost />
     <PerguntarHost />
+    <EscolherVerbasHost />
     <Toaster position="bottom-right" richColors closeButton />
   </React.StrictMode>
 );
