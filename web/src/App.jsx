@@ -42,6 +42,7 @@ import { listarAditivos, carregarAditivo, criarAditivo, salvarAditivo, excluirAd
 import { LOGO_WS, RODAPE_WS } from "./lib/marcaWS";
 // O pdf-lib já vem no pacote principal (a Apresentação usa); o relatório é só mais um arquivo pequeno.
 import { gerarRelatorioPdf } from "./lib/relatorioPdf.js";
+import { gerarAditivoPdf } from "./lib/aditivoPdf.js";
 import { carregarPrestadores, salvarPrestador, excluirPrestador } from "./lib/maoDeObraPropria.js";
 import { subgrupoDe } from "./lib/catalogoModelo.js";
 import { listarSiengeObras, marcarStatusSienge } from "./lib/siengeObra.js";
@@ -18044,6 +18045,49 @@ function FolhaAjustada({ children }) {
   );
 }
 
+const PREVALENCIA_ADITIVO = "As alterações deste aditivo substituem e alteram diretamente o que havia sido aprovado "
+  + "anteriormente. Portanto, para todos os efeitos, passa a ser considerada válida a última "
+  + "aprovação realizada neste aditivo, prevalecendo sobre as aprovações anteriores.";
+
+/* O que o PDF do aditivo (lib/aditivoPdf.js) desenha — montado com os
+   MESMOS filtros e formatos do DocumentoAditivo e da SecaoDoc, pra o
+   arquivo dizer exatamente o que a pré-visualização mostra. */
+function modeloDoAditivoPdf(doc, numero) {
+  const t = totaisDoDocumento(doc);
+  const secao = (grupos, titulo, tema) => {
+    const usados = (grupos || []).filter((g) => g.nome.trim() || (g.itens || []).some((i) => i.descricao.trim()));
+    if (!usados.length) return null;
+    return {
+      titulo, tema, total: fmtBRL(totalSecao(usados)),
+      grupos: usados.map((g) => ({
+        num: String(g.num), nome: g.nome, total: fmtBRL(totalGrupo(g)),
+        itens: (g.itens || []).map((it, ii) => (
+          (!it.descricao.trim() && !parseNumAd(it.valor)) ? null : {
+            cod: `${g.num}.${ii + 1}`,
+            desc: String(it.descricao || "").split("\n").map((l) => ({ texto: l, forte: CHEFES.test(l) })),
+            amb: it.ambiente || "", qtd: numBR(parseNumAd(it.qtd)), un: it.unidade || "",
+            vu: fmtBRL(parseNumAd(it.valor)), vt: fmtBRL(totalItem(it)),
+          }
+        )).filter(Boolean),
+      })),
+    };
+  };
+  const secoes = [secao(doc.supressao, "supressão", "vinho"), secao(doc.adicao, "adição", "verde")].filter(Boolean);
+  return {
+    titulo: `Proposta de Aditivo${numero ? ` ${numero}` : ""}`,
+    meta: [["Cliente", doc.cliente || "—"], ["Proposta", doc.proposta || "—"], ["Data", dataBR(doc.data) || "—"]],
+    secoes,
+    vazio: "Preencha ao menos um grupo com itens para o documento aparecer aqui.",
+    saldo: {
+      linhas: [["Total supressão", fmtBRL(t.supressao)], ["Total adição", fmtBRL(t.adicao)]],
+      final: [rotuloSaldo(t.saldo), fmtBRL(t.saldo)],
+      credito: t.saldo < 0,
+    },
+    cond: String(doc.cond || "").trim(),
+    prevalencia: PREVALENCIA_ADITIVO,
+  };
+}
+
 function DocumentoAditivo({ doc, numero }) {
   const t = totaisDoDocumento(doc);
   const vazio = !(doc.supressao || []).some((g) => g.nome.trim() || g.itens.some((i) => i.descricao.trim()))
@@ -18099,11 +18143,7 @@ function DocumentoAditivo({ doc, numero }) {
               Pequena e cinza de proposito. Ela precisa ESTAR no documento,
               nao competir com ele — o que o cliente le e' o que muda e
               quanto custa. */}
-          <div className="ad-prevalencia">
-            As alterações deste aditivo substituem e alteram diretamente o que havia sido aprovado
-            anteriormente. Portanto, para todos os efeitos, passa a ser considerada válida a última
-            aprovação realizada neste aditivo, prevalecendo sobre as aprovações anteriores.
-          </div>
+          <div className="ad-prevalencia">{PREVALENCIA_ADITIVO}</div>
           {/* O rodapé mora junto das condições: numa folha só os dois descem
               pro pé; num aditivo comprido passam juntos pra última folha, em
               vez de o rodapé ficar sozinho numa página. */}
@@ -18480,24 +18520,30 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
     onVoltar();
   }
 
-  /* O nome do arquivo sai do titulo da pagina — e' assim que todo
-     navegador batiza o "Salvar como PDF". Sem isso o arquivo nascia
-     "Gestao de Obras TKWS — Vendido x Executivo.pdf", e a pessoa que
-     precisa anexar esse PDF no Pipefy depois teria que caçar qual dos
-     cinco arquivos de mesmo nome e' o aditivo certo.
+  /* O PDF do aditivo, baixado como arquivo (lib/aditivoPdf.js).
 
-     A barra do numero vira hifen: "2256/1" abriria pasta no nome do
-     arquivo. */
-  function imprimir() {
-    const antes = document.title;
+     Até 24/09/2026 era o window.print(): a pessoa tinha que achar "Salvar
+     como PDF", e o papel mudava com o navegador. Agora o arquivo nasce
+     pronto, desenhado a partir do mesmo documento da pré-visualização.
+
+     O nome leva número e obra: quem anexa esse PDF no Pipefy precisa achar
+     o aditivo certo entre vários. A barra do número vira hífen: "2256/1"
+     abriria pasta no nome do arquivo. */
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  async function baixarPdf() {
     const obraNome = (obra?.nome || doc.cliente || "").replace(/[\\/:*?"<>|]/g, "-").trim();
-    document.title = `${aditivo.numero.replace("/", "-")} Aditivo${obraNome ? ` - ${obraNome}` : ""}`;
-    const devolver = () => { document.title = antes; window.removeEventListener("afterprint", devolver); };
-    window.addEventListener("afterprint", devolver);
-    window.print();
-    // Rede de seguranca: navegador que nao dispare `afterprint` deixaria
-    // o titulo trocado na aba pra sempre.
-    setTimeout(devolver, 4000);
+    const nome = `${aditivo.numero.replace("/", "-")} Aditivo${obraNome ? ` - ${obraNome}` : ""}.pdf`;
+    setGerandoPdf(true);
+    try {
+      const bytes = await gerarAditivoPdf({ ...modeloDoAditivoPdf(doc, aditivo.numero), topo: LOGO_WS, rodape: RODAPE_WS });
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      baixarUrl(url, nome);
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      setErro(`Não consegui gerar o PDF: ${e.message || e}`);
+    } finally {
+      setGerandoPdf(false);
+    }
   }
 
   /* O Excel do aditivo. Uso interno, e por isso leva o que o PDF do
@@ -18544,8 +18590,8 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
       actions={(
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <Button variant="outline" onClick={voltar}><ChevronLeft size={16} /> Aditivos da obra</Button>
-          <Button variant="outline" onClick={imprimir} title="Abre a impressão do navegador — escolha Salvar como PDF">
-            <Download size={16} /> PDF
+          <Button variant="outline" onClick={baixarPdf} disabled={gerandoPdf} title="Baixa a proposta de aditivo em PDF, como na pré-visualização">
+            <Download size={16} /> {gerandoPdf ? "Gerando…" : "PDF"}
           </Button>
           {/* O Excel e' o avesso do PDF: o PDF e' o que o cliente le, este e'
               o que a casa precisa — custo, margem e especificacao de compra. */}
