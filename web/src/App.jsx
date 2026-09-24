@@ -66,7 +66,7 @@ import {
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
   TkwsHeader, Avatar as AvatarDS, AvatarFallback, AvatarImage, Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator,
   Card, CardHeader, CardTitle, CardDescription, CardContent, KpiMini, Badge, Label,
-  Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell as PageShellDoDS, Skeleton,
+  Alert, AlertTitle, AlertDescription, EmptyState, Progress, Checkbox, PageShell as PageShellDoDS, Skeleton, Spinner,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard, RadioGroupItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
@@ -15469,6 +15469,34 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
   );
 }
 
+/* LINK NA ESPECIFICAÇÃO, CLICÁVEL E CURTO (24/09/2026).
+
+   Link colado da loja vem com o rastreio ("?utm_source=…&gclid=…",
+   centenas de caracteres sem espaço) e empurrava a tabela de Compras pra
+   direita. Na linha cinza o link aparece só como endereço — sem "www" e
+   sem a parte depois do "?" — e abre a loja numa aba nova. `completo`
+   mostra o texto inteiro, link com rastreio e tudo, quebrando onde der. */
+const RE_LINK = /(https?:\/\/[^\s]+)/g;
+const temLink = (texto) => /https?:\/\//.test(String(texto || ""));
+function encurtarLink(url) {
+  try {
+    const u = new URL(url);
+    return `${u.hostname.replace(/^www\./, "")}${u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "")}`;
+  } catch {
+    return url;
+  }
+}
+function TextoComLinks({ texto, completo = false }) {
+  return String(texto || "").split(RE_LINK).map((parte, i) => (
+    i % 2 === 1 ? (
+      <a key={i} href={parte} target="_blank" rel="noopener noreferrer" title={parte}
+        className={`text-brand underline underline-offset-2 hover:text-text${completo ? " break-all" : ""}`}>
+        {completo ? parte : encurtarLink(parte)}
+      </a>
+    ) : <React.Fragment key={i}>{parte}</React.Fragment>
+  ));
+}
+
 function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false,
   trocando = false, equipe = [], executivo, onAbrirTroca, onFecharTroca, onRegistrarTroca, onDesfazerTroca, troca = null,
   obs = [], obsSemTabela = false, onAdicionarObs, onApagarObs, usuario, souAdmin = false, onHabilitar, editandoPor }) {
@@ -15485,6 +15513,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
     : "Marcar como solicitado no Sienge";
   const alternarSolicitado = () => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() });
   const [escrevendoObs, setEscrevendoObs] = useState(false);
+  const [especInteira, setEspecInteira] = useState(false);
 
   // O produto que foi trocado: riscado, em cinza, sem ação nenhuma.
   if (it.troca) {
@@ -15544,9 +15573,17 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               )}
               {/* Quem vende: na planilha do Executivo a coluna Fornecedor vira
                   `marca` no item; a especificação separa peças de mesmo nome. */}
-              <span className="min-w-0" title={[it.ambiente, it.marca, it.especificacao].filter(Boolean).join(" · ")}>
-                {[it.ambiente, it.marca ? nomeDoFornecedor(it) : "sem fornecedor", it.especificacao].filter(Boolean).join(" · ")}
+              <span className={`min-w-0${especInteira ? "" : " line-clamp-2"}`}
+                title={[it.ambiente, it.marca, it.especificacao].filter(Boolean).join(" · ")}>
+                {[it.ambiente, it.marca ? nomeDoFornecedor(it) : "sem fornecedor"].filter(Boolean).join(" · ")}
+                {it.especificacao && <>{" · "}<TextoComLinks texto={it.especificacao} completo={especInteira} /></>}
               </span>
+              {temLink(it.especificacao) && (
+                <Button variant="ghost" size="sm" className="h-auto px-1 py-0 text-xs"
+                  aria-expanded={especInteira} onClick={() => setEspecInteira((v) => !v)}>
+                  {especInteira ? "ver resumido" : "ver completo"}
+                </Button>
+              )}
               {obs.length > 0 && !escrevendoObs && (
                 <span className="inline-flex items-center gap-1 text-obs"><MessageSquare size={12} aria-hidden="true" /> {obs.length}</span>
               )}
@@ -18534,12 +18571,18 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
     const obraNome = (obra?.nome || doc.cliente || "").replace(/[\\/:*?"<>|]/g, "-").trim();
     const nome = `${aditivo.numero.replace("/", "-")} Aditivo${obraNome ? ` - ${obraNome}` : ""}.pdf`;
     setGerandoPdf(true);
+    // O PDF costuma sair em menos de meio segundo: sem um mínimo, o
+    // "Gerando PDF…" pisca e some antes de ser lido.
+    const minimo = new Promise((r) => setTimeout(r, 600));
     try {
       const bytes = await gerarAditivoPdf({ ...modeloDoAditivoPdf(doc, aditivo.numero), topo: LOGO_WS, rodape: RODAPE_WS });
+      await minimo;
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
       baixarUrl(url, nome);
       setTimeout(() => URL.revokeObjectURL(url), 60000);
+      avisar.ok("PDF gerado.", `“${nome}” foi para a pasta de downloads.`);
     } catch (e) {
+      await minimo;
       setErro(`Não consegui gerar o PDF: ${e.message || e}`);
     } finally {
       setGerandoPdf(false);
@@ -18590,8 +18633,11 @@ function EditorAditivo({ aditivo, obra, usuario, doExecutivo, onVoltar, onSalvo 
       actions={(
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <Button variant="outline" onClick={voltar}><ChevronLeft size={16} /> Aditivos da obra</Button>
-          <Button variant="outline" onClick={baixarPdf} disabled={gerandoPdf} title="Baixa a proposta de aditivo em PDF, como na pré-visualização">
-            <Download size={16} /> {gerandoPdf ? "Gerando…" : "PDF"}
+          <Button variant="outline" onClick={baixarPdf} disabled={gerandoPdf} aria-busy={gerandoPdf}
+            title="Baixa a proposta de aditivo em PDF, como na pré-visualização">
+            {gerandoPdf
+              ? <><Spinner size="sm" tone="neutral" aria-hidden="true" /> Gerando PDF…</>
+              : <><Download size={16} /> PDF</>}
           </Button>
           {/* O Excel e' o avesso do PDF: o PDF e' o que o cliente le, este e'
               o que a casa precisa — custo, margem e especificacao de compra. */}
