@@ -211,7 +211,7 @@ async function entrar(browser, pessoa, banco) {
   const page = await contexto.newPage();
   await simularBackend(page, banco);
   await page.goto(`${APP}/obra/${OBRA}`);
-  await expect(page.getByText("Modo leitura")).toBeVisible();
+  await expect(page.getByText("Só leitura")).toBeVisible();
   return page;
 }
 
@@ -233,11 +233,11 @@ test("a trava vale entre as duas sessões: quem chega depois não edita", { tag:
   const ana = await entrar(browser, ANA, banco);
   const bruno = await entrar(browser, BRUNO, banco);
 
-  await ana.getByRole("button", { name: "Habilitar edição" }).click();
+  await ana.getByRole("button", { name: "Editar obra" }).click();
   await expect(ana.getByText("Você está editando")).toBeVisible();
   await expect.poll(() => banco.linha.editando_por).toBe(ANA.email);
 
-  await bruno.getByRole("button", { name: "Habilitar edição" }).click();
+  await bruno.getByRole("button", { name: "Editar obra" }).click();
   // A faixa da edição (23/09/2026) diz quem está com a obra num selo só.
   await expect(bruno.getByText(`${ANA.nome} está editando`)).toBeVisible();
   // O campo de data continua fechado para quem não está com a obra.
@@ -252,7 +252,7 @@ test("quem habilita a edição depois edita a obra como está no banco, e não a
   const bruno = await entrar(browser, BRUNO, banco);
 
   // Ana edita e sai.
-  await ana.getByRole("button", { name: "Habilitar edição" }).click();
+  await ana.getByRole("button", { name: "Editar obra" }).click();
   await escolherEntrega(ana, 15);
   await expect(barra(ana).filter({ hasText: /^Salvo às \d{2}:\d{2}$/ })).toBeVisible();
   const dataDaAna = `${mesAtual()}-15`;
@@ -265,7 +265,7 @@ test("quem habilita a edição depois edita a obra como está no banco, e não a
   await expect(bruno.getByRole("button", { name: /dd\/mm\/aaaa/ })).toBeVisible();
 
   // Bruno habilita: a obra vem do banco como está AGORA, com a data da Ana.
-  await bruno.getByRole("button", { name: "Habilitar edição" }).click();
+  await bruno.getByRole("button", { name: "Editar obra" }).click();
   await expect(bruno.getByText("Você está editando")).toBeVisible();
   await expect(bruno.getByRole("button", { name: naTela(dataDaAna) })).toBeVisible();
 
@@ -281,7 +281,7 @@ test("quem habilita a edição depois edita a obra como está no banco, e não a
 test("versão desatualizada é recusada: nada é gravado por cima, e a tela avisa", { tag: "@gravacao" }, async ({ browser }) => {
   const banco = novoBanco();
   const ana = await entrar(browser, ANA, banco);
-  await ana.getByRole("button", { name: "Habilitar edição" }).click();
+  await ana.getByRole("button", { name: "Editar obra" }).click();
   await expect(ana.getByText("Você está editando")).toBeVisible();
 
   // Enquanto isso, a obra muda por fora (uma restauração, o SQL Editor).
@@ -295,7 +295,7 @@ test("versão desatualizada é recusada: nada é gravado por cima, e a tela avis
   expect(banco.linha.data_entrega).toBe(dataDeFora);
   expect(banco.gravacoes.at(-1)).toMatchObject({ quem: ANA.email, status: 409 });
   // A tela volta ao modo leitura: continuar digitando seria trabalho sem ter como gravar.
-  await expect(ana.getByText("Modo leitura")).toBeVisible();
+  await expect(ana.getByText("Só leitura")).toBeVisible();
   // E não fica tentando de novo por cima.
   const tentativas = banco.gravacoes.length;
   await ana.waitForTimeout(3000);
@@ -311,7 +311,7 @@ test("versão desatualizada é recusada: nada é gravado por cima, e a tela avis
 test("gravação que falha tenta de novo sozinha, e fechar a aba antes pergunta", { tag: "@gravacao" }, async ({ browser }) => {
   const banco = novoBanco();
   const ana = await entrar(browser, ANA, banco);
-  await ana.getByRole("button", { name: "Habilitar edição" }).click();
+  await ana.getByRole("button", { name: "Editar obra" }).click();
   await expect(ana.getByText("Você está editando")).toBeVisible();
 
   banco.falharProximas = 1;

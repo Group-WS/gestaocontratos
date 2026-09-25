@@ -22052,18 +22052,23 @@ function FaixaDaEdicao({ inicio, fim, edicao, gravacao, carregando, falhouCarreg
     /* Em modo leitura a gravação continua à vista: quem acabou de finalizar
        vê o "salvando…" virar "salvo" — ou o aviso, se não. Com conflito em
        aberto, habilitar de novo espera a pessoa decidir. */
-    selo = <Badge tone="brand"><Eye size={12} aria-hidden="true" /> Modo leitura</Badge>;
-    explica = "Habilite a edição para alterar a obra.";
+    selo = <Badge tone="neutral"><Lock size={12} aria-hidden="true" /> Só leitura</Badge>;
+    explica = "Para alterar a obra, clique em Editar obra.";
     acao = gravacao?.estado !== "conflito" && (
       <Button size="sm" onClick={onHabilitar}>
-        <Pencil size={14} aria-hidden="true" /> Habilitar edição
+        <Pencil size={14} aria-hidden="true" /> Editar obra
       </Button>
     );
   }
   const podeMostrarGravacao = !carregando && !falhouCarregar;
+  /* O ESTADO NA FAIXA INTEIRA (25/09/2026): a pessoa rolava a tela e não
+     sabia se estava editando — só o selo mudava. Editando, a faixa toda
+     fica amarela; em leitura, neutra, com o cadeado. */
+  const editando = !carregando && !falhouCarregar && !edicao.por && edicao.minha;
 
   return (
-    <div className="faixa-da-edicao naoimprime rolagem-discreta flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b border-line-1 bg-surface-1">
+    <div className={cn("faixa-da-edicao naoimprime rolagem-discreta flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b",
+      editando ? "border-warning bg-warning-tint" : "border-line-1 bg-surface-1")}>
       {inicio && <span className="flex shrink-0 items-center border-r border-line-1">{inicio}</span>}
       <span className="flex shrink-0 items-center gap-3 text-sm">
         {selo}
