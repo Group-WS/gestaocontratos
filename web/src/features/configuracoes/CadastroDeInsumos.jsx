@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import {
   Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle,
   ActiveFilters, FilterChip, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EditorialTable,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EditorialNameCell, EditorialTable,
   Field, FieldHint, Input, Label, PaginationFooter, SavedViewChips, Sheet, SheetContent, SheetDescription, SheetHeader,
   SheetTitle, Skeleton, Spinner, Subheader, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea,
 } from "@group-ws/ws-ui";
@@ -545,17 +545,16 @@ export function CadastroDeInsumos() {
   }
 
   const colunas = [
-    /* A DESCRIÇÃO EM ATÉ DUAS LINHAS (25/09/2026). O EditorialNameCell do DS
-       só trunca, e na tabela do DS (largura pelo conteúdo) a descrição mais
-       longa esticava a coluna para 905px e empurrava as outras para fora da
-       tela. O `w-0 min-w-full` faz o texto ocupar só o que sobra; a célula
-       repete o desenho do EditorialNameCell (código mono em cima, nome
-       serif) — lacuna do DS: variante que quebra em 2 linhas. */
+    /* O EditorialNameCell do DS, como na listagem do DS (25/09/2026). O
+       envoltório `w-0 min-w-full` só impede a descrição mais longa de
+       esticar a coluna (a tabela do DS mede pelo conteúdo): ela trunca, e o
+       texto inteiro fica na dica. */
+    // O código numa coluna própria (pedido de 25/09/2026; a TELA-12 o põe no rótulo do nome).
+    { key: "codigo", header: "Código", width: "w-24", cell: (r) => <span className="mono text-sm tabular-nums text-text-soft">{r.codigo}</span> },
     {
       key: "insumo", header: "Insumo", cell: (r) => (
-        <div className="w-0 min-w-full">
-          <div className="mono text-xs text-text-mute">{r.codigo}</div>
-          <div className="serif line-clamp-2 leading-tight text-text" title={r.descricao}>{r.descricao}</div>
+        <div className="w-0 min-w-full" title={r.descricao}>
+          <EditorialNameCell name={r.descricao} />
         </div>
       ),
     },
