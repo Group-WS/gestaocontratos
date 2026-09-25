@@ -82,7 +82,7 @@ conf("o que já foi decidido aparece sem esperar a sugestão", linhaCompra.inclu
 /* 25/09/2026 (crítica da barra da verba): o filtro por situação, igual ao do
    Executivo, com "Insumo a conferir" dentro; o selo da verba liga esse filtro. */
 conf("existe o filtro por situação do produto, igual ao do Executivo",
-  src.includes('aria-label="Situação do produto"') && /\{ id: "nao_solicitados", label: "Não solicitados", soSienge: true \}/.test(src));
+  src.includes('rotulo: "Situação do produto"') && /\{ id: "nao_solicitados", label: "Não solicitados", soSienge: true \}/.test(src));
 conf("... com 'a conferir' como opção", src.includes('{ id: "a_conferir", label: "Insumo a conferir", soSienge: true }'));
 conf("... e a mesma regra pura peneira as linhas e conta os botões", src.includes("function casaSituacaoDe(id, r)") && compras.includes("visiveis.filter((r) => casaSituacaoDe(id, r)).length"));
 conf("o selo da verba liga o filtro geral e abre a verba", compras.includes('onClick={() => { if (!aberto) abrir(g.num); setSituacao("a_conferir"); }}'));

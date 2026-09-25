@@ -681,3 +681,9 @@ p:has(.equipe-da-obra) {
 .conteudo-da-aba tr.sem-fio:has(+ tr:hover) {
   background: var(--surface-2);
 }
+
+/* Seletor que também filtra (os cartões de etapa de Compras): vem antes da
+   barra de filtros, junto dos totais (25/09/2026). */
+.conteudo-da-aba > .antes-dos-filtros {
+  order: -2;
+}

@@ -3227,7 +3227,7 @@ function historicoDaTela(eventos, tela) {
    ela, sem quebrar — a barra de Compras, 25/09/2026. */
 function CampoBusca({ valor, aoMudar, dica, contador, emLinha = false }) {
   return (
-    <div className={emLinha ? "flex min-w-48 flex-1 items-center gap-2" : "flex w-full flex-wrap items-center gap-2 sm:w-auto"}>
+    <div className={emLinha ? "flex min-w-40 flex-1 items-center gap-2" : "flex w-full flex-wrap items-center gap-2 sm:w-auto"}>
       {/* Com icone, o Input do DS se embrulha num div relativo, e a largura
           vai no input de dentro: sem o div de fora, o embrulho ficava do
           tamanho do conteudo e cortava a dica no celular. */}
@@ -3240,6 +3240,61 @@ function CampoBusca({ valor, aoMudar, dica, contador, emLinha = false }) {
       {!!valor && (emLinha
         ? <BotaoIcone rotulo="Limpar a busca" variant="ghost" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /></BotaoIcone>
         : <Button variant="ghost" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>)}
+    </div>
+  );
+}
+
+/* A BARRA DE FILTROS DAS TELAS DA OBRA (25/09/2026): uma anatomia só.
+
+   Cada tela montava a sua — busca fixa numa, elástica noutra; filtros com
+   e sem contador; a Conf. Executivo com a barra fora da toolbar fixa. A
+   referência é a barra de Compras. Linha 1, que nunca quebra (em tela
+   estreita rola para o lado — TELA-11): busca elástica → visões → seletores
+   (fornecedor, canal, obras) → ações da lista, à direita; o botão de tela
+   cheia o PageShell põe na ponta. Linha 2 só quando a tela tem uma segunda
+   dimensão (a situação do item). Embaixo, os filtros ativos do DS
+   (contagem · chips · Limpar tudo) quando algum saiu do padrão.
+
+   Visões e situação são o ToggleGroup segmentado do DS com contador em cada
+   opção — decisão do dev (25/09/2026), no lugar do SavedViewChips que a
+   TELA-11 cita: é o que as telas já usavam e o que ele apontou como padrão. */
+function GrupoDeFiltro({ rotulo, valor, aoMudar, opcoes, className = "" }) {
+  return (
+    <ToggleGroup type="single" value={valor} onValueChange={(v) => { if (v) aoMudar(v); }} aria-label={rotulo}
+      className={cn("shrink-0", className)}>
+      {opcoes.map((o) => (
+        <ToggleGroupItem key={o.id} value={o.id} className="shrink-0 whitespace-nowrap" title={o.dica}>
+          {o.label}
+          {o.n != null && <Contador tom="neutral" className="ml-1">{o.n}</Contador>}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
+function BarraDeFiltros({ busca, visoes, seletores, acoes, situacao, ativos }) {
+  const chips = (ativos?.chips || []).filter(Boolean);
+  const { extra: extraDaSituacao, ...grupoDaSituacao } = situacao || {};
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-2">
+      {/* SEM ROLAGEM (25/09/2026): "não podemos deixar acontecer scroll". A
+          linha 1 cabe porque a busca encolhe; a 2 quebra para baixo. */}
+      <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
+        {busca && <CampoBusca emLinha {...busca} />}
+        {visoes && <GrupoDeFiltro {...visoes} />}
+        {seletores}
+        {acoes && <div className="ml-auto flex shrink-0 items-center gap-2">{acoes}</div>}
+      </div>
+      {situacao && (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+          <GrupoDeFiltro {...grupoDaSituacao} />
+          {extraDaSituacao}
+        </div>
+      )}
+      {chips.length > 0 && (
+        <ActiveFilters count={ativos.count} noun={ativos.noun} hasFilters onClearAll={ativos.onClearAll}>
+          {chips.map((c, k) => <FilterChip key={c.chave ?? `${c.label}-${k}`} label={c.label} value={c.value} onClear={c.onClear} />)}
+        </ActiveFilters>
+      )}
     </div>
   );
 }
@@ -4370,8 +4425,12 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
     [ALOC_AMBOS]: contaAloc(ALOC_AMBOS),
   };
 
+  // A situação do item, contada dentro da alocação escolhida: o número que cada chip mostra.
+  const contaPorSituacao = Object.fromEntries(FILTERS.map((f) => [f.id,
+    todosItens.filter(([it, c]) => matchesFilter(it, f.id, c) && casaAloc(it, tipoFilter, c)).length]));
+
   const alocAtiva = FILTROS_ALOC.find((t) => t.id === tipoFilter);
-  const limparFiltros = () => { setBusca(""); setItemFilter("todos"); setTipoFilter("todos"); };
+  const limparFiltros = () => { setBusca(""); setItemFilter("todos"); setTipoFilter("todos"); setSoVendido(true); };
 
   return (
     /* O que o plano faz mora no ⓘ do título (23/09/2026): era um Alert azul
@@ -4420,36 +4479,27 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       /* Duas dimensões, duas filas. A de cima é a ALOCAÇÃO do recurso —
          MAT, MO ou os dois; a de baixo é em que pé o item está. */
       toolbar={(
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-          <CampoBusca valor={busca} aoMudar={setBusca} dica="Buscar insumo, código ou fornecedor…"
-            contador={`${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens`} />
-          <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => { if (v) setTipoFilter(v); }} aria-label="Alocação de recurso"
-            className="max-w-full overflow-x-auto">
-            {FILTROS_ALOC.map((t) => (
-              <ToggleGroupItem key={t.id} value={t.id} className="shrink-0 whitespace-nowrap" title={t.destino ? `Estes ${t.destino}` : undefined}>
-                {t.label}
-                <Contador tom="neutral" className="ml-1">{contaPorAloc[t.id]}</Contador>
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          {tipoFilter !== "todos" && (
-            <span className="text-xs italic text-text-mute">{alocAtiva?.destino}</span>
-          )}
-        </div>
-      )}
-      toolbarSecondary={(
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-          <ToggleGroup type="single" value={itemFilter} onValueChange={(v) => { if (v) setItemFilter(v); }} aria-label="Situação do item">
-            {FILTERS.map((f) => (
-              <ToggleGroupItem key={f.id} value={f.id}>{f.label}</ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <Toggle pressed={soVendido} onPressedChange={(v) => setSoVendido(v)}
-            title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
-            {soVendido ? "Só o vendido" : "Vendido e não vendido"}
-            {soVendido && ocultosNaoVendidos > 0 && <Contador tom="neutral" className="ml-1">{ocultosNaoVendidos} ocultos</Contador>}
-          </Toggle>
-        </div>
+        <BarraDeFiltros
+          busca={{ valor: busca, aoMudar: setBusca, dica: "Buscar insumo, código ou fornecedor…",
+            contador: `${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens` }}
+          visoes={{ rotulo: "Alocação de recurso", valor: tipoFilter, aoMudar: setTipoFilter,
+            opcoes: FILTROS_ALOC.map((t) => ({ id: t.id, label: t.label, n: contaPorAloc[t.id], dica: t.destino ? `Estes ${t.destino}` : undefined })) }}
+          seletores={tipoFilter !== "todos" && <span className="shrink-0 text-xs italic text-text-mute">{alocAtiva?.destino}</span>}
+          situacao={{ rotulo: "Situação do item", valor: itemFilter, aoMudar: setItemFilter,
+            opcoes: FILTERS.map((f) => ({ ...f, n: contaPorSituacao[f.id] })),
+            extra: (
+              <Toggle pressed={soVendido} onPressedChange={(v) => setSoVendido(v)} className="shrink-0 whitespace-nowrap"
+                title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
+                {soVendido ? "Só o vendido" : "Vendido e não vendido"}
+                {soVendido && ocultosNaoVendidos > 0 && <Contador tom="neutral" className="ml-1">{ocultosNaoVendidos} ocultos</Contador>}
+              </Toggle>
+            ) }}
+          ativos={{ count: contaItens(grupos), noun: "item", onClearAll: limparFiltros, chips: [
+            busca.trim() && { label: "Busca", value: busca, onClear: () => setBusca("") },
+            tipoFilter !== "todos" && { label: "Alocação", value: alocAtiva?.label, onClear: () => setTipoFilter("todos") },
+            itemFilter !== "todos" && { label: "Situação", value: FILTERS.find((f) => f.id === itemFilter)?.label, onClear: () => setItemFilter("todos") },
+            !soVendido && { label: "Mostrando", value: "vendido e não vendido", onClear: () => setSoVendido(true) },
+          ] }} />
       )}>
       {obra.comprasLiberadas && (
         <Alert tone="success">
@@ -5745,17 +5795,11 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
         /* O filtro esconde grupos, nunca reorganiza: a ordem da EAP é a
            mesma nos três estados. */
         toolbar={(
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
-              className="max-w-full overflow-x-auto">
-              {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
-                  {f.label}
-                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
+          <BarraDeFiltros
+            visoes={{ rotulo: "Grupos vendidos", valor: filtroVenda, aoMudar: setFiltroVenda, opcoes: FILTROS_VENDA.map((f) => ({ ...f, n: contaVenda[f.id] })) }}
+            ativos={{ count: contaVenda[filtroVenda], noun: "grupo", onClearAll: () => setFiltroVenda("todos"), chips: [
+              filtroVenda !== "todos" && { label: "Grupos", value: FILTROS_VENDA.find((f) => f.id === filtroVenda)?.label, onClear: () => setFiltroVenda("todos") },
+            ] }} />
         )}>
 
         <Card className="p-0">
@@ -5940,21 +5984,15 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             onFile={aoImportar} />
         )}
         toolbar={(
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            {/* PADRAO DA BARRA DE ETAPA: busca primeiro (largura fixa), depois
-                os filtros no tamanho padrao do DS — mesma altura da busca. */}
-            <CampoBusca valor={busca} aoMudar={setBusca}
-              contador={`${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens`} />
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
-              className="max-w-full overflow-x-auto">
-              {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
-                  {f.label}
-                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
+          <BarraDeFiltros
+            busca={{ valor: busca, aoMudar: setBusca,
+              contador: `${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens` }}
+            visoes={{ rotulo: "Grupos vendidos", valor: filtroVenda, aoMudar: setFiltroVenda, opcoes: FILTROS_VENDA.map((f) => ({ ...f, n: contaVenda[f.id] })) }}
+            ativos={{ count: verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0), noun: "item",
+              onClearAll: () => { setBusca(""); setFiltroVenda("todos"); }, chips: [
+                busca.trim() && { label: "Busca", value: busca, onClear: () => setBusca("") },
+                filtroVenda !== "todos" && { label: "Grupos", value: FILTROS_VENDA.find((f) => f.id === filtroVenda)?.label, onClear: () => setFiltroVenda("todos") },
+              ] }} />
         )}>
 
         <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilha || [])} />
@@ -6979,7 +7017,7 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   );
 }
 
-function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null, telaExtra = null, filtroInicial = null, onFiltroUsado }) {
+function ConferenciaGenerica({ titulo, descricao, linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null, telaExtra = null, filtroInicial = null, onFiltroUsado }) {
   /* ABRE NA LISTAGEM GERAL (pedido dela, 18/09/2026): "quando eu clico em conf
      executivo quero ver a listagem geral como esta nessa tela".
 
@@ -7074,9 +7112,40 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   };
   const filtroES = ["es_entrou", "somente_um", "es_mudou"].includes(filtro) ? filtro : "";
 
+  /* A BARRA NA TOOLBAR FIXA DO PAGESHELL (25/09/2026): era montada aqui
+     dentro do conteúdo, com o botão de tela cheia por conta própria — a
+     única tela da obra fora do padrão. Agora é a BarraDeFiltros, igual às
+     outras, e a tela renderiza o próprio PageShell (o título e a descrição
+     vêm de quem a chama). Os cartões de cima continuam filtrando; o que
+     está ligado neles aparece como chip nos filtros ativos. */
+  const chipDaTelaExtra = (telaExtra?.filtros || []).find((ff) => ff.id === chipAtivo);
+  const filtroDoCartao = chipAtivo === "" ? (meta[filtro]?.label || (telaExtra?.cartoes || []).find((c) => c.id === filtro)?.label || filtro) : null;
+  const contagemNaTela = chipDaTelaExtra ? chipDaTelaExtra.contador
+    : (telaExtra || mostrarResumo ? linhas.length : visiveis.length);
+  const voltarAoTodos = () => setFiltro(telaExtra?.id || "todos");
+
   return (
-    <>
-      <div className="mb-4 grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
+    <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6"
+      toolbar={(
+        <BarraDeFiltros
+          /* O contador conta a lista generica. Com `telaExtra` (Conf. Executivo)
+             quem aparece e' a planilha da tela extra, e o numero dizia "0 de 0
+             linhas" enquanto a lista filtrava certo — ai ele nao aparece. */
+          busca={{ valor: busca, aoMudar: setBusca, contador: telaExtra || mostrarResumo ? undefined : `${visiveis.length} de ${porStatus.length} linhas` }}
+          /* "Todos" cobre `todos` e a tela extra; os filtros do que FALTA
+             (pedido dela, 18/09/2026) são os da tela extra — contam a mesma
+             lista dos cartões: os cartões dizem o andamento, estes o que sobrou. */
+          visoes={{ rotulo: "Filtrar linhas", valor: chipAtivo, aoMudar: escolherChip, opcoes: [
+            { id: "todos", label: "Todos", n: linhas.length },
+            ...(telaExtra?.filtros || []).map((ff) => ({ id: ff.id, label: ff.label, n: ff.contador })),
+          ] }}
+          ativos={{ count: contagemNaTela, noun: "linha", onClearAll: () => { setBusca(""); voltarAoTodos(); }, chips: [
+            busca.trim() && { label: "Busca", value: busca, onClear: () => setBusca("") },
+            chipDaTelaExtra && { label: "Mostrando", value: chipDaTelaExtra.label, onClear: voltarAoTodos },
+            filtroDoCartao && { label: "Cartão", value: filtroDoCartao, onClear: voltarAoTodos },
+          ] }} />
+      )}>
+      <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
         {/* Os cartoes da planilha vem primeiro: sao as duas decisoes da tela,
             na ordem do fluxo. O "Entrou, saiu ou mudou" fecha a barra — ele
             responde a comparacao com o vendido, que e' outra pergunta. */}
@@ -7123,27 +7192,6 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
       </div>
 
       {telaExtra?.cabecalho}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <CampoBusca valor={busca} aoMudar={setBusca}
-          /* O contador conta a lista generica. Com `telaExtra` (Conf. Executivo)
-             quem aparece e' a planilha da tela extra, e o numero dizia "0 de 0
-             linhas" enquanto a lista filtrava certo — ai ele nao aparece. */
-          contador={telaExtra || mostrarResumo ? undefined : `${visiveis.length} de ${porStatus.length} linhas`} />
-        <ToggleGroup type="single" value={chipAtivo} onValueChange={escolherChip} aria-label="Filtrar linhas">
-          <ToggleGroupItem value="todos">Todos <Contador tom="neutral" className="ml-1">{linhas.length}</Contador></ToggleGroupItem>
-          {/* OS DOIS FILTROS DO QUE FALTA (pedido dela, 18/09/2026): "criar um
-              bloco de filtro mostrando oque falta concluir executivo e um bloco
-              de filtro mostrando oque falta aprovar pra compra".
-
-              Os cartoes de cima dizem o ANDAMENTO (0 de 238); estes dizem o que
-              SOBROU pra fazer, que e' o numero com que se trabalha. Sao o mesmo
-              filtro dos cartoes — clicar num ou noutro leva ao mesmo lugar. */}
-          {(telaExtra?.filtros || []).map((ff) => (
-            <ToggleGroupItem key={ff.id} value={ff.id}>{ff.label} <Contador tom="neutral" className="ml-1">{ff.contador}</Contador></ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <BotaoTelaCheia className="ml-auto" />
-      </div>
 
       {/* TUDO NA MESMA TELA (pedido dela, 18/09/2026): "ai clicar no filtro
           conferencia tecnica, ele filtra tudo que falta conferencia, mas tudo
@@ -7258,7 +7306,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
           </Card>
         </>
       )}
-    </>
+    </PageShell>
   );
 }
 
@@ -8728,9 +8776,9 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
     {/* Mesmo cabecalho de tela das outras etapas (Vendido, Executivo,
         Plano, Compras): sem ele esta aba abria sem titulo, com uma faixa
         vazia entre as abas e o conteudo. */}
-    <PageShell title={`Conferência do executivo — ${obra.codigo}/00`} telaCheiaNoConteudo
-      description="O executivo conclui cada item e o administrador aprova para compra. Clique num cartão para filtrar a lista.">
-    <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
+    <ConferenciaGenerica titulo={`Conferência do executivo — ${obra.codigo}/00`}
+      descricao="O executivo conclui cada item e o administrador aprova para compra. Clique num cartão para filtrar a lista."
+      linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
       filtroInicial={filtroInicial} onFiltroUsado={onFiltroUsado}
       alertasPorVerba={alertasPorVerba}
       colALabel="Planilha (vendido)" colBLabel="Planilha (executivo)"
@@ -8798,7 +8846,6 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         ),
       }}
       onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
-    </PageShell>
     </>
   );
 }
@@ -9709,22 +9756,18 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             onFile={aoImportar} />
         )}
         toolbar={(
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            {/* Digitar na busca fecha o painel de insercao: nao da' pra estar
-                inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
-                de referencia sumiria por baixo da busca. */}
-            <CampoBusca valor={busca} aoMudar={(v) => { setBusca(v); setBuscandoEm(null); }}
-              contador={`${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens`} />
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
-              className="max-w-full overflow-x-auto">
-              {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
-                  {f.label}
-                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
+          /* Digitar na busca fecha o painel de insercao: nao da' pra estar
+             inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
+             de referencia sumiria por baixo da busca. */
+          <BarraDeFiltros
+            busca={{ valor: busca, aoMudar: (v) => { setBusca(v); setBuscandoEm(null); },
+              contador: `${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens` }}
+            visoes={{ rotulo: "Grupos vendidos", valor: filtroVenda, aoMudar: setFiltroVenda, opcoes: FILTROS_VENDA.map((f) => ({ ...f, n: contaVenda[f.id] })) }}
+            ativos={{ count: verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0), noun: "item",
+              onClearAll: () => { setBusca(""); setBuscandoEm(null); setFiltroVenda("todos"); }, chips: [
+                busca.trim() && { label: "Busca", value: busca, onClear: () => { setBusca(""); setBuscandoEm(null); } },
+                filtroVenda !== "todos" && { label: "Grupos", value: FILTROS_VENDA.find((f) => f.id === filtroVenda)?.label, onClear: () => setFiltroVenda("todos") },
+              ] }} />
         )}>
 
         {temBase && !trocaTravada && (
@@ -13494,64 +13537,70 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
      fornecedor encolhem, os botões não quebram e os rótulos longos encurtam
      em tela menor; no celular, a linha rola para o lado em vez de quebrar. */
   const alvoDaSelecao = buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa";
+  const limparFiltros = () => { setBusca(""); setFornecedor(""); setSituacao("todos"); setSoComObs(false); };
   const toolbar = (
-    <div className="flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
-      <CampoBusca emLinha valor={busca} aoMudar={setBusca}
-        contador={`${naTelaTudo.length} de ${visiveis.length}`} />
-      {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
-          obra: filtro que nunca filtra nada é ruído na barra. */}
-      {obs.length > 0 && (
-        <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)} className="shrink-0 whitespace-nowrap"
-          title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
-          <MessageSquare size={16} aria-hidden="true" /> <span className="hidden xl:inline">com observação interna</span> <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
-        </Toggle>
+    <BarraDeFiltros
+      busca={{ valor: busca, aoMudar: setBusca, contador: `${naTelaTudo.length} de ${visiveis.length}` }}
+      seletores={(
+        <>
+          {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
+              obra: filtro que nunca filtra nada é ruído na barra. */}
+          {obs.length > 0 && (
+            <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)} className="shrink-0 whitespace-nowrap"
+              title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
+              <MessageSquare size={16} aria-hidden="true" /> <span className="hidden xl:inline">com observação interna</span> <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
+            </Toggle>
+          )}
+          {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
+              ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
+              cima desalinhava a fila inteira. */}
+          <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
+            onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-48 shrink-0 2xl:w-64" />
+        </>
       )}
-      {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
-          ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
-          cima desalinhava a fila inteira. */}
-      <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
-        onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-48 shrink-0 lg:w-64" />
-      <div className="ml-auto flex shrink-0 items-center gap-2">
-        <Button variant="outline" className="h-10 whitespace-nowrap" onClick={selecionarTudo}
-          title={`Selecionar os ${naTelaTudo.length} ${alvoDaSelecao}`}>
-          <Check size={16} aria-hidden="true" /> Selecionar {naTelaTudo.length}<span className="hidden xl:inline"> {alvoDaSelecao}</span>
-        </Button>
-        {sel.size > 0 && <Button variant="ghost" className="h-10 whitespace-nowrap" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
-        {fornecedor && fornecedor !== SEM_FORNECEDOR && (
-          <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
-            <Checkbox id={idNomeNoPdf} checked={nomeNoPdf} onCheckedChange={(v) => setNomeNoPdf(v === true)} />
-            <Label htmlFor={idNomeNoPdf} className="whitespace-nowrap">nome no PDF</Label>
-          </div>
-        )}
-        {/* Com busca ligada o botao fica apagado (decisao dela,
-            17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
-            tela mostrando tres linhas enquanto o pedido leva sessenta e' a
-            pagina afirmando duas coisas. */}
-        <BotaoComMotivo className="h-10 whitespace-nowrap" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
-          title={buscando
-            ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
-            : !fornecedor || fornecedor === SEM_FORNECEDOR
-            ? "Escolha um fornecedor pra gerar o pedido"
-            : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
-          <Printer size={16} aria-hidden="true" /> Pedido<span className="hidden lg:inline"> de orçamento</span>
-        </BotaoComMotivo>
-      </div>
-    </div>
+      acoes={(
+        <>
+          <Button variant="outline" className="h-10 whitespace-nowrap" onClick={selecionarTudo}
+            title={`Selecionar os ${naTelaTudo.length} ${alvoDaSelecao}`}>
+            <Check size={16} aria-hidden="true" /> Selecionar {naTelaTudo.length}<span className="hidden 2xl:inline"> {alvoDaSelecao}</span>
+          </Button>
+          {sel.size > 0 && <Button variant="ghost" className="h-10 whitespace-nowrap" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
+          {fornecedor && fornecedor !== SEM_FORNECEDOR && (
+            <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
+              <Checkbox id={idNomeNoPdf} checked={nomeNoPdf} onCheckedChange={(v) => setNomeNoPdf(v === true)} />
+              <Label htmlFor={idNomeNoPdf} className="whitespace-nowrap">nome no PDF</Label>
+            </div>
+          )}
+          {/* Com busca ligada o botao fica apagado (decisao dela,
+              17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
+              tela mostrando tres linhas enquanto o pedido leva sessenta e' a
+              pagina afirmando duas coisas. */}
+          <BotaoComMotivo className="h-10 whitespace-nowrap" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+            title={buscando
+              ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
+              : !fornecedor || fornecedor === SEM_FORNECEDOR
+              ? "Escolha um fornecedor pra gerar o pedido"
+              : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
+            <Printer size={16} aria-hidden="true" /> Pedido<span className="hidden 2xl:inline"> de orçamento</span>
+          </BotaoComMotivo>
+        </>
+      )}
+      /* Fora da etapa Sienge a situação são só três opções: cabem na linha 1,
+         sem uma segunda linha solta. Na etapa Sienge são seis, e descem. */
+      {...{ [etapa === "sienge" ? "situacao" : "visoes"]: { rotulo: "Situação do produto", valor: situacao, aoMudar: setSituacao,
+        opcoes: SITUACOES_DE_COMPRA.filter((f) => !f.soSienge || etapa === "sienge").map((f) => ({ ...f, n: contaSituacao(f.id) })) } }}
+      ativos={{ count: naTelaTudo.length, noun: "produto", onClearAll: limparFiltros, chips: [
+        buscando && { label: "Busca", value: busca, onClear: () => setBusca("") },
+        fornecedor && { label: "Fornecedor", value: opcoesFornecedor.find((o) => o.value === fornecedor)?.label, onClear: () => setFornecedor("") },
+        situacao !== "todos" && { label: "Situação", value: SITUACOES_DE_COMPRA.find((f) => f.id === situacao)?.label, onClear: () => setSituacao("todos") },
+        soComObs && { label: "Só", value: "com observação interna", onClear: () => setSoComObs(false) },
+      ] }} />
   );
 
   return (
     <PageShell title="Compras de Produtos"
       description="Escolha por onde comprar cada material do executivo e acompanhe o que já foi solicitado e comprado."
-      toolbar={toolbar} contentClassName="flex flex-col gap-6"
-      toolbarSecondary={(
-        <ToggleGroup type="single" value={situacao} onValueChange={(v) => { if (v) setSituacao(v); }} aria-label="Situação do produto">
-          {SITUACOES_DE_COMPRA.filter((f) => !f.soSienge || etapa === "sienge").map((f) => (
-            <ToggleGroupItem key={f.id} value={f.id}>
-              {f.label}<Contador tom="neutral" className="ml-1">{contaSituacao(f.id)}</Contador>
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      )}>
+      toolbar={toolbar} contentClassName="flex flex-col gap-6">
       <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiMini className="h-full" label="Material no executivo" value={fmtBRL(soma(() => true))} hint={`${ativos.length} produtos`} tone="brand" />
         <KpiMini className="h-full" label="Já com canal definido" value={fmtBRL(soma((r) => !!r.it.canalCompra))} tone="neutral" />
@@ -13561,7 +13610,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
 
       {/* O funil. Cada aba e um estagio, e o numero embaixo diz quanto
           dinheiro esta parado ali — que e o que decide por onde comecar. */}
-      <Tabs value={etapa} onValueChange={setEtapa} activationMode="manual">
+      {/* Os cartões de etapa também filtram: ficam ANTES da barra de filtros,
+          junto dos totais (25/09/2026, "fora do padrão"). */}
+      <Tabs value={etapa} onValueChange={setEtapa} activationMode="manual" className="antes-dos-filtros">
         <div className="overflow-x-auto">
           {/* O funil ocupa a largura dos cartoes de cima, e cada estagio tem a
               mesma largura; quem nao tem canal guarda o lugar da etiqueta, pra
@@ -17150,7 +17201,7 @@ function FiltroMulti({ icone: Icone, opcoes, escolhidas, onMudar, todos, singula
   );
 }
 
-function FiltroObras({ obras, escolhidas, onMudar }) {
+function FiltroObras({ obras, escolhidas, onMudar, semChips = false }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
 
@@ -17220,10 +17271,10 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
 
       {/* As escolhidas ficam a vista e sao removiveis com um clique. Ate
           seis; passando disso o resumo cabe melhor que a fileira. */}
-      {escolhidas.size > 0 && escolhidas.size <= 6 && obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
+      {!semChips && escolhidas.size > 0 && escolhidas.size <= 6 && obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
         <FilterChip key={o.codigo} label="Obra" value={<span className="mono">#{o.codigo}</span>} onClear={() => alternar(o.codigo)} />
       ))}
-      {escolhidas.size > 6 && (
+      {!semChips && escolhidas.size > 6 && (
         <Button variant="ghost" className="h-10" onClick={() => onMudar(new Set())}>Limpar filtro</Button>
       )}
     </div>
@@ -20608,13 +20659,16 @@ function PainelCanalView({ obras, carregando, erro, canalId, crumb, title, descr
   const pctComprado = p.total ? (p.comprado / p.total) * 100 : 0;
 
   const filtroObras = !carregando && comItens.length > 1
-    ? <FiltroObras obras={comItens} escolhidas={escolhidas} onMudar={setEscolhidas} />
+    ? <FiltroObras obras={comItens} escolhidas={escolhidas} onMudar={setEscolhidas} semChips />
     : null;
+  /* A mesma barra das outras telas da obra (25/09/2026): os seletores na
+     linha 1 e as obras escolhidas nos filtros ativos, embaixo. */
+  const tirarObra = (cod) => { const n = new Set(escolhidas); n.delete(cod); setEscolhidas(n); };
   const toolbar = (seletorCanal || filtroObras) ? (
-    <div className="flex w-full flex-wrap items-center gap-3">
-      {seletorCanal}
-      {filtroObras}
-    </div>
+    <BarraDeFiltros seletores={<>{seletorCanal}{filtroObras}</>}
+      ativos={{ count: visiveis.length, noun: "obra", onClearAll: () => setEscolhidas(new Set()), chips: [...escolhidas].map((cod) => ({
+        chave: cod, label: "Obra", value: `#${cod} ${comItens.find((o) => o.codigo === cod)?.nome || ""}`.trim(), onClear: () => tirarObra(cod),
+      })) }} />
   ) : undefined;
 
   return (
