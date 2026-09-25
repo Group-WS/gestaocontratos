@@ -179,11 +179,11 @@ conf("a observação da verba fica FORA do botão que abre o grupo",
 conf("existe o chip de filtrar por observação", app.includes("pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}"), true);
 conf("... e ele some quando não há nenhuma", app.includes("{obs.length > 0 && ("), true);
 conf("com o filtro, a verba sem observação nenhuma sai",
-  app.includes("if (soComObs && naTela.length === 0 && obsDaVerba(g.num).length === 0) return null;"), true);
+  app.includes("if (soComObs && comObs.length === 0 && obsDaVerba(g.num).length === 0) return null;"), true);
 /* A busca continua sendo uma lente sobre a mesma lista: as duas peneiram
    juntas, e nenhuma mexe em total nenhum. */
 conf("a busca e o filtro peneiram a mesma lista",
-  app.includes("const naTela = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;"), true);
+  app.includes("const comObs = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;"), true);
 
 /* Sem o SQL rodado, a tela não oferece o que não funciona. */
 conf("sem a tabela, não aparece nada de observação",
@@ -194,7 +194,7 @@ conf("sem a tabela, não aparece nada de observação",
    equipe acha que são dois. "Interna" também diz o que ela é — recado da
    casa, não algo que sai para cliente ou fornecedor. */
 conf("o botão de criar diz observação interna", app.includes('<Plus size={14} aria-hidden="true" /> observação interna'), true);
-conf("o filtro também", app.includes('com observação interna <Contador tom="neutral" className="ml-1">{obs.length}</Contador>'), true);
+conf("o filtro também", app.includes('com observação interna</span> <Contador tom="neutral" className="ml-1">{obs.length}</Contador>'), true);
 conf("a dica do item também", app.includes('"Deixar uma observação interna neste produto"'), true);
 conf("a dica da verba também", app.includes('"Deixar uma observação interna nesta verba"'), true);
 conf("e a de apagar", app.includes('rotulo="Apagar esta observação interna"'), true);

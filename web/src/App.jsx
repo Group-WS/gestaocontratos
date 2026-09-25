@@ -1,5 +1,10 @@
 import DashboardPage from "./features/dashboard/DashboardPage.jsx";
 import ConfiguracoesPage from "./features/configuracoes/ConfiguracoesPage.jsx";
+import { PainelDeConfiguracoes } from "./features/configuracoes/PainelDeConfiguracoes.jsx";
+import { Boxes as IconeInsumos } from "lucide-react";
+import CadastroDeInsumosPage from "./features/configuracoes/CadastroDeInsumosPage.jsx";
+import { IndiceDeConfiguracoes } from "./features/configuracoes/IndiceDeConfiguracoes.jsx";
+import { MODULOS_DE_CONFIGURACOES } from "./features/configuracoes/atalhos.js";
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 
@@ -14,13 +19,14 @@ const VER_COMO = import.meta.env.DEV
 import * as XLSX from "xlsx";
 import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
-  Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
+  Search, ListFilter, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
   Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2, Settings,
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2, Settings, History,
+  ListChecks,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -71,7 +77,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
   Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, Textarea, Field, FieldHint, RadioGroup, RadioCard, RadioGroupItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter,
-  Command, CommandInput, CommandList, CommandEmpty, CommandItem,
+  Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandSeparator,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel, ActiveFilters, FilterChip } from "@group-ws/ws-ui";
 import { useMediaQuery, LARGO, Contador, Choice, CampoData, IconeSquad, SquadComIcone, SeletorDeArquivo, BotaoIcone, EscolhaPessoa, Colapsavel, KpiBotao, KpiProgresso, tomDaCor, EstadoAcao, SecaoRotulo, DicaInfo, EscolhaEstado, BotaoComMotivo } from "./lib/ui.jsx";
 import Apresentacao from "./Apresentacao";
@@ -80,7 +86,9 @@ import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compra
 import { LogoGroupWS } from "./marca.jsx";
 import iconeSienge from "./assets/icone-sienge.svg";
 import { podeLiberarCompra } from "./regras/liberacaoDeCompra.js";
-import { linhaDoExecutivoTravada } from "./regras/itemAprovadoNoExecutivo.js";
+import { linhaDoExecutivoTravada, itemTravadoNoExecutivo } from "./regras/itemAprovadoNoExecutivo.js";
+import { listarMudancasDoItem, nomeDoCampo, valorDoRegistro } from "./lib/itemAprovadoLog.js";
+import { DECISAO_DO_DETALHE, decisaoDoDetalhe, entraNoTemplateSienge } from "./regras/detalheDoSienge.js";
 import { novoIdDeLinha } from "./lib/idDaLinha.js";
 import { usePreferencia, esquecerPreferencias } from "./lib/preferencias.js";
 import { clearBrowserData } from "./lib/armazenamento.js";
@@ -92,7 +100,7 @@ import { MODELOS_ESCOPO, modelosPorGrupo, modeloSugerido } from "./lib/escopos";
 import {
   ratearParcelas, ajustarQtdParcelas, sugerirDatas, somaParcelas, parcelasPadrao,
 } from "./lib/parcelas";
-import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate, limparTemplate, auxiliarEstavel, norm as normSienge } from "./lib/sienge";
+import { descricaoSienge, codigoAuxiliarDe, sortearAuxiliares, agruparPorMae, acharMaes, ordenarDetalhes, podeAssociarSozinho, cobertura, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, montarTemplateSienge, faltaNoTemplate, limparTemplate, auxiliarEstavel, partesDoInsumo, palavrasQueFaltam, palavras as palavrasSienge, norm as normSienge } from "./lib/sienge";
 import { parsePedidoSienge, parsePedidoSiengeExcel, conferirComSienge } from "./lib/siengePedido";
 import { listarPrecos, contarPrecos, salvarPrecos, sugerirPrecos, carregarTodosInsumos, chavesDaBase, soOsNovos, carregarCadastroSienge, salvarCadastroSienge } from "./lib/insumos";
 import { supabase, supabaseConfigurado } from "./lib/supabase";
@@ -3217,20 +3225,77 @@ function historicoDaTela(eventos, tela) {
 
    Fica no topo do arquivo de proposito. Componente declarado dentro de outro
    e' remontado a cada render, e o campo perderia o foco a cada tecla. */
-function CampoBusca({ valor, aoMudar, dica, contador }) {
+/* `emLinha`: a busca divide UMA linha com outros controles e encolhe com
+   ela, sem quebrar — a barra de Compras, 25/09/2026. */
+function CampoBusca({ valor, aoMudar, dica, contador, emLinha = false }) {
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <div className={emLinha ? "flex min-w-40 max-w-80 flex-1 items-center gap-2" : "flex w-full flex-wrap items-center gap-2 sm:w-auto"}>
       {/* Com icone, o Input do DS se embrulha num div relativo, e a largura
           vai no input de dentro: sem o div de fora, o embrulho ficava do
           tamanho do conteudo e cortava a dica no celular. */}
-      <div className="w-full sm:w-72">
+      <div className={emLinha ? "min-w-0 flex-1" : "w-full sm:w-72"}>
         <Input className="w-full" icon={<Search size={16} aria-hidden="true" />} aria-label="Buscar"
           placeholder={dica || "Buscar insumo, código ou fornecedor…"} value={valor || ""}
           onChange={(e) => aoMudar(e.target.value)} />
       </div>
-      {!!valor && !!contador && <span className="text-xs text-text-mute" role="status">{contador}</span>}
-      {!!valor && (
-        <Button variant="ghost" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>
+      {!!valor && !!contador && <span className="shrink-0 whitespace-nowrap text-xs text-text-mute" role="status">{contador}</span>}
+      {!!valor && (emLinha
+        ? <BotaoIcone rotulo="Limpar a busca" variant="ghost" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /></BotaoIcone>
+        : <Button variant="ghost" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>)}
+    </div>
+  );
+}
+
+/* A BARRA DE FILTROS DAS TELAS DA OBRA (25/09/2026): uma anatomia só.
+
+   Cada tela montava a sua — busca fixa numa, elástica noutra; filtros com
+   e sem contador; a Conf. Executivo com a barra fora da toolbar fixa. A
+   referência é a barra de Compras. Linha 1, que nunca quebra (em tela
+   estreita rola para o lado — TELA-11): busca elástica → visões → seletores
+   (fornecedor, canal, obras) → ações da lista, à direita; o botão de tela
+   cheia o PageShell põe na ponta. Linha 2 só quando a tela tem uma segunda
+   dimensão (a situação do item). Embaixo, os filtros ativos do DS
+   (contagem · chips · Limpar tudo) quando algum saiu do padrão.
+
+   Visões e situação são o ToggleGroup segmentado do DS com contador em cada
+   opção — decisão do dev (25/09/2026), no lugar do SavedViewChips que a
+   TELA-11 cita: é o que as telas já usavam e o que ele apontou como padrão. */
+function GrupoDeFiltro({ rotulo, valor, aoMudar, opcoes, className = "" }) {
+  return (
+    <ToggleGroup type="single" value={valor} onValueChange={(v) => { if (v) aoMudar(v); }} aria-label={rotulo}
+      className={cn("shrink-0", className)}>
+      {opcoes.map((o) => (
+        <ToggleGroupItem key={o.id} value={o.id} className="shrink-0 whitespace-nowrap" title={o.dica}>
+          {o.label}
+          {o.n != null && <Contador tom="neutral" className="ml-1">{o.n}</Contador>}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
+function BarraDeFiltros({ busca, visoes, seletores, acoes, situacao, ativos }) {
+  const chips = (ativos?.chips || []).filter(Boolean);
+  const { extra: extraDaSituacao, ...grupoDaSituacao } = situacao || {};
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-2">
+      {/* SEM ROLAGEM (25/09/2026): "não podemos deixar acontecer scroll". A
+          linha 1 cabe porque a busca encolhe; a 2 quebra para baixo. */}
+      <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
+        {busca && <CampoBusca emLinha {...busca} />}
+        {visoes && <GrupoDeFiltro {...visoes} />}
+        {seletores}
+        {acoes && <div className="ml-auto flex shrink-0 items-center gap-2">{acoes}</div>}
+      </div>
+      {situacao && (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+          <GrupoDeFiltro {...grupoDaSituacao} />
+          {extraDaSituacao}
+        </div>
+      )}
+      {chips.length > 0 && (
+        <ActiveFilters count={ativos.count} noun={ativos.noun} hasFilters onClearAll={ativos.onClearAll}>
+          {chips.map((c, k) => <FilterChip key={c.chave ?? `${c.label}-${k}`} label={c.label} value={c.value} onClear={c.onClear} />)}
+        </ActiveFilters>
       )}
     </div>
   );
@@ -4362,8 +4427,12 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
     [ALOC_AMBOS]: contaAloc(ALOC_AMBOS),
   };
 
+  // A situação do item, contada dentro da alocação escolhida: o número que cada chip mostra.
+  const contaPorSituacao = Object.fromEntries(FILTERS.map((f) => [f.id,
+    todosItens.filter(([it, c]) => matchesFilter(it, f.id, c) && casaAloc(it, tipoFilter, c)).length]));
+
   const alocAtiva = FILTROS_ALOC.find((t) => t.id === tipoFilter);
-  const limparFiltros = () => { setBusca(""); setItemFilter("todos"); setTipoFilter("todos"); };
+  const limparFiltros = () => { setBusca(""); setItemFilter("todos"); setTipoFilter("todos"); setSoVendido(true); };
 
   return (
     /* O que o plano faz mora no ⓘ do título (23/09/2026): era um Alert azul
@@ -4412,36 +4481,27 @@ function ComparativoView({ obra: obraCrua, onCompraAditivo, expandedCats, toggle
       /* Duas dimensões, duas filas. A de cima é a ALOCAÇÃO do recurso —
          MAT, MO ou os dois; a de baixo é em que pé o item está. */
       toolbar={(
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-          <CampoBusca valor={busca} aoMudar={setBusca} dica="Buscar insumo, código ou fornecedor…"
-            contador={`${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens`} />
-          <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => { if (v) setTipoFilter(v); }} aria-label="Alocação de recurso"
-            className="max-w-full overflow-x-auto">
-            {FILTROS_ALOC.map((t) => (
-              <ToggleGroupItem key={t.id} value={t.id} className="shrink-0 whitespace-nowrap" title={t.destino ? `Estes ${t.destino}` : undefined}>
-                {t.label}
-                <Contador tom="neutral" className="ml-1">{contaPorAloc[t.id]}</Contador>
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          {tipoFilter !== "todos" && (
-            <span className="text-xs italic text-text-mute">{alocAtiva?.destino}</span>
-          )}
-        </div>
-      )}
-      toolbarSecondary={(
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-          <ToggleGroup type="single" value={itemFilter} onValueChange={(v) => { if (v) setItemFilter(v); }} aria-label="Situação do item">
-            {FILTERS.map((f) => (
-              <ToggleGroupItem key={f.id} value={f.id}>{f.label}</ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <Toggle pressed={soVendido} onPressedChange={(v) => setSoVendido(v)}
-            title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
-            {soVendido ? "Só o vendido" : "Vendido e não vendido"}
-            {soVendido && ocultosNaoVendidos > 0 && <Contador tom="neutral" className="ml-1">{ocultosNaoVendidos} ocultos</Contador>}
-          </Toggle>
-        </div>
+        <BarraDeFiltros
+          busca={{ valor: busca, aoMudar: setBusca, dica: "Buscar insumo, código ou fornecedor…",
+            contador: `${contaItens(grupos)} de ${contaItens(gruposSemBusca)} itens` }}
+          visoes={{ rotulo: "Alocação de recurso", valor: tipoFilter, aoMudar: setTipoFilter,
+            opcoes: FILTROS_ALOC.map((t) => ({ id: t.id, label: t.label, n: contaPorAloc[t.id], dica: t.destino ? `Estes ${t.destino}` : undefined })) }}
+          seletores={tipoFilter !== "todos" && <span className="shrink-0 text-xs italic text-text-mute">{alocAtiva?.destino}</span>}
+          situacao={{ rotulo: "Situação do item", valor: itemFilter, aoMudar: setItemFilter,
+            opcoes: FILTERS.map((f) => ({ ...f, n: contaPorSituacao[f.id] })),
+            extra: (
+              <Toggle pressed={soVendido} onPressedChange={(v) => setSoVendido(v)} className="shrink-0 whitespace-nowrap"
+                title="Esconde as linhas que entraram na proposta só pra nomear escopo — quantidade e valor zerados">
+                {soVendido ? "Só o vendido" : "Vendido e não vendido"}
+                {soVendido && ocultosNaoVendidos > 0 && <Contador tom="neutral" className="ml-1">{ocultosNaoVendidos} ocultos</Contador>}
+              </Toggle>
+            ) }}
+          ativos={{ count: contaItens(grupos), noun: "item", onClearAll: limparFiltros, chips: [
+            busca.trim() && { label: "Busca", value: busca, onClear: () => setBusca("") },
+            tipoFilter !== "todos" && { label: "Alocação", value: alocAtiva?.label, onClear: () => setTipoFilter("todos") },
+            itemFilter !== "todos" && { label: "Situação", value: FILTERS.find((f) => f.id === itemFilter)?.label, onClear: () => setItemFilter("todos") },
+            !soVendido && { label: "Mostrando", value: "vendido e não vendido", onClear: () => setSoVendido(true) },
+          ] }} />
       )}>
       {obra.comprasLiberadas && (
         <Alert tone="success">
@@ -5737,17 +5797,11 @@ function VendidoContratoView({ obra, onImportContrato, onLimpar, onReabrir, onEd
         /* O filtro esconde grupos, nunca reorganiza: a ordem da EAP é a
            mesma nos três estados. */
         toolbar={(
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
-              className="max-w-full overflow-x-auto">
-              {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
-                  {f.label}
-                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
+          <BarraDeFiltros
+            visoes={{ rotulo: "Grupos vendidos", valor: filtroVenda, aoMudar: setFiltroVenda, opcoes: FILTROS_VENDA.map((f) => ({ ...f, n: contaVenda[f.id] })) }}
+            ativos={{ count: contaVenda[filtroVenda], noun: "grupo", onClearAll: () => setFiltroVenda("todos"), chips: [
+              filtroVenda !== "todos" && { label: "Grupos", value: FILTROS_VENDA.find((f) => f.id === filtroVenda)?.label, onClear: () => setFiltroVenda("todos") },
+            ] }} />
         )}>
 
         <Card className="p-0">
@@ -5932,21 +5986,15 @@ function VendidoPlanilhaView({ obra, onImportPlanilha, onLimpar, onReabrir, pode
             onFile={aoImportar} />
         )}
         toolbar={(
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            {/* PADRAO DA BARRA DE ETAPA: busca primeiro (largura fixa), depois
-                os filtros no tamanho padrao do DS — mesma altura da busca. */}
-            <CampoBusca valor={busca} aoMudar={setBusca}
-              contador={`${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens`} />
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
-              className="max-w-full overflow-x-auto">
-              {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
-                  {f.label}
-                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
+          <BarraDeFiltros
+            busca={{ valor: busca, aoMudar: setBusca,
+              contador: `${verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilha || []).length, 0)} itens` }}
+            visoes={{ rotulo: "Grupos vendidos", valor: filtroVenda, aoMudar: setFiltroVenda, opcoes: FILTROS_VENDA.map((f) => ({ ...f, n: contaVenda[f.id] })) }}
+            ativos={{ count: verbas.reduce((a, c) => a + naBusca(c.itensPlanilha, c).length, 0), noun: "item",
+              onClearAll: () => { setBusca(""); setFiltroVenda("todos"); }, chips: [
+                busca.trim() && { label: "Busca", value: busca, onClear: () => setBusca("") },
+                filtroVenda !== "todos" && { label: "Grupos", value: FILTROS_VENDA.find((f) => f.id === filtroVenda)?.label, onClear: () => setFiltroVenda("todos") },
+              ] }} />
         )}>
 
         <AvisoPDFPobre itens={verbas.flatMap((c) => c.itensPlanilha || [])} />
@@ -6971,7 +7019,7 @@ function ConfRow({ l, m, colALabel, colBLabel, vazioALabel, vazioBLabel, aprovad
   );
 }
 
-function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null, telaExtra = null, filtroInicial = null, onFiltroUsado }) {
+function ConferenciaGenerica({ titulo, descricao, linhas, naoAnalisadas = [], meta, alertasPorVerba, colALabel, colBLabel, vazioALabel, vazioBLabel, vazioTitulo, vazioSub, aprovacoes, onAprovarLinha, onEditarB, escopo, resumoEntrouSaiu = null, telaExtra = null, filtroInicial = null, onFiltroUsado }) {
   /* ABRE NA LISTAGEM GERAL (pedido dela, 18/09/2026): "quando eu clico em conf
      executivo quero ver a listagem geral como esta nessa tela".
 
@@ -7066,9 +7114,40 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
   };
   const filtroES = ["es_entrou", "somente_um", "es_mudou"].includes(filtro) ? filtro : "";
 
+  /* A BARRA NA TOOLBAR FIXA DO PAGESHELL (25/09/2026): era montada aqui
+     dentro do conteúdo, com o botão de tela cheia por conta própria — a
+     única tela da obra fora do padrão. Agora é a BarraDeFiltros, igual às
+     outras, e a tela renderiza o próprio PageShell (o título e a descrição
+     vêm de quem a chama). Os cartões de cima continuam filtrando; o que
+     está ligado neles aparece como chip nos filtros ativos. */
+  const chipDaTelaExtra = (telaExtra?.filtros || []).find((ff) => ff.id === chipAtivo);
+  const filtroDoCartao = chipAtivo === "" ? (meta[filtro]?.label || (telaExtra?.cartoes || []).find((c) => c.id === filtro)?.label || filtro) : null;
+  const contagemNaTela = chipDaTelaExtra ? chipDaTelaExtra.contador
+    : (telaExtra || mostrarResumo ? linhas.length : visiveis.length);
+  const voltarAoTodos = () => setFiltro(telaExtra?.id || "todos");
+
   return (
-    <>
-      <div className="mb-4 grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
+    <PageShell title={titulo} description={descricao} contentClassName="flex flex-col gap-6"
+      toolbar={(
+        <BarraDeFiltros
+          /* O contador conta a lista generica. Com `telaExtra` (Conf. Executivo)
+             quem aparece e' a planilha da tela extra, e o numero dizia "0 de 0
+             linhas" enquanto a lista filtrava certo — ai ele nao aparece. */
+          busca={{ valor: busca, aoMudar: setBusca, contador: telaExtra || mostrarResumo ? undefined : `${visiveis.length} de ${porStatus.length} linhas` }}
+          /* "Todos" cobre `todos` e a tela extra; os filtros do que FALTA
+             (pedido dela, 18/09/2026) são os da tela extra — contam a mesma
+             lista dos cartões: os cartões dizem o andamento, estes o que sobrou. */
+          visoes={{ rotulo: "Filtrar linhas", valor: chipAtivo, aoMudar: escolherChip, opcoes: [
+            { id: "todos", label: "Todos", n: linhas.length },
+            ...(telaExtra?.filtros || []).map((ff) => ({ id: ff.id, label: ff.label, n: ff.contador })),
+          ] }}
+          ativos={{ count: contagemNaTela, noun: "linha", onClearAll: () => { setBusca(""); voltarAoTodos(); }, chips: [
+            busca.trim() && { label: "Busca", value: busca, onClear: () => setBusca("") },
+            chipDaTelaExtra && { label: "Mostrando", value: chipDaTelaExtra.label, onClear: voltarAoTodos },
+            filtroDoCartao && { label: "Cartão", value: filtroDoCartao, onClear: voltarAoTodos },
+          ] }} />
+      )}>
+      <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
         {/* Os cartoes da planilha vem primeiro: sao as duas decisoes da tela,
             na ordem do fluxo. O "Entrou, saiu ou mudou" fecha a barra — ele
             responde a comparacao com o vendido, que e' outra pergunta. */}
@@ -7115,27 +7194,6 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
       </div>
 
       {telaExtra?.cabecalho}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <CampoBusca valor={busca} aoMudar={setBusca}
-          /* O contador conta a lista generica. Com `telaExtra` (Conf. Executivo)
-             quem aparece e' a planilha da tela extra, e o numero dizia "0 de 0
-             linhas" enquanto a lista filtrava certo — ai ele nao aparece. */
-          contador={telaExtra || mostrarResumo ? undefined : `${visiveis.length} de ${porStatus.length} linhas`} />
-        <ToggleGroup type="single" value={chipAtivo} onValueChange={escolherChip} aria-label="Filtrar linhas">
-          <ToggleGroupItem value="todos">Todos <Contador tom="neutral" className="ml-1">{linhas.length}</Contador></ToggleGroupItem>
-          {/* OS DOIS FILTROS DO QUE FALTA (pedido dela, 18/09/2026): "criar um
-              bloco de filtro mostrando oque falta concluir executivo e um bloco
-              de filtro mostrando oque falta aprovar pra compra".
-
-              Os cartoes de cima dizem o ANDAMENTO (0 de 238); estes dizem o que
-              SOBROU pra fazer, que e' o numero com que se trabalha. Sao o mesmo
-              filtro dos cartoes — clicar num ou noutro leva ao mesmo lugar. */}
-          {(telaExtra?.filtros || []).map((ff) => (
-            <ToggleGroupItem key={ff.id} value={ff.id}>{ff.label} <Contador tom="neutral" className="ml-1">{ff.contador}</Contador></ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <BotaoTelaCheia className="ml-auto" />
-      </div>
 
       {/* TUDO NA MESMA TELA (pedido dela, 18/09/2026): "ai clicar no filtro
           conferencia tecnica, ele filtra tudo que falta conferencia, mas tudo
@@ -7250,7 +7308,7 @@ function ConferenciaGenerica({ linhas, naoAnalisadas = [], meta, alertasPorVerba
           </Card>
         </>
       )}
-    </>
+    </PageShell>
   );
 }
 
@@ -8460,9 +8518,17 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                             {/* Especificacao, fornecedor e ambiente. O codigo saiu
                                 daqui: virou coluna propria, na esquerda. */}
                             {(x.it.especificacao || x.it.marca || x.it.ambiente) && (
-                              <div className="text-xs text-text-mute">
-                                {[x.it.especificacao, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente]
-                                  .filter(Boolean).join(" · ")}
+                              /* O link da especificação no padrão de Compras
+                                 (25/09/2026): o domínio ↗ na linha e o texto
+                                 inteiro no popover. */
+                              <div className="flex items-center gap-1 text-xs text-text-mute">
+                                <span className="line-clamp-2 min-w-0"
+                                  title={[x.it.especificacao, x.it.marca, x.it.ambiente].filter(Boolean).join(" · ")}>
+                                  {x.it.especificacao && <TextoComLinks texto={x.it.especificacao} />}
+                                  {x.it.especificacao && (x.it.marca || x.it.ambiente) ? " · " : ""}
+                                  {[x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente].filter(Boolean).join(" · ")}
+                                </span>
+                                {mostraEspecificacaoCompleta(x.it.especificacao) && <EspecificacaoCompleta texto={x.it.especificacao} />}
                               </div>
                             )}
                             {/* O aviso do cliente saiu daqui: ele virou a coluna
@@ -8712,9 +8778,9 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
     {/* Mesmo cabecalho de tela das outras etapas (Vendido, Executivo,
         Plano, Compras): sem ele esta aba abria sem titulo, com uma faixa
         vazia entre as abas e o conteudo. */}
-    <PageShell title={`Conferência do executivo — ${obra.codigo}/00`} telaCheiaNoConteudo
-      description="O executivo conclui cada item e o administrador aprova para compra. Clique num cartão para filtrar a lista.">
-    <ConferenciaGenerica linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
+    <ConferenciaGenerica titulo={`Conferência do executivo — ${obra.codigo}/00`}
+      descricao="O executivo conclui cada item e o administrador aprova para compra. Clique num cartão para filtrar a lista."
+      linhas={linhas} naoAnalisadas={naoAnalisadas} meta={EXEC_META}
       filtroInicial={filtroInicial} onFiltroUsado={onFiltroUsado}
       alertasPorVerba={alertasPorVerba}
       colALabel="Planilha (vendido)" colBLabel="Planilha (executivo)"
@@ -8782,7 +8848,6 @@ function ExecutivoConferenciaView({ obra, onEditarPlanilhaExecutivo, onAprovarLi
         ),
       }}
       onEditarB={obra.comprasLiberadas || !podeEditar ? undefined : ((catNum, codigo, patch) => onEditarPlanilhaExecutivo(catNum, codigo, patch))} />
-    </PageShell>
     </>
   );
 }
@@ -9693,22 +9758,18 @@ function ExecutivoView({ obra, onImportPlanilhaExecutivo, onEditarItem, onAdicio
             onFile={aoImportar} />
         )}
         toolbar={(
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            {/* Digitar na busca fecha o painel de insercao: nao da' pra estar
-                inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
-                de referencia sumiria por baixo da busca. */}
-            <CampoBusca valor={busca} aoMudar={(v) => { setBusca(v); setBuscandoEm(null); }}
-              contador={`${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens`} />
-            <ToggleGroup type="single" value={filtroVenda} onValueChange={(v) => { if (v) setFiltroVenda(v); }} aria-label="Grupos vendidos"
-              className="max-w-full overflow-x-auto">
-              {FILTROS_VENDA.map((f) => (
-                <ToggleGroupItem key={f.id} value={f.id} className="shrink-0 whitespace-nowrap">
-                  {f.label}
-                  <Contador tom="neutral" className="ml-1">{contaVenda[f.id]}</Contador>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
+          /* Digitar na busca fecha o painel de insercao: nao da' pra estar
+             inserindo uma linha e filtrando a lista ao mesmo tempo — a linha
+             de referencia sumiria por baixo da busca. */
+          <BarraDeFiltros
+            busca={{ valor: busca, aoMudar: (v) => { setBusca(v); setBuscandoEm(null); },
+              contador: `${verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0)} de ${verbas.reduce((a, c) => a + (c.itensPlanilhaExecutivo || []).length, 0)} itens` }}
+            visoes={{ rotulo: "Grupos vendidos", valor: filtroVenda, aoMudar: setFiltroVenda, opcoes: FILTROS_VENDA.map((f) => ({ ...f, n: contaVenda[f.id] })) }}
+            ativos={{ count: verbas.reduce((a, c) => a + contaNaBusca(c.itensPlanilhaExecutivo, c), 0), noun: "item",
+              onClearAll: () => { setBusca(""); setBuscandoEm(null); setFiltroVenda("todos"); }, chips: [
+                busca.trim() && { label: "Busca", value: busca, onClear: () => { setBusca(""); setBuscandoEm(null); } },
+                filtroVenda !== "todos" && { label: "Grupos", value: FILTROS_VENDA.find((f) => f.id === filtroVenda)?.label, onClear: () => setFiltroVenda("todos") },
+              ] }} />
         )}>
 
         {temBase && !trocaTravada && (
@@ -10554,16 +10615,22 @@ const SLUG_MODULO = {
   /* Faltava, e sem slug o modulo caia em "/" e nao sobrevivia a um F5 —
      justo o unico que o perfil "Canal de compra" enxerga. */
   painel_canal: "painel-canal",
-  equipe: "equipe",
+  /* As telas de Configurações moram abaixo do hub (ADR-009). O endereço
+     antigo (/equipe, /precos, /eap) continua abrindo: ENDERECO_ANTIGO. */
   configuracoes: "configuracoes",
+  equipe: "configuracoes/equipe",
+  precos: "configuracoes/precos",
+  eap: "configuracoes/eap",
+  insumos: "configuracoes/insumos",
   catalogo: "catalogo",
   gerador: "gerador",
-  precos: "precos",
-  eap: "eap",
   arquivo: "arquivo",
 };
 const MODULO_DO_SLUG = Object.fromEntries(
   Object.entries(SLUG_MODULO).filter(([, slug]) => slug).map(([mod, slug]) => [slug, mod]));
+/* Link salvo antes do hub (ADR-009) não vira tela em branco: abre a tela, e o
+   endereço é reescrito para o novo. */
+const ENDERECO_ANTIGO = { equipe: "equipe", precos: "precos", eap: "eap" };
 
 /* O endereco que representa a tela aberta. */
 function enderecoDaTela({ modulo, codigoDaObra = null, tab = null }) {
@@ -10591,7 +10658,8 @@ function telaDoEndereco(caminho) {
       tab: (partes[2] && ETAPA_DO_SLUG[partes[2]]) || null,
     };
   }
-  return { modulo: MODULO_DO_SLUG[partes[0]] || "inicio" };
+  const doisNiveis = MODULO_DO_SLUG[partes.slice(0, 2).join("/")];
+  return { modulo: doisNiveis || MODULO_DO_SLUG[partes[0]] || ENDERECO_ANTIGO[partes[0]] || "inicio" };
 }
 
 /* O que fazer com o endereco lido na abertura (ou no botao voltar).
@@ -10640,9 +10708,11 @@ const MODULOS = [
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
   { id: "painel_canal", nome: "Painel por canal", sub: "cada canal de compra, obra por obra", Icone: PackageSearch },
   { id: "equipe", nome: "Equipe e acessos", sub: "quem é quem, e o que cada um vê", Icone: ShieldCheck },
-  /* Configurações (ADR-008, 23/09/2026): cadastros da empresa que só o
-     administrador mantém. Hoje, o Cadastro de Insumos. */
-  { id: "configuracoes", nome: "Configurações", sub: "cadastros que só o administrador mantém", Icone: Settings },
+  /* Configurações (ADR-009, 25/09/2026): o hub de atalhos. Equipe, Banco de
+     Preços, EAP Sienge e Cadastro de Insumos moram dentro dele e saem do menu
+     (MODULOS_DE_CONFIGURACOES). */
+  { id: "configuracoes", nome: "Configurações", sub: "cadastros e integrações", Icone: Settings },
+  { id: "insumos", nome: "Cadastro de Insumos", sub: "insumos ativos do Sienge", Icone: IconeInsumos },
   { id: "catalogo", nome: "Catálogo TKWS", sub: "o que a casa especifica", Icone: BookOpen },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: DollarSign },
@@ -10671,9 +10741,11 @@ const MODULOS = [
  * obra vive no painel. */
 const DESTINOS_NO_PAINEL = new Set(["novas", "arquivo"]);
 
-/* Equipe e Configuracoes ficam no pe do trilho, separadas por um fio: sao
-   cadastro, nao trabalho do dia. */
-const DESTINOS_NO_PE = new Set(["equipe", "configuracoes"]);
+/* Configuracoes fica no pe do trilho, separada por um fio: e' cadastro, nao
+   trabalho do dia. As telas dela (Equipe, Banco de Precos, EAP, Insumos) nao
+   aparecem no menu: abrem pelo hub (ADR-009). */
+const DESTINOS_NO_PE = new Set(["configuracoes"]);
+const DENTRO_DO_HUB = new Set(MODULOS_DE_CONFIGURACOES);
 
 /* A ordem da lista: pelo CODIGO, crescente.
 
@@ -10840,7 +10912,7 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
      gaveta do menu. */
   const temPainel = mostrarObras && (listaAberta || (!largo && naObra));
 
-  const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
+  const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id) && !DENTRO_DO_HUB.has(m.id));
   const destinosPe = noMenu.filter((m) => DESTINOS_NO_PE.has(m.id));
   const doCorpo = noMenu.filter((m) => !DESTINOS_NO_PE.has(m.id));
   const semGrupo = doCorpo.filter((m) => !GRUPOS_DO_MENU.some((g) => g.ids.includes(m.id)));
@@ -10859,7 +10931,9 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
   const novasNoPainel = modulos.find((m) => m.id === "novas");
   const finalizadasNoPainel = modulos.find((m) => m.id === "arquivo");
 
-  const badgeDoDestino = (m) => (m.id === "equipe" && pendentesCount > 0
+  /* O contador de acessos a liberar era da Equipe; com ela dentro do hub
+     (ADR-009), ele fica em Configuracoes, pra nao sumir do menu. */
+  const badgeDoDestino = (m) => (m.id === "configuracoes" && pendentesCount > 0
     ? <Contador tom="warning">{pendentesCount}</Contador>
     : null);
 
@@ -10874,7 +10948,7 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
       <HardHat size={16} />
     </ItemTrilho>
   ) : (
-    <ItemTrilho key={m.id} rotulo={m.nome} href={enderecoDaTela({ modulo: m.id })} ativo={modulo === m.id} aberto={trilhoAberto} badge={badgeDoDestino(m)} onClick={() => irPara(m.id)}>
+    <ItemTrilho key={m.id} rotulo={m.nome} href={enderecoDaTela({ modulo: m.id })} ativo={modulo === m.id || (m.id === "configuracoes" && DENTRO_DO_HUB.has(modulo))} aberto={trilhoAberto} badge={badgeDoDestino(m)} onClick={() => irPara(m.id)}>
       <m.Icone size={16} />
     </ItemTrilho>
   ));
@@ -11967,6 +12041,11 @@ function GeradorSiengeView() {
   // anunciar, senao vira dado de verdade na cabeca de quem confere.
   const [auxSorteado, setAuxSorteado] = useState(() => new Set());
   const [codDet, setCodDet] = useState(() => new Map());
+  /* Quem a pessoa DECIDIU cadastrar como detalhe novo (RN-090). Sem
+     decisão, a linha fica "a conferir" e não vai pro template: antes, não
+     escolher nada já mandava a linha como nova, e "não olhei" virava
+     duplicata no Sienge. */
+  const [novos, setNovos] = useState(() => new Set());
 
   /* O CADASTRO ATIVO vem junto da base, numa ida so'.
 
@@ -12031,6 +12110,7 @@ function GeradorSiengeView() {
       setAuxSorteado(new Set(sorteados.keys()));
       setCodDet(new Map());
       setDescritos(new Map());
+      setNovos(new Set());
       /* O modo se escolhe pelo ARQUIVO. Quem sobe uma planilha com dois
          ou mais fornecedores na coluna quer os dois ou mais; deixar o
          padrao em "mesmo fornecedor" faria ela subir o arquivo, nao ver
@@ -12044,14 +12124,30 @@ function GeradorSiengeView() {
     }
   }
 
-  /* desc == null e' a escolha POSITIVA de "cadastrar como detalhe novo".
-     Nao e' o mesmo que clicar de novo na variante ja marcada, mas as duas
-     terminam igual: sem variante escolhida, a linha vai pra planilha. */
-  const escolher = (i, desc) => setEscolhas((m) => {
-    const n = new Map(m);
-    if (desc == null || n.get(i) === desc) n.delete(i); else n.set(i, desc);
-    return n;
-  });
+  /* As tres situacoes da linha (RN-090): escolheu um detalhe que ja
+     existe, decidiu cadastrar como novo, ou ninguem decidiu ainda. */
+  /* Cada escolha avisa com "Desfazer", que devolve a linha como era
+     (25/09/2026) — a mesma coisa das Compras. */
+  const comDesfazer = (i, texto) => {
+    const antes = { esc: escolhas.get(i), novo: novos.has(i), mae: maesEscolhidas.get(i) };
+    avisar.ok(texto, undefined, { acao: { rotulo: "Desfazer", aoClicar: () => {
+      setEscolhas((m) => { const n = new Map(m); antes.esc ? n.set(i, antes.esc) : n.delete(i); return n; });
+      setNovos((g) => { const n = new Set(g); antes.novo ? n.add(i) : n.delete(i); return n; });
+      setMaesEscolhidas((m) => { const n = new Map(m); antes.mae ? n.set(i, antes.mae) : n.delete(i); return n; });
+    } } });
+  };
+  const escolher = (i, desc) => {
+    comDesfazer(i, "Detalhe do Sienge escolhido.");
+    setEscolhas((m) => new Map(m).set(i, desc));
+    setNovos((g) => { const n = new Set(g); n.delete(i); return n; });
+  };
+  const decidirNovo = (i) => {
+    comDesfazer(i, "Vai como detalhe novo.");
+    setEscolhas((m) => { const n = new Map(m); n.delete(i); return n; });
+    setNovos((g) => new Set(g).add(i));
+  };
+  const itemDaDecisao = useCallback((c) => ({ detalheSienge: escolhas.get(c.i) || null, detalheNovoSienge: novos.has(c.i) }), [escolhas, novos]);
+  const decisaoDe = useCallback((c) => decisaoDoDetalhe(itemDaDecisao(c)), [itemDaDecisao]);
 
   const comMae = (c) => maesEscolhidas.has(c.i) || c.maes.length > 0;
 
@@ -12087,12 +12183,12 @@ function GeradorSiengeView() {
   const achados = casados.filter(comMae).length;
   const semMae = casados.length - achados;
 
-  /* O template do Sienge so interessa pro que NAO existe la — o resto ja
-     esta cadastrado e reimportar criaria duplicata. Item onde a pessoa
-     escolheu uma variante tambem sai fora: escolher significa "e' este
-     que ja existe". */
+  /* O template do Sienge so leva o que a pessoa DECIDIU cadastrar como
+     detalhe novo (RN-090). O que ja existe la fica fora — reimportar
+     criaria duplicata —, e o que esta a conferir tambem, ate alguem
+     decidir. */
   const paraCadastrar = useMemo(() => casados
-    .filter((c) => !escolhas.get(c.i))
+    .filter((c) => entraNoTemplateSienge(itemDaDecisao(c)))
     .map((c) => {
       const esc = maesEscolhidas.get(c.i);
       const mae = (esc ? (grupos || []).find((g) => g.codigo === esc) : null) || c.maes[0]?.grupo || null;
@@ -12105,7 +12201,8 @@ function GeradorSiengeView() {
         descricaoDetalhe: descritoDe(c),
         produtoFiscal: "",
       };
-    }), [casados, escolhas, maesEscolhidas, grupos, descritoDe, auxDe, detDe]);
+    }), [casados, itemDaDecisao, maesEscolhidas, grupos, descritoDe, auxDe, detDe]);
+  const aConferir = casados.filter((c) => decisaoDe(c) === DECISAO_DO_DETALHE.A_CONFERIR).length;
 
   const incompletas = paraCadastrar.filter((l) => faltaNoTemplate(l).length).length;
 
@@ -12126,14 +12223,17 @@ function GeradorSiengeView() {
       const esc = maesEscolhidas.get(c.i);
       const mae = (esc ? (grupos || []).find((g) => g.codigo === esc) : null) || c.maes[0]?.grupo;
       const escolhida = escolhas.get(c.i) || null;
+      const decisao = decisaoDe(c);
       return [
         c.desc,
         // Numero de verdade, nao texto: assim a coluna soma no Excel.
         typeof c.qtd === "number" ? c.qtd : "",
         c.un || "",
         c.marca || "", mae?.codigo || "", mae?.nome || "", escolhida || "",
-        !mae ? "cadastrar" : escolhida ? "associado" : "escolher variante",
-        !mae || !escolhida ? descritoDe(c) : "",
+        decisao === DECISAO_DO_DETALHE.EXISTENTE ? "associado"
+          : decisao === DECISAO_DO_DETALHE.NOVO ? (mae ? "cadastrar detalhe" : "cadastrar detalhe (sem insumo mãe)")
+          : "a conferir",
+        decisao === DECISAO_DO_DETALHE.NOVO ? descritoDe(c) : "",
       ];
     });
     const ws = XLSX.utils.aoa_to_sheet([...cab, ...corpo]);
@@ -12259,9 +12359,10 @@ function GeradorSiengeView() {
 
       {linhas && (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiMini label="já existem no Sienge" value={String(achados)} tone="success" />
             <KpiMini label="precisam ser cadastrados" value={String(semMae)} tone={semMae ? "danger" : "success"} />
+            <KpiMini label="a conferir" value={String(aConferir)} tone={aConferir ? "warning" : "success"} />
             <KpiMini label="vão pra planilha" value={String(paraCadastrar.length)} tone="warning" />
           </div>
           {/* O template exige tres campos, e um deles o Sienge e' quem
@@ -12284,14 +12385,13 @@ function GeradorSiengeView() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10">#</TableHead>
-                    <TableHead>Produto do arquivo</TableHead>
-                    <TableHead className="w-80">Insumo no Sienge</TableHead>
+                    <TableHead>Produto do arquivo e insumo no Sienge</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {casados.map((c) => (
                     <LinhaGerador key={c.i} linha={c} escolhida={escolhas.get(c.i)}
-                      onEscolher={(d) => escolher(c.i, d)}
+                      decisao={decisaoDe(c)} onEscolher={(d) => escolher(c.i, d)} onNovo={() => decidirNovo(c.i)}
                       grupos={grupos}
                       maeEscolhida={maesEscolhidas.get(c.i)}
                       descrito={descritoDe(c)}
@@ -12307,11 +12407,17 @@ function GeradorSiengeView() {
                         if (txt == null) n.delete(c.i); else n.set(c.i, txt);
                         return n;
                       })}
-                      onMae={(cod) => setMaesEscolhidas((m) => {
-                        const n = new Map(m);
-                        cod ? n.set(c.i, cod) : n.delete(c.i);
-                        return n;
-                      })} />
+                      onMae={(cod) => {
+                        comDesfazer(c.i, "Insumo mãe trocado.");
+                        setMaesEscolhidas((m) => {
+                          const n = new Map(m);
+                          cod ? n.set(c.i, cod) : n.delete(c.i);
+                          return n;
+                        });
+                        // Outra mãe, outros detalhes: a decisão volta para "a conferir" — RN-090.
+                        setEscolhas((m) => { const n = new Map(m); n.delete(c.i); return n; });
+                        setNovos((g) => { const n = new Set(g); n.delete(c.i); return n; });
+                      }} />
                   ))}
                 </TableBody>
               </Table>
@@ -12329,7 +12435,7 @@ function GeradorSiengeView() {
    la, e o template so cadastra detalhe DENTRO de um insumo existente.
    Por isso nao ha campo de texto livre aqui: ou e' uma das candidatas,
    ou e' uma achada na busca, e as duas saem da mesma base. */
-function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMae, descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxSorteado }) {
+function LinhaGerador({ linha, escolhida, decisao, onEscolher, onNovo, grupos, maeEscolhida, onMae, descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxSorteado }) {
   const candidatas = linha.maes.map((x) => x.grupo);
   const mae = (maeEscolhida ? (grupos || []).find((g) => g.codigo === maeEscolhida) : null)
     || candidatas[0] || null;
@@ -12354,11 +12460,9 @@ function LinhaGerador({ linha, escolhida, onEscolher, grupos, maeEscolhida, onMa
             </span>
           </div>
         )}
-      </TableCell>
-      <TableCell className="w-80 align-top">
-        <AssociacaoSienge item={linha.desc} detalheItem={[linha.fornecedor, linha.codigo].filter(Boolean).join(" · ")}
-          desc={linha.desc} mae={mae} candidatas={candidatas} grupos={grupos} onMae={onMae}
-          escolhida={escolhida} onEscolher={onEscolher}
+        {/* O insumo no Sienge, numa faixa debaixo do produto (25/09/2026). */}
+        <FaixaSienge desc={linha.desc} mae={mae} candidatas={candidatas} grupos={grupos} onMae={onMae}
+          escolhida={escolhida} decisao={decisao} onEscolher={onEscolher} onNovo={onNovo}
           descrito={descrito} editado={editado} onDescrito={onDescrito}
           aux={aux} codDet={codDet} onAux={onAux} onCodDet={onCodDet}
           auxMarca={auxSorteado ? "sorteado" : null} />
@@ -12379,198 +12483,377 @@ function CampoRascunho({ as: Tag = "input", valor, onSalvar, aoSair = false, ...
   );
 }
 
-/* A escolha do insumo no Sienge: a MAE, sempre da base, e depois qual
-   descricao vai pra planilha — uma variante que ja existe, ou a nova,
-   editavel, com os dois codigos que o template exige.
+/* A ESCOLHA DO INSUMO NO SIENGE, NUMA FAIXA DEBAIXO DA DESCRIÇÃO (25/09/2026).
+ *
+ * Histórico: a escolha morou num painel na coluna "Insumo no Sienge" (até
+ * 22/09), num painel lateral (Sheet, 22 a 25/09 — o time não gostou de sair
+ * da tabela) e de novo no painel da coluna, que ocupava ~610px por produto,
+ * só mostrava os 4 primeiros detalhes e confundia "ninguém olhou" com
+ * "cadastrar como detalhe novo".
+ *
+ * Agora é uma faixa de uma linha, embaixo da descrição do produto:
+ *
+ *   SIENGE  [406 · MOBÍLIA SOLTA - CADEIRA ▾] › [LINEE / CADEIRA BROTO… ▾]  JÁ EXISTE  ⓘ
+ *
+ * Cada seletor é um Popover do DS com busca (Command), no mesmo desenho dos
+ * outros combobox do app. O do detalhe mostra TODOS os detalhes da mãe —
+ * primeiro os que têm todas as palavras do item, depois os parecidos —, com
+ * as palavras do item em destaque, e termina em "cadastrar como detalhe
+ * novo". A decisão tem três situações (RN-090): já existe, detalhe novo e a
+ * conferir; só o detalhe novo abre a segunda linha, com o descritivo e os
+ * dois códigos que o template exige.
+ *
+ * É a mesma nas duas telas que associam, o Gerador de códigos e as Compras
+ * (etapa Sienge), de propósito: quem aprende numa sabe a outra. Nas Compras
+ * os campos gravam ao sair (`aoSair`), porque ali cada alteração é gravação
+ * da obra; no Gerador nada é guardado. */
+const SITUACAO_DO_DETALHE = {
+  [DECISAO_DO_DETALHE.EXISTENTE]: { tom: "success", texto: "já existe" },
+  [DECISAO_DO_DETALHE.NOVO]: { tom: "neutral", texto: "detalhe novo" },
+  [DECISAO_DO_DETALHE.A_CONFERIR]: { tom: "warning", texto: "a conferir" },
+};
 
-   E' a mesma nas duas telas que associam, o Gerador de codigos e as
-   Compras (etapa Sienge), de proposito: quem aprende numa sabe a outra.
-   Nas Compras os campos gravam ao sair (`aoSair`), porque ali cada
-   alteracao e' gravacao da obra; no Gerador nada e' guardado. */
-function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEscolher,
-  descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false, somenteLeitura = false }) {
-  const [buscando, setBuscando] = useState(false);
-  const [termo, setTermo] = useState("");
-  const idBase = React.useId();
+/* O detalhe escolhido não tem todas as palavras do item: "já existe", mas
+   pode ser outro produto (o 3000K associado ao 4000K). */
+function detalheDivergente(desc, escolhida) {
+  return !!escolhida && palavrasQueFaltam(desc, escolhida).length > 0;
+}
 
-  /* A busca varre a base inteira, nao so as candidatas: quando o
-     casamento automatico nao acha nada, e' aqui que a pessoa resolve. */
-  const achadas = useMemo(() => {
-    const t = normSienge(termo);
-    if (t.length < 2) return [];
-    return (grupos || [])
-      .filter((g) => normSienge(g.nome).includes(t) || String(g.codigo).includes(t))
-      .slice(0, 8);
-  }, [termo, grupos]);
+/* O item pede o olho de alguém: ninguém decidiu (RN-090) ou o detalhe
+   escolhido diverge. É o que o contador "a conferir" do grupo conta e o
+   que o filtro dele mostra. */
+function insumoPedeConferencia(it) {
+  const decisao = decisaoDoDetalhe(it, { solicitado: estaSolicitado(it) });
+  return decisao === DECISAO_DO_DETALHE.A_CONFERIR
+    || (decisao === DECISAO_DO_DETALHE.EXISTENTE && detalheDivergente(it.desc, it.detalheSienge));
+}
+
+/* DEPOIS DE ESCOLHER, O PRÓXIMO PENDENTE (25/09/2026). Quem confere uma
+   verba inteira escolhe, e o foco já está no seletor do próximo item a
+   conferir — pelo teclado, é Enter, setas, Enter. A espera deixa a linha
+   escolhida sair da lista de pendentes e o Popover devolver o foco antes. */
+function irAoProximoPendente(atual) {
+  if (!atual) return;
+  setTimeout(() => {
+    const pendentes = [...document.querySelectorAll('[data-faixa-sienge][data-pendente="sim"]')];
+    const proximo = pendentes.find((el) => el !== atual && (atual.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
+    const alvo = proximo?.querySelector("[data-seletor-detalhe]");
+    if (!alvo) return;
+    alvo.focus({ preventScroll: true });
+    proximo.scrollIntoView({ block: "nearest" });
+  }, 80);
+}
+
+function FaixaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, decisao, onEscolher, onNovo,
+  descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false, somenteLeitura = false, className = "mt-2" }) {
+  const raiz = useRef(null);
+
+  // Os detalhes da mãe em ordem, sem repetir: a base tem uma linha por
+  // (código, descrição, unidade), e o mesmo detalhe pode vir duas vezes.
+  const detalhes = useMemo(() => {
+    if (!mae) return [];
+    const vistos = new Set();
+    return ordenarDetalhes(desc, mae).filter((d) => {
+      if (vistos.has(d.insumo.descricao)) return false;
+      vistos.add(d.insumo.descricao);
+      return true;
+    });
+  }, [desc, mae]);
+
+  // Escolhido, mas sem todas as palavras do item: pede conferência.
+  const faltam = decisao === DECISAO_DO_DETALHE.EXISTENTE ? palavrasQueFaltam(desc, escolhida) : [];
+  // Ninguém decidiu e há um detalhe com todas as palavras: um clique basta.
+  const sugestao = decisao === DECISAO_DO_DETALHE.A_CONFERIR && detalhes[0]
+    && detalhes[0].casaram.length > 0 && detalhes[0].faltaram.length === 0 ? detalhes[0] : null;
+  const situacao = faltam.length ? { tom: "warning", texto: "confira" }
+    : SITUACAO_DO_DETALHE[decisao] || SITUACAO_DO_DETALHE[DECISAO_DO_DETALHE.A_CONFERIR];
+  const pendente = decisao === DECISAO_DO_DETALHE.A_CONFERIR || faltam.length > 0;
+
+  const escolher = (d) => { onEscolher(d); irAoProximoPendente(raiz.current); };
+  const decidirNovo = () => { onNovo(); irAoProximoPendente(raiz.current); };
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* A MAE, sempre da base. */}
-      <SecaoRotulo rotuloDica="O que é o insumo mãe"
-        dica="O grupo do Sienge em que este produto entra (ex.: Luminária – pendentes decorativos). É ele que define quais detalhes aparecem abaixo.">
-        insumo mãe no Sienge
-      </SecaoRotulo>
-      {mae ? (
-        <div className="flex flex-col gap-2 text-sm">
-          {/* Com o seletor na tela, o texto repetia a mesma mãe logo acima dele. */}
-          {!(candidatas.length > 1 && !buscando && !somenteLeitura) && (
-            <div className="flex items-start gap-2">
-              <span className="mono text-xs text-text-mute">{mae.codigo}</span>
-              <span className="min-w-0 flex-1 text-text">{mae.nome}</span>
-            </div>
-          )}
-          {candidatas.length > 1 && !buscando && !somenteLeitura && (
-            <Select value={mae.codigo} onValueChange={onMae}>
-              <SelectTrigger aria-label="Insumo mãe no Sienge"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {candidatas.map((g) => (
-                  <SelectItem key={g.codigo} value={g.codigo}>{g.codigo} · {g.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-      ) : (
-        <div><Badge tone="warning">sem insumo mãe — escolha um</Badge></div>
-      )}
-
-      {/* Procurar outra: e' o caminho quando o casamento automatico
-          erra ou nao acha, e ele nao pode faltar — sem ele a pessoa
-          fica presa com a sugestao errada. */}
-      {somenteLeitura ? null : !buscando ? (
-        <div>
-          <Button variant="ghost" size="sm" onClick={() => setBuscando(true)}>
-            <Search size={14} aria-hidden="true" /> {mae ? "trocar o insumo mãe" : "procurar o insumo mãe"}
+    /* FUNDO PRÓPRIO (25/09/2026): com os seletores só de borda, a faixa
+       sumia no tom da linha (a conferir, comprado, selecionado). Na
+       superfície de card do DS ela se separa da descrição sem virar card. */
+    <div ref={raiz} data-faixa-sienge="" data-pendente={pendente ? "sim" : "nao"}
+      className={cn("flex min-w-0 flex-col gap-2 rounded-lg bg-surface-1 px-3 py-2", className)}>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="label-mono">Sienge</span>
+        {/* A situação vem primeiro e com largura fixa: descendo a tabela, os
+            selos ficam alinhados e o "a conferir" salta aos olhos. */}
+        <Badge tone={situacao.tom} className="w-24 justify-center"
+          title={faltam.length ? `O detalhe escolhido não tem estas palavras do item: ${faltam.join(", ")}. Confira se é o mesmo produto.` : undefined}>
+          {situacao.texto}
+        </Badge>
+        <SeletorMae mae={mae} candidatas={candidatas} grupos={grupos} onMae={onMae} somenteLeitura={somenteLeitura} />
+        <ChevronRight size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
+        <SeletorDetalhe desc={desc} mae={mae} detalhes={detalhes} escolhida={escolhida} decisao={decisao}
+          sugestao={sugestao} onEscolher={escolher} onNovo={decidirNovo} somenteLeitura={somenteLeitura} />
+        {sugestao && !somenteLeitura && (
+          <Button variant="outline" size="sm" type="button" onClick={() => escolher(sugestao.insumo.descricao)}
+            title={`Usar ${sugestao.insumo.descricao} — tem todas as palavras do item`}>
+            <Check size={14} aria-hidden="true" /> usar
           </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <Input autoFocus icon={<Search size={16} aria-hidden="true" />} aria-label="Buscar insumo mãe"
-            value={termo} placeholder="nome ou código do insumo…"
-            onChange={(e) => setTermo(e.target.value)} />
-          {achadas.map((g) => (
-            <Button variant="ghost" size="sm" key={g.codigo} className="w-full justify-start gap-2"
-              onClick={() => { onMae(g.codigo); setBuscando(false); setTermo(""); }}>
-              <span className="mono w-20 shrink-0 text-left text-xs text-text-mute">{g.codigo}</span>
-              <span className="min-w-0 flex-1 truncate text-left">{g.nome}</span>
-              <Contador tom="neutral" className="ml-auto">{g.variantes.length}</Contador>
-            </Button>
-          ))}
-          {termo.length >= 2 && achadas.length === 0 && (
-            <span className="text-xs text-text-mute">Nenhum insumo com esse nome na base do Sienge.</span>
-          )}
-          <div>
-            <Button variant="ghost" size="sm" onClick={() => { setBuscando(false); setTermo(""); }}>cancelar</Button>
-          </div>
-        </div>
-      )}
-
-      {/* A ESCOLHA. Antes ela era invisivel: quem marcava uma variante
-          tirava a linha da planilha sem nada dizer isso, e quem nao
-          marcava nada mandava a linha pra planilha tambem sem nada
-          dizer. Agora as opcoes sao um radio so — as que ja existem no
-          Sienge e a nova — e a marcada e' a que vale. */}
-      <div className="flex flex-col gap-2">
-        {/* A REGRA mora no ⓘ, e não num parágrafo: "bate tudo" e "falta…"
-            não se explicavam sozinhos — quem não sabia que era a comparação
-            de PALAVRAS lia "bate tudo" como "é este, pode ir" —, mas o texto
-            inteiro na tela era ruído para quem já sabia. */}
-        <SecaoRotulo conta={escolhida ? "usa um detalhe que já existe" : "cadastra um detalhe novo"}
-          rotuloDica="Como escolher a descrição"
-          dica={<>
-            Se um detalhe que já existe no Sienge descreve este produto, escolha-o — a linha não precisa ser cadastrada de novo.
-            <br /><br /><b>Bate tudo</b>: todas as palavras da descrição do item aparecem no detalhe.
-            <br /><b>Falta…</b>: as palavras do item que o detalhe não tem — confira se é o mesmo produto.
-            <br /><br />A associação em massa só escolhe sozinha quando bate tudo.
-          </>}>
-          qual descrição vai pra planilha
-        </SecaoRotulo>
-
-        <RadioGroup value={escolhida ?? "__nova__"} disabled={somenteLeitura} aria-label="Descrição que vai pra planilha"
-          onValueChange={(v) => onEscolher(v === "__nova__" ? null : v)} className="flex flex-col gap-2">
-          {/* A LISTA COMPACTA, na própria linha (25/09/2026). Houve um painel
-              lateral com cartões (22/09), e o time não gostou de abrir outra
-              tela pra escolher: a escolha voltou pra linha, como era. O
-              texto do detalhe fica em caixa normal (não no `Label` do DS,
-              que é mono e caixa-alta) e o selo explica ao passar o mouse. */}
-          {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
-            <div key={d.insumo.descricao + k} className="flex items-start gap-2 text-sm" title={d.insumo.descricao}>
-              <RadioGroupItem id={`${idBase}-v${k}`} value={d.insumo.descricao} className="mt-1" />
-              <label htmlFor={`${idBase}-v${k}`}
-                className={`min-w-0 flex-1 leading-snug text-text ${somenteLeitura ? "" : "cursor-pointer"}`}>{d.insumo.detalhe}</label>
-              <span className="shrink-0">
-                {d.faltaram.length > 0
-                  ? <Badge tone="warning" title={`Estas palavras da descrição do item não aparecem neste detalhe: ${d.faltaram.join(", ")}. Confira se é o mesmo produto antes de escolher.`}>falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
-                  : <Badge tone="success" title="Todas as palavras da descrição do item aparecem neste detalhe do Sienge.">bate tudo</Badge>}
-              </span>
-            </div>
-          ))}
-          <div className="flex items-start gap-2 text-sm" title="Usar a descrição gerada — é ela que preenche o template do Sienge">
-            <RadioGroupItem id={`${idBase}-nova`} value="__nova__" className="mt-1" />
-            <label htmlFor={`${idBase}-nova`}
-              className={`min-w-0 flex-1 leading-snug text-text ${somenteLeitura ? "" : "cursor-pointer"}`}>cadastrar como detalhe novo</label>
-            {editado && <span className="shrink-0"><Badge tone="neutral">editada à mão</Badge></span>}
-          </div>
-        </RadioGroup>
-
-        <div className={`flex flex-col gap-2 ${escolhida ? "opacity-60" : ""}`}>
-          <div className="flex items-start gap-2">
-            {/* Textarea, e nao um <code> com botao de editar: quem confere
-                cinquenta linhas nao quer dois cliques por linha. */}
-            <CampoRascunho as={Textarea} className="mono min-w-0 flex-1 text-xs" valor={descrito} rows={2}
-              spellCheck={false} aria-label="Descrição do detalhe no Sienge" readOnly={somenteLeitura}
-              onSalvar={onDescrito} aoSair={aoSair} />
-            <div className="flex shrink-0 flex-col gap-1">
-              <BotaoIcone rotulo="Copiar pra colar no cadastro do Sienge" variant="ghost" size="sm"
-                onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={14} aria-hidden="true" /></BotaoIcone>
-              {editado && !somenteLeitura && (
-                <BotaoIcone rotulo="Voltar ao descritivo gerado" variant="ghost" size="sm"
-                  onClick={() => onDescrito(null)}><RotateCcw size={14} aria-hidden="true" /></BotaoIcone>
-              )}
-            </div>
-          </div>
-          {/* Os dois codigos que o template exige e que a descricao
-              nao carrega. Ficam aqui embaixo, e nao numa coluna
-              propria, porque so valem pra linha que vai ser
-              cadastrada — quem escolheu variante nao preenche nada. */}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Field>
-              <Label htmlFor={`${idBase}-det`} className="flex items-center gap-2">
-                cód. do detalhe
-                <DicaInfo rotulo="O que é o código do detalhe">Pode ficar vazio: o Sienge numera ao cadastrar.</DicaInfo>
-              </Label>
-              <CampoRascunho as={Input} id={`${idBase}-det`} valor={codDet} placeholder="o Sienge numera" readOnly={somenteLeitura}
-                onSalvar={onCodDet} aoSair={aoSair} />
-            </Field>
-            <Field>
-              <Label htmlFor={`${idBase}-aux`} className="flex items-center gap-2">
-                cód. auxiliar
-                <DicaInfo rotulo="O que é o código auxiliar">
-                  A referência do fornecedor.
-                  {auxMarca === "gerado" && <><br /><br /><b>Gerado</b>: o fornecedor não informou código nem modelo, e o app criou um a partir do item — sai igual a cada download e não repete no grupo. Digite o do fornecedor se tiver.</>}
-                  {auxMarca === "sorteado" && <><br /><br /><b>Sorteado</b>: o item não tinha, e o app preencheu um. Digite o do fornecedor se tiver.</>}
-                </DicaInfo>
-                {auxMarca && <Badge tone="warning">{auxMarca}</Badge>}
-              </Label>
-              <CampoRascunho as={Input} id={`${idBase}-aux`}
-                valor={aux} placeholder="referência do fornecedor" readOnly={somenteLeitura}
-                onSalvar={onAux} aoSair={aoSair} />
-            </Field>
-          </div>
-        </div>
+        )}
+        {/* A REGRA mora no ⓘ, e não num parágrafo: quem já sabe não precisa
+            ler em volta dela a cada linha. */}
+        <DicaInfo rotulo="Como escolher o insumo do Sienge">
+          Primeiro o <b>insumo mãe</b>: o grupo do Sienge em que o produto entra. Depois o <b>detalhe</b>:
+          se um que já existe descreve este produto, escolha-o; se nenhum serve, cadastre como detalhe novo.
+          <br /><br />Em negrito, as palavras do item que o detalhe tem. A associação em massa só escolhe
+          sozinha quando o detalhe tem todas.
+          <br /><br /><b>A conferir</b>: ninguém decidiu ainda — fica fora do Template Sienge.
+          <br /><b>Confira</b>: o detalhe escolhido não tem todas as palavras do item — pode ser outro produto.
+        </DicaInfo>
       </div>
+      {/* A DIFERENÇA À VISTA, na linha de baixo (25/09/2026): na mesma linha
+          dos seletores ela empurrava o ⓘ para fora. */}
+      {faltam.length > 0 && (
+        <div className="text-xs text-text-soft">falta: <b className="font-semibold text-text">{faltam.join(", ")}</b></div>
+      )}
+      {decisao === DECISAO_DO_DETALHE.NOVO && (
+        <DetalheNovoSienge descrito={descrito} editado={editado} onDescrito={onDescrito}
+          aux={aux} codDet={codDet} onAux={onAux} onCodDet={onCodDet} auxMarca={auxMarca}
+          aoSair={aoSair} somenteLeitura={somenteLeitura} />
+      )}
     </div>
   );
 }
 
-/* A ASSOCIAÇÃO NA TABELA — a escolha na própria linha (25/09/2026).
- *
- * De 22 a 25/09 a célula era um resumo e a escolha abria num painel lateral
- * (Sheet). Os usuários não gostaram de sair da tabela pra escolher: a
- * escolha voltou pra linha, como era antes. Nada muda no que se grava — é a
- * mesma EscolhaSienge, com os mesmos campos. */
-function AssociacaoSienge({ item, detalheItem, onHabilitar, editandoPor, ...escolha }) {
-  return <EscolhaSienge {...escolha} />;
+/* O INSUMO MÃE, sempre da base (RN-079): as candidatas do casamento no
+   topo e, digitando, a base inteira. Não há texto livre — o Sienge não
+   aceita insumo que não existe lá. */
+function SeletorMae({ mae, candidatas = [], grupos, onMae, somenteLeitura = false }) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const termo = normSienge(busca);
+  const buscando = termo.length >= 2;
+  const lista = useMemo(() => {
+    if (!buscando) {
+      // A mãe achada na busca continua na lista, mesmo fora das candidatas.
+      return mae && !candidatas.some((g) => g.codigo === mae.codigo) ? [mae, ...candidatas] : candidatas;
+    }
+    return (grupos || []).filter((g) => normSienge(`${g.codigo} ${g.nome}`).includes(termo)).slice(0, 30);
+  }, [buscando, termo, grupos, candidatas, mae]);
+
+  if (somenteLeitura) {
+    return mae
+      ? <span className="min-w-0 text-sm text-text"><span className="mono text-xs text-text-mute">{mae.codigo}</span> {mae.nome}</span>
+      : <span className="text-sm text-text-mute">sem insumo mãe</span>;
+  }
+  return (
+    <Popover open={aberto} onOpenChange={(v) => { setAberto(v); if (v) setBusca(""); }}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" type="button" role="combobox" aria-expanded={aberto}
+          aria-label={mae ? `Insumo mãe no Sienge: ${mae.codigo} ${mae.nome}` : "Escolher o insumo mãe no Sienge"}
+          title={mae ? `${mae.codigo} · ${mae.nome}` : undefined}
+          className="min-w-0 max-w-xs justify-between font-normal">
+          {mae ? (
+            <>
+              <span className="mono shrink-0 text-xs text-text-mute">{mae.codigo}</span>
+              <span className="truncate">{mae.nome}</span>
+            </>
+          ) : <span className="truncate text-text-mute">escolher o insumo mãe</span>}
+          <ChevronDown size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-screen max-w-sm p-0">
+        <Command shouldFilter={false}>
+          <CommandInput value={busca} onValueChange={setBusca} placeholder="nome ou código do insumo mãe…" />
+          <CommandList className="max-h-80">
+            <CommandEmpty>
+              {buscando ? "Nenhum insumo com esse nome na base do Sienge." : "Nenhuma sugestão para este item — digite para procurar na base."}
+            </CommandEmpty>
+            {lista.length > 0 && (
+              <CommandGroup heading={buscando ? "Na base do Sienge" : "Sugeridos para este item"}>
+                {lista.map((g) => {
+                  const marcada = g.codigo === mae?.codigo;
+                  return (
+                    <CommandItem key={g.codigo} value={`mae-${g.codigo}`}
+                      onSelect={() => { if (!marcada) onMae(g.codigo); setAberto(false); }}>
+                      <Check size={14} className={marcada ? "shrink-0 text-brand" : "invisible shrink-0"} aria-hidden="true" />
+                      <span className="mono w-12 shrink-0 text-xs text-text-mute">{g.codigo}</span>
+                      <span className="min-w-0 flex-1">{g.nome}{marcada && <span className="sr-only"> (escolhido)</span>}</span>
+                      <span className="ml-auto shrink-0 text-xs text-text-mute" title="Detalhes cadastrados neste insumo">
+                        {g.variantes.length} {g.variantes.length === 1 ? "detalhe" : "detalhes"}
+                      </span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* As palavras do item em destaque dentro do texto do detalhe: é o que
+   deixa comparar "BILBAO / CARVALHO" com "BILBAO / OFF WHITE" sem ler
+   cada frase inteira. */
+function TextoComPalavrasDoItem({ texto, casaram }) {
+  const alvo = new Set(casaram);
+  return String(texto || "").split(/(\s+|\/)/).map((parte, i) => (
+    parte.trim() && palavrasSienge(parte).some((p) => alvo.has(p))
+      ? <b key={i} className="font-semibold text-text">{parte}</b>
+      : <React.Fragment key={i}>{parte}</React.Fragment>
+  ));
+}
+
+// Quantos parecidos aparecem de cara, e quantos a mais a cada "mostrar mais".
+const DETALHES_DE_CARA = 30;
+
+/* O DETALHE: todos os da mãe, não só os quatro primeiros. Primeiro os que
+   têm todas as palavras do item, depois os parecidos, por último os que
+   não têm nenhuma — e, no fim, "cadastrar como detalhe novo". */
+function SeletorDetalhe({ desc, mae, detalhes = [], escolhida, decisao, sugestao = null, onEscolher, onNovo, somenteLeitura = false }) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [limite, setLimite] = useState(DETALHES_DE_CARA);
+
+  const termos = normSienge(busca).split(" ").filter(Boolean);
+  const achados = termos.length
+    ? detalhes.filter((d) => { const t = normSienge(d.insumo.descricao); return termos.every((p) => t.includes(p)); })
+    : detalhes;
+  const batem = achados.filter((d) => d.casaram.length > 0 && d.faltaram.length === 0);
+  const resto = achados.filter((d) => !(d.casaram.length > 0 && d.faltaram.length === 0));
+  const restoNaTela = resto.slice(0, limite);
+  const parecidos = restoNaTela.filter((d) => d.casaram.length > 0);
+  const outros = restoNaTela.filter((d) => d.casaram.length === 0);
+
+  const escolher = (d) => { onEscolher(d.insumo.descricao); setAberto(false); };
+  const rotulo = decisao === DECISAO_DO_DETALHE.EXISTENTE
+    ? (partesDoInsumo(escolhida).detalhe || escolhida)
+    : decisao === DECISAO_DO_DETALHE.NOVO ? "nenhum existente serve"
+    : sugestao ? `sugestão: ${sugestao.insumo.detalhe}`
+    : detalhes.length ? `escolher o detalhe · ${detalhes.length} ${detalhes.length === 1 ? "opção" : "opções"}`
+    : "escolher o detalhe";
+
+  if (somenteLeitura) {
+    return <span className="min-w-0 text-sm text-text" title={escolhida || undefined}>{rotulo}</span>;
+  }
+
+  const item = (d) => {
+    const marcada = decisao === DECISAO_DO_DETALHE.EXISTENTE && d.insumo.descricao === escolhida;
+    return (
+      <CommandItem key={d.insumo.descricao} value={d.insumo.descricao} onSelect={() => escolher(d)}
+        title={d.insumo.descricao} className="items-start">
+        <Check size={14} className={marcada ? "mt-1 shrink-0 text-brand" : "invisible mt-1 shrink-0"} aria-hidden="true" />
+        <span className="min-w-0 flex-1 leading-snug text-text-soft">
+          <TextoComPalavrasDoItem texto={d.insumo.detalhe} casaram={d.casaram} />
+          {marcada && <span className="sr-only"> (escolhido)</span>}
+        </span>
+        {d.faltaram.length > 0 && d.casaram.length > 0 && (
+          <Badge tone="warning" className="shrink-0"
+            title={`Estas palavras do item não aparecem neste detalhe: ${d.faltaram.join(", ")}. Confira se é o mesmo produto.`}>
+            falta {d.faltaram.length}
+          </Badge>
+        )}
+      </CommandItem>
+    );
+  };
+
+  return (
+    <Popover open={aberto} onOpenChange={(v) => { setAberto(v); if (v) { setBusca(""); setLimite(DETALHES_DE_CARA); } }}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" type="button" role="combobox" aria-expanded={aberto} data-seletor-detalhe=""
+          aria-label={`Detalhe no Sienge: ${rotulo}`} title={escolhida || sugestao?.insumo.descricao || undefined}
+          className={cn("min-w-0 max-w-xl justify-between font-normal",
+            decisao === DECISAO_DO_DETALHE.A_CONFERIR ? "text-text-soft" : "")}>
+          <span className="truncate">{rotulo}</span>
+          <ChevronDown size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-screen max-w-sm p-0 sm:max-w-lg">
+        <Command shouldFilter={false}>
+          <CommandInput value={busca} onValueChange={(v) => { setBusca(v); setLimite(DETALHES_DE_CARA); }}
+            placeholder={mae ? `filtrar os ${detalhes.length} detalhes de ${mae.codigo}…` : "escolha o insumo mãe primeiro"} />
+          {/* Com o que se compara: a descrição do item, à vista, e não de cabeça. */}
+          <div className="border-b border-line-1 px-4 py-2 text-xs text-text-mute">
+            Item: <span className="text-text">{desc}</span>
+          </div>
+          <CommandList className="max-h-96">
+            {!mae && <div className="px-4 py-3 text-xs text-text-mute">Sem insumo mãe, não há detalhe para escolher — escolha a mãe, ou cadastre como detalhe novo.</div>}
+            {mae && !achados.length && <div className="px-4 py-3 text-xs text-text-mute">Nenhum detalhe de {mae.codigo} com esse texto.</div>}
+            {batem.length > 0 && <CommandGroup heading="Têm todas as palavras do item">{batem.map(item)}</CommandGroup>}
+            {parecidos.length > 0 && <CommandGroup heading="Parecidos — confira">{parecidos.map(item)}</CommandGroup>}
+            {outros.length > 0 && <CommandGroup heading="Sem palavras em comum">{outros.map(item)}</CommandGroup>}
+            {resto.length > restoNaTela.length && (
+              <CommandGroup>
+                <CommandItem value="__mais__" onSelect={() => setLimite((n) => n + 50)} className="text-text-mute">
+                  <Plus size={14} className="shrink-0" aria-hidden="true" />
+                  mostrar mais {Math.min(50, resto.length - restoNaTela.length)} de {resto.length - restoNaTela.length}
+                </CommandItem>
+              </CommandGroup>
+            )}
+            <CommandSeparator />
+            <CommandGroup heading="Nenhum serve?">
+              <CommandItem value="__novo__" onSelect={() => { onNovo(); setAberto(false); }}>
+                <Check size={14} className={decisao === DECISAO_DO_DETALHE.NOVO ? "shrink-0 text-brand" : "invisible shrink-0"} aria-hidden="true" />
+                <span className="min-w-0 flex-1">cadastrar como detalhe novo</span>
+                <span className="ml-auto shrink-0 text-xs text-text-mute">vai no Template Sienge</span>
+              </CommandItem>
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* O DETALHE NOVO: o descritivo e os dois códigos que o template exige e que
+   a descrição não carrega. Só aparece para quem decidiu cadastrar — quem
+   escolheu um detalhe que existe não preenche nada. */
+function DetalheNovoSienge({ descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false, somenteLeitura = false }) {
+  const idBase = React.useId();
+  return (
+    <div className="grid gap-2 sm:grid-cols-4">
+      <Field className="sm:col-span-2">
+        <Label htmlFor={`${idBase}-desc`} className="flex items-center gap-2">
+          descritivo do detalhe
+          <DicaInfo rotulo="O que é o descritivo do detalhe">
+            O texto que o Template Sienge cadastra, no padrão da casa (RN-080). Editado à mão, ele manda; o ↺ volta ao gerado.
+          </DicaInfo>
+          {editado && <Badge tone="neutral">editado à mão</Badge>}
+        </Label>
+        <div className="flex items-center gap-1">
+          {/* Campo, e não um texto com botão de editar: quem confere
+              cinquenta linhas não quer dois cliques por linha. */}
+          <CampoRascunho as={Input} id={`${idBase}-desc`} className="mono min-w-0 flex-1 text-xs" valor={descrito}
+            spellCheck={false} title={descrito} readOnly={somenteLeitura} onSalvar={onDescrito} aoSair={aoSair} />
+          <BotaoIcone rotulo="Copiar pra colar no cadastro do Sienge" variant="ghost" size="sm"
+            onClick={() => navigator.clipboard?.writeText(descrito)}><Copy size={14} aria-hidden="true" /></BotaoIcone>
+          {editado && !somenteLeitura && (
+            <BotaoIcone rotulo="Voltar ao descritivo gerado" variant="ghost" size="sm"
+              onClick={() => onDescrito(null)}><RotateCcw size={14} aria-hidden="true" /></BotaoIcone>
+          )}
+        </div>
+      </Field>
+      <Field>
+        <Label htmlFor={`${idBase}-det`} className="flex items-center gap-2">
+          cód. do detalhe
+          <DicaInfo rotulo="O que é o código do detalhe">Pode ficar vazio: o Sienge numera ao cadastrar.</DicaInfo>
+        </Label>
+        <CampoRascunho as={Input} id={`${idBase}-det`} valor={codDet} placeholder="o Sienge numera" readOnly={somenteLeitura}
+          onSalvar={onCodDet} aoSair={aoSair} />
+      </Field>
+      <Field>
+        <Label htmlFor={`${idBase}-aux`} className="flex items-center gap-2">
+          cód. auxiliar
+          <DicaInfo rotulo="O que é o código auxiliar">
+            A referência do fornecedor.
+            {auxMarca === "gerado" && <><br /><br /><b>Gerado</b>: o fornecedor não informou código nem modelo, e o app criou um a partir do item — sai igual a cada download e não repete no grupo. Digite o do fornecedor se tiver.</>}
+            {auxMarca === "sorteado" && <><br /><br /><b>Sorteado</b>: o item não tinha, e o app preencheu um. Digite o do fornecedor se tiver.</>}
+          </DicaInfo>
+          {auxMarca && <Badge tone="warning">{auxMarca}</Badge>}
+        </Label>
+        <CampoRascunho as={Input} id={`${idBase}-aux`} valor={aux} placeholder="referência do fornecedor" readOnly={somenteLeitura}
+          onSalvar={onAux} aoSair={aoSair} />
+      </Field>
+    </div>
+  );
 }
 
 function PedidoCompra({ obra, itens, usuario }) {
@@ -12812,6 +13095,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
      em `g.itens`, que e' quem gera o codigo auxiliar e o CSV do Sienge. */
   const [busca, setBusca] = useState("");
   const buscando = !!busca.trim();
+  /* O FILTRO POR SITUAÇÃO DO PRODUTO (25/09/2026), igual ao do Executivo:
+     "preciso selecionar itens que foram ou não solicitados, comprados". Vale
+     sobre o que a etapa e o fornecedor já deixaram; a verba some quando
+     fica vazia. "Solicitado" só existe no canal Sienge; "a conferir" é o
+     insumo do Sienge sem decisão ou divergente. */
+  const [situacao, setSituacao] = useState("todos");
   // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
   const abreNaBusca = useAbertosComBusca(buscando);
   const casaRow = (r) => casaItem(r.it, { num: r.catNum, nome: r.catNome }, busca);
@@ -13035,9 +13324,15 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   /* O que a busca deixa na tela, somando todas as verbas. Serve pra contagem
      do campo, pro "Selecionar os N desta busca" e pra saber se a etapa ficou
      vazia. NAO alimenta `porVerba` — o grupo continua inteiro. */
+  const casaSituacao = useCallback((r) => casaSituacaoDe(situacao, r), [situacao]);
   const naTelaTudo = useMemo(
-    () => (buscando ? visiveis.filter(casaRow) : visiveis),
-    [visiveis, busca, buscando]);
+    () => (buscando ? visiveis.filter(casaRow) : visiveis).filter(casaSituacao),
+    [visiveis, busca, buscando, casaSituacao]);
+  const contaSituacao = (id) => visiveis.filter((r) => casaSituacaoDe(id, r)).length;
+  // Fora do canal Sienge, "solicitado" e "a conferir" não existem: o filtro volta a Todos.
+  useEffect(() => {
+    if (etapa !== "sienge" && SITUACOES_DE_COMPRA.find((f) => f.id === situacao)?.soSienge) setSituacao("todos");
+  }, [etapa, situacao]);
 
   /* O pedido de orçamento sai do filtro: escolhe o fornecedor, confere a
      lista na tela e o PDF leva só o que dele ainda não foi comprado. */
@@ -13147,6 +13442,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
       mudar(r.catIdx, r.itemIdx, {
         maeSienge: mae.grupo.codigo,
         detalheSienge: melhor.insumo.descricao,
+        detalheNovoSienge: false,
       });
       certos += 1;
     });
@@ -13154,12 +13450,6 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     setSel(new Set());
   }
 
-  /* A busca do insumo roda por grupo, quando alguém pede.
-
-     Ela carregava sozinha ao entrar na etapa e casava todos os produtos
-     de uma vez contra os 10 mil insumos: a tela congelava ao clicar em
-     Sienge. Agora os produtos aparecem na hora, e cada grupo tem o seu
-     "Associar insumos" na própria barra. */
   async function recarregarBase() {
     setCarregando(true); setErroBase(null);
     try {
@@ -13174,6 +13464,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     } finally { setCarregando(false); }
   }
 
+  /* A busca do insumo roda por grupo, quando alguém pede (volta em 25/09/2026).
+
+     A associação não pode ser automática: a sugestão sozinha, ao abrir a
+     verba, foi desfeita. Casar a obra inteira de uma vez congelava a tela,
+     então cada grupo tem o seu "Associar insumos" na própria barra. */
   async function associarGrupo(g) {
     setAssociando(g.num); setErroBase(null);
     try {
@@ -13234,50 +13529,68 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     ...fornecedores.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` })),
   ];
 
-  /* w-full: sem ele a barra mede pelo conteudo e o lg:ml-auto do grupo de
-     acoes nao tem sobra pra empurrar — os botoes ficavam colados no filtro. */
+  /* A BARRA NUMA LINHA SÓ, SEMPRE (25/09/2026, TELA-11): a busca e o
+     fornecedor encolhem, os botões não quebram e os rótulos longos encurtam
+     em tela menor; no celular, a linha rola para o lado em vez de quebrar. */
+  const alvoDaSelecao = buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa";
+  const limparFiltros = () => { setBusca(""); setFornecedor(""); setSituacao("todos"); setSoComObs(false); };
   const toolbar = (
-    <div className="flex w-full flex-wrap items-center gap-2">
-      <CampoBusca valor={busca} aoMudar={setBusca}
-        contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
-      {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
-          obra: filtro que nunca filtra nada é ruído na barra. */}
-      {obs.length > 0 && (
-        <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}
-          title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
-          <MessageSquare size={16} aria-hidden="true" /> com observação interna <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
-        </Toggle>
+    <BarraDeFiltros
+      busca={{ valor: busca, aoMudar: setBusca, contador: `${naTelaTudo.length} de ${visiveis.length}` }}
+      seletores={(
+        <>
+          {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
+              obra: filtro que nunca filtra nada é ruído na barra. */}
+          {obs.length > 0 && (
+            <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)} className="shrink-0 whitespace-nowrap"
+              title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
+              <MessageSquare size={16} aria-hidden="true" /> <span className="hidden xl:inline">com observação interna</span> <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
+            </Toggle>
+          )}
+          {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
+              ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
+              cima desalinhava a fila inteira. */}
+          <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
+            onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-48 shrink-0 2xl:w-64" />
+        </>
       )}
-      {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
-          ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
-          cima desalinhava a fila inteira. */}
-      <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
-        onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-full sm:w-72" />
-      <div className="flex w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto">
-        <Button variant="outline" className="h-10" onClick={selecionarTudo}>
-          <Check size={16} aria-hidden="true" /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
-        </Button>
-        {sel.size > 0 && <Button variant="ghost" className="h-10" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
-        {fornecedor && fornecedor !== SEM_FORNECEDOR && (
-          <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
-            <Checkbox id={idNomeNoPdf} checked={nomeNoPdf} onCheckedChange={(v) => setNomeNoPdf(v === true)} />
-            <Label htmlFor={idNomeNoPdf} className="whitespace-nowrap">nome no PDF</Label>
-          </div>
-        )}
-        {/* Com busca ligada o botao fica apagado (decisao dela,
-            17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
-            tela mostrando tres linhas enquanto o pedido leva sessenta e' a
-            pagina afirmando duas coisas. */}
-        <BotaoComMotivo className="h-10" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
-          title={buscando
-            ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
-            : !fornecedor || fornecedor === SEM_FORNECEDOR
-            ? "Escolha um fornecedor pra gerar o pedido"
-            : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
-          <Printer size={16} aria-hidden="true" /> Pedido de orçamento
-        </BotaoComMotivo>
-      </div>
-    </div>
+      acoes={(
+        <>
+          <Button variant="outline" className="h-10 whitespace-nowrap" onClick={selecionarTudo}
+            title={`Marca os ${naTelaTudo.length} itens ${alvoDaSelecao} para o pedido de orçamento`}>
+            <ListChecks size={16} aria-hidden="true" /> Marcar {naTelaTudo.length} {naTelaTudo.length === 1 ? "item" : "itens"}<span className="hidden 2xl:inline"> {alvoDaSelecao}</span>
+          </Button>
+          {sel.size > 0 && <Button variant="ghost" className="h-10 whitespace-nowrap" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
+          {fornecedor && fornecedor !== SEM_FORNECEDOR && (
+            <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
+              <Checkbox id={idNomeNoPdf} checked={nomeNoPdf} onCheckedChange={(v) => setNomeNoPdf(v === true)} />
+              <Label htmlFor={idNomeNoPdf} className="whitespace-nowrap">nome no PDF</Label>
+            </div>
+          )}
+          {/* Com busca ligada o botao fica apagado (decisao dela,
+              17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
+              tela mostrando tres linhas enquanto o pedido leva sessenta e' a
+              pagina afirmando duas coisas. */}
+          <BotaoComMotivo className="h-10 whitespace-nowrap" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+            title={buscando
+              ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
+              : !fornecedor || fornecedor === SEM_FORNECEDOR
+              ? "Escolha um fornecedor pra gerar o pedido"
+              : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
+            <Printer size={16} aria-hidden="true" /> Pedido<span className="hidden 2xl:inline"> de orçamento</span>
+          </BotaoComMotivo>
+        </>
+      )}
+      /* Fora da etapa Sienge a situação são só três opções: cabem na linha 1,
+         sem uma segunda linha solta. Na etapa Sienge são seis, e descem. */
+      {...{ [etapa === "sienge" ? "situacao" : "visoes"]: { rotulo: "Situação do produto", valor: situacao, aoMudar: setSituacao,
+        opcoes: SITUACOES_DE_COMPRA.filter((f) => !f.soSienge || etapa === "sienge").map((f) => ({ ...f, n: contaSituacao(f.id) })) } }}
+      ativos={{ count: naTelaTudo.length, noun: "produto", onClearAll: limparFiltros, chips: [
+        buscando && { label: "Busca", value: busca, onClear: () => setBusca("") },
+        fornecedor && { label: "Fornecedor", value: opcoesFornecedor.find((o) => o.value === fornecedor)?.label, onClear: () => setFornecedor("") },
+        situacao !== "todos" && { label: "Situação", value: SITUACOES_DE_COMPRA.find((f) => f.id === situacao)?.label, onClear: () => setSituacao("todos") },
+        soComObs && { label: "Só", value: "com observação interna", onClear: () => setSoComObs(false) },
+      ] }} />
   );
 
   return (
@@ -13293,7 +13606,9 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
 
       {/* O funil. Cada aba e um estagio, e o numero embaixo diz quanto
           dinheiro esta parado ali — que e o que decide por onde comecar. */}
-      <Tabs value={etapa} onValueChange={setEtapa} activationMode="manual">
+      {/* Os cartões de etapa também filtram: ficam ANTES da barra de filtros,
+          junto dos totais (25/09/2026, "fora do padrão"). */}
+      <Tabs value={etapa} onValueChange={setEtapa} activationMode="manual" className="antes-dos-filtros">
         <div className="overflow-x-auto">
           {/* O funil ocupa a largura dos cartoes de cima, e cada estagio tem a
               mesma largura; quem nao tem canal guarda o lugar da etiqueta, pra
@@ -13478,10 +13793,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                filtro ligado, a verba so' aparece se ela mesma tiver observacao
                ou se algum produto dela tiver — e, dentro, ficam so' os produtos
                que tem. */
-            const comBusca = buscando ? g.itens.filter(casaRow) : g.itens;
-            const naTela = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;
-            if (buscando && comBusca.length === 0) return null;
-            if (soComObs && naTela.length === 0 && obsDaVerba(g.num).length === 0) return null;
+            const comBusca = (buscando ? g.itens.filter(casaRow) : g.itens).filter(casaSituacao);
+            const comObs = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;
+            const naTela = comObs;
+            if ((buscando || situacao !== "todos") && comBusca.length === 0) return null;
+            // O filtro de observação decide se a verba aparece; o "só a conferir" só peneira dentro dela.
+            if (soComObs && comObs.length === 0 && obsDaVerba(g.num).length === 0) return null;
             const aberto = abreNaBusca.aberto(g.num, abertos.has(g.num));
             /* A LINHA TROCADA NAO CONTA EM NADA — e' historico (18/09/2026).
 
@@ -13512,9 +13829,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             // canal e nos outros canais elas respondiam uma pergunta que ali
             // ninguém fez — e "não lançado" em produto sem canal é falso.
             const noSienge = etapa === "sienge";
-            const mostrarInsumo = noSienge && grupoAssociado;
+            const mostrarInsumo = noSienge && !!grupos;
             const auxiliares = mostrarInsumo ? auxiliaresDoGrupo(g.itens, obra.codigo) : null;
-            const template = mostrarInsumo ? templateComprasDoGrupo(g.itens, casamentos, grupos, auxiliares) : [];
+            // O template só depois das sugestões da verba inteira: sem elas, a mãe de quem não gravou uma sai em branco.
+            const template = mostrarInsumo && grupoAssociado ? templateComprasDoGrupo(g.itens, casamentos, grupos, auxiliares) : [];
+            // O que pede o olho de alguém: sem decisão (fica fora do template, RN-090) ou com o detalhe divergente.
+            const aConferir = noSienge ? ativos.filter((r) => insumoPedeConferencia(r.it)).length : 0;
             const semInsumo = template.filter((l) => !l.maeCodigo).length;
             const tomContagem = (feitos) => (feitos === nItens ? "success" : feitos ? "brand" : "neutral");
             return (
@@ -13525,33 +13845,41 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                     onCheckedChange={() => alternarGrupo({ ...g, itens: naTela })}
                     title={nSelNaTela === nNaTela ? "Tirar da seleção" : buscando ? "Selecionar o que a busca mostra" : "Selecionar a verba inteira"} />
                 }
+                /* A BARRA EM COLUNAS FIXAS (25/09/2026): número · nome · progresso
+                   · alertas. Vinte verbas se leem como tabela, e o atraso
+                   aparece de longe na barra, sem ler "0 de 4". */
                 cabecalho={
-                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="flex min-w-0 flex-1 items-center gap-3">
                     <span className="mono w-10 shrink-0 text-xs text-text-mute">{g.num}</span>
-                    <span className="min-w-0 flex-1 text-sm font-semibold text-text">{g.nome}</span>
-                    <span className="flex w-full flex-wrap items-center gap-2 lg:w-96 lg:shrink-0">
-                    <Badge tone="neutral">{buscando ? `${nNaTela} de ${nItens}` : nItens} {nItens === 1 && !buscando ? "produto" : "produtos"}</Badge>
-                    {/* No Sienge, solicitar vem antes de comprar: quanto do grupo já foi solicitado. */}
-                    {noSienge && (
-                      <Badge tone={tomContagem(nSolicitados)} title="Solicitados no Sienge — o passo antes da compra">
-                        {nSolicitados === nItens ? <><Check size={12} aria-hidden="true" /> tudo solicitado</> : `${nSolicitados} de ${nItens} solicitados`}
-                      </Badge>
-                    )}
-                    {/* Quanto do grupo já foi comprado, sem precisar abrir: */}
-                    <Badge tone={tomContagem(nComprados)} title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
-                      {nComprados === nItens ? <><Check size={12} aria-hidden="true" /> tudo comprado</> : `${nComprados} de ${nItens} comprados`}
-                    </Badge>
-                    {/* TEVE TROCA AQUI (pedido dela, 18/09/2026): "sinalizar no
-                        grupo se teve alguma troca". Sem isto, a troca so'
-                        aparecia abrindo a verba e achando a linha riscada. */}
-                    {nTrocas > 0 && (
-                      <Badge tone="warning" title={nTrocas === 1
-                        ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
-                        : `${nTrocas} produtos desta verba foram trocados — as linhas antigas ficam riscadas, sem contar`}>
-                        <ArrowLeftRight size={12} aria-hidden="true" /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
-                      </Badge>
-                    )}
-                    {nSel > 0 && <Badge tone="purple">{nSel} selecionados</Badge>}
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text" title={g.nome}>{g.nome}</span>
+                    <span className="hidden w-64 shrink-0 flex-col gap-1 sm:flex">
+                      <span className="flex items-center gap-2">
+                        <Progress className="flex-1" tone={nComprados === nItens ? "success" : "brand"}
+                          value={nItens ? (nComprados / nItens) * 100 : 0} aria-label={`${nComprados} de ${nItens} comprados`} />
+                        <span className="mono w-28 shrink-0 text-right text-xs tabular-nums text-text-soft">{nComprados}/{nItens} comprados</span>
+                      </span>
+                      {noSienge && (
+                        <span className="flex items-center gap-2">
+                          <Progress className="flex-1" tone={nSolicitados === nItens ? "success" : "brand"}
+                            value={nItens ? (nSolicitados / nItens) * 100 : 0} aria-label={`${nSolicitados} de ${nItens} solicitados`} />
+                          <span className="mono w-28 shrink-0 text-right text-xs tabular-nums text-text-soft">{nSolicitados}/{nItens} solicitados</span>
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex w-40 shrink-0 flex-wrap items-center justify-end gap-2">
+                      {/* Com busca ou filtro, quantos da verba estão na tela — num selo, e
+                          não no rótulo da barra, que quebrava em duas linhas. */}
+                      {(buscando || situacao !== "todos") && nNaTela !== nItens && (
+                        <Badge tone="neutral" title={`${nNaTela} de ${nItens} produtos desta verba passam na busca e no filtro`}>{nNaTela} de {nItens}</Badge>
+                      )}
+                      {nTrocas > 0 && (
+                        <Badge tone="warning" title={nTrocas === 1
+                          ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
+                          : `${nTrocas} produtos desta verba foram trocados — as linhas antigas ficam riscadas, sem contar`}>
+                          <ArrowLeftRight size={12} aria-hidden="true" /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
+                        </Badge>
+                      )}
+                      {nSel > 0 && <Badge tone="purple">{nSel} selecionados</Badge>}
                     </span>
                   </span>
                 }
@@ -13559,27 +13887,38 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                   <>
                     {/* A busca do insumo é por grupo e só quando pedida: casar a
                         obra inteira de uma vez congelava a tela. */}
-                    {etapa === "sienge" && (grupoAssociado ? (
+                    {noSienge && (
                       <>
-                        <span className="flex items-center gap-1 text-xs whitespace-nowrap text-success"><Check size={12} aria-hidden="true" /> insumos sugeridos</span>
+                        {!grupoAssociado && (
+                          <Button variant="outline" size="sm" type="button" disabled={associando != null}
+                            onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
+                            <PackageSearch size={14} aria-hidden="true" /> {associando === g.num ? "Associando…" : "Associar insumos"}
+                          </Button>
+                        )}
+                        {/* O SELO CURTO (25/09/2026): liga o filtro geral "Insumo a
+                            conferir" e abre a verba; o texto inteiro fica na dica. */}
+                        {aConferir > 0 && situacao !== "a_conferir" && (
+                          <Button variant="ghost" size="sm" type="button" className="h-auto p-0"
+                            title={`${aConferir} ${aConferir === 1 ? "insumo do Sienge pede" : "insumos do Sienge pedem"} conferência: sem decisão (fica fora do Template Sienge) ou com o detalhe divergente do item. Clique para ver só esses.`}
+                            onClick={() => { if (!aberto) abrir(g.num); setSituacao("a_conferir"); }}>
+                            <Badge tone="warning"><ListFilter size={12} aria-hidden="true" /> {aConferir} a conferir</Badge>
+                          </Button>
+                        )}
                         {/* O mesmo CSV do Gerador de códigos, só com o que
                             precisa de cadastro neste grupo. */}
                         {template.length > 0 && (
                           <Button variant="outline" size="sm" type="button" onClick={() => baixarTemplateDoGrupo(g, template)}
-                            title={`CSV no padrão do Sienge (cadastro de detalhe), igual ao do Gerador de códigos.${semInsumo ? ` ${semInsumo} sem insumo mãe: o código do insumo sai em branco.` : ""} O código do detalhe sai em branco — preencha antes de subir.`}>
+                            title={`CSV no padrão do Sienge (cadastro de detalhe), igual ao do Gerador de códigos. Só leva o que foi decidido como detalhe novo${aConferir ? ` — os ${aConferir} a conferir ficam de fora` : ""}.${semInsumo ? ` ${semInsumo} sem insumo mãe: o código do insumo sai em branco.` : ""} O código do detalhe sai em branco — preencha antes de subir.`}>
                             <Download size={14} aria-hidden="true" /> Template Sienge ({template.length})
                           </Button>
                         )}
                       </>
-                    ) : (
-                      <Button variant="outline" size="sm" type="button" disabled={associando != null}
-                        onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
-                        <PackageSearch size={14} aria-hidden="true" /> {associando === g.num ? "Associando…" : "Associar insumos"}
-                      </Button>
-                    ))}
+                    )}
                     {/* Rótulo na frente do valor, numa linha, como no Plano. */}
-                    <span className="mono w-40 shrink-0 text-right text-sm font-semibold tabular-nums text-text">
-                      <span className="label-mono mr-1 font-normal text-text-mute">MAT</span>{fmtBRL(g.total)}
+                    {/* O VALOR COM SIGNIFICADO: comprado de total, e não só o total. */}
+                    <span className="mono w-44 shrink-0 text-right text-sm tabular-nums text-text"
+                      title={`${fmtBRL(valorComprado)} já comprado de ${fmtBRL(g.total)} de material nesta verba`}>
+                      {valorComprado > 0 && <span className="text-text-soft">{fmtBRL(valorComprado)} de </span>}<span className="font-semibold">{fmtBRL(g.total)}</span>
                     </span>
                   </>
                 }
@@ -13606,10 +13945,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                         {noSienge && <TableHead className="w-32 text-center">Solicitado</TableHead>}
                         <TableHead className="w-36 text-center">Comprado</TableHead>
                         {noSienge && doSienge && <TableHead className="w-32 text-center">Lançado Sienge</TableHead>}
-                        {/* A mae virou a primeira linha do detalhe: eram
-                            duas colunas contando a mesma historia, e a
-                            tabela so cabia rolando pro lado. */}
-                        {mostrarInsumo && <TableHead className="w-80">Insumo no Sienge</TableHead>}
+                        {/* O insumo no Sienge não é mais coluna: é uma faixa
+                            debaixo da descrição (25/09/2026). */}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -13628,6 +13965,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                           mostrarSienge={mostrarInsumo}
                           lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
                           podeEditar={podeEditar} onHabilitar={onHabilitar} editandoPor={editandoPor}
+                          codigoObra={obra.codigo}
                           trocando={trocando === r.chave} equipe={equipe} executivo={obra.responsavelExecutivo}
                           /* Linha de aditivo nao troca de produto: a troca cria itens novos
                              na planilha, e o item do aditivo mora no documento aprovado. */
@@ -15044,6 +15382,27 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
   );
 }
 
+/* O filtro por situação de Compras, como função pura, para a contagem dos
+   botões e para a peneira das linhas usarem a mesma regra. */
+const SITUACOES_DE_COMPRA = [
+  { id: "todos", label: "Todos" },
+  { id: "nao_solicitados", label: "Não solicitados", soSienge: true },
+  { id: "solicitados", label: "Solicitados", soSienge: true },
+  { id: "nao_comprados", label: "Não comprados" },
+  { id: "comprados", label: "Comprados" },
+  { id: "a_conferir", label: "Insumo a conferir", soSienge: true },
+];
+function casaSituacaoDe(id, r) {
+  if (id === "todos") return true;
+  if (r.it.troca) return false;
+  if (id === "nao_solicitados") return r.it.canalCompra === "sienge" && !estaSolicitado(r.it);
+  if (id === "solicitados") return r.it.canalCompra === "sienge" && estaSolicitado(r.it);
+  if (id === "nao_comprados") return !r.it.comprado;
+  if (id === "comprados") return !!r.it.comprado;
+  if (id === "a_conferir") return r.it.canalCompra === "sienge" && insumoPedeConferencia(r.it);
+  return true;
+}
+
 function situacaoNoSienge(it, casamento, grupos) {
   const candidatas = (casamento?.maes || []).map((x) => x.grupo);
   const escolhida = it.maeSienge
@@ -15092,17 +15451,18 @@ function auxiliaresDoGrupo(itens, obraCodigo) {
 /* O template do Sienge de um grupo das Compras — o mesmo CSV do Gerador
    de codigos, com as mesmas regras de forma (lib/sienge.js).
 
-   Fica de fora so' o que a pessoa marcou como variante ja cadastrada;
-   reimportar isso criaria duplicata. O resto vai como detalhe novo — o
-   sem insumo mae com o codigo do insumo em branco, como no Gerador. */
+   So' entra o que a pessoa decidiu cadastrar como detalhe novo (RN-090):
+   o detalhe que ja existe fica de fora — reimportar criaria duplicata —,
+   e o que esta a conferir tambem, ate alguem decidir. O sem insumo mae
+   decidido como novo vai com o codigo do insumo em branco, como no Gerador. */
 function templateComprasDoGrupo(itens, casamentos, grupos, auxiliares) {
   const linhas = [];
   (itens || []).forEach((r) => {
     if (r.it.troca) return;   // o trocado não se cadastra no Sienge
     const c = casamentos.get(r.chave);
     if (!c) return;
-    const { mae, status } = situacaoNoSienge(r.it, c, grupos);
-    if (status === "exato") return;
+    if (!entraNoTemplateSienge(r.it, { solicitado: estaSolicitado(r.it) })) return;
+    const { mae } = situacaoNoSienge(r.it, c, grupos);
     linhas.push({
       maeCodigo: mae?.codigo || "",
       maeNome: mae?.nome || "",
@@ -15120,8 +15480,10 @@ function templateComprasDoGrupo(itens, casamentos, grupos, auxiliares) {
    com insumo mãe — o detalhe novo (que ainda precisa do Template Sienge do
    grupo) e o que já existe no Sienge. Vale o que a tela mostra: a mãe
    escolhida na linha ou a sugerida pelo "Associar insumos". O que está sem
-   mãe vai numa segunda aba, pra nada sumir calado. O Template Sienge do
-   grupo é outra coisa (o arquivo que o Sienge importa) e não passa por aqui. */
+   mãe vai numa segunda aba, pra nada sumir calado, e o que ninguém decidiu
+   ainda (a conferir, RN-090) vai numa terceira — não é detalhe novo nem
+   detalhe que existe. O Template Sienge do grupo é outra coisa (o arquivo
+   que o Sienge importa) e não passa por aqui. */
 const CABECALHO_CADASTRO_SIENGE = ["Código auxiliar do insumo*", "Descrição do insumo", "Código do detalhe*", "Código auxiliar do detalhe*", "Descrição do detalhe*", "Quantidade"];
 /* Texto pra comparar linha com linha: sem acento, sem espaço sobrando e em
    maiúsculas — "Cadeira  Eiffel" e "CADEIRA EIFFEL" são o mesmo detalhe. */
@@ -15131,11 +15493,12 @@ function textoComparavel(t) {
 function resumoCadastroSienge(itens, casamentos, grupos, auxiliares) {
   const linhas = new Map();
   const semMae = [];
+  const aConferir = [];
   const soma = (a, b) => Math.round((a + b) * 10000) / 10000;
   const somaReais = (a, b) => Math.round((a + b) * 100) / 100;
   (itens || []).forEach((r) => {
     if (r.it.troca) return;
-    const { mae, status } = situacaoNoSienge(r.it, casamentos?.get(r.chave) || null, grupos);
+    const { mae } = situacaoNoSienge(r.it, casamentos?.get(r.chave) || null, grupos);
     const qtd = Number(r.it.qtdExecutivo ?? r.it.qtdVendida ?? r.it.qtd ?? 0) || 0;
     // O custo orçado é o material da linha nas Compras (o que o executivo previu).
     const custo = Number(r.material) || 0;
@@ -15143,7 +15506,12 @@ function resumoCadastroSienge(itens, casamentos, grupos, auxiliares) {
       semMae.push({ item: [r.it.codigo, r.it.desc].filter(Boolean).join(" "), quantidade: qtd, custo, ambiente: r.it.ambiente || "" });
       return;
     }
-    const jaExiste = status === "exato";
+    const decisao = decisaoDoDetalhe(r.it, { solicitado: estaSolicitado(r.it) });
+    if (decisao === DECISAO_DO_DETALHE.A_CONFERIR) {
+      aConferir.push({ item: [r.it.codigo, r.it.desc].filter(Boolean).join(" "), maeCodigo: mae.codigo, maeNome: mae.nome || "", quantidade: qtd, custo, ambiente: r.it.ambiente || "" });
+      return;
+    }
+    const jaExiste = decisao === DECISAO_DO_DETALHE.EXISTENTE;
     // A mesma limpeza do template: segmento repetido em seguida sai.
     const descricaoDetalhe = jaExiste ? String(r.it.detalheSienge) : String(descritivoDoItem(r.it) ?? "").split(" / ")
       .filter((pt, k, a) => k === 0 || pt.trim() !== a[k - 1].trim()).join(" / ");
@@ -15162,9 +15530,9 @@ function resumoCadastroSienge(itens, casamentos, grupos, auxiliares) {
       situacao: jaExiste ? "detalhe já cadastrado" : "detalhe novo (cadastrar)",
     });
   });
-  return { linhas: [...linhas.values()], semMae };
+  return { linhas: [...linhas.values()], semMae, aConferir };
 }
-function baixarResumoCadastroSienge(obra, { linhas, semMae }) {
+function baixarResumoCadastroSienge(obra, { linhas, semMae, aConferir = [] }) {
   const wb = XLSX.utils.book_new();
   // Custo vai como número (dá pra somar no Excel), mostrado em reais.
   const emReais = (planilha, col, n) => {
@@ -15184,6 +15552,13 @@ function baixarResumoCadastroSienge(obra, { linhas, semMae }) {
     emReais(wo, 2, semMae.length);
     wo["!cols"] = [{ wch: 60 }, { wch: 11 }, { wch: 16 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(wb, wo, "Sem insumo mãe");
+  }
+  if (aConferir.length) {
+    const wc = XLSX.utils.aoa_to_sheet([["Item no Confere", "Código auxiliar do insumo", "Descrição do insumo", "Quantidade", "Custo orçado (R$)", "Ambiente"],
+      ...aConferir.map((l) => [l.item, l.maeCodigo, l.maeNome, l.quantidade, l.custo, l.ambiente])]);
+    emReais(wc, 4, aConferir.length);
+    wc["!cols"] = [{ wch: 60 }, { wch: 14 }, { wch: 40 }, { wch: 11 }, { wch: 16 }, { wch: 24 }];
+    XLSX.utils.book_append_sheet(wb, wc, "A conferir");
   }
   XLSX.writeFile(wb, `sienge-resumo-obra-${obra.codigo}.xlsx`);
 }
@@ -15389,19 +15764,23 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
   );
 }
 
-/* LINK NA ESPECIFICAÇÃO, CLICÁVEL E CURTO (24/09/2026).
+/* LINK NA ESPECIFICAÇÃO: O DOMÍNIO ↗, E O TEXTO INTEIRO NUM POPOVER.
 
    Link colado da loja vem com o rastreio ("?utm_source=…&gclid=…",
    centenas de caracteres sem espaço) e empurrava a tabela de Compras pra
-   direita. Na linha cinza o link aparece só como endereço — sem "www" e
-   sem a parte depois do "?" — e abre a loja numa aba nova. `completo`
-   mostra o texto inteiro, link com rastreio e tudo, quebrando onde der. */
+   direita (24/09/2026). Depois, o caminho encurtado ainda era cortado na
+   borda da coluna e o "ver completo" ganhava uma linha só pra ele
+   (25/09/2026). Agora a linha cinza mostra só o domínio com o ícone de
+   abrir, e o texto inteiro — link com rastreio e tudo — mora num popover,
+   com Abrir e Copiar. Só exibição: o texto gravado e o que vai ao Sienge
+   seguem inteiros. */
 const RE_LINK = /(https?:\/\/[^\s]+)/g;
 const temLink = (texto) => /https?:\/\//.test(String(texto || ""));
-function encurtarLink(url) {
+// O ícone do texto inteiro aparece quando a linha cinza não mostra tudo.
+const mostraEspecificacaoCompleta = (texto) => temLink(texto) || String(texto || "").length > 60;
+function dominioDoLink(url) {
   try {
-    const u = new URL(url);
-    return `${u.hostname.replace(/^www\./, "")}${u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "")}`;
+    return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return url;
   }
@@ -15409,21 +15788,124 @@ function encurtarLink(url) {
 function TextoComLinks({ texto, completo = false }) {
   return String(texto || "").split(RE_LINK).map((parte, i) => (
     i % 2 === 1 ? (
-      <a key={i} href={parte} target="_blank" rel="noopener noreferrer" title={parte}
-        className={`text-brand underline underline-offset-2 hover:text-text${completo ? " break-all" : ""}`}>
-        {completo ? parte : encurtarLink(parte)}
-      </a>
+      completo ? (
+        <a key={i} href={parte} target="_blank" rel="noopener noreferrer"
+          className="break-all text-brand underline underline-offset-2 hover:text-text">{parte}</a>
+      ) : (
+        <a key={i} href={parte} target="_blank" rel="noopener noreferrer" title={parte}
+          className="inline-flex items-center gap-1 text-brand hover:underline">
+          {dominioDoLink(parte)}<ExternalLink size={12} aria-hidden="true" />
+        </a>
+      )
     ) : <React.Fragment key={i}>{parte}</React.Fragment>
   ));
+}
+function EspecificacaoCompleta({ texto }) {
+  const link = String(texto || "").match(RE_LINK)?.[0];
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" type="button" className="h-6 w-6 shrink-0 text-text-mute"
+          aria-label="Ver especificação completa" title="Ver especificação completa">
+          <FileText size={14} aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="flex w-80 flex-col gap-3 p-4">
+        <span className="label-mono">Especificação</span>
+        <p className="m-0 whitespace-pre-line text-sm leading-snug text-text"><TextoComLinks texto={texto} completo /></p>
+        <div className="flex flex-wrap gap-2">
+          {link && (
+            <Button asChild variant="outline" size="sm">
+              <a href={link} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} aria-hidden="true" /> Abrir</a>
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" type="button" onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(texto);
+              avisar.ok("Especificação copiada.");
+            } catch {
+              avisar.erro("Não foi possível copiar a especificação.");
+            }
+          }}>
+            <Copy size={14} aria-hidden="true" /> Copiar
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* RN-002 · O HISTÓRICO DO ITEM APROVADO (25/09/2026): o que mudou nele
+   depois de aprovado para compra — quem, quando, campo, antes e depois. */
+function RegistroDoItemAprovado({ codigoObra, item, onFechar }) {
+  const [estado, setEstado] = useState({ carregando: true, registros: [], erro: false, semTabela: false });
+  useEffect(() => {
+    let vivo = true;
+    listarMudancasDoItem(codigoObra, item.idLinha)
+      .then((r) => { if (vivo) setEstado({ carregando: false, registros: r?.registros || [], erro: false, semTabela: !!r?.semTabela }); })
+      .catch(() => { if (vivo) setEstado({ carregando: false, registros: [], erro: true, semTabela: false }); });
+    return () => { vivo = false; };
+  }, [codigoObra, item.idLinha]);
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onFechar(); }}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>Histórico de alterações</DialogTitle>
+          <DialogDescription>{item.desc} — o que mudou depois de aprovado para compra.</DialogDescription>
+        </DialogHeader>
+        <DialogBody className="flex flex-col gap-3">
+          {estado.carregando && <p className="text-sm text-text-mute">Carregando…</p>}
+          {estado.erro && <p className="text-sm text-danger">Não foi possível carregar o histórico. Tente de novo.</p>}
+          {estado.semTabela && <p className="text-sm text-text-mute">O registro ainda não foi ligado no banco.</p>}
+          {!estado.carregando && !estado.erro && !estado.semTabela && !estado.registros.length && (
+            <p className="text-sm text-text-mute">Nenhuma alteração desde a aprovação.</p>
+          )}
+          {estado.registros.length > 0 && (
+            <ul className="flex flex-col divide-y divide-line-1">
+              {estado.registros.map((r) => (
+                <li key={r.id} className="flex flex-col gap-1 py-2">
+                  <span className="text-sm text-text">
+                    <b>{nomeDoCampo(r.campo)}</b>
+                    {r.campo !== "removido" && <>: {valorDoRegistro(r.antes)} → {valorDoRegistro(r.depois)}</>}
+                  </span>
+                  <span className="text-xs text-text-mute">
+                    {r.autor} · {new Date(r.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onFechar}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false,
   trocando = false, equipe = [], executivo, onAbrirTroca, onFecharTroca, onRegistrarTroca, onDesfazerTroca, troca = null,
-  obs = [], obsSemTabela = false, onAdicionarObs, onApagarObs, usuario, souAdmin = false, onHabilitar, editandoPor }) {
+  obs = [], obsSemTabela = false, onAdicionarObs, onApagarObs, usuario, souAdmin = false, onHabilitar, editandoPor, codigoObra }) {
   const { it, material } = row;
+  /* RN-002 (25/09/2026): o item aprovado muda aqui, e cada mudança fica no
+     registro — lido pelo menu ⋯. */
+  const temRegistro = !!codigoObra && !!it.idLinha && itemTravadoNoExecutivo(it);
+  const [vendoRegistro, setVendoRegistro] = useState(false);
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
+  const decisao = decisaoDoDetalhe(it, { solicitado: estaSolicitado(it) });
+  const mostraFaixa = !!mostrarSienge && !!(casamento || it.maeSienge || it.detalheSienge);
+  const tomDaLinha = selecionado ? "bg-brand-tint" : it.comprado ? "bg-success-tint" : "bg-warning-tint";
+  /* ESCOLHA COM DESFAZER (25/09/2026). Cada escolha grava na hora, e um
+     clique no lugar errado só se desfazia trocando a mãe duas vezes. O
+     aviso guarda os campos como eram e devolve com um clique. */
+  const mudarNoSienge = (patch, texto) => {
+    const antes = Object.fromEntries(Object.keys(patch).map((k) => [k, it[k] ?? null]));
+    onItemChange(patch);
+    avisar.ok(texto, undefined, { acao: { rotulo: "Desfazer", aoClicar: () => onItemChange(antes) } });
+  };
   const quando = (rot, em) => `${rot}${em ? ` em ${new Date(em).toLocaleDateString("pt-BR")}` : ""}`;
-  const nCols = 7 + (lancado !== undefined ? 1 : 0) + (mostrarSienge ? 1 : 0);
+  const nCols = 7 + (lancado !== undefined ? 1 : 0);
   // Quantidade e valor unitário, pras linhas da troca (pedido de 15/09/2026).
   const qtdLinha = Number(it.qtdExecutivo ?? it.qtdVendida ?? 0) || 0;
   const qtdFmt = qtdLinha.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
@@ -15433,7 +15915,6 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
     : "Marcar como solicitado no Sienge";
   const alternarSolicitado = () => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() });
   const [escrevendoObs, setEscrevendoObs] = useState(false);
-  const [especInteira, setEspecInteira] = useState(false);
 
   // O produto que foi trocado: riscado, em cinza, sem ação nenhuma.
   if (it.troca) {
@@ -15472,11 +15953,17 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
 
   return (
     <>
-    <TableRow className={selecionado ? "bg-brand-tint" : it.comprado ? "bg-success-tint" : "bg-warning-tint"}>
-      <TableCell className="text-center">
+    {/* Com a faixa do Sienge, o item vira duas linhas da tabela que se leem
+        como uma: mesmo tom, sem o fio entre elas, e o check e o código
+        ocupando as duas. */}
+    <TableRow className={cn(tomDaLinha, mostraFaixa && "sem-fio !border-b-0")}>
+      {/* O FIO NO FIM DO ITEM (25/09/2026): com a faixa, o item são duas
+          linhas; a tabela é de bordas separadas e o fio do `tr` não aparece,
+          então ele vai na base das células que fecham o item. */}
+      <TableCell className={cn("text-center", mostraFaixa && "border-b border-line-1")} rowSpan={mostraFaixa ? 2 : undefined}>
         <Checkbox checked={!!selecionado} onCheckedChange={onSelecionar} aria-label="Selecionar produto" />
       </TableCell>
-      <TableCell className="mono text-xs text-text-mute">{codigoVisivel(it)}</TableCell>
+      <TableCell className={cn("mono text-xs text-text-mute", mostraFaixa && "border-b border-line-1")} rowSpan={mostraFaixa ? 2 : undefined}>{codigoVisivel(it)}</TableCell>
       {/* A LINHA COMPACTA (23/09/2026): descrição numa linha (inteira na
           dica), os dados do produto numa linha cinza embaixo e as ações
           raras (trocar, observação) no menu ⋯ — a linha caiu para menos da
@@ -15493,17 +15980,14 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               )}
               {/* Quem vende: na planilha do Executivo a coluna Fornecedor vira
                   `marca` no item; a especificação separa peças de mesmo nome. */}
-              <span className={`min-w-0${especInteira ? "" : " line-clamp-2"}`}
+              <span className="line-clamp-2 min-w-0"
                 title={[it.ambiente, it.marca, it.especificacao].filter(Boolean).join(" · ")}>
                 {[it.ambiente, it.marca ? nomeDoFornecedor(it) : "sem fornecedor"].filter(Boolean).join(" · ")}
-                {it.especificacao && <>{" · "}<TextoComLinks texto={it.especificacao} completo={especInteira} /></>}
+                {it.especificacao && <>{" · "}<TextoComLinks texto={it.especificacao} /></>}
               </span>
-              {temLink(it.especificacao) && (
-                <Button variant="ghost" size="sm" className="h-auto px-1 py-0 text-xs"
-                  aria-expanded={especInteira} onClick={() => setEspecInteira((v) => !v)}>
-                  {especInteira ? "ver resumido" : "ver completo"}
-                </Button>
-              )}
+              {/* O texto inteiro, quando a linha cinza não mostra tudo: link
+                  encurtado ou especificação comprida. */}
+              {mostraEspecificacaoCompleta(it.especificacao) && <EspecificacaoCompleta texto={it.especificacao} />}
               {obs.length > 0 && !escrevendoObs && (
                 <span className="inline-flex items-center gap-1 text-obs"><MessageSquare size={12} aria-hidden="true" /> {obs.length}</span>
               )}
@@ -15518,7 +16002,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
           </div>
           {/* Ações raras da linha, num menu: trocar o produto, deixar uma
               observação e desfazer a troca. */}
-          {(podeEditar || onAdicionarObs) && (
+          {(podeEditar || onAdicionarObs || temRegistro) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" type="button" className="h-7 w-7 shrink-0 text-text-mute" aria-label={`Mais ações — ${it.desc}`}>
@@ -15541,10 +16025,21 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
                     <Undo2 size={14} aria-hidden="true" /> Desfazer a troca
                   </DropdownMenuItem>
                 )}
+                {temRegistro && (
+                  <DropdownMenuItem onSelect={() => setVendoRegistro(true)}>
+                    <History size={14} aria-hidden="true" /> Histórico de alterações
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {vendoRegistro && (
+            <RegistroDoItemAprovado codigoObra={codigoObra} item={it} onFechar={() => setVendoRegistro(false)} />
+          )}
         </div>
+        {mostrarSienge && !mostraFaixa && (
+          <div className="mt-2 text-xs text-text-mute">sugerindo o insumo do Sienge…</div>
+        )}
         {/* A OBSERVACAO DO PRODUTO, na propria linha — e' aqui que quem vai
             comprar esta' olhando. Abre pelo menu ⋯. */}
         {(escrevendoObs || obs.length > 0) && (
@@ -15609,31 +16104,32 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         </TableCell>
       )}
 
-      {mostrarSienge && (
-        <TableCell>
-          {/* A mesma escolha do Gerador de codigos (EscolhaSienge): a mae,
-              depois qual descricao vai pro template. Aqui ela fica
-              guardada no proprio item da obra. */}
-          {!casamento ? <span className="text-text-mute">—</span> : (
-            <AssociacaoSienge item={it.desc} detalheItem={[it.marca ? `Fornecedor: ${nomeDoFornecedor(it)}` : null, it.especificacao].filter(Boolean).join(" · ")}
-              desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
-              onMae={(cod) => onItemChange({ maeSienge: cod || null, detalheSienge: null })}
-              escolhida={it.detalheSienge || null}
-              onEscolher={(d) => onItemChange({
-                detalheSienge: d == null || d === it.detalheSienge ? null : d,
-                maeSienge: mae?.codigo ?? it.maeSienge ?? null,
-              })}
-              descrito={descritivoDoItem(it)} editado={it.descritivoSienge != null}
-              onDescrito={(txt) => onItemChange({ descritivoSienge: txt })}
-              codDet={it.codigoDetalheSienge || ""}
-              onCodDet={(v) => onItemChange({ codigoDetalheSienge: v.trim() ? v.trim() : null })}
-              aux={aux?.codigo || ""} auxMarca={aux?.gerado ? "gerado" : null}
-              onAux={(v) => onItemChange({ codigoAuxSienge: v.trim() ? v.trim() : null })}
-              aoSair somenteLeitura={!podeEditar} onHabilitar={onHabilitar} editandoPor={editandoPor} />
-          )}
-        </TableCell>
-      )}
     </TableRow>
+    {/* O INSUMO NO SIENGE, numa linha própria (25/09/2026): começa na coluna
+        da descrição e vai até a última — "precisa ocupar o espaço de todas as
+        colunas após descrição". Antes foi uma coluna de 320px com ~610px de
+        altura por produto, e depois uma faixa espremida na célula da
+        descrição. Sempre visível na etapa Sienge: o que já foi decidido
+        aparece na hora; o resto, assim que a sugestão da verba chega. */}
+    {mostraFaixa && (
+      <TableRow className={tomDaLinha}>
+        <TableCell colSpan={nCols - 2} className="border-b border-line-1 pt-0">
+          <FaixaSienge className="" desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
+            // Outra mãe, outros detalhes: a decisão volta para "a conferir" — RN-090.
+            onMae={(cod) => mudarNoSienge({ maeSienge: cod || null, detalheSienge: null, detalheNovoSienge: false }, "Insumo mãe trocado.")}
+            escolhida={it.detalheSienge || null} decisao={decisao}
+            onEscolher={(d) => mudarNoSienge({ detalheSienge: d, detalheNovoSienge: false, maeSienge: mae?.codigo ?? it.maeSienge ?? null }, "Detalhe do Sienge escolhido.")}
+            onNovo={() => mudarNoSienge({ detalheSienge: null, detalheNovoSienge: true, maeSienge: mae?.codigo ?? it.maeSienge ?? null }, "Vai como detalhe novo.")}
+            descrito={descritivoDoItem(it)} editado={it.descritivoSienge != null}
+            onDescrito={(txt) => onItemChange({ descritivoSienge: txt })}
+            codDet={it.codigoDetalheSienge || ""}
+            onCodDet={(v) => onItemChange({ codigoDetalheSienge: v.trim() ? v.trim() : null })}
+            aux={aux?.codigo || ""} auxMarca={aux?.gerado ? "gerado" : null}
+            onAux={(v) => onItemChange({ codigoAuxSienge: v.trim() ? v.trim() : null })}
+            aoSair somenteLeitura={!podeEditar} />
+        </TableCell>
+      </TableRow>
+    )}
     {trocando && (
       <TableRow className="bg-surface-2 hover:bg-surface-2">
         <TableCell colSpan={nCols} className="p-4">
@@ -16767,7 +17263,7 @@ function FiltroMulti({ icone: Icone, opcoes, escolhidas, onMudar, todos, singula
   );
 }
 
-function FiltroObras({ obras, escolhidas, onMudar }) {
+function FiltroObras({ obras, escolhidas, onMudar, semChips = false }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
 
@@ -16837,10 +17333,10 @@ function FiltroObras({ obras, escolhidas, onMudar }) {
 
       {/* As escolhidas ficam a vista e sao removiveis com um clique. Ate
           seis; passando disso o resumo cabe melhor que a fileira. */}
-      {escolhidas.size > 0 && escolhidas.size <= 6 && obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
+      {!semChips && escolhidas.size > 0 && escolhidas.size <= 6 && obras.filter((o) => escolhidas.has(o.codigo)).map((o) => (
         <FilterChip key={o.codigo} label="Obra" value={<span className="mono">#{o.codigo}</span>} onClear={() => alternar(o.codigo)} />
       ))}
-      {escolhidas.size > 6 && (
+      {!semChips && escolhidas.size > 6 && (
         <Button variant="ghost" className="h-10" onClick={() => onMudar(new Set())}>Limpar filtro</Button>
       )}
     </div>
@@ -20225,13 +20721,16 @@ function PainelCanalView({ obras, carregando, erro, canalId, crumb, title, descr
   const pctComprado = p.total ? (p.comprado / p.total) * 100 : 0;
 
   const filtroObras = !carregando && comItens.length > 1
-    ? <FiltroObras obras={comItens} escolhidas={escolhidas} onMudar={setEscolhidas} />
+    ? <FiltroObras obras={comItens} escolhidas={escolhidas} onMudar={setEscolhidas} semChips />
     : null;
+  /* A mesma barra das outras telas da obra (25/09/2026): os seletores na
+     linha 1 e as obras escolhidas nos filtros ativos, embaixo. */
+  const tirarObra = (cod) => { const n = new Set(escolhidas); n.delete(cod); setEscolhidas(n); };
   const toolbar = (seletorCanal || filtroObras) ? (
-    <div className="flex w-full flex-wrap items-center gap-3">
-      {seletorCanal}
-      {filtroObras}
-    </div>
+    <BarraDeFiltros seletores={<>{seletorCanal}{filtroObras}</>}
+      ativos={{ count: visiveis.length, noun: "obra", onClearAll: () => setEscolhidas(new Set()), chips: [...escolhidas].map((cod) => ({
+        chave: cod, label: "Obra", value: `#${cod} ${comItens.find((o) => o.codigo === cod)?.nome || ""}`.trim(), onClear: () => tirarObra(cod),
+      })) }} />
   ) : undefined;
 
   return (
@@ -21104,7 +21603,7 @@ function BancoPrecosView({ usuario, onAbrirConfiguracoes }) {
             O cadastro de insumos do Sienge agora entra por <b>Configurações → Cadastro de Insumos</b>, com o relatório de Insumos que o Sienge gera hoje. Este botão continua aceitando o formato antigo.
           </span>
           {onAbrirConfiguracoes && (
-            <Button variant="outline" size="sm" className="shrink-0" onClick={onAbrirConfiguracoes}>Abrir Configurações</Button>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={onAbrirConfiguracoes}>Abrir Cadastro de Insumos</Button>
           )}
         </AlertDescription>
       </Alert>
@@ -22107,6 +22606,9 @@ export default function App() {
   // Equipe e acessos: só o Admin master (ou o Administrador, enquanto não há master).
   const cuidaDaEquipe = migracaoPendente || podeGerenciarPessoas(eu, pessoas);
   const nPendentes = useMemo(() => (cuidaDaEquipe ? pendentes(pessoas).length : 0), [pessoas, cuidaDaEquipe]);
+  /* Quem ve cada atalho do hub de Configuracoes e do indice lateral (ADR-009). */
+  const podeVerNoHub = useCallback((id) => migracaoPendente || podeVerModulo(eu, id, pessoas),
+    [eu, pessoas, migracaoPendente]);
   const modulosVisiveis = useMemo(
     () => (migracaoPendente ? MODULOS : MODULOS.filter((m) => podeVerModulo(eu, m.id, pessoas))),
     [eu, pessoas, migracaoPendente]);
@@ -22653,7 +23155,11 @@ export default function App() {
     if (rotaPendente) return;   // ainda restaurando o endereco lido
     const alvo = enderecoDaTela({ modulo, codigoDaObra: obra?.codigo || null, tab });
     if (window.location.pathname !== alvo) {
-      window.history.pushState({}, "", alvo + window.location.search);
+      /* Endereco antigo (/equipe…, ADR-009) e' trocado, nao empilhado: senao
+         o voltar cairia nele e seria mandado de novo pra frente. */
+      const antigo = ENDERECO_ANTIGO[window.location.pathname.split("/").filter(Boolean)[0]]
+        && window.location.pathname.split("/").filter(Boolean).length === 1;
+      window.history[antigo ? "replaceState" : "pushState"]({}, "", alvo + window.location.search);
     }
   }, [modulo, obra, tab, rotaPendente]);
 
@@ -26016,6 +26522,8 @@ export default function App() {
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
       <div className="flex">
+        {/* ⌘, abre as Configurações por cima de qualquer tela (ADR-009). */}
+        <PainelDeConfiguracoes rotaAtual={enderecoDaTela({ modulo })} podeVer={podeVerNoHub} onAbrir={setModulo} />
         {!emTelaCheia && <Sidebar onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))}
           obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           modulos={modulosVisiveis} pendentesCount={nPendentes}
@@ -26109,16 +26617,20 @@ export default function App() {
           </PageShell>
           </>
           ) : modulo === "configuracoes" ? (
-          <ConfiguracoesPage usuario={usuario} />
+          <ConfiguracoesPage podeVer={podeVerNoHub} onAbrir={setModulo} />
+          ) : modulo === "insumos" ? (
+          <IndiceDeConfiguracoes rotaAtual="/configuracoes/insumos" podeVer={podeVerNoHub} onAbrir={setModulo}>
+          <CadastroDeInsumosPage usuario={usuario} />
+          </IndiceDeConfiguracoes>
           ) : modulo === "equipe" && cuidaDaEquipe ? (
-          <>
+          <IndiceDeConfiguracoes rotaAtual="/configuracoes/equipe" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb={`Cadastro · ${pessoas.length}`} title="Equipe" description="Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra." contentClassName="flex flex-col gap-6">
             <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
               usuario={usuario} migracaoPendente={migracaoPendente}
               onSalvar={salvarPessoaNoTime} onSalvarAcesso={salvarAcessoDaPessoa}
               onExcluir={excluirPessoaDoTime} />
           </PageShell>
-          </>
+          </IndiceDeConfiguracoes>
           ) : modulo === "painel_canal" ? (
           <>
           {/* A ESCOLHA DO CANAL fica na propria tela, e nao numa arvore na
@@ -26153,18 +26665,18 @@ export default function App() {
           <AditivosView obras={obrasAtivas} usuario={usuario} souAdmin={souAdmin} />
           </>
           ) : modulo === "precos" ? (
-          <>
+          <IndiceDeConfiguracoes rotaAtual="/configuracoes/precos" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb="Referência de custo" title="Banco de Preços" description="Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge." contentClassName="flex flex-col gap-6">
             <BancoPrecosView usuario={usuario}
-              onAbrirConfiguracoes={migracaoPendente || podeVerModulo(eu, "configuracoes", pessoas) ? () => setModulo("configuracoes") : undefined} />
+              onAbrirConfiguracoes={podeVerNoHub("insumos") ? () => setModulo("insumos") : undefined} />
           </PageShell>
-          </>
+          </IndiceDeConfiguracoes>
           ) : modulo === "eap" ? (
-          <>
+          <IndiceDeConfiguracoes rotaAtual="/configuracoes/eap" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb="Integração Sienge" title="EAP Sienge" description="Onde cada produto é apropriado no orçamento — o que a solicitação de compra exige." contentClassName="flex flex-col gap-6">
             <EapSiengeView usuario={usuario} souAdmin={souAdmin} />
           </PageShell>
-          </>
+          </IndiceDeConfiguracoes>
           ) : modulo === "a_contratar" ? (
           <>
           <GestaoComprasView nAtivas={obrasAtivas.length} obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro}

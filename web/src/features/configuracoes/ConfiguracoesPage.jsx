@@ -1,32 +1,21 @@
-import React, { useState } from "react";
-import { PageShell, Tabs, TabsList, TabsTrigger, TabsContent } from "@group-ws/ws-ui";
-import { Boxes } from "lucide-react";
-import { CadastroDeInsumos } from "./CadastroDeInsumos.jsx";
+import React from "react";
+import { PageShell, SettingsHub } from "@group-ws/ws-ui";
+import { AREAS_DE_CONFIGURACOES, areasVisiveis } from "./atalhos.js";
+import { linkDeConfiguracao } from "./linkDeConfiguracao.jsx";
 
-/* CONFIGURAÇÕES (ADR-008, 23/09/2026).
+/* CONFIGURAÇÕES (ADR-009, 25/09/2026).
 
-   O que é cadastro da empresa e só o administrador mantém. Mora no pé da
-   barra lateral, ao lado de Equipe e acessos — é cadastro, não trabalho do
-   dia. Nasce com uma aba; as próximas configurações entram como abas novas.
-
-   Quem enxerga o módulo é decidido no menu (podeVerModulo) e, de verdade,
-   na API e no banco (RN-086). */
-export default function ConfiguracoesPage({ usuario }) {
-  const [aba, setAba] = useState("insumos");
+   O hub de atalhos com o SettingsHub do DS (1.4.0): um cartão por área, com
+   as telas dela, e a busca por nome, sinônimo e área. Cada tela abre no seu
+   endereço (/configuracoes/insumos…) com o índice lateral
+   (IndiceDeConfiguracoes). Quem vê cada atalho é o podeVerModulo; a API e o
+   banco garantem de verdade. */
+export default function ConfiguracoesPage({ podeVer, onAbrir }) {
+  const areas = areasVisiveis(AREAS_DE_CONFIGURACOES, podeVer);
   return (
     <PageShell crumb="Administração" title="Configurações"
-      description="Cadastros da empresa que só o administrador mantém."
-      contentClassName="flex flex-col gap-6">
-      <Tabs value={aba} onValueChange={setAba}>
-        <TabsList variant="underline">
-          <TabsTrigger underline value="insumos" className="gap-2">
-            <Boxes size={15} aria-hidden="true" /> Cadastro de Insumos
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="insumos" className="mt-6 flex flex-col gap-6">
-          <CadastroDeInsumos usuario={usuario} />
-        </TabsContent>
-      </Tabs>
+      description="Os cadastros e as integrações que sustentam o dia a dia.">
+      <SettingsHub areas={areas} renderLink={linkDeConfiguracao(onAbrir)} />
     </PageShell>
   );
 }

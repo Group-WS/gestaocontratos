@@ -258,6 +258,7 @@ const montar = (apiJson) => new Function("apiJson", "supabaseConfigurado", `
 const app = fs.readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
 conf("o Gerador de códigos passa o cadastro",
   (app.match(/agruparPorMae\(baseSienge, cadastroSienge\)/g) || []).length, 2);
+/* 25/09/2026: a associação volta a ser pelo botão de cada grupo, e não sozinha. */
 conf("a associação por grupo também",
   app.includes("base = agruparPorMae(insumos, cad);"), true);
 conf("as duas telas carregam o cadastro junto da base",

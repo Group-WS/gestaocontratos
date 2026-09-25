@@ -7,7 +7,7 @@
  * insumo errado; marcar de vermelho o que já existe faz cadastrar um
  * duplicado, e a base do Sienge incha com o mesmo produto em dois códigos.
  */
-import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
+import { casarInsumo, semelhanca, descricaoSienge, agruparPorMae, acharMaes, ordenarDetalhes, partesDoInsumo, podeAssociarSozinho, palavrasQueFaltam, lerListaDeProdutos, lerListaDeProdutosPDF, lerCotacaoPDF, norm, VERDE, LARANJA, VERMELHO } from "../lib/sienge.js";
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -141,7 +141,22 @@ conf("... e o que bate é o de 18.000", det[0].insumo.descricao.includes("18.000
 const soParecido = ordenarDetalhes("Ar-condicionado Electrolux Split 22.000 BTUs", maeCerta.grupo);
 conf("não associa sozinho faltando a capacidade", podeAssociarSozinho(soParecido), false);
 conf("... porque faltou 22000", soParecido[0].faltaram.includes("22000"), true);
+/* 25/09/2026: o detalhe comprido que bate tudo vem antes do curto que deixa
+   uma palavra de fora — pela semelhança, o curto ganhava e a massa não
+   associava. */
+const cadeiras = { codigo: "406", nome: "MOBILIA SOLTA - CADEIRA", variantes: [
+  { descricao: "MOBILIA SOLTA - CADEIRA / FRATINI / CADEIRA BILBAO" },
+  { descricao: "MOBILIA SOLTA - CADEIRA / FRATINI / CADEIRA BILBAO / CARVALHO / ESTOFADO LINHO CRU COM PESPONTO" },
+] };
+const bilbao = ordenarDetalhes("MOBILIA SOLTA - CADEIRA / FRATINI / CADEIRA BILBAO / CARVALHO", cadeiras);
+conf("o que bate tudo vem antes, mesmo comprido", bilbao[0].insumo.descricao.includes("CARVALHO"), true);
+conf("... e a massa associa sozinho", podeAssociarSozinho(bilbao), true);
+conf("... o curto vem depois, dizendo o que falta", bilbao[1].faltaram.join(","), "carvalho");
 conf("sem variante nenhuma não associa", podeAssociarSozinho([]), false);
+/* 25/09/2026: o detalhe escolhido que diverge do item diz o que falta. */
+conf("palavras do item que o detalhe não tem", palavrasQueFaltam("PAINEL LED 18W 3000K", "PAINEL DE ALUMÍNIO / NORDECOR / PAINEL LED 18W 4000K").join(","), "3000k");
+conf("... nenhuma quando tem todas", palavrasQueFaltam("PAINEL LED 18W", "NORDECOR / PAINEL LED 18W 4000K").length, 0);
+conf("... e a comparação guardada devolve o mesmo", semelhanca("Cuba de apoio Deca L-1043", "Cuba de apoio Deca") === semelhanca("Cuba de apoio Deca L-1043", "Cuba de apoio Deca"), true);
 conf("lista nula não associa", podeAssociarSozinho(null), false);
 
 /* ---- 10. a lista de produtos que a pessoa sobe ---- */

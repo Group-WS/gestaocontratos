@@ -8,9 +8,14 @@
  * antes (e só dá para desfazer o que ainda não andou). Adicionar item novo
  * continua livre.
  *
+ * Fora do Executivo (Compras de Produtos) o item aprovado pode mudar, mas
+ * cada mudança fica no registro: quem, quando, campo, antes e depois
+ * (decisão de 25/09/2026).
+ *
  * Ficha: docs/regras-de-negocio/RN-002-item-aprovado-no-executivo.md
  * Decisão: docs/ADR-006-executivo-trava-item-aprovado.md
- * Garantia no banco: supabase/rn-002-item-aprovado-no-executivo.sql
+ * Garantia no banco: supabase/rn-002-item-aprovado-no-executivo.sql e
+ *   supabase/rn-002-compras-com-registro.sql (25/09/2026)
  *
  * Função pura: não lê banco, sessão nem relógio.
  */
@@ -51,18 +56,29 @@ export function linhaDoExecutivoTravada(linha, itensDaVerba, chave) {
   return itens.some((it) => chave(it?.desc) === k && itemTravadoNoExecutivo(it));
 }
 
-/* A digital do item: só os campos travados, em ordem fixa. `excluido` vale
-   como sim/não. */
+/* A digital da linha: só os campos travados, em ordem fixa. `excluido`
+   vale como sim/não. */
 function digital(it) {
   return JSON.stringify(CAMPOS_TRAVADOS.map((k) => (k === "excluido" ? it?.[k] === true : it?.[k] ?? null)));
 }
 
-function contar(categorias, soTravados) {
+const lista = (v) => (Array.isArray(v) ? v : []);
+
+/* Os ids das linhas com item travado na lista de trabalho (`itens`). */
+function idsTravados(categorias) {
+  const ids = new Set();
+  for (const cat of lista(categorias)) {
+    for (const it of lista(cat?.itens)) if (it?.idLinha && itemTravadoNoExecutivo(it)) ids.add(it.idLinha);
+  }
+  return ids;
+}
+
+function contarLinhas(categorias, ids) {
   const contagem = new Map();
-  for (const cat of Array.isArray(categorias) ? categorias : []) {
-    for (const it of Array.isArray(cat?.itens) ? cat.itens : []) {
-      if (soTravados && !itemTravadoNoExecutivo(it)) continue;
-      const d = digital(it);
+  for (const cat of lista(categorias)) {
+    for (const l of lista(cat?.itensPlanilhaExecutivo)) {
+      if (ids && !(l?.idLinha && ids.has(l.idLinha))) continue;
+      const d = digital(l);
       contagem.set(d, (contagem.get(d) || 0) + 1);
     }
   }
@@ -70,22 +86,73 @@ function contar(categorias, soTravados) {
 }
 
 /**
- * RN-002 — quantos itens travados uma gravação altera ou tira da obra.
+ * RN-002 — quantas linhas travadas do Executivo uma gravação altera ou tira.
  *
- * Os itens não têm identificador estável (a posição muda quando entra ou
- * sai linha), então a conta é por conteúdo: cada item travado de antes
- * precisa continuar existindo depois com os mesmos campos travados. Tirar
- * a aprovação não muda a digital; editar, remover, substituir ou trocar a
- * planilha muda.
+ * A trava é da planilha do Executivo (`itensPlanilhaExecutivo`): a linha
+ * cujo id (ADR-007) tem item aprovado ou andando na compra precisa
+ * continuar existindo depois com os mesmos campos travados. Editar,
+ * remover, substituir ou trocar a planilha muda a digital; desfazer a
+ * aprovação e mexer na lista de trabalho (Compras) não.
  *
- * É a mesma conta do gatilho do banco (supabase/rn-002-item-aprovado-no-executivo.sql).
+ * É a mesma conta do gatilho do banco (supabase/rn-002-compras-com-registro.sql).
  *
  * @returns {number} 0 quando a gravação respeita a regra.
  */
-export function travadosAlterados(antes, depois) {
-  const exigidos = contar(antes, true);
-  const existentes = contar(depois, false);
+export function linhasTravadasAlteradas(antes, depois) {
+  const ids = idsTravados(antes);
+  if (!ids.size) return 0;
+  const exigidas = contarLinhas(antes, ids);
+  const existentes = contarLinhas(depois, null);
   let faltam = 0;
-  for (const [d, qtd] of exigidos) faltam += Math.max(0, qtd - (existentes.get(d) || 0));
+  for (const [d, qtd] of exigidas) faltam += Math.max(0, qtd - (existentes.get(d) || 0));
   return faltam;
+}
+
+/* O item casa entre antes e depois pela verba, pelo id da linha e pela
+   ordem entre os que têm o mesmo id (o produto e a mão de obra separada
+   dele levam o mesmo id). Item sem id casa pela posição na verba. */
+function porChave(categorias) {
+  const mapa = new Map();
+  for (const cat of lista(categorias)) {
+    const vistos = new Map();
+    lista(cat?.itens).forEach((it, i) => {
+      const base = it?.idLinha ? `id:${it.idLinha}` : `pos:${i}`;
+      const n = vistos.get(base) || 0;
+      vistos.set(base, n + 1);
+      mapa.set(`${cat?.num ?? ""}|${base}|${n}`, { verba: cat?.num ?? null, item: it });
+    });
+  }
+  return mapa;
+}
+
+const valor = (it, k) => (k === "excluido" ? it?.[k] === true : it?.[k] ?? null);
+
+/**
+ * RN-002 — o registro do que mudou nos itens travados da lista de trabalho.
+ *
+ * Um registro por campo travado que mudou; o item que saiu da lista vira
+ * um registro com campo "removido". Item não travado não entra.
+ *
+ * É a mesma conta do gatilho do banco (supabase/rn-002-compras-com-registro.sql).
+ *
+ * @returns {{verba, idLinha, desc, campo, antes, depois}[]}
+ */
+export function alteracoesEmItensAprovados(antes, depois) {
+  const novos = porChave(depois);
+  const registros = [];
+  for (const [k, { verba, item }] of porChave(antes)) {
+    if (!itemTravadoNoExecutivo(item)) continue;
+    const base = { verba, idLinha: item.idLinha ?? null, desc: item.desc ?? null };
+    const novo = novos.get(k)?.item;
+    if (!novo) {
+      registros.push({ ...base, campo: "removido", antes: true, depois: null });
+      continue;
+    }
+    for (const campo of CAMPOS_TRAVADOS) {
+      const a = valor(item, campo);
+      const d = valor(novo, campo);
+      if (JSON.stringify(a) !== JSON.stringify(d)) registros.push({ ...base, campo, antes: a, depois: d });
+    }
+  }
+  return registros;
 }

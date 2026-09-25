@@ -282,13 +282,17 @@ export const podeEntrar = (p) => temAcesso(p);
    Administrador, enquanto ninguem e' master -- ver podeGerenciarPessoas).
    Os outros perfis veem "todos os modulos" menos este. */
 const SO_QUEM_GERENCIA = new Set(["equipe"]);
-/* Configuracoes e' de quem mantem os cadastros da empresa: RN-086, a mesma
-   regra que a API e o banco aplicam (ADR-008). */
-const SO_QUEM_MANTEM_CADASTRO = new Set(["configuracoes"]);
+/* O Cadastro de Insumos e' de quem mantem os cadastros da empresa: RN-086, a
+   mesma regra que a API e o banco aplicam (ADR-008). */
+const SO_QUEM_MANTEM_CADASTRO = new Set(["insumos"]);
+/* Configuracoes e' um hub de atalhos (ADR-009): abre pra quem pode ver pelo
+   menos uma das telas dele. A lista casa com features/configuracoes/atalhos.js. */
+const DENTRO_DE_CONFIGURACOES = ["equipe", "precos", "eap", "insumos"];
 
 export function podeVerModulo(pessoa, moduloId, pessoas) {
   const perfil = perfilDe(pessoa);
   if (!perfil || pessoa?.ativo === false) return false;
+  if (moduloId === "configuracoes") return DENTRO_DE_CONFIGURACOES.some((id) => podeVerModulo(pessoa, id, pessoas));
   if (SO_QUEM_GERENCIA.has(moduloId)) return podeGerenciarPessoas(pessoa, pessoas);
   if (SO_QUEM_MANTEM_CADASTRO.has(moduloId)) return podeManterCadastroDeInsumos(pessoa);
   return perfil.modulos === null || perfil.modulos.includes(moduloId);

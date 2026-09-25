@@ -280,15 +280,25 @@ export function EscolherVerbasHost() {
 /* Toast padronizado (TELA-50/51): sucesso "<Entidade> <particípio>.",
    erro "Não foi possível <verbo>…". */
 /* `opcoes.duracao` (ms): para o aviso que precisa ser LIDO, como os alertas
-   da leitura de um arquivo — o tempo padrão do toast some antes. */
+   da leitura de um arquivo — o tempo padrão do toast some antes.
+   `opcoes.acao` ({ rotulo, aoClicar }): um botão no próprio aviso, como o
+   "Desfazer" depois de escolher o insumo do Sienge (25/09/2026).
+   `opcoes.secundaria` ({ rotulo, aoClicar }): um segundo botão, discreto. */
 const opcoesDoToast = (descricao, opcoes = {}) => {
   const o = {};
   if (descricao) o.description = descricao;
   if (opcoes.duracao) o.duration = opcoes.duracao;
+  if (opcoes.acao) o.action = { label: opcoes.acao.rotulo, onClick: opcoes.acao.aoClicar };
+  if (opcoes.secundaria) o.cancel = { label: opcoes.secundaria.rotulo, onClick: opcoes.secundaria.aoClicar };
+  if (opcoes.id) o.id = opcoes.id;
   return Object.keys(o).length ? o : undefined;
 };
 export const avisar = {
   ok: (texto, descricao, opcoes) => toast.success(texto, opcoesDoToast(descricao, opcoes)),
   erro: (texto, descricao, opcoes) => toast.error(texto, opcoesDoToast(descricao, opcoes)),
   info: (texto, descricao, opcoes) => toast(texto, opcoesDoToast(descricao, opcoes)),
+  alerta: (texto, descricao, opcoes) => toast.warning(texto, opcoesDoToast(descricao, opcoes)),
+  /* `opcoes.id` reaproveita o mesmo aviso (atualiza em vez de empilhar);
+     `fechar(id)` tira quando o motivo passou. */
+  fechar: (id) => toast.dismiss(id),
 };

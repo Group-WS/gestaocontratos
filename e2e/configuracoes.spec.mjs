@@ -111,24 +111,67 @@ const capturar = async (page, nome) => {
   await page.screenshot({ path: path.join(process.env.E2E_CAPTURAS, `${nome}.png`), fullPage: true });
 };
 
-test("quem não administra não vê Configurações, nem pelo endereço", { tag: "@acesso-negado" }, async ({ page, context }) => {
+test("quem não administra vê só os atalhos dele, e o Cadastro de Insumos nem pelo endereço", { tag: "@acesso-negado" }, async ({ page, context }) => {
   await entrarComo(page, context, GC);
-  await page.goto(APP);
-  await expect(page.getByRole("navigation", { name: "Módulos" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Configurações/ })).toHaveCount(0);
-
   await page.goto(`${APP}/configuracoes`);
+  // ADR-009: o hub abre para quem vê algum atalho, e mostra só os dele.
+  await expect(page.getByRole("link", { name: /Banco de Preços/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Cadastro de Insumos/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Equipe e acessos/ })).toHaveCount(0);
+
+  await page.goto(`${APP}/configuracoes/insumos`);
   await expect(page.getByRole("navigation", { name: "Módulos" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Cadastro de Insumos" })).toHaveCount(0);
   await expect(page.getByText("Tabela de preços ativa")).toHaveCount(0);
+});
+
+test("o hub leva ao Cadastro de Insumos, e o índice lateral volta", async ({ page, context }) => {
+  await entrarComo(page, context, ADMIN);
+  await page.goto(`${APP}/configuracoes`);
+  await expect(page.getByRole("heading", { name: "Sienge" })).toBeVisible();
+  await capturar(page, "configuracoes-hub");
+  // Equipe, Banco de Preços e EAP saíram do menu lateral.
+  const menu = page.getByRole("navigation", { name: "Módulos" });
+  await expect(menu.getByRole("link", { name: /Banco de Preços/ })).toHaveCount(0);
+  await expect(menu.getByRole("link", { name: /EAP Sienge/ })).toHaveCount(0);
+
+  await page.getByRole("searchbox", { name: /Buscar em 4 configurações/ }).fill("material");
+  await expect(page.getByRole("link", { name: /Banco de Preços/ })).toHaveCount(0);
+  await page.getByRole("link", { name: /Cadastro de Insumos/ }).click();
+  await expect(page).toHaveURL(/\/configuracoes\/insumos$/);
+  await expect(page.getByText("Tabela de preços ativa")).toBeVisible();
+  await capturar(page, "configuracoes-hub-insumos");
+
+  await page.getByRole("navigation", { name: "Configurações" }).getByRole("link", { name: /EAP Sienge/ }).click();
+  await expect(page).toHaveURL(/\/configuracoes\/eap$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/configuracoes\/insumos$/);
+});
+
+test("⌘, abre as Configurações por cima de qualquer tela", async ({ page, context }) => {
+  await entrarComo(page, context, ADMIN);
+  await page.goto(`${APP}/configuracoes/eap`);
+  await expect(page.getByRole("navigation", { name: "Configurações" })).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+Comma");
+  const painel = page.getByRole("dialog", { name: "Configurações" });
+  await expect(painel).toBeVisible();
+  await capturar(page, "configuracoes-painel");
+  await painel.getByRole("link", { name: /Cadastro de Insumos/ }).click();
+  await expect(painel).toHaveCount(0);
+  await expect(page).toHaveURL(/\/configuracoes\/insumos$/);
+});
+
+test("endereço antigo abre a tela no endereço novo", async ({ page, context }) => {
+  await entrarComo(page, context, ADMIN);
+  await page.goto(`${APP}/precos`);
+  await expect(page).toHaveURL(/\/configuracoes\/precos$/);
 });
 
 test("o administrador vê o cadastro e importa o relatório do Sienge", async ({ page, context }) => {
   const aplicados = [];
   await entrarComo(page, context, ADMIN, { aplicados });
-  await page.goto(`${APP}/configuracoes`);
+  await page.goto(`${APP}/configuracoes/insumos`);
 
-  await expect(page.getByRole("tab", { name: "Cadastro de Insumos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cadastro de Insumos" })).toBeVisible();
   await expect(page.getByText("Tabela de preços ativa")).toBeVisible();
   await expect(page.getByText("MOBILIA SOLTA - CADEIRA / TOK STOK / CADEIRA EIFFEL BRANCA")).toBeVisible();
   await expect(page.getByText("editado", { exact: true })).toBeVisible();

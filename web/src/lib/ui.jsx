@@ -208,10 +208,10 @@ export function EscolhaPessoa({ id, valor, pessoas, onChange, sugerido, vazio = 
 export function Choice({ label, value, opcoes, onChange, placeholder, required, disabled, className = "", rotuloVisivel = true, compacto = false }) {
   const id = useId();
   return (
-    <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
+    <div className={`flex min-w-0 flex-col ${rotuloVisivel ? "gap-1" : ""} ${className}`}>
       <Label htmlFor={id} required={required} className={rotuloVisivel ? undefined : "sr-only"}>{label}</Label>
       <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger id={id} aria-label={label} className={compacto ? "h-8" : undefined}><SelectValue placeholder={placeholder} /></SelectTrigger>
+        <SelectTrigger id={id} aria-label={label} className={compacto ? "h-8 text-left" : "text-left"}><SelectValue placeholder={placeholder} /></SelectTrigger>
         <SelectContent>
           {opcoes.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
         </SelectContent>

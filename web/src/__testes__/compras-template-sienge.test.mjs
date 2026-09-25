@@ -6,8 +6,9 @@
  * do Gerador (EscolhaSienge). A forma do arquivo já é guardada pelo teste
  * template-sienge; este guarda QUEM entra nele e COM O QUÊ:
  *
- *   - como no Gerador, só fica de fora o que a pessoa marcou como variante
- *     já cadastrada; o resto vai como detalhe novo — o sem insumo mãe com
+ *   - como no Gerador, só entra o que a pessoa decidiu cadastrar como
+ *     detalhe novo (RN-090): a variante já cadastrada e o que está a
+ *     conferir ficam de fora; o sem insumo mãe decidido como novo vai com
  *     o código do insumo em branco;
  *   - a mãe escolhida na busca (fora das candidatas) vale;
  *   - a descrição e os códigos são os que a pessoa digitou na linha;
@@ -19,6 +20,7 @@ import {
   codigoAuxiliarDe, descricaoSienge, limparTemplate, auxiliarEstavel,
   montarTemplateSienge, CABECALHO_TEMPLATE_SIENGE,
 } from "../lib/sienge.js";
+import { DECISAO_DO_DETALHE, decisaoDoDetalhe, entraNoTemplateSienge } from "../regras/detalheDoSienge.js";
 
 const src = fs.readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
 const bloco = (a) => {
@@ -26,13 +28,15 @@ const bloco = (a) => {
   if (i === -1) throw new Error(`não achei no App.jsx: ${a}`);
   return src.slice(i, src.indexOf("\n}\n", i) + 3);
 };
-const M = new Function("codigoAuxiliarDe", "descricaoSienge", "limparTemplate", "auxiliarEstavel", `
+const M = new Function("codigoAuxiliarDe", "descricaoSienge", "limparTemplate", "auxiliarEstavel",
+  "DECISAO_DO_DETALHE", "decisaoDoDetalhe", "entraNoTemplateSienge", `
+  ${bloco("function estaSolicitado(")}
   ${bloco("function situacaoNoSienge(")}
   ${bloco("function descritivoDoItem(")}
   ${bloco("function auxiliaresDoGrupo(")}
   ${bloco("function templateComprasDoGrupo(")}
   return { situacaoNoSienge, descritivoDoItem, auxiliaresDoGrupo, templateComprasDoGrupo };
-`)(codigoAuxiliarDe, descricaoSienge, limparTemplate, auxiliarEstavel);
+`)(codigoAuxiliarDe, descricaoSienge, limparTemplate, auxiliarEstavel, DECISAO_DO_DETALHE, decisaoDoDetalhe, entraNoTemplateSienge);
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -43,7 +47,9 @@ const BANCO = { codigo: "408", nome: "MOBÍLIA SOLTA - BANCO", variantes: [] };
 const BASE = [CADEIRA, BANCO]; // a base inteira, agrupada por mãe (é onde a busca procura)
 const casou = () => ({ maes: [{ grupo: CADEIRA, score: 0.8 }], detalhes: [] });
 const SEM_MAE = { maes: [], detalhes: [] };
-const produto = (chave, it = {}) => ({ chave, it: { codigo: "24.3", desc: "Cadeira Eiffel", marca: "Rivatti", ...it } });
+// Por padrão o produto já foi decidido como detalhe novo; `detalheNovoSienge: undefined` = ninguém decidiu.
+const produto = (chave, it = {}) => ({ chave, it: { codigo: "24.3", desc: "Cadeira Eiffel", marca: "Rivatti", detalheNovoSienge: true, ...it } });
+const semDecisao = (chave, it = {}) => produto(chave, { detalheNovoSienge: undefined, ...it });
 const grupo = (...pares) => {
   const itens = pares.map(([p]) => p);
   const casamentos = new Map(pares.filter(([, c]) => c).map(([p, c]) => [p.chave, c]));
@@ -61,8 +67,14 @@ conf("a mãe da busca vale, mesmo fora das candidatas",
 /* ---- 2. quem entra no CSV ---- */
 conf("variante marcada fica fora", grupo([produto("a", { detalheSienge: "X" }), casou()]).length, 0);
 conf("produto ainda não associado fica fora", grupo([produto("a"), null]).length, 0);
+/* 25/09/2026 (RN-090): sem decisão, fica fora — "não olhei" não é "cadastrar". */
+conf("a conferir (ninguém decidiu) fica fora", grupo([semDecisao("a"), casou()]).length, 0);
+conf("decisão desfeita (trocou a mãe) fica fora", grupo([produto("a", { detalheNovoSienge: false, codigoAuxSienge: "9" }), casou()]).length, 0);
+conf("de antes da regra, com auxiliar digitado, entra", grupo([semDecisao("a", { codigoAuxSienge: "AUX-9" }), casou()]).length, 1);
+conf("de antes da regra, já solicitado, entra", grupo([semDecisao("a", { solicitado: true }), casou()]).length, 1);
+conf("de antes da regra, já comprado, entra", grupo([semDecisao("a", { comprado: true }), casou()]).length, 1);
 const nova = grupo([produto("a"), casou()]);
-conf("sem variante marcada entra", nova.length, 1);
+conf("decidido como detalhe novo entra", nova.length, 1);
 conf("... com o insumo mãe", nova[0].maeCodigo, "406");
 conf("... e o nome dele", nova[0].maeNome, "MOBILIA SOLTA - CADEIRA");
 const semMae = grupo([produto("a"), SEM_MAE]);

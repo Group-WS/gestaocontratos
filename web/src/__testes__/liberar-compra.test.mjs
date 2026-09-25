@@ -424,7 +424,9 @@ conf("as colunas da planilha estão na tabela",
   ["Produto", "Qtd", "Custo unit.", "Total", "Concluído executivo", "Aprovado p/ compra"]
     .every((c) => src.includes(`>${c}</TableHead>`)), true);
 conf("espec., fornecedor e ambiente ficam na célula do produto",
-  src.includes(`[x.it.especificacao, x.it.marca ? \`Fornecedor: \${nomeDoFornecedor(x.it)}\` : null, x.it.ambiente]`), true);
+  // 25/09/2026: a especificação passou a usar o padrão de links (domínio ↗ + popover)
+  src.includes("<TextoComLinks texto={x.it.especificacao} />")
+  && src.includes(`[x.it.marca ? \`Fornecedor: \${nomeDoFornecedor(x.it)}\` : null, x.it.ambiente]`), true);
 
 /* A COR DIZ O ESTADO: laranja quando falta olhar o alerta técnico, normal
    quando está conferido. */
@@ -541,7 +543,8 @@ conf("nenhum texto avulso de espera sobrou", /aguarda o (executivo|cliente)/.tes
 conf("existe o filtro do que falta concluir", src.includes(`label: "Falta concluir executivo",`), true);
 conf("e o botão da verba diz o mesmo", src.includes("Concluir executivo {aConcluir.length}"), true);
 conf("e o do que falta aprovar para compra", src.includes(`label: "Falta aprovar p/ compra",`), true);
-conf("eles usam o mesmo filtro dos cartões", src.includes("{(telaExtra?.filtros || []).map((ff) => ("), true);
+/* 25/09/2026: os chips viraram opções da BarraDeFiltros; continuam vindo da tela extra. */
+conf("eles usam o mesmo filtro dos cartões", src.includes("...(telaExtra?.filtros || []).map((ff) => ({ id: ff.id, label: ff.label, n: ff.contador }))"), true);
 
 /* ---- TUDO NA MESMA TELA (18/09/2026) ----
    "ai clicar no filtro conferencia tecnica, ele filtra tudo que falta

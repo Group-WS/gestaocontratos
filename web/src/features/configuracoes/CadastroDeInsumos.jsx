@@ -7,7 +7,7 @@ import {
   SheetTitle, Skeleton, Spinner, Subheader, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea,
 } from "@group-ws/ws-ui";
 import { ChevronDown, History, Pencil, Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
-import { BotaoIcone, Choice } from "../../lib/ui.jsx";
+import { BotaoIcone, Choice, DicaInfo } from "../../lib/ui.jsx";
 import { confirmar, mensagem, avisar } from "../../lib/confirmar.jsx";
 import { quandoFoi } from "../../lib/pessoas.js";
 import {
@@ -91,6 +91,10 @@ function TabelaAtiva() {
   const [codigo, setCodigo] = useState("");
   const [nome, setNome] = useState("");
   const [salvando, setSalvando] = useState(false);
+  /* RECOLHIDA NUMA LINHA (25/09/2026): é configuração que quase nunca muda, e
+     o cartão aberto empurrava a lista para o meio da tela. O formulário abre
+     no "Alterar". */
+  const [alterando, setAlterando] = useState(false);
 
   const carregar = useCallback(async () => {
     setEstado((e) => ({ ...e, carregando: true, erro: null }));
@@ -121,12 +125,27 @@ function TabelaAtiva() {
     try {
       const r = await salvarTabelaAtiva({ codigo: codigo.trim(), nome: nome.trim() });
       setEstado((e) => ({ ...e, tabela: r.tabela }));
+      setAlterando(false);
       avisar.ok("Tabela ativa salva.");
     } catch (e) {
       avisar.erro("Não foi possível salvar a tabela ativa.", e.message);
     } finally {
       setSalvando(false);
     }
+  }
+
+  if (!alterando && !estado.carregando && !estado.erro && !estado.aviso && estado.tabela) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-sm text-text-soft">
+        <span className="label-mono">Tabela de preços ativa</span>
+        <span className="text-text">{estado.tabela.codigo} · {estado.tabela.nome}</span>
+        <DicaInfo rotulo="O que é a tabela ativa">
+          A importação só aceita o relatório do Sienge gerado com esta tabela: o código e o nome precisam bater.
+          {estado.tabela.atualizado_por && <><br /><br />Trocada por {estado.tabela.atualizado_por} {quandoFoi(estado.tabela.atualizado_em)}.</>}
+        </DicaInfo>
+        <Button variant="ghost" size="sm" onClick={() => setAlterando(true)}><Pencil size={14} aria-hidden="true" /> Alterar</Button>
+      </div>
+    );
   }
 
   return (
@@ -155,6 +174,9 @@ function TabelaAtiva() {
               <Label htmlFor={`${id}-nome`} required>Nome da tabela</Label>
               <Input id={`${id}-nome`} value={nome} onChange={(e) => setNome(e.target.value)} />
             </Field>
+            {estado.tabela && (
+              <Button variant="outline" onClick={() => { setAlterando(false); setCodigo(estado.tabela.codigo); setNome(estado.tabela.nome); }}>Cancelar</Button>
+            )}
             <Button onClick={salvar} disabled={!mudou || !codigoValido || !nome.trim() || salvando}>
               {salvando ? <Spinner size="sm" /> : null} Salvar tabela ativa
             </Button>
@@ -523,17 +545,35 @@ export function CadastroDeInsumos() {
   }
 
   const colunas = [
-    { key: "insumo", header: "Insumo", cell: (r) => <EditorialNameCell label={r.codigo} name={r.descricao} /> },
-    { key: "unidade", header: "Unidade", width: "w-24", cell: (r) => <span className="text-sm">{r.unidade}</span> },
+    /* O EditorialNameCell do DS, como na listagem do DS (25/09/2026). O
+       envoltório `w-0 min-w-full` só impede a descrição mais longa de
+       esticar a coluna (a tabela do DS mede pelo conteúdo): ela trunca, e o
+       texto inteiro fica na dica. */
+    // O código numa coluna própria (pedido de 25/09/2026; a TELA-12 o põe no rótulo do nome).
+    { key: "codigo", header: "Código", width: "w-24", cell: (r) => <span className="mono text-sm tabular-nums text-text-soft">{r.codigo}</span> },
     {
-      key: "origem", header: "Origem", width: "w-40", cell: (r) => (
+      key: "insumo", header: "Insumo", cell: (r) => (
+        <div className="w-0 min-w-full" title={r.descricao}>
+          <EditorialNameCell name={r.descricao} />
+        </div>
+      ),
+    },
+    {
+      key: "detalhes", header: "Detalhes", width: "w-20", align: "right", cell: (r) => (
+        <span className={`mono tabular-nums ${r.detalhes ? "text-text" : "text-text-mute"}`}
+          title="Detalhes (variantes) deste insumo na base de preços">{r.detalhes ?? "—"}</span>
+      ),
+    },
+    { key: "unidade", header: "Unidade", width: "w-20", cell: (r) => <span className="text-sm">{r.unidade}</span> },
+    {
+      key: "origem", header: "Origem", width: "w-28", cell: (r) => (
         <span className="flex flex-wrap gap-1">
           <Badge tone="neutral">{r.origem === "sienge" ? "Sienge" : "Tela"}</Badge>
           {r.editado && <Badge tone="warning" title="Editado na tela depois de vir do Sienge">editado</Badge>}
         </span>
       ),
     },
-    { key: "situacao", header: "Situação", width: "w-28", cell: (r) => <Badge tone={r.ativo ? "success" : "neutral"}>{r.ativo ? "Ativo" : "Inativo"}</Badge> },
+    { key: "situacao", header: "Situação", width: "w-24", cell: (r) => <Badge tone={r.ativo ? "success" : "neutral"}>{r.ativo ? "Ativo" : "Inativo"}</Badge> },
   ];
 
   return (
@@ -555,7 +595,7 @@ export function CadastroDeInsumos() {
       <TabelaAtiva />
 
       <section className="flex flex-col gap-4" aria-label="Insumos">
-        <Subheader label="Insumos" actions={(
+        <Subheader label={pagina.total ? `Insumos · ${numero(pagina.total)}` : "Insumos"} actions={(
           <div className="flex shrink-0 items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -570,7 +610,6 @@ export function CadastroDeInsumos() {
             <Button onClick={() => setEditando({})}><Plus size={16} aria-hidden="true" /> Novo insumo</Button>
           </div>
         )} />
-        <p className="text-sm text-text-mute">O cadastro de insumos da empresa: o que vem do relatório do Sienge e o que o time cria aqui.</p>
 
         {pagina.aviso && <Alert tone="warning"><AlertDescription>{pagina.aviso}</AlertDescription></Alert>}
 

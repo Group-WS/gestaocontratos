@@ -6,7 +6,7 @@
  * um por um, mais os limites: item repetido, tirar a aprovação, item novo.
  */
 import {
-  itemTravadoNoExecutivo, linhaDoExecutivoTravada, travadosAlterados,
+  itemTravadoNoExecutivo, linhaDoExecutivoTravada, linhasTravadasAlteradas, alteracoesEmItensAprovados,
 } from "./itemAprovadoNoExecutivo.js";
 
 let falhas = 0;
@@ -18,7 +18,6 @@ const conf = (nome, obtido, esperado) => {
 
 const chave = (d) => String(d || "").toLowerCase().trim();
 const carimbo = { em: "2026-09-23T13:00:00.000Z", por: "admin@tkws.com.br" };
-const obra = (...itens) => [{ num: "02", itens }];
 const art = (extra = {}) => ({ codigo: "2.1", desc: "Anotação de responsabilidade técnica - ART", un: "vb", qtdVendida: 1, custoMaterial: 108, custo: 108, ...extra });
 const frete = (extra = {}) => ({ codigo: "2.4", desc: "Fretes e deslocamentos", un: "vb", qtdVendida: 1, custoMaterial: 600, custo: 600, ...extra });
 
@@ -49,29 +48,55 @@ conf("RN-002 · a linha de mão de obra aprovada trava o produto (mesmo id)",
 conf("RN-002 · linha sem id fica do lado seguro (trava pela descrição)",
   linhaDoExecutivoTravada(painel("Banheiro", undefined), paineis, chave), true);
 
-// ---------- a gravação ----------
-const aprovado = art({ liberadoCompra: carimbo });
-conf("RN-002 · editar o custo do aprovado é recusado",
-  travadosAlterados(obra(aprovado, frete()), obra({ ...aprovado, custoMaterial: 120, custo: 120 }, frete())), 1);
-conf("RN-002 · remover o aprovado é recusado",
-  travadosAlterados(obra(aprovado), obra({ ...aprovado, excluido: true, excluidoMotivo: "saiu" })), 1);
+// ---------- a gravação: a planilha do Executivo ----------
+/* A obra com a lista de trabalho (`itens`) e a planilha do Executivo
+   (`itensPlanilhaExecutivo`), as duas com a mesma linha. */
+const obra = (itens, planilha = itens) => [{ num: "02", itens, itensPlanilhaExecutivo: planilha }];
+const aprovado = art({ idLinha: "L1", liberadoCompra: carimbo });
+const linhaAprovada = art({ idLinha: "L1" });
+const livre = frete({ idLinha: "L2" });
+conf("RN-002 · editar o custo da linha aprovada no Executivo é recusado",
+  linhasTravadasAlteradas(obra([aprovado, livre], [linhaAprovada, livre]), obra([aprovado, livre], [{ ...linhaAprovada, custoMaterial: 120, custo: 120 }, livre])), 1);
+conf("RN-002 · remover a linha aprovada no Executivo é recusado",
+  linhasTravadasAlteradas(obra([aprovado], [linhaAprovada]), obra([aprovado], [{ ...linhaAprovada, excluido: true, excluidoMotivo: "saiu" }])), 1);
 conf("RN-002 · tirar a linha aprovada da planilha é recusado",
-  travadosAlterados(obra(aprovado, frete()), obra(frete())), 1);
-conf("RN-002 · editar item não aprovado passa",
-  travadosAlterados(obra(aprovado, frete()), obra(aprovado, frete({ custoMaterial: 650 }))), 0);
-conf("RN-002 · adicionar item novo passa",
-  travadosAlterados(obra(aprovado), obra(aprovado, frete({ codigo: "2.8" }))), 0);
+  linhasTravadasAlteradas(obra([aprovado, livre], [linhaAprovada, livre]), obra([aprovado, livre], [livre])), 1);
+conf("RN-002 · editar linha não aprovada passa",
+  linhasTravadasAlteradas(obra([aprovado, livre], [linhaAprovada, livre]), obra([aprovado, livre], [linhaAprovada, { ...livre, custoMaterial: 650 }])), 0);
+conf("RN-002 · adicionar linha nova passa",
+  linhasTravadasAlteradas(obra([aprovado], [linhaAprovada]), obra([aprovado], [linhaAprovada, frete({ idLinha: "L3" })])), 0);
 conf("RN-002 · mudar de posição passa",
-  travadosAlterados(obra(aprovado, frete()), obra(frete(), aprovado)), 0);
-conf("RN-002 · desfazer a aprovação passa (a digital não muda)",
-  travadosAlterados(obra(aprovado), obra({ ...aprovado, liberadoCompra: null })), 0);
-conf("RN-002 · marcar como solicitado passa",
-  travadosAlterados(obra(aprovado), obra({ ...aprovado, solicitado: true })), 0);
-conf("RN-002 · dois aprovados iguais: editar um é recusado",
-  travadosAlterados(obra(aprovado, aprovado), obra(aprovado, { ...aprovado, qtdVendida: 2 })), 1);
+  linhasTravadasAlteradas(obra([aprovado, livre], [linhaAprovada, livre]), obra([aprovado, livre], [livre, linhaAprovada])), 0);
+conf("RN-002 · desfazer a aprovação passa",
+  linhasTravadasAlteradas(obra([aprovado], [linhaAprovada]), obra([{ ...aprovado, liberadoCompra: null }], [linhaAprovada])), 0);
+conf("RN-002 · editar o item aprovado em Compras passa (fica no registro)",
+  linhasTravadasAlteradas(obra([aprovado], [linhaAprovada]), obra([{ ...aprovado, marca: "Outra", custo: 90 }], [linhaAprovada])), 0);
 conf("RN-002 · obra sem item aprovado grava qualquer coisa",
-  travadosAlterados(obra(art(), frete()), obra()), 0);
-conf("RN-002 · entrada vazia não quebra", travadosAlterados(null, undefined), 0);
+  linhasTravadasAlteradas(obra([art(), frete()]), []), 0);
+conf("RN-002 · entrada vazia não quebra", linhasTravadasAlteradas(null, undefined), 0);
+
+// ---------- o registro das mudanças no item aprovado ----------
+conf("RN-002 · mudar a marca do aprovado em Compras fica no registro",
+  alteracoesEmItensAprovados(obra([aprovado]), obra([{ ...aprovado, marca: "Outra" }])),
+  [{ verba: "02", idLinha: "L1", desc: aprovado.desc, campo: "marca", antes: null, depois: "Outra" }]);
+conf("RN-002 · um registro por campo que mudou",
+  alteracoesEmItensAprovados(obra([aprovado]), obra([{ ...aprovado, custoMaterial: 120, custo: 120 }])).map((r) => r.campo),
+  ["custo", "custoMaterial"]);
+conf("RN-002 · tirar o aprovado da lista fica no registro como removido",
+  alteracoesEmItensAprovados(obra([aprovado, livre]), obra([livre])).map((r) => [r.campo, r.antes, r.depois]),
+  [["removido", true, null]]);
+conf("RN-002 · mudança em item não aprovado não entra no registro",
+  alteracoesEmItensAprovados(obra([aprovado, livre]), obra([aprovado, { ...livre, custo: 1 }])), []);
+conf("RN-002 · mudar só o estado da compra não entra no registro",
+  alteracoesEmItensAprovados(obra([aprovado]), obra([{ ...aprovado, solicitado: true }])), []);
+conf("RN-002 · mudar de posição não entra no registro",
+  alteracoesEmItensAprovados(obra([aprovado, livre]), obra([livre, aprovado])), []);
+conf("RN-002 · produto e mão de obra com o mesmo id casam na ordem",
+  alteracoesEmItensAprovados(obra([aprovado, { ...aprovado, custoMO: 10 }]), obra([aprovado, { ...aprovado, custoMO: 12 }])).map((r) => [r.campo, r.antes, r.depois]),
+  [["custoMO", 10, 12]]);
+conf("RN-002 · item sem id casa pela posição",
+  alteracoesEmItensAprovados(obra([art({ comprado: true })]), obra([art({ comprado: true, un: "un" })])).map((r) => r.campo), ["un"]);
+conf("RN-002 · registro com entrada vazia não quebra", alteracoesEmItensAprovados(null, undefined), []);
 
 if (falhas) { console.log(`\n${falhas} falha(s)`); process.exit(1); }
 console.log("\nRN-002: tudo certo");

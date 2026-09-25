@@ -298,6 +298,7 @@ Detalhes do fluxo em `docs/funcionalidades/gravacao-da-obra.md`.
 |---|---|---|---|---|---|---|
 | GET | `/api/obras/:codigo/arquivos-eventos` | L M O (RLS: contrato só admin) | `paramObra` | últimos 200 eventos (anexou, trocou, removeu) | `obra_arquivo_evento` | `rotas/arquivoEventos.js:47` |
 | POST | `/api/obras/:codigo/arquivos-eventos` | L M EO (RLS: contrato só admin) | `corpoNovo` | registra um evento | `obra_arquivo_evento` | `rotas/arquivoEventos.js:65` |
+| GET | `/api/obras/:codigo/itens-aprovados/log` | L M O (RLS: quem vê a obra) | `paramObra`, `consulta` (`idLinha`) | últimas 200 mudanças em item aprovado (RN-002) | `obra_item_aprovado_log` | `rotas/itemAprovadoLog.js:31` |
 
 ### `rotas/cadastros.js` — alocação padrão, compradores, mão de obra própria
 

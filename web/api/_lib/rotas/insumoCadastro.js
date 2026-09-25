@@ -147,6 +147,23 @@ const duplicado = (res) => res.status(409).json({ error: MSG_DUPLICADO, code: "2
 
 /* ---------- a lista (o time le) ---------- */
 
+/* QUANTOS DETALHES CADA INSUMO DA PAGINA TEM (25/09/2026): as linhas da
+   base de precos (insumo_preco) com o mesmo codigo — a mesma conta do
+   seletor da mae nas Compras. So' os codigos da pagina, de mil em mil (o
+   teto de linhas do Supabase). Se falhar, a lista sai sem a contagem. */
+const LEITURA_DA_BASE = 1000;
+async function detalhesPorCodigo(supabase, codigos) {
+  const conta = new Map();
+  if (!codigos.length) return conta;
+  for (let de = 0; ; de += LEITURA_DA_BASE) {
+    const { data, error } = await supabase.from("insumo_preco").select("codigo").in("codigo", codigos)
+      .order("id", { ascending: true }).range(de, de + LEITURA_DA_BASE - 1);
+    if (error) return null;
+    (data || []).forEach((l) => conta.set(l.codigo, (conta.get(l.codigo) || 0) + 1));
+    if (!data || data.length < LEITURA_DA_BASE) return conta;
+  }
+}
+
 rotas.get("/api/insumo-cadastro",
   zValidator("query", queryLista),
   async (req, res) => {
@@ -164,7 +181,9 @@ rotas.get("/api/insumo-cadastro",
       if (faltaTabela(error)) return res.json({ itens: [], total: 0, faltaTabela: true, aviso: AVISO_SEM_SQL });
       return erroDoBanco(res, error);
     }
-    res.json({ itens: (data || []).map(paraATela), total: count || 0 });
+    const itens = (data || []).map(paraATela);
+    const conta = await detalhesPorCodigo(req.supabase, [...new Set(itens.map((i) => i.codigo))]);
+    res.json({ itens: itens.map((i) => ({ ...i, detalhes: conta ? (conta.get(i.codigo) || 0) : null })), total: count || 0 });
   });
 
 rotas.get("/api/insumo-cadastro/unidades", async (req, res) => {

@@ -17,7 +17,7 @@ const trecho = (a, b) => {
 };
 const compras = trecho("function ComprasView(", "/* A situacao do produto no Sienge");
 const linha = trecho("function LinhaCompra(", "MÓDULO CONTRATOS");
-const escolha = trecho("function EscolhaSienge(", "function PedidoCompra(");
+const escolha = trecho("function FaixaSienge(", "function PedidoCompra(");
 
 let f = 0;
 const conf = (n, ok) => { if (!ok) f++; console.log(`${ok ? "ok  " : "FALHOU"} ${n}`); };
