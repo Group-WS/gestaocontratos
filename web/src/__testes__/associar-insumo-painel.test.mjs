@@ -70,7 +70,7 @@ const compras = trecho("function ComprasView(", "function LinhaCompra(");
 const gerador = trecho("function GeradorSiengeView(", "function LinhaGerador(");
 // 1. detalhe escolhido que diverge do item
 conf("detalhe escolhido sem todas as palavras vira 'confira'", faixa.includes('faltam.length ? { tom: "warning", texto: "confira" }'));
-conf("... e a palavra que falta aparece ao lado", faixa.includes('falta: <b className="font-semibold text-text">{faltam.join(", ")}</b>'));
+conf("... e a palavra que falta aparece ao lado", faixa.includes('<div className="text-xs text-text-soft">falta: <b className="font-semibold text-text">{faltam.join(", ")}</b></div>'));
 conf("... e conta como pendente", src.includes("detalheDivergente(it.desc, it.detalheSienge)"));
 // 2. faixa sempre visível, sugestões sozinhas
 conf("o botão 'Associar insumos' saiu", !src.includes("async function associarGrupo(") && !/>\s*\{associando === g\.num/.test(src));

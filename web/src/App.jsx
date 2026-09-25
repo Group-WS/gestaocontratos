@@ -12545,11 +12545,6 @@ function FaixaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, decisao,
         <ChevronRight size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
         <SeletorDetalhe desc={desc} mae={mae} detalhes={detalhes} escolhida={escolhida} decisao={decisao}
           sugestao={sugestao} onEscolher={escolher} onNovo={decidirNovo} somenteLeitura={somenteLeitura} />
-        {/* A DIFERENÇA À VISTA: o botão corta o fim do texto, e é no fim
-            (cor, potência, código) que o produto costuma divergir. */}
-        {faltam.length > 0 && (
-          <span className="text-xs text-text-soft">falta: <b className="font-semibold text-text">{faltam.join(", ")}</b></span>
-        )}
         {sugestao && !somenteLeitura && (
           <Button variant="outline" size="sm" type="button" onClick={() => escolher(sugestao.insumo.descricao)}
             title={`Usar ${sugestao.insumo.descricao} — tem todas as palavras do item`}>
@@ -12567,6 +12562,11 @@ function FaixaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, decisao,
           <br /><b>Confira</b>: o detalhe escolhido não tem todas as palavras do item — pode ser outro produto.
         </DicaInfo>
       </div>
+      {/* A DIFERENÇA À VISTA, na linha de baixo (25/09/2026): na mesma linha
+          dos seletores ela empurrava o ⓘ para fora. */}
+      {faltam.length > 0 && (
+        <div className="text-xs text-text-soft">falta: <b className="font-semibold text-text">{faltam.join(", ")}</b></div>
+      )}
       {decisao === DECISAO_DO_DETALHE.NOVO && (
         <DetalheNovoSienge descrito={descrito} editado={editado} onDescrito={onDescrito}
           aux={aux} codDet={codDet} onAux={onAux} onCodDet={onCodDet} auxMarca={auxMarca}
