@@ -24,6 +24,8 @@ const banco = {
   insumo_cadastro_importacao: [],
   insumo_tabela_ativa: [{ id: true, codigo: "1", nome: "TABELA WS BUILDING", atualizado_em: null, atualizado_por: null }],
   insumo_cadastro_historico: [],
+  // A base de precos: uma linha por (codigo, descricao, unidade).
+  insumo_preco: [{ id: 1, codigo: "900", descricao: "A" }, { id: 2, codigo: "900", descricao: "B" }, { id: 3, codigo: "77", descricao: "C" }],
 };
 const balde = new Map();
 const pedidos = []; // itens de solicitações enviadas: { codigo, texto, status, obra_codigo, solicitacao_id, enviado_em }
@@ -247,6 +249,8 @@ const servidor = app.listen(0, async () => {
 
     console.log("\n— o CRUD —");
     const criado = await pedir("POST", "/api/insumo-cadastro", { codigo: "900", descricao: "  FEITO NA TELA  ", unidade: "un" });
+    const comDetalhes = await pedir("GET", "/api/insumo-cadastro");
+    conf("a lista diz quantos detalhes o insumo tem na base de preços", comDetalhes.corpo.itens.find((i) => i.codigo === "900")?.detalhes, 2);
     conf("o admin cria na tela (pontas do texto digitado saem)", [criado.status, criado.corpo.descricao, criado.corpo.origem], [200, "FEITO NA TELA", "tela"]);
     conf("mesmo código e descrição de novo é 409",
       (await pedir("POST", "/api/insumo-cadastro", { codigo: "900", descricao: "FEITO NA TELA", unidade: "un" })).status, 409);
