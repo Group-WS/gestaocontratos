@@ -1,11 +1,12 @@
-/* A associação ao insumo do Sienge: resumo na tabela, escolha no painel.
+/* A associação ao insumo do Sienge: a escolha na própria linha da tabela.
  *
  * Roda com: node web/src/__testes__/associar-insumo-painel.test.mjs
  *
- * Em 22/09/2026 a escolha inteira morava numa coluna de 320px: cada linha
- * passava de 700px de altura, e as descrições do Sienge iam no `Label` do
- * DS (rótulo de campo — mono, caixa-alta, 10,5px), virando uma tira que não
- * dava para ler nem comparar. Estas travas impedem a volta disso.
+ * De 22 a 25/09/2026 a escolha abria num painel lateral (Sheet). Os usuários
+ * não gostaram de sair da tabela pra escolher, e ela voltou pra linha, em
+ * lista compacta (25/09/2026). Ficam as travas do que veio depois e vale na
+ * linha: o texto do Sienge legível (fora do `Label` do DS), as regras nas
+ * dicas ⓘ e o selo que explica ao passar o mouse.
  */
 import fs from "node:fs";
 const src = fs.readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
@@ -16,29 +17,12 @@ const painel = trecho("function AssociacaoSienge(", "function PedidoCompra(");
 let f = 0;
 const conf = (n, ok) => { if (!ok) f++; console.log(`${ok ? "ok  " : "FALHOU"} ${n}`); };
 
-conf("as duas tabelas mostram o resumo, não a escolha inteira",
-  (src.match(/<AssociacaoSienge /g) || []).length === 2 && (src.match(/<EscolhaSienge /g) || []).length === 1);
-conf("a escolha inteira abre no painel lateral", painel.includes('<SheetContent side="right"') && painel.includes("<EscolhaSienge {...escolha} />"));
-conf("o painel diz qual item está sendo associado", painel.includes("<SheetTitle>Associar ao insumo do Sienge</SheetTitle>") && painel.includes("{item}"));
-conf("o resumo diz o que está decidido", painel.includes("usa detalhe existente") && painel.includes("cadastra detalhe novo"));
-conf("sem mãe, o resumo avisa", painel.includes("sem insumo mãe"));
-conf("modo leitura só consulta", painel.includes('"Ver associação"'));
-conf("a descrição do Sienge não vai mais no Label do DS", !/<Label [^>]*>\{d\.insumo\.detalhe\}<\/Label>/.test(escolha));
-conf("cada opção é um cartão clicável inteiro", /<label key=\{d\.insumo\.descricao \+ k\} htmlFor=/.test(escolha));
-conf("a opção marcada fica em destaque", escolha.includes('marcada ? "border-brand bg-brand-soft"'));
-conf("o selo vai embaixo do texto, e não numa coluna de largura fixa", !escolha.includes('className="w-32 shrink-0 text-right"'));
-
-/* MODO LEITURA DITO DENTRO DO PAINEL (22/09/2026). "Aqui diz que bate tudo
-   mas não consigo selecionar": a obra estava sem edição habilitada, os
-   cartões seguiam com cursor de clique e nada dizia por que não mudavam. */
-/* O MODO SEMPRE À VISTA, ao lado do título — nos dois sentidos. */
-conf("o topo do painel diz quando é só consulta", painel.includes("só consulta</Badge>"));
-conf("... e quando está em edição", painel.includes("em edição</Badge>"));
-conf("o painel explica o modo leitura", painel.includes("Para escolher a descrição ou mudar o insumo, habilite a edição da obra."));
-conf("... e oferece habilitar a edição ali mesmo", painel.includes("onClick={onHabilitar}"));
-conf("... e diz quem está editando, quando é outra pessoa", painel.includes("{editandoPor}</b> está editando esta obra"));
-conf("as Compras passam o habilitar até a linha", /<LinhaCompra [\s\S]{0,1500}onHabilitar=\{onHabilitar\} editandoPor=\{editandoPor\}/.test(src));
-conf("cartão em modo leitura não finge ser clicável", escolha.includes('somenteLeitura ? "" : "cursor-pointer hover:bg-surface-2"'));
+conf("as duas tabelas mostram a escolha na linha",
+  (src.match(/<AssociacaoSienge /g) || []).length === 2 && painel.includes("return <EscolhaSienge {...escolha} />;"));
+conf("sem painel lateral: a escolha não abre outra tela", !painel.includes("<Sheet") && !escolha.includes("<Sheet"));
+conf("a descrição do Sienge não vai no Label do DS", !/<Label [^>]*>\{d\.insumo\.detalhe\}<\/Label>/.test(escolha));
+conf("lista compacta: bolinha, texto e selo na mesma linha", /<label htmlFor=\{`\$\{idBase\}-v\$\{k\}`\}/.test(escolha) && !escolha.includes("border-brand bg-brand-soft"));
+conf("opção em modo leitura não finge ser clicável", escolha.includes('somenteLeitura ? "" : "cursor-pointer"'));
 
 /* AS REGRAS, num ⓘ com tooltip, e não em parágrafos (22/09/2026: "está
    muito poluído com texto"). */

@@ -115,8 +115,12 @@ conf("o App importa a régua em vez de recriá-la",
    outra pessoa ainda estiver lá, o clique volta com o nome e a hora nova. */
 const efeito = app.slice(app.indexOf("A TRAVA DE OUTRA PESSOA TAMBEM VENCE"), app.indexOf("TROCAR DE TELA VOLTA PRO MODO LEITURA"));
 conf("vencer não toma a trava sozinho", /pegarEdicao\(/.test(efeito), false);
+/* O botão mora na faixa da edição, no topo (25/09/2026): a associação ao
+   Sienge voltou pra linha e o aviso de modo leitura ficou só lá em cima. */
+const faixa = app.slice(app.indexOf('selo = <Badge tone="brand"><Eye size={12} aria-hidden="true" /> Modo leitura</Badge>;'),
+  app.indexOf("const podeMostrarGravacao"));
 conf("o botão de habilitar aparece quando não há dono",
-  app.includes("{onHabilitar && !editandoPor && ("), true);
+  faixa.includes("onClick={onHabilitar}") && app.includes("{edicao.por} está editando"), true);
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

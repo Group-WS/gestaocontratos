@@ -61,7 +61,7 @@ import Catalogo from "./Catalogo";
 import { confirmar, mensagem, perguntar, avisar, escolherVerbas } from "./lib/confirmar.jsx";
 import {
   adaptObras, Button, cn, Input, Toggle, ToggleGroup, ToggleGroupItem, Tabs, TabsList, TabsTrigger,
-  Sheet, SheetContent, SheetTitle, SheetHeader, SheetDescription, SheetFooter, Popover, PopoverTrigger, PopoverContent,
+  Sheet, SheetContent, SheetTitle, Popover, PopoverTrigger, PopoverContent,
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, ThemeToggle,
   NotificationBell, CommandGroup, Kbd,
   Collapsible, CollapsibleTrigger, CollapsibleContent, Separator,
@@ -12488,37 +12488,29 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
 
         <RadioGroup value={escolhida ?? "__nova__"} disabled={somenteLeitura} aria-label="Descrição que vai pra planilha"
           onValueChange={(v) => onEscolher(v === "__nova__" ? null : v)} className="flex flex-col gap-2">
-          {/* CARTÕES, e não linhas de rótulo. O texto ia no `Label` do DS —
-              que é rótulo de campo: mono, caixa-alta, 10,5px — e a descrição
-              do Sienge virava uma tira ilegível. O cartão inteiro é clicável,
-              o texto fica em caixa normal e o selo vai embaixo dele, em vez
-              de disputar a largura ao lado. */}
-          {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => {
-            const marcada = escolhida === d.insumo.descricao;
-            return (
-              <label key={d.insumo.descricao + k} htmlFor={`${idBase}-v${k}`} title={d.insumo.descricao}
-                className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${marcada ? "border-brand bg-brand-soft" : "border-line-1"} ${somenteLeitura ? "" : "cursor-pointer hover:bg-surface-2"}`}>
-                <RadioGroupItem id={`${idBase}-v${k}`} value={d.insumo.descricao} className="mt-1" />
-                <span className="flex min-w-0 flex-1 flex-col gap-2">
-                  <span className="text-sm leading-snug text-text">{d.insumo.detalhe}</span>
-                  <span>
-                    {d.faltaram.length > 0
-                      ? <Badge tone="warning" title={`Estas palavras da descrição do item não aparecem neste detalhe: ${d.faltaram.join(", ")}. Confira se é o mesmo produto antes de escolher.`}>falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
-                      : <Badge tone="success" title="Todas as palavras da descrição do item aparecem neste detalhe do Sienge.">bate tudo</Badge>}
-                  </span>
-                </span>
-              </label>
-            );
-          })}
-          <label htmlFor={`${idBase}-nova`} title="Usar a descrição gerada — é ela que preenche o template do Sienge"
-            className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${!escolhida ? "border-brand bg-brand-soft" : "border-line-1"} ${somenteLeitura ? "" : "cursor-pointer hover:bg-surface-2"}`}>
+          {/* A LISTA COMPACTA, na própria linha (25/09/2026). Houve um painel
+              lateral com cartões (22/09), e o time não gostou de abrir outra
+              tela pra escolher: a escolha voltou pra linha, como era. O
+              texto do detalhe fica em caixa normal (não no `Label` do DS,
+              que é mono e caixa-alta) e o selo explica ao passar o mouse. */}
+          {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
+            <div key={d.insumo.descricao + k} className="flex items-start gap-2 text-sm" title={d.insumo.descricao}>
+              <RadioGroupItem id={`${idBase}-v${k}`} value={d.insumo.descricao} className="mt-1" />
+              <label htmlFor={`${idBase}-v${k}`}
+                className={`min-w-0 flex-1 leading-snug text-text ${somenteLeitura ? "" : "cursor-pointer"}`}>{d.insumo.detalhe}</label>
+              <span className="shrink-0">
+                {d.faltaram.length > 0
+                  ? <Badge tone="warning" title={`Estas palavras da descrição do item não aparecem neste detalhe: ${d.faltaram.join(", ")}. Confira se é o mesmo produto antes de escolher.`}>falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
+                  : <Badge tone="success" title="Todas as palavras da descrição do item aparecem neste detalhe do Sienge.">bate tudo</Badge>}
+              </span>
+            </div>
+          ))}
+          <div className="flex items-start gap-2 text-sm" title="Usar a descrição gerada — é ela que preenche o template do Sienge">
             <RadioGroupItem id={`${idBase}-nova`} value="__nova__" className="mt-1" />
-            <span className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="text-sm font-semibold text-text">Cadastrar como detalhe novo</span>
-              <span className="text-xs text-text-mute">Nenhuma das acima serve: vai a descrição abaixo, que você pode ajustar.</span>
-              {editado && <span><Badge tone="neutral">editada à mão</Badge></span>}
-            </span>
-          </label>
+            <label htmlFor={`${idBase}-nova`}
+              className={`min-w-0 flex-1 leading-snug text-text ${somenteLeitura ? "" : "cursor-pointer"}`}>cadastrar como detalhe novo</label>
+            {editado && <span className="shrink-0"><Badge tone="neutral">editada à mão</Badge></span>}
+          </div>
         </RadioGroup>
 
         <div className={`flex flex-col gap-2 ${escolhida ? "opacity-60" : ""}`}>
@@ -12571,91 +12563,14 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
   );
 }
 
-/* A ASSOCIAÇÃO NA TABELA — um resumo, e a escolha num painel.
+/* A ASSOCIAÇÃO NA TABELA — a escolha na própria linha (25/09/2026).
  *
- * A escolha inteira (mãe, quatro variantes, a descrição nova e os dois
- * códigos) morava dentro de uma coluna de 320px. Cada linha passava de
- * 700px de altura, e uma verba de 21 itens virava uma página de 12 mil
- * pixels onde não dava pra comparar uma opção com a outra.
- *
- * Agora a célula diz em uma olhada o que está decidido — a mãe e se vai
- * variante existente ou detalhe novo — e o painel lateral abre a escolha
- * com espaço. Nada mudou no que se grava: é a mesma EscolhaSienge, com os
- * mesmos campos, gravando do mesmo jeito (os de texto, ao sair do campo). */
+ * De 22 a 25/09 a célula era um resumo e a escolha abria num painel lateral
+ * (Sheet). Os usuários não gostaram de sair da tabela pra escolher: a
+ * escolha voltou pra linha, como era antes. Nada muda no que se grava — é a
+ * mesma EscolhaSienge, com os mesmos campos. */
 function AssociacaoSienge({ item, detalheItem, onHabilitar, editandoPor, ...escolha }) {
-  const [aberto, setAberto] = useState(false);
-  const { mae, escolhida, somenteLeitura } = escolha;
-  const variante = escolhida && mae
-    ? (mae.variantes || []).find((v) => v.descricao === escolhida)?.detalhe || escolhida
-    : null;
-
-  return (
-    /* O INSUMO NUMA LINHA (23/09/2026): código e nome do insumo mãe com um
-       selo pequeno do detalhe (existente ou novo) — e é o próprio texto que
-       abre a revisão. Antes eram três linhas: o insumo, o selo e um botão
-       "Revisar associação" separado. */
-    <div className="text-sm">
-      {mae ? (
-        <Button variant="ghost" size="sm" type="button" onClick={() => setAberto(true)}
-          className="-ml-2 h-auto max-w-full justify-start gap-2 px-2 py-1 text-left font-normal whitespace-normal"
-          aria-label={`${somenteLeitura ? "Ver associação" : "Revisar associação"}: ${mae.codigo} ${mae.nome}`}
-          title={`${mae.codigo} ${mae.nome} — ${variante ? `usa detalhe existente: ${variante}` : "cadastra detalhe novo"}`}>
-          <span className="mono shrink-0 text-xs text-text-mute">{mae.codigo}</span>
-          <span className="line-clamp-1 min-w-0 text-text">{mae.nome}</span>
-          <Badge tone={variante ? "success" : "neutral"} className="shrink-0">{variante ? "detalhe existente" : "detalhe novo"}</Badge>
-        </Button>
-      ) : (
-        <Button variant="outline" size="sm" type="button" onClick={() => setAberto(true)}>
-          <AlertTriangle size={14} aria-hidden="true" /> {somenteLeitura ? "sem insumo mãe" : "Escolher insumo — sem insumo mãe"}
-        </Button>
-      )}
-
-      <Sheet open={aberto} onOpenChange={setAberto}>
-        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
-          <SheetHeader className="border-b border-line-1 p-5">
-            {/* O MODO SEMPRE À VISTA, ao lado do título: dá pra alterar, ou é
-                só consulta? Sem isso a pessoa descobre clicando e vendo que
-                nada acontece. */}
-            <div className="flex flex-wrap items-center gap-2 pr-8">
-              <SheetTitle>Associar ao insumo do Sienge</SheetTitle>
-              {somenteLeitura
-                ? <Badge tone="neutral"><Lock size={12} aria-hidden="true" /> só consulta</Badge>
-                : <Badge tone="success"><Pencil size={12} aria-hidden="true" /> em edição</Badge>}
-            </div>
-            <SheetDescription className="flex flex-col gap-1">
-              <span className="font-semibold text-text">{item}</span>
-              {detalheItem && <span className="text-xs">{detalheItem}</span>}
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
-            {/* MODO LEITURA DITO AQUI DENTRO. O aviso da tela fica lá no topo
-                das Compras, longe do painel: quem abria a escolha via os
-                cartões, clicava e nada acontecia — sem saber por quê. */}
-            {somenteLeitura && (
-              <Alert tone="info">
-                <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <span className="min-w-0 flex-1">
-                    {editandoPor
-                      ? <><b>{editandoPor}</b> está editando esta obra. A escolha fica disponível quando a edição for liberada.</>
-                      : onHabilitar
-                        ? "Para escolher a descrição ou mudar o insumo, habilite a edição da obra."
-                        : "O seu perfil consulta as Compras, sem alterar a associação."}
-                  </span>
-                  {onHabilitar && !editandoPor && (
-                    <Button size="sm" className="shrink-0" onClick={onHabilitar}><Lock size={14} aria-hidden="true" /> Habilitar edição</Button>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-            <EscolhaSienge {...escolha} />
-          </div>
-          <SheetFooter className="border-t border-line-1 p-4">
-            <Button onClick={() => setAberto(false)}>{somenteLeitura ? "Fechar" : "Concluir"}</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
+  return <EscolhaSienge {...escolha} />;
 }
 
 function PedidoCompra({ obra, itens, usuario }) {
