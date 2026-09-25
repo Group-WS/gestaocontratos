@@ -60,7 +60,7 @@ conf("sem decisão não se finge 'detalhe novo'", !tudo.includes('?? "__nova__"'
 conf("trocar a mãe volta a situação para 'a conferir'", linhaCompra.includes('detalheSienge: null, detalheNovoSienge: false }, "Insumo mãe trocado.")'));
 conf("escolher 'detalhe novo' grava a decisão", linhaCompra.includes("detalheSienge: null, detalheNovoSienge: true,"));
 conf("a massa marca a escolha como detalhe que existe", src.includes("detalheSienge: melhor.insumo.descricao,\n        detalheNovoSienge: false,"));
-conf("a barra do grupo conta os que estão a conferir", src.includes("{aConferir} a conferir"));
+conf("a barra do grupo conta os que estão a conferir", src.includes("insumos\"} Sienge a conferir"));
 /* 25/09/2026: só com borda, a faixa sumia no tom da linha. */
 conf("a faixa tem fundo próprio, de token, sem virar card", faixa.includes('"flex min-w-0 flex-col gap-2 rounded-lg bg-surface-1 px-3 py-2", className') && !/className="[^"]*\bborder\b[^"]*bg-surface-1/.test(faixa));
 conf("a situação vem primeiro, com largura fixa (alinha na coluna)", faixa.includes('<Badge tone={situacao.tom} className="w-24 justify-center"'));

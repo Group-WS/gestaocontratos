@@ -19,7 +19,7 @@ const VER_COMO = import.meta.env.DEV
 import * as XLSX from "xlsx";
 import {
   ChevronDown, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle2, XCircle,
-  Search, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
+  Search, ListFilter, Building2, ClipboardList, ShoppingCart, ArrowUpRight,
   Minus, Check, Link2, PackageSearch, Bell, Sparkles,
   ArrowLeftRight, ArrowDown, CornerDownRight,
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
@@ -13829,7 +13829,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                               if (!aberto) abrir(g.num);
                               setSoConferir((p) => { const n = new Set(p); n.has(g.num) ? n.delete(g.num) : n.add(g.num); return n; });
                             }}>
-                            {aConferir} a conferir
+                            {/* CLARO O QUE É E O QUE FAZ (25/09/2026): "2 a conferir" não dizia
+                                que é um filtro nem o que conferir — o insumo do Sienge. */}
+                            <ListFilter size={14} aria-hidden="true" />
+                            {filtrandoConferir ? "Mostrar todos os produtos" : (
+                              <>Ver só <Badge tone="warning">{aConferir}</Badge> {aConferir === 1 ? "insumo" : "insumos"} Sienge a conferir</>
+                            )}
                           </Button>
                         )}
                         {/* O mesmo CSV do Gerador de códigos, só com o que
