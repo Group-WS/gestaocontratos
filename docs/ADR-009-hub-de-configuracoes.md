@@ -63,3 +63,21 @@ Gestão de Obras TKWS · 25/09/2026 · **Decidido pelo dev, item a item · revis
   até o DS corrigir.
 - Testes: `web/src/__testes__/hub-de-configuracoes.test.mjs` e `e2e/configuracoes.spec.mjs`
   (hub, índice, endereço antigo e acesso negado).
+
+## Revisão — com o settings-nav do DS 1.4.0 (25/09/2026)
+
+O DS publicou o `settings-nav` na 1.4.0 (`SettingsHub`, `SettingsIndex`, `SettingsPanel`),
+fechando a lacuna do item 1. A pedido do dev, a estrutura foi refeita sobre ele:
+
+- `@group-ws/ws-ui` sobe para `^1.4.0`.
+- O catálogo (`atalhos.js`) passa ao formato `SettingsNavArea`. Cor de sinal das áreas: **Acesso**
+  em `--mod-settings`, **Sienge** em `--mod-orcamentos` (decisão do dev).
+- O hub é o `SettingsHub`; o índice é o `SettingsIndex` (só em tela larga, como no exemplo do DS;
+  no celular o caminho é o hub); os atalhos são links de verdade (`linkDeConfiguracao`).
+- **O atalho ⌘, entra** (revê o item 2, decisão do dev): o `SettingsPanel` abre com Cmd+, ou
+  Ctrl+, sobre qualquer tela, para quem vê algum atalho.
+- Saem o hub e o índice montados com Card/ListGroup e o `comoBotao` — a segunda lacuna (foco do
+  `ListGroupItem`) deixa de afetar esta tela.
+- A busca do settings-nav é um `<input>` cru que conta com o preflight do Tailwind, que o app não
+  carrega (`estilos/ws-ui.css`). A base local ganhou um reset de especificidade zero para
+  `input[type='search']`.

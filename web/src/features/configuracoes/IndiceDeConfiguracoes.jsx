@@ -1,43 +1,23 @@
 import React from "react";
-import { ListGroup, ListGroupItem } from "@group-ws/ws-ui";
-import { ArrowLeft } from "lucide-react";
+import { SettingsIndex } from "@group-ws/ws-ui";
 import { AREAS_DE_CONFIGURACOES, areasVisiveis } from "./atalhos.js";
-import { ICONE_DO_ATALHO, comoBotao } from "./ConfiguracoesPage.jsx";
+import { linkDeConfiguracao } from "./linkDeConfiguracao.jsx";
 
-/* O ÍNDICE LATERAL das telas de configuração (ADR-009, TELA-31): as áreas
-   abertas ao mesmo tempo, a tela atual marcada, e a volta ao hub no topo.
-   Em tela estreita ele sobe para cima do conteúdo. */
-export function IndiceDeConfiguracoes({ atual, podeVer, onAbrir, children }) {
+/* O ÍNDICE LATERAL das telas de configuração (ADR-009, TELA-31), com o
+   SettingsIndex do DS: todas as áreas abertas, a tela atual marcada e uma
+   busca. Como no exemplo do DS, só aparece em tela larga; no celular, o
+   caminho é o hub.
+
+   O PageShell sangra sobre o respiro da área de conteúdo (-mx/-my); o índice
+   ocupa a mesma sangria, colado à borda, e devolve o respiro à tela ao lado
+   para o PageShell dela sangrar de novo até o índice. */
+export function IndiceDeConfiguracoes({ rotaAtual, podeVer, onAbrir, children }) {
   const areas = areasVisiveis(AREAS_DE_CONFIGURACOES, podeVer);
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <nav aria-label="Configurações" className="flex shrink-0 flex-col gap-4 px-4 pt-6 lg:sticky lg:top-0 lg:w-64 lg:pr-0">
-        <ListGroup>
-          <ListGroupItem {...comoBotao(() => onAbrir("configuracoes"))}
-            leading={<ArrowLeft size={14} aria-hidden="true" />}>
-            Configurações
-          </ListGroupItem>
-        </ListGroup>
-        {areas.map((area) => (
-          <div key={area.id} className="flex flex-col gap-2">
-            <p className="px-1 text-xs font-medium uppercase tracking-wide text-text-mute">{area.nome}</p>
-            <ListGroup aria-label={area.nome}>
-              {area.itens.map((item) => {
-                const Icone = ICONE_DO_ATALHO[item.id];
-                const ativo = item.id === atual;
-                return (
-                  <ListGroupItem key={item.id} active={ativo} aria-current={ativo ? "page" : undefined}
-                    {...comoBotao(() => onAbrir(item.id))}
-                    leading={Icone ? <Icone size={14} aria-hidden="true" /> : null}>
-                    {item.nome}
-                  </ListGroupItem>
-                );
-              })}
-            </ListGroup>
-          </div>
-        ))}
-      </nav>
-      <div className="min-w-0 flex-1">{children}</div>
+    <div className="-mx-4 -my-6 flex min-h-full items-stretch md:-mx-8 md:-my-8">
+      <SettingsIndex areas={areas} rotaAtual={rotaAtual} renderLink={linkDeConfiguracao(onAbrir)}
+        className="sticky top-0 hidden max-h-screen lg:flex" />
+      <div className="flex min-w-0 flex-1 flex-col px-4 py-6 md:px-8 md:py-8">{children}</div>
     </div>
   );
 }

@@ -115,9 +115,9 @@ test("quem não administra vê só os atalhos dele, e o Cadastro de Insumos nem 
   await entrarComo(page, context, GC);
   await page.goto(`${APP}/configuracoes`);
   // ADR-009: o hub abre para quem vê algum atalho, e mostra só os dele.
-  await expect(page.getByRole("button", { name: /Banco de Preços/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Cadastro de Insumos/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Equipe e acessos/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Banco de Preços/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Cadastro de Insumos/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Equipe e acessos/ })).toHaveCount(0);
 
   await page.goto(`${APP}/configuracoes/insumos`);
   await expect(page.getByRole("navigation", { name: "Módulos" })).toBeVisible();
@@ -134,16 +134,29 @@ test("o hub leva ao Cadastro de Insumos, e o índice lateral volta", async ({ pa
   await expect(menu.getByRole("link", { name: /Banco de Preços/ })).toHaveCount(0);
   await expect(menu.getByRole("link", { name: /EAP Sienge/ })).toHaveCount(0);
 
-  await page.getByRole("searchbox", { name: "Buscar configuração" }).fill("material");
-  await expect(page.getByRole("button", { name: /Banco de Preços/ })).toHaveCount(0);
-  await page.getByRole("button", { name: /Cadastro de Insumos/ }).click();
+  await page.getByRole("searchbox", { name: /Buscar em 4 configurações/ }).fill("material");
+  await expect(page.getByRole("link", { name: /Banco de Preços/ })).toHaveCount(0);
+  await page.getByRole("link", { name: /Cadastro de Insumos/ }).click();
   await expect(page).toHaveURL(/\/configuracoes\/insumos$/);
   await expect(page.getByText("Tabela de preços ativa")).toBeVisible();
   await capturar(page, "configuracoes-hub-insumos");
 
-  await page.getByRole("navigation", { name: "Configurações" }).getByRole("button", { name: /EAP Sienge/ }).click();
+  await page.getByRole("navigation", { name: "Configurações" }).getByRole("link", { name: /EAP Sienge/ }).click();
   await expect(page).toHaveURL(/\/configuracoes\/eap$/);
   await page.goBack();
+  await expect(page).toHaveURL(/\/configuracoes\/insumos$/);
+});
+
+test("⌘, abre as Configurações por cima de qualquer tela", async ({ page, context }) => {
+  await entrarComo(page, context, ADMIN);
+  await page.goto(`${APP}/configuracoes/eap`);
+  await expect(page.getByRole("navigation", { name: "Configurações" })).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+Comma");
+  const painel = page.getByRole("dialog", { name: "Configurações" });
+  await expect(painel).toBeVisible();
+  await capturar(page, "configuracoes-painel");
+  await painel.getByRole("link", { name: /Cadastro de Insumos/ }).click();
+  await expect(painel).toHaveCount(0);
   await expect(page).toHaveURL(/\/configuracoes\/insumos$/);
 });
 

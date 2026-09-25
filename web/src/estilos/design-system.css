@@ -199,6 +199,19 @@
     accent-color: var(--brand);
   }
 
+  /* O preflight do Tailwind não entra (ver ws-ui.css), e o campo de busca do
+     settings-nav do DS (1.4.0) é um <input> cru que conta com ele: sem isto,
+     aparece a borda e o fundo do navegador dentro da caixa. Especificidade
+     zero — o Input do DS, com borda por classe, continua mandando. */
+  :where(input[type='search']) {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    appearance: none;
+  }
+
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;

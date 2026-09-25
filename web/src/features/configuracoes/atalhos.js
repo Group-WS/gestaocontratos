@@ -1,58 +1,57 @@
+import { Boxes, Calculator, DollarSign, KeyRound, ShieldCheck, Workflow } from "lucide-react";
+
 /* OS ATALHOS DE CONFIGURAÇÕES (ADR-009, 25/09/2026).
 
-   Um catálogo só, lido pelo hub (os cartões e a busca) e pelo índice lateral
-   de cada tela de configuração — os dois nunca discordam sobre o que existe.
-   O `id` de cada item é o id do módulo no App.jsx; quem pode ver cada um
-   continua sendo o `podeVerModulo` (e, de verdade, a API e o RLS). */
+   Um catálogo só, no formato `SettingsNavArea` do DS (1.4.0), lido pelas
+   três superfícies do settings-nav: o hub (SettingsHub), o índice lateral
+   (SettingsIndex) e o painel do ⌘, (SettingsPanel). O `modulo` de cada item
+   é o id do módulo no App.jsx; quem pode ver cada um continua sendo o
+   `podeVerModulo` (e, de verdade, a API e o RLS). */
 
 export const AREAS_DE_CONFIGURACOES = Object.freeze([
   {
     id: "acesso",
-    nome: "Acesso",
+    label: "Acesso",
+    Icon: KeyRound,
+    accent: "var(--mod-settings)",
     resumo: "Quem entra no sistema e o que cada um vê.",
     itens: [
-      { id: "equipe", nome: "Equipe e acessos", sub: "quem é quem, e o que cada um vê", sinonimos: ["pessoas", "perfil", "usuários", "permissão"] },
+      { to: "/configuracoes/equipe", modulo: "equipe", label: "Equipe e acessos", Icon: ShieldCheck, sinonimos: ["pessoas", "perfil", "usuários", "permissão"] },
     ],
   },
   {
     id: "sienge",
-    nome: "Sienge",
+    label: "Sienge",
+    Icon: Workflow,
+    accent: "var(--mod-orcamentos)",
     resumo: "O que vem do Sienge e alimenta compras e orçamento.",
     itens: [
-      { id: "precos", nome: "Banco de Preços", sub: "preço pago por insumo, dos pedidos", sinonimos: ["preço", "pedido de compra", "custo"] },
-      { id: "eap", nome: "EAP Sienge", sub: "apropriação do orçamento", sinonimos: ["orçamento", "apropriação", "plano de contas"] },
-      { id: "insumos", nome: "Cadastro de Insumos", sub: "insumos ativos, do relatório do Sienge", sinonimos: ["insumo", "produto", "material", "relatório"] },
+      { to: "/configuracoes/precos", modulo: "precos", label: "Banco de Preços", Icon: DollarSign, sinonimos: ["preço", "pedido de compra", "custo"] },
+      { to: "/configuracoes/eap", modulo: "eap", label: "EAP Sienge", Icon: Calculator, sinonimos: ["orçamento", "apropriação", "plano de contas"] },
+      { to: "/configuracoes/insumos", modulo: "insumos", label: "Cadastro de Insumos", Icon: Boxes, sinonimos: ["insumo", "produto", "material", "relatório"] },
     ],
   },
 ]);
 
 /* Os módulos que moram dentro de Configurações (saem do menu lateral). */
 export const MODULOS_DE_CONFIGURACOES = Object.freeze(
-  AREAS_DE_CONFIGURACOES.flatMap((a) => a.itens.map((i) => i.id)));
+  AREAS_DE_CONFIGURACOES.flatMap((a) => a.itens.map((i) => i.modulo)));
 
-const normalizar = (texto) => String(texto ?? "")
-  .normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+/* O endereço do hub; os itens moram abaixo dele. */
+export const ENDERECO_DO_HUB = "/configuracoes";
+
+/** O módulo que um endereço do catálogo abre (o hub, se não for de um item). */
+export function moduloDoAtalho(to) {
+  for (const a of AREAS_DE_CONFIGURACOES) {
+    const item = a.itens.find((i) => i.to === to);
+    if (item) return item.modulo;
+  }
+  return "configuracoes";
+}
 
 /** As áreas só com os itens que a pessoa pode ver; área vazia sai. */
 export function areasVisiveis(areas, podeVer) {
   return areas
-    .map((a) => ({ ...a, itens: a.itens.filter((i) => podeVer(i.id)) }))
-    .filter((a) => a.itens.length > 0);
-}
-
-/**
- * Filtra pelo nome do item, pela descrição, por sinônimo ou pelo nome da área.
- * Casar pelo nome da área devolve a área inteira: quem digita "sienge" quer
- * ver o que tem lá.
- */
-export function filtrarAtalhos(areas, termo) {
-  const alvo = normalizar(termo).trim();
-  if (!alvo) return areas;
-  return areas
-    .map((a) => {
-      if (normalizar(a.nome).includes(alvo)) return a;
-      const casa = (i) => [i.nome, i.sub, ...(i.sinonimos || [])].some((t) => normalizar(t).includes(alvo));
-      return { ...a, itens: a.itens.filter(casa) };
-    })
+    .map((a) => ({ ...a, itens: a.itens.filter((i) => podeVer(i.modulo)) }))
     .filter((a) => a.itens.length > 0);
 }

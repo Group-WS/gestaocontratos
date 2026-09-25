@@ -1,5 +1,7 @@
 import DashboardPage from "./features/dashboard/DashboardPage.jsx";
-import ConfiguracoesPage, { ICONE_DO_ATALHO } from "./features/configuracoes/ConfiguracoesPage.jsx";
+import ConfiguracoesPage from "./features/configuracoes/ConfiguracoesPage.jsx";
+import { PainelDeConfiguracoes } from "./features/configuracoes/PainelDeConfiguracoes.jsx";
+import { Boxes as IconeInsumos } from "lucide-react";
 import CadastroDeInsumosPage from "./features/configuracoes/CadastroDeInsumosPage.jsx";
 import { IndiceDeConfiguracoes } from "./features/configuracoes/IndiceDeConfiguracoes.jsx";
 import { MODULOS_DE_CONFIGURACOES } from "./features/configuracoes/atalhos.js";
@@ -10663,7 +10665,7 @@ const MODULOS = [
      Preços, EAP Sienge e Cadastro de Insumos moram dentro dele e saem do menu
      (MODULOS_DE_CONFIGURACOES). */
   { id: "configuracoes", nome: "Configurações", sub: "cadastros e integrações", Icone: Settings },
-  { id: "insumos", nome: "Cadastro de Insumos", sub: "insumos ativos do Sienge", Icone: ICONE_DO_ATALHO.insumos },
+  { id: "insumos", nome: "Cadastro de Insumos", sub: "insumos ativos do Sienge", Icone: IconeInsumos },
   { id: "catalogo", nome: "Catálogo TKWS", sub: "o que a casa especifica", Icone: BookOpen },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: DollarSign },
@@ -26343,6 +26345,8 @@ export default function App() {
       {/* A marca leva pro Inicio — ou, pra quem nao ve o Inicio (Mehoo),
           pra primeira tela que a pessoa pode ver. */}
       <div className="flex">
+        {/* ⌘, abre as Configurações por cima de qualquer tela (ADR-009). */}
+        <PainelDeConfiguracoes rotaAtual={enderecoDaTela({ modulo })} podeVer={podeVerNoHub} onAbrir={setModulo} />
         {!emTelaCheia && <Sidebar onInicio={() => setModulo(migracaoPendente || podeVerModulo(eu, "inicio") ? "inicio" : (modulosVisiveis[0]?.id || "inicio"))}
           obras={obrasAtivas} aberta={menuAberto} onFechar={() => setMenuAberto(false)} selected={selectedId} modulo={modulo} onModulo={setModulo} usuario={usuario}
           modulos={modulosVisiveis} pendentesCount={nPendentes}
@@ -26438,11 +26442,11 @@ export default function App() {
           ) : modulo === "configuracoes" ? (
           <ConfiguracoesPage podeVer={podeVerNoHub} onAbrir={setModulo} />
           ) : modulo === "insumos" ? (
-          <IndiceDeConfiguracoes atual="insumos" podeVer={podeVerNoHub} onAbrir={setModulo}>
+          <IndiceDeConfiguracoes rotaAtual="/configuracoes/insumos" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <CadastroDeInsumosPage usuario={usuario} />
           </IndiceDeConfiguracoes>
           ) : modulo === "equipe" && cuidaDaEquipe ? (
-          <IndiceDeConfiguracoes atual="equipe" podeVer={podeVerNoHub} onAbrir={setModulo}>
+          <IndiceDeConfiguracoes rotaAtual="/configuracoes/equipe" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb={`Cadastro · ${pessoas.length}`} title="Equipe" description="Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra." contentClassName="flex flex-col gap-6">
             <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
               usuario={usuario} migracaoPendente={migracaoPendente}
@@ -26484,14 +26488,14 @@ export default function App() {
           <AditivosView obras={obrasAtivas} usuario={usuario} souAdmin={souAdmin} />
           </>
           ) : modulo === "precos" ? (
-          <IndiceDeConfiguracoes atual="precos" podeVer={podeVerNoHub} onAbrir={setModulo}>
+          <IndiceDeConfiguracoes rotaAtual="/configuracoes/precos" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb="Referência de custo" title="Banco de Preços" description="Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge." contentClassName="flex flex-col gap-6">
             <BancoPrecosView usuario={usuario}
               onAbrirConfiguracoes={podeVerNoHub("insumos") ? () => setModulo("insumos") : undefined} />
           </PageShell>
           </IndiceDeConfiguracoes>
           ) : modulo === "eap" ? (
-          <IndiceDeConfiguracoes atual="eap" podeVer={podeVerNoHub} onAbrir={setModulo}>
+          <IndiceDeConfiguracoes rotaAtual="/configuracoes/eap" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb="Integração Sienge" title="EAP Sienge" description="Onde cada produto é apropriado no orçamento — o que a solicitação de compra exige." contentClassName="flex flex-col gap-6">
             <EapSiengeView usuario={usuario} souAdmin={souAdmin} />
           </PageShell>
