@@ -30,7 +30,7 @@ conf("o painel antigo saiu", !src.includes("function EscolhaSienge(") && !src.in
 conf("sem painel lateral: a escolha não abre outra tela", !tudo.includes("<Sheet"));
 /* 25/09/2026: "precisa ocupar o espaço de todas as colunas após descrição". */
 conf("em Compras, a faixa é uma linha própria, da descrição até a última coluna",
-  /\{mostraFaixa && \(\s*<TableRow className=\{tomDaLinha\}>\s*<TableCell colSpan=\{nCols - 2\} className="pt-0">\s*<FaixaSienge /.test(linhaCompra));
+  /\{mostraFaixa && \(\s*<TableRow className=\{tomDaLinha\}>\s*<TableCell colSpan=\{nCols - 2\} className="border-b border-line-1 pt-0">\s*<FaixaSienge /.test(linhaCompra));
 conf("... lida junto com o item: sem o fio entre as duas linhas, check e código nas duas",
   linhaCompra.includes('<TableRow className={cn(tomDaLinha, mostraFaixa && "!border-b-0")}>') && (linhaCompra.match(/rowSpan=\{mostraFaixa \? 2 : undefined\}/g) || []).length === 2);
 

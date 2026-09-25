@@ -15808,10 +15808,13 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         como uma: mesmo tom, sem o fio entre elas, e o check e o código
         ocupando as duas. */}
     <TableRow className={cn(tomDaLinha, mostraFaixa && "!border-b-0")}>
-      <TableCell className="text-center" rowSpan={mostraFaixa ? 2 : undefined}>
+      {/* O FIO NO FIM DO ITEM (25/09/2026): com a faixa, o item são duas
+          linhas; a tabela é de bordas separadas e o fio do `tr` não aparece,
+          então ele vai na base das células que fecham o item. */}
+      <TableCell className={cn("text-center", mostraFaixa && "border-b border-line-1")} rowSpan={mostraFaixa ? 2 : undefined}>
         <Checkbox checked={!!selecionado} onCheckedChange={onSelecionar} aria-label="Selecionar produto" />
       </TableCell>
-      <TableCell className="mono text-xs text-text-mute" rowSpan={mostraFaixa ? 2 : undefined}>{codigoVisivel(it)}</TableCell>
+      <TableCell className={cn("mono text-xs text-text-mute", mostraFaixa && "border-b border-line-1")} rowSpan={mostraFaixa ? 2 : undefined}>{codigoVisivel(it)}</TableCell>
       {/* A LINHA COMPACTA (23/09/2026): descrição numa linha (inteira na
           dica), os dados do produto numa linha cinza embaixo e as ações
           raras (trocar, observação) no menu ⋯ — a linha caiu para menos da
@@ -15953,7 +15956,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
         aparece na hora; o resto, assim que a sugestão da verba chega. */}
     {mostraFaixa && (
       <TableRow className={tomDaLinha}>
-        <TableCell colSpan={nCols - 2} className="pt-0">
+        <TableCell colSpan={nCols - 2} className="border-b border-line-1 pt-0">
           <FaixaSienge className="" desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
             // Outra mãe, outros detalhes: a decisão volta para "a conferir" — RN-090.
             onMae={(cod) => mudarNoSienge({ maeSienge: cod || null, detalheSienge: null, detalheNovoSienge: false }, "Insumo mãe trocado.")}
