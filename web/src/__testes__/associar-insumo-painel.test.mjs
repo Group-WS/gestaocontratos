@@ -21,7 +21,11 @@ conf("as duas tabelas mostram a escolha na linha",
   (src.match(/<AssociacaoSienge /g) || []).length === 2 && painel.includes("return <EscolhaSienge {...escolha} />;"));
 conf("sem painel lateral: a escolha não abre outra tela", !painel.includes("<Sheet") && !escolha.includes("<Sheet"));
 conf("a descrição do Sienge não vai no Label do DS", !/<Label [^>]*>\{d\.insumo\.detalhe\}<\/Label>/.test(escolha));
-conf("lista compacta: bolinha, texto e selo na mesma linha", /<label htmlFor=\{`\$\{idBase\}-v\$\{k\}`\}/.test(escolha) && !escolha.includes("border-brand bg-brand-soft"));
+conf("lista compacta: bolinha e texto, sem cartão", /<label htmlFor=\{`\$\{idBase\}-v\$\{k\}`\}/.test(escolha) && !escolha.includes("border-brand bg-brand-soft"));
+/* 25/09/2026: o selo ao lado ("falta linee, broto, boucle") espremia o texto
+   numa palavra por linha. Ele vai embaixo, e curto. */
+conf("o selo vai embaixo do texto, e não disputa a largura", /<span className="flex min-w-0 flex-1 flex-col items-start gap-1">\s*<label htmlFor=\{`\$\{idBase\}-v/.test(escolha));
+conf("o selo diz quantas palavras faltam, não quais", escolha.includes("`faltam ${d.faltaram.length} palavras`") && !escolha.includes("falta {d.faltaram.slice("));
 conf("opção em modo leitura não finge ser clicável", escolha.includes('somenteLeitura ? "" : "cursor-pointer"'));
 
 /* AS REGRAS, num ⓘ com tooltip, e não em parágrafos (22/09/2026: "está
@@ -36,7 +40,7 @@ conf("o ícone não força alinhamento próprio", !/aria-label=\{rotulo\}\s*\n\s
 conf("o painel não tem mais parágrafo de regra", !/<FieldHint>/.test(escolha));
 conf("as quatro regras moram em dicas", (escolha.match(/rotuloDica=|<DicaInfo /g) || []).length >= 4);
 conf("diz o que é o insumo mãe", escolha.includes("O grupo do Sienge em que este produto entra"));
-conf("diz o que é 'bate tudo' e 'falta…'", escolha.includes("todas as palavras da descrição do item aparecem no detalhe"));
+conf("diz o que é 'bate tudo' e 'faltam N palavras'", escolha.includes("todas as palavras da descrição do item aparecem no detalhe"));
 conf("o selo explica ao passar o mouse", /<Badge tone="warning" title=\{`Estas palavras da descrição do item não aparecem/.test(escolha));
 conf("diz que a associação em massa só escolhe quando bate tudo", escolha.includes("A associação em massa só escolhe sozinha quando bate tudo."));
 conf("diz que o código do detalhe pode ficar vazio", escolha.includes("o Sienge numera ao cadastrar"));

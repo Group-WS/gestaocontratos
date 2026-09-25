@@ -424,7 +424,9 @@ conf("as colunas da planilha estão na tabela",
   ["Produto", "Qtd", "Custo unit.", "Total", "Concluído executivo", "Aprovado p/ compra"]
     .every((c) => src.includes(`>${c}</TableHead>`)), true);
 conf("espec., fornecedor e ambiente ficam na célula do produto",
-  src.includes(`[x.it.especificacao, x.it.marca ? \`Fornecedor: \${nomeDoFornecedor(x.it)}\` : null, x.it.ambiente]`), true);
+  // 25/09/2026: a especificação passou a usar o padrão de links (domínio ↗ + popover)
+  src.includes("<TextoComLinks texto={x.it.especificacao} />")
+  && src.includes(`[x.it.marca ? \`Fornecedor: \${nomeDoFornecedor(x.it)}\` : null, x.it.ambiente]`), true);
 
 /* A COR DIZ O ESTADO: laranja quando falta olhar o alerta técnico, normal
    quando está conferido. */

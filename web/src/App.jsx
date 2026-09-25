@@ -8460,9 +8460,17 @@ function PlanilhaConferenciaView({ grupos: todosOsGrupos, busca = "", filtro = "
                             {/* Especificacao, fornecedor e ambiente. O codigo saiu
                                 daqui: virou coluna propria, na esquerda. */}
                             {(x.it.especificacao || x.it.marca || x.it.ambiente) && (
-                              <div className="text-xs text-text-mute">
-                                {[x.it.especificacao, x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente]
-                                  .filter(Boolean).join(" · ")}
+                              /* O link da especificação no padrão de Compras
+                                 (25/09/2026): o domínio ↗ na linha e o texto
+                                 inteiro no popover. */
+                              <div className="flex items-center gap-1 text-xs text-text-mute">
+                                <span className="line-clamp-2 min-w-0"
+                                  title={[x.it.especificacao, x.it.marca, x.it.ambiente].filter(Boolean).join(" · ")}>
+                                  {x.it.especificacao && <TextoComLinks texto={x.it.especificacao} />}
+                                  {x.it.especificacao && (x.it.marca || x.it.ambiente) ? " · " : ""}
+                                  {[x.it.marca ? `Fornecedor: ${nomeDoFornecedor(x.it)}` : null, x.it.ambiente].filter(Boolean).join(" · ")}
+                                </span>
+                                {mostraEspecificacaoCompleta(x.it.especificacao) && <EspecificacaoCompleta texto={x.it.especificacao} />}
                               </div>
                             )}
                             {/* O aviso do cliente saiu daqui: ele virou a coluna
@@ -12480,7 +12488,7 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
           dica={<>
             Se um detalhe que já existe no Sienge descreve este produto, escolha-o — a linha não precisa ser cadastrada de novo.
             <br /><br /><b>Bate tudo</b>: todas as palavras da descrição do item aparecem no detalhe.
-            <br /><b>Falta…</b>: as palavras do item que o detalhe não tem — confira se é o mesmo produto.
+            <br /><b>Faltam N palavras</b>: quantas palavras do item o detalhe não tem — passe o mouse no selo para ver quais, e confira se é o mesmo produto.
             <br /><br />A associação em massa só escolhe sozinha quando bate tudo.
           </>}>
           qual descrição vai pra planilha
@@ -12494,22 +12502,31 @@ function EscolhaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, onEsco
               texto do detalhe fica em caixa normal (não no `Label` do DS,
               que é mono e caixa-alta) e o selo explica ao passar o mouse. */}
           {mae && ordenarDetalhes(desc, mae).slice(0, 4).map((d, k) => (
+            /* O SELO EMBAIXO DO TEXTO, e curto (25/09/2026). Ao lado, "falta
+               linee, broto, boucle" comia metade da coluna e o detalhe
+               quebrava uma palavra por linha — a célula passava de 800px.
+               Agora o texto usa a largura inteira e o selo diz quantas
+               palavras faltam; quais, ao passar o mouse. */
             <div key={d.insumo.descricao + k} className="flex items-start gap-2 text-sm" title={d.insumo.descricao}>
               <RadioGroupItem id={`${idBase}-v${k}`} value={d.insumo.descricao} className="mt-1" />
-              <label htmlFor={`${idBase}-v${k}`}
-                className={`min-w-0 flex-1 leading-snug text-text ${somenteLeitura ? "" : "cursor-pointer"}`}>{d.insumo.detalhe}</label>
-              <span className="shrink-0">
+              <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                <label htmlFor={`${idBase}-v${k}`}
+                  className={`leading-snug text-text ${somenteLeitura ? "" : "cursor-pointer"}`}>{d.insumo.detalhe}</label>
                 {d.faltaram.length > 0
-                  ? <Badge tone="warning" title={`Estas palavras da descrição do item não aparecem neste detalhe: ${d.faltaram.join(", ")}. Confira se é o mesmo produto antes de escolher.`}>falta {d.faltaram.slice(0, 3).join(", ")}</Badge>
+                  ? <Badge tone="warning" title={`Estas palavras da descrição do item não aparecem neste detalhe: ${d.faltaram.join(", ")}. Confira se é o mesmo produto antes de escolher.`}>
+                      {d.faltaram.length === 1 ? "falta 1 palavra" : `faltam ${d.faltaram.length} palavras`}
+                    </Badge>
                   : <Badge tone="success" title="Todas as palavras da descrição do item aparecem neste detalhe do Sienge.">bate tudo</Badge>}
               </span>
             </div>
           ))}
           <div className="flex items-start gap-2 text-sm" title="Usar a descrição gerada — é ela que preenche o template do Sienge">
             <RadioGroupItem id={`${idBase}-nova`} value="__nova__" className="mt-1" />
-            <label htmlFor={`${idBase}-nova`}
-              className={`min-w-0 flex-1 leading-snug text-text ${somenteLeitura ? "" : "cursor-pointer"}`}>cadastrar como detalhe novo</label>
-            {editado && <span className="shrink-0"><Badge tone="neutral">editada à mão</Badge></span>}
+            <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+              <label htmlFor={`${idBase}-nova`}
+                className={`leading-snug text-text ${somenteLeitura ? "" : "cursor-pointer"}`}>cadastrar como detalhe novo</label>
+              {editado && <Badge tone="neutral">editada à mão</Badge>}
+            </span>
           </div>
         </RadioGroup>
 
@@ -15389,19 +15406,23 @@ function Observacoes({ lista = [], onAdicionar, onApagar, usuario, souAdmin = fa
   );
 }
 
-/* LINK NA ESPECIFICAÇÃO, CLICÁVEL E CURTO (24/09/2026).
+/* LINK NA ESPECIFICAÇÃO: O DOMÍNIO ↗, E O TEXTO INTEIRO NUM POPOVER.
 
    Link colado da loja vem com o rastreio ("?utm_source=…&gclid=…",
    centenas de caracteres sem espaço) e empurrava a tabela de Compras pra
-   direita. Na linha cinza o link aparece só como endereço — sem "www" e
-   sem a parte depois do "?" — e abre a loja numa aba nova. `completo`
-   mostra o texto inteiro, link com rastreio e tudo, quebrando onde der. */
+   direita (24/09/2026). Depois, o caminho encurtado ainda era cortado na
+   borda da coluna e o "ver completo" ganhava uma linha só pra ele
+   (25/09/2026). Agora a linha cinza mostra só o domínio com o ícone de
+   abrir, e o texto inteiro — link com rastreio e tudo — mora num popover,
+   com Abrir e Copiar. Só exibição: o texto gravado e o que vai ao Sienge
+   seguem inteiros. */
 const RE_LINK = /(https?:\/\/[^\s]+)/g;
 const temLink = (texto) => /https?:\/\//.test(String(texto || ""));
-function encurtarLink(url) {
+// O ícone do texto inteiro aparece quando a linha cinza não mostra tudo.
+const mostraEspecificacaoCompleta = (texto) => temLink(texto) || String(texto || "").length > 60;
+function dominioDoLink(url) {
   try {
-    const u = new URL(url);
-    return `${u.hostname.replace(/^www\./, "")}${u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "")}`;
+    return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return url;
   }
@@ -15409,12 +15430,51 @@ function encurtarLink(url) {
 function TextoComLinks({ texto, completo = false }) {
   return String(texto || "").split(RE_LINK).map((parte, i) => (
     i % 2 === 1 ? (
-      <a key={i} href={parte} target="_blank" rel="noopener noreferrer" title={parte}
-        className={`text-brand underline underline-offset-2 hover:text-text${completo ? " break-all" : ""}`}>
-        {completo ? parte : encurtarLink(parte)}
-      </a>
+      completo ? (
+        <a key={i} href={parte} target="_blank" rel="noopener noreferrer"
+          className="break-all text-brand underline underline-offset-2 hover:text-text">{parte}</a>
+      ) : (
+        <a key={i} href={parte} target="_blank" rel="noopener noreferrer" title={parte}
+          className="inline-flex items-center gap-1 text-brand hover:underline">
+          {dominioDoLink(parte)}<ExternalLink size={12} aria-hidden="true" />
+        </a>
+      )
     ) : <React.Fragment key={i}>{parte}</React.Fragment>
   ));
+}
+function EspecificacaoCompleta({ texto }) {
+  const link = String(texto || "").match(RE_LINK)?.[0];
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" type="button" className="h-6 w-6 shrink-0 text-text-mute"
+          aria-label="Ver especificação completa" title="Ver especificação completa">
+          <FileText size={14} aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="flex w-80 flex-col gap-3 p-4">
+        <span className="label-mono">Especificação</span>
+        <p className="m-0 whitespace-pre-line text-sm leading-snug text-text"><TextoComLinks texto={texto} completo /></p>
+        <div className="flex flex-wrap gap-2">
+          {link && (
+            <Button asChild variant="outline" size="sm">
+              <a href={link} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} aria-hidden="true" /> Abrir</a>
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" type="button" onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(texto);
+              avisar.ok("Especificação copiada.");
+            } catch {
+              avisar.erro("Não foi possível copiar a especificação.");
+            }
+          }}>
+            <Copy size={14} aria-hidden="true" /> Copiar
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false,
@@ -15433,7 +15493,6 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
     : "Marcar como solicitado no Sienge";
   const alternarSolicitado = () => onItemChange({ solicitado: !it.solicitado, solicitadoEm: it.solicitado ? null : new Date().toISOString() });
   const [escrevendoObs, setEscrevendoObs] = useState(false);
-  const [especInteira, setEspecInteira] = useState(false);
 
   // O produto que foi trocado: riscado, em cinza, sem ação nenhuma.
   if (it.troca) {
@@ -15493,17 +15552,14 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
               )}
               {/* Quem vende: na planilha do Executivo a coluna Fornecedor vira
                   `marca` no item; a especificação separa peças de mesmo nome. */}
-              <span className={`min-w-0${especInteira ? "" : " line-clamp-2"}`}
+              <span className="line-clamp-2 min-w-0"
                 title={[it.ambiente, it.marca, it.especificacao].filter(Boolean).join(" · ")}>
                 {[it.ambiente, it.marca ? nomeDoFornecedor(it) : "sem fornecedor"].filter(Boolean).join(" · ")}
-                {it.especificacao && <>{" · "}<TextoComLinks texto={it.especificacao} completo={especInteira} /></>}
+                {it.especificacao && <>{" · "}<TextoComLinks texto={it.especificacao} /></>}
               </span>
-              {temLink(it.especificacao) && (
-                <Button variant="ghost" size="sm" className="h-auto px-1 py-0 text-xs"
-                  aria-expanded={especInteira} onClick={() => setEspecInteira((v) => !v)}>
-                  {especInteira ? "ver resumido" : "ver completo"}
-                </Button>
-              )}
+              {/* O texto inteiro, quando a linha cinza não mostra tudo: link
+                  encurtado ou especificação comprida. */}
+              {mostraEspecificacaoCompleta(it.especificacao) && <EspecificacaoCompleta texto={it.especificacao} />}
               {obs.length > 0 && !escrevendoObs && (
                 <span className="inline-flex items-center gap-1 text-obs"><MessageSquare size={12} aria-hidden="true" /> {obs.length}</span>
               )}
