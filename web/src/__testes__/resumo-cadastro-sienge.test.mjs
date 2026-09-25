@@ -5,10 +5,12 @@
  * As colunas do template de detalhe do Sienge mais a quantidade. Vale o
  * que a tela mostra (mãe escolhida ou sugerida); o mesmo produto em dois
  * ambientes vira uma linha com a quantidade somada; o que não precisa de
- * cadastro (detalhe que já existe) ou não tem mãe vai pra outra aba.
+ * cadastro (detalhe que já existe) ou não tem mãe vai pra outra aba; o que
+ * ninguém decidiu (a conferir, RN-090) vai numa aba própria.
  */
 import fs from "node:fs";
 import { codigoAuxiliarDe, descricaoSienge, limparTemplate, auxiliarEstavel } from "../lib/sienge.js";
+import { DECISAO_DO_DETALHE, decisaoDoDetalhe } from "../regras/detalheDoSienge.js";
 
 const src = fs.readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
 const bloco = (a) => {
@@ -21,15 +23,17 @@ const linha = (a) => {
   if (i === -1) throw new Error(`não achei no App.jsx: ${a}`);
   return src.slice(i, src.indexOf("\n", i) + 1);
 };
-const M = new Function("codigoAuxiliarDe", "descricaoSienge", "limparTemplate", "auxiliarEstavel", `
+const M = new Function("codigoAuxiliarDe", "descricaoSienge", "limparTemplate", "auxiliarEstavel",
+  "DECISAO_DO_DETALHE", "decisaoDoDetalhe", `
   ${linha("const CABECALHO_CADASTRO_SIENGE =")}
+  ${bloco("function estaSolicitado(")}
   ${bloco("function situacaoNoSienge(")}
   ${bloco("function descritivoDoItem(")}
   ${bloco("function auxiliaresDoGrupo(")}
   ${bloco("function textoComparavel(")}
   ${bloco("function resumoCadastroSienge(")}
   return { CABECALHO_CADASTRO_SIENGE, auxiliaresDoGrupo, resumoCadastroSienge };
-`)(codigoAuxiliarDe, descricaoSienge, limparTemplate, auxiliarEstavel);
+`)(codigoAuxiliarDe, descricaoSienge, limparTemplate, auxiliarEstavel, DECISAO_DO_DETALHE, decisaoDoDetalhe);
 
 let f = 0;
 const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
@@ -38,7 +42,8 @@ const conf = (n, o, e) => { const ok = String(o) === String(e); if (!ok) f++;
 const CADEIRA = { codigo: "406", nome: "MOBILIA SOLTA - CADEIRA", variantes: [] };
 const BASE = [CADEIRA];
 const sugerida = { maes: [{ grupo: CADEIRA, score: 0.8 }], detalhes: [] };
-const linhaDe = (chave, it, material = 0) => ({ chave, material, it: { codigo: "24.3", desc: "Cadeira Eiffel", marca: "Rivatti", un: "un", ...it } });
+// Por padrão o produto já foi decidido como detalhe novo (RN-090).
+const linhaDe = (chave, it, material = 0) => ({ chave, material, it: { codigo: "24.3", desc: "Cadeira Eiffel", marca: "Rivatti", un: "un", detalheNovoSienge: true, ...it } });
 const itens = [
   linhaDe("a", { ambiente: "Sala", qtdExecutivo: 2 }, 200),
   linhaDe("b", { ambiente: "Varanda", qtdExecutivo: 3 }, 300.1),
@@ -75,6 +80,20 @@ conf("... e não entra no resumo", r.linhas.some((l) => /MESA/i.test(l.descricao
 conf("o custo orçado soma junto com a quantidade", eiffel[0].custo, 600.15);
 conf("... também no detalhe já cadastrado", tulipa?.custo, 600);
 conf("sem insumo mãe leva o custo dele", r.semMae.find((l) => /Mesa/.test(l.item))?.custo, 50);
+
+/* 25/09/2026 (RN-090): o que ninguém decidiu não é detalhe novo nem detalhe
+   que existe — vai numa aba própria, com a mãe sugerida e o custo. */
+const itens2 = [
+  linhaDe("h", { desc: "Poltrona Torii", detalheNovoSienge: undefined, qtdExecutivo: 2 }, 900),
+  linhaDe("i", { desc: "Poltrona Torii", detalheNovoSienge: false, codigoAuxSienge: "9", qtdExecutivo: 1 }, 450),
+  linhaDe("j", { desc: "Poltrona Oslo", detalheNovoSienge: undefined, solicitado: true, qtdExecutivo: 1 }, 300),
+];
+const r2 = M.resumoCadastroSienge(itens2, new Map(itens2.map((x) => [x.chave, sugerida])), BASE, M.auxiliaresDoGrupo(itens2, "2450"));
+conf("a conferir vai pra aba própria", r2.aConferir.length, 2);
+conf("... com a mãe sugerida", r2.aConferir[0].maeCodigo, "406");
+conf("... e o custo orçado", r2.aConferir[0].custo, 900);
+conf("... e não entra no resumo", r2.linhas.some((l) => /TORII/i.test(l.descricaoDetalhe)), false);
+conf("de antes da regra, já solicitado, conta como detalhe novo", r2.linhas.find((l) => /OSLO/i.test(l.descricaoDetalhe))?.situacao, "detalhe novo (cadastrar)");
 
 console.log(f === 0 ? "\nOK — todas passaram" : `\n${f} falha(s)`);
 process.exit(f === 0 ? 0 : 1);

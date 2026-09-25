@@ -37,6 +37,24 @@ const VAZIAS = new Set(["de", "da", "do", "das", "dos", "para", "p", "com", "sem
 export const palavras = (s) => norm(s).split(" ")
   .filter((p) => (p.length > 2 || /\d/.test(p)) && !VAZIAS.has(p));
 
+/* AS PALAVRAS DE CADA TEXTO, GUARDADAS (25/09/2026). Sugerir o insumo de
+   um produto compara a descrição dele com os ~10 mil textos da base, e
+   cada comparação normalizava os dois lados de novo (NFD + quatro regex).
+   Com a sugestão automática, grupo a grupo, isso se repetia a cada produto.
+   O conjunto de palavras de um texto não muda: calcula uma vez e guarda. O
+   limite só impede o cache de crescer sem fim numa sessão longa. */
+const CACHE_DE_PALAVRAS = new Map();
+function conjuntoDePalavras(s) {
+  const chave = String(s || "");
+  let conjunto = CACHE_DE_PALAVRAS.get(chave);
+  if (!conjunto) {
+    if (CACHE_DE_PALAVRAS.size > 60000) CACHE_DE_PALAVRAS.clear();
+    conjunto = new Set(palavras(chave));
+    CACHE_DE_PALAVRAS.set(chave, conjunto);
+  }
+  return conjunto;
+}
+
 /* Quanto duas descrições se parecem, de 0 a 1.
 
    Jaccard sobre as palavras que importam: quantas elas têm em comum
@@ -44,8 +62,8 @@ export const palavras = (s) => norm(s).split(" ")
    confiar no resultado — e é isso que faz alguém aceitar ou recusar o
    "achei parecido" com segurança. */
 export function semelhanca(a, b) {
-  const A = new Set(palavras(a));
-  const B = new Set(palavras(b));
+  const A = conjuntoDePalavras(a);
+  const B = conjuntoDePalavras(b);
   if (!A.size || !B.size) return 0;
   let comuns = 0;
   A.forEach((p) => { if (B.has(p)) comuns += 1; });
@@ -64,8 +82,8 @@ export function semelhanca(a, b) {
  * obra, quantas estao na linha do Sienge? Palavra a mais do lado de la
  * nao e divergencia — e detalhe. */
 export function cobertura(itemObra, linhaSienge) {
-  const A = new Set(palavras(itemObra));
-  const B = new Set(palavras(linhaSienge));
+  const A = conjuntoDePalavras(itemObra);
+  const B = conjuntoDePalavras(linhaSienge);
   if (!A.size) return 0;
   let comuns = 0;
   A.forEach((p) => { if (B.has(p)) comuns += 1; });
@@ -215,17 +233,35 @@ export function acharMaes(desc, grupos, limite = 4) {
  *
  * As palavras casadas voltam junto de proposito: "62%" nao ajuda ninguem
  * a decidir entre duas condensadoras. Ver que casou ELECTROLUX e 18.000 e
- * que NAO casou quente/frio e o que permite escolher com seguranca. */
+ * que NAO casou quente/frio e o que permite escolher com seguranca.
+ *
+ * A ORDEM E' DE CONTENCAO, NAO DE SEMELHANCA (25/09/2026). Pela semelhanca
+ * (Jaccard), o detalhe comprido perde: "FRATINI / CADEIRA BILBAO /
+ * CARVALHO / ESTOFADO LINHO" tem todas as palavras do item e dava 0,60;
+ * "FRATINI / CADEIRA BILBAO", sem o carvalho, dava 0,83 e vinha antes. A
+ * associacao em massa, que so olha o primeiro, deixava de associar. Agora
+ * vem primeiro quem deixa menos palavras do item de fora; a semelhanca so
+ * desempata. */
 export function ordenarDetalhes(desc, grupo) {
-  const alvo = new Set(palavras(desc));
+  const alvo = conjuntoDePalavras(desc);
   return (grupo?.variantes || [])
     .map((v) => {
-      const dele = new Set(palavras(v.descricao));
+      const dele = conjuntoDePalavras(v.descricao);
       const casaram = [...alvo].filter((p) => dele.has(p));
       const faltaram = [...alvo].filter((p) => !dele.has(p));
       return { insumo: v, score: semelhanca(desc, v.descricao), casaram, faltaram };
     })
-    .sort((a, b) => b.score - a.score || b.casaram.length - a.casaram.length);
+    .sort((a, b) => a.faltaram.length - b.faltaram.length || b.score - a.score || b.casaram.length - a.casaram.length);
+}
+
+/* As palavras do item que o detalhe escolhido NÃO tem (25/09/2026).
+
+   Serve pra avisar quando o detalhe que já foi escolhido diverge do item —
+   "PAINEL LED 18W 3000K" associado a "… 18W 4000K" falta "3000k". A
+   comparação é a mesma do `ordenarDetalhes`. */
+export function palavrasQueFaltam(desc, descricao) {
+  const dele = conjuntoDePalavras(descricao);
+  return [...conjuntoDePalavras(desc)].filter((p) => !dele.has(p));
 }
 
 /* Dá pra associar sem alguém olhar?

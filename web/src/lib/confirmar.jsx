@@ -280,11 +280,14 @@ export function EscolherVerbasHost() {
 /* Toast padronizado (TELA-50/51): sucesso "<Entidade> <particípio>.",
    erro "Não foi possível <verbo>…". */
 /* `opcoes.duracao` (ms): para o aviso que precisa ser LIDO, como os alertas
-   da leitura de um arquivo — o tempo padrão do toast some antes. */
+   da leitura de um arquivo — o tempo padrão do toast some antes.
+   `opcoes.acao` ({ rotulo, aoClicar }): um botão no próprio aviso, como o
+   "Desfazer" depois de escolher o insumo do Sienge (25/09/2026). */
 const opcoesDoToast = (descricao, opcoes = {}) => {
   const o = {};
   if (descricao) o.description = descricao;
   if (opcoes.duracao) o.duration = opcoes.duracao;
+  if (opcoes.acao) o.action = { label: opcoes.acao.rotulo, onClick: opcoes.acao.aoClicar };
   return Object.keys(o).length ? o : undefined;
 };
 export const avisar = {

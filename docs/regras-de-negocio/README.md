@@ -116,3 +116,4 @@ a RN-070) · catálogo, preços e EAP (RN-071 a RN-085).
 | [RN-087](RN-087-insumo-pedido-ao-sienge-nao-se-apaga.md) | Insumo pedido ao Sienge não se apaga | vigente | Configurações · Cadastro de Insumos |
 | [RN-088](RN-088-importacao-so-da-tabela-ativa.md) | A importação só aceita o relatório da tabela ativa | vigente | Configurações · Cadastro de Insumos |
 | [RN-089](RN-089-insumo-em-vb-fica-fora-do-cadastro.md) | Insumo em "vb" não entra no cadastro | vigente | Configurações · Cadastro de Insumos |
+| [RN-090](RN-090-template-sienge-so-com-decisao.md) | Produto só vai ao Template Sienge com a decisão tomada | vigente | Compras · Gerador de códigos Sienge |

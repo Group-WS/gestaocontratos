@@ -179,11 +179,11 @@ conf("a observação da verba fica FORA do botão que abre o grupo",
 conf("existe o chip de filtrar por observação", app.includes("pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}"), true);
 conf("... e ele some quando não há nenhuma", app.includes("{obs.length > 0 && ("), true);
 conf("com o filtro, a verba sem observação nenhuma sai",
-  app.includes("if (soComObs && naTela.length === 0 && obsDaVerba(g.num).length === 0) return null;"), true);
+  app.includes("if (soComObs && comObs.length === 0 && obsDaVerba(g.num).length === 0) return null;"), true);
 /* A busca continua sendo uma lente sobre a mesma lista: as duas peneiram
    juntas, e nenhuma mexe em total nenhum. */
 conf("a busca e o filtro peneiram a mesma lista",
-  app.includes("const naTela = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;"), true);
+  app.includes("const comObs = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;"), true);
 
 /* Sem o SQL rodado, a tela não oferece o que não funciona. */
 conf("sem a tabela, não aparece nada de observação",

@@ -258,10 +258,12 @@ const montar = (apiJson) => new Function("apiJson", "supabaseConfigurado", `
 const app = fs.readFileSync(new URL("../App.jsx", import.meta.url), "utf8");
 conf("o Gerador de códigos passa o cadastro",
   (app.match(/agruparPorMae\(baseSienge, cadastroSienge\)/g) || []).length, 2);
-conf("a associação por grupo também",
-  app.includes("base = agruparPorMae(insumos, cad);"), true);
+/* 25/09/2026: a associação por grupo (botão) saiu; nas Compras a base
+   carrega sozinha, pelo `recarregarBase`, que já traz o cadastro. */
+conf("as Compras carregam a base sozinhas, com o cadastro",
+  /recarregarBase\(\);\n  \}, \[naEtapaSienge/.test(app), true);
 conf("as duas telas carregam o cadastro junto da base",
-  (app.match(/carregarTodosInsumos\(\), carregarCadastroSienge\(\)/g) || []).length, 3);
+  (app.match(/carregarTodosInsumos\(\), carregarCadastroSienge\(\)/g) || []).length, 2);
 conf("a importação do cadastro grava a tabela", /await salvarCadastroSienge\(/.test(app), true);
 conf("a tela diz quantos saíram do Sienge",
   /saíram do Sienge e não são mais oferecidos na associação/.test(app), true);
