@@ -13809,9 +13809,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                       <span className="flex items-center gap-2">
                         <Progress className="flex-1" tone={nComprados === nItens ? "success" : "brand"}
                           value={nItens ? (nComprados / nItens) * 100 : 0} aria-label={`${nComprados} de ${nItens} comprados`} />
-                        <span className="mono w-28 shrink-0 text-right text-xs tabular-nums text-text-soft">
-                          {buscando || situacao !== "todos" ? `${nNaTela} de ${nItens} · ` : ""}{nComprados}/{nItens} comprados
-                        </span>
+                        <span className="mono w-28 shrink-0 text-right text-xs tabular-nums text-text-soft">{nComprados}/{nItens} comprados</span>
                       </span>
                       {noSienge && (
                         <span className="flex items-center gap-2">
@@ -13822,6 +13820,11 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                       )}
                     </span>
                     <span className="flex w-40 shrink-0 flex-wrap items-center justify-end gap-2">
+                      {/* Com busca ou filtro, quantos da verba estão na tela — num selo, e
+                          não no rótulo da barra, que quebrava em duas linhas. */}
+                      {(buscando || situacao !== "todos") && nNaTela !== nItens && (
+                        <Badge tone="neutral" title={`${nNaTela} de ${nItens} produtos desta verba passam na busca e no filtro`}>{nNaTela} de {nItens}</Badge>
+                      )}
                       {nTrocas > 0 && (
                         <Badge tone="warning" title={nTrocas === 1
                           ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
