@@ -26,6 +26,7 @@ import {
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
   MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2, Settings, History,
+  ListChecks,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -13562,8 +13563,8 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
       acoes={(
         <>
           <Button variant="outline" className="h-10 whitespace-nowrap" onClick={selecionarTudo}
-            title={`Selecionar os ${naTelaTudo.length} ${alvoDaSelecao}`}>
-            <Check size={16} aria-hidden="true" /> Selecionar {naTelaTudo.length}<span className="hidden 2xl:inline"> {alvoDaSelecao}</span>
+            title={`Marca os ${naTelaTudo.length} itens ${alvoDaSelecao} para o pedido de orçamento`}>
+            <ListChecks size={16} aria-hidden="true" /> Marcar {naTelaTudo.length} {naTelaTudo.length === 1 ? "item" : "itens"}<span className="hidden 2xl:inline"> {alvoDaSelecao}</span>
           </Button>
           {sel.size > 0 && <Button variant="ghost" className="h-10 whitespace-nowrap" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
           {fornecedor && fornecedor !== SEM_FORNECEDOR && (
