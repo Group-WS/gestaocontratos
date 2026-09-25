@@ -13544,21 +13544,21 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
           {obs.length > 0 && (
             <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)} className="shrink-0 whitespace-nowrap"
               title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
-              <MessageSquare size={16} aria-hidden="true" /> <span className="hidden xl:inline">com observação interna</span> <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
+              <MessageSquare size={16} aria-hidden="true" /> <span className="hidden 2xl:inline">com observação interna</span> <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
             </Toggle>
           )}
           {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
               ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
               cima desalinhava a fila inteira. */}
           <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
-            onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-48 shrink-0 2xl:w-64" />
+            onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-44 shrink 2xl:w-64" />
         </>
       )}
       acoes={(
         <>
           <Button variant="outline" className="h-10 whitespace-nowrap" onClick={selecionarTudo}
             title={`Marca os ${naTelaTudo.length} itens ${alvoDaSelecao} para o pedido de orçamento`}>
-            <ListChecks size={16} aria-hidden="true" /> Marcar {naTelaTudo.length} {naTelaTudo.length === 1 ? "item" : "itens"}<span className="hidden 2xl:inline"> {alvoDaSelecao}</span>
+            <ListChecks size={16} aria-hidden="true" /> Marcar {naTelaTudo.length}<span className="hidden 2xl:inline"> {naTelaTudo.length === 1 ? "item" : "itens"} {alvoDaSelecao}</span>
           </Button>
           {sel.size > 0 && <Button variant="ghost" className="h-10 whitespace-nowrap" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
           {fornecedor && fornecedor !== SEM_FORNECEDOR && (
@@ -22052,18 +22052,23 @@ function FaixaDaEdicao({ inicio, fim, edicao, gravacao, carregando, falhouCarreg
     /* Em modo leitura a gravação continua à vista: quem acabou de finalizar
        vê o "salvando…" virar "salvo" — ou o aviso, se não. Com conflito em
        aberto, habilitar de novo espera a pessoa decidir. */
-    selo = <Badge tone="brand"><Eye size={12} aria-hidden="true" /> Modo leitura</Badge>;
-    explica = "Habilite a edição para alterar a obra.";
+    selo = <Badge tone="neutral"><Lock size={12} aria-hidden="true" /> Só leitura</Badge>;
+    explica = "Para alterar a obra, clique em Editar obra.";
     acao = gravacao?.estado !== "conflito" && (
       <Button size="sm" onClick={onHabilitar}>
-        <Pencil size={14} aria-hidden="true" /> Habilitar edição
+        <Pencil size={14} aria-hidden="true" /> Editar obra
       </Button>
     );
   }
   const podeMostrarGravacao = !carregando && !falhouCarregar;
+  /* O ESTADO NA FAIXA INTEIRA (25/09/2026): a pessoa rolava a tela e não
+     sabia se estava editando — só o selo mudava. Editando, a faixa toda
+     fica amarela; em leitura, neutra, com o cadeado. */
+  const editando = !carregando && !falhouCarregar && !edicao.por && edicao.minha;
 
   return (
-    <div className="faixa-da-edicao naoimprime rolagem-discreta flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b border-line-1 bg-surface-1">
+    <div className={cn("faixa-da-edicao naoimprime rolagem-discreta flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b",
+      editando ? "border-warning bg-warning-tint" : "border-line-1 bg-surface-1")}>
       {inicio && <span className="flex shrink-0 items-center border-r border-line-1">{inicio}</span>}
       <span className="flex shrink-0 items-center gap-3 text-sm">
         {selo}

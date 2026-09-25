@@ -117,7 +117,7 @@ const efeito = app.slice(app.indexOf("A TRAVA DE OUTRA PESSOA TAMBEM VENCE"), ap
 conf("vencer não toma a trava sozinho", /pegarEdicao\(/.test(efeito), false);
 /* O botão mora na faixa da edição, no topo (25/09/2026): a associação ao
    Sienge voltou pra linha e o aviso de modo leitura ficou só lá em cima. */
-const faixa = app.slice(app.indexOf('selo = <Badge tone="brand"><Eye size={12} aria-hidden="true" /> Modo leitura</Badge>;'),
+const faixa = app.slice(app.indexOf('selo = <Badge tone="neutral"><Lock size={12} aria-hidden="true" /> Só leitura</Badge>;'),
   app.indexOf("const podeMostrarGravacao"));
 conf("o botão de habilitar aparece quando não há dono",
   faixa.includes("onClick={onHabilitar}") && app.includes("{edicao.por} está editando"), true);
