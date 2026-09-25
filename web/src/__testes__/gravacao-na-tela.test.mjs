@@ -135,7 +135,10 @@ conf("a faixa da edição mostra a situação da gravação", app.includes("<Sit
    para o modo leitura (quem acabou de finalizar vê o 'salvo'). */
 conf("... também em modo leitura (quem acabou de finalizar vê o 'salvo')", app.includes("{podeMostrarGravacao && (gravacao || edicao.minha) && ("), true);
 conf("a contagem da nova tentativa anda sozinha", ui.includes("const t = setInterval(() => setAgora(Date.now()), 1000);"), true);
-conf("os avisos usam o Alert do design system", /import \{ Alert, AlertTitle, AlertDescription,[^}]*\} from "@group-ws\/ws-ui";/.test(ui), true);
+/* O aviso de recusa e conflito é flutuante (toast), não um bloco no topo
+   que empurra a obra (pedido de 25/09/2026). */
+conf("os avisos são flutuantes (toast), não bloco no topo", ui.includes("mostrar(aviso.titulo, aviso.descricao, { id, duracao: Infinity, acao, secundaria });"), true);
+conf("... e somem quando a gravação se resolve", ui.includes("avisar.fechar(id)"), true);
 /* O estado da barra é um selo do DS com ícone e cor (23/09/2026), e o
    "salvo" diz a hora. */
 conf("a situação da barra é um Badge do DS", ui.includes("<Badge tone={selo.tom}>"), true);

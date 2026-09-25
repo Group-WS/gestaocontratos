@@ -25,7 +25,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2, Settings,
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2, Settings, History,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -85,7 +85,8 @@ import { carregarCompradores, salvarComprador, chaveDoGrupo } from "./lib/compra
 import { LogoGroupWS } from "./marca.jsx";
 import iconeSienge from "./assets/icone-sienge.svg";
 import { podeLiberarCompra } from "./regras/liberacaoDeCompra.js";
-import { linhaDoExecutivoTravada } from "./regras/itemAprovadoNoExecutivo.js";
+import { linhaDoExecutivoTravada, itemTravadoNoExecutivo } from "./regras/itemAprovadoNoExecutivo.js";
+import { listarMudancasDoItem, nomeDoCampo, valorDoRegistro } from "./lib/itemAprovadoLog.js";
 import { DECISAO_DO_DETALHE, decisaoDoDetalhe, entraNoTemplateSienge } from "./regras/detalheDoSienge.js";
 import { novoIdDeLinha } from "./lib/idDaLinha.js";
 import { usePreferencia, esquecerPreferencias } from "./lib/preferencias.js";
@@ -13965,6 +13966,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                           mostrarSienge={mostrarInsumo}
                           lancado={noSienge && doSienge ? lancados.get(r.chave) || null : undefined}
                           podeEditar={podeEditar} onHabilitar={onHabilitar} editandoPor={editandoPor}
+                          codigoObra={obra.codigo}
                           trocando={trocando === r.chave} equipe={equipe} executivo={obra.responsavelExecutivo}
                           /* Linha de aditivo nao troca de produto: a troca cria itens novos
                              na planilha, e o item do aditivo mora no documento aprovado. */
@@ -15834,10 +15836,63 @@ function EspecificacaoCompleta({ texto }) {
   );
 }
 
+/* RN-002 · O HISTÓRICO DO ITEM APROVADO (25/09/2026): o que mudou nele
+   depois de aprovado para compra — quem, quando, campo, antes e depois. */
+function RegistroDoItemAprovado({ codigoObra, item, onFechar }) {
+  const [estado, setEstado] = useState({ carregando: true, registros: [], erro: false, semTabela: false });
+  useEffect(() => {
+    let vivo = true;
+    listarMudancasDoItem(codigoObra, item.idLinha)
+      .then((r) => { if (vivo) setEstado({ carregando: false, registros: r?.registros || [], erro: false, semTabela: !!r?.semTabela }); })
+      .catch(() => { if (vivo) setEstado({ carregando: false, registros: [], erro: true, semTabela: false }); });
+    return () => { vivo = false; };
+  }, [codigoObra, item.idLinha]);
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onFechar(); }}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>Histórico de alterações</DialogTitle>
+          <DialogDescription>{item.desc} — o que mudou depois de aprovado para compra.</DialogDescription>
+        </DialogHeader>
+        <DialogBody className="flex flex-col gap-3">
+          {estado.carregando && <p className="text-sm text-text-mute">Carregando…</p>}
+          {estado.erro && <p className="text-sm text-danger">Não foi possível carregar o histórico. Tente de novo.</p>}
+          {estado.semTabela && <p className="text-sm text-text-mute">O registro ainda não foi ligado no banco.</p>}
+          {!estado.carregando && !estado.erro && !estado.semTabela && !estado.registros.length && (
+            <p className="text-sm text-text-mute">Nenhuma alteração desde a aprovação.</p>
+          )}
+          {estado.registros.length > 0 && (
+            <ul className="flex flex-col divide-y divide-line-1">
+              {estado.registros.map((r) => (
+                <li key={r.id} className="flex flex-col gap-1 py-2">
+                  <span className="text-sm text-text">
+                    <b>{nomeDoCampo(r.campo)}</b>
+                    {r.campo !== "removido" && <>: {valorDoRegistro(r.antes)} → {valorDoRegistro(r.depois)}</>}
+                  </span>
+                  <span className="text-xs text-text-mute">
+                    {r.autor} · {new Date(r.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onFechar}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, mostrarSienge, lancado, onItemChange, noSienge = false, podeEditar = false,
   trocando = false, equipe = [], executivo, onAbrirTroca, onFecharTroca, onRegistrarTroca, onDesfazerTroca, troca = null,
-  obs = [], obsSemTabela = false, onAdicionarObs, onApagarObs, usuario, souAdmin = false, onHabilitar, editandoPor }) {
+  obs = [], obsSemTabela = false, onAdicionarObs, onApagarObs, usuario, souAdmin = false, onHabilitar, editandoPor, codigoObra }) {
   const { it, material } = row;
+  /* RN-002 (25/09/2026): o item aprovado muda aqui, e cada mudança fica no
+     registro — lido pelo menu ⋯. */
+  const temRegistro = !!codigoObra && !!it.idLinha && itemTravadoNoExecutivo(it);
+  const [vendoRegistro, setVendoRegistro] = useState(false);
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
   const decisao = decisaoDoDetalhe(it, { solicitado: estaSolicitado(it) });
   const mostraFaixa = !!mostrarSienge && !!(casamento || it.maeSienge || it.detalheSienge);
@@ -15948,7 +16003,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
           </div>
           {/* Ações raras da linha, num menu: trocar o produto, deixar uma
               observação e desfazer a troca. */}
-          {(podeEditar || onAdicionarObs) && (
+          {(podeEditar || onAdicionarObs || temRegistro) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" type="button" className="h-7 w-7 shrink-0 text-text-mute" aria-label={`Mais ações — ${it.desc}`}>
@@ -15971,8 +16026,16 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
                     <Undo2 size={14} aria-hidden="true" /> Desfazer a troca
                   </DropdownMenuItem>
                 )}
+                {temRegistro && (
+                  <DropdownMenuItem onSelect={() => setVendoRegistro(true)}>
+                    <History size={14} aria-hidden="true" /> Histórico de alterações
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+          {vendoRegistro && (
+            <RegistroDoItemAprovado codigoObra={codigoObra} item={it} onFechar={() => setVendoRegistro(false)} />
           )}
         </div>
         {mostrarSienge && !mostraFaixa && (

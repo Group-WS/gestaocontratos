@@ -155,6 +155,19 @@ bloco 5, e de novo **sempre** que o bloco 5 rodar.
 > Configurações avisa que falta este SQL).
 > Teste: `tests/17-insumo-cadastro.sql`.
 
+**12. RN-002 — trava do Executivo e registro das mudanças (25/09/2026)**
+`rn-002-item-aprovado-no-executivo.sql` (já em produção) e depois
+`rn-002-compras-com-registro.sql` — depois do bloco 6.
+
+> A trava passa a olhar só a planilha do Executivo (`itensPlanilhaExecutivo`):
+> a linha cujo id tem item aprovado ou andando na compra não muda. Em Compras
+> o item aprovado pode mudar, e cada campo que muda vira uma linha em
+> `obra_item_aprovado_log` (quem, quando, campo, antes, depois), por
+> gatilho. Lê quem enxerga a obra; ninguém escreve direto. Reaplicável; rode
+> **depois** do deploy (antes dele, a tela antiga continua travando Compras
+> pela gravação recusada — sem perda, só o aviso).
+> Teste: `tests/18-rn-002-registro.sql`.
+
 **Antes do bloco 6, confira se o bloco 5 rodou em produção.** Os
 comentários do `taylor-made.sql` indicam que o `rls-perfis.sql` pode nunca
 ter sido aplicado lá. Esta consulta mostra o que vale hoje:
