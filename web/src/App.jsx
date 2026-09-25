@@ -13050,6 +13050,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
      em `g.itens`, que e' quem gera o codigo auxiliar e o CSV do Sienge. */
   const [busca, setBusca] = useState("");
   const buscando = !!busca.trim();
+  /* O FILTRO POR SITUAÇÃO DO PRODUTO (25/09/2026), igual ao do Executivo:
+     "preciso selecionar itens que foram ou não solicitados, comprados". Vale
+     sobre o que a etapa e o fornecedor já deixaram; a verba some quando
+     fica vazia. "Solicitado" só existe no canal Sienge; "a conferir" é o
+     insumo do Sienge sem decisão ou divergente. */
+  const [situacao, setSituacao] = useState("todos");
   // A busca abre as verbas; o clique continua fechando. Ver useAbertosComBusca.
   const abreNaBusca = useAbertosComBusca(buscando);
   const casaRow = (r) => casaItem(r.it, { num: r.catNum, nome: r.catNome }, busca);
@@ -13273,9 +13279,15 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   /* O que a busca deixa na tela, somando todas as verbas. Serve pra contagem
      do campo, pro "Selecionar os N desta busca" e pra saber se a etapa ficou
      vazia. NAO alimenta `porVerba` — o grupo continua inteiro. */
+  const casaSituacao = useCallback((r) => casaSituacaoDe(situacao, r), [situacao]);
   const naTelaTudo = useMemo(
-    () => (buscando ? visiveis.filter(casaRow) : visiveis),
-    [visiveis, busca, buscando]);
+    () => (buscando ? visiveis.filter(casaRow) : visiveis).filter(casaSituacao),
+    [visiveis, busca, buscando, casaSituacao]);
+  const contaSituacao = (id) => visiveis.filter((r) => casaSituacaoDe(id, r)).length;
+  // Fora do canal Sienge, "solicitado" e "a conferir" não existem: o filtro volta a Todos.
+  useEffect(() => {
+    if (etapa !== "sienge" && SITUACOES_DE_COMPRA.find((f) => f.id === situacao)?.soSienge) setSituacao("todos");
+  }, [etapa, situacao]);
 
   /* O pedido de orçamento sai do filtro: escolhe o fornecedor, confere a
      lista na tela e o PDF leva só o que dele ainda não foi comprado. */
@@ -13319,8 +13331,6 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
      inteira a cada item alterado — e cada clique numa variante congelava
      a tela de novo. */
   const [casamentos, setCasamentos] = useState(() => new Map());
-  // As verbas em que o filtro "só a conferir" está ligado.
-  const [soConferir, setSoConferir] = useState(() => new Set());
   const selecionados = rows.filter((r) => sel.has(r.chave));
 
   /* A conferencia so olha o canal Sienge: e o unico que passa por la. */
@@ -13532,7 +13542,16 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
   return (
     <PageShell title="Compras de Produtos"
       description="Escolha por onde comprar cada material do executivo e acompanhe o que já foi solicitado e comprado."
-      toolbar={toolbar} contentClassName="flex flex-col gap-6">
+      toolbar={toolbar} contentClassName="flex flex-col gap-6"
+      toolbarSecondary={(
+        <ToggleGroup type="single" value={situacao} onValueChange={(v) => { if (v) setSituacao(v); }} aria-label="Situação do produto">
+          {SITUACOES_DE_COMPRA.filter((f) => !f.soSienge || etapa === "sienge").map((f) => (
+            <ToggleGroupItem key={f.id} value={f.id}>
+              {f.label}<Contador tom="neutral" className="ml-1">{contaSituacao(f.id)}</Contador>
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      )}>
       <div className="grid auto-rows-fr grid-cols-1 sm:grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiMini className="h-full" label="Material no executivo" value={fmtBRL(soma(() => true))} hint={`${ativos.length} produtos`} tone="brand" />
         <KpiMini className="h-full" label="Já com canal definido" value={fmtBRL(soma((r) => !!r.it.canalCompra))} tone="neutral" />
@@ -13727,12 +13746,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                filtro ligado, a verba so' aparece se ela mesma tiver observacao
                ou se algum produto dela tiver — e, dentro, ficam so' os produtos
                que tem. */
-            const comBusca = buscando ? g.itens.filter(casaRow) : g.itens;
+            const comBusca = (buscando ? g.itens.filter(casaRow) : g.itens).filter(casaSituacao);
             const comObs = soComObs ? comBusca.filter((r) => obsDoItem(g.num, r.it.desc).length > 0) : comBusca;
-            // O filtro "só a conferir" da verba (etapa Sienge): só o que pede o olho de alguém.
-            const filtrandoConferir = etapa === "sienge" && soConferir.has(g.num);
-            const naTela = filtrandoConferir ? comObs.filter((r) => !r.it.troca && insumoPedeConferencia(r.it)) : comObs;
-            if (buscando && comBusca.length === 0) return null;
+            const naTela = comObs;
+            if ((buscando || situacao !== "todos") && comBusca.length === 0) return null;
             // O filtro de observação decide se a verba aparece; o "só a conferir" só peneira dentro dela.
             if (soComObs && comObs.length === 0 && obsDaVerba(g.num).length === 0) return null;
             const aberto = abreNaBusca.aberto(g.num, abertos.has(g.num));
@@ -13781,33 +13798,38 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                     onCheckedChange={() => alternarGrupo({ ...g, itens: naTela })}
                     title={nSelNaTela === nNaTela ? "Tirar da seleção" : buscando ? "Selecionar o que a busca mostra" : "Selecionar a verba inteira"} />
                 }
+                /* A BARRA EM COLUNAS FIXAS (25/09/2026): número · nome · progresso
+                   · alertas. Vinte verbas se leem como tabela, e o atraso
+                   aparece de longe na barra, sem ler "0 de 4". */
                 cabecalho={
-                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="flex min-w-0 flex-1 items-center gap-3">
                     <span className="mono w-10 shrink-0 text-xs text-text-mute">{g.num}</span>
-                    <span className="min-w-0 flex-1 text-sm font-semibold text-text">{g.nome}</span>
-                    <span className="flex w-full flex-wrap items-center gap-2 lg:w-96 lg:shrink-0">
-                    <Badge tone="neutral">{buscando ? `${nNaTela} de ${nItens}` : nItens} {nItens === 1 && !buscando ? "produto" : "produtos"}</Badge>
-                    {/* No Sienge, solicitar vem antes de comprar: quanto do grupo já foi solicitado. */}
-                    {noSienge && (
-                      <Badge tone={tomContagem(nSolicitados)} title="Solicitados no Sienge — o passo antes da compra">
-                        {nSolicitados === nItens ? <><Check size={12} aria-hidden="true" /> tudo solicitado</> : `${nSolicitados} de ${nItens} solicitados`}
-                      </Badge>
-                    )}
-                    {/* Quanto do grupo já foi comprado, sem precisar abrir: */}
-                    <Badge tone={tomContagem(nComprados)} title={`${fmtBRL(valorComprado)} de ${fmtBRL(g.total)} já comprado`}>
-                      {nComprados === nItens ? <><Check size={12} aria-hidden="true" /> tudo comprado</> : `${nComprados} de ${nItens} comprados`}
-                    </Badge>
-                    {/* TEVE TROCA AQUI (pedido dela, 18/09/2026): "sinalizar no
-                        grupo se teve alguma troca". Sem isto, a troca so'
-                        aparecia abrindo a verba e achando a linha riscada. */}
-                    {nTrocas > 0 && (
-                      <Badge tone="warning" title={nTrocas === 1
-                        ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
-                        : `${nTrocas} produtos desta verba foram trocados — as linhas antigas ficam riscadas, sem contar`}>
-                        <ArrowLeftRight size={12} aria-hidden="true" /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
-                      </Badge>
-                    )}
-                    {nSel > 0 && <Badge tone="purple">{nSel} selecionados</Badge>}
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text" title={g.nome}>{g.nome}</span>
+                    <span className="hidden w-64 shrink-0 flex-col gap-1 sm:flex">
+                      <span className="flex items-center gap-2">
+                        <Progress className="flex-1" tone={nComprados === nItens ? "success" : "brand"}
+                          value={nItens ? (nComprados / nItens) * 100 : 0} aria-label={`${nComprados} de ${nItens} comprados`} />
+                        <span className="mono w-28 shrink-0 text-right text-xs tabular-nums text-text-soft">
+                          {buscando || situacao !== "todos" ? `${nNaTela} de ${nItens} · ` : ""}{nComprados}/{nItens} comprados
+                        </span>
+                      </span>
+                      {noSienge && (
+                        <span className="flex items-center gap-2">
+                          <Progress className="flex-1" tone={nSolicitados === nItens ? "success" : "brand"}
+                            value={nItens ? (nSolicitados / nItens) * 100 : 0} aria-label={`${nSolicitados} de ${nItens} solicitados`} />
+                          <span className="mono w-28 shrink-0 text-right text-xs tabular-nums text-text-soft">{nSolicitados}/{nItens} solicitados</span>
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex w-40 shrink-0 flex-wrap items-center justify-end gap-2">
+                      {nTrocas > 0 && (
+                        <Badge tone="warning" title={nTrocas === 1
+                          ? "Um produto desta verba foi trocado — a linha antiga fica riscada, sem contar"
+                          : `${nTrocas} produtos desta verba foram trocados — as linhas antigas ficam riscadas, sem contar`}>
+                          <ArrowLeftRight size={12} aria-hidden="true" /> {nTrocas === 1 ? "1 troca" : `${nTrocas} trocas`}
+                        </Badge>
+                      )}
+                      {nSel > 0 && <Badge tone="purple">{nSel} selecionados</Badge>}
                     </span>
                   </span>
                 }
@@ -13819,22 +13841,13 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                       <>
                         {!grupos ? <span className="text-xs whitespace-nowrap text-text-mute">carregando a base do Sienge…</span>
                           : aberto && !grupoAssociado && <span className="text-xs whitespace-nowrap text-text-mute">sugerindo insumos…</span>}
-                        {/* O CONTADOR É O FILTRO: clicar mostra só o que falta
-                            conferir na verba; clicar de novo, tudo. */}
-                        {(aConferir > 0 || filtrandoConferir) && (
-                          <Button variant={filtrandoConferir ? "default" : "outline"} size="sm" type="button" aria-pressed={filtrandoConferir}
-                            title={filtrandoConferir ? "Mostrar todos os produtos da verba"
-                              : "Mostrar só o que falta conferir: sem decisão (fica fora do Template Sienge) ou com o detalhe divergente do item"}
-                            onClick={() => {
-                              if (!aberto) abrir(g.num);
-                              setSoConferir((p) => { const n = new Set(p); n.has(g.num) ? n.delete(g.num) : n.add(g.num); return n; });
-                            }}>
-                            {/* CLARO O QUE É E O QUE FAZ (25/09/2026): "2 a conferir" não dizia
-                                que é um filtro nem o que conferir — o insumo do Sienge. */}
-                            <ListFilter size={14} aria-hidden="true" />
-                            {filtrandoConferir ? "Mostrar todos os produtos" : (
-                              <>Ver só <Badge tone="warning">{aConferir}</Badge> {aConferir === 1 ? "insumo" : "insumos"} Sienge a conferir</>
-                            )}
+                        {/* O SELO CURTO (25/09/2026): liga o filtro geral "Insumo a
+                            conferir" e abre a verba; o texto inteiro fica na dica. */}
+                        {aConferir > 0 && situacao !== "a_conferir" && (
+                          <Button variant="ghost" size="sm" type="button" className="h-auto p-0"
+                            title={`${aConferir} ${aConferir === 1 ? "insumo do Sienge pede" : "insumos do Sienge pedem"} conferência: sem decisão (fica fora do Template Sienge) ou com o detalhe divergente do item. Clique para ver só esses.`}
+                            onClick={() => { if (!aberto) abrir(g.num); setSituacao("a_conferir"); }}>
+                            <Badge tone="warning"><ListFilter size={12} aria-hidden="true" /> {aConferir} a conferir</Badge>
                           </Button>
                         )}
                         {/* O mesmo CSV do Gerador de códigos, só com o que
@@ -13848,8 +13861,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                       </>
                     )}
                     {/* Rótulo na frente do valor, numa linha, como no Plano. */}
-                    <span className="mono w-40 shrink-0 text-right text-sm font-semibold tabular-nums text-text">
-                      <span className="label-mono mr-1 font-normal text-text-mute">MAT</span>{fmtBRL(g.total)}
+                    {/* O VALOR COM SIGNIFICADO: comprado de total, e não só o total. */}
+                    <span className="mono w-44 shrink-0 text-right text-sm tabular-nums text-text"
+                      title={`${fmtBRL(valorComprado)} já comprado de ${fmtBRL(g.total)} de material nesta verba`}>
+                      {valorComprado > 0 && <span className="text-text-soft">{fmtBRL(valorComprado)} de </span>}<span className="font-semibold">{fmtBRL(g.total)}</span>
                     </span>
                   </>
                 }
@@ -15310,6 +15325,27 @@ function ModalSolicitarSienge({ obra, linhas, eap, usuario, onFechar, onEnviado 
       </DialogContent>
     </Dialog>
   );
+}
+
+/* O filtro por situação de Compras, como função pura, para a contagem dos
+   botões e para a peneira das linhas usarem a mesma regra. */
+const SITUACOES_DE_COMPRA = [
+  { id: "todos", label: "Todos" },
+  { id: "nao_solicitados", label: "Não solicitados", soSienge: true },
+  { id: "solicitados", label: "Solicitados", soSienge: true },
+  { id: "nao_comprados", label: "Não comprados" },
+  { id: "comprados", label: "Comprados" },
+  { id: "a_conferir", label: "Insumo a conferir", soSienge: true },
+];
+function casaSituacaoDe(id, r) {
+  if (id === "todos") return true;
+  if (r.it.troca) return false;
+  if (id === "nao_solicitados") return r.it.canalCompra === "sienge" && !estaSolicitado(r.it);
+  if (id === "solicitados") return r.it.canalCompra === "sienge" && estaSolicitado(r.it);
+  if (id === "nao_comprados") return !r.it.comprado;
+  if (id === "comprados") return !!r.it.comprado;
+  if (id === "a_conferir") return r.it.canalCompra === "sienge" && insumoPedeConferencia(r.it);
+  return true;
 }
 
 function situacaoNoSienge(it, casamento, grupos) {

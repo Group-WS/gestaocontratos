@@ -18,6 +18,8 @@ const novo = trecho("function DetalheNovoSienge(", "function PedidoCompra(");
 const tudo = trecho("function FaixaSienge(", "function PedidoCompra(");
 const linhaCompra = trecho("function LinhaCompra(", "MÓDULO CONTRATOS");
 const linhaGerador = trecho("function LinhaGerador(", "function CampoRascunho(");
+const compras = trecho("function ComprasView(", "function LinhaCompra(");
+const gerador = trecho("function GeradorSiengeView(", "function LinhaGerador(");
 
 let f = 0;
 const conf = (n, ok) => { if (!ok) f++; console.log(`${ok ? "ok  " : "FALHOU"} ${n}`); };
@@ -60,14 +62,12 @@ conf("sem decisão não se finge 'detalhe novo'", !tudo.includes('?? "__nova__"'
 conf("trocar a mãe volta a situação para 'a conferir'", linhaCompra.includes('detalheSienge: null, detalheNovoSienge: false }, "Insumo mãe trocado.")'));
 conf("escolher 'detalhe novo' grava a decisão", linhaCompra.includes("detalheSienge: null, detalheNovoSienge: true,"));
 conf("a massa marca a escolha como detalhe que existe", src.includes("detalheSienge: melhor.insumo.descricao,\n        detalheNovoSienge: false,"));
-conf("a barra do grupo conta os que estão a conferir", src.includes("insumos\"} Sienge a conferir"));
+conf("a barra do grupo mostra um selo curto com os que estão a conferir", compras.includes("{aConferir} a conferir</Badge>"));
 /* 25/09/2026: só com borda, a faixa sumia no tom da linha. */
 conf("a faixa tem fundo próprio, de token, sem virar card", faixa.includes('"flex min-w-0 flex-col gap-2 rounded-lg bg-surface-1 px-3 py-2", className') && !/className="[^"]*\bborder\b[^"]*bg-surface-1/.test(faixa));
 conf("a situação vem primeiro, com largura fixa (alinha na coluna)", faixa.includes('<Badge tone={situacao.tom} className="w-24 justify-center"'));
 
 /* ---- 25/09/2026, depois da crítica de design ---- */
-const compras = trecho("function ComprasView(", "function LinhaCompra(");
-const gerador = trecho("function GeradorSiengeView(", "function LinhaGerador(");
 // 1. detalhe escolhido que diverge do item
 conf("detalhe escolhido sem todas as palavras vira 'confira'", faixa.includes('faltam.length ? { tom: "warning", texto: "confira" }'));
 conf("... e a palavra que falta aparece ao lado", faixa.includes('<div className="text-xs text-text-soft">falta: <b className="font-semibold text-text">{faltam.join(", ")}</b></div>'));
@@ -79,7 +79,16 @@ conf("as sugestões vêm um produto por vez, só das verbas abertas",
   compras.includes("if (!abreNaBusca.aberto(g.num, abertos.has(g.num))) continue;") && compras.includes("new Map(antes).set(semSugestao.chave, casarComSienge("));
 conf("o que já foi decidido aparece sem esperar a sugestão", linhaCompra.includes("(casamento || it.maeSienge || it.detalheSienge)"));
 // 3. conferência
-conf("o contador 'a conferir' é o filtro da verba", compras.includes("aria-pressed={filtrandoConferir}") && compras.includes("insumoPedeConferencia(r.it)) : comObs"));
+/* 25/09/2026 (crítica da barra da verba): o filtro por situação, igual ao do
+   Executivo, com "Insumo a conferir" dentro; o selo da verba liga esse filtro. */
+conf("existe o filtro por situação do produto, igual ao do Executivo",
+  src.includes('aria-label="Situação do produto"') && /\{ id: "nao_solicitados", label: "Não solicitados", soSienge: true \}/.test(src));
+conf("... com 'a conferir' como opção", src.includes('{ id: "a_conferir", label: "Insumo a conferir", soSienge: true }'));
+conf("... e a mesma regra pura peneira as linhas e conta os botões", src.includes("function casaSituacaoDe(id, r)") && compras.includes("visiveis.filter((r) => casaSituacaoDe(id, r)).length"));
+conf("o selo da verba liga o filtro geral e abre a verba", compras.includes('onClick={() => { if (!aberto) abrir(g.num); setSituacao("a_conferir"); }}'));
+conf("fora do Sienge, solicitado e a conferir somem do filtro", compras.includes("filter((f) => !f.soSienge || etapa === \"sienge\")"));
+conf("o progresso da verba é o Progress do DS, comprado e solicitado", (compras.match(/<Progress className="flex-1"/g) || []).length === 2 && compras.includes("aria-label={`${nComprados} de ${nItens} comprados`}"));
+conf("o valor da verba diz o comprado de total", compras.includes("já comprado de ${fmtBRL(g.total)} de material nesta verba"));
 conf("'usar' em um clique quando há detalhe com todas as palavras", faixa.includes("onClick={() => escolher(sugestao.insumo.descricao)}") && faixa.includes("detalhes[0].faltaram.length === 0"));
 conf("depois de escolher, o foco vai ao próximo pendente", faixa.includes("irAoProximoPendente(raiz.current)") && src.includes('data-pendente={pendente ? "sim" : "nao"}'));
 conf("toda escolha nas Compras avisa com Desfazer", (linhaCompra.match(/mudarNoSienge\(\{/g) || []).length === 3 && linhaCompra.includes('acao: { rotulo: "Desfazer", aoClicar: () => onItemChange(antes) }'));
