@@ -1,5 +1,8 @@
 import DashboardPage from "./features/dashboard/DashboardPage.jsx";
-import ConfiguracoesPage from "./features/configuracoes/ConfiguracoesPage.jsx";
+import ConfiguracoesPage, { ICONE_DO_ATALHO } from "./features/configuracoes/ConfiguracoesPage.jsx";
+import CadastroDeInsumosPage from "./features/configuracoes/CadastroDeInsumosPage.jsx";
+import { IndiceDeConfiguracoes } from "./features/configuracoes/IndiceDeConfiguracoes.jsx";
+import { MODULOS_DE_CONFIGURACOES } from "./features/configuracoes/atalhos.js";
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 
@@ -10562,16 +10565,22 @@ const SLUG_MODULO = {
   /* Faltava, e sem slug o modulo caia em "/" e nao sobrevivia a um F5 —
      justo o unico que o perfil "Canal de compra" enxerga. */
   painel_canal: "painel-canal",
-  equipe: "equipe",
+  /* As telas de Configurações moram abaixo do hub (ADR-009). O endereço
+     antigo (/equipe, /precos, /eap) continua abrindo: ENDERECO_ANTIGO. */
   configuracoes: "configuracoes",
+  equipe: "configuracoes/equipe",
+  precos: "configuracoes/precos",
+  eap: "configuracoes/eap",
+  insumos: "configuracoes/insumos",
   catalogo: "catalogo",
   gerador: "gerador",
-  precos: "precos",
-  eap: "eap",
   arquivo: "arquivo",
 };
 const MODULO_DO_SLUG = Object.fromEntries(
   Object.entries(SLUG_MODULO).filter(([, slug]) => slug).map(([mod, slug]) => [slug, mod]));
+/* Link salvo antes do hub (ADR-009) não vira tela em branco: abre a tela, e o
+   endereço é reescrito para o novo. */
+const ENDERECO_ANTIGO = { equipe: "equipe", precos: "precos", eap: "eap" };
 
 /* O endereco que representa a tela aberta. */
 function enderecoDaTela({ modulo, codigoDaObra = null, tab = null }) {
@@ -10599,7 +10608,8 @@ function telaDoEndereco(caminho) {
       tab: (partes[2] && ETAPA_DO_SLUG[partes[2]]) || null,
     };
   }
-  return { modulo: MODULO_DO_SLUG[partes[0]] || "inicio" };
+  const doisNiveis = MODULO_DO_SLUG[partes.slice(0, 2).join("/")];
+  return { modulo: doisNiveis || MODULO_DO_SLUG[partes[0]] || ENDERECO_ANTIGO[partes[0]] || "inicio" };
 }
 
 /* O que fazer com o endereco lido na abertura (ou no botao voltar).
@@ -10648,9 +10658,11 @@ const MODULOS = [
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
   { id: "painel_canal", nome: "Painel por canal", sub: "cada canal de compra, obra por obra", Icone: PackageSearch },
   { id: "equipe", nome: "Equipe e acessos", sub: "quem é quem, e o que cada um vê", Icone: ShieldCheck },
-  /* Configurações (ADR-008, 23/09/2026): cadastros da empresa que só o
-     administrador mantém. Hoje, o Cadastro de Insumos. */
-  { id: "configuracoes", nome: "Configurações", sub: "cadastros que só o administrador mantém", Icone: Settings },
+  /* Configurações (ADR-009, 25/09/2026): o hub de atalhos. Equipe, Banco de
+     Preços, EAP Sienge e Cadastro de Insumos moram dentro dele e saem do menu
+     (MODULOS_DE_CONFIGURACOES). */
+  { id: "configuracoes", nome: "Configurações", sub: "cadastros e integrações", Icone: Settings },
+  { id: "insumos", nome: "Cadastro de Insumos", sub: "insumos ativos do Sienge", Icone: ICONE_DO_ATALHO.insumos },
   { id: "catalogo", nome: "Catálogo TKWS", sub: "o que a casa especifica", Icone: BookOpen },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: DollarSign },
@@ -10679,9 +10691,11 @@ const MODULOS = [
  * obra vive no painel. */
 const DESTINOS_NO_PAINEL = new Set(["novas", "arquivo"]);
 
-/* Equipe e Configuracoes ficam no pe do trilho, separadas por um fio: sao
-   cadastro, nao trabalho do dia. */
-const DESTINOS_NO_PE = new Set(["equipe", "configuracoes"]);
+/* Configuracoes fica no pe do trilho, separada por um fio: e' cadastro, nao
+   trabalho do dia. As telas dela (Equipe, Banco de Precos, EAP, Insumos) nao
+   aparecem no menu: abrem pelo hub (ADR-009). */
+const DESTINOS_NO_PE = new Set(["configuracoes"]);
+const DENTRO_DO_HUB = new Set(MODULOS_DE_CONFIGURACOES);
 
 /* A ordem da lista: pelo CODIGO, crescente.
 
@@ -10848,7 +10862,7 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
      gaveta do menu. */
   const temPainel = mostrarObras && (listaAberta || (!largo && naObra));
 
-  const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));
+  const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id) && !DENTRO_DO_HUB.has(m.id));
   const destinosPe = noMenu.filter((m) => DESTINOS_NO_PE.has(m.id));
   const doCorpo = noMenu.filter((m) => !DESTINOS_NO_PE.has(m.id));
   const semGrupo = doCorpo.filter((m) => !GRUPOS_DO_MENU.some((g) => g.ids.includes(m.id)));
@@ -10867,7 +10881,9 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
   const novasNoPainel = modulos.find((m) => m.id === "novas");
   const finalizadasNoPainel = modulos.find((m) => m.id === "arquivo");
 
-  const badgeDoDestino = (m) => (m.id === "equipe" && pendentesCount > 0
+  /* O contador de acessos a liberar era da Equipe; com ela dentro do hub
+     (ADR-009), ele fica em Configuracoes, pra nao sumir do menu. */
+  const badgeDoDestino = (m) => (m.id === "configuracoes" && pendentesCount > 0
     ? <Contador tom="warning">{pendentesCount}</Contador>
     : null);
 
@@ -10882,7 +10898,7 @@ function Sidebar({ onInicio, obras, selected, onSelect, modulo, onModulo, novasC
       <HardHat size={16} />
     </ItemTrilho>
   ) : (
-    <ItemTrilho key={m.id} rotulo={m.nome} href={enderecoDaTela({ modulo: m.id })} ativo={modulo === m.id} aberto={trilhoAberto} badge={badgeDoDestino(m)} onClick={() => irPara(m.id)}>
+    <ItemTrilho key={m.id} rotulo={m.nome} href={enderecoDaTela({ modulo: m.id })} ativo={modulo === m.id || (m.id === "configuracoes" && DENTRO_DO_HUB.has(modulo))} aberto={trilhoAberto} badge={badgeDoDestino(m)} onClick={() => irPara(m.id)}>
       <m.Icone size={16} />
     </ItemTrilho>
   ));
@@ -21160,7 +21176,7 @@ function BancoPrecosView({ usuario, onAbrirConfiguracoes }) {
             O cadastro de insumos do Sienge agora entra por <b>Configurações → Cadastro de Insumos</b>, com o relatório de Insumos que o Sienge gera hoje. Este botão continua aceitando o formato antigo.
           </span>
           {onAbrirConfiguracoes && (
-            <Button variant="outline" size="sm" className="shrink-0" onClick={onAbrirConfiguracoes}>Abrir Configurações</Button>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={onAbrirConfiguracoes}>Abrir Cadastro de Insumos</Button>
           )}
         </AlertDescription>
       </Alert>
@@ -22163,6 +22179,9 @@ export default function App() {
   // Equipe e acessos: só o Admin master (ou o Administrador, enquanto não há master).
   const cuidaDaEquipe = migracaoPendente || podeGerenciarPessoas(eu, pessoas);
   const nPendentes = useMemo(() => (cuidaDaEquipe ? pendentes(pessoas).length : 0), [pessoas, cuidaDaEquipe]);
+  /* Quem ve cada atalho do hub de Configuracoes e do indice lateral (ADR-009). */
+  const podeVerNoHub = useCallback((id) => migracaoPendente || podeVerModulo(eu, id, pessoas),
+    [eu, pessoas, migracaoPendente]);
   const modulosVisiveis = useMemo(
     () => (migracaoPendente ? MODULOS : MODULOS.filter((m) => podeVerModulo(eu, m.id, pessoas))),
     [eu, pessoas, migracaoPendente]);
@@ -22709,7 +22728,11 @@ export default function App() {
     if (rotaPendente) return;   // ainda restaurando o endereco lido
     const alvo = enderecoDaTela({ modulo, codigoDaObra: obra?.codigo || null, tab });
     if (window.location.pathname !== alvo) {
-      window.history.pushState({}, "", alvo + window.location.search);
+      /* Endereco antigo (/equipe…, ADR-009) e' trocado, nao empilhado: senao
+         o voltar cairia nele e seria mandado de novo pra frente. */
+      const antigo = ENDERECO_ANTIGO[window.location.pathname.split("/").filter(Boolean)[0]]
+        && window.location.pathname.split("/").filter(Boolean).length === 1;
+      window.history[antigo ? "replaceState" : "pushState"]({}, "", alvo + window.location.search);
     }
   }, [modulo, obra, tab, rotaPendente]);
 
@@ -26165,16 +26188,20 @@ export default function App() {
           </PageShell>
           </>
           ) : modulo === "configuracoes" ? (
-          <ConfiguracoesPage usuario={usuario} />
+          <ConfiguracoesPage podeVer={podeVerNoHub} onAbrir={setModulo} />
+          ) : modulo === "insumos" ? (
+          <IndiceDeConfiguracoes atual="insumos" podeVer={podeVerNoHub} onAbrir={setModulo}>
+          <CadastroDeInsumosPage usuario={usuario} />
+          </IndiceDeConfiguracoes>
           ) : modulo === "equipe" && cuidaDaEquipe ? (
-          <>
+          <IndiceDeConfiguracoes atual="equipe" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb={`Cadastro · ${pessoas.length}`} title="Equipe" description="Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra." contentClassName="flex flex-col gap-6">
             <EquipeView pessoas={pessoas} obras={obras} carregando={pessoasCarregando} erro={pessoasErro}
               usuario={usuario} migracaoPendente={migracaoPendente}
               onSalvar={salvarPessoaNoTime} onSalvarAcesso={salvarAcessoDaPessoa}
               onExcluir={excluirPessoaDoTime} />
           </PageShell>
-          </>
+          </IndiceDeConfiguracoes>
           ) : modulo === "painel_canal" ? (
           <>
           {/* A ESCOLHA DO CANAL fica na propria tela, e nao numa arvore na
@@ -26209,18 +26236,18 @@ export default function App() {
           <AditivosView obras={obrasAtivas} usuario={usuario} souAdmin={souAdmin} />
           </>
           ) : modulo === "precos" ? (
-          <>
+          <IndiceDeConfiguracoes atual="precos" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb="Referência de custo" title="Banco de Preços" description="Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge." contentClassName="flex flex-col gap-6">
             <BancoPrecosView usuario={usuario}
-              onAbrirConfiguracoes={migracaoPendente || podeVerModulo(eu, "configuracoes", pessoas) ? () => setModulo("configuracoes") : undefined} />
+              onAbrirConfiguracoes={podeVerNoHub("insumos") ? () => setModulo("insumos") : undefined} />
           </PageShell>
-          </>
+          </IndiceDeConfiguracoes>
           ) : modulo === "eap" ? (
-          <>
+          <IndiceDeConfiguracoes atual="eap" podeVer={podeVerNoHub} onAbrir={setModulo}>
           <PageShell crumb="Integração Sienge" title="EAP Sienge" description="Onde cada produto é apropriado no orçamento — o que a solicitação de compra exige." contentClassName="flex flex-col gap-6">
             <EapSiengeView usuario={usuario} souAdmin={souAdmin} />
           </PageShell>
-          </>
+          </IndiceDeConfiguracoes>
           ) : modulo === "a_contratar" ? (
           <>
           <GestaoComprasView nAtivas={obrasAtivas.length} obras={obrasDoPainel} carregando={painelCarregando} erro={painelErro}

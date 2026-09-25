@@ -66,7 +66,10 @@ conf("o trilho existe", src.includes('aria-label="Módulos">'), true);
 conf("novas e arquivo saem do trilho",
   src.includes('const DESTINOS_NO_PAINEL = new Set(["novas", "arquivo"]);'), true);
 conf("o menu é filtrado por eles",
-  src.includes("const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id));"), true);
+  src.includes("const noMenu = modulos.filter((m) => !DESTINOS_NO_PAINEL.has(m.id) && !DENTRO_DO_HUB.has(m.id));"), true);
+/* ADR-009: Equipe, Banco de Preços, EAP e Insumos moram no hub de Configurações. */
+conf("as telas do hub saem do menu",
+  src.includes("const DENTRO_DO_HUB = new Set(MODULOS_DE_CONFIGURACOES);"), true);
 /* No trilho TODO destino é ícone sem rótulo — sem a dica de hover, a Equipe
    volta a ser impossível de achar, que era o defeito da barra antiga. */
 /* O rotulo e' um Tooltip do DS em cada destino (ItemTrilho), a' direita. */
