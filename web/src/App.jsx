@@ -12498,7 +12498,7 @@ function irAoProximoPendente(atual) {
 }
 
 function FaixaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, decisao, onEscolher, onNovo,
-  descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false, somenteLeitura = false }) {
+  descrito, editado, onDescrito, aux, codDet, onAux, onCodDet, auxMarca, aoSair = false, somenteLeitura = false, className = "mt-2" }) {
   const raiz = useRef(null);
 
   // Os detalhes da mãe em ordem, sem repetir: a base tem uma linha por
@@ -12530,7 +12530,7 @@ function FaixaSienge({ desc, mae, candidatas, grupos, onMae, escolhida, decisao,
        sumia no tom da linha (a conferir, comprado, selecionado). Na
        superfície de card do DS ela se separa da descrição sem virar card. */
     <div ref={raiz} data-faixa-sienge="" data-pendente={pendente ? "sim" : "nao"}
-      className="mt-2 flex min-w-0 flex-col gap-2 rounded-lg bg-surface-1 px-3 py-2">
+      className={cn("flex min-w-0 flex-col gap-2 rounded-lg bg-surface-1 px-3 py-2", className)}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <span className="label-mono">Sienge</span>
         {/* A situação vem primeiro e com largura fixa: descendo a tabela, os
@@ -12713,7 +12713,7 @@ function SeletorDetalhe({ desc, mae, detalhes = [], escolhida, decisao, sugestao
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" type="button" role="combobox" aria-expanded={aberto} data-seletor-detalhe=""
           aria-label={`Detalhe no Sienge: ${rotulo}`} title={escolhida || sugestao?.insumo.descricao || undefined}
-          className={cn("min-w-0 max-w-sm justify-between font-normal",
+          className={cn("min-w-0 max-w-xl justify-between font-normal",
             decisao === DECISAO_DO_DETALHE.A_CONFERIR ? "text-text-soft" : "")}>
           <span className="truncate">{rotulo}</span>
           <ChevronDown size={14} className="shrink-0 text-text-mute" aria-hidden="true" />
@@ -15740,6 +15740,8 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
   const { it, material } = row;
   const { mae, candidatas } = situacaoNoSienge(it, casamento, grupos);
   const decisao = decisaoDoDetalhe(it, { solicitado: estaSolicitado(it) });
+  const mostraFaixa = !!mostrarSienge && !!(casamento || it.maeSienge || it.detalheSienge);
+  const tomDaLinha = selecionado ? "bg-brand-tint" : it.comprado ? "bg-success-tint" : "bg-warning-tint";
   /* ESCOLHA COM DESFAZER (25/09/2026). Cada escolha grava na hora, e um
      clique no lugar errado só se desfazia trocando a mãe duas vezes. O
      aviso guarda os campos como eram e devolve com um clique. */
@@ -15797,11 +15799,14 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
 
   return (
     <>
-    <TableRow className={selecionado ? "bg-brand-tint" : it.comprado ? "bg-success-tint" : "bg-warning-tint"}>
-      <TableCell className="text-center">
+    {/* Com a faixa do Sienge, o item vira duas linhas da tabela que se leem
+        como uma: mesmo tom, sem o fio entre elas, e o check e o código
+        ocupando as duas. */}
+    <TableRow className={cn(tomDaLinha, mostraFaixa && "!border-b-0")}>
+      <TableCell className="text-center" rowSpan={mostraFaixa ? 2 : undefined}>
         <Checkbox checked={!!selecionado} onCheckedChange={onSelecionar} aria-label="Selecionar produto" />
       </TableCell>
-      <TableCell className="mono text-xs text-text-mute">{codigoVisivel(it)}</TableCell>
+      <TableCell className="mono text-xs text-text-mute" rowSpan={mostraFaixa ? 2 : undefined}>{codigoVisivel(it)}</TableCell>
       {/* A LINHA COMPACTA (23/09/2026): descrição numa linha (inteira na
           dica), os dados do produto numa linha cinza embaixo e as ações
           raras (trocar, observação) no menu ⋯ — a linha caiu para menos da
@@ -15867,28 +15872,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
             </DropdownMenu>
           )}
         </div>
-        {/* O INSUMO NO SIENGE, numa faixa debaixo da descrição (25/09/2026):
-            era uma coluna de 320px com ~610px de altura por produto. A mesma
-            escolha do Gerador de códigos (FaixaSienge), guardada no próprio
-            item da obra. */}
-        {/* Sempre visível na etapa Sienge (25/09/2026): o que já foi decidido
-            aparece na hora; o resto, assim que a sugestão da verba chega. */}
-        {mostrarSienge && (casamento || it.maeSienge || it.detalheSienge) && (
-          <FaixaSienge desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
-            // Outra mãe, outros detalhes: a decisão volta para "a conferir" — RN-090.
-            onMae={(cod) => mudarNoSienge({ maeSienge: cod || null, detalheSienge: null, detalheNovoSienge: false }, "Insumo mãe trocado.")}
-            escolhida={it.detalheSienge || null} decisao={decisao}
-            onEscolher={(d) => mudarNoSienge({ detalheSienge: d, detalheNovoSienge: false, maeSienge: mae?.codigo ?? it.maeSienge ?? null }, "Detalhe do Sienge escolhido.")}
-            onNovo={() => mudarNoSienge({ detalheSienge: null, detalheNovoSienge: true, maeSienge: mae?.codigo ?? it.maeSienge ?? null }, "Vai como detalhe novo.")}
-            descrito={descritivoDoItem(it)} editado={it.descritivoSienge != null}
-            onDescrito={(txt) => onItemChange({ descritivoSienge: txt })}
-            codDet={it.codigoDetalheSienge || ""}
-            onCodDet={(v) => onItemChange({ codigoDetalheSienge: v.trim() ? v.trim() : null })}
-            aux={aux?.codigo || ""} auxMarca={aux?.gerado ? "gerado" : null}
-            onAux={(v) => onItemChange({ codigoAuxSienge: v.trim() ? v.trim() : null })}
-            aoSair somenteLeitura={!podeEditar} />
-        )}
-        {mostrarSienge && !casamento && !it.maeSienge && !it.detalheSienge && (
+        {mostrarSienge && !mostraFaixa && (
           <div className="mt-2 text-xs text-text-mute">sugerindo o insumo do Sienge…</div>
         )}
         {/* A OBSERVACAO DO PRODUTO, na propria linha — e' aqui que quem vai
@@ -15956,6 +15940,31 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
       )}
 
     </TableRow>
+    {/* O INSUMO NO SIENGE, numa linha própria (25/09/2026): começa na coluna
+        da descrição e vai até a última — "precisa ocupar o espaço de todas as
+        colunas após descrição". Antes foi uma coluna de 320px com ~610px de
+        altura por produto, e depois uma faixa espremida na célula da
+        descrição. Sempre visível na etapa Sienge: o que já foi decidido
+        aparece na hora; o resto, assim que a sugestão da verba chega. */}
+    {mostraFaixa && (
+      <TableRow className={tomDaLinha}>
+        <TableCell colSpan={nCols - 2} className="pt-0">
+          <FaixaSienge className="" desc={it.desc} mae={mae} candidatas={candidatas} grupos={grupos}
+            // Outra mãe, outros detalhes: a decisão volta para "a conferir" — RN-090.
+            onMae={(cod) => mudarNoSienge({ maeSienge: cod || null, detalheSienge: null, detalheNovoSienge: false }, "Insumo mãe trocado.")}
+            escolhida={it.detalheSienge || null} decisao={decisao}
+            onEscolher={(d) => mudarNoSienge({ detalheSienge: d, detalheNovoSienge: false, maeSienge: mae?.codigo ?? it.maeSienge ?? null }, "Detalhe do Sienge escolhido.")}
+            onNovo={() => mudarNoSienge({ detalheSienge: null, detalheNovoSienge: true, maeSienge: mae?.codigo ?? it.maeSienge ?? null }, "Vai como detalhe novo.")}
+            descrito={descritivoDoItem(it)} editado={it.descritivoSienge != null}
+            onDescrito={(txt) => onItemChange({ descritivoSienge: txt })}
+            codDet={it.codigoDetalheSienge || ""}
+            onCodDet={(v) => onItemChange({ codigoDetalheSienge: v.trim() ? v.trim() : null })}
+            aux={aux?.codigo || ""} auxMarca={aux?.gerado ? "gerado" : null}
+            onAux={(v) => onItemChange({ codigoAuxSienge: v.trim() ? v.trim() : null })}
+            aoSair somenteLeitura={!podeEditar} />
+        </TableCell>
+      </TableRow>
+    )}
     {trocando && (
       <TableRow className="bg-surface-2 hover:bg-surface-2">
         <TableCell colSpan={nCols} className="p-4">

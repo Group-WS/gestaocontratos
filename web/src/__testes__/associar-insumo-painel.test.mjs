@@ -28,7 +28,11 @@ conf("as duas telas usam a mesma faixa", (src.match(/<FaixaSienge /g) || []).len
 conf("não existe mais a coluna 'Insumo no Sienge'", !src.includes('<TableHead className="w-80">Insumo no Sienge</TableHead>'));
 conf("o painel antigo saiu", !src.includes("function EscolhaSienge(") && !src.includes("function AssociacaoSienge("));
 conf("sem painel lateral: a escolha não abre outra tela", !tudo.includes("<Sheet"));
-conf("em Compras, a faixa mora na célula da descrição", /\{mostrarSienge && \(casamento \|\| it\.maeSienge \|\| it\.detalheSienge\) && \(\s*<FaixaSienge /.test(linhaCompra));
+/* 25/09/2026: "precisa ocupar o espaço de todas as colunas após descrição". */
+conf("em Compras, a faixa é uma linha própria, da descrição até a última coluna",
+  /\{mostraFaixa && \(\s*<TableRow className=\{tomDaLinha\}>\s*<TableCell colSpan=\{nCols - 2\} className="pt-0">\s*<FaixaSienge /.test(linhaCompra));
+conf("... lida junto com o item: sem o fio entre as duas linhas, check e código nas duas",
+  linhaCompra.includes('<TableRow className={cn(tomDaLinha, mostraFaixa && "!border-b-0")}>') && (linhaCompra.match(/rowSpan=\{mostraFaixa \? 2 : undefined\}/g) || []).length === 2);
 
 /* ---- os dois seletores: combobox do DS, com busca ---- */
 conf("mãe e detalhe abrem num Popover com busca", [mae, detalhe].every((t) => t.includes("<Popover ") && t.includes("<CommandInput ")));
@@ -58,7 +62,7 @@ conf("escolher 'detalhe novo' grava a decisão", linhaCompra.includes("detalheSi
 conf("a massa marca a escolha como detalhe que existe", src.includes("detalheSienge: melhor.insumo.descricao,\n        detalheNovoSienge: false,"));
 conf("a barra do grupo conta os que estão a conferir", src.includes("{aConferir} a conferir"));
 /* 25/09/2026: só com borda, a faixa sumia no tom da linha. */
-conf("a faixa tem fundo próprio, de token, sem virar card", faixa.includes('rounded-lg bg-surface-1 px-3 py-2"') && !/className="[^"]*\bborder\b[^"]*bg-surface-1/.test(faixa));
+conf("a faixa tem fundo próprio, de token, sem virar card", faixa.includes('"flex min-w-0 flex-col gap-2 rounded-lg bg-surface-1 px-3 py-2", className') && !/className="[^"]*\bborder\b[^"]*bg-surface-1/.test(faixa));
 conf("a situação vem primeiro, com largura fixa (alinha na coluna)", faixa.includes('<Badge tone={situacao.tom} className="w-24 justify-center"'));
 
 /* ---- 25/09/2026, depois da crítica de design ---- */
