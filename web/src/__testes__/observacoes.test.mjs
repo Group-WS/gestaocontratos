@@ -194,7 +194,7 @@ conf("sem a tabela, não aparece nada de observação",
    equipe acha que são dois. "Interna" também diz o que ela é — recado da
    casa, não algo que sai para cliente ou fornecedor. */
 conf("o botão de criar diz observação interna", app.includes('<Plus size={14} aria-hidden="true" /> observação interna'), true);
-conf("o filtro também", app.includes('com observação interna <Contador tom="neutral" className="ml-1">{obs.length}</Contador>'), true);
+conf("o filtro também", app.includes('com observação interna</span> <Contador tom="neutral" className="ml-1">{obs.length}</Contador>'), true);
 conf("a dica do item também", app.includes('"Deixar uma observação interna neste produto"'), true);
 conf("a dica da verba também", app.includes('"Deixar uma observação interna nesta verba"'), true);
 conf("e a de apagar", app.includes('rotulo="Apagar esta observação interna"'), true);

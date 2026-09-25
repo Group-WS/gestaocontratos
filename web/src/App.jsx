@@ -3223,21 +3223,23 @@ function historicoDaTela(eventos, tela) {
 
    Fica no topo do arquivo de proposito. Componente declarado dentro de outro
    e' remontado a cada render, e o campo perderia o foco a cada tecla. */
-function CampoBusca({ valor, aoMudar, dica, contador }) {
+/* `emLinha`: a busca divide UMA linha com outros controles e encolhe com
+   ela, sem quebrar — a barra de Compras, 25/09/2026. */
+function CampoBusca({ valor, aoMudar, dica, contador, emLinha = false }) {
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <div className={emLinha ? "flex min-w-48 flex-1 items-center gap-2" : "flex w-full flex-wrap items-center gap-2 sm:w-auto"}>
       {/* Com icone, o Input do DS se embrulha num div relativo, e a largura
           vai no input de dentro: sem o div de fora, o embrulho ficava do
           tamanho do conteudo e cortava a dica no celular. */}
-      <div className="w-full sm:w-72">
+      <div className={emLinha ? "min-w-0 flex-1" : "w-full sm:w-72"}>
         <Input className="w-full" icon={<Search size={16} aria-hidden="true" />} aria-label="Buscar"
           placeholder={dica || "Buscar insumo, código ou fornecedor…"} value={valor || ""}
           onChange={(e) => aoMudar(e.target.value)} />
       </div>
-      {!!valor && !!contador && <span className="text-xs text-text-mute" role="status">{contador}</span>}
-      {!!valor && (
-        <Button variant="ghost" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>
-      )}
+      {!!valor && !!contador && <span className="shrink-0 whitespace-nowrap text-xs text-text-mute" role="status">{contador}</span>}
+      {!!valor && (emLinha
+        ? <BotaoIcone rotulo="Limpar a busca" variant="ghost" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /></BotaoIcone>
+        : <Button variant="ghost" title="Limpar a busca" onClick={() => aoMudar("")}><X size={16} aria-hidden="true" /> Limpar busca</Button>)}
     </div>
   );
 }
@@ -13478,30 +13480,33 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     ...fornecedores.map((f) => ({ value: f.chave, label: `${f.nome.length > 42 ? `${f.nome.slice(0, 40)}…` : f.nome} (${f.n})` })),
   ];
 
-  /* w-full: sem ele a barra mede pelo conteudo e o lg:ml-auto do grupo de
-     acoes nao tem sobra pra empurrar — os botoes ficavam colados no filtro. */
+  /* A BARRA NUMA LINHA SÓ, SEMPRE (25/09/2026, TELA-11): a busca e o
+     fornecedor encolhem, os botões não quebram e os rótulos longos encurtam
+     em tela menor; no celular, a linha rola para o lado em vez de quebrar. */
+  const alvoDaSelecao = buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa";
   const toolbar = (
-    <div className="flex w-full flex-wrap items-center gap-2">
-      <CampoBusca valor={busca} aoMudar={setBusca}
-        contador={`${naTelaTudo.length} de ${visiveis.length} produtos`} />
+    <div className="flex w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
+      <CampoBusca emLinha valor={busca} aoMudar={setBusca}
+        contador={`${naTelaTudo.length} de ${visiveis.length}`} />
       {/* SO' O QUE TEM OBSERVACAO. Só aparece quando existe alguma nesta
           obra: filtro que nunca filtra nada é ruído na barra. */}
       {obs.length > 0 && (
-        <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)}
+        <Toggle pressed={soComObs} onPressedChange={(v) => setSoComObs(!!v)} className="shrink-0 whitespace-nowrap"
           title="Mostrar só as verbas e produtos com observação interna" aria-label="Só com observação interna">
-          <MessageSquare size={16} aria-hidden="true" /> com observação interna <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
+          <MessageSquare size={16} aria-hidden="true" /> <span className="hidden xl:inline">com observação interna</span> <Contador tom="neutral" className="ml-1">{obs.length}</Contador>
         </Toggle>
       )}
       {/* Na barra o rotulo fica so' para leitor de tela: o proprio valor
           ("Todos os fornecedores") ja' diz o que o campo e', e o rotulo em
           cima desalinhava a fila inteira. */}
       <Choice label="Fornecedor" rotuloVisivel={false} value={fornecedor || TODOS_FORNECEDORES} opcoes={opcoesFornecedor}
-        onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-full sm:w-72" />
-      <div className="flex w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto">
-        <Button variant="outline" className="h-10" onClick={selecionarTudo}>
-          <Check size={16} aria-hidden="true" /> Selecionar os {naTelaTudo.length} {buscando ? "desta busca" : fornecedor ? "deste fornecedor" : "desta etapa"}
+        onChange={(v) => setFornecedor(v === TODOS_FORNECEDORES ? "" : v)} className="w-48 shrink-0 lg:w-64" />
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <Button variant="outline" className="h-10 whitespace-nowrap" onClick={selecionarTudo}
+          title={`Selecionar os ${naTelaTudo.length} ${alvoDaSelecao}`}>
+          <Check size={16} aria-hidden="true" /> Selecionar {naTelaTudo.length}<span className="hidden xl:inline"> {alvoDaSelecao}</span>
         </Button>
-        {sel.size > 0 && <Button variant="ghost" className="h-10" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
+        {sel.size > 0 && <Button variant="ghost" className="h-10 whitespace-nowrap" onClick={() => setSel(new Set())}>Limpar seleção</Button>}
         {fornecedor && fornecedor !== SEM_FORNECEDOR && (
           <div className="flex h-10 items-center gap-2" title="Desmarque pra gerar o pedido sem o nome do fornecedor">
             <Checkbox id={idNomeNoPdf} checked={nomeNoPdf} onCheckedChange={(v) => setNomeNoPdf(v === true)} />
@@ -13512,13 +13517,13 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
             17/09/2026): o PDF sai com a lista INTEIRA do fornecedor, e a
             tela mostrando tres linhas enquanto o pedido leva sessenta e' a
             pagina afirmando duas coisas. */}
-        <BotaoComMotivo className="h-10" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
+        <BotaoComMotivo className="h-10 whitespace-nowrap" onClick={gerarPedido} disabled={buscando || !fornecedor || fornecedor === SEM_FORNECEDOR}
           title={buscando
             ? "Limpe a busca — o pedido sai com a lista inteira do fornecedor, não com o que a busca mostra"
             : !fornecedor || fornecedor === SEM_FORNECEDOR
             ? "Escolha um fornecedor pra gerar o pedido"
             : "PDF com os itens deste fornecedor que ainda não foram comprados"}>
-          <Printer size={16} aria-hidden="true" /> Pedido de orçamento
+          <Printer size={16} aria-hidden="true" /> Pedido<span className="hidden lg:inline"> de orçamento</span>
         </BotaoComMotivo>
       </div>
     </div>
