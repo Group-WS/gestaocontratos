@@ -138,6 +138,23 @@ bloco 5, e de novo **sempre** que o bloco 5 rodar.
 > arquivos funcionam e só o registro não grava.
 > Teste: `tests/15-arquivo-evento.sql`.
 
+**11. O Cadastro de Insumos (23/09/2026 · ADR-008)**
+`insumo-cadastro.sql` — depois do bloco 6 e do `sienge_solicitacao.sql`.
+
+> Cria o cadastro da tela Configurações → Cadastro de Insumos:
+> `insumo_cadastro` (código + descrição identificam o insumo),
+> `insumo_cadastro_historico` (cada mudança vira uma linha, por gatilho),
+> `insumo_cadastro_importacao` (cada relatório do Sienge importado) e
+> `insumo_tabela_ativa` (começa com "1 - TABELA WS BUILDING"). O time lê o
+> cadastro; só o administrador escreve (RN-086). Insumo pedido ao Sienge —
+> solicitação concluída ou parcial com o mesmo código e o mesmo texto — não
+> se apaga (RN-087, gatilho). Também cria o balde privado
+> `insumo-importacao` (só xlsx, até 10 MB) e um índice GIN no `payload` de
+> `sienge_solicitacao`, que a RN-087 consulta. Não altera dado existente e
+> não mexe no `insumo_sienge`: rode **antes** do deploy (sem ele, a aba
+> Configurações avisa que falta este SQL).
+> Teste: `tests/17-insumo-cadastro.sql`.
+
 **Antes do bloco 6, confira se o bloco 5 rodou em produção.** Os
 comentários do `taylor-made.sql` indicam que o `rls-perfis.sql` pode nunca
 ter sido aplicado lá. Esta consulta mostra o que vale hoje:

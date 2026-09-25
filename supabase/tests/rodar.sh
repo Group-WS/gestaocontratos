@@ -85,6 +85,10 @@ aplicar "$SQL/obra-arquivo-evento.sql"
 # 10. O registro do EAP Sienge (usa meu_perfil() e sou_admin() do bloco 6).
 aplicar "$SQL/sienge-eap-evento.sql"
 
+# 11. O Cadastro de Insumos (usa meu_perfil() e sou_admin() do bloco 6 e o
+#     sienge_solicitacao, que a RN-087 consulta).
+aplicar "$SQL/insumo-cadastro.sql"
+
 # Os testes. `finish(true)` faz o pgTAP levantar erro quando algo falha,
 # e o ON_ERROR_STOP transforma isso no codigo de saida que o CI enxerga.
 falhou=0

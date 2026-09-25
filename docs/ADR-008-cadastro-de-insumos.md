@@ -1,6 +1,6 @@
 # ADR-008 — Cadastro de Insumos, do relatório do Sienge
 
-Gestão de Obras TKWS · 23/09/2026 · **Decidido pelo dev, item a item — aguardando revisão para implementar**
+Gestão de Obras TKWS · 23/09/2026 · **Decidido pelo dev, item a item · implementado na branch `feat/cadastro-de-insumos` · regras RN-086 a RN-089**
 
 ---
 
@@ -141,6 +141,14 @@ cabe, pelo banco.
 | O SQL | Vai como arquivo em `supabase/` (tabela, RLS, histórico e balde), para rodar em produção antes do deploy, como os outros. |
 | Documento de funcionalidade | **Não**: esta ADR e as fichas das regras bastam. |
 
+### Decisões tomadas na implementação (23/09/2026)
+
+| Pergunta | Resposta |
+|---|---|
+| Uma solicitação com o código 406 bloqueia o quê | **Só o registro com o mesmo texto**: mesmo código (`productId`) e mesmo texto (`notes`) do item enviado. Os outros registros do código continuam apagáveis. |
+| Quais solicitações contam como enviadas | **Só concluída e parcial.** Enviando, falhou e abandonada não contam. |
+| Onde o admin configura a tabela ativa | **Num card na própria aba**, com código, nome e o próprio botão de salvar. |
+
 ## O que este arquivo produz com as regras acima
 
 | | |
@@ -152,9 +160,33 @@ cabe, pelo banco.
 | **Entram no cadastro** | **13.758 registros, em 2.571 códigos** |
 | Avisos na prévia | 8 pares que só diferem por espaço |
 
+## A solução
+
+- **Regras (RN-086 a RN-089):** `web/src/regras/cadastroDeInsumos.js`, com teste ao lado.
+- **Leitura e plano:** `web/src/lib/relatorioDeInsumos.js` — confere o modelo (cabeçalho pelos
+  nomes, linha "Tabela", rodapé do Sienge), separa o que entra, o que fica de fora e por quê, e monta
+  o plano contra o cadastro de hoje. O registro do Sienge é reconhecido pelo código e pela descrição
+  com que chegou (`sienge_codigo`, `sienge_descricao`), mesmo depois de editado na tela.
+- **Banco:** `supabase/insumo-cadastro.sql` — `insumo_cadastro`, `insumo_cadastro_historico`
+  (gatilho), `insumo_cadastro_importacao`, `insumo_tabela_ativa`, o balde privado
+  `insumo-importacao` e as funções `insumo_cadastro_gravar` e `insumo_cadastro_apagar` (cada bloco
+  numa transação). O autor vem do login; a RN-087 também é garantida por gatilho.
+- **API:** `web/api/_lib/rotas/insumoCadastro.js` — lista, CRUD, tabela ativa, envio assinado,
+  prévia e gravação em rodadas de alguns segundos (a tela chama de novo até concluir; o "continuar"
+  refaz o plano e reconhece o que já entrou).
+- **Tela:** módulo **Configurações** (`web/src/features/configuracoes/`), no pé do trilho, só para
+  quem administra; aba Cadastro de Insumos com a tabela ativa, a lista, o formulário, o histórico
+  por insumo, a importação com prévia e a lista de importações. O Banco de Preços ganhou o aviso do
+  caminho novo.
+- **Testes:** regras (`web/src/regras/cadastroDeInsumos.test.mjs`), leitura e plano
+  (`web/src/__testes__/cadastro-de-insumos.test.mjs`), rota
+  (`web/api/_lib/__testes__/insumo-cadastro-rota.test.cjs`), banco
+  (`supabase/tests/17-insumo-cadastro.sql`) e E2E (`e2e/configuracoes.spec.mjs`).
+
 ## Próximo passo
 
-Revisão desta ADR pelo dev. Com ela liberada, a implementação segue o item 10.
+Rodar `supabase/insumo-cadastro.sql` em produção **antes** do deploy (sem ele, a aba avisa que falta
+o SQL). Depois, importar o relatório de Insumos pela tela nova.
 
 ## Histórico
 
@@ -162,3 +194,4 @@ Revisão desta ADR pelo dev. Com ela liberada, a implementação segue o item 10
 - 23/09/2026 — itens 5 (CRUD) e 6 (lugar e acesso) decididos.
 - 23/09/2026 — itens 7 (fluxo), 8 (arquitetura) e 9 (regras de negócio) decididos.
 - 23/09/2026 — item 10 (entrega) decidido; ADR completa, aguardando a revisão do dev.
+- 23/09/2026 — revisada pelo dev e implementada; três decisões da implementação registradas acima.
