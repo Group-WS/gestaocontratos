@@ -3229,7 +3229,7 @@ function historicoDaTela(eventos, tela) {
    ela, sem quebrar — a barra de Compras, 25/09/2026. */
 function CampoBusca({ valor, aoMudar, dica, contador, emLinha = false }) {
   return (
-    <div className={emLinha ? "flex min-w-40 flex-1 items-center gap-2" : "flex w-full flex-wrap items-center gap-2 sm:w-auto"}>
+    <div className={emLinha ? "flex min-w-40 max-w-80 flex-1 items-center gap-2" : "flex w-full flex-wrap items-center gap-2 sm:w-auto"}>
       {/* Com icone, o Input do DS se embrulha num div relativo, e a largura
           vai no input de dentro: sem o div de fora, o embrulho ficava do
           tamanho do conteudo e cortava a dica no celular. */}
@@ -13376,6 +13376,7 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
      inteira a cada item alterado — e cada clique numa variante congelava
      a tela de novo. */
   const [casamentos, setCasamentos] = useState(() => new Map());
+  const [associando, setAssociando] = useState(null);
   const selecionados = rows.filter((r) => sel.has(r.chave));
 
   /* A conferencia so olha o canal Sienge: e o unico que passa por la. */
@@ -13449,38 +13450,6 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     setSel(new Set());
   }
 
-  /* A SUGESTÃO DO INSUMO É SOZINHA, E AOS POUCOS (25/09/2026).
-
-     Até 22/09 ela casava a obra inteira ao entrar na etapa Sienge, de uma
-     vez, contra os 10 mil insumos: a tela congelava. Depois virou um botão
-     "Associar insumos" por grupo — e a associação sumia a cada visita, até
-     o item já decidido, porque as sugestões moram só na memória da tela.
-
-     Agora a base carrega sozinha ao entrar na etapa, e cada verba ABERTA
-     calcula as sugestões de um produto por vez, devolvendo a tela entre um
-     e outro: o efeito agenda um, grava, e roda de novo para o próximo. */
-  const naEtapaSienge = etapa === "sienge";
-  useEffect(() => {
-    if (!naEtapaSienge || baseSienge || carregando || erroBase) return;
-    recarregarBase();
-  }, [naEtapaSienge, baseSienge, carregando, erroBase]); // eslint-disable-line react-hooks/exhaustive-deps
-  const semSugestao = useMemo(() => {
-    if (!naEtapaSienge || !grupos) return null;
-    for (const g of porVerba) {
-      if (!abreNaBusca.aberto(g.num, abertos.has(g.num))) continue;
-      const r = g.itens.find((x) => !x.it.troca && !casamentos.has(x.chave));
-      if (r) return r;
-    }
-    return null;
-  }, [naEtapaSienge, grupos, porVerba, abertos, casamentos, abreNaBusca]);
-  useEffect(() => {
-    if (!semSugestao) return;
-    const t = setTimeout(() => {
-      setCasamentos((antes) => new Map(antes).set(semSugestao.chave, casarComSienge(semSugestao.it.desc, grupos)));
-    }, 0);
-    return () => clearTimeout(t);
-  }, [semSugestao, grupos]);
-
   async function recarregarBase() {
     setCarregando(true); setErroBase(null);
     try {
@@ -13495,7 +13464,32 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
     } finally { setCarregando(false); }
   }
 
+  /* A busca do insumo roda por grupo, quando alguém pede (volta em 25/09/2026).
 
+     A associação não pode ser automática: a sugestão sozinha, ao abrir a
+     verba, foi desfeita. Casar a obra inteira de uma vez congelava a tela,
+     então cada grupo tem o seu "Associar insumos" na própria barra. */
+  async function associarGrupo(g) {
+    setAssociando(g.num); setErroBase(null);
+    try {
+      let base = grupos;
+      if (!base) {
+        const [insumos, cad] = await Promise.all([carregarTodosInsumos(), carregarCadastroSienge()]);
+        if (!insumos.length && !cad.length) { setErroBase("A base de insumos do Sienge está vazia — importe o relatório em Banco de Preços."); return; }
+        setBaseSienge(insumos);
+        setCadastroSienge(cad);
+        base = agruparPorMae(insumos, cad);
+      }
+      // Deixa a tela mostrar o "Associando…" antes da conta, que é pesada.
+      await new Promise((ok) => setTimeout(ok, 30));
+      const novos = g.itens.map((r) => [r.chave, casarComSienge(r.it.desc, base)]);
+      setCasamentos((antes) => new Map([...antes, ...novos]));
+    } catch (e) {
+      setErroBase(`Não consegui ler a base de insumos: ${e.message || e}`);
+    } finally {
+      setAssociando(null);
+    }
+  }
 
   // O mesmo arquivo do Gerador de códigos: CSV, ponto e vírgula, sem BOM.
   function baixarTemplateDoGrupo(g, linhas) {
@@ -13658,10 +13652,10 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
         <Alert tone="info">
           <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <span className="min-w-0 flex-1">
-              {carregando ? "Carregando a base do Sienge…"
+              {carregando ? "Recarregando a base do Sienge…"
                 : baseSienge
-                  ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Cada verba aberta sugere o insumo dos produtos sozinha; confira os "a conferir" em cada linha, ou selecione e associe em massa.`
-                  : "Os produtos já estão aqui. A base do Sienge carrega sozinha, e cada verba aberta sugere o insumo dos produtos."}
+                  ? `${baseSienge.length.toLocaleString("pt-BR")} insumos cadastrados no Sienge. Associe grupo a grupo; depois escolha a mãe e a variante em cada linha, ou selecione e associe em massa.`
+                  : "Os produtos já estão aqui. A busca do insumo no Sienge roda por grupo, no botão “Associar insumos” da barra de cada um."}
             </span>
             {baseSienge && (
               <Button variant="outline" size="sm" onClick={recarregarBase} disabled={carregando} className="shrink-0">
@@ -13895,8 +13889,12 @@ function ComprasView({ obra: obraCrua, onItemChange, onCompraAditivo, usuario, p
                         obra inteira de uma vez congelava a tela. */}
                     {noSienge && (
                       <>
-                        {!grupos ? <span className="text-xs whitespace-nowrap text-text-mute">carregando a base do Sienge…</span>
-                          : aberto && !grupoAssociado && <span className="text-xs whitespace-nowrap text-text-mute">sugerindo insumos…</span>}
+                        {!grupoAssociado && (
+                          <Button variant="outline" size="sm" type="button" disabled={associando != null}
+                            onClick={() => { if (!aberto) abrir(g.num); associarGrupo(g); }}>
+                            <PackageSearch size={14} aria-hidden="true" /> {associando === g.num ? "Associando…" : "Associar insumos"}
+                          </Button>
+                        )}
                         {/* O SELO CURTO (25/09/2026): liga o filtro geral "Insumo a
                             conferir" e abre a verba; o texto inteiro fica na dica. */}
                         {aConferir > 0 && situacao !== "a_conferir" && (

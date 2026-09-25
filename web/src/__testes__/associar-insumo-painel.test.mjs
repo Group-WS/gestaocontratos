@@ -73,10 +73,9 @@ conf("detalhe escolhido sem todas as palavras vira 'confira'", faixa.includes('f
 conf("... e a palavra que falta aparece ao lado", faixa.includes('<div className="text-xs text-text-soft">falta: <b className="font-semibold text-text">{faltam.join(", ")}</b></div>'));
 conf("... e conta como pendente", src.includes("detalheDivergente(it.desc, it.detalheSienge)"));
 // 2. faixa sempre visível, sugestões sozinhas
-conf("o botão 'Associar insumos' saiu", !src.includes("async function associarGrupo(") && !/>\s*\{associando === g\.num/.test(src));
-conf("a base carrega sozinha na etapa Sienge", compras.includes("if (!naEtapaSienge || baseSienge || carregando || erroBase) return;"));
-conf("as sugestões vêm um produto por vez, só das verbas abertas",
-  compras.includes("if (!abreNaBusca.aberto(g.num, abertos.has(g.num))) continue;") && compras.includes("new Map(antes).set(semSugestao.chave, casarComSienge("));
+/* 25/09/2026: a associação não pode ser automática — o botão por grupo voltou. */
+conf("o botão 'Associar insumos' voltou", src.includes("async function associarGrupo(") && />\s*\{associando === g\.num/.test(src));
+conf("a base não carrega nem sugere sozinha", !compras.includes("naEtapaSienge") && !compras.includes("semSugestao"));
 conf("o que já foi decidido aparece sem esperar a sugestão", linhaCompra.includes("(casamento || it.maeSienge || it.detalheSienge)"));
 // 3. conferência
 /* 25/09/2026 (crítica da barra da verba): o filtro por situação, igual ao do
