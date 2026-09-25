@@ -112,3 +112,7 @@ a RN-070) · catálogo, preços e EAP (RN-071 a RN-085).
 | [RN-083](RN-083-eap-uma-versao-padrao.md) | Uma única versão padrão da EAP | proposta | EAP Sienge · Compras |
 | [RN-084](RN-084-eap-so-folha-apropria.md) | Só a folha da EAP recebe apropriação | proposta | EAP Sienge |
 | [RN-085](RN-085-eap-mapa-confirmado-pela-pessoa.md) | A ligação verba → EAP é decisão de uma pessoa | proposta | EAP Sienge |
+| [RN-086](RN-086-cadastro-de-insumos-so-administrador.md) | Só o administrador mantém o cadastro de insumos | vigente | Configurações · Cadastro de Insumos |
+| [RN-087](RN-087-insumo-pedido-ao-sienge-nao-se-apaga.md) | Insumo pedido ao Sienge não se apaga | vigente | Configurações · Cadastro de Insumos |
+| [RN-088](RN-088-importacao-so-da-tabela-ativa.md) | A importação só aceita o relatório da tabela ativa | vigente | Configurações · Cadastro de Insumos |
+| [RN-089](RN-089-insumo-em-vb-fica-fora-do-cadastro.md) | Insumo em "vb" não entra no cadastro | vigente | Configurações · Cadastro de Insumos |

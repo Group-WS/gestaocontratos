@@ -79,6 +79,8 @@ export async function apiJson(caminho, { metodo = "GET", corpo, ...resto } = {})
     if (dados?.code) err.code = dados.code;
     if (dados?.correlationId) err.correlationId = dados.correlationId;
     if (Array.isArray(dados?.campos)) err.campos = dados.campos;
+    // O motivo de cada recusa de uma leitura de arquivo (ex.: relatório fora do modelo).
+    if (Array.isArray(dados?.erros)) err.erros = dados.erros;
     throw err;
   }
   return dados;

@@ -114,6 +114,7 @@ const { rotasDeComentarios } = require("./rotas/comentarios.js");
 const { rotasDeImportacoes } = require("./rotas/importacoes.js");
 const { rotasDeArquivoEventos } = require("./rotas/arquivoEventos.js");
 const { rotasDeCadastros } = require("./rotas/cadastros.js");
+const { rotasDeInsumoCadastro } = require("./rotas/insumoCadastro.js");
 const { rotasDeSiengeBanco } = require("./rotas/siengeBanco.js");
 
 app.use(rotasDePreferencias);
@@ -134,6 +135,7 @@ app.use(rotasDeComentarios);
 app.use(rotasDeImportacoes);
 app.use(rotasDeArquivoEventos);
 app.use(rotasDeCadastros);
+app.use(rotasDeInsumoCadastro);
 app.use(rotasDeSiengeBanco);
 
 const MONDAY_API_URL = "https://api.monday.com/v2";

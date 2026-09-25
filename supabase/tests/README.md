@@ -23,6 +23,7 @@ O que eles cobrem hoje:
 | `11-preferencia.sql` | a preferência é de cada um: lê e grava as suas, não as dos outros; anônimo nem lê |
 | `12-salvar-obra.sql` | a gravação protegida da obra (`salvar-obra.sql`): gravar sem a trava é recusado, versão desatualizada é recusada, obra vazia não grava por cima de obra cheia, a RN-001 continua valendo pela gravação, ninguém grava direto por cima da trava viva de outra pessoa, cada gravação inteira vira versão e a poda segura o histórico |
 | `13-aditivo-apresentacao.sql` | a gravação protegida do aditivo e da apresentação (`salvar-aditivo-apresentacao.sql`): versão desatualizada é recusada nos dois, o número do aditivo sai do banco, autoria pelo login, quem não enxerga a obra não grava nem lê o histórico, cada gravação inteira vira cópia, o apagamento fica guardado e a poda segura o histórico |
+| `17-insumo-cadastro.sql` | o Cadastro de Insumos (`insumo-cadastro.sql`): o time lê, só o administrador cria, edita, apaga e importa (RN-086); insumo pedido ao Sienge não se apaga, nem pela importação (RN-087); autor pelo login, histórico por gatilho, a tela não troca a origem, e o balde dos relatórios é do administrador |
 
 ## Como rodar
 

@@ -1,4 +1,5 @@
 import DashboardPage from "./features/dashboard/DashboardPage.jsx";
+import ConfiguracoesPage from "./features/configuracoes/ConfiguracoesPage.jsx";
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 
@@ -19,7 +20,7 @@ import {
   LayoutGrid, FileText, Download, SlidersHorizontal, X, Upload, Clock, Copy, GitCompare, Plus,
   Lock, BookOpen, ShieldCheck, Play, Archive, RotateCcw, Sparkle, Package, Trash2, LogOut, DollarSign,
   MapPin, Printer, Presentation, ExternalLink, Users, FileDown, Calculator, Pencil,
-  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2,
+  MessageSquare, HardHat, Camera, UserRound, Menu, PanelLeftOpen, PanelLeftClose, FolderOpen, Eye, Loader2, RefreshCw, Layers, CircleDashed, MoreHorizontal, Undo2, Maximize2, Minimize2, Settings,
 } from "lucide-react";
 import { listarObras, iniciarObra, concluirObra, reabrirObra, definirGC, definirTailorMade,
   definirResponsavelExecutivo, definirEndereco, faltandoNaTela } from "./lib/obras";
@@ -10554,6 +10555,7 @@ const SLUG_MODULO = {
      justo o unico que o perfil "Canal de compra" enxerga. */
   painel_canal: "painel-canal",
   equipe: "equipe",
+  configuracoes: "configuracoes",
   catalogo: "catalogo",
   gerador: "gerador",
   precos: "precos",
@@ -10638,6 +10640,9 @@ const MODULOS = [
   { id: "mehoo", nome: "Mehoo", sub: "a obra pelo lado do fornecedor", Icone: IconeMehoo },
   { id: "painel_canal", nome: "Painel por canal", sub: "cada canal de compra, obra por obra", Icone: PackageSearch },
   { id: "equipe", nome: "Equipe e acessos", sub: "quem é quem, e o que cada um vê", Icone: ShieldCheck },
+  /* Configurações (ADR-008, 23/09/2026): cadastros da empresa que só o
+     administrador mantém. Hoje, o Cadastro de Insumos. */
+  { id: "configuracoes", nome: "Configurações", sub: "cadastros que só o administrador mantém", Icone: Settings },
   { id: "catalogo", nome: "Catálogo TKWS", sub: "o que a casa especifica", Icone: BookOpen },
   { id: "gerador", nome: "Gerador de códigos Sienge", sub: "associa uma lista avulsa", Icone: IconeSienge },
   { id: "precos", nome: "Banco de Preços", sub: "insumos do Sienge", Icone: DollarSign },
@@ -10666,9 +10671,9 @@ const MODULOS = [
  * obra vive no painel. */
 const DESTINOS_NO_PAINEL = new Set(["novas", "arquivo"]);
 
-/* Equipe fica no pe do trilho, separada por um fio: e' cadastro, nao trabalho
-   do dia. */
-const DESTINOS_NO_PE = new Set(["equipe"]);
+/* Equipe e Configuracoes ficam no pe do trilho, separadas por um fio: sao
+   cadastro, nao trabalho do dia. */
+const DESTINOS_NO_PE = new Set(["equipe", "configuracoes"]);
 
 /* A ordem da lista: pelo CODIGO, crescente.
 
@@ -21046,7 +21051,7 @@ function fraseDoEvento(e) {
   }
 }
 
-function BancoPrecosView({ usuario }) {
+function BancoPrecosView({ usuario, onAbrirConfiguracoes }) {
   const [busca, setBusca] = useState("");
   const [precos, setPrecos] = useState([]);
   const [total, setTotal] = useState(0);
@@ -21175,6 +21180,19 @@ function BancoPrecosView({ usuario }) {
           <SeletorDeArquivo ref={inputRef} accept=".pdf,.xlsx,.xlsm,.xlsb,.xls,.csv" onChange={aoEscolher} />
         </CardHeader>
       </Card>
+      {/* O CAMINHO NOVO DO CADASTRO (ADR-008, 23/09/2026). O botão acima
+          continua aceitando o formato antigo do cadastro (com a coluna
+          Ativo); o relatório de Insumos de hoje entra pela tela nova. */}
+      <Alert tone="info">
+        <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <span className="min-w-0 flex-1">
+            O cadastro de insumos do Sienge agora entra por <b>Configurações → Cadastro de Insumos</b>, com o relatório de Insumos que o Sienge gera hoje. Este botão continua aceitando o formato antigo.
+          </span>
+          {onAbrirConfiguracoes && (
+            <Button variant="outline" size="sm" className="shrink-0" onClick={onAbrirConfiguracoes}>Abrir Configurações</Button>
+          )}
+        </AlertDescription>
+      </Alert>
       {erro && <Alert tone="danger"><AlertDescription>{erro}</AlertDescription></Alert>}
 
       <Card className="p-0">
@@ -26175,6 +26193,8 @@ export default function App() {
             <Catalogo usuario={usuario} obras={obrasAtivas} podeEditar={perfilPermiteEditar} />
           </PageShell>
           </>
+          ) : modulo === "configuracoes" ? (
+          <ConfiguracoesPage usuario={usuario} />
           ) : modulo === "equipe" && cuidaDaEquipe ? (
           <>
           <PageShell crumb={`Cadastro · ${pessoas.length}`} title="Equipe" description="Quem é quem, o cargo de cada um, e o que cada um pode ver — é desta lista que sai o GC de cada obra." contentClassName="flex flex-col gap-6">
@@ -26220,7 +26240,8 @@ export default function App() {
           ) : modulo === "precos" ? (
           <>
           <PageShell crumb="Referência de custo" title="Banco de Preços" description="Preço realmente pago por insumo, vindo dos pedidos de compra do Sienge." contentClassName="flex flex-col gap-6">
-            <BancoPrecosView usuario={usuario} />
+            <BancoPrecosView usuario={usuario}
+              onAbrirConfiguracoes={migracaoPendente || podeVerModulo(eu, "configuracoes", pessoas) ? () => setModulo("configuracoes") : undefined} />
           </PageShell>
           </>
           ) : modulo === "eap" ? (

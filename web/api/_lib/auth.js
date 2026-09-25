@@ -230,4 +230,7 @@ const exigirEdicaoDeObra = barreiraDeObra(podeEditarObra);
 module.exports = {
   exigirLogin, exigirMembro, exigirPerfilDeEdicao, exigirAdministrador, exigirObra, exigirEdicaoDeObra,
   podeAcessarObra, podeEditarObra, PERFIS_QUE_EDITAM,
+  // Para as rotas que decidem pela regra de negocio (web/src/regras): a
+  // pessoa do pedido vai para a funcao da regra, em vez de a rota repetir a condicao.
+  pessoaDoPedido,
 };

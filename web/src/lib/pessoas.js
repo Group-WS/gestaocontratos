@@ -1,6 +1,7 @@
 import { supabaseConfigurado } from "./supabase";
 import { apiJson } from "./api";
 import { urlPublica, enviarAssinado } from "./storage";
+import { podeManterCadastroDeInsumos } from "../regras/cadastroDeInsumos.js";
 
 /**
  * A equipe.
@@ -281,11 +282,15 @@ export const podeEntrar = (p) => temAcesso(p);
    Administrador, enquanto ninguem e' master -- ver podeGerenciarPessoas).
    Os outros perfis veem "todos os modulos" menos este. */
 const SO_QUEM_GERENCIA = new Set(["equipe"]);
+/* Configuracoes e' de quem mantem os cadastros da empresa: RN-086, a mesma
+   regra que a API e o banco aplicam (ADR-008). */
+const SO_QUEM_MANTEM_CADASTRO = new Set(["configuracoes"]);
 
 export function podeVerModulo(pessoa, moduloId, pessoas) {
   const perfil = perfilDe(pessoa);
   if (!perfil || pessoa?.ativo === false) return false;
   if (SO_QUEM_GERENCIA.has(moduloId)) return podeGerenciarPessoas(pessoa, pessoas);
+  if (SO_QUEM_MANTEM_CADASTRO.has(moduloId)) return podeManterCadastroDeInsumos(pessoa);
   return perfil.modulos === null || perfil.modulos.includes(moduloId);
 }
 
