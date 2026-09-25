@@ -32,7 +32,7 @@ conf("sem painel lateral: a escolha não abre outra tela", !tudo.includes("<Shee
 conf("em Compras, a faixa é uma linha própria, da descrição até a última coluna",
   /\{mostraFaixa && \(\s*<TableRow className=\{tomDaLinha\}>\s*<TableCell colSpan=\{nCols - 2\} className="border-b border-line-1 pt-0">\s*<FaixaSienge /.test(linhaCompra));
 conf("... lida junto com o item: sem o fio entre as duas linhas, check e código nas duas",
-  linhaCompra.includes('<TableRow className={cn(tomDaLinha, mostraFaixa && "!border-b-0")}>') && (linhaCompra.match(/rowSpan=\{mostraFaixa \? 2 : undefined\}/g) || []).length === 2);
+  linhaCompra.includes('<TableRow className={cn(tomDaLinha, mostraFaixa && "sem-fio !border-b-0")}>') && (linhaCompra.match(/rowSpan=\{mostraFaixa \? 2 : undefined\}/g) || []).length === 2);
 
 /* ---- os dois seletores: combobox do DS, com busca ---- */
 conf("mãe e detalhe abrem num Popover com busca", [mae, detalhe].every((t) => t.includes("<Popover ") && t.includes("<CommandInput ")));

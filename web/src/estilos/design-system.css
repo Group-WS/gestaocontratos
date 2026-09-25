@@ -658,3 +658,26 @@ header div:has(> [cmdk-input]) {
 p:has(.equipe-da-obra) {
   max-width: none;
 }
+
+/* O FIO ENTRE OS ITENS DAS TABELAS DA OBRA (25/09/2026): "o usuário
+   identificar onde começa um item e onde termina". A Table do DS é de
+   bordas separadas, e nesse modo o fio que ela põe no `tr` não aparece; ele
+   vai na base das células. A última linha fica sem (a moldura fecha), e o
+   item de Compras com a faixa do Sienge (.sem-fio) só tem o fio no fim da
+   faixa — as células com rowspan descem até lá e mantêm o dele. */
+.conteudo-da-aba table > tbody > tr > td {
+  border-bottom: 1px solid var(--line-1);
+}
+.conteudo-da-aba table > tbody > tr:last-child > td,
+.conteudo-da-aba table > tbody > tr.sem-fio > td:not([rowspan]) {
+  border-bottom: 0;
+}
+
+/* O HOVER DO ITEM INTEIRO (25/09/2026): com a faixa do Sienge, o item de
+   Compras são duas linhas da tabela; passar o mouse em qualquer uma acende
+   as duas, como uma linha só. */
+.conteudo-da-aba tr.sem-fio:hover,
+.conteudo-da-aba tr.sem-fio:hover + tr,
+.conteudo-da-aba tr.sem-fio:has(+ tr:hover) {
+  background: var(--surface-2);
+}

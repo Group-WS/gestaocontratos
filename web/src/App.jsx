@@ -15807,7 +15807,7 @@ function LinhaCompra({ row, selecionado, onSelecionar, casamento, grupos, aux, m
     {/* Com a faixa do Sienge, o item vira duas linhas da tabela que se leem
         como uma: mesmo tom, sem o fio entre elas, e o check e o código
         ocupando as duas. */}
-    <TableRow className={cn(tomDaLinha, mostraFaixa && "!border-b-0")}>
+    <TableRow className={cn(tomDaLinha, mostraFaixa && "sem-fio !border-b-0")}>
       {/* O FIO NO FIM DO ITEM (25/09/2026): com a faixa, o item são duas
           linhas; a tabela é de bordas separadas e o fio do `tr` não aparece,
           então ele vai na base das células que fecham o item. */}
